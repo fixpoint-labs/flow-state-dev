@@ -5,12 +5,13 @@
  * charge shows when the run reported one, and a subscription run shows none.
  */
 import { describe, expect, it } from "vitest";
-import type { LabTask } from "../src/adapter";
+import type { CodingBoardTask } from "../src/app";
+import { codingBoardTask } from "./coding-board-task";
 import { spendLine } from "../src/components/flow-state/spend";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 
-const task = (spend?: LabTask["spend"]): LabTask => ({ id: "t1", title: "t", goal: "g", status: "in_progress", ...(spend ? { spend } : {}) });
-const spend = (inputTokens: number | null, outputTokens: number | null, unreported = false, costUsd: number | null = null): NonNullable<LabTask["spend"]> => ({
+const task = (spend?: CodingBoardTask["spend"]): CodingBoardTask => codingBoardTask({ title: "t", goal: "g", ...(spend ? { spend } : {}) });
+const spend = (inputTokens: number | null, outputTokens: number | null, unreported = false, costUsd: number | null = null): NonNullable<CodingBoardTask["spend"]> => ({
   harness: "claude-code",
   model: "claude-sonnet-4-5",
   inputTokens,
@@ -41,8 +42,8 @@ describe("a task's spend line", () => {
 
   it("names the harness first where no harness tag shows it, and leaves out what nobody named", () => {
     const named = task(spend(10_100, 2_300));
-    expect(spendLine(named.spend, { harnessLabel: harnessLabelOf(named) })).toBe("Claude Code · claude-sonnet-4-5 · 12.4k tokens");
+    expect(spendLine(named.spend, { harnessLabel: harnessLabelOf(named, { "claude-code": "Claude Code" }) })).toBe("Claude Code · claude-sonnet-4-5 · 12.4k tokens");
     const anonymous = task({ ...spend(10_100, 2_300), harness: null, model: null });
-    expect(spendLine(anonymous.spend, { harnessLabel: harnessLabelOf(anonymous) })).toBe("12.4k tokens");
+    expect(spendLine(anonymous.spend, { harnessLabel: harnessLabelOf(anonymous, {}) })).toBe("12.4k tokens");
   });
 });

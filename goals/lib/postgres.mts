@@ -14,16 +14,22 @@
  */
 import { spawnSync } from "node:child_process";
 import { chownSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { freePort } from "./server.mts";
 
 export type RunningPostgres = {
   /** A connection string for the database the goal uses. */
   url: string;
   /** `"initdb"` for a cluster this started, `"FSD_DB_URL"` for the caller's. */
   source: "initdb" | "FSD_DB_URL";
+  /**
+   * The server's log file, for a cluster this started; `undefined` on
+   * `FSD_DB_URL`, whose log is the caller's. With `log_statement` in
+   * `settings`, it is where a goal reads what each process asked.
+   */
+  log?: string;
   /** Run one statement as the database's owner (setup, `pg_terminate_backend`). */
   query<R extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: unknown[]): Promise<R[]>;
   /** Stop the cluster or drop the scratch database. Idempotent. */
@@ -99,18 +105,6 @@ function binDir(): string {
   throw new Error("no Postgres to start: set FSD_DB_URL, or install Postgres so `initdb` and `pg_ctl` are found");
 }
 
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => (typeof address === "object" && address !== null ? resolve(address.port) : reject(new Error("no port"))));
-    });
-  });
-}
-
 /**
  * `initdb` refuses to run as root, so a root caller (a CI container) runs the
  * cluster as the `postgres` user, which owns the scratch directory.
@@ -148,6 +142,7 @@ async function startCluster(options: StartPostgresOptions): Promise<RunningPostg
   return {
     url,
     source: "initdb",
+    log: join(dir, "server.log"),
     query: async (text, values) => (await pool.query(text, values)).rows,
     async stop() {
       if (stopped) return;

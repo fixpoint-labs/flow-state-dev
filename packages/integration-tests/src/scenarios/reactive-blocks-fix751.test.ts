@@ -60,7 +60,7 @@ describe("FIX-751: reactive blocks", () => {
 
     const flow = defineFlow({
       kind: "fix751-inflow",
-      actions: { run: { inputSchema: z.object({ key: z.string() }), block: create } },
+      actions: { run: create },
     })({ id: "test" });
 
     const result = await testFlow({
@@ -176,7 +176,7 @@ describe("FIX-751: reactive blocks", () => {
 
     const flow = defineFlow({
       kind: "fix751-work-isolation",
-      actions: { run: { inputSchema: z.object({ key: z.string() }), block: create } },
+      actions: { run: create },
     })({ id: "test" });
 
     const result = await testFlow({
@@ -356,7 +356,7 @@ describe("FIX-843: content reactions", () => {
     const flow = defineFlow({
       kind: "fix843-content",
       actions: {
-        run: { inputSchema: z.object({ key: z.string(), body: z.string() }), block: writeBody },
+        run: writeBody,
       },
     })({ id: "test" });
 
@@ -417,7 +417,7 @@ describe("FIX-843: content reactions", () => {
 
     const flow = defineFlow({
       kind: "fix843-content-isolation",
-      actions: { run: { inputSchema: z.object({ key: z.string() }), block: writeBody } },
+      actions: { run: writeBody },
     })({ id: "test" });
 
     const result = await testFlow({

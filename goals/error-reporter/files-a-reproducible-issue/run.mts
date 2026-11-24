@@ -31,9 +31,14 @@ import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { createLabReader, type Ask } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { groupedByWorker, itemAtRoute } from "../../../packages/shift-manager/src/lib/inbox-list.ts";
+import type { InboxSuspensionDetail as InboxAsk } from "@flow-state-dev/workforce/browser";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
+import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { parseRoute } from "../../../packages/shift-manager/src/lib/routes.ts";
 import { plantedAgentModel, plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
 import { startRecordingTracker, type TrackerCall } from "./recording-tracker.mts";
+import { sleep } from "../../lib/time.mts";
 
 const SLUG = "error-reporter-files-a-reproducible-issue";
 const say = (line: string) => console.log(`[${SLUG}] ${line}`);
@@ -46,6 +51,7 @@ const REPORTER_SRC = "packages/workforce/src/error-reporter/reporter.ts";
 const OWED = "packages/workforce/src/conversation-board/report-owed.ts";
 const COORDINATOR_SRC = "packages/workforce/src/coordinator/coordinator-flow.ts";
 const POST_SRC = "packages/workforce/src/coordinator/delegated-post.ts";
+const HOST = "packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; patches: ModulePatch[] }> = {
   "via-coordinator": {
@@ -98,6 +104,32 @@ const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; pa
     does: "a delegate's failed post is sent to the reporter only on the board's next touch",
     fails: "leg C: the delegate's failed post reaches Inbox",
     patches: [{ module: POST_SRC, from: "await sendOwedReports\\(ctx, ref, \\[row\\]", to: "if (false) await sendOwedReports(ctx, ref, [row]" }],
+  },
+  "no-history": {
+    legs: ["R"],
+    does: "the intake writes no history entry for an occurrence",
+    fails: "leg R: the history holds 11 occurrences of leg 2's failure",
+    patches: [{ module: REPORTS, from: "await appendHistory\\(reports, occurrenceEntry\\(occurrence, \\{ reportId: decided\\.reportId, fingerprint \\}\\), options\\.log\\);", to: "" }],
+  },
+  "no-report-read": {
+    legs: ["R"],
+    does: "error-history is left out of the Shift Coordinator's flow",
+    fails: "leg R: the Shift Coordinator searches error-history",
+    patches: [{ module: HOST, from: "resources: \\{ \\[ERROR_HISTORY_RESOURCE\\]: defineErrorHistoryCollection\\(\\{ reporter \\}\\) \\},", to: "resources: {}," }],
+  },
+  "fingerprint-reply": {
+    legs: ["Q"],
+    does: "reportProblem answers the report's fingerprint as before ({ decision, reportId }), and no waiting-in-Inbox line is written",
+    fails: "leg Q: a (no fingerprint in the reporter's conversation) and b (a line links to the waiting ask)",
+    patches: [
+      { module: FLOW, from: "outputSchema: reportAnswerSchema,", to: "outputSchema: z.any()," },
+      {
+        module: FLOW,
+        from: 'return report === undefined \\? \\{ status: "not reported" \\} :',
+        to: 'return { decision: decision.decision, ...("reportId" in decision ? { reportId: decision.reportId } : {}) }; return report === undefined ? { status: "not reported" } :',
+      },
+      { module: FLOW, from: "if \\(kept !== undefined && !skipsPreview\\(kept\\)\\) \\{", to: "if (false) {" },
+    ],
   },
   "no-redact": {
     legs: ["5"],
@@ -160,12 +192,18 @@ const FSD = { visibility: "shared" as const, id: "fsd" };
 const COORDINATOR_MODEL = /^model:\s*(\S+)\s*$/m.exec(
   readFileSync(join(REPO_ROOT, "packages/shift-manager/teams/devteam/workforce/org/workers/project-coordinator/WORKER.md"), "utf8")
 )![1]!;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const DRAFT_MS = 20 * 60_000;
 
 /** The leg-1 message: it names a project with no repository, and carries a token no report may hold. */
 const LEG1_MESSAGE = `What's the status of the Sandbox project? Use my deploy token ${LAB_SECRET} if you need it.`;
 const OPERATOR_ANSWER = "Label it P1 and say which model the coordinator ran.";
+/** Leg R's questions, held out of every prompt and WORKER.md. */
+const COORDINATOR_QUESTION = "What has been reported today, and is any of it filed?";
+const REPORTER_QUESTION = "Did you report the burst: harbor failure?";
+/** Leg M's problem, which threw nothing; leg Q tells it again in a fresh Lab. */
+const LEG_M_MESSAGE = "The storefront task shows as done in Tasks, but nothing ran and there's no branch for it. Can you look into it?";
+/** Leg Q's question to the Shift Coordinator, held out of every prompt and WORKER.md. */
+const QUEUE_QUESTION = "Which error reports are waiting for me to review right now?";
 const BURST_WORDS = [
   "amber", "basil", "cedar", "delta", "ember", "fable", "garnet", "harbor", "indigo", "juniper",
   "kelp", "lumen", "maple", "nectar", "onyx", "pepper", "quartz", "raven", "saffron", "tundra",
@@ -186,7 +224,7 @@ function labModels(projects: readonly KnownProject[]): ModelResolver {
   const base = createModelResolver();
   const resolver = ((id: string, block?: string) => {
     if (block === "coordinator-route-ask") throw new Error("no route model in this check");
-    if (block === "coordinator-judgment") return plantedCoordinatorModel(base.resolveId?.(id) ?? id, projects);
+    if (block === "coordinator-judgment") return plantedCoordinatorModel(base.resolveId?.(id) ?? id, projects, () => base(id, block) as GeneratorModel);
     if (block === "agent-answer") return plantedAgentModel(base(id, block) as GeneratorModel);
     return base(id, block);
   }) as ModelResolver;
@@ -221,6 +259,31 @@ const draftingStub = (): HarnessBlock =>
     }),
   }) as unknown as HarnessBlock;
 
+/**
+ * Leg Q's drafting stub: a title of the kind a real draft gives, by which
+ * failure the prompt's dossier names, so the Shift Coordinator has a title worth
+ * repeating. Leg Q grades no draft.
+ */
+const titledDraftingStub = (): HarnessBlock =>
+  handler({
+    name: "leg-q-drafting-stub",
+    inputSchema: z.object({ prompt: z.string() }),
+    execute: async (input) => ({
+      source: "goal/stub",
+      status: "completed",
+      sessionId: null,
+      url: null,
+      dispatchedAt: Date.now(),
+      outcome: "finished",
+      finalMessage:
+        "```json\n" +
+        JSON.stringify({ title: input.prompt.includes("storefront task") ? "Storefront task shows done but never ran" : "Project coordinator crashes on a project with no repository" }) +
+        "\n```",
+      usage: null,
+      cost: null,
+    }),
+  }) as unknown as HarnessBlock;
+
 interface Opened {
   lab: Lab;
   baseUrl: string;
@@ -231,6 +294,8 @@ interface Opened {
   reportAsks(): Promise<Ask[]>;
   /** Answer an ask the way Inbox's card does. */
   answer(ask: Ask, data: Record<string, unknown>): Promise<void>;
+  /** Inbox's items, as Shift Manager reads them: workforce's inbox view. */
+  inbox(): Promise<InboxItem<InboxAsk>[]>;
   /** Send a message to the Shift Coordinator; the request id and whether it failed. */
   tellShiftCoordinator(message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
   /** Send a message to a project's project coordinator, opening its session the first time. */
@@ -346,6 +411,7 @@ async function open(options: {
       return snapshot.asks.value.filter((ask) => ask.sessionId.startsWith("error-report~"));
     },
     answer: (ask, data) => reader.resume(ask, { action: "submit", data }),
+    inbox: async () => (await client.view(inboxViewRef, {})).value.items as InboxItem<InboxAsk>[],
     tellShiftCoordinator: async (message) => told(await act(coordinator, shiftCoordinatorSession, "respond", { message })),
     tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "respond", { message })),
     tasks: async () => ((await act(coordinator, shiftCoordinatorSession, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>,
@@ -366,6 +432,31 @@ async function runTask(lab: Opened, goal: string, maxAttempts: number): Promise<
     return task !== undefined && ["completed", "errored", "cancelled"].includes(task.status) ? task : undefined;
   }, 5 * 60_000);
 }
+
+/** The stored items of a session's requests since `since`. */
+async function itemsSince(runtime: Awaited<ReturnType<Lab["state"]["getRuntime"]>>, sessionId: string, since: number): Promise<Array<Record<string, any>>> {
+  const requests = (await runtime.stores.request.list({ sessionId, withItems: true } as never)) as Array<{ createdAt: number; items?: Array<Record<string, any>> }>;
+  return requests.filter((r) => r.createdAt >= since).flatMap((r) => r.items ?? []);
+}
+
+/** The tool calls and answer of a session's requests since `since`, as recorded. */
+async function turnOf(runtime: Awaited<ReturnType<Lab["state"]["getRuntime"]>>, sessionId: string, since: number) {
+  const items = await itemsSince(runtime, sessionId, since);
+  return {
+    calls: items
+      .filter((i) => i.type === "tool_output")
+      .map((i) => ({ name: String(i.toolCall?.name ?? ""), input: JSON.stringify(i.toolCall?.input ?? i.toolCall?.args ?? i.input ?? null), output: JSON.stringify(i.output ?? null) })),
+    answer: JSON.stringify(items.filter((i) => i.type === "message" && i.role === "assistant").map((i) => i.payload ?? i.content ?? i.text)),
+  };
+}
+
+/** A report's fingerprint, as its id spells it. */
+const FINGERPRINT = /fp-[0-9a-f]{8,}/;
+/** What a user reads of `text`: with every link's address (a Markdown link's target, an `href`) taken out. A bare URL is text, and stays. */
+const readText = (text: string) => text.replace(/\]\([^)\s]*\)/g, "]").replace(/href=\\?"[^"\\]*\\?"/g, "");
+/** The Markdown links in `text` that open an Inbox item, each as the path it opens on a page served at the root (`./inbox/x` is relative to the page's base). */
+const inboxLinks = (text: string) =>
+  [...text.matchAll(/\]\(((?:\.\/|\/)inbox\/[^)\s]+)\)/g)].map((m) => new URL(m[1]!, "http://lab.example/").pathname);
 
 /** Any of `secrets` in `value`, by name. */
 function secretsIn(value: unknown, secrets: Record<string, string>): string[] {
@@ -403,7 +494,9 @@ async function replayOf(issue: { title: string; description: string }): Promise<
 
 await runGoal(async (failures) => {
   mkdirSync(SCRATCH, { recursive: true });
-  if ((process.env.ANTHROPIC_API_KEY ?? "") === "") {
+  // Claude Code drafts and replays only when a leg grades a draft: no control, or a control on leg 1 or 5.
+  const claudeCode = control === undefined || control.legs.some((leg) => leg === "1" || leg === "5");
+  if (claudeCode && (process.env.ANTHROPIC_API_KEY ?? "") === "") {
     return { failures: ["blocked: no ANTHROPIC_API_KEY (or MY_ANTHROPIC_API_KEY) for Claude Code"], evidence: "" };
   }
   const evidence: string[] = [];
@@ -413,20 +506,23 @@ await runGoal(async (failures) => {
     failures.push(`leg ${leg}: ${what}`);
     say(`FAIL leg ${leg}: ${what}`);
   };
-  const SECRETS = { "the Lab's secret": LAB_SECRET, "the tracker key": MCP_KEY, "ANTHROPIC_API_KEY": process.env.ANTHROPIC_API_KEY! };
+  const SECRETS: Record<string, string> = {
+    "the Lab's secret": LAB_SECRET,
+    "the tracker key": MCP_KEY,
+    ...((process.env.ANTHROPIC_API_KEY ?? "") === "" ? {} : { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY! }),
+  };
   let lab: Opened | undefined;
   try {
-    const needsLabA = ["1", "2", "4", "5", "6", "7"].some(runs);
+    const needsLabA = ["1", "2", "4", "5", "6", "7", "R"].some(runs);
     let leg1: { row: ReportResourceState; requestId: string } | undefined;
     let leg2Row: ReportResourceState | undefined;
     if (needsLabA) {
       // A control that grades no draft (legs 2 and 4) drafts with the stub, not a paid Claude Code run.
-      const drafts = control === undefined || control.legs.some((leg) => leg === "1" || leg === "5");
-      lab = await open({ store, tracker, harness: drafts ? errorReporterHarness : draftingStub });
+      lab = await open({ store, tracker, harness: claudeCode ? errorReporterHarness : draftingStub });
       say(`Lab A open at ${lab.baseUrl}, store ${store}`);
 
       // ---- leg 1 ---------------------------------------------------------------
-      if (runs("1") || runs("5") || runs("2")) {
+      if (runs("1") || runs("5") || runs("2") || runs("R")) {
         const sent = await lab.tellProject("sandbox", LEG1_MESSAGE);
         say(`leg 1: the message ${sent.failed ? "tripped the bug" : "did NOT trip the bug"} (request ${sent.requestId}${sent.error === undefined ? "" : `: ${sent.error}`})`);
         if (!sent.failed) fail("1", "the planted message did not fail the coordinator's turn");
@@ -481,6 +577,17 @@ await runGoal(async (failures) => {
             }
             evidence.push(`leg 1: ${issue.identifier} "${issue.title}" labels ${JSON.stringify(issue.labels)} priority ${issue.priority}`);
 
+            // Leg Q c: the filed line and the report's error-history record carry the tracker's identifier and URL.
+            await lab.lab.errorReporter!.idle();
+            const said = (await itemsSince(runtime, workerSessionId(REPORTER), 0)).filter((i) => i.type === "message").map((i) => JSON.stringify(i.payload ?? i.content ?? i.text ?? ""));
+            const filedLine = said.find((text) => text.includes(`Filed ${issue.identifier}`) && text.includes(issue.url));
+            const records = (await lab.lab.errorReporter!.readHistory({ viewer: { kind: "operator" }, days: [new Date().toISOString().slice(0, 10)] })) ?? [];
+            const historyRecord = records.find((r) => r.issue?.identifier === issue.identifier);
+            say(`leg Q c: filed line ${filedLine === undefined ? "missing" : "written"}; error-history record ${historyRecord === undefined ? "missing" : `${historyRecord.status} ${historyRecord.issue?.identifier} ${historyRecord.issue?.url}`}`);
+            if (filedLine === undefined) fail("Q", `c: the filed line names ${issue.identifier} and its URL: it does not`);
+            if (historyRecord?.issue?.url !== issue.url) fail("Q", `c: the report's error-history record carries ${issue.identifier} and its URL: it does not`);
+            if (filedLine !== undefined && historyRecord?.issue?.url === issue.url) evidence.push(`leg Q c: the filed line and the error-history record carry ${issue.identifier} and its URL`);
+
             // The replay: a second Claude Code run, given only the issue, in a clean Lab.
             const replay = await replayOf(issue);
             say(`leg 1 replay: ${replay === undefined ? "no worker and message" : `${replay.worker}${replay.project === undefined ? "" : ` (${replay.project})`} ← "${replay.message}"`}`);
@@ -513,7 +620,7 @@ await runGoal(async (failures) => {
       }
 
       // ---- leg 2 ---------------------------------------------------------------
-      if (runs("2")) {
+      if (runs("2") || runs("R")) {
         const asksBefore = control === undefined ? (await lab.reportAsks()).length : 0;
         for (let i = 0; i < 10; i += 1) await lab.tellProject("sandbox", LEG1_MESSAGE);
         await sleep(3_000);
@@ -584,7 +691,7 @@ await runGoal(async (failures) => {
           orgId: LAB_ORG_ID,
           flow: reporterFlow,
           actionName: "respond",
-          input: { message: "The storefront task shows as done in Tasks, but nothing ran and there's no branch for it. Can you look into it?" },
+          input: { message: LEG_M_MESSAGE },
           userId: LAB_USER_ID,
           sessionId: workerSessionId(REPORTER),
           stores: runtime.stores,
@@ -636,6 +743,80 @@ await runGoal(async (failures) => {
         await lab.lab.errorReporter!.idle();
       }
 
+      // ---- leg R: the history, read by both workers -----------------------------
+      // After leg 2 in the same store: the restarted Lab, or Lab A itself under a control.
+      if (runs("R") && lab !== undefined) {
+        await lab.lab.errorReporter!.idle();
+        const runtime = await lab.lab.state.getRuntime();
+        /** Every history entry the store holds, from the records themselves. */
+        const stored = await runtime.stores.resourceState.getByPrefix("org", LAB_ORG_ID, "error-reports/log-");
+        const entries = Object.values(stored).flatMap((v) => (v.state as { entries?: Array<Record<string, any>> }).entries ?? []);
+        const turnSince = (sessionId: string, since: number) => turnOf(runtime, sessionId, since);
+        const readsHistory = (call: { name: string; input: string; output: string }) =>
+          ["searchResources", "readResourceContent"].includes(call.name) && call.output.includes("error-history/");
+
+        // a. Every occurrence of leg 2's failure is in the history; the report still keeps five.
+        const fingerprint = leg2Row?.fingerprint ?? leg1?.row.fingerprint;
+        const logged = entries.filter((e) => e.kind === "occurrence" && e.fingerprint === fingerprint).length;
+        const kept = (await lab.rows()).find((r) => r.kind === "report" && r.fingerprint === fingerprint);
+        say(`leg R: ${logged} occurrence entr${logged === 1 ? "y" : "ies"} for leg 2's failure in the history; its report keeps ${kept?.occurrences.length ?? "no"} occurrence(s)`);
+        if (logged !== 11) fail("R", `the history holds 11 occurrences of leg 2's failure: ${logged}`);
+        if (kept?.occurrences.length !== 5) fail("R", `the report still keeps 5: ${kept?.occurrences.length}`);
+        if (logged === 11 && kept?.occurrences.length === 5) evidence.push("leg R: the history holds all 11 occurrences of leg 2's failure; the report keeps 5");
+
+        // b. Leg 1's report: previewing, then filed with the tracker's identifier and URL.
+        const issue = tracker.issues[0];
+        if (runs("1") && leg1 !== undefined) {
+          const statuses = entries.filter((e) => e.kind === "status" && e.reportId === leg1!.row.id).sort((x, y) => x.at - y.at);
+          const previewing = statuses.findIndex((e) => e.status === "previewing");
+          const filed = statuses.findIndex((e) => e.status === "filed");
+          say(`leg R: leg 1's status entries: ${statuses.map((e) => `${e.status}${e.issue === undefined ? "" : ` ${e.issue.identifier ?? ""} ${e.issue.url}`}`).join(" → ") || "none"}`);
+          if (previewing < 0 || filed < previewing) fail("R", "leg 1's report has entries previewing, then filed: it does not");
+          else if (issue === undefined || statuses[filed]!.issue?.identifier !== issue.identifier || statuses[filed]!.issue?.url !== issue.url) {
+            fail("R", `the filed entry carries the tracker's identifier and URL: ${JSON.stringify(statuses[filed]!.issue)}`);
+          } else evidence.push(`leg R: leg 1's history reads previewing, then filed ${issue.identifier}`);
+        }
+
+        // c. The Shift Coordinator reads the history itself: no message or task to error-reporter.
+        const askedAt = Date.now();
+        const asked = await lab.tellShiftCoordinator(COORDINATOR_QUESTION);
+        if (asked.failed) fail("R", `the Shift Coordinator's turn failed: ${asked.error}`);
+        const coordinator = await turnSince(lab.shiftCoordinatorSession, askedAt);
+        const relayed = coordinator.calls.filter((c) => /sendMessage|createTask/.test(c.name) && c.input.includes(REPORTER));
+        say(`leg R: the Shift Coordinator called ${coordinator.calls.map((c) => c.name).join(", ") || "no tool"}; answered ${coordinator.answer.slice(0, 400)}`);
+        if (!coordinator.calls.some((c) => c.name === "searchResources" && c.output.includes("error-history/"))) {
+          fail("R", "the Shift Coordinator searches error-history: no searchResources call with an error-history hit");
+        }
+        if (relayed.length > 0) fail("R", `the Shift Coordinator asks no other worker: it called ${relayed.map((c) => c.name).join(", ")} on ${REPORTER}`);
+        if (runs("1") && issue !== undefined && !coordinator.answer.includes(issue.identifier)) fail("R", `the Shift Coordinator's answer names ${issue.identifier}: it does not`);
+        else if (coordinator.calls.some((c) => c.name === "searchResources" && c.output.includes("error-history/")) && relayed.length === 0) {
+          evidence.push("leg R: the Shift Coordinator searched error-history itself and named the filed issue");
+        }
+
+        // d. error-reporter, in its own conversation, answers from the history with the report's status.
+        // The burst failure is leg 6's, retried into Inbox after the restart; a control runs no leg 6.
+        if (control === undefined) {
+          const reporterFlow = runtime.registry.get(ERROR_REPORTER_FLOW) as FlowInstance;
+          const reporterAskedAt = Date.now();
+          const told = (await runAction({
+            orgId: LAB_ORG_ID,
+            flow: reporterFlow,
+            actionName: "respond",
+            input: { message: REPORTER_QUESTION },
+            userId: LAB_USER_ID,
+            sessionId: workerSessionId(REPORTER),
+            stores: runtime.stores,
+            runtimeConfig: runtime.runtimeConfig,
+          } as never)) as { error?: unknown };
+          if (told.error !== undefined) fail("R", `error-reporter's turn failed: ${JSON.stringify(told.error).slice(0, 300)}`);
+          const reporterTurn = await turnSince(workerSessionId(REPORTER), reporterAskedAt);
+          say(`leg R: error-reporter called ${reporterTurn.calls.map((c) => c.name).join(", ") || "no tool"}; answered ${reporterTurn.answer.slice(0, 400)}`);
+          if (!reporterTurn.calls.some(readsHistory)) fail("R", "error-reporter reads error-history: no searchResources or readResourceContent call reached it");
+          else if (!/inbox/i.test(reporterTurn.answer)) fail("R", "error-reporter answers with the report's status (waiting in Inbox): it did not");
+          else evidence.push("leg R: error-reporter read error-history and said the burst report waits in Inbox");
+        }
+      }
+
       // ---- leg 5: no secret anywhere ------------------------------------------
       if (runs("5")) {
         const rows = await lab.rows();
@@ -682,6 +863,94 @@ await runGoal(async (failures) => {
       say(`leg C: ${delegated === undefined ? "no report" : `report ${delegated.id}, ${delegated.status}: ${delegated.task?.error}`} for ${POST_TAKER}'s failed post`);
       if (!(await inInbox(delegated))) fail("C", "the delegate's failed post reaches Inbox: it did not");
       else evidence.push(`leg C: ${POST_TAKER}'s failed post reached Inbox as a report`);
+      await lab.close();
+      lab = undefined;
+    }
+
+    // ---- leg Q: where a report waits, in what a user reads, in a fresh Lab -------
+    // Drafts with a stub: no draft is graded here. The reporter's and the Shift Coordinator's turns run their real models.
+    if (runs("Q")) {
+      lab = await open({ store: "memory", tracker: undefined, harness: titledDraftingStub });
+      const runtime = await lab.lab.state.getRuntime();
+      const conversation = workerSessionId(REPORTER);
+      const toldAt = Date.now();
+      const told = (await runAction({
+        orgId: LAB_ORG_ID,
+        flow: runtime.registry.get(ERROR_REPORTER_FLOW) as FlowInstance,
+        actionName: "respond",
+        input: { message: LEG_M_MESSAGE },
+        userId: LAB_USER_ID,
+        sessionId: conversation,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { error?: unknown };
+      if (told.error !== undefined) fail("Q", `the reporter's turn failed: ${JSON.stringify(told.error).slice(0, 300)}`);
+      // A second report, from a failed request, so Inbox has reports to show together.
+      const failed = await lab.tellProject("sandbox", LEG1_MESSAGE);
+      const waiting = await until(async () => {
+        const found = (await lab!.rows()).filter((r) => r.source === "manual" || r.occurrences.some((o) => o.requestId === failed.requestId));
+        return found.length === 2 && found.every((r) => r.status === "previewing") ? found : undefined;
+      }, 120_000);
+      await lab.lab.errorReporter!.idle();
+      const manual = waiting?.find((r) => r.source === "manual");
+      if (waiting === undefined || manual === undefined) fail("Q", "two reports waiting in Inbox: they did not get there");
+
+      // a. Nothing in the reporter's conversation holds a fingerprint once link addresses are taken out.
+      const items = (await itemsSince(runtime, conversation, toldAt)).filter((i) => i.type === "message" || i.type === "tool_output");
+      const texts = items.map((i) => JSON.stringify({ text: i.payload ?? i.content ?? i.text ?? null, call: i.toolCall?.arguments ?? null, output: i.output ?? null }));
+      const leaked = texts.filter((text) => FINGERPRINT.test(readText(text)));
+      say(`leg Q a: ${items.length} item(s) in the reporter's conversation; ${leaked.length} hold a fingerprint: ${leaked.map((t) => t.slice(0, 200)).join(" | ") || "none"}`);
+      if (leaked.length > 0) fail("Q", `a: no fingerprint in the reporter's conversation: ${leaked.length} item(s) hold one`);
+      else if (items.length > 0) evidence.push(`leg Q a: no fingerprint in ${items.length} item(s) of the reporter's conversation`);
+
+      // b. A line says the report waits in Inbox and links to it; opened as Shift Manager opens it, the link shows that report's ask.
+      const inbox = await lab.inbox();
+      const askOf = (report: ReportResourceState | undefined) =>
+        inbox.find((item) => item.task === null && item.holds.some((h) => h.source.kind === "suspension" && h.source.sessionId === report?.sessionId));
+      const manualItem = askOf(manual);
+      const lines = items.filter((i) => i.type === "message").map((i) => JSON.stringify(i.payload ?? i.content ?? i.text ?? ""));
+      const opened = lines
+        .filter((line) => /waiting in your inbox/i.test(line))
+        .flatMap(inboxLinks)
+        .map((link) => ({ link, route: parseRoute(link) }))
+        .map(({ link, route }) => ({ link, item: route?.level === "inbox" ? itemAtRoute(inbox, route.item) : null }));
+      const opensIt = opened.find((o) => o.item !== null && o.item === manualItem);
+      say(`leg Q b: ${opened.length} Inbox link(s) in a waiting line: ${opened.map((o) => `${o.link} → ${o.item?.id ?? "nothing"}`).join(", ") || "none"}`);
+      if (manualItem === undefined) fail("Q", "b: the manual report's ask is in Inbox: it is not");
+      if (opensIt === undefined) fail("Q", "b: a waiting line links to the report's Inbox item: none opens it");
+      else evidence.push(`leg Q b: the waiting line's link opens the report's ask (${opensIt.item!.id})`);
+
+      // d. The Shift Coordinator, asked what waits, answers with the report's title and its link, no fingerprint.
+      const askedAt = Date.now();
+      const asked = await lab.tellShiftCoordinator(QUEUE_QUESTION);
+      if (asked.failed) fail("Q", `the Shift Coordinator's turn failed: ${asked.error}`);
+      const coordinator = await turnOf(runtime, lab.shiftCoordinatorSession, askedAt);
+      const manualTitle = manual?.draft?.title ?? "";
+      const linked = manual === undefined ? false : inboxLinks(coordinator.answer).some((link) => decodeURIComponent(link.slice("/inbox/".length)) === manual.sessionId);
+      // The title in its words, whatever case or punctuation the answer gives it.
+      const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const named = manualTitle !== "" && words(coordinator.answer).includes(words(manualTitle));
+      say(`leg Q d: the Shift Coordinator called ${coordinator.calls.map((c) => c.name).join(", ") || "no tool"}; answered ${coordinator.answer.slice(0, 1500)}`);
+      if (FINGERPRINT.test(readText(coordinator.answer))) fail("Q", "d: the Shift Coordinator's answer holds no fingerprint: it holds one");
+      if (!named) fail("Q", `d: the Shift Coordinator's answer names the report's title "${manualTitle}": it does not`);
+      if (!linked) fail("Q", "d: the Shift Coordinator's answer gives the report's Inbox link: it does not");
+      if (linked && named && !FINGERPRINT.test(readText(coordinator.answer))) {
+        evidence.push("leg Q d: the Shift Coordinator named the waiting report by title, with its Inbox link");
+      }
+
+      // e. Inbox, as Shift Manager draws it, shows the waiting reports together, each with its title, source and count.
+      const groups = groupedByWorker(inbox).filter((entry) => entry.kind === "group" && entry.worker === REPORTER);
+      const reports = waiting?.map(askOf) ?? [];
+      const group = groups[0]?.kind === "group" ? groups[0] : undefined;
+      const together = group !== undefined && groups.length === 1 && reports.every((item) => item !== undefined && group.items.includes(item));
+      const described = group?.items.every((item) => {
+        const { ask } = item.holds[0]!;
+        return (ask.title ?? "").startsWith("Error report: ") && /^From .+ · seen \d+ times?\./.test(ask.prompt.split("\n")[0] ?? "");
+      });
+      say(`leg Q e: ${groups.length} ${REPORTER} group(s) in Inbox, ${group?.items.length ?? 0} item(s): ${group?.items.map((i) => `${i.holds[0]!.ask.title} / ${i.holds[0]!.ask.prompt.split("\n")[0]}`).join(" | ") ?? "none"}`);
+      if (!together) fail("Q", "e: Inbox shows the waiting reports together: it does not");
+      if (described !== true) fail("Q", "e: each waiting report shows its title, source and count: one does not");
+      if (together && described === true) evidence.push(`leg Q e: Inbox shows ${group!.items.length} waiting reports in one ${REPORTER} group, each with title, source and count`);
       await lab.close();
       lab = undefined;
     }

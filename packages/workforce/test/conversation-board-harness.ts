@@ -21,12 +21,14 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import type { SchedulerAdapter } from "@flow-state-dev/engine/host";
 import { createClient } from "@flow-state-dev/client";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
+import { owesStartAfterRelease } from "../src/conversation-board/board";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -37,6 +39,7 @@ import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
+import { workerSessionsViewRef } from "../src/workers/session-views-ref";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
@@ -85,6 +88,23 @@ type TaskRun = {
 const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Whether any board among these tasks still owes a start after a release.
+ * Each board is one scope and one partition; the start rule itself is
+ * {@link owesStartAfterRelease}.
+ */
+function owesReleasedStart(tasks: readonly (Task & { partition: string; scope: string })[]): boolean {
+  const boards = new Map<string, Task[]>();
+  for (const stored of tasks) {
+    const key = `${stored.scope}\0${stored.partition}`;
+    const list = boards.get(key);
+    if (list === undefined) boards.set(key, [stored]);
+    else list.push(stored);
+  }
+  for (const board of boards.values()) if (owesStartAfterRelease(board)) return true;
+  return false;
+}
 
 function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
@@ -176,6 +196,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** The coordinator flow takes the routine verbs as actions (`routines: true`). */
+  coordinatorRoutines?: boolean;
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
@@ -192,6 +214,8 @@ export type BoardHostOptions = {
   durable?: boolean;
   /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
   maxDebtAgeMs?: number;
+  /** How long a question to the user waits before the board closes it "no answer came" (`RuntimeConfig.userDeadlineMs`). */
+  userDeadlineMs?: number;
   /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
@@ -222,6 +246,8 @@ export type BoardHostOptions = {
   errorCapture?: (event: any) => void;
   /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
   adapters?: unknown[];
+  /** The app's scheduler (`createFlowState({ scheduler })`); omitted, the local cron. */
+  scheduler?: SchedulerAdapter | false;
   /** The host's stale sweep: how often it runs and when a request with no heartbeat counts as dead. */
   staleSweep?: { intervalMs: number; thresholdMs: number };
 };
@@ -268,7 +294,7 @@ function withJudgmentModel(
 ): ReturnType<typeof createMockModelResolver> {
   if (model === undefined && agent === undefined) return base;
   const resolver = ((modelId: string, blockName?: string) => {
-    if (model !== undefined && blockName === "coordinator-judgment") return model;
+    if (model !== undefined && blockName?.startsWith("coordinator-judgment") === true) return model;
     if (agent !== undefined && blockName?.startsWith("agent-answer") === true) return agent;
     return (base as any)(modelId, blockName);
   }) as ReturnType<typeof createMockModelResolver>;
@@ -276,8 +302,16 @@ function withJudgmentModel(
 }
 
 /** One host of the app over `stores`. */
+/** The bearer the schedule tick's dispatches carry in these hosts (`CRON_SECRET` while a test ticks). */
+export const SCHEDULER_SECRET = "board-harness-scheduler";
+
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
+  /** User scopes this host has written for, so a quiet check does not list every session. */
+  const scopes = new Set<string>();
+  const noteScope = (userId: string, orgId = ORG) => {
+    scopes.add(`${userId}\0${orgId}`);
+  };
   const runs: TaskRun[] = [];
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
@@ -295,7 +329,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const coordinator = defineCoordinatorFlow({
     installation,
     routeModel: "typesafe-ai/jev",
-    ...(options.agent === undefined ? {} : { agent: options.agent })
+    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(options.coordinatorRoutines === true ? { routines: true } : {})
   });
   flows = {
     tasker: { flow: tasker, roles: ["contributor"] },
@@ -310,22 +345,32 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   Object.assign(instances, options.plainFlows ?? {}, options.plainFlowsOf?.(installation) ?? {});
-  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
-  const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ name: "coordinator-judgment", script: [{ when: () => true, then: { text: QUIET_TURN } }] });
+  const agentAnswer = options.agentAnswer ?? mockGenerator({ name: "agent-answer", script: [] });
   const models = createMockModelResolver({
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })
     },
-    generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer, ...(options.generators ?? {}) }
+    // Each turn under both of its arms' names: a worker holding a skill answers
+    // on the skill-loader arm by default, and it is one answer built two ways.
+    generators: {
+      "coordinator-judgment": judgment,
+      "coordinator-judgment-with-activate-tool": judgment,
+      "agent-answer": agentAnswer,
+      "agent-answer-with-activate-tool": agentAnswer,
+      ...(options.generators ?? {})
+    }
   });
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
+    ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
     ...(options.staleSweep === undefined
       ? {}
       : { staleSweepIntervalMs: options.staleSweep.intervalMs, staleSweepThresholdMs: options.staleSweep.thresholdMs }),
@@ -337,8 +382,11 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       options.agentModel
     ),
     resolvePrincipal: (context: any) => {
+      // The schedule tick's dispatch carries `CRON_SECRET` as its bearer: the scheduler, in the default org.
+      if (context.request?.headers.get("authorization") === `Bearer ${SCHEDULER_SECRET}`) return { userId: "scheduler", orgId: ORG };
       const user = context.request?.headers.get("x-user");
-      return typeof user === "string" ? { userId: user, orgId: ORG } : null;
+      // A second organization, for a check that one user's two orgs never meet.
+      return typeof user === "string" ? { userId: user, orgId: context.request?.headers.get("x-org") ?? ORG } : null;
     }
   } as never);
 
@@ -356,6 +404,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST a session create as `userId`. */
   const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, "sessions"], { userId, ...body });
     return { status: res.status, body: (await res.json()) as { session?: { id: string }; error?: string } };
   };
@@ -374,6 +423,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST an action through the host's dispatch, so its concurrency policy applies. The accepted request's id. */
   const post = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, sessionId, "actions", actionName], { userId, input });
     const body = (await res.json()) as { request?: { id: string }; error?: unknown };
     if (res.status !== 202) throw new Error(`POST ${actionName} was refused (${res.status}): ${JSON.stringify(body)}`);
@@ -387,52 +437,80 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   };
 
   /** Run an action on `flow` as `userId`, in process. */
-  const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+  const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator", orgId = ORG) => {
+    noteScope(userId, orgId);
     const runtime = await state.getRuntime();
     return (await runAction({
       flow: instances[flow]!,
       actionName,
       input,
       userId,
-      orgId: ORG,
+      orgId,
       sessionId,
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig }
     })) as { output?: any; error?: { message?: string } | unknown; status?: string; requestId?: string };
   };
 
-  /** Every request in the store, once none is still running. */
-  const settled = async (timeoutMs = 10_000) => {
-    const deadline = Date.now() + timeoutMs;
-    // Still running: in progress, or ended but not finalized. A record reads
-    // `completed` before `onFinished` and the request-end check (FIX-2077)
-    // have run, and a task's row is settled by that check.
-    const running = (r: { status: string; finalizedAtMs?: number | null }) =>
-      r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
-    for (;;) {
-      const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some(running)) {
-        // Read again after a beat: a dispatch accepted just now may not have
-        // written its request yet.
-        await sleep(20);
-        const again = await (await state.getRuntime()).stores.request.list({});
-        if (!again.some(running) && again.length === all.length) return again;
-        continue;
-      }
-      if (Date.now() > deadline) throw new Error("a request never finished");
-      await sleep(10);
-    }
-  };
-
-  /** Every row of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
-  const rows = async (userId: string): Promise<Array<Task & { partition: string }>> => {
+  /** Tasks stored for one user, by the partition each is filed in. */
+  const tasksUnder = async (userId: string, orgId: string): Promise<Array<Task & { partition: string }>> => {
     const runtime = await state.getRuntime();
-    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${orgId}`, "tasks/");
     return Object.entries(entries).map(([key, value]) => ({
       ...(value.state as Task),
       partition: key.split("/")[1]!
     }));
   };
+
+  /** Stored tasks for the scopes this host has written, each tagged with that scope. */
+  const storedTasks = async (): Promise<Array<Task & { partition: string; scope: string }>> => {
+    const out: Array<Task & { partition: string; scope: string }> = [];
+    for (const scope of scopes) {
+      const split = scope.indexOf("\0");
+      const userId = scope.slice(0, split);
+      const orgId = scope.slice(split + 1);
+      for (const task of await tasksUnder(userId, orgId)) out.push({ ...task, scope });
+    }
+    return out;
+  };
+
+  /**
+   * Every request in the store, once none is still running and no pending
+   * task is waiting on a session a finished task released. That task is the
+   * dispatcher's to start, and the request for it may not be written yet.
+   */
+  const settled = async (timeoutMs = 10_000) => {
+    const deadline = Date.now() + timeoutMs;
+    // Still running: in progress, or ended but not finalized. A record reads
+    // `completed` before `onFinished` and the request-end check (FIX-2077)
+    // have run, and a task is settled by that check.
+    const running = (r: { status: string; finalizedAtMs?: number | null }) =>
+      r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
+    /** Requests, and whether a released session still owes a start. One read of each. */
+    const quiet = async () => {
+      const all = await (await state.getRuntime()).stores.request.list({});
+      const busy = all.some(running);
+      return { all, pending: busy ? false : owesReleasedStart(await storedTasks()) };
+    };
+    for (;;) {
+      const first = await quiet();
+      if (!first.all.some(running) && !first.pending) {
+        // Read again after a beat: a dispatch accepted just now may not have
+        // written its request yet.
+        await sleep(20);
+        const again = await quiet();
+        if (!again.all.some(running) && !again.pending && again.all.length === first.all.length) return again.all;
+      } else if (Date.now() > deadline) {
+        throw new Error(
+          first.pending ? "a task waiting on a released session was never dispatched" : "a request never finished"
+        );
+      }
+      await sleep(10);
+    }
+  };
+
+  /** Every task of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
+  const rows = async (userId: string) => tasksUnder(userId, ORG);
 
   /** One row, by the partition it was filed in. */
   const row = async (userId: string, partition: string, taskId: string) =>
@@ -462,30 +540,32 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** An app's workforce client for `userId`, talking to this host's router. */
   const inProcess = createInProcessFetch(state);
-  const client = (userId: string) =>
-    createWorkforceClient(
-      createClient({
-        userId,
-        // This host's router in-process, as `userId`.
-        fetcher: (input, init) => {
-          const headers = new Headers(init?.headers);
-          headers.set("x-user", userId);
-          return inProcess(input, { ...init, headers });
-        }
-      })
-    );
+  const fsd = (userId: string) =>
+    createClient({
+      userId,
+      // This host's router in-process, as `userId`.
+      fetcher: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", userId);
+        return inProcess(input, { ...init, headers });
+      }
+    });
+  const client = (userId: string) => createWorkforceClient(fsd(userId));
+  /** `userId`'s conversations with `worker`: the roster flow's worker sessions view (FIX-2725). */
+  const workerSessions = async (userId: string, worker: string) => (await fsd(userId).view(workerSessionsViewRef(), { worker })).value;
 
   /**
    * Make every new request on `actionName` fail to be written, as a store
    * that is down when the dispatch records it: the dispatch is lost, the way
-   * a process dying before it would lose it. Returns the restore.
+   * a process dying before it would lose it; with `only`, just the requests
+   * it picks. Returns the restore.
    */
-  const loseDispatches = async (actionName: string) => {
+  const loseDispatches = async (actionName: string, only?: (record: unknown) => boolean) => {
     const store = (await state.getRuntime()).stores.request;
     const set = store.set.bind(store);
     let lost = 0;
     store.set = (async (id: string, record: { actionName?: string }, ...rest: unknown[]) => {
-      if (record.actionName === actionName && (await store.get(id)) === undefined) {
+      if (record.actionName === actionName && (only === undefined || only(record)) && (await store.get(id)) === undefined) {
         lost += 1;
         throw new Error(`the store is down: request ${id} was not recorded`);
       }
@@ -501,6 +581,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** Write a stored row as a crash would leave it: a test's stand-in for a write that landed with nothing after it. */
   const writeRow = async (userId: string, partition: string, task: Task) => {
+    noteScope(userId);
     const store = (await state.getRuntime()).stores.resourceState;
     const key = `tasks/${encodeUserSegment(partition)}/${task.id}`;
     await store.set("user", `${userId}:~org:${ORG}`, key, task as never, "any" as never);
@@ -532,6 +613,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     requestsOf,
     messages,
     client,
+    fsd,
+    workerSessions,
     hire,
     fire,
     loseDispatches,

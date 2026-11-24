@@ -31,7 +31,7 @@
 
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { CapabilityPresetCtx } from "@flow-state-dev/core";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { ProjectedEntryExtra } from "@flow-state-dev/workspace";
 import type { SandboxProvider } from "./types";
 import { createBashBlocks, defaultDestinationFor, releaseBashSandbox, type BashCollectionSpec } from "./blocks";
 import path from "node:path";
@@ -58,8 +58,14 @@ export interface CreateBashCapabilityOptions {
   /** Virtual workspace root. Default: `"/workspace"` for most providers, `"/vercel/sandbox/workspace"` for the Vercel adapter (required for tarball-extract permissions). */
   destination?: string;
 
-  /** Creates initial resource state for new files. */
-  createState?: (relativePath: string) => Partial<JsonObject>;
+  /**
+   * Extra state stamped on each file written back to a collection.
+   * Receives the workspace-relative path (e.g. `artifacts/notes.md`).
+   *
+   * The workspace sets `path`, `hash`, and `updatedAt`. A value returned
+   * for one of those keys is ignored.
+   */
+  createState?: (relativePath: string) => ProjectedEntryExtra;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +220,6 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
     destination,
     createState = (relativePath) => ({
       title: path.basename(relativePath),
-      updatedAt: Date.now(),
     }),
   } = options;
 
@@ -243,9 +248,11 @@ export function createBashCapability(options: CreateBashCapabilityOptions = {}) 
   });
 
   /**
-   * Tear down this capability's sandbox at request end. Required for the
-   * `moat` provider — without it, containers leak. No-op-ish for LocalFs and
-   * just-bash. Wire it via `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })`.
+   * Release this capability's sandbox at request end: a non-persisting MOAT
+   * container is stopped, and a local sandbox's background jobs are stopped.
+   * A sandbox no command has used for 30 minutes is released anyway, so
+   * wiring this only makes the release prompt. Wire it via
+   * `defineFlow({ request: { onFinished: bashCap.cleanupBlock } })`.
    *
    * Returned unconditionally so the capability shape is stable across providers.
    */

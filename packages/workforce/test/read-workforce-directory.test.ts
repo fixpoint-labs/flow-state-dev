@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readWorkforceDirectory } from "../src/loader";
+import { readWorkforceDirectory } from "../src/loader/readers";
 
 const roots: string[] = [];
 

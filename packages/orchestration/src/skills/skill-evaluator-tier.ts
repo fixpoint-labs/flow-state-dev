@@ -120,9 +120,10 @@ export function createSkillEvaluatorTier(opts: SkillEvaluatorTierOptions) {
             ]
           : [];
 
+      const existing = ctx.sequencer?.state.skills ?? [];
       await ctx.sequencer!.patchState({
         resolved: true,
-        skills: [...ctx.sequencer!.state.skills, ...matches],
+        skills: [...existing, ...matches],
         classifierConfidence: matches.length > 0 && reported !== undefined ? reported : null,
       });
       return { accepted: true };

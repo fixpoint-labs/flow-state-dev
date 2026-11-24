@@ -26,7 +26,7 @@ function RunTimer({ since }: { since: number }) {
   }, []);
   const elapsed = Math.max(0, now - since);
   if (elapsed < 1000) return null;
-  return <span data-testid="run-timer" className="tabular-nums">({formatElapsed(elapsed)})</span>;
+  return <span data-testid="run-timer" className="shrink-0 whitespace-nowrap tabular-nums">({formatElapsed(elapsed)})</span>;
 }
 
 /**
@@ -55,6 +55,10 @@ export function WorkedFor({ startedAt, endedAt }: { startedAt: number; endedAt: 
  * background `.sideChain()` tasks are still settling on the open SSE stream),
  * renders a muted "Tidying up..." label instead so the user is not misled
  * into thinking the assistant is still producing their answer.
+ *
+ * The label stays on one line: a long one (a whole shell command, say) is cut
+ * at the edge with the full text on hover, and the timer beside it never wraps
+ * or shrinks, so a narrow pane keeps one line.
  *
  * Pass `since` to show how long the request has been running beside the label.
  *
@@ -87,8 +91,10 @@ export function StreamingIndicator({
           : "flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm"
       }
     >
-      <span className="inline-block size-2 rounded-full bg-current animate-pulse" />
-      {isFinishing ? <span>{label}</span> : <Shimmer duration={1}>{label}</Shimmer>}
+      <span className="inline-block size-2 shrink-0 rounded-full bg-current animate-pulse" />
+      <span className="min-w-0 truncate" title={label}>
+        {isFinishing ? label : <Shimmer as="span" className="inline" duration={1}>{label}</Shimmer>}
+      </span>
       {since !== undefined && <RunTimer since={since} />}
     </div>
   );

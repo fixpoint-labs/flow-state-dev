@@ -35,7 +35,6 @@ function oneAction(options: {
       : {}),
     actions: {
       run: {
-        inputSchema: z.object({}),
         block: handler({
           name: "run",
           ...(options.transient === true ? { transient: true } : {}),

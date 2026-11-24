@@ -22,6 +22,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@flow-state-dev/client";
+import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { git, labCheckout, makeRepository, startLab } from "../lab.mts";
@@ -30,7 +31,6 @@ const fixture = loadFixture<{ plainProject: string; unignoredProject: string; un
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROL !== "no-repository-check") throw new Error(`setup: no control named ${CONTROL}`);
 const USER = "u_goal";
-const PROJECTS_FLOW = "projects";
 
 /** A project id the lab's picker would make from `name`, as `lib/new-project.ts` does. */
 const idOf = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");

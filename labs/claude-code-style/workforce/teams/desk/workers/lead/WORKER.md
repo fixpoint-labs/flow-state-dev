@@ -3,6 +3,8 @@ description: Hands each request to background threads and keeps you posted.
 flow: coordinator
 routing: judgment
 delegates: [desk.thread, desk.thread-coder, desk.thread-coder-plan, desk.thread-coder-codex, desk.thread-coder-cursor]
+capabilities:
+  routines: [tools]
 ---
 
 A message that asks for nothing to be done gets no thread. When the user sets the focus, gives

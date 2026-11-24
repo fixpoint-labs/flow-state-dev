@@ -12,12 +12,13 @@ import {
   transientSlot,
   DEFAULT_ORG_ID
 } from "@flow-state-dev/core";
-import type { FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { ActionConfig, FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function run(flow: FlowInstance, input: unknown = {}) {
   return runAction({
@@ -34,7 +35,7 @@ function run(flow: FlowInstance, input: unknown = {}) {
 
 function flowOf(
   kind: string,
-  block: Parameters<typeof defineFlow>[0]["actions"][string]["block"],
+  block: ActionConfig["block"],
   id?: string
 ) {
   return defineFlow({ kind, actions: { run: { inputSchema: z.any(), block } } })(
@@ -433,6 +434,7 @@ describe("a checkpoint written before a field bubbled in still restores", () => 
     );
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: v1,
       actionName: "run",

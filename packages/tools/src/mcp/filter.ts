@@ -5,6 +5,7 @@
  * their own filterTools.
  */
 import { z } from "zod";
+import type { GeneratorTool } from "@flow-state-dev/core";
 import { getMcpToolMeta } from "./enrich";
 import type { FilterTools } from "./types";
 
@@ -16,10 +17,11 @@ export const mcpRequestStateSchema = z
   .object({
     mcp: z
       .object({
-        disabledTools: z.array(z.string()),
-        disabledServers: z.array(z.string()),
+        disabledTools: z.array(z.string()).optional(),
+        disabledServers: z.array(z.string()).optional(),
       })
-      .partial(),
+      .partial()
+      .optional(),
   })
   .partial();
 
@@ -29,12 +31,15 @@ export const mcpRequestStateSchema = z
  * MCPToolMeta always pass through.
  */
 export const defaultMcpFilterTools: FilterTools = (ctx, tools) => {
-  const { mcp }: z.infer<typeof mcpRequestStateSchema> = ctx.request.state;
-  const disabledTools = mcp?.disabledTools ?? [];
-  const disabledServers = mcp?.disabledServers ?? [];
+  // The capability declares this request state (`mcpRequestStateSchema`).
+  const state = ctx.request.state as z.infer<typeof mcpRequestStateSchema>;
+  const mcp = state.mcp ?? {};
+  const disabledTools: string[] = mcp.disabledTools ?? [];
+  const disabledServers: string[] = mcp.disabledServers ?? [];
+
   if (disabledTools.length === 0 && disabledServers.length === 0) return tools;
 
-  return tools.filter((tool) => {
+  return tools.filter((tool: GeneratorTool) => {
     if (disabledTools.includes(tool.name)) return false;
     const meta = getMcpToolMeta(tool);
     return !meta || !disabledServers.includes(meta.mcp.server);

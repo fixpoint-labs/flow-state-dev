@@ -212,6 +212,25 @@ describe("useRequestStream (react)", () => {
     expect(result.current.isFinishing).toBe(false);
   });
 
+  // A screen that follows one request by id (not a session's latest) reads when that request ended from its own stream.
+  it("says when the request ended: the terminal status event's time, none while it runs or waits", () => {
+    const { result } = renderHook(() =>
+      useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate" }),
+    );
+    act(() => {
+      feed(requestCreated());
+      feed({ ...requestStatus("request.suspended", "suspended"), ts: 1_500 });
+    });
+    // Suspended waits on someone: it hasn't ended.
+    expect(result.current.completedAt).toBeUndefined();
+    act(() => {
+      feed({ ...requestStatus("request.in_progress", "in_progress"), ts: 2_000 });
+      feed({ ...requestStatus("request.aborted", "aborted"), ts: 4_242 });
+    });
+    expect(result.current.status).toBe("aborted");
+    expect(result.current.completedAt).toBe(4_242);
+  });
+
   it("gates items by the type filter", () => {
     const { result } = renderHook(() =>
       useRequestStream({
@@ -315,5 +334,32 @@ describe("useRequestStream (react)", () => {
     act(() => { result.current.close(); });
     expect(result.current.isStreaming).toBe(false);
     expect(connections[0]!.closed).toBe(true);
+  });
+
+  it("opens nothing and asks for no flow while disabled", () => {
+    const { result } = renderHook(() => useRequestStream({ source: { requestId: "" }, enabled: false }));
+    expect(connections).toEqual([]);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("streams through the client it is handed, not the provider's", async () => {
+    const { fakeClient } = await import("./support/fake-client");
+    const own: Array<{ url: string }> = [];
+    const client = fakeClient({
+      requestStream: ((options: { url: string }) => {
+        own.push(options);
+        return { close() {}, lastEventId: undefined };
+      }) as never,
+    });
+    renderHook(() => useRequestStream({ client, flowKind: "demo", source: { requestId: "r1" }, flush: "immediate" }));
+    expect(own).toHaveLength(1);
+    expect(own[0]!.url).toContain("/demo/requests/r1/stream");
+    expect(connections).toEqual([]);
+  });
+
+  it("hands reconnect to the client's stream, which opens a dropped connection again itself", () => {
+    renderHook(() => useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", reconnect: true }));
+    renderHook(() => useRequestStream({ flowKind: "demo", source: { requestId: "r2" }, flush: "immediate" }));
+    expect(connections.map((connection) => (connection.callbacks as { reconnect?: boolean }).reconnect)).toEqual([true, undefined]);
   });
 });

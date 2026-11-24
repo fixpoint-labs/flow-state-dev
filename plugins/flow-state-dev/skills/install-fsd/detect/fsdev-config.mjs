@@ -88,25 +88,24 @@ export function inspectRegistry(configPath) {
   // We do not execute their config, the same rule as for `pageExtensions` and `basePath`. A
   // registry built from a spread or an imported module is not statically extendable, and neither
   // is one we could not anchor.
-  if (hit.unreadable || raw === null || !raw.startsWith("{") || raw.includes("...")) {
+  if (hit.unreadable || raw === null || !raw.startsWith("[") || raw.includes("...")) {
     return {
       extendable: false,
       entries: [],
       demoKind: "undetermined",
       ourEntry: null,
-      why: hit.unreadable ?? (raw === null ? "no flows registry found" : "the registry is not a plain object literal"),
+      why: hit.unreadable ?? (raw === null ? "no flows registry found" : "the registry is not a plain list literal"),
     };
   }
 
   const imports = importMap(source);
   const entries = [];
-  // Both spellings, because a registry is written either way and the shorthand is the common one:
-  // `{ hello }` and `{ hello: helloFlow }` register the same thing.
-  for (const part of splitTopLevel(raw.slice(1, raw.lastIndexOf("}")))) {
-    const named = /^(["']?)([\w-]+)\1\s*:\s*([\w.]+)$/.exec(part);
-    const shorthand = /^([A-Za-z_$][\w$]*)$/.exec(part);
-    const name = named?.[2] ?? shorthand?.[1] ?? null;
-    const identifier = named?.[3] ?? shorthand?.[1] ?? null;
+  // `flows` is a list of flow instances (`[hello, billing]`). Each member is read as the
+  // identifier it names, which is also its name in the report.
+  for (const part of splitTopLevel(raw.slice(1, raw.lastIndexOf("]")))) {
+    const member = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/.exec(part);
+    const identifier = member?.[1] ?? null;
+    const name = identifier;
     if (name === null || identifier === null) {
       // A member we cannot parse is a flow we cannot rule out. Dropping it silently narrowed the
       // registry to the entries we happened to understand and reported the rest as absent.

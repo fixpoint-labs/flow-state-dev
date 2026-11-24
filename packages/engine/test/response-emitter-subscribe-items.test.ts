@@ -120,12 +120,12 @@ describe("ResponseEmitter.subscribeToItems", () => {
   });
 
   describe("filter option (FIX-660)", () => {
-    function makeComponent(itemIndex: number, component: string, id?: string): OutputItem {
+    function makeData(itemIndex: number, dataType: string, id?: string): OutputItem {
       return {
         id: id ?? `item_${itemIndex}`,
-        type: "component",
-        component,
-        data: { collectionId: "c1" },
+        type: "data",
+        dataType,
+        value: { collectionId: "c1" },
         status: "completed",
         requestId: "req_test",
         itemIndex,
@@ -143,10 +143,10 @@ describe("ResponseEmitter.subscribeToItems", () => {
       const calls: string[] = [];
       emitter.subscribeToItems(
         (item) => calls.push(item.id),
-        { filter: (item) => item.type === "component" }
+        { filter: (item) => item.type === "data" }
       );
       await emitter.emitItemAdded(makeItem(0));
-      await emitter.emitItemAdded(makeComponent(1, "task-change", "c_1"));
+      await emitter.emitItemAdded(makeData(1, "task-change", "c_1"));
       expect(calls).toEqual(["c_1"]);
     });
 
@@ -197,11 +197,11 @@ describe("ResponseEmitter.subscribeToItems", () => {
       const all: string[] = [];
       emitter.subscribeToItems(
         (item) => filtered.push(item.id),
-        { filter: (item) => item.type === "component" }
+        { filter: (item) => item.type === "data" }
       );
       emitter.subscribeToItems((item) => all.push(item.id));
       await emitter.emitItemAdded(makeItem(0));
-      await emitter.emitItemAdded(makeComponent(1, "task-change", "c_1"));
+      await emitter.emitItemAdded(makeData(1, "task-change", "c_1"));
       expect(filtered).toEqual(["c_1"]);
       expect(all).toEqual(["item_0", "c_1"]);
     });
@@ -214,20 +214,20 @@ describe("ResponseEmitter.subscribeToItems", () => {
         (item) => taskChanges.push(item.id),
         {
           filter: (item) =>
-            item.type === "component" &&
-            (item as { component?: string }).component === "task-change"
+            item.type === "data" &&
+            (item as { dataType?: string }).dataType === "task-change"
         }
       );
       emitter.subscribeToItems(
         (item) => resourceChanges.push(item.id),
         {
           filter: (item) =>
-            item.type === "component" &&
-            (item as { component?: string }).component === "resource-change"
+            item.type === "data" &&
+            (item as { dataType?: string }).dataType === "resource-change"
         }
       );
-      await emitter.emitItemAdded(makeComponent(0, "task-change", "tc_0"));
-      await emitter.emitItemAdded(makeComponent(1, "resource-change", "rc_0"));
+      await emitter.emitItemAdded(makeData(0, "task-change", "tc_0"));
+      await emitter.emitItemAdded(makeData(1, "resource-change", "rc_0"));
       expect(taskChanges).toEqual(["tc_0"]);
       expect(resourceChanges).toEqual(["rc_0"]);
     });

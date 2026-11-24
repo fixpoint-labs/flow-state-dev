@@ -69,7 +69,7 @@ function boot() {
     ]
   });
   const state = createFlowState({
-    flows: { [worker!.id]: worker! },
+    flows: [worker!],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ generators: { "agent-answer": answer }, policy: "allow" })
   });

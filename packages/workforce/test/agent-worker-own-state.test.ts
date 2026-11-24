@@ -29,7 +29,7 @@ async function runAs(users: readonly string[]): Promise<Write[]> {
   ]);
   const writes: Write[] = [];
   const state = createFlowState({
-    flows: { [worker!.id]: worker! },
+    flows: [worker!],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

@@ -1,18 +1,18 @@
-// FIX-1989.
+// FIX-1989; FIX-2624.
 /**
- * The user's message log: Workforce's `workforce/messages/*`,
- * read through the user's roster session. Another user's messages are not in it.
+ * The user's message log: Workforce's `workforce/messages/*`, read whole by
+ * user scope with no session through `react`'s `useResource`, and kept
+ * current by its notices: a new message is one entry read, never the whole
+ * log again. Another user's messages are not in it.
  */
-import { useCallback, useEffect, useState } from "react";
-import { readEveryCollectionPage } from "@flow-state-dev/client";
-import { WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { useMemo } from "react";
+import { useResource } from "@flow-state-dev/react";
+import { workerMessageResourceStateSchema, workerMessagesResource, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { useReadAgainOnR } from "./page-reads";
+import type { Failure } from "./failure";
 
 export type { WorkerMessageResourceState };
-
-/** How often the view reads the log again while it is open. */
-const MESSAGES_POLL_MS = 5_000;
 
 /** One exchange: a first message and every answer to it, newest first. */
 export type MessageExchange = {
@@ -22,10 +22,10 @@ export type MessageExchange = {
 };
 
 /** The messages a log read returned, each parsed by Workforce's own schema: one that doesn't parse is left out. */
-export function toMessages(items: readonly { clientData?: unknown }[]): WorkerMessageResourceState[] {
+export function toMessages(values: readonly unknown[]): WorkerMessageResourceState[] {
   const rows: WorkerMessageResourceState[] = [];
-  for (const item of items) {
-    const parsed = workerMessageResourceStateSchema.safeParse(item.clientData);
+  for (const value of values) {
+    const parsed = workerMessageResourceStateSchema.safeParse(value);
     if (parsed.success) rows.push(parsed.data);
   }
   return rows;
@@ -54,40 +54,17 @@ export function firstLine(text: string): string {
 }
 
 /**
- * The log, read when the view opens, again on each Lab read (`readAt`), and
- * every {@link MESSAGES_POLL_MS}. A later read keeps the last rows until it
- * lands, and a failed later read keeps them; only a failed first read shows.
+ * The log, read whole when the view opens and kept current by its notices.
+ * A later read that fails keeps the rows already drawn; only a failed first
+ * read shows. `rows` is `null` when no flow of the Lab declares the log (a
+ * 404): it keeps no roster for the user.
  */
-export function useMessages(
-  readerSessionId: string | null,
-  readAt: number,
-): { rows: WorkerMessageResourceState[] | undefined; failure: Failure | undefined; reread: () => void } {
+export function useMessages(): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerMessageResourceState[] | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const [reads, setReads] = useState(0);
-  useEffect(() => {
-    if (readerSessionId === null) return;
-    let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readEveryCollectionPage(client.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
-      .then(toMessages)
-      .then((value) => {
-        if (closed) return;
-        setRows(value);
-        setFailure(undefined);
-      })
-      .catch((error: unknown) => {
-        if (!closed) setFailure(describeFailure(error));
-      })
-      .finally(() => {
-        if (!closed) next = setTimeout(() => setReads((n) => n + 1), MESSAGES_POLL_MS);
-      });
-    return () => {
-      closed = true;
-      if (next !== undefined) clearTimeout(next);
-    };
-  }, [client, readerSessionId, readAt, reads]);
-  const reread = useCallback(() => setReads((n) => n + 1), []);
-  return { rows, failure: rows === undefined ? failure : undefined, reread };
+  const { value, failure, refresh } = useResource(workerMessagesResource, { client, all: true });
+  useReadAgainOnR(refresh);
+  const rows = useMemo(() => (value === null ? undefined : toMessages(value.map((entry) => entry.value))), [value]);
+  if (rows !== undefined) return { rows, failure: undefined, reread: refresh };
+  if (failure?.httpStatus === 404) return { rows: null, failure: undefined, reread: refresh };
+  return { rows: undefined, failure, reread: refresh };
 }

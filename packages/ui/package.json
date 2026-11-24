@@ -31,6 +31,7 @@
   "devDependencies": {
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@storybook/react-vite": "^10.0.0",
     "@streamdown/cjk": "^1.0.2",

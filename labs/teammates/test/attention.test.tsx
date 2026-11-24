@@ -14,46 +14,82 @@
  * the title case fails.
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BoardTask, ConversationEntry } from "../src/adapter";
-import { App } from "../src/App";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { approval as approvalItem, answered, linesOf } from "./lines";
+import { App } from "../src/components/App";
+import { codingTask, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
-import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
-import { createFixtureLab } from "./fake-lab";
+import { ENDING_SHOWN_MS, freshEndings, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
 const named = (id: string) => id;
-/** A task, with its row's view carrying when it ended (`completedAt`), as the adapter reads one. */
-const task = (id: string, { completedAt, ...over }: Partial<BoardTask> & { completedAt?: number }): BoardTask => {
-  const t: BoardTask = { id, to: "cursor", title: `Task ${id}`, status: "running", boardStatus: "in_progress", goal: "g", ...over };
-  return { ...t, view: taskView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
-};
-const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
-const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });
+/** A coding board row, running on `cursor` unless `over` says otherwise. */
+const task = (id: string, over: Partial<CodingBoardTask>): CodingBoardTask => codingTask({ id, assignee: "cursor", title: `Task ${id}`, goal: "g", status: "in_progress", ...over });
+const approval = (resolution?: string) => linesOf([approvalItem("ap", "q", "s", "Publish the draft?"), ...(resolution ? [answered("ar", "q", "s", resolution)] : [])])[0]!;
+const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], lines: [], talk: [], tasks: [], now: NOW, ...over });
 const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over), named, coder);
 
 describe("the status line puts what needs you first", () => {
   it("an approval you haven't answered, even while the teammate is answering", () => {
-    expect(status({ entries: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true });
+    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true });
     // Answered, it needs nothing.
-    expect(status({ entries: [approval("approved")] }).needsYou).toBe(false);
+    expect(status({ lines: [approval("approved")] }).needsYou).toBe(false);
   });
 
   it("a task that waits on you, above the same task running", () => {
-    const asks = task("t1", { waiting: { kind: "question", prompt: "Which branch?", unanswerable: null } });
+    const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
     expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-attention", needsYou: true });
-    expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t1");
+  });
+
+  it("says a coding task is running only while a run holds its lease: one parked on its pull request says so, and one nothing runs claims nothing", () => {
+    // Its run ended and its work is pull request 7: no lease, it waits on the merge.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] })] }).text).toBe("Waiting on its pull request: Task t1");
+    // Kept open with no run on it (a steer no turn took), or a run that stopped renewing: never "Running".
+    expect(status({ tasks: [task("t1", {})] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW - 1 })] }).text).toBe("Idle");
+    // At its deadline the lease has lapsed, as the board and the row's time signal read it.
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW })] }).text).toBe("Idle");
+    // A live run outranks a parked task.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] }), task("t2", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t2");
+  });
+
+  it("several running tasks: the newest names the line, so a task left running for days can't hide the one you just started", () => {
+    // Each holds a live lease: only a task a run holds counts as running.
+    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000, leaseUntil: NOW + 60_000 });
+    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 });
+    // Either order on the board: the line still names the newest.
+    expect(status({ tasks: [stale, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
+    expect(status({ tasks: [fresh, stale] }).text).toBe("Running 2 tasks · Add day dividers");
+    // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
+    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined, leaseUntil: NOW + 60_000 });
+    expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
+  });
+
+  it("doesn't count a task waiting on its pull request as running: three PRs open is idle, not 'Running 3 tasks'", () => {
+    const open = (id: string) => task(id, { pullRequests: [Number(id.slice(2))], startedAt: NOW - 3_600_000 });
+    expect(status({ tasks: [open("pr5451"), open("pr5452"), open("pr5512")] }).text).not.toMatch(/^Running/);
+    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Add day dividers");
+  });
+
+  it("still reports a task that was idle on its pull request when the merge completes it", () => {
+    const idle = task("pr", { title: "Add day dividers", pullRequests: [5512], startedAt: NOW - 3_600_000 });
+    expect(freshEndings([idle], NOW, coder)).toEqual([]);
+    const merged = { ...idle, status: "completed" as const, pullRequests: [], completedAt: NOW - 30_000 };
+    expect(freshEndings([merged], NOW, coder)).toEqual([merged]);
+    expect(status({ tasks: [merged] }).text).toBe("Coding task finished: Add day dividers");
   });
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {
-    const failed = task("t2", { status: "failed", completedAt: NOW - 30_000 });
+    const failed = task("t2", { status: "errored", completedAt: NOW - 30_000 });
     expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false });
-    expect(status({ tasks: [task("t3", { status: "done", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-muted-foreground", needsYou: false });
-    expect(status({ tasks: [task("t3", { status: "done", completedAt: NOW - ENDING_SHOWN_MS })] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-muted-foreground", needsYou: false });
+    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - ENDING_SHOWN_MS })] }).text).toBe("Idle");
     // A teammate's job isn't a coding task, and a withdrawn task doesn't flash.
-    expect(status({ tasks: [task("t4", { to: "researcher", status: "done", completedAt: NOW })] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t4", { assignee: "researcher", status: "completed", completedAt: NOW })] }).text).toBe("Idle");
     expect(status({ tasks: [task("t5", { status: "cancelled", completedAt: NOW })] }).text).toBe("Idle");
   });
 });
@@ -133,8 +169,8 @@ describe("the notifier", () => {
   });
 
   it("a task's second hold on you is a new need, not the first one again", () => {
-    const hold = (holdId: string) => task("t1", { waiting: { kind: "question", prompt: "Which branch?", unanswerable: null, holdId } });
-    const keys = (t: BoardTask) => needsOf({ entries: [], tasks: [t] }).map((n) => n.key);
+    const hold = (holdId: string) => task("t1", { asks: [openHold("question", "Which branch?", { id: holdId })] });
+    const keys = (t: CodingBoardTask) => needsOf({ lines: [], tasks: [t] }).map((n) => n.key);
     expect(keys(hold("h1"))).not.toEqual(keys(hold("h2")));
   });
 });
@@ -160,10 +196,10 @@ describe("a teammate waiting on your yes, on screen", () => {
       { permission: "granted", requestPermission: async () => "granted" },
     );
     vi.stubGlobal("Notification", Fake);
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     await waitFor(() => expect(row("writer")).toBeTruthy());
-    await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
-    expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);
+    await act(async () => fireEvent.click(within(workers()).getByRole("switch", { name: "Notify me when tasks finish" })));
+    expect(within(workers()).getByRole("switch", { name: "Notify me when tasks finish" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(row("writer"));
     // The tab goes to the background before the question arrives.
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -181,5 +217,24 @@ describe("a teammate waiting on your yes, on screen", () => {
     await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
     await waitFor(() => expect(row("writer").querySelector("[data-needs-you]")).toBeNull());
     await waitFor(() => expect(document.title).toBe("Teammates"));
+  });
+
+  it("with Notify me off, points at the switch while something waits on you, and stops once it is answered", async () => {
+    // A wait nobody hears about sits for minutes: the switch must be findable exactly then.
+    vi.stubGlobal("Notification", Object.assign(function () {}, { permission: "default", requestPermission: async () => "granted" }));
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
+    await waitFor(() => expect(row("writer")).toBeTruthy());
+    expect(workers().querySelector("[data-notify-nudge]")).toBeNull();
+    fireEvent.click(row("writer"));
+    const box = await screen.findByLabelText("Message writer");
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "Publish the draft." } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await waitFor(() => expect(row("writer").querySelector("[data-needs-you]")).toBeTruthy());
+    await waitFor(() => expect(workers().querySelector("[data-notify-nudge]")).toBeTruthy());
+    const card = await screen.findByRole("region", { name: "writer asks" });
+    await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(workers().querySelector("[data-notify-nudge]")).toBeNull());
   });
 });

@@ -17,7 +17,7 @@
 - **g** (owed by a person): Jake's own Claude sign-in, a real run, then Usage beside Claude Code's `/status`. No CI has a sign-in, so until it is run the verdict is *goal met except leg g*.
 
 **Anti-game:**
-- No assertion reads Shift Manager's modules or stubs the query. Rows are read through `harnessUsage` over the Lab's HTTP door, and the view in a browser.
+- No assertion reads Shift Manager's modules or stubs the query. Rows are read through the usage flow's `usage` view over the Lab's HTTP door, a refresh being a Re-check sent to the usage collection, and the screen in a browser.
 - Runs go through the real chain: Shift Coordinator, task board, harness manager, `claudeCodeAgent`, `onUsage`, the writer. Only the SDK module is replaced.
 - The empty-home and API-key looks run the real Agent SDK probe.
 
@@ -39,3 +39,4 @@
 | 2026-10-23 | same, `GOAL_CONTROL=absent-as-zero` | n/a | FAIL (expected) | **a:no-number**: "0% used"; c, e and f show 0% too. |
 | 2026-10-23 | same, `GOAL_CONTROL=fan-out` | n/a | FAIL (expected) | **d:no-claude-window**: Alice's run wrote Bob's row; a and b read c's window from the shared row. |
 | 2026-10-23 | same, `GOAL_CONTROL=read-replaces-run` | n/a | FAIL (expected) | **e:keeps-the-runs-window**: the look left 0 windows; the view's looks in a, b and c emptied their rows too. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (not from this change) | The Lab never starts: *"Failed to load fsdev config …/lab/fsdev.config.mts: …/lab/scripted-sdk.mjs is installed, but its version can't be read (its manifest could not be located)"*. The unconverted `lab/fsdev.config.mts` from `claude/fix-2627-impl-e` fails the same way. No control was run. |

@@ -39,6 +39,11 @@ export {
   type CreateLeaseStoreConformanceTestsOptions
 } from "./stores/testing/lease-store-conformance";
 export {
+  createPendingUserSuspensionsConformanceTests,
+  type CreatePendingUserSuspensionsConformanceTestsOptions,
+  type PendingUserSuspensionsUnderTest
+} from "./stores/testing/pending-user-suspensions-conformance";
+export {
   createWakeStoreConformanceTests,
   type CreateWakeStoreConformanceTestsOptions
 } from "./stores/testing/wake-store-conformance";

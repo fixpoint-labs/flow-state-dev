@@ -55,9 +55,10 @@ import { z } from "zod";
 import { isUserTurn } from "../standing-rules/user-turn";
 import { taskChainResources } from "./chain";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLedger } from "./ledger";
-import { conversationBoardStateSchema, settleTakenNotice } from "./task-settled";
+import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
 import { subscriptionResources } from "../subscriptions/rows";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
+import { ENDING_FOR_THE_MODEL, resultLineOf, writeResultLine } from "./result-line";
 
 /** One task that finished while the turn ran, as {@link takeFinishedTasks} hands it back. */
 export const finishedTaskSchema = z.object({
@@ -92,7 +93,7 @@ export const takeFinishedTasks = handler({
   name: "workforce-take-finished-tasks",
   inputSchema: z.unknown(),
   outputSchema: z.array(finishedTaskSchema),
-  sessionStateSchema: conversationBoardStateSchema,
+  sessionStateSchema: z.object(conversationBoardStateShape),
   requestStateSchema: taskEndingReadsStateSchema,
   // `settleTakenNotice` ends a failed task's subscriptions (FIX-2534).
   resources: { ...conversationLedgerResources, ...taskChainResources, ...subscriptionResources },
@@ -128,10 +129,14 @@ export const takeFinishedTasks = handler({
         // The answer again reads the ending as its getTask read (FIX-2345).
         await noteTaskEndingRead(ctx, ref, row, notice);
         const line = noticeText(notice, row);
+        // Its line for an app to draw (FIX-2848 D1); the message is then the model's only.
+        const result = resultLineOf(notice, row, line);
         ctx.emit.message(line, {
           ...(row.assignee !== undefined ? { agentName: row.assignee } : {}),
-          metadata: noticeMetadata(notice, row)
+          metadata: noticeMetadata(notice, row),
+          ...(result !== undefined ? { itemVisibility: ENDING_FOR_THE_MODEL } : {})
         });
+        if (result !== undefined) writeResultLine(ctx, result);
         finished.push({
           taskId: row.id,
           ending: notice.ending as FinishedTask["ending"],

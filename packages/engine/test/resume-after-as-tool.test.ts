@@ -7,6 +7,7 @@ import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const produce = handler({
   name: "produce",
@@ -34,6 +35,7 @@ async function suspendThenApprove(flow: FlowInstance) {
   });
   const runtimeConfig = { durabilityProvider: provider };
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

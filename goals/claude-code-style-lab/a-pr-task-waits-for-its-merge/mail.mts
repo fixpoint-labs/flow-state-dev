@@ -8,8 +8,11 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
-import { MESSAGE_RECEIVED_ENTRY, WORKER_MESSAGES_RESOURCE, workerMessagesResources, type WorkerMessageResourceState } from "@flow-state-dev/workforce";
+import { WORKER_MESSAGES_RESOURCE, workerMessagesResources, type WorkerMessageResourceState } from "@flow-state-dev/workforce";
 import { z } from "zod";
+
+/** The entry a worker session takes a delivered message on (workforce's `onMessageReceived`, which its root no longer exports). */
+const MESSAGE_RECEIVED_ENTRY = "onMessageReceived";
 
 /** The flow's kind and id. */
 export const GOAL_MAIL_FLOW = "goal-mail";

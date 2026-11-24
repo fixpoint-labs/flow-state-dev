@@ -17,7 +17,9 @@
  *
  * Every process goes through `./exec`, the package's one door for them.
  */
+import { stripAnsi } from "@flow-state-dev/core/helpers";
 import { runToEnd } from "./exec";
+import type { WorkspaceSetup } from "./setup";
 
 /** The most of a command's output a result keeps: its last characters. */
 export const CHECK_OUTPUT_TAIL_CHARS = 4_000;
@@ -95,6 +97,45 @@ export function checkoutCommandProblem(command: string): string | undefined {
 }
 
 /**
+ * The checks a setting names, `;`-separated (`pnpm typecheck; pnpm test`):
+ * each command trimmed, blanks dropped, and each checked with
+ * {@link checkoutCommandProblem}. Commands run with no shell, so a `;` can only
+ * separate two of them. For a host reading its checks from the environment.
+ *
+ * @param value The setting's value, as read.
+ * @param setting The setting's name, which a refusal starts with.
+ * @returns The commands, or `undefined` when the value names none.
+ * @throws `${setting}: <problem>` for the first command that can't be a check.
+ */
+export function checkCommandsFrom(value: string | undefined, setting: string): string[] | undefined {
+  const commands = (value ?? "").split(";").map((command) => command.trim()).filter((command) => command !== "");
+  if (commands.length === 0) return undefined;
+  for (const command of commands) {
+    const problem = checkoutCommandProblem(command);
+    if (problem !== undefined) throw new Error(`${setting}: ${problem}`);
+  }
+  return commands;
+}
+
+/**
+ * The setup command a setting names (`pnpm install --frozen-lockfile`): one
+ * command, trimmed and checked with {@link parseCheckoutCommand}, as a
+ * workspace host's `setup` takes it. It runs with no shell. For a host reading
+ * its setup from the environment, beside {@link checkCommandsFrom}.
+ *
+ * @param value The setting's value, as read.
+ * @param setting The setting's name, which a refusal starts with.
+ * @returns The setup, or `undefined` when the value is unset or blank.
+ * @throws `${setting}: <problem>` when the line can't be one command.
+ */
+export function setupCommandFrom(value: string | undefined, setting: string): WorkspaceSetup | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const parsed = parseCheckoutCommand(value.trim());
+  if ("problem" in parsed) throw new Error(`${setting}: ${parsed.problem}`);
+  return { command: parsed.words };
+}
+
+/**
  * A command's words, checked once: the refusals of {@link checkoutCommandProblem}
  * and the split of {@link splitCheckoutCommand} together.
  *
@@ -111,9 +152,6 @@ export function parseCheckoutCommand(command: string): { words: [string, ...stri
   return { words: [program!, ...args] };
 }
 
-// eslint-disable-next-line no-control-regex
-const COLOUR_CODES = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
-
 /** Options for {@link runCheckoutCommands}. */
 export interface RunCheckoutCommandsOptions {
   /** The checkout the commands run in. */
@@ -122,7 +160,11 @@ export interface RunCheckoutCommandsOptions {
   commands: readonly string[];
   /** The wall clock for all of them together, in milliseconds. */
   timeoutMs: number;
-  /** Extra environment, laid over the process's own. */
+  /**
+   * Variables to set for the commands. They never inherit the host's whole
+   * environment, only `WORKSPACE_BASE_PASS`: a command the run can rewrite
+   * (a package script) gains no secret the host didn't name here.
+   */
   env?: Record<string, string>;
   /**
    * Stops the commands early: the running one is stopped with its group and
@@ -168,7 +210,7 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
       timedOut: ended.timedOut,
       skipped: false,
       durationMs: Date.now() - started,
-      tail: ended.output.replace(COLOUR_CODES, "").slice(-CHECK_OUTPUT_TAIL_CHARS),
+      tail: stripAnsi(ended.output).slice(-CHECK_OUTPUT_TAIL_CHARS),
     });
   }
   return results;

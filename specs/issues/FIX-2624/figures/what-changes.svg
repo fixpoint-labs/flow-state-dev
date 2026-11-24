@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes, in two panels. Today: the client first finds or makes a session through one of four helpers, then reads a user or org resource through session-addressed routes and writes it through a hand-written flow action in that session; it learns its org off the session. After: the client reads the resource by scope and key with no session; a write is an action on the existing action route that names the resource, the server finds or makes one session per resource per writer, and the default write flow or the resource's own flow checks the schema, the owner, canWrite and the version before it writes; the identity read answers user and org from the verified sign-in. A resource with no runBy can't be written from a client."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n     { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .flow  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .store { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .lnc   { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .lng   { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+    .head  { fill:var(--ink-3); }
+    .headc { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="420" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n" x="32" y="52" width="388" height="40" rx="5"/>
+    <text class="t-b" x="48" y="77">client</text>
+    <path class="ln" d="M226 92 V114"/><path class="head" d="M221 110 L226 118 L231 110 Z"/>
+    <rect class="gone" x="32" y="118" width="388" height="52" rx="5"/>
+    <text class="t-g" x="48" y="140">find or make a session, only to read</text>
+    <text class="t-s" x="48" y="158">ownSession · labSession · roster session · readerSessionId</text>
+    <path class="ln" d="M126 170 V196"/><path class="head" d="M121 192 L126 200 L131 192 Z"/>
+    <path class="ln" d="M326 170 V196"/><path class="head" d="M321 192 L326 200 L331 192 Z"/>
+    <rect class="n" x="32" y="200" width="186" height="62" rx="5"/>
+    <text class="t-b" x="48" y="222">read</text>
+    <text class="t-s" x="48" y="240">session-addressed route,</text>
+    <text class="t-s" x="48" y="255">a flow read, or an action</text>
+    <rect class="gone" x="234" y="200" width="186" height="62" rx="5"/>
+    <text class="t-g" x="250" y="222">write</text>
+    <text class="t-s" x="250" y="240">a hand-written action</text>
+    <text class="t-s" x="250" y="255">(pins: pin, unpin, listPins)</text>
+    <path class="ln" d="M126 262 V296"/><path class="head" d="M121 292 L126 300 L131 292 Z"/>
+    <path class="ln" d="M326 262 V296"/><path class="head" d="M321 292 L326 300 L331 292 Z"/>
+    <rect class="store" x="32" y="300" width="388" height="36" rx="5"/>
+    <text class="t-b" x="48" y="323">user or org cell</text>
+    <text class="t-s" x="48" y="362">The org is read off the session; ids carry no org.</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="452" y="16" width="472" height="368" rx="6"/>
+    <text class="t-lbl" x="468" y="38">AFTER</text>
+    <rect class="n" x="468" y="52" width="440" height="40" rx="5"/>
+    <text class="t-b" x="484" y="77">client</text>
+    <text class="t-s" x="560" y="77">fsd.resource(pins) · useResource(pins) · fsd.identity()</text>
+    <path class="lnc" d="M540 92 V196"/><path class="headc" d="M535 192 L540 200 L545 192 Z"/>
+    <path class="lnc" d="M700 92 V114"/><path class="headc" d="M695 110 L700 118 L705 110 Z"/>
+    <path class="lnc" d="M860 92 V114"/><path class="headc" d="M855 110 L860 118 L865 110 Z"/>
+    <rect class="new" x="468" y="200" width="146" height="62" rx="5"/>
+    <text class="t-b" x="484" y="222">direct read</text>
+    <text class="t-s" x="484" y="240">by scope and key,</text>
+    <text class="t-s" x="484" y="255">no session</text>
+    <rect class="new" x="630" y="118" width="140" height="52" rx="5"/>
+    <text class="t-b" x="646" y="140">action route</text>
+    <text class="t-s" x="646" y="158">names the resource</text>
+    <rect class="new" x="786" y="118" width="122" height="52" rx="5"/>
+    <text class="t-b" x="802" y="140">identity read</text>
+    <text class="t-s" x="802" y="158">verified sign-in</text>
+    <path class="lnc" d="M700 170 V196"/><path class="headc" d="M695 192 L700 200 L705 192 Z"/>
+    <rect class="flow" x="630" y="200" width="278" height="62" rx="5"/>
+    <text class="t-b" x="646" y="222">one session per resource per writer</text>
+    <text class="t-s" x="646" y="240">default write flow, or the resource's own:</text>
+    <text class="t-s" x="646" y="255">schema · owner · canWrite · version</text>
+    <path class="lnc" d="M540 262 V296"/><path class="headc" d="M535 292 L540 300 L545 292 Z"/>
+    <path class="lnc" d="M760 262 V296"/><path class="headc" d="M755 292 L760 300 L765 292 Z"/>
+    <rect class="store" x="468" y="300" width="440" height="36" rx="5"/>
+    <text class="t-b" x="484" y="323">user or org cell</text>
+    <text class="t-s" x="484" y="362">No runBy: no client write. Every write records a request as its writer.</text>
+  </g>
+</svg>

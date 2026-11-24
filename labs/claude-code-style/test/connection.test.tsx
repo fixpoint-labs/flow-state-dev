@@ -8,56 +8,64 @@
  * draws nothing: a bar that flashes on every routine close teaches people to
  * ignore it.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, waitFor as wait, type TestApp } from "./app-host";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
+  await closeApps();
 });
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const working = () => within(thread()).getByText(/working ·/).closest<HTMLElement>("[role=status]")!;
 
-async function startTurn() {
-  // Slow enough that the turn is still running while the test reads it.
-  const lab = createFakeLab({ speed: 1 });
-  render(<App adapter={lab} />);
+/** A turn that runs until it is stopped, so the test reads it while it is still running. */
+async function startTurn(): Promise<TestApp> {
+  const lab = await openTestApp({
+    scripts: {
+      "agent-answer": async ({ signal }) => {
+        await wait(60_000, signal);
+        return { text: "Done." };
+      },
+    },
+  });
+  render(lab.wrap(<App />));
   const picker = await screen.findByRole("region", { name: "Choose a project" });
   fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }));
-  const box = await screen.findByLabelText("Message the main session");
+  const box = await screen.findByLabelText("Message the main session", undefined, { timeout: 10_000 });
   await act(async () => {
     fireEvent.change(box, { target: { value: "Compare Acme and Globex for us." } });
     fireEvent.keyDown(box, { key: "Enter" });
   });
-  await within(thread()).findByText(/working ·/);
+  await within(thread()).findByText(/working ·/, undefined, { timeout: 10_000 });
   return lab;
 }
 
 describe("the server going away mid-turn", () => {
-  it("shows the bar and greys the working line only once a retry has failed, and clears both when live again", async () => {
+  it("shows the bar and greys the working line once a retry has failed, and clears both when the server is back", async () => {
     const lab = await startTurn();
-
-    act(() => lab.setConnection("reconnecting"));
     expect(screen.queryByTestId("connection-banner")).toBeNull();
     expect(working().className).not.toContain("opacity-60");
 
-    act(() => lab.setConnection("lapsed"));
-    expect(screen.getByTestId("connection-banner").textContent).toContain("Lost the server");
+    // The host stops answering: the feed's first retry fails, and only then does the bar show.
+    lab.pull();
+    await waitFor(() => expect(screen.getByTestId("connection-banner").textContent).toContain("Lost the server"), { timeout: 15_000 });
     expect(working().className).toContain("opacity-60");
 
-    act(() => lab.setConnection("live"));
-    expect(screen.queryByTestId("connection-banner")).toBeNull();
+    lab.restore();
+    await waitFor(() => expect(screen.queryByTestId("connection-banner")).toBeNull(), { timeout: 40_000 });
     expect(working().className).not.toContain("opacity-60");
-  });
+  }, 60_000);
 
   it("stops the turn's clock while the feed is stale", async () => {
     const lab = await startTurn();
-    act(() => lab.setConnection("lapsed"));
+    lab.pull();
+    await waitFor(() => expect(screen.getByTestId("connection-banner")).toBeTruthy(), { timeout: 15_000 });
     const held = working().textContent;
     await act(async () => new Promise((resolve) => setTimeout(resolve, 2_100)));
     expect(working().textContent).toBe(held);
-  });
+  }, 30_000);
 });

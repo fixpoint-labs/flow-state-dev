@@ -26,7 +26,10 @@
  *    already refused an address that resolves nothing, so that check is the
  *    run-time half of the same rule, reached only by a dispatch the walk could
  *    not see (a carried core). For a **cross-instance** address it is the only
- *    half there is: `defineFlow` holds one flow's maps.
+ *    half there is: `defineFlow` holds one flow's maps. An `internal` entry
+ *    marked `service` (a publish) stops here: it is routed as the
+ *    service through `serviceRoute`, with this session as the event's sender
+ *    and only this user's runs fired, and starts no request as this sender.
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's, owned by the addressed instance — `session-not-found` /
@@ -66,6 +69,7 @@ import type {
   DispatchRefusal,
   DispatchSpec,
   FlowInstance,
+  InternalEntry,
   TokenCounter
 } from "@flow-state-dev/core/types";
 import type {
@@ -90,7 +94,10 @@ import {
 } from "../stores/scope-keys";
 import { deriveDispatchRunSessionId, evaluateAdoption, readonlyStateMismatch } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
+import { isWriteSessionId } from "../resources/write-session-id";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { DispatchOperation } from "./dispatch-operation";
+import type { ServiceRouteOperation } from "../durability/owner-runs";
 import {
   birthSession,
   SessionCreateRefusedError,
@@ -104,7 +111,8 @@ import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
 import { createOwingPark } from "../durability/park-owed";
-import { createRequestSessions } from "./request-sessions";
+import { createRequestSessions, type SessionAdmission, type SuspensionAdmission } from "./request-sessions";
+import type { SessionReadObserver } from "./view-reads";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
 
@@ -118,7 +126,7 @@ export type RequestHostInputs = {
   // `resourceState` is here for the birth of a newly created child: the
   // tombstone reclamation it owes itself and its flow's create check — see the
   // `birthSession` call below.
-  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request">;
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request"> & Partial<Pick<StoreRegistry, "suspensions">>;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -144,6 +152,9 @@ export type RequestHostInputs = {
   };
   /** Absent when this process executes requests but cannot dispatch one. */
   dispatchOperation?: DispatchOperation;
+  // FIX-2630 D1.
+  /** Routes a dispatch to a `service` entry (see the seam's step 1); absent, such a dispatch refuses `no-dispatch-operation`. */
+  serviceRoute?: ServiceRouteOperation;
   /**
    * Resolve another flow instance registered in this process, by its exact
    * address — the flow registry, narrowed to the one question the seam asks.
@@ -154,6 +165,17 @@ export type RequestHostInputs = {
    * answer for a process that cannot see past the one flow it was handed.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  // FIX-2725 D1.
+  /** A view run's per-session admission for `sessions` (`RequestSessionsInputs.admit`). */
+  sessionAdmission?: SessionAdmission;
+  // FIX-2770.
+  /** A view run's credential check on each pending suspension (`RequestSessionsInputs.admitSuspension`). */
+  suspensionAdmission?: SuspensionAdmission;
+  /** A view run's recording of each session read that answers (`RequestSessionsInputs.observe`). */
+  sessionReads?: SessionReadObserver;
+  // FIX-2848 D3.
+  /** The host's `publicReentrySources` (`RequestSessionsInputs.publicReentrySources`). */
+  publicReentrySources?: readonly string[];
   // FIX-1077.
   /**
    * The config this request runs under, handed to the dispatch operation so
@@ -584,6 +606,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return sender;
     }
     if ("id" in spec.session) {
+      // FIX-2886: a schedule's session is the scheduled dispatch's, and a
+      // write session the server's. Refused before a `{ id, state }` target
+      // births one, so no row is left under this request's user to lock the
+      // schedule (or the writer) out.
+      const reserved = isScheduleSessionId(spec.session.id) ? "schedule" : isWriteSessionId(spec.session.id) ? "write" : undefined;
+      if (reserved !== undefined) {
+        return refuse(
+          "session-not-addressable",
+          `session "${spec.session.id}" is a ${reserved} session, reserved to the server: a dispatch can't name one`
+        );
+      }
       if (spec.session.state !== undefined) {
         return resolveOrBirthSession(spec.session.id, spec.session.state, targetFlow);
       }
@@ -613,7 +646,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // unregistered address gets, as it does at the HTTP doors, so a sender
     // cannot probe which it was. Decided here, before a child session is
     // written or a request started: past acceptance the refusal would land in
-    // a child nobody awaits, and a task row handed to it would stay claimed.
+    // a child nobody awaits, and a task handed to it would stay claimed.
     // `createExecutionContext` still refuses the pin as the net under this.
     if (
       targetFlow === undefined ||
@@ -629,11 +662,45 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // Admission: the address must resolve on its own type's map, on the flow it
     // named. Never falls through to another type — a `task` dispatch cannot
     // reach an action — and never to another flow's map.
-    if (resolveEntry(targetFlow, spec.type, spec.action) === undefined) {
+    const entry = resolveEntry(targetFlow, spec.type, spec.action);
+    if (entry === undefined) {
       return refuse(
         "no-entry",
         `flow "${targetFlow.kind}" declares no ${spec.type} entry "${spec.action}"`
       );
+    }
+
+    // FIX-2630 D1, Q1: a service route starts no request as its sender. The
+    // host routes the event as the service in this request's org, stamped
+    // with this session as its sender and this user and tenant as its owner,
+    // and fires only that user's runs in that tenant. The
+    // session target is not read: the routing runs in the service's session.
+    const service = spec.type === "internal" ? (entry as InternalEntry).service : undefined;
+    if (service !== undefined) {
+      if (inputs.serviceRoute === undefined) {
+        return refuse(
+          "no-dispatch-operation",
+          `this process executes requests but was not wired to route a service entry ("${spec.action}" on "${targetFlow.kind}")`
+        );
+      }
+      // The name is read from the sending session's own stored state, never the payload.
+      const sending = service.senderName === undefined ? undefined : await stores.session.get(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
+      const named = sending === undefined ? undefined : service.senderName?.((sending.state ?? {}) as Readonly<Record<string, unknown>>);
+      const routed = await inputs.serviceRoute({
+        flowKind: targetFlow.id,
+        entry: spec.action,
+        provider: service.provider,
+        input: spec.payload,
+        sender: {
+          userId: identity.userId,
+          orgId: identity.orgId,
+          ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
+          sessionId: identity.sessionId,
+          name: typeof named === "string" && named.length > 0 ? named : flow.kind
+        }
+      });
+      if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
+      return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };
     }
 
     if (inputs.dispatchOperation === undefined) {
@@ -824,6 +891,14 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   // write to one. The principal comes from here, never the block.
   (host as { sessions?: RequestHost["sessions"] }).sessions = createRequestSessions({
     sessions: stores.session,
+    requests: stores.request,
+    ...(inputs.sessionAdmission !== undefined ? { admit: inputs.sessionAdmission } : {}),
+    ...(inputs.sessionReads !== undefined ? { observe: inputs.sessionReads } : {}),
+    ...(inputs.publicReentrySources !== undefined ? { publicReentrySources: inputs.publicReentrySources } : {}),
+    // The principal's pending asks (FIX-2770), read on the engine's clock.
+    ...(stores.suspensions !== undefined ? { suspensions: stores.suspensions } : {}),
+    ...(inputs.suspensionAdmission !== undefined ? { admitSuspension: inputs.suspensionAdmission } : {}),
+    now: nowMs,
     identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
     flow,
     ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {}),

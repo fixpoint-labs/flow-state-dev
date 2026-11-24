@@ -1,8 +1,9 @@
 /**
  * Renderer registry types used by FlowProvider and item renderers.
  *
- * Renderers are keyed by item type. For `component` and `container` items,
- * a secondary lookup by `item.component` resolves a specific component.
+ * Renderers are keyed by item type. A `data` item resolves by its
+ * `dataType` and a `container` item by its `component`; a suspension that
+ * names a renderer with `render.component` resolves in `component`.
  *
  * Any slot accepts `false` to explicitly suppress rendering (overrides
  * built-in fallbacks).
@@ -25,7 +26,8 @@ export type BlockComponentType = ComponentType<any>;
  * Canonical renderer registry shape.
  *
  * - Class-based item types (`message`, `reasoning`, etc.) are resolved directly.
- * - `component` and `container` use a secondary keyed map.
+ * - `data` (by `dataType`) and `container` (by `component`) use a keyed map.
+ * - `component` holds the renderers a suspension names with `render.component`.
  * - Pass `false` to explicitly suppress rendering for a type.
  */
 export type RendererRegistry = {
@@ -42,12 +44,30 @@ export type RendererRegistry = {
    * When unset, `<ApprovalRenderer>` renders as the built-in fallback.
    */
   suspension?: BlockComponentType | false;
+  // FIX-2848.
+  /**
+   * Renderer for a `stopped` conversation line: a turn the user stopped,
+   * drawn after its last line. Not an item type: it receives `{ line }`.
+   * When unset, a plain "Stopped" line renders; `false` draws none.
+   */
+  stopped?: BlockComponentType | false;
+  /**
+   * Renderers a suspension item names with `render.component`, for a schema
+   * richer than the built-in cards handle. Not an item type.
+   */
   component?: Record<string, BlockComponentType | false>;
   container?: Record<string, BlockComponentType | false>;
+  /**
+   * Renderers for `data` items, keyed by `dataType`: how a dataType gets
+   * drawn, generative UI included. A data item with no renderer here renders
+   * nothing.
+   */
+  data?: Record<string, BlockComponentType | false>;
 };
 
 /**
- * Resolves a renderer for a given item type and optional component key.
+ * Resolves a renderer for a given item type and optional component key (a
+ * `data` item's `dataType`).
  *
  * Returns:
  * - `BlockComponentType` — custom renderer to use
@@ -63,12 +83,12 @@ export function resolveRenderer(
     return undefined;
   }
 
-  if (itemType === "component" && componentKey !== undefined) {
-    return renderers.component?.[componentKey];
-  }
-
   if (itemType === "container" && componentKey !== undefined) {
     return renderers.container?.[componentKey];
+  }
+
+  if (itemType === "data" && componentKey !== undefined) {
+    return renderers.data?.[componentKey];
   }
 
   return (renderers as Record<string, BlockComponentType | false | undefined>)[itemType];

@@ -71,7 +71,7 @@ function buildSimpleFlow(opts: { durable?: boolean; cleanupCheckpointsOnTerminal
       ? undefined
       : { cleanupCheckpointsOnTerminal: opts.cleanupCheckpointsOnTerminal },
     actions: {
-      run: { inputSchema: z.object({}), block: seq }
+      run: seq
     }
   })();
 }
@@ -328,7 +328,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       kind: "nested-checkpoint-flow",
       // Opt into terminal cleanup so we can assert per-instance delete fires.
       request: { cleanupCheckpointsOnTerminal: true },
-      actions: { run: { inputSchema: z.object({}), block: outerSeq } }
+      actions: { run: outerSeq }
     })();
 
     const stores = createInMemoryStores();
@@ -419,7 +419,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const flow = defineFlow({
       kind: "schema-validation-flow",
-      actions: { run: { inputSchema: z.object({}), block: corruptSeq } }
+      actions: { run: corruptSeq }
     })();
 
     // Suppress the framework's validation warning so test output stays clean.
@@ -501,7 +501,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = defineFlow({
       kind: "err-flow",
       request: { cleanupCheckpointsOnTerminal: true },
-      actions: { run: { inputSchema: z.object({}), block: errSeq } }
+      actions: { run: errSeq }
     })();
 
     const response = createResponseEmitter({ requestId: "req_err", now: () => Date.now() });
@@ -571,7 +571,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = defineFlow({
       kind: "abort-flow",
       request: { cleanupCheckpointsOnTerminal: true },
-      actions: { run: { inputSchema: z.object({}), block: seq } }
+      actions: { run: seq }
     })();
 
     const abortController = new AbortController();

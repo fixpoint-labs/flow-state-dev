@@ -43,8 +43,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { installWorkers, loadFixture, readTree, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   LAB_ORG_ID,
   LAB_TREE,
@@ -57,6 +56,7 @@ import {
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -120,8 +120,6 @@ const HARNESS_PACKAGES = [
   "@flow-state-dev/codex",
   "@flow-state-dev/cursor",
 ] as const;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sameSet = (seen: readonly string[], wanted: readonly string[]): boolean =>
   seen.length === wanted.length && [...seen].sort().join(",") === [...wanted].sort().join(",");
@@ -558,6 +556,9 @@ await runGoal(async (failures) => {
           epic,
           issue: row?.id ?? "",
           phase: PHASE,
+          // The run is named from its task: its title, led by the issue it names.
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (run.cwd !== expected) {
           note(`the run's cwd was ${run.cwd}, wanted the derived checkout ${expected}`);
@@ -572,6 +573,8 @@ await runGoal(async (failures) => {
           epic,
           issue: (row?.id ?? "").slice(0, -1),
           phase: `${(row?.id ?? "").slice(-1)}-${PHASE}`,
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (shifted === expected) {
           note(`two different (issue, phase) pairs derive one checkout: ${expected}`);
@@ -695,8 +698,8 @@ await runGoal(async (failures) => {
         "---\nassignees: [eng.reviewer]\n---\n\nA board declared as a file. Nothing walks this.\n",
       );
     });
-    const real = await readDeclaredRoster(LAB_TREE);
-    const withDecoy = await readDeclaredRoster(decoyed);
+    const real = await readTree(LAB_TREE);
+    const withDecoy = await readTree(decoyed);
     const shape = (tree: typeof real): string =>
       JSON.stringify([
         tree.workers.map((w) => w.id).sort(),
@@ -705,14 +708,18 @@ await runGoal(async (failures) => {
     if (shape(real) !== shape(withDecoy)) {
       note(`a boards/ folder changed what the tree produced: ${shape(withDecoy)}`);
     }
-    // The other half of the same rule: an unwalked folder is neither a record
-    // nor an ERROR. Reading through the shared export rather than a helper that
-    // throws on any problem is what makes this sayable at all.
-    if (withDecoy.problems.length > 0) {
-      note(
-        `a boards/ folder produced ${withDecoy.problems.length} problem(s): ` +
-          withDecoy.problems.map((p) => `${p.layer} ${p.path}`).join(", "),
-      );
+    // The other half of the same rule: an unwalked folder is no record, and the
+    // app says so. Every file in a workforce folder is used or refused at start,
+    // by path, so the board file stops the start, named, rather than loading as
+    // nothing in silence.
+    const started = await installWorkers(decoyed).then(
+      () => undefined,
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    if (started === undefined) {
+      note("the app started on a tree holding a boards/ folder: nothing refused the board declared as a file");
+    } else if (!started.includes("teams/eng/boards")) {
+      note(`the start refused the tree, but not by the boards/ folder: ${started.slice(0, 300)}`);
     }
     // And the positive half, without which "it changed nothing" is equally
     // true of a loader that reads nothing at all: the workers/ folder beside
@@ -747,7 +754,7 @@ await runGoal(async (failures) => {
         );
       }
       evidence.push(
-        `a boards/ folder loads as nothing while the workers/ folder beside it loads, and an ` +
+        `a boards/ folder loads as nothing, and the app's start refuses it by path, while the workers/ folder beside it loads, and an ` +
           `org-less read is refused at the transport door while the same read through the same ` +
           `door, carrying a verified bearer, lands with the seat's own facts`,
       );

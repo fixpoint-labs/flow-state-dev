@@ -9,16 +9,15 @@
  */
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import { workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageResourceState } from "../lib/messages";
-import { projectReaderOf } from "../lib/projects";
 import { RouteLink } from "../components/RouteLink";
 import { clockTime } from "../lib/shell";
 
 function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
   return (
     <RouteLink
-      className="font-mono text-[11.5px] font-medium underline-offset-2 hover:underline"
+      className="font-mono text-xs font-medium underline-offset-2 hover:underline"
       to={{ level: "session", sessionId }}
       data-testid={testId}
       data-session-id={sessionId}
@@ -82,23 +81,22 @@ function MessageLine({ row }: { row: WorkerMessageResourceState }) {
   );
 }
 
-export function Messages({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const reader = projectReaderOf(snapshot.sessions);
-  const { rows, failure, reread } = useMessages(reader, snapshot.readAt);
-  const exchanges = useMemo(() => (rows === undefined ? [] : exchangesOf(rows)), [rows]);
+export function Messages() {
+  const { rows, failure, reread } = useMessages();
+  const exchanges = useMemo(() => (rows == null ? [] : exchangesOf(rows)), [rows]);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="messages">
       <header className="border-b border-foreground/20 px-[22px] py-3.5" data-testid="messages-header">
         <ScreenTitle>Messages</ScreenTitle>
         <Meta role="control" className="mt-1 block text-muted-foreground" testId="messages-summary">
-          {rows === undefined ? "Reading…" : `${rows.length} ${rows.length === 1 ? "message" : "messages"} between your workers, newest first`}
+          {rows === undefined ? "Reading…" : rows === null ? "No message log" : `${rows.length} ${rows.length === 1 ? "message" : "messages"} between your workers, newest first`}
         </Meta>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] py-3">
         {failure !== undefined ? (
           <SectionFailure what="Messages" failure={failure} onRetry={reread} testId="messages-failure" />
-        ) : reader === null ? (
+        ) : rows === null ? (
           <EmptyState title="No messages" testId="messages-empty">
             This Lab keeps no roster for you, so your workers have no one to message.
           </EmptyState>

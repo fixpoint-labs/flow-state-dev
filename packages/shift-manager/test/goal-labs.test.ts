@@ -12,19 +12,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
-import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardTaskView } from "../src/lib/reads";
-import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { createLabReader, type Ask } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { collectionOfBoard } from "../src/lib/boards";
+import { GENERAL_TEAM } from "../src/lib/workers";
+import { type LoadedSnapshot } from "../src/lib/derive";
+import { teamsOf } from "../src/lib/shift";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
+import { followRequest, readSessionItems, readRunFlow } from "./helpers/session-reads";
+import { taskItems } from "../src/lib/task-items";
 import { declaredBrowserReadable } from "./helpers/documents";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; client: Client };
+type Opened = { lab: ServedLab; roster: WorkforceFolder; snapshot: LoadedSnapshot; client: Client };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
   // DevTeam and fsd keep a store across restarts; each open here gets its own.
@@ -50,11 +55,11 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   const snapshot = await createLabReader(client).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
   if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
-  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, client };
+  return { lab, roster: await readWorkforceFolder({ path: `${repo}/${treePath}`, claim: () => undefined }), snapshot, client };
 }
 
 /** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under General. */
-function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
+function declaredTeams(roster: WorkforceFolder): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
     (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : GENERAL_TEAM] ??= []).push(worker.id);
@@ -188,7 +193,7 @@ describe("devteam: an approved task's run", () => {
       const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
       return row?.status === "in_progress" && row.run !== null ? row : undefined;
     }, "the approved row to start", 30_000);
-    const flowId = await resolveRunFlow(client, running.run!.sessionId);
+    const flowId = await readRunFlow(client, running.run!.sessionId);
     const streamed: OutputItem[] = [];
     const follower = followRequest(client, { flowId, requestId: running.run!.requestId }, {
       onItem: (item) => {

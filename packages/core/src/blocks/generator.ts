@@ -9,6 +9,9 @@ import { getZodTypeName } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import { isTextOutputSchema } from "../models/output-root";
+import { withPreparedMessages } from "../models/prepared-model";
+import { providerAttachmentAccepts } from "../models/attachment-accepts";
+import type { AttachmentAccepts } from "../attachments";
 import type {
   BlockConfig,
   BlockContext,
@@ -679,12 +682,40 @@ function isGeneratorModel(value: unknown): value is GeneratorModel {
   );
 }
 
+/**
+ * The generator's model for this run, its calls reading the person's files
+ * through the run's `prepareMessages` (`withPreparedMessages`), whichever way
+ * the model was named.
+ */
 async function resolveModel<TInput, TCtx extends BlockContext>(
   value: ResolvableModel<TInput, TCtx>,
   input: TInput,
   ctx: TCtx,
   blockName: string
 ): Promise<{ modelId: string; model: GeneratorModel }> {
+  const { modelId, model, accepts } = await resolveModelValue(value, input, ctx, blockName);
+  // A fallback group (an intent, a model array) ignores `accepts` and prepares each candidate for its own provider.
+  return { modelId, model: withPreparedMessages(model, ctx.resolveModel?.prepareMessages, accepts) };
+}
+
+/**
+ * What a model string's provider reads as files, for the run's
+ * `prepareMessages`. `providerOf` classifies against the app's maps;
+ * `extractProviderName` is the guess when the hook is absent. An intent
+ * resolves to a fallback group, which ignores this and prepares each of its
+ * candidates for that candidate's own provider.
+ */
+async function attachmentAcceptsOf(ctx: BlockContext, modelStr: string): Promise<AttachmentAccepts> {
+  const { extractProviderName } = await import("../models/providerDetection");
+  return providerAttachmentAccepts(ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr));
+}
+
+async function resolveModelValue<TInput, TCtx extends BlockContext>(
+  value: ResolvableModel<TInput, TCtx>,
+  input: TInput,
+  ctx: TCtx,
+  blockName: string
+): Promise<{ modelId: string; model: GeneratorModel; accepts?: AttachmentAccepts }> {
   const resolved = typeof value === "function" ? await value(input, ctx) : value;
 
   // Unwrap structured selection from selectModel into a model value plus
@@ -703,6 +734,7 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
     return {
       modelId: modelValue,
       model: ctx.resolveModel(modelValue, blockName, callOptions),
+      accepts: await attachmentAcceptsOf(ctx, modelValue),
     };
   }
 
@@ -1866,7 +1898,11 @@ async function applyOwnedPrepareStep(params: {
       // with a warning. Like the SDK bridge, this re-resolves by id alone —
       // any block-level `preferProvider` call option is intentionally not
       // threaded through a per-step model switch.
-      const resolved = ctx.resolveModel(prep.modelId, blockName);
+      const resolved = withPreparedMessages(
+        ctx.resolveModel(prep.modelId, blockName),
+        ctx.resolveModel?.prepareMessages,
+        await attachmentAcceptsOf(ctx, prep.modelId)
+      );
       if (resolved[params.requires] !== undefined) {
         stepModel = resolved;
       } else {

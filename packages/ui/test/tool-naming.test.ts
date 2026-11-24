@@ -41,6 +41,29 @@ describe("toolSubject", () => {
     expect(toolSubject("shell", { command: "cd /a/b\ngit log -3" })).toEqual({ text: "git log -3", code: true });
   });
 
+  it("says what a here-document does, not the line that opens it", () => {
+    // An inline script: its first line is only the interpreter and the marker.
+    expect(toolSubject("Bash", { command: "python3 - <<'EOF'\nimport re\nEOF" })).toEqual({ text: "Run a python3 script", code: false });
+    expect(toolSubject("Bash", { command: "cd /repo && node <<EOF\nconsole.log(1)\nEOF" })).toEqual({ text: "Run a node script", code: false });
+    // Writing a file through one.
+    expect(toolSubject("Bash", { command: "cat > /repo/src/a.ts <<'EOF'\nexport {}\nEOF" })).toEqual({ text: "Write /repo/src/a.ts", code: false });
+    expect(toolSubject("Bash", { command: 'tee notes.md << "EOF"\nhi\nEOF' })).toEqual({ text: "Write notes.md", code: false });
+    // Any other command shows as code, without the marker.
+    expect(toolSubject("Bash", { command: "git commit -q -F - <<'EOF'\nfix: x\nEOF" })).toEqual({ text: "git commit -q -F -", code: true });
+    // An interpreter given a file runs that file, with the document as its input: the command shows.
+    expect(toolSubject("Bash", { command: "python3 build.py <<'EOF'\nx\nEOF" })).toEqual({ text: "python3 build.py", code: true });
+    expect(toolSubject("Bash", { command: "bash -s <<EOF\nls\nEOF" })).toEqual({ text: "Run a bash script", code: false });
+    // A compound line keeps its other commands, without the marker.
+    expect(toolSubject("Bash", { command: "cat > f <<EOF && echo done\nx\nEOF" })).toEqual({ text: "cat > f && echo done", code: true });
+    expect(toolSubject("Bash", { command: "python3 - <<EOF | tee out\nx\nEOF" })).toEqual({ text: "python3 - | tee out", code: true });
+  });
+
+  it("leaves a `<<` the shell doesn't read as a here-document as it is", () => {
+    for (const command of ["echo $((1 << 2))", "echo $((x << y))", "cat <<<EOF", "grep '<<EOF' file", 'echo "usage: x <<EOF"']) {
+      expect(toolSubject("Bash", { command })).toEqual({ text: command, code: true });
+    }
+  });
+
   it("keeps a command that is only a cd", () => {
     expect(toolSubject("shell", { command: "cd /a/b" })).toEqual({ text: "cd /a/b", code: true });
   });

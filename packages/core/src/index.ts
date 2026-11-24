@@ -9,7 +9,6 @@ export type {
   FlowContextView,
   FlowStateSettings,
   InferFlowConfigFromSchema,
-  LooseBlockContext,
 } from "./types/block";
 export type {
   HistoryTurn,
@@ -51,6 +50,8 @@ export type {
 
 export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
 export { defineResource } from "./types/resource";
+export { defineView } from "./flow/defineView";
+export type { ViewChange, ViewConfig, ViewDefinition, ViewHearing, ViewInput, ViewOutput, ViewElement, ViewRunContext, ViewScope } from "./types/view";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
   bindToolCacheStore,
@@ -106,6 +107,24 @@ export type {
 } from "./types/resource-change";
 
 export { defineCapability } from "./capability";
+
+/** Kits: the installable unit above a flow, with slots other kits fill. */
+export { defineKit, slot } from "./kit";
+export type {
+  AnyKitFactory,
+  KeyedSlot,
+  KitDefinition,
+  KitFactory,
+  KitFolder,
+  KitInstallation,
+  KitInstallInput,
+  KitInstance,
+  KitWithheld,
+  ListSlot,
+  SlotDeclaration,
+  SlotKey,
+  SlotValue,
+} from "./kit";
 
 /**
  * One dispatch protocol — typed entries addressed `(type, name)`, and the
@@ -265,7 +284,8 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
-  ReadConfig,
+  ActionEntry,
+  NormalizedActions,
   ActionCore,
   UserMessageEcho,
   ActionMcpConfig,
@@ -293,7 +313,7 @@ export type {
   SchedulesConfig
 } from "./types/schedules";
 
-export { defineScheduleBinding } from "./types/schedules";
+export { defineScheduleBinding, formatScheduleId } from "./types/schedules";
 
 export type {
   ConcurrencyConfig,
@@ -305,9 +325,12 @@ export type {
 export { validateConcurrencyConfig } from "./types/concurrency";
 
 export type {
+  WebhookBindingsConfig,
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
+  WebhookServiceConfig,
+  WebhookServiceRoute,
   WebhookSubscriptionConfig
 } from "./types/webhooks";
 export { defineWebhookBinding } from "./types/webhooks";

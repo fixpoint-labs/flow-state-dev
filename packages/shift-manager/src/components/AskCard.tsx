@@ -1,19 +1,22 @@
-// BR-25; BR-26.
+// BR-25; BR-26; FIX-2774.
 /**
  * One pending ask, drawn with the registry's own approval and question cards,
- * answered through the one resume path (S3). Inbox's detail and Shift
- * Coordinator's summary both draw an ask with this, so they can't answer it two
- * ways.
+ * answered through orchestration's one answer call on the Inbox hold it is.
+ * Inbox's detail, Shift Coordinator's summary and a task's session all draw
+ * an ask with this, so they can't answer it two ways.
  *
- * The card resolves through a `SuspensionResolverProvider` bound to the ask:
- * the answer goes to the flow the ask's session records as its owner, and a
- * successful answer refreshes the snapshot so the ask leaves every surface
- * together. An ask the Lab won't reopen from outside gets no resolver,
- * so the card offers no answer, and says why.
+ * The card resolves through a `SuspensionResolverProvider` bound to the hold:
+ * the answer goes to the flow the hold names. No read follows: the server's
+ * suspension notice takes the ask away from every screen that reads the
+ * inbox view. An ask the Inbox can't answer gets no resolver, so the card
+ * offers no answer, and says why.
  *
  * A coding run's review is drawn with the registry's review card directly, so
  * it can be handed what the run committed and the judge's verdict, read from
- * the stop's data by harness-manager's browser reader.
+ * the stop's data in the ask's session by harness-manager's browser reader.
+ * Until that read lands the card offers no answer: drawn without the data, a
+ * review offers a plain Accept that lands nothing. A failed read says why, with
+ * Retry.
  */
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -21,14 +24,16 @@ import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { SuspensionCard } from "./flow-state/suspension-card";
+import { SectionFailure } from "./ui";
 import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
-import { useLab } from "../lib/lab-data";
-import type { Ask } from "../lib/reads";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { answerOfResolution, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
+import { sessionOfHold } from "../lib/inbox-list";
 
 /**
  * The registry's cards read their resolution from the session's items. An ask
- * here is pending by construction (`deriveSuspensions` dropped the resolved
- * ones), so the cards are given no items rather than the transcript.
+ * here is pending by construction (the view lists only pending ones), so the
+ * cards are given no items rather than the transcript.
  */
 const NO_ITEMS: OutputItem[] = [];
 
@@ -37,16 +42,21 @@ const NO_ITEMS: OutputItem[] = [];
  * detail, v2:597), so the registry card is handed the ask without its message
  * and the question isn't drawn twice. The card itself is unedited.
  */
-export function AskCard({ ask, titled = false }: { ask: Ask; titled?: boolean }) {
-  const { answer } = useLab();
+export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; titled?: boolean }) {
+  const answer = useInboxAnswer();
+  const review = useReviewData(hold);
+  const data = review.state === "read" ? review.data : undefined;
   const resolve = useMemo<SuspensionResolver>(
-    () => async ({ action, data }) => {
-      await answer(ask, { action, ...(data === undefined ? {} : { data }) });
+    () => async ({ action, data: given }) => {
+      await answer(hold, answerOfResolution(hold, action, given));
     },
-    [answer, ask],
+    [answer, hold],
   );
   // Titled: the parent supplies the title, so the card is drawn without the message.
-  const item = useMemo(() => (titled ? { ...ask.item, message: "" } : ask.item), [ask.item, titled]);
+  const item = useMemo(() => {
+    const drawn = suspensionOfHold(hold, data);
+    return titled ? { ...drawn, message: "" } : drawn;
+  }, [hold, data, titled]);
   const card = (
     <SessionItemsProvider value={NO_ITEMS}>
       {item.kind === "review" && takesReviewVerdict(item.resumeSchema) ? (
@@ -56,15 +66,32 @@ export function AskCard({ ask, titled = false }: { ask: Ask; titled?: boolean })
       )}
     </SessionItemsProvider>
   );
+  const ids = { "data-suspension-id": hold.id, "data-session-id": sessionOfHold(hold) ?? undefined };
+  if (review.state === "reading") {
+    return (
+      <div data-testid="ask-card" {...ids}>
+        <p className="text-xs text-muted-foreground" data-testid="ask-review-reading">
+          Reading the review…
+        </p>
+      </div>
+    );
+  }
+  if (review.state === "failed") {
+    return (
+      <div data-testid="ask-card" {...ids}>
+        <SectionFailure what="The review" failure={review.failure} onRetry={review.retry} testId="ask-review-failure" />
+      </div>
+    );
+  }
   return (
-    <div data-testid="ask-card" data-suspension-id={ask.item.suspensionId} data-session-id={ask.sessionId}>
-      {ask.unanswerable === null ? (
+    <div data-testid="ask-card" {...ids}>
+      {hold.answerable ? (
         <SuspensionResolverProvider resolve={resolve}>{card}</SuspensionResolverProvider>
       ) : (
         <>
           {card}
           <p className="text-xs text-muted-foreground" data-testid="ask-unanswerable">
-            {ask.unanswerable}
+            {hold.unanswerable}
           </p>
         </>
       )}

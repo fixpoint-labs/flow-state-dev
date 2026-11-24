@@ -235,12 +235,18 @@ export interface CodexClientOptions {
 // The resolver seam
 // ---------------------------------------------------------------------------
 
+/**
+ * A turn's input, as the SDK's `Input` takes it: the prompt alone, or the
+ * prompt and the paths of the turn's images.
+ */
+export type CodexTurnInput = string | Array<{ type: "text"; text: string } | { type: "local_image"; path: string }>;
+
 /** The subset of the SDK's `Thread` this package drives. */
 export interface CodexThreadLike {
   /** Populated once the first turn names the thread; `null` before that. */
   readonly id: string | null;
   runStreamed(
-    input: string,
+    input: CodexTurnInput,
     turnOptions?: { signal?: AbortSignal },
   ): Promise<{ events: AsyncIterable<CodexThreadEvent> }>;
 }

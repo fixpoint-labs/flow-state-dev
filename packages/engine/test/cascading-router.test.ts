@@ -31,6 +31,7 @@ import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ticket = { id: "T-1", message: "I was charged twice for one order" };
 
@@ -114,6 +115,7 @@ async function runAsAction(block: BlockDefinition, requestId: string) {
   const stores = createInMemoryStores();
   const response = createResponseEmitter({ requestId, now: () => Date.now() });
   const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
@@ -328,6 +330,7 @@ describe("cascadingRouter · failures", () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({ kind: "cascade-cancel", actions: { run: { inputSchema: z.any(), block: triage } } })();
     const running = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -367,7 +370,7 @@ describe("cascadingRouter · trace and resume", () => {
     const { triage, received, departmentModel, urgencyModel } = tree({ suspendEscalate: true });
     const flow = defineFlow({
       kind: "cascade-resume",
-      actions: { run: { inputSchema: z.any(), block: sequencer({ name: "root", durable: true, inputSchema: z.any() }).step(triage) } },
+      actions: { run: sequencer({ name: "root", durable: true, inputSchema: z.any() }).step(triage) },
     })();
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider({
@@ -376,6 +379,7 @@ describe("cascadingRouter · trace and resume", () => {
       leases: stores.leases,
     });
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

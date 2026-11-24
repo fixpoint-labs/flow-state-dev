@@ -16,8 +16,10 @@ import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "./attachment-seam";
+import { USER_ATTACHMENT_SEAM, type UserAttachmentSeam } from "./user-attachment-seam";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
-import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
+import { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, type BoardNoticeSeam, type BoardReadSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -138,18 +140,35 @@ export type EmitMessageOptions = {
   metadata?: Record<string, unknown>;
 };
 
+/** What `ctx.emit.data` takes beside the record's `dataType` and `value`. */
+export type EmitDataOptions = {
+  /** Stable identity for the keyed-snapshot pattern. See {@link DataItem.key}. */
+  key?: string;
+  /**
+   * Who the item reaches. Absent means the data default: the client, not
+   * model history. Not inherited from an enclosing generator.
+   */
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  /** Defaults to `false` (persisted). */
+  transient?: boolean;
+};
+
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
   /**
-   * Snapshot of every item emitted to this response so far, in stream order.
+   * Snapshot of the items emitted to this response so far, in stream order.
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
-   * over already-flushed items before subscribing for future ones.
+   * over already-flushed items before subscribing for future ones. Every
+   * non-transient and in-progress item is included; of the done transient
+   * items, only the most recent `maxBufferSize` (default 10,000) are retained.
    */
   getItems(): readonly RuntimeItem[];
   /**
-   * O(1) count of items currently tracked by this response. Equivalent to
-   * `getItems().length` but without materializing or ordering the snapshot —
-   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   * O(1) next-`itemIndex` cursor for this response: its starting index plus
+   * every item it has tracked, including done transient items `getItems()`
+   * no longer retains, so it never moves backwards or reissues an index. Used on
+   * the per-emit hot path to assign sequential `itemIndex` values.
    */
   getItemCount(): number;
   /**
@@ -356,6 +375,13 @@ export interface BlockContext<
    */
   settings: FlowStateSettings;
 
+  // FIX-2625 D1.
+  /**
+   * In a view's run, the change it may answer for and the call that answers
+   * for just those rows (`ctx.view.partial`). Absent outside a view.
+   */
+  view?: import("./view").ViewRunContext;
+
   // FIX-1331.
   /**
    * The flow copy this block is running in, narrowed to its create-time
@@ -480,27 +506,24 @@ export interface BlockContext<
       ): void;
     };
     /**
-     * Emit a component item rendered by a registered UI component.
+     * Emit a data item: structured content at this point in the conversation.
+     * Code reads it back by `dataType`; a client draws it only when it
+     * registers a renderer for that `dataType` (generative UI is a dataType
+     * with a renderer).
      *
-     * Defaults to `transient: false` (persisted) regardless of the producing
-     * block's `transient` flag. Pass `{ transient: true }` to opt in to a
-     * stream-only component (e.g. live-only progress with dedup).
+     * Defaults to `transient: false` (persisted). Reaches the client and not
+     * model history unless `itemVisibility` says otherwise; an enclosing
+     * generator's visibility is not inherited.
      *
-     * Combined with a stable `key`, this expresses the "keyed snapshot"
-     * pattern: one logical entity whose latest state replays on reload.
-     * See `apps/docs/docs/streaming/emitting-items.md` for the
-     * transient × key matrix.
+     * A stable `key` gives the keyed-snapshot (upsert) semantics: one entry
+     * per `(requestId, key)`, `value` replaced on each emission. See
+     * `apps/docs/docs/streaming/emitting-items.md` for the transient × key
+     * matrix.
      */
-    component: (
-      component: string,
-      data: Record<string, unknown>,
-      options?: {
-        /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
-        key?: string;
-        itemVisibility?: ItemVisibility;
-        agentName?: string;
-        transient?: boolean;
-      }
+    data: (
+      dataType: string,
+      value: Record<string, unknown>,
+      options?: EmitDataOptions
     ) => void;
     /**
      * Update the request-scoped status slot. Rendered by clients as a single
@@ -717,39 +740,32 @@ export interface BlockContext<
 
   // FIX-963.
   /**
-   * @internal Emit a component item and AWAIT its delivery.
+   * @internal Emit a data item and AWAIT its delivery.
    *
-   * `ctx.emit.component` returns `void` and discards both emitter promises, so
-   * a rejection there is unobservable — fine for the items it was built for
-   * (progress, snapshots, scaffolding), where losing one costs a render. It is
-   * not fine for an item whose entire purpose is to report that something
-   * failed: a report that can be dropped in silence is not a report, and a
-   * substrate emitting one would be reproducing the defect inside its own fix.
+   * `ctx.emit.data` returns `void` and discards both emitter promises, so a
+   * rejection there is unobservable — fine for a record whose loss costs a
+   * render. It is not fine for a record whose loss must fail the caller (a
+   * routing decision, a report that something failed): a report that can be
+   * dropped in silence is not a report.
    *
    * So this variant resolves only once the item has been added and completed,
    * and it **rejects rather than swallowing**. A caller that needs the emission
-   * to have happened awaits this one; everything else keeps using
-   * `ctx.emit.component`, which is unchanged.
+   * to have happened awaits this one; everything else uses `ctx.emit.data`.
    *
    * Absent in a hand-built context. A caller whose correctness depends on the
    * guarantee must treat absence as a failure rather than falling back to the
    * fire-and-forget emitter, which would silently give up exactly the property
    * it reached for this seam to get.
    */
-  _emitComponentAwaited?(
-    component: string,
-    data: Record<string, unknown>,
-    options?: {
-      key?: string;
-      itemVisibility?: ItemVisibility;
-      agentName?: string;
-      transient?: boolean;
-    }
+  _emitDataAwaited?(
+    dataType: string,
+    value: Record<string, unknown>,
+    options?: EmitDataOptions
   ): Promise<void>;
 
   /**
    * @internal Emit a message item and AWAIT its delivery: the message twin of
-   * {@link _emitComponentAwaited}, settling once the item has been added and
+   * {@link _emitDataAwaited}, settling once the item has been added and
    * completed and rejecting rather than swallowing. Absent in a hand-built
    * context; a caller that depends on it treats absence as a failure.
    * `role` defaults to `assistant`; `user` records input the flow received
@@ -960,12 +976,36 @@ export interface InternalBlockContext extends BlockContext {
    */
   [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
 
+  // FIX-2519.
+  /**
+   * The request's file reader, the engine's one resolver bound to the
+   * request's conversation, under a symbol key. Read only by
+   * `readHarnessAttachments`. See `types/harness-attachments.ts`.
+   */
+  [ATTACHMENT_SEAM]?: AttachmentSeam;
+
+  // FIX-2522.
+  /**
+   * The request's file keeper: copies of files into the running person's own
+   * scope, under a symbol key. Read only by `keepAttachmentsForUser`. See
+   * `types/user-attachment-seam.ts`.
+   */
+  [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam;
+
   /**
    * The running request's board-notice seam, under a
    * symbol key. Read only by `publishBoardChange`, which the task
    * collection's change adapter calls. See `types/board-notice.ts`.
    */
   [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
+
+  // FIX-2625.
+  /**
+   * A view run's board-read seam, under a symbol key. Read only by
+   * `recordBoardRead`, which the task collection calls where it is built.
+   * See `types/board-notice.ts`.
+   */
+  [BOARD_READ_SEAM]?: BoardReadSeam;
 
   // FIX-2129.
   /**
@@ -974,24 +1014,6 @@ export interface InternalBlockContext extends BlockContext {
    */
   [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
 }
-
-/**
- * Permissive alias for `BlockContext`: session state stays typed, every other
- * slot does not. A resource-declaring ctx is already a plain `BlockContext`.
- * Use this when a helper only reads `ctx.session` and the rest of the
- * context's type arguments would still reject the call. Narrow at the call
- * when the helper needs typed resources.
- */
-export type LooseBlockContext<
-  TSessionState extends object = Record<string, unknown>,
-> = {
-  session: import("./scope").SessionScopeHandle<TSessionState>;
-  user: import("./scope").UserScopeHandle<Record<string, unknown>>;
-  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
-  request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  resources: any;
-};
 
 // FIX-413.
 /**

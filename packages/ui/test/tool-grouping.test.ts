@@ -8,11 +8,15 @@ import { describe, it, expect } from "vitest";
 import {
   composeToolCallsLabel,
   composeToolGroupLabel,
+  knownToolVerbs,
   TOOL_GROUP_DISTINCT_CAP,
+  TOOL_VERB_MAP,
   TOOL_GROUP_INTENT_CAP,
   toolRunOpen,
   toolRunState,
   toolStepState,
+  triedLabel,
+  withRedone,
   withToolState,
 } from "../registry/components/tool-grouping";
 
@@ -82,6 +86,24 @@ describe("composeToolGroupLabel", () => {
     const label = composeToolGroupLabel(["web_search", "write_file"]);
     expect(label.charAt(0)).toBe(label.charAt(0).toUpperCase());
     expect(label).toBe("Ran a search and wrote a file");
+  });
+});
+
+describe("knownToolVerbs", () => {
+  it("finds a tool's entry by its exact name or in lower case, as the group labels do", () => {
+    expect(knownToolVerbs("readProjectSource")?.present).toBe("reading a file");
+    expect(knownToolVerbs("Bash")?.present).toBe("running a command");
+    expect(knownToolVerbs("Bash")).toBe(TOOL_VERB_MAP.bash);
+  });
+
+  it("knows nothing of a tool outside the map, so a caller never repeats its name", () => {
+    expect(knownToolVerbs("private-token")).toBeUndefined();
+  });
+
+  it("gives every entry a phrase for a call under way", () => {
+    for (const [tool, verbs] of Object.entries(TOOL_VERB_MAP)) {
+      expect(verbs.present, tool).toMatch(/^[a-z]+ing\b/);
+    }
   });
 });
 
@@ -164,5 +186,33 @@ describe("a run's state", () => {
   it("is open only while running", () => {
     expect(toolRunOpen("running")).toBe(true);
     for (const state of ["completed", "error", "waiting"] as const) expect(toolRunOpen(state)).toBe(false);
+  });
+
+  // A failed call the agent then made again, and got through, was an attempt: the run is not failed for it.
+  describe("a failed call a later call of the same tool redid", () => {
+    it("reads as done in the run, and says it was tried", () => {
+      const steps = [
+        { tool: "openWorkstream", state: "error" as const },
+        { tool: "readNotes", state: "completed" as const },
+        { tool: "openWorkstream", state: "completed" as const },
+      ];
+      expect(withRedone(steps)).toEqual([
+        { tool: "openWorkstream", state: "completed", redone: true },
+        { tool: "readNotes", state: "completed", redone: false },
+        { tool: "openWorkstream", state: "completed", redone: false },
+      ]);
+      expect(toolRunState(withRedone(steps).map((s) => s.state))).toBe("completed");
+      expect(triedLabel("openWorkstream")).toBe("Tried openWorkstream");
+      expect(triedLabel("Read src/a.ts")).toBe("Tried read src/a.ts");
+    });
+
+    it("stays failed when no later call of that tool got through, or only another tool did", () => {
+      const steps = [
+        { tool: "openWorkstream", state: "error" as const },
+        { tool: "readNotes", state: "completed" as const },
+        { tool: "openWorkstream", state: "error" as const },
+      ];
+      expect(withRedone(steps).map((s) => [s.state, s.redone])).toEqual([["error", false], ["completed", false], ["error", false]]);
+    });
   });
 });

@@ -14,15 +14,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A trivial single-handler flow that emits one assistant message. */
 function buildMessageFlow() {
   return defineFlow({
     kind: "manual-message",
     actions: {
-      greet: {
-        inputSchema: z.object({ name: z.string() }),
-        block: handler({
+      greet: handler({
           name: "greet",
           inputSchema: z.object({ name: z.string() }),
           outputSchema: z.string(),
@@ -31,7 +30,6 @@ function buildMessageFlow() {
             return `greeted:${name}`;
           }
         })
-      }
     }
   })();
 }
@@ -39,6 +37,7 @@ function buildMessageFlow() {
 describe("runAction — non-HTTP affordances", () => {
   it("returns the requestId on the ExecutionResult", async () => {
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
@@ -55,6 +54,7 @@ describe("runAction — non-HTTP affordances", () => {
 
   it("echoes a caller-supplied requestId on the result", async () => {
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
@@ -71,6 +71,7 @@ describe("runAction — non-HTTP affordances", () => {
   it("delivers emitted items to onItem with valid kinds", async () => {
     const received: Array<{ type: string; kind: string }> = [];
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",
@@ -95,9 +96,7 @@ describe("runAction — non-HTTP affordances", () => {
     const flow = defineFlow({
       kind: "manual-transient",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "transient-emitter",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -106,13 +105,13 @@ describe("runAction — non-HTTP affordances", () => {
               return "done";
             }
           })
-        }
       }
     })();
 
     const stores = createInMemoryStores();
     const received: Array<{ type: string; transient?: boolean }> = [];
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -142,6 +141,7 @@ describe("runAction — non-HTTP affordances", () => {
     // `sequence_number > cursor` and would never see a restarted sequence.
     const stores = createInMemoryStores();
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: buildMessageFlow(),
       actionName: "greet",

@@ -25,14 +25,14 @@ const parked: Task = { id: "task-a", goal: "refund", status: "in_progress", feed
 function taskItem(task: Task): TaskStreamItem {
   return {
     id: `item_${task.id}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: "req_0",
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: 1_000,
-    component: "task-change",
-    data: { collectionId: "issues", taskId: task.id, kind: "review_requested", task },
+    dataType: "task-change",
+    value: { collectionId: "issues", taskId: task.id, kind: "review_requested", task },
   } as never as TaskStreamItem;
 }
 

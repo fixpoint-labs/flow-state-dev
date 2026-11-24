@@ -9,7 +9,12 @@ export type ParsedFlowRoute =
   | { kind: "list_flows" }
   | { kind: "capabilities" }
   | { kind: "execute_action"; flowKind: string; actionName: string; sessionId?: string }
-  | { kind: "run_read"; flowKind: string; sessionId: string; readName: string }
+  | { kind: "read_scope_resource"; scope: string; key: string }
+  | { kind: "list_scope_entries"; scope: string; key: string }
+  | { kind: "read_scope_entry"; scope: string; key: string; entry: string }
+  | { kind: "send_resource"; scope: string; key: string; actionName: string }
+  | { kind: "flow_identity"; flowKind: string }
+  | { kind: "run_view"; flowKind: string; viewName: string; sessionId?: string }
   | { kind: "request_stream"; flowKind: string; requestId: string }
   | { kind: "list_sessions" }
   | { kind: "get_session"; sessionId: string }
@@ -23,6 +28,8 @@ export type ParsedFlowRoute =
   | { kind: "user_stream"; userId: string }
   | { kind: "user_stream_mint"; userId: string }
   | { kind: "transcribe" }
+  | { kind: "upload_blob"; flowKind?: string }
+  | { kind: "get_blob"; blobId: string }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }

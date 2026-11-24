@@ -5,10 +5,20 @@
 import {
   isTerminalSuspensionStatus,
   matchesSuspensionFilter,
+  type PendingUserSuspension,
+  type PendingUserSuspensionQuery,
   type SuspensionFilter,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { SuspensionStore } from "../types";
+import { listPendingForUser, missingRequestStore, type SuspensionRequestReads } from "../pending-user-suspensions";
+
+// FIX-2770 D3.
+/** What an in-memory suspension store is built with. */
+export type InMemorySuspensionStoreOptions = {
+  /** The request store a user's pending suspensions are joined to. Without it, `listPendingForUser` refuses. */
+  requests?: SuspensionRequestReads;
+};
 
 export class InMemorySuspensionStore implements SuspensionStore {
   // FIX-2063 D2.
@@ -16,6 +26,8 @@ export class InMemorySuspensionStore implements SuspensionStore {
   readonly persists = false;
 
   private readonly data = new Map<string, SuspensionRecord>();
+
+  constructor(private readonly options: InMemorySuspensionStoreOptions = {}) {}
 
   private key(requestId: string, suspensionId: string): string {
     return `${requestId}:${suspensionId}`;
@@ -66,8 +78,13 @@ export class InMemorySuspensionStore implements SuspensionStore {
     }
     return deleted;
   }
+
+  async listPendingForUser(query: PendingUserSuspensionQuery): Promise<PendingUserSuspension[]> {
+    if (this.options.requests === undefined) throw missingRequestStore("createInMemorySuspensionStore");
+    return listPendingForUser(this.data.values(), this.options.requests, query);
+  }
 }
 
-export function createInMemorySuspensionStore(): SuspensionStore {
-  return new InMemorySuspensionStore();
+export function createInMemorySuspensionStore(options: InMemorySuspensionStoreOptions = {}): SuspensionStore {
+  return new InMemorySuspensionStore(options);
 }

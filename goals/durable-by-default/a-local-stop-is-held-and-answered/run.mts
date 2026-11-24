@@ -5,10 +5,9 @@
  *
  * Run: pnpm tsx goals/durable-by-default/a-local-stop-is-held-and-answered/run.mts
  */
-import { onClosed } from "../../lib/server.mts";
+import { freePort, onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +17,7 @@ const FLOWS = fileURLToPath(new URL("./fixtures/flows", import.meta.url));
 const CONFIG_DEFAULT = fileURLToPath(new URL("./fixtures/config-default/fsdev.config.mts", import.meta.url));
 const CONFIG_OFF = fileURLToPath(new URL("./fixtures/config-off/fsdev.config.mts", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const FSDEV = join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts");
+const FSDEV = join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts");
 const KIND = "durable-goal";
 /** The DevTool's default user, which a no-config `fsdev run` must share. */
 const LOCAL_USER = "devuser";
@@ -53,18 +52,6 @@ function fsdevRun(cwd: string, args: { action: string; input: unknown; session: 
     stderr: result.stderr ?? "",
     capture: existsSync(capture) ? JSON.parse(readFileSync(capture, "utf8")) : undefined,
   };
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 interface Dev {

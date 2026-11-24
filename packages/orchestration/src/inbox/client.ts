@@ -11,8 +11,10 @@
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */
-import { ClientHttpError, type Client, type RequestResult } from "@flow-state-dev/client";
+import { ClientHttpError, viewRef, type Client, type RequestResult, type ViewRef } from "@flow-state-dev/client";
 import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { readTaskView } from "../skills/task-tools-capability";
+import type { TaskListView } from "../skills/views/task-list-view";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
 
@@ -51,6 +53,18 @@ export type TaskActionTool = "createTask" | "getTask" | "listTasks" | "updateTas
  */
 export function taskActionName(tool: TaskActionTool, board: string): string {
   return `${tool}_${taskToolSuffix(board)}`;
+}
+
+// FIX-2623.
+/**
+ * The client's handle on board `board`'s task list, the session view
+ * `listTasks_<suffix>` flow `flow` declares (orchestration's
+ * `taskToolViews`): for `useView(ref, {}, { sessionId })` or
+ * `client.view(ref, {}, { sessionId })`, on the session that holds the board.
+ * Its answer is the board's rows, keyed by task id.
+ */
+export function taskListViewRef(flow: string, board: string): ViewRef<TaskListView> {
+  return viewRef<TaskListView>(flow, taskActionName("listTasks", board));
 }
 
 /** Where a board's action is sent: its flow, the session that holds the board, and the action. */
@@ -140,6 +154,13 @@ export type RefileOverrides = Partial<RefiledTask> & {
  * read, so check the board before trying again.
  */
 export type BoardActions = {
+  /**
+   * Read one task as the board's `getTask` reads it: its brief (context,
+   * labels, priority) whole, its input and output cut as that read cuts them.
+   * A re-run reads its brief here before {@link refile}, so a long brief
+   * keeps every instruction.
+   */
+  get(id: string): Promise<BoardTaskRead>;
   /** Cancel a task. Resolves to the ids of the dependents the board cancelled with it. */
   cancel(id: string): Promise<string[]>;
   /** Send words to an open task: they join its brief. Uses no try, never cancels. */
@@ -155,6 +176,9 @@ export type BoardActions = {
    */
   refile(row: RefiledTask, overrides?: RefileOverrides): Promise<string>;
 };
+
+/** One task as the board's `getTask` returns it ({@link BoardActions.get}). */
+export type BoardTaskRead = ReturnType<typeof readTaskView>;
 
 /** `row`'s copied fields with `overrides` over them, as `createTask` takes them: unset and `null` fields left out. */
 function refileInput(row: RefiledTask, overrides: RefileOverrides): Record<string, unknown> {
@@ -203,6 +227,11 @@ export function createInboxClient(client: Client): InboxClient {
       const send = (tool: TaskActionTool, input: Record<string, unknown>, what: string) =>
         sendBoardAction(client, { flowId, sessionId, action: taskActionName(tool, board) }, input, what);
       return {
+        async get(id) {
+          const output = await send("getTask", { id }, "read");
+          if (typeof output.task !== "object" || output.task === null) throw new Error("The board read the task, and its answer names no task.");
+          return output.task as BoardTaskRead;
+        },
         async cancel(id) {
           const output = await send("updateTask", { id, status: "cancelled" }, "cancel");
           // The board leaves `cancelled` out when no dependent went with it; anything else there is a protocol bug, not a "none".

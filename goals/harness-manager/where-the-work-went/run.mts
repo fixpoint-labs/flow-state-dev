@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
-import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type ModeSpec } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -28,7 +28,7 @@ import {
   untilIdle,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { HARNESS_GOAL_FLOW_KIND, harnessGoalFlow } from "../host.mts";
+import { harnessGoalFlow } from "../host.mts";
 
 const fixture = loadFixture<{ sessionSubjects: string[]; taskSubject: string; issue: string; phase: string; epic: string }>(
   import.meta.url,
@@ -172,7 +172,7 @@ await runGoal(async (failures) => {
         }) as unknown as HarnessBlock,
     });
     const app = createFlowState({
-      flows: { [SESSION_KIND]: flow },
+      flows: [flow],
       modelResolver,
       stores: { prod: { primary: inMemoryStores() } },
       defaultProfile: "prod",
@@ -235,16 +235,16 @@ await runGoal(async (failures) => {
   if (legs.has("b")) {
     const { root, repo } = scratchRepo();
     const stub = harnessStub({ duringRun: (run) => commit(run.cwd, fixture.taskSubject) });
-    const phase: PhaseSpec = { phase: fixture.phase, buildPrompt: () => "make the change", isDone: () => true };
+    const mode: ModeSpec = { name: fixture.phase, instructions: () => "make the change", doneWhen: { check: () => true } };
     const built = harnessGoalFlow({
       epic: fixture.epic,
       workspace: { root: join(root, "checkouts"), sourceRepo: repo, baseRef: "main" },
       maxAttempts: 1,
-      phase,
+      mode,
       slot: stub.slot,
     });
     const app = createFlowState({
-      flows: { [HARNESS_GOAL_FLOW_KIND]: built.flow },
+      flows: [built.flow],
       modelResolver,
       stores: { prod: { primary: inMemoryStores() } },
       defaultProfile: "prod",

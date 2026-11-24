@@ -20,13 +20,14 @@ export { taskItemId };
 /** A suspension for the user, as a session's request listing records it. */
 export type SuspensionTruth = {
   readonly suspensionId: string;
-  readonly sessionId: string;
+  /** The session its run is parked in; `null` for a run with no conversation. */
+  readonly sessionId: string | null;
   readonly requestId: string;
-  /** Whether its request is a task's run (source `task`): its stop lists from that task's row. */
+  /** Whether its request is a task's run (source `task`): its stop lists from that task. */
   readonly taskRun: boolean;
 };
 
-/** A task row's open user holds, as the board's own task listing records them. */
+/** A task's open user holds, as the board's own task listing records them. */
 export type TaskTruth = {
   readonly board: string;
   readonly taskId: string;

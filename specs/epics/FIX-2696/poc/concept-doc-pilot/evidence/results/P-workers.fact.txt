@@ -1,0 +1,39 @@
+## 1. WRONG claims
+
+| Claim | Why it is wrong | Evidence |
+|---|---|---|
+| "Nobody can edit a standard worker from inside the app. A user who wants a different one **forks** it…" | A user can edit a standard worker. The first edit copies it into the user's own roster under the same id. The roster entry then reports `edited: true`, and `reset` brings the file back. Only the file is never written. Hire, fork and fire refuse a standard id, but edit does not. | `packages/workforce/src/workers/hire-blocks.ts:11-14` ("Edit on one makes the caller's own copy of it under…"). Also `hire-blocks.ts:213-227` (edit), `:262-272` (reset). Also `packages/workforce/src/workers/client.ts:69-72` (`edited`), `:213-226` (`edit`, `reset`). |
+
+## 2. UNSUPPORTED claims
+
+| Claim | Where I looked |
+|---|---|
+| The flow named by `flow: request-triage` "lives at `src/flows/request-triage/flow.ts`" | `packages/fsdev/src/resolve-flow.ts` scans `src/flows/` and `flows/`. The FIX-2626 and FIX-2627 specs and the epic examples never give this path. I found nothing on how a `flow:` name gets registered (the loader's error text still says `workerFlows`). |
+| "Bob can't open her conversations or read what her lead remembers about her" | I confirmed the per-user roster and that the delegate check says another user's worker "is not on this user's roster". I did not trace the access rule for sessions or memory. |
+| A coder's "answer is recorded as the task's result" | I found `resultTo: "conversation"` and the task-settled notices in `packages/workforce/src/conversation-board/`. I did not trace the default result recording. |
+| "Run a starter … in about ten minutes", plus the linked pages (`../start/run-a-starter.md`, `../catalog/workforce/coordinators.md`, `../reference/worker-md.md`, `./figures/worker.svg`) | The docs site is not in this copy, and I have no code evidence for the ten-minute figure. |
+
+## 3. RIGHT claims
+
+29 RIGHT. Ten representative ones:
+
+1. The worker file lives at `<root>/teams/<team>/workers/<name>/WORKER.md` and gets the id `engineering.lead`. Evidence: `packages/workforce/src/loader/read-workforce-directory.ts:5-8`.
+2. `description` is the only required key, and `name` must be a non-empty string if present. Evidence: `read-workforce-directory.ts:263-289`.
+3. `delegates` is a list of worker ids, or `all`. Evidence: `packages/workforce/src/worker-config.ts:194-214`.
+4. `createWorkforceClient` is exported from `@flow-state-dev/workforce/browser`. Evidence: `packages/workforce/src/browser.ts:21-29`; `packages/workforce/package.json` exports `./browser`.
+5. `ensureWorkerSession({ worker })` returns the user's session or creates it, and two simultaneous calls get the same session. Evidence: `packages/workforce/src/workers/client.ts:153-166`.
+6. `SessionSummary.flowKind` exists, and `client.flow(kind).send(action, input, { sessionId })` is the call shape. Evidence: `packages/client/src/types/index.ts:129-131`; `packages/client/src/client.ts:815-835`.
+7. Every worker's door is `respond`, taking `{ message }`. Evidence: `packages/workforce/src/worker-door.ts:30,64-70`.
+8. `createClient({ userId, baseUrl: "" })` treats an empty string as the page's own origin. Evidence: `packages/client/src/internal/http.ts:36-37`.
+9. `fsdev.config.ts` default-exports a `createFlowState()` handle, and `createFlowState` is exported from `@flow-state-dev/engine`. Evidence: `packages/fsdev/src/load-config.ts:5-6`; `packages/engine/src/index.ts:25`.
+10. `workforce({ directory })` inside `kits: [...]` is planned surface, covered by the kits specs. `createFlowState({ kits })` already exists in code. A kit's folder is read at start-up, and every unclaimed file stops the app, with all of them named at once. Evidence: `specs/issues/FIX-2627/SPEC.md:69`; `specs/issues/FIX-2626/DECISIONS.md:38-44`; `packages/engine/src/flowstate/kits.ts:1-20`.
+
+The other RIGHT claims, in short:
+- A worker runs on a flow, and the built-in `agent` flow is the default.
+- The delegate check refuses a worker that is not a delegate, and the refusal names it.
+- Tasks run in a session of their own.
+- The lead is told when a task settles.
+- Hire from scratch and fork both exist.
+
+TOTALS right=29 wrong=1 unsupported=4
+exit 0

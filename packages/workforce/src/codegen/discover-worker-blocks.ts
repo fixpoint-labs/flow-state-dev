@@ -33,15 +33,17 @@
 import path from "node:path";
 import {
   IGNORED_ENTRIES,
-  WORKERS_LEVEL,
   classify,
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+} from "@flow-state-dev/engine/folder";
+import {
+  WORKERS_LEVEL,
   validateSegment,
   walkTeams,
-} from "../loader";
+} from "../loader/readers";
 import { typescriptExtension } from "./typescript-module";
 
 /** The folder a block file sits in, at every level it may sit at. */
@@ -238,7 +240,7 @@ async function refuseToolsFolder(
  * @throws If the root is symlinked, missing or unreadable.
  */
 export async function discoverWorkerBlocks(root: string): Promise<WorkerBlockDiscovery> {
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   const workerBlocks: DiscoveredWorkerBlock[] = [];
   const problems: string[] = [];

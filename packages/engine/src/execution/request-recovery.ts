@@ -2,6 +2,7 @@
  * Interrupted request detection and recovery utilities.
  */
 import { isOrgAttributed, requireAttributedOrg } from "../context/org-attribution";
+import { requireRecordSession } from "../context/record-session";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -265,7 +266,12 @@ export async function retryRequest(
   }
   const flowId = recordOwner ?? entryOwner;
   const actionName = entry?.actionName ?? originalRecord?.actionName;
-  const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
+  // A request recorded with no session is history: never retried, and never
+  // run in a new session. Refused before anything is minted or written.
+  const sessionId = requireRecordSession(
+    { sessionId: entry?.sessionId ?? originalRecord?.sessionId },
+    "retrying this request"
+  );
   const userId = entry?.userId ?? originalRecord?.userId;
   // The organization axis, held to the same rule as `flowId` above and for the
   // same reason: the durable record is authoritative, and an active entry
@@ -338,6 +344,10 @@ export async function retryRequest(
     orgId: attributedOrgId,
     tenantId,
     source: retrySource,
+    // The person's files: the retry is their turn again, so its line, its
+    // record and the model get the same references. Already the session's;
+    // nothing is claimed again.
+    attachments: originalRecord?.attachments ?? undefined,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId

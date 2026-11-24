@@ -555,6 +555,33 @@ describe("client.subscribe on a host with push", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // FIX-2625: ids reach the subscriber as sent; ids that aren't a list of
+  // strings are dropped, never the notice, so the reader reads everything.
+  it("passes a notice's ids, and drops ids that aren't a list of strings but keeps the notice", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);
+    onChange.mockClear();
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: ["r1", "r2"] });
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: "r1" });
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: ["r1", 2] });
+    expect(onChange.mock.calls).toEqual([
+      [{ topic: S1, kind: "request", ids: ["r1", "r2"] }],
+      [{ topic: S1, kind: "request" }],
+      [{ topic: S1, kind: "request" }]
+    ]);
+  });
+
+  // FIX-2750: a board notice's partition key reaches the subscriber as sent;
+  // one that isn't a string is dropped, never the notice, so every board reads.
+  it("passes a board notice's partition, and drops one that isn't a string but keeps the notice", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);
+    onChange.mockClear();
+    socket.frame({ type: "notice", ...notice(S1, "board"), partition: "k1" });
+    socket.frame({ type: "notice", ...notice(S1, "board"), partition: ["k1"] });
+    expect(onChange.mock.calls).toEqual([[{ topic: S1, kind: "board", partition: "k1" }], [{ topic: S1, kind: "board" }]]);
+  });
+
   it("reconnects at once when the server ends the socket at its age limit", async () => {
     const { fetcher, mints } = server({ push: { transport: "websocket" } });
     const { socket } = await connected(client(fetcher), [S1], 1000, true);
@@ -643,6 +670,25 @@ describe("client.subscribe on a host with push", () => {
       expect(onChange.mock.calls).toEqual([[null], [null]]);
     });
   }
+
+  it("keeps the client's one socket when its only live read follows new topics from an answer", async () => {
+    // A view's watch is often the only subscription in its client. Closing the old topics before
+    // subscribing the new ones would close the socket and connect another on every topic change.
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const fsd = client(fetcher);
+    let topics: WireTopic[] = [S1];
+    fsd.live([S1], { topicsFromResult: true, read: () => ({ value: topics.length, topics }), pollIntervalMs: null });
+    await settle();
+    const socket = FakeSocket.all.at(-1)!;
+    socket.open();
+    socket.frame({ type: "crossing", crosses: true });
+    await settle();
+    topics = [S1, topic.session("s2")];
+    socket.frame({ type: "notice", ...notice(S1) });
+    await settle();
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(socket.closedWith).toBeUndefined();
+  });
 
   it("keeps calling the other subscriptions when one onChange throws", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

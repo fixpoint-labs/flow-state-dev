@@ -100,7 +100,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const flow = defineFlow({
         kind: "runonce-retry-flow",
         actions: {
-          run: { inputSchema: z.number(), block: flaky }
+          run: flaky
         }
       })();
 
@@ -151,7 +151,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
       const flow = defineFlow({
         kind: "runonce-keys-flow",
         actions: {
-          run: { inputSchema: z.number(), block: twoKeys }
+          run: twoKeys
         }
       })();
 
@@ -198,7 +198,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
 
       const flow = defineFlow({
         kind: "idempkey-flow",
-        actions: { run: { inputSchema: z.number(), block: flakyHandler } }
+        actions: { run: flakyHandler }
       })();
 
       const requestId = "req_idempkey";
@@ -243,7 +243,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
 
       const flow = defineFlow({
         kind: "cross-request-flow",
-        actions: { run: { inputSchema: z.number(), block: recordingHandler } }
+        actions: { run: recordingHandler }
       })();
 
       const firstReq = "req_first";
@@ -319,7 +319,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
 
     const flow = defineFlow({
       kind: "runonce-persist-fail",
-      actions: { run: { inputSchema: z.number(), block: flaky } }
+      actions: { run: flaky }
     })();
 
     const requestId = "req_persist_fail";
@@ -369,7 +369,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
 
     const flow = defineFlow({
       kind: "runonce-concurrent-flow",
-      actions: { run: { inputSchema: z.number(), block: concurrent } }
+      actions: { run: concurrent }
     })();
 
     const requestId = "req_runonce_concurrent";
@@ -423,7 +423,7 @@ describe("FIX-402: idempotency key + runOnce", () => {
 
       const flow = defineFlow({
         kind: "runonce-reject-flow",
-        actions: { run: { inputSchema: z.number(), block: failing } }
+        actions: { run: failing }
       })();
 
       const requestId = "req_runonce_reject";

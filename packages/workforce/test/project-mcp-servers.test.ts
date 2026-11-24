@@ -108,7 +108,7 @@ describe("naming a project's MCP servers", () => {
   });
 });
 
-describe("a project row read by a client", () => {
+describe("a project entry read by a client", () => {
   it("shows the names and nothing else of a server: no address, variable or key (BR-26)", async () => {
     const h = await boot();
     await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "apollo", title: "Apollo", mcpServers: ["linear"] });

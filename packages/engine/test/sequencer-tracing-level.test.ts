@@ -43,7 +43,7 @@ function buildThreeStepFlow() {
 
   return defineFlow({
     kind: "tracing-flow",
-    actions: { run: { inputSchema: z.object({}), block: seq } }
+    actions: { run: seq }
   })();
 }
 

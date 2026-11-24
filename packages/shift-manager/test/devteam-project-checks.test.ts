@@ -2,7 +2,7 @@
  * A feature run on a project is done only when the project's checks pass.
  *
  * The Lab's coder runs in a checkout of the project's repository, and the
- * project row names the commands (`checks`). The repository carries a check
+ * project entry names the commands (`checks`). The repository carries a check
  * that is red until `state.txt` says "ok". The coder is a stub that commits
  * `state.txt`: "broken" on its first attempt, "ok" on its second. So the
  * first attempt is not done, and its brief is how the second attempt learns
@@ -97,6 +97,11 @@ describe("a feature run on a project with checks", () => {
     expect(stub.runs[1]!.prompt).toContain("node check.mjs");
     expect(stub.runs[1]!.prompt).toContain('CHECK-MARKER: state is "broken"');
     expect(stub.runs[0]!.prompt).not.toContain("CHECK-MARKER");
+    // The first brief already names the project's check, from the list that decides done.
+    expect(stub.runs[0]!.prompt).toContain("# The checks");
+    expect(stub.runs[0]!.prompt).toContain("- `node check.mjs`");
+    // The report it owes is in the prompt, so every harness reads it, not only Claude Code.
+    expect(stub.runs[0]!.prompt).toContain("# Your report");
   }, 120_000);
 
   it("completes on the broken commit when the project names no checks", async () => {
@@ -105,5 +110,6 @@ describe("a feature run on a project with checks", () => {
     expect(row?.status, JSON.stringify(row?.error ?? null)).toBe("completed");
     expect(row?.attempts).toBe(1);
     expect(stub.runs).toHaveLength(1);
+    expect(stub.runs[0]!.prompt).not.toContain("# The checks");
   }, 120_000);
 });

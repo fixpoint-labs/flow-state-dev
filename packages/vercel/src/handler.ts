@@ -7,6 +7,7 @@
  * SSE heartbeats are emitted by `@flow-state-dev/engine` for every live and
  * GET-attach stream — this adapter no longer injects them itself.
  */
+import { createNetworkAuthGuard, declareEphemeralDisk } from "@flow-state-dev/engine/host";
 import type {
   FlowApiRouter,
   VercelHandlerInput,
@@ -29,9 +30,23 @@ function isSSEResponse(response: Response): boolean {
   return ct.includes("text/event-stream");
 }
 
+/**
+ * This host's runtime: on Vercel (`VERCEL` set, as the platform sets it), a
+ * function's disk does not last between requests, so the router is told
+ * before it serves one. It then refuses attachment uploads to a blob store
+ * that keeps bytes on this host, by name, rather than storing files the next
+ * request can't read; a hosted blob store is unaffected. Served anywhere else,
+ * such as `next dev` or `next start` on a machine, the disk lasts and a local
+ * blob store takes uploads.
+ */
+function onThisHost(router: FlowApiRouter): FlowApiRouter {
+  if (process.env.VERCEL) declareEphemeralDisk(router);
+  return router;
+}
+
 function resolveRouter(input: VercelHandlerInput): FlowApiRouter | Promise<FlowApiRouter> {
-  if (typeof input === "function") return input();
-  return input;
+  const router = typeof input === "function" ? input() : input;
+  return router instanceof Promise ? router.then(onThisHost) : onThisHost(router);
 }
 
 type CatchAllHandler = (
@@ -49,6 +64,7 @@ function createHandlerCore(
   options?: VercelHandlerOptions
 ) {
   const onAbort = options?.onAbort;
+  const guard = createNetworkAuthGuard(options?.allowUnauthenticated);
 
   let cachedRouter: FlowApiRouter | Promise<FlowApiRouter> | undefined;
 
@@ -70,7 +86,7 @@ function createHandlerCore(
     return new Response(response.body, { status: response.status, headers });
   }
 
-  return { getRouter, wrapResponse, onAbort };
+  return { getRouter, wrapResponse, onAbort, guard };
 }
 
 /**
@@ -101,7 +117,7 @@ export function createVercelHandler(
   PATCH: CatchAllHandler;
   DELETE: CatchAllHandler;
 } {
-  const { getRouter, wrapResponse, onAbort } = createHandlerCore(app, options);
+  const { getRouter, wrapResponse, onAbort, guard } = createHandlerCore(app, options);
 
   function makeHandler(method: keyof FlowApiRouter): CatchAllHandler {
     return async (req, ctx) => {
@@ -109,6 +125,8 @@ export function createVercelHandler(
         req.signal.addEventListener("abort", () => onAbort(req), { once: true });
       }
       const [router, params] = await Promise.all([getRouter(), ctx.params]);
+      const refused = await guard(router);
+      if (refused !== undefined) return refused;
       const response = await router[method](req, { params });
       return wrapResponse(response);
     };
@@ -144,11 +162,13 @@ export function createVercelBareHandler(
   GET: BareHandler;
   POST: BareHandler;
 } {
-  const { getRouter, wrapResponse } = createHandlerCore(app, options);
+  const { getRouter, wrapResponse, guard } = createHandlerCore(app, options);
 
   function makeBareHandler(method: keyof FlowApiRouter): BareHandler {
     return async (req) => {
       const router = await getRouter();
+      const refused = await guard(router);
+      if (refused !== undefined) return refused;
       const response = await router[method](req, { params: { path: [] } });
       return wrapResponse(response);
     };

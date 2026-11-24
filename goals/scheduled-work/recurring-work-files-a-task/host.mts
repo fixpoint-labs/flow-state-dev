@@ -10,9 +10,9 @@
  * `GOAL_WORK_MS` and reports. No model.
  *
  * Operations (JSON array in `GOAL_OPS`):
- *   { op: "save", schedule }       Alice saves a schedule (roster `saveSchedule`)
- *   { op: "delete", key }          Alice removes one (`deleteSchedule`)
- *   { op: "list" }                 Alice's schedules (`listSchedules`)
+ *   { op: "save", schedule }       Alice saves a clock routine (roster `saveRoutine`)
+ *   { op: "delete", key }          Alice removes one (`deleteRoutine`)
+ *   { op: "list" }                 Alice's clock routines (`listRoutines`), in the old list's shape
  *   { op: "fire", key, at? }       the scheduler POSTs the schedule's dispatch, with `at` as its time or none
  *   { op: "settle" }               wait until no request is running
  *   { op: "tasks" }                Alice's tasks with launch (`listTasks_tasks`)
@@ -21,22 +21,23 @@
  */
 import "./clock.mts";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, formatScheduleId, handler } from "@flow-state-dev/core";
 import { createBearerSecretPrincipalResolver, createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   ROSTER_FLOW,
-  createWorkerInstallation,
   defineSessionBoard,
   deriveWorkerSessionId,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { actingAs, hearsMessages, silentLogger, untilIdle, writeGoalReport } from "../../lib/index.mts";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { actingAs, hearsMessages, silentLogger, untilIdle, workforceTree, writeGoalReport } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -52,7 +53,6 @@ const SECRET = "goal-scheduler-secret";
 const WORK_MS = Number(process.env.GOAL_WORK_MS ?? "1500");
 const OPS = JSON.parse(env("GOAL_OPS")) as Array<Record<string, any>>;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const doorInput = z.object({ message: z.string() });
 
 // ---- the app ----------------------------------------------------------------
@@ -60,22 +60,23 @@ const workers: WorkerManifest[] = [
   { id: FILER, declared: { flow: "launch", delegates: [ASSIGNEE], description: "Runs the launch." }, body: "", skills: [] },
   { id: ASSIGNEE, declared: { flow: "researcher", description: "Finds the numbers." }, body: "", skills: [] }
 ];
-let workerFlows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
 
-const board = defineSessionBoard({ installation, flowKind: "launch" });
+// Each worker flow is built on the installation the kit hires from the folder.
 const launchTurn = handler({ name: "goal-launch-turn", inputSchema: doorInput, execute: async () => "Noted." });
-const launchFlow = defineFlow({
-  kind: "launch",
-  configSchema: workerConfigSchema(),
-  session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-  resources: { ...installation.resources, ...board.resources },
-  actions: {
-    respond: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
-    ...board.actions
-  },
-  internal: { actions: board.entries(launchTurn) }
-} as never);
+const launchFlow = (installation: WorkerInstallation) => {
+  const board = defineSessionBoard({ installation, flowKind: "launch" });
+  return defineFlow({
+    kind: "launch",
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    actions: {
+      respond: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
+      ...board.actions
+    },
+    internal: { actions: board.entries(launchTurn) }
+  } as never);
+};
 
 const researchTurn = handler({
   name: "goal-research-turn",
@@ -85,24 +86,28 @@ const researchTurn = handler({
     return `refreshed: ${input.message.slice(0, 80)}`;
   }
 });
-const researcherFlow = defineFlow({
-  kind: "researcher",
-  configSchema: workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources, ...workerMessagesResources },
-  actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
-  internal: { actions: hearsMessages(installation, "researcher") },
-  task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
-} as never);
-workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { flow: researcherFlow, roles: ["contributor"] } };
+const researcherFlow = (installation: WorkerInstallation) =>
+  defineFlow({
+    kind: "researcher",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources, ...workerMessagesResources },
+    actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
+    internal: { actions: hearsMessages(installation, "researcher") },
+    task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
+  } as never);
 
-// No schedule index: the host's own cron POSTs per schedule.
-const flows = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
 const scheduler = createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: "scheduler", orgId: ORG } });
+// No schedule index: the host's own cron POSTs per schedule.
 const state = createFlowState({
-  flows,
+  kits: [workforce({ directory: workforceTree(workers) })],
+  fill: {
+    [workforce.slots.workerFlows]: {
+      launch: workerFlow(launchFlow, { roles: ["manager"] }),
+      researcher: workerFlow(researcherFlow, { roles: ["contributor"] })
+    }
+  },
   stores: { default: { primary: sqliteStores({ filename: DB }) } },
-  adapters: [createScheduledTransportAdapter()],
   logger: silentLogger,
   staleSweepIntervalMs: 0,
   resolvePrincipal: (context: any) => {
@@ -138,15 +143,22 @@ try {
 
   for (const op of OPS) {
     switch (op.op) {
-      case "save":
-        results.push({ op: "save", out: await roster("saveSchedule", op.schedule) });
+      case "save": {
+        const { key, cron, timezone, input } = op.schedule as { key: string; cron: string; timezone?: string; input: unknown };
+        const trigger = { clock: { cron, ...(timezone === undefined ? {} : { timezone }) } };
+        results.push({ op: "save", out: await roster("saveRoutine", { name: key, trigger, task: input }) });
         break;
+      }
       case "delete":
-        results.push({ op: "delete", out: await roster("deleteSchedule", { key: op.key }) });
+        results.push({ op: "delete", out: await roster("deleteRoutine", { id: `clock:${op.key}` }) });
         break;
-      case "list":
-        results.push({ op: "list", now: new Date().toISOString(), out: await roster("listSchedules", {}) });
+      case "list": {
+        // The run grades what the list used to answer: key, cron, zone, next run.
+        const listed = (await roster("listRoutines", {})) as { routines?: Array<{ name: string; trigger: { clock?: { cron: string; timezone: string; nextRunAt: string | null } } }> };
+        const schedules = (listed.routines ?? []).filter((r) => r.trigger.clock !== undefined).map((r) => ({ key: r.name, ...r.trigger.clock! }));
+        results.push({ op: "list", now: new Date().toISOString(), out: { schedules } });
         break;
+      }
       case "fire": {
         // As a host's cron does: the shared secret, the schedule's dispatch id, and its time.
         const id = formatScheduleId(ORG, USER, op.key);

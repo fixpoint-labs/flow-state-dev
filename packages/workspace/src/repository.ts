@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { childEnv, HOST_GIT_PASS } from "./child-env";
 import { withLockSync, type LockBounds } from "./lock";
 import { withoutCredential } from "./remotes";
 
@@ -51,6 +52,7 @@ export function repositoryIdentity(dir: string): string | undefined {
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
       timeout: STARTUP_GIT_TIMEOUT_MS,
+      env: childEnv({ pass: HOST_GIT_PASS }),
     }).trim();
     return identityFromCommonDir(dir, out);
   } catch {
@@ -65,6 +67,7 @@ export function resolvesToCommit(repo: string, ref: string): boolean {
       cwd: repo,
       stdio: ["ignore", "ignore", "ignore"],
       timeout: STARTUP_GIT_TIMEOUT_MS,
+      env: childEnv({ pass: HOST_GIT_PASS }),
     });
     return true;
   } catch {
@@ -104,27 +107,31 @@ export interface PinnedUpstream {
   remoteRef: string;
 }
 
-/** Read {@link FetchPins} for `repo`. Anything unreadable pins nothing. */
-export function readFetchPins(repo: string): FetchPins {
-  const read = (args: string[]): string => {
-    try {
-      return execFileSync("git", args, {
-        cwd: repo,
-        stdio: ["ignore", "pipe", "ignore"],
-        encoding: "utf8",
-        timeout: STARTUP_GIT_TIMEOUT_MS,
-      });
-    } catch {
-      return "";
-    }
-  };
-  const remotes = new Map<string, string>();
-  for (const line of read(["remote", "-v"]).split("\n")) {
-    const match = /^([^\t]+)\t(.*) \(fetch\)$/.exec(line);
-    if (match !== null && !remotes.has(match[1]!)) remotes.set(match[1]!, match[2]!);
+/** Git's output in `dir` at start, or `""` when it fails. */
+function readAtStart(dir: string, args: string[]): string {
+  try {
+    return execFileSync("git", args, {
+      cwd: dir,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: STARTUP_GIT_TIMEOUT_MS,
+      // Every config pair the host set, a credential helper's included: these are the
+      // helpers the remote calls replay. Config and remote reads start no program.
+      env: childEnv({ pass: HOST_GIT_PASS, gitCredentials: true }),
+    });
+  } catch {
+    return "";
   }
+}
+
+/**
+ * The credential helpers set outside any repository (system, global and
+ * command-line config, in git's order), read from `dir`: a repository's own
+ * (`local`, `worktree`) are left out. See `FetchPins.credentialHelpers`.
+ */
+export function readCredentialHelpers(dir: string): Array<readonly [string, string]> {
   // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
-  const fields = read(["config", "-z", "--show-scope", "--includes", "--get-regexp", "^credential\\.(.*\\.)?helper$"]).split("\0");
+  const fields = readAtStart(dir, ["config", "-z", "--show-scope", "--includes", "--get-regexp", "^credential\\.(.*\\.)?helper$"]).split("\0");
   const credentialHelpers: Array<readonly [string, string]> = [];
   for (let i = 0; i + 1 < fields.length; i += 2) {
     const scope = fields[i]!;
@@ -133,6 +140,18 @@ export function readFetchPins(repo: string): FetchPins {
     if (scope === "local" || scope === "worktree" || newline < 0) continue;
     credentialHelpers.push([entry.slice(0, newline), entry.slice(newline + 1)]);
   }
+  return credentialHelpers;
+}
+
+/** Read {@link FetchPins} for `repo`. Anything unreadable pins nothing. */
+export function readFetchPins(repo: string): FetchPins {
+  const read = (args: string[]): string => readAtStart(repo, args);
+  const remotes = new Map<string, string>();
+  for (const line of read(["remote", "-v"]).split("\n")) {
+    const match = /^([^\t]+)\t(.*) \(fetch\)$/.exec(line);
+    if (match !== null && !remotes.has(match[1]!)) remotes.set(match[1]!, match[2]!);
+  }
+  const credentialHelpers = readCredentialHelpers(repo);
   const upstreams = new Map<string, PinnedUpstream>();
   for (const line of read(["for-each-ref", "--format=%(refname)%09%(upstream)%09%(upstream:remotename)%09%(upstream:remoteref)", "refs/heads"]).split("\n")) {
     const [refname = "", ref = "", remoteName = "", remoteRef = ""] = line.split("\t");

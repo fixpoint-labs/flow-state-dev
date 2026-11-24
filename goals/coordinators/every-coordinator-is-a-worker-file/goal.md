@@ -13,7 +13,7 @@
 
 - **a** (the converted desk): the person opens a conversation with the coordinator the way a page does (a session on `coordinator` naming it) and posts once through its public `run` action. Read back through the host's own router, as a page reads it:
   - `a:no-mailbox-file`: the tree under test holds no `MAILBOX.md` anywhere. The claim is about a converted desk.
-  - `a:loads`: the tree loads without errors, and the coordinator names two or more delegates, each an agent worker in the tree.
+  - `a:loads`: the app starts on the tree (the workforce kit refuses a file it can't load or doesn't read), and the coordinator names two or more delegates, each an agent worker in the tree.
   - `a:answers`: the person's conversation shows the post once, and after it exactly one answer line per delegate, under that delegate's name, and none by anyone else.
 - **b** (nothing of the mailbox is left):
   - `b:after`: `node specs/issues/FIX-1792/poc/inventory/check.mjs --after`, run from the repo root, exits 0.
@@ -28,7 +28,7 @@
 
 **Controls:** on the same command.
 
-- `GOAL_CONTROL=mailbox-left`: before the legs run, the check writes the desk's old file back into the tree under test (`fixtures/workforce/teams/<team>/mailboxes/<coordinator>/MAILBOX.md`, with `members:` the delegates and the coordinator's body) and one source file, `packages/workforce/src/__mailbox_left_control__.ts`, re-exporting a removed name from the removed module. Both are removed afterwards, on a crash and on SIGINT/SIGTERM too. Must FAIL at **a:no-mailbox-file** and **b:after**, and at nothing else; `b:after` must name both plants among its problems.
+- `GOAL_CONTROL=mailbox-left`: before the legs run, the check writes the desk's old file back into the tree under test (`fixtures/workforce/teams/<team>/mailboxes/<coordinator>/MAILBOX.md`, with `members:` the delegates and the coordinator's body) and one source file, `packages/workforce/src/__mailbox_left_control__.ts`, re-exporting a removed name from the removed module. Both are removed afterwards, on a crash and on SIGINT/SIGTERM too. Must FAIL at **a:no-mailbox-file**, **a:loads** (the workforce kit refuses the `mailboxes/` folder at start) and **b:after**, and at nothing else; `b:after` must name both plants among its problems.
 
 Leg a's `a:answers` has no named control; the by-hand run below routes the desk `round-robin` instead.
 
@@ -47,3 +47,10 @@ Leg a's `a:answers` has no named control; the by-hand run below routes the desk 
 | 2026-10-12 | f1ae3521 + uncommitted (FIX-1892) | n/a | FAIL (before the fix) | `check.mjs --after` on main alone: **b:after** `FAIL unclassified: scripts/check-retired-terms.mjs`. FIX-1796's retired-terms guard names the retired words on purpose, and the checker had no line for it. |
 | 2026-10-12 | f1ae3521 + uncommitted (FIX-1892) | scripted | **PASS** | The checker classifies `scripts/check-retired-terms.mjs` as U (unrelated). Both legs. a: no MAILBOX.md; `desk.front` on SQLite, one post got one answer line each from `desk.amy` and `desk.oz` and none from anyone else. b: `check.mjs --after` PASS; all 41 CONVERT/REWRITE goals have a PASS line on "FIX-1792 P4"; 3 retired goals named and gone. |
 | 2026-10-12 | f1ae3521 + uncommitted (FIX-1892) | scripted | FAIL (expected) | `GOAL_CONTROL=mailbox-left`, both legs: **a:no-mailbox-file** and **b:after** only; b:after names both plants (the MAILBOX.md and `__mailbox_left_control__.ts`). |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, before merging `-e` at `4e8aeba6e` | n/a | FAIL (not from this change) | Both legs. a green; **b:after**: `check.mjs --after exited 1: FAIL unclassified: docs/contributing/glossary.mjs`. The same on `-e`'s unconverted copy. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, before merging `-e` at `4e8aeba6e` | n/a | PASS | `GOAL_LEGS=a`: `PASS — a: the tree holds no MAILBOX.md; a: desk.front (team desk) on SQLite; one post (desk-token-a0454f90e6) got one answer line each from desk.amy, desk.oz and none from anyone else` |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, before merging `-e` at `4e8aeba6e` | n/a | FAIL | `GOAL_CONTROL=mailbox-left`, both legs, before its expected set named `a:loads`: **a:no-mailbox-file**, **a:loads** (`kit "workforce": "teams/desk/mailboxes" is not used by anything that reads the folder`), **b:after**, and `[control] GOAL_CONTROL=mailbox-left also reddened a:loads`. The kit refuses the planted folder at start, so `a:loads` joins the expected set. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, before merging `-e` at `4e8aeba6e` | n/a | FAIL (expected) | `GOAL_CONTROL=mailbox-left`, both legs: **a:no-mailbox-file** (`the tree holds teams/desk/mailboxes/front/MAILBOX.md`), **a:loads** and **b:after** (names both plants), and nothing else. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, `4e8aeba6e` unconverted copy | n/a | FAIL (not from this change) | `GOAL_LEGS=b`: `[b:after] check.mjs --after exited 1: FAIL unclassified: docs/contributing/glossary.mjs` |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | PASS | `GOAL_LEGS=a`: `PASS — a: the tree holds no MAILBOX.md; a: desk.front (team desk) on SQLite; one post (desk-token-a358e66851) got one answer line each from desk.amy, desk.oz and none from anyone else` |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (expected) | `GOAL_LEGS=a GOAL_CONTROL=mailbox-left`: `[a:no-mailbox-file] the tree holds teams/desk/mailboxes/front/MAILBOX.md` · `[a:loads] the app did not start on the tree: createFlowState: the app can't start; a kit's folder was refused` |

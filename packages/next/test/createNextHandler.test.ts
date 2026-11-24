@@ -51,24 +51,22 @@ describe("createNextHandler — integration", () => {
     const flow = defineFlow({
       kind: "next-test",
       actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({}).passthrough(),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true })
           })
-        }
       }
     })();
 
     const flowstate = createFlowState({
-      flows: { nextTest: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } }
     });
 
-    const { GET, POST } = createNextHandler(flowstate);
+    // Routing, not the network guard. The flow has no resolver.
+    const { GET, POST } = createNextHandler(flowstate, { allowUnauthenticated: true });
 
     const res = await POST(
       new Request("http://localhost/api/flows/next-test/sess1/actions/run", {

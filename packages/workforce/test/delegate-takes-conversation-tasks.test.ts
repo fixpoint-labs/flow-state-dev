@@ -50,7 +50,7 @@ function boardedFlow(installation: WorkerInstallation, flow: string, door: "othe
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, flow) },
-    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work } }
   } as never);
 }

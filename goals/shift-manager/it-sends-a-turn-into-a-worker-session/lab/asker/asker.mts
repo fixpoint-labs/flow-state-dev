@@ -55,7 +55,7 @@ const gate = handler({
 });
 
 /**
- * The kind `hireWorkforce` registers one copy of, which every `asker` worker
+ * The kind the workforce kit serves one copy of, which every `asker` worker
  * runs on: each session names its worker.
  *
  * @param installation The installation whose workers run on it.

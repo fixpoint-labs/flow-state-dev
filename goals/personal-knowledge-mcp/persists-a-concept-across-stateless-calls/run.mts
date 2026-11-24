@@ -81,7 +81,7 @@ await runGoal(async (failures) => {
   }) as any;
 
   const flowstate = createFlowState({
-    flows: { knowledge: knowledgeFlow },
+    flows: [knowledgeFlow],
     modelResolver,
     adapters: [createMcpTransportAdapter()],
     // The durable profile — PGlite executor, real schema init, real Postgres

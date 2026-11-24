@@ -46,6 +46,14 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
   list_sessions: [entry("GET", "/sessions", () => ({ kind: "list_sessions" }))],
   active_requests: [entry("GET", "/active-requests", () => ({ kind: "active_requests" }))],
   transcribe: [entry("POST", "/transcribe", () => ({ kind: "transcribe" }))],
+  // Attachments (FIX-824): beside the session routes, addressed by the blob
+  // id alone, so a reference is enough to draw a file. An upload addressed to
+  // a flow is checked by that flow's own sign-in, the one its send uses.
+  upload_blob: [
+    entry("POST", "/blobs", () => ({ kind: "upload_blob" })),
+    entry("POST", "/:flowKind/blobs", (p) => ({ kind: "upload_blob", flowKind: p.flowKind }))
+  ],
+  get_blob: [entry("GET", "/blobs/:blobId", (p) => ({ kind: "get_blob", blobId: p.blobId }))],
   get_session: [
     entry("GET", "/sessions/:sessionId", (p) => ({
       kind: "get_session",
@@ -131,12 +139,60 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       actionName: p.actionName
     }))
   ],
-  run_read: [
-    entry("POST", "/:flowKind/:sessionId/reads/:readName", (p) => ({
-      kind: "run_read",
+  // FIX-2624: a user or org resource by scope and key, with no session. A read
+  // answers from the store; a send is the action route with the resource
+  // named where a session id goes, run by the flow its `runBy` names.
+  read_scope_resource: [
+    entry("GET", "/resources/:scope/:key", (p) => ({
+      kind: "read_scope_resource",
+      scope: p.scope,
+      key: p.key
+    }))
+  ],
+  // FIX-2624: a user or org collection's entries, by its pattern.
+  list_scope_entries: [
+    entry("GET", "/resources/:scope/:key/entries", (p) => ({
+      kind: "list_scope_entries",
+      scope: p.scope,
+      key: p.key
+    }))
+  ],
+  read_scope_entry: [
+    entry("GET", "/resources/:scope/:key/entries/:entry", (p) => ({
+      kind: "read_scope_entry",
+      scope: p.scope,
+      key: p.key,
+      entry: p.entry
+    }))
+  ],
+  send_resource: [
+    entry("POST", "/resources/:scope/:key/actions/:actionName", (p) => ({
+      kind: "send_resource",
+      scope: p.scope,
+      key: p.key,
+      actionName: p.actionName
+    }))
+  ],
+  // FIX-2624: who the caller is under one flow's sign-in.
+  flow_identity: [
+    entry("GET", "/:flowKind/identity", (p) => ({
+      kind: "flow_identity",
+      flowKind: p.flowKind
+    }))
+  ],
+  // FIX-2623: a user or org view has no session in its address; a session
+  // view runs on the one it names.
+  run_view: [
+    entry("POST", "/:flowKind/views/:viewName", (p) => ({
+      kind: "run_view",
+      flowKind: p.flowKind,
+      viewName: p.viewName
+    })),
+    entry("POST", "/:flowKind/:sessionId/views/:viewName", (p) => ({
+      kind: "run_view",
       flowKind: p.flowKind,
       sessionId: p.sessionId,
-      readName: p.readName
+      viewName: p.viewName
     }))
   ],
   request_stream: [

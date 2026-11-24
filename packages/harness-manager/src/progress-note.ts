@@ -5,7 +5,7 @@
  * The harness hands each assistant message and tool call to the manager's
  * `onActivity` feed. {@link progressNoteOf} turns one into the one-line note a
  * task view shows, and {@link throttledNotes} decides which of them reach the
- * task row: the first at once, then at most one per {@link PROGRESS_NOTE_MS},
+ * task: the first at once, then at most one per {@link PROGRESS_NOTE_MS},
  * always the latest, so a long run writes the row a bounded number of times.
  */
 import type { HarnessActivity } from "@flow-state-dev/core/harness";

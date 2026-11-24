@@ -25,13 +25,12 @@ import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "nod
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { parseDeclaredWorkerId } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_TREE, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { LAB as CLAUDE_CODE_STYLE, startLab } from "../../claude-code-style-lab/lab.mts";
 import { startTeammates } from "../../teammates-lab/lab.mts";
-import { REPO_ROOT, goalTmpDir, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labRoutes, openShiftManager, personPage, startShiftManager, type Patch } from "../../lib/shift-manager.mts";
 
@@ -72,8 +71,8 @@ type AppPatch = Patch & { app: "claude-code-style" | "teammates" | "shift-manage
 const CONTROLS: Record<string, { patches: AppPatch[]; fails: StepId[] }> = {
   "no-composer-focus": {
     patches: [
-      { app: "claude-code-style", file: "src/App.tsx", from: "else focusComposer(id);", to: "else void id;", why: "a pick no longer focuses the session's composer" },
-      { app: "teammates", file: "src/App.tsx", from: "if (sessionId !== undefined) focusComposer(sessionId);", to: "void sessionId;", why: "a pick no longer focuses the teammate's composer" },
+      { app: "claude-code-style", file: "src/components/App.tsx", from: "else focusComposer(id);", to: "else void id;", why: "a pick no longer focuses the session's composer" },
+      { app: "teammates", file: "src/components/App.tsx", from: "if (sessionId !== undefined) focusComposer(sessionId);", to: "void sessionId;", why: "a pick no longer focuses the teammate's composer" },
     ],
     fails: ["a1", "a2", "b1"],
   },
@@ -526,7 +525,7 @@ async function legC(browser: Browser, pages: string) {
   const served = await startShiftManager({ scratch: SCRATCH, label: "devteam", config: DEVTEAM_CONFIG, pages, env: { DEVTEAM_STORE: join(SCRATCH, "c", "devteam.sqlite") }, timeoutMs: 180_000 });
   try {
     // What the run creates, through the Lab's routes as its owner: a project, a workstream in it, a task on its board.
-    const roster = await readDeclaredRoster(LAB_TREE);
+    const roster = await readTree(LAB_TREE);
     const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
     if (em === undefined) throw new Error("setup: the DevTeam tree declares no EM");
     const coder = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => roster.workers.find((w) => w.id === id)?.declared.flow === CODER_FLOW);

@@ -1,6 +1,7 @@
 /**
  * HTTP route handlers for request recovery (retry + active request listing).
  */
+import { isWriteRecord } from "../resources/default-write-flow";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord, resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import type { ActiveRequestEntry, StoreRegistry } from "../stores/types";
@@ -13,13 +14,16 @@ import {
 import {
   callerReachesRequest,
   jsonResponse,
+  JsonMediaTypeError,
+  legacySessionlessResponse,
   parseJsonBody,
   SSE_HEADERS,
   unknownRequestResponse
 } from "./route-utils";
+import { namesSession } from "../context/record-session";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
-import { isPublicReentryAllowed } from "./public-reentry";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
@@ -110,16 +114,24 @@ export async function handleRetryRequest(
   // refused rather than admitted. Webhook stays refused for the original reason
   // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
-  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, not the generic failure below.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("retrying this request");
 
   // Parse optional input override
   let inputOverride: unknown;
   try {
     const body = await parseJsonBody(request);
     inputOverride = body.inputOverride;
-  } catch {
+  } catch (error) {
+    // A body without the JSON media type is refused, never silently dropped.
+    if (error instanceof JsonMediaTypeError) {
+      return jsonResponse(415, { error: error.message });
+    }
     // No body or invalid JSON — proceed without override
   }
 
@@ -146,6 +158,8 @@ export async function handleRetryRequest(
         : undefined,
       runtimeConfig: ctx.runtimeConfig
     });
+    // This route always answers 202, so nothing reads the retry's live stream.
+    result.liveStream.close();
 
     return jsonResponse(202, {
       status: "in_progress",
@@ -203,7 +217,7 @@ export async function handleContinueRequest(
 
   // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
   // source that is not caller-facing as not found.
-  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
 
@@ -219,6 +233,10 @@ export async function handleContinueRequest(
       error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
     });
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, ahead of the session comparison its missing session would fail.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("continuing this request");
 
   // The route is session-scoped; continuing mutates an existing record's
   // lifecycle, so the path's sessionId must match the record's — otherwise the
@@ -280,6 +298,9 @@ export async function handleContinueRequest(
       });
     }
 
+    // Nobody reads the live stream past a 202 (the caller follows the
+    // request through its GET stream): close it so it fills no further.
+    handle.liveStream?.close();
     return jsonResponse(202, { requestId: route.requestId });
   } catch (error) {
     // Setup failed before the detached run took ownership of the lease release;
@@ -438,6 +459,8 @@ function sweepAdmits(
   const allowed = ctx.anonymousFlowIds;
   return (entry) => {
     if (!tenantMatches(entry.tenantId, ctx.tenantId)) return false;
+    // FIX-2624: a write's request is never listed (`ownResolverVerdict`).
+    if (isWriteRecord(entry)) return false;
     if (callerOrgId !== undefined) return entry.orgId === callerOrgId;
     if (allowed === undefined) return true;
     const owner = resolveRecordOwner(ctx.registry, entry);

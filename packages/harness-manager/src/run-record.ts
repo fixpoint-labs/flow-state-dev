@@ -180,6 +180,16 @@ export const runRecordStateSchema = z.object({
    * before it was kept, or by a manager that doesn't.
    */
   requestIds: z.array(z.string()).nullable().default(null),
+  // FIX-2781; BP-030.
+  /**
+   * The pull requests a person's accept on this task landed on (their
+   * `pullRequestKey`s), kept across its attempts and turns: the only ones a
+   * later turn pushes to unasked. A pull request seen on the branch, or one the
+   * coding session opened, is not one. Written whether or not the manager waits
+   * on pull requests; a record of another task under the same id starts it
+   * over. `null` on a record written before it was kept, read as none.
+   */
+  landedPullRequests: z.array(z.string()).nullable().default(null),
   // FIX-2578; BP-030.
   /**
    * The output the turn that held the task on its pull requests would have
@@ -226,6 +236,17 @@ export const runRecordStateSchema = z.object({
    * field existed.
    */
   baseCommit: z.string().nullable().default(null),
+  // BP-030.
+  /**
+   * The cut the run's last settle read it against (`effectiveCut`): the base
+   * branch's tip then, when it had {@link baseCommit} in its history, else the
+   * cut. Written on every settle, beside the decision, so a file's patch read
+   * later reads as the review's files and the judge's did. A read re-guards
+   * it against {@link baseCommit} (`effectiveCut` again), so a value left from
+   * an earlier attempt can only ever be the cut or a commit past it. `null` on
+   * a record written before it was kept, and the read keeps the cut.
+   */
+  effectiveCut: z.string().nullable().default(null),
   // BP-030.
   /**
    * The run was first provisioned with no repository: its kept files alone.
@@ -434,7 +455,7 @@ export interface AttemptIdentity {
   /** The board's ledger collection id, resolved from `ctx.resources`. */
   boardCollectionId: string;
   /**
-   * How to read this task's row on a board read from the claim, in place of
+   * How to read this task on a board read from the claim, in place of
    * resolving {@link boardCollectionId} off `ctx.resources`: such a board is
    * one of many the host's resolver answers for, at the partition the claim
    * names, and is never registered under one accessor. Answers `undefined`
@@ -450,7 +471,7 @@ export interface AttemptIdentity {
 }
 
 /**
- * A task row as this module reads it. Structural: only the three fields the
+ * A task as this module reads it. Structural: only the three fields the
  * fence consults, so nothing here depends on the substrate's `Task` type.
  */
 interface ClaimView {
@@ -644,7 +665,7 @@ export async function writeRunRecord(
  * for previous-attempt data.** That was not true when the claim was first
  * written: the implement prompt read `sessionId` off the row to name the last
  * attempt's harness session, and the clear meant it always saw `null`. The
- * carry-forward a phase needs now arrives on `PhaseRunContext` — the failure
+ * carry-forward a mode needs now arrives on `ModeRunContext` — the failure
  * reason from the board's own `feedback`, the previous session captured by the
  * manager before this write. A phase reading this row for anything the clear
  * touches is the same defect returning.
@@ -657,7 +678,15 @@ export async function writeRunRecord(
 export async function openRunRecord(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string; requestIds?: string[] },
+  opened: {
+    workspacePath: string;
+    branch: string;
+    childSessionId: string;
+    run?: number;
+    runKey?: string;
+    requestIds?: string[];
+    landedPullRequests?: string[];
+  },
 ): Promise<RunRecordWrite> {
   return writeRunRecord(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
@@ -666,6 +695,7 @@ export async function openRunRecord(
     childSessionId: opened.childSessionId,
     ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
     ...(opened.requestIds !== undefined ? { requestIds: opened.requestIds } : {}),
+    ...(opened.landedPullRequests !== undefined ? { landedPullRequests: opened.landedPullRequests } : {}),
     outcome: "running",
   });
 }
@@ -677,6 +707,44 @@ export async function readRunRecord(
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   return ref?.state as RunRecordState | undefined;
+}
+
+// BP-030.
+/**
+ * Find one issue's run of a mode: under `<epic>/<issue>/<name>` first, then,
+ * when that key is absent and the mode names a `formerName`, under the former
+ * key. The segment it was found under is the run's from then on; nothing is
+ * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ *
+ * `spelled` is the segment as the task itself spelled it, when that differs
+ * from `name` (its folded form). Before the key folded, that spelling was the
+ * key, so it is read after `name` and before the former key.
+ *
+ * Every key but `name` is this task's only: a record there that names another
+ * task (`taskId`) is another row's run, so it counts as absent and the task
+ * opens a new run under `name`. A record that names no task is read as the
+ * task's. Pass the reading task's id whenever it is known.
+ */
+export async function readModeRunRecord(
+  ctx: CollectionHoldingContext,
+  epic: string,
+  issue: string,
+  mode: { readonly name: string; readonly formerName?: string },
+  taskId?: string,
+  spelled?: string,
+): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
+  const topic = runTopic(epic, issue, mode.name);
+  const record = await readRunRecord(ctx, topic);
+  const fresh = { segment: mode.name, topic, record };
+  if (record !== undefined) return fresh;
+  for (const older of [spelled, mode.formerName]) {
+    if (older === undefined || older === mode.name) continue;
+    const olderTopic = runTopic(epic, issue, older);
+    const found = await readRunRecord(ctx, olderTopic);
+    const anotherTasks = taskId !== undefined && found?.taskId != null && found.taskId !== taskId;
+    if (found !== undefined && !anotherTasks) return { segment: older, topic: olderTopic, record: found };
+  }
+  return fresh;
 }
 
 /**

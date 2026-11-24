@@ -144,11 +144,11 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
 /**
  * One request's spend, read as a task's spend reads: the row
  * {@link spendAfterWrite} settles from it, folded by {@link taskSpendView}.
- * `null` when it spent nothing. For a reader with a request and no task row,
+ * `null` when it spent nothing. For a reader with a request and no task,
  * such as a harness session's turn.
  */
 export function requestSpendView(spend: RequestSpend, requestId: string): TaskSpendView | null {
-  // A row that ran only this request, which then settled: the write and the fold a task's row gets.
+  // A row that ran only this request, which then settled: the write and the fold a task gets.
   const settled = spendAfterWrite({ spend: null }, { requestId, part: "settle", spend });
   return settled === undefined ? null : taskSpendView({ status: "completed", spend: settled });
 }

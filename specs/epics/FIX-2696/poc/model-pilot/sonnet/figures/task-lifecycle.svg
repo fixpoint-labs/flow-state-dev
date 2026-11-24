@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 510">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="lb" x="28" y="56">STATUS</text>
+
+<rect class="solid" x="28" y="142" width="120" height="56"/>
+<text class="c" x="40" y="166">held</text>
+<text class="sub" x="40" y="184">filed on hold</text>
+<rect class="solid" x="248" y="142" width="120" height="56"/>
+<text class="c" x="260" y="166">pending</text>
+<text class="sub" x="260" y="184">not started</text>
+<rect class="solid" x="428" y="142" width="140" height="56"/>
+<text class="c" x="440" y="166">in_progress</text>
+<text class="sub" x="440" y="184">claimed, leased</text>
+<rect class="solid" x="740" y="84" width="140" height="56"/>
+<text class="c" x="752" y="108">completed</text>
+<text class="sub" x="752" y="126">has an output</text>
+<rect class="solid x" x="740" y="170" width="140" height="56"/>
+<text class="c x" x="752" y="194">errored</text>
+<text class="sub" x="752" y="212">has an error</text>
+<rect class="solid x" x="740" y="300" width="140" height="56"/>
+<text class="c x" x="752" y="324">cancelled</text>
+<text class="sub" x="752" y="342">has a reason</text>
+
+<line class="ln" x1="149" y1="170" x2="247" y2="170" marker-end="url(#ah)"/>
+<rect class="ground" x="170" y="163" width="56" height="15"/>
+<text class="plate" x="198" y="174" text-anchor="middle">RELEASE</text>
+<line class="ln" x1="369" y1="170" x2="427" y2="170" marker-end="url(#ah)"/>
+<rect class="ground" x="374" y="163" width="42" height="15"/>
+<text class="plate" x="395" y="174" text-anchor="middle">CLAIM</text>
+<line class="ln" x1="569" y1="156" x2="739" y2="118" marker-end="url(#ah)"/>
+<rect class="ground" x="618" y="129" width="58" height="15"/>
+<text class="plate" x="647" y="140" text-anchor="middle">RETURNS</text>
+<line class="ln" x1="569" y1="184" x2="739" y2="198" marker-end="url(#ah)"/>
+<rect class="ground" x="620" y="184" width="50" height="15"/>
+<text class="plate" x="645" y="195" text-anchor="middle">THROWS</text>
+
+<path class="ln" d="M498 141 V96 H308 V141" marker-end="url(#ah)"/>
+<rect class="ground" x="308" y="89" width="190" height="15"/>
+<text class="plate" x="403" y="100" text-anchor="middle">RETRY · OR LEASE LAPSES</text>
+
+<path class="ln-dash" d="M88 199 V272 H700 V328 H739" marker-end="url(#ah)"/>
+<line class="ln-dash" x1="308" y1="199" x2="308" y2="272"/>
+<line class="ln-dash" x1="498" y1="199" x2="498" y2="272"/>
+<rect class="ground" x="352" y="265" width="52" height="15"/>
+<text class="plate" x="378" y="276" text-anchor="middle">CANCEL</text>
+
+<line class="hi" x1="0" y1="392" x2="920" y2="392"/>
+<text class="n" x="28" y="418">·</text>
+<text class="t" x="44" y="418">A claim is one atomic write. It carries a lease, two minutes by default, that the board renews while the work runs.</text>
+<text class="n" x="28" y="443">·</text>
+<text class="t" x="44" y="443">A throw ends the task, unless maxAttempts is left. Then it goes back to pending with the error as feedback.</text>
+<text class="n" x="28" y="468">·</text>
+<text class="t" x="44" y="468">Errored and cancelled tasks cancel every task that depends on them, labelled skipped.</text>
+<text class="n" x="28" y="493">·</text>
+<text class="t" x="44" y="493">A task waiting on a person stays pending (questions) or in_progress (asked midway, or a stopped run).</text>
+<line class="ln" x1="28" y1="516" x2="54" y2="516" marker-end="url(#ah)"/>
+<text class="lb" x="62" y="520">A STEP</text>
+<line class="ln-dash" x1="160" y1="516" x2="186" y2="516" marker-end="url(#ah)"/>
+<text class="lb" x="194" y="520">FROM ANY OPEN STATUS</text>
+</svg>

@@ -19,6 +19,8 @@ import {
   type LabUser,
   type ServedShiftManager,
 } from "../../lib/shift-manager.mts";
+import { workerUsageView } from "@flow-state-dev/workforce/browser";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { CONTROL_NAMES, CONTROLS, sdkSeam, type Control } from "./controls.mts";
@@ -113,16 +115,10 @@ await runGoal(async () => {
     writeFileSync(join(SCRATCH, `${label}.log`), served.log());
   };
 
-  /** The `workerUsage` query, over the Lab's HTTP door, as `person`. It takes no user argument. */
+  /** The roster flow's `workerUsage` view, over the Lab's HTTP door, as `person`, with no session. It takes no user argument. */
   const query = async (served: ServedShiftManager, person: LabUser, days?: number): Promise<Row[]> => {
-    const done = await labRoutes(served.origin, person).act(
-      PROJECTS_FLOW,
-      `${PROJECTS_FLOW}-own-${person.userId}`,
-      "workerUsage",
-      days === undefined ? {} : { days },
-    );
-    if (done.status !== "completed") throw new Error(`workerUsage as ${person.userId} ended ${done.status}: ${done.error ?? ""}`);
-    return (done.output as { workers: Row[] }).workers;
+    const client = connect({ userId: person.userId, baseUrl: served.origin, bearerToken: person.bearer });
+    return (await client.view(workerUsageView, days === undefined ? {} : { days })).value.workers as Row[];
   };
   const rowOf = (rows: Row[], worker: string) => rows.find((row) => row.worker === worker);
 

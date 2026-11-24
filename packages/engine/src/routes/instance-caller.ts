@@ -19,6 +19,9 @@ import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver"
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { isWriteRecord, isWriteSessionId } from "../resources/default-write-flow";
+import { tenantMatches } from "../stores/scope-keys";
+import type { SessionRecord } from "../stores/types";
 
 /** A caller one instance's resolver accepted. */
 export type InstanceCaller = { userId: string; orgId: string };
@@ -109,10 +112,35 @@ export async function ownResolverVerdict(
   callerFor: InstanceCallerResolver,
   row: OwnedRecord & { userId: string; orgId?: string | null }
 ): Promise<boolean | undefined> {
+  // FIX-2624: a write record is no conversation and no run a listing shows,
+  // whoever asks; decided from the record's own fields (`isWriteRecord`).
+  if (isWriteRecord(row)) return false;
   const owner = resolveRecordOwner(registry, row);
   if (!owner.ok || !flowAuthenticates(owner.flow)) return undefined;
   const caller = await callerFor(owner.flow);
   if (caller === undefined) return false;
   if (row.userId !== caller.userId || row.orgId !== caller.orgId) return false;
   return !pinRejectsCaller(owner.flow.ownerPin, caller);
+}
+
+// FIX-2725 D1.
+/**
+ * The one per-row admission of a session list: the HTTP session list's, and
+ * a view's session reads'. A row of another tenant is never shown, nor a write
+ * session, which is no conversation; a row owned by an instance
+ * with a resolver of its own is judged on that resolver's word
+ * ({@link ownResolverVerdict}); any other row by the caller's `hostRule`.
+ */
+export async function admitListedSession(
+  ctx: {
+    registry: FlowRegistry;
+    callerFor: InstanceCallerResolver;
+    tenantId: string | undefined;
+    hostRule: (session: SessionRecord) => boolean | Promise<boolean>;
+  },
+  session: SessionRecord
+): Promise<boolean> {
+  if (!tenantMatches(session.tenantId, ctx.tenantId)) return false;
+  if (isWriteSessionId(session.id)) return false;
+  return (await ownResolverVerdict(ctx.registry, ctx.callerFor, session)) ?? ctx.hostRule(session);
 }

@@ -29,7 +29,7 @@ import {
   iterationOutputSchema,
   planAndExecuteStateSchema,
 } from "../schemas";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import { TASK_BOARD_META_DATA_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export const evaluatorOutputSchema = z
   .object({
@@ -275,10 +275,10 @@ export function createEvaluateProgress(
     execute: async (verdict, ctx) => {
       if (verdict.decision !== "replan") return;
       await ctx.sequencer!.patchState({ status: "replanning" });
-      ctx.emit.component(
-        TASK_BOARD_META_COMPONENT_TYPE,
+      ctx.emit.data(
+        TASK_BOARD_META_DATA_TYPE,
         { collectionId, status: "replanning" },
-        { key: collectionId },
+        { key: collectionId, itemVisibility: { client: true, history: false } },
       );
     },
   });

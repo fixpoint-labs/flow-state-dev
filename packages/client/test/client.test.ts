@@ -39,15 +39,12 @@ const calls = (fetcher: ReturnType<typeof routed>) =>
 const demoFlow = defineFlow({
   kind: "demo",
   actions: {
-    run: {
-      inputSchema: z.object({ value: z.string() }),
-      block: handler({
+    run: handler({
         name: "run-handler",
         inputSchema: z.object({ value: z.string() }),
         outputSchema: z.object({ ok: z.boolean() }),
         execute: (input) => ({ ok: input.value.length > 0 })
       })
-    }
   }
 });
 
@@ -97,6 +94,25 @@ describe("a body that fails to read", () => {
 });
 
 describe("flow(address).send", () => {
+  // Files ride beside the input, never in it: the server checks them once for
+  // every flow, and the flow's input schema stays the flow's.
+  it("sends a message's files beside the input, and leaves them out when there are none", async () => {
+    const bodies: unknown[] = [];
+    const fetcher = routed({
+      "POST /actions/run": (init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return json(EXECUTE_RESPONSE);
+      }
+    });
+    const flow = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo");
+    const shot = { type: "file" as const, mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef", filename: "shot.png" };
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1", attachments: [shot] });
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1" });
+
+    expect(bodies[0]).toEqual({ input: { value: "ok" }, userId: "devuser", sessionId: "sess_1", attachments: [shot] });
+    expect(bodies[1]).not.toHaveProperty("attachments");
+  });
+
   it("posts the action with the client's user, and returns a request handle", async () => {
     const fetcher = routed({
       "POST /actions/run": (init) => {
@@ -104,12 +120,29 @@ describe("flow(address).send", () => {
         return json(EXECUTE_RESPONSE);
       }
     });
-    const sent = await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo").send("run", { value: "ok" });
+    const sent = await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo").send("run", { value: "ok" }, { sessionId: "sess_1" });
 
     expect(sent.id).toBe("req_1");
     expect(sent.flow).toBe("demo");
     expect(sent.response.status).toBe("in_progress");
-    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/actions/run"]);
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/sess_1/actions/run"]);
+  });
+
+  // Every send names its session: the type requires it, and a JavaScript
+  // caller that leaves it out is refused before anything is sent, as the
+  // server would refuse it (`session-required`).
+  it("refuses a send with no session id before sending anything", async () => {
+    const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
+    const flow = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo");
+    // @ts-expect-error a send names its session
+    const bare = await flow.send("run", {}).catch((error: unknown) => error);
+    // @ts-expect-error a send names its session
+    const unnamed = await flow.send("run", {}, {}).catch((error: unknown) => error);
+    for (const refused of [bare, unnamed]) {
+      expect(refused).toBeInstanceOf(ClientHttpError);
+      expect(refused).toMatchObject({ status: 0 });
+    }
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("uses the session-scoped route when a session is named", async () => {
@@ -136,7 +169,7 @@ describe("flow(address).send", () => {
     const fetcher = routed({ "POST /actions/run": () => json({ error: "nope" }, 422) });
     const refused = await createClient({ userId: "devuser", baseUrl: "", fetcher })
       .flow("demo")
-      .send("run", {})
+      .send("run", {}, { sessionId: "sess_1" })
       .catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ClientHttpError);
     expect(refused).toMatchObject({ status: 422, body: { error: "nope" } });
@@ -145,18 +178,18 @@ describe("flow(address).send", () => {
   it("checks the action name and input against a flow type, imported as a type only", async () => {
     const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
     const demo = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo");
-    await demo.send("run", { value: "ok" });
+    await demo.send("run", { value: "ok" }, { sessionId: "sess_1" });
     // @ts-expect-error not an action of the flow
-    await demo.send("walk", { value: "ok" }).catch(() => undefined);
+    await demo.send("walk", { value: "ok" }, { sessionId: "sess_1" }).catch(() => undefined);
     // @ts-expect-error the input does not match the action's schema
-    await demo.send("run", { value: 1 }).catch(() => undefined);
+    await demo.send("run", { value: 1 }, { sessionId: "sess_1" }).catch(() => undefined);
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it("addresses a collection flow's instance by its id", async () => {
     const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
-    await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo-copy-2").send("run", { value: "x" });
-    expect(calls(fetcher)).toEqual(["POST /api/flows/demo-copy-2/actions/run"]);
+    await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo-copy-2").send("run", { value: "x" }, { sessionId: "sess_1" });
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo-copy-2/sess_1/actions/run"]);
   });
 
   it("creates a session on the flow as the client's user", async () => {
@@ -191,18 +224,17 @@ describe("request handle", () => {
     ]);
   });
 
-  it("rejects continue and retry before any call for a request with no session", async () => {
-    const fetcher = routed({});
-    const sent = routed({
-      "POST /actions/run": () => json({ ...EXECUTE_RESPONSE, session: undefined })
+  // A request recorded before every request named its session reads back with
+  // no session: the handle refuses to continue or retry it before calling.
+  it("rejects continue and retry before any call for a request recorded with no session", async () => {
+    const fetcher = routed({
+      "GET /requests/req_1/status": () => json({ id: "req_1", status: "interrupted" })
     });
-    const client = createClient({ userId: "u1", baseUrl: "", fetcher: sent });
-    const request = await client.flow("demo").send("run", {});
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
 
     await expect(request.continue()).rejects.toMatchObject({ name: "ClientHttpError", status: 0 });
     await expect(request.retry()).rejects.toMatchObject({ name: "ClientHttpError", status: 0 });
-    expect(sent).toHaveBeenCalledTimes(1);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(calls(fetcher)).toEqual(["GET /api/flows/demo/requests/req_1/status"]);
   });
 
   it("surfaces a continue the server refuses (already finished) as a typed ClientHttpError", async () => {
@@ -399,5 +431,33 @@ describe("requests.interrupted", () => {
     const [lost] = await createClient({ userId: "u1", baseUrl: "", fetcher }).requests.interrupted();
     expect(lost!.flow).toBe("support");
     await expect(lost!.continue()).rejects.toMatchObject({ status: 0 });
+  });
+});
+
+describe("upload", () => {
+  it("sends one file's bytes raw, once, and resolves to its reference", async () => {
+    const attachment = { type: "file", mediaType: "image/png", filename: "a b.png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    const uploaded = await client.upload({ data: new Uint8Array([1, 2, 3]), mediaType: "image/png", filename: "a b.png" });
+
+    expect(uploaded).toEqual(attachment);
+    const [input, init] = fetcher.mock.calls[0]!;
+    const url = new URL(String(input), "http://x");
+    expect(url.searchParams.get("filename")).toBe("a b.png");
+    expect(new Headers(init?.headers).get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await (init?.body as Blob).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  // A flow that signs its own callers in checks the upload too, so the file is
+  // held for the user that flow's send resolves.
+  it("uploads through a flow's own route when asked through that flow", async () => {
+    const attachment = { type: "file", mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/chat/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    expect(await client.flow("chat").upload({ data: new Uint8Array([1]), mediaType: "image/png" })).toEqual(attachment);
+    expect(new URL(String(fetcher.mock.calls[0]![0]), "http://x").pathname).toBe("/api/flows/chat/blobs");
   });
 });

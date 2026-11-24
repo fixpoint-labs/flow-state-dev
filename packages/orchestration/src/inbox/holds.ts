@@ -11,11 +11,16 @@ import type { InboxHold, InboxTaskInput, InboxSuspension } from "./types";
 export const NO_FLOW_UNANSWERABLE =
   "This ask can't be answered from the Inbox: its session was written before sessions recorded their owning flow, so there is no flow to answer it through.";
 
+// FIX-2774.
+/** Why a hold from a run with no conversation, whose run names no flow, can't be answered. */
+export const NO_RUN_FLOW_UNANSWERABLE =
+  "This ask can't be answered from the Inbox: its run has no conversation and names no flow to answer it through.";
+
 /** Why an own hold whose board the reader can't place can't be answered. */
 export const NO_BOARD_UNANSWERABLE =
   "This question can't be answered from the Inbox: the reader couldn't name the board's session and flow it is answered through.";
 
-/** An item's id for a task row: one per row, by its board and its task. */
+/** An item's id for a task: one per row, by its board and its task. */
 export function taskItemId(board: string, taskId: string): string {
   return `task:${board}:${taskId}`;
 }
@@ -27,7 +32,7 @@ export function isOpenTask(row: InboxTaskInput): boolean {
 
 /** Why a hold with this source can't be answered, or `null` when it can. */
 function unanswerableSource(source: InboxHold<unknown>["source"]): string | null {
-  if (source.kind === "suspension") return source.flowId === null ? NO_FLOW_UNANSWERABLE : null;
+  if (source.kind === "suspension") return source.flowId !== null ? null : source.sessionId === null ? NO_RUN_FLOW_UNANSWERABLE : NO_FLOW_UNANSWERABLE;
   return source.flowId === null || source.sessionId === null || source.action === null ? NO_BOARD_UNANSWERABLE : null;
 }
 
@@ -44,6 +49,7 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
     source: { kind: "suspension", flowId: s.flowId, sessionId: s.sessionId, requestId: s.requestId, suspensionId: s.suspensionId },
     ask: { kind: s.kind, prompt: s.prompt, ...(s.title !== undefined ? { title: s.title } : {}) },
     openedAt: s.since,
+    ...(s.due !== undefined ? { due: s.due } : {}),
     ...(s.detail !== undefined ? { detail: s.detail } : {}),
   });
 }

@@ -20,7 +20,7 @@ import { workerConfigSchema } from "../src/worker-config";
 
 const message = z.object({ message: z.string() });
 const reply = handler({ name: "registration-reply", inputSchema: message, outputSchema: message, execute: (i) => i });
-const door = { inputSchema: message, block: reply, userMessage: (i: { message: string }) => i.message };
+const door = { block: reply, userMessage: (i: { message: string }) => i.message };
 const note = z.object({ note: z.string() });
 const work = handler({ name: "registration-work", inputSchema: note, outputSchema: note, execute: (i) => i });
 
@@ -36,7 +36,7 @@ function workerFlow(flow: string, over: Record<string, unknown> = {}) {
 
 const triage = workerFlow("triage");
 const coordinator = workerFlow("coordinator");
-const doorless = workerFlow("doorless", { actions: { run: { inputSchema: note, block: work } } });
+const doorless = workerFlow("doorless", { actions: { run: work } });
 const numbered = workerFlow("numbered", {
   configSchema: workerConfigSchema().extend({ workerId: z.number().optional() })
 });

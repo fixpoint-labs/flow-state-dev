@@ -48,16 +48,21 @@ import {
   observedPlanCollection,
   observedPlanListCollection,
   observedPullRequestsCollection,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
   replacePlanList,
   reportHarnessActivity,
+  reportHarnessEvent,
   type PlanListCollection,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
+import { ATTACHMENT_IMAGE_TYPES, type AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { randomUUID } from "node:crypto";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
@@ -123,6 +128,10 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
 /** The name Cursor's spend is kept under. */
 const CURSOR_HARNESS = "cursor";
 
+// FIX-2519.
+/** What Cursor reads as a turn's files: images, sent as base64 with the prompt. A document reaches it as its text, after the prompt. */
+const CURSOR_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
+
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
   // BP-031.
@@ -180,6 +189,13 @@ export interface CursorAgentOptions {
    * is not a line a person can read.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -431,6 +447,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     onSession,
     onSteerable,
     onActivity,
+    onEvent,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -460,7 +477,9 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         })
       : (options.resolveCursorClient ?? createDefaultResolveCursorClient());
 
-  return handler({
+  // Declares `accepts` (core's harness contract): the image types a turn may
+  // carry, read by a host before it starts the turn.
+  return Object.assign(handler({
     name,
     description:
       "Run Cursor's coding agent through the Cursor SDK, mirroring its streamed items into FSD items.",
@@ -488,6 +507,16 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       // A deadline that has already fired must not start a runtime it will
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null, ctx.signal.reason);
+      // A file Cursor can't take refuses the run before a runtime starts, and
+      // every file is read before one does: a file that can't be read stops
+      // the turn rather than running it without the file.
+      // A document goes as its text after the prompt: the SDK takes no documents (FIX-2520 D1).
+      const turnFiles = await readHarnessTurnFiles("Cursor", ctx, CURSOR_ACCEPTS, input.attachments);
+      const text = promptWithTurnText(prompt, turnFiles);
+      const message =
+        turnFiles.files.length === 0
+          ? text
+          : { text, images: turnFiles.files.map((file) => ({ data: file.base64(), mimeType: file.mediaType })) };
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
@@ -522,7 +551,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
-        const run = await agent.send(prompt, sendOptions);
+        const run = await agent.send(message, sendOptions);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
         // finished turn's running total, then the settled total.
@@ -534,7 +563,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         spent = runSpent;
         runSpent.report();
         steering = offerSteer(run, ctx, onSteerable);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity, onEvent);
         const settled = await settleRun(run, mirrored, ctx.signal);
         runSpent.usage = settled.usage;
         // The settled model wins over the configured or streamed one, as on the handle.
@@ -577,7 +606,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         closeQuietly(agent);
       }
     },
-  });
+  }), { accepts: CURSOR_ACCEPTS });
 }
 
 // FIX-2145, FIX-2288.
@@ -838,6 +867,7 @@ async function mirrorRun(
   writePlan: PlanWriter | null,
   spent: RunSpent,
   onActivity: HarnessActivityHook | undefined,
+  onEvent: HarnessEventHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -856,6 +886,7 @@ async function mirrorRun(
       pending.catch(() => {});
       const next = await Promise.race([pending, deadline.promise]);
       if (next.done === true) break;
+      reportHarnessEvent(onEvent, ctx);
       for (const event of translateCursorMessage(next.value)) {
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);

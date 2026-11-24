@@ -1,0 +1,69 @@
+{
+  "t2": [
+    ["src/app/conversations.ts", "topic", "client import"],
+    ["src/app/conversations.ts", "send", "flow call"],
+    ["src/app/conversations.ts", "interrupt", "flow call"],
+    ["src/app/conversations.ts", "answerApproval", "flow call"],
+    ["src/app/conversations.ts", "retry", "flow call"],
+    ["src/app/files.ts", "createClient", "client import"],
+    ["src/app/window.ts", "topic", "client import"],
+    ["src/components/App.tsx", "ClientHttpError", "client import"],
+    ["src/lib/session-feed.ts", "watchState", "subscribe call"],
+    ["src/lib/session-feed.ts", "watchRuns", "subscribe call"],
+    ["src/app/conversations.ts", "ConversationEntry", "type"],
+    ["src/app/conversations.ts", "ConversationView", "type"],
+    ["src/app/conversations.ts", "ConversationCalls", "type"],
+    ["src/app/files.ts", "AppConnection", "type"],
+    ["src/app/files.ts", "FileCalls", "type"],
+    ["src/app/window.ts", "WindowMark", "type"],
+    ["src/app/window.ts", "WindowRead", "type"],
+    ["src/app/window.ts", "HistorySummaryFace", "type"],
+    ["src/app/window.ts", "WindowCalls", "type"],
+    ["src/app/steps.ts", "SessionStep", "type"],
+    ["src/app/steps.ts", "StepRun", "type"],
+    ["src/app/steps.ts", "RunSummary", "type"]
+  ],
+  "the last child off watchFeed (session-feed.ts goes)": [
+    ["src/lib/session-feed.ts", "sessionFeed", "client import"],
+    ["src/lib/session-feed.ts", "watch", "subscribe call"],
+    ["src/lib/session-feed.ts", "SessionFeed", "type"]
+  ],
+  "t1 · people, context and talk": [
+    ["configuration", "(lines)", "cap"],
+    ["src/app/setup.ts", "viewRef", "client import"],
+    ["src/app/talk.ts", "readEveryCollectionPage", "client import"],
+    ["src/app/talk.ts", "topic", "client import"],
+    ["src/app/workers.ts", "topic", "client import"],
+    ["src/app/setup.ts", "AppHarness", "type"],
+    ["src/app/setup.ts", "AppContext", "type"],
+    ["src/app/setup.ts", "SetupCalls", "type"],
+    ["src/app/talk.ts", "AppTalk", "type"],
+    ["src/app/talk.ts", "TalkCalls", "type"],
+    ["src/app/workers.ts", "AppWorker", "type"],
+    ["src/app/workers.ts", "TeammateEdit", "type"],
+    ["src/app/workers.ts", "NewTeammate", "type"],
+    ["src/app/workers.ts", "Activity", "type"],
+    ["src/app/workers.ts", "WorkerCalls", "type"]
+  ],
+  "t3 · task cards": [
+    ["src/app/runs.ts", "bindStoreToCallbacks", "client import"],
+    ["src/app/runs.ts", "createRequestStreamStore", "client import"],
+    ["src/app/runs.ts", "topic", "client import"],
+    ["src/app/runs.ts", "open", "flow call"],
+    ["src/app/tasks.ts", "withBrief", "flow call"],
+    ["src/app/runs.ts", "WorkingNow", "type"],
+    ["src/app/runs.ts", "RunCalls", "type"],
+    ["src/app/tasks.ts", "BoardTask", "type"],
+    ["src/app/tasks.ts", "TaskWaiting", "type"],
+    ["src/app/tasks.ts", "TaskActions", "type"],
+    ["src/app/tasks.ts", "TaskAnswer", "type"],
+    ["src/app/tasks.ts", "TaskCalls", "type"]
+  ],
+  "the last Teammates child to merge": [
+    ["src/app/calls.ts", "AppCalls", "type"],
+    ["src/app/state.ts", "AppState", "type"],
+    ["src/app/reads.ts", "Unsubscribe", "type"],
+    ["src/app/items.ts", "Item", "type"],
+    ["test/fake-app.ts", "(file)", "gone"]
+  ]
+}

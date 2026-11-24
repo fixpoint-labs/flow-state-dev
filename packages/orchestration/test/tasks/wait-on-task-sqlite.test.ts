@@ -19,7 +19,7 @@ import {
   waitCall,
   waitFlow,
   finalAnswer,
-  rows,
+  storedTasks,
   runtimeFor,
   statusOf,
   stepModel,
@@ -49,7 +49,7 @@ describe("wait across a SQLite cold restart", () => {
     const parked = await act(before, flowBefore, "run");
     expect(await statusOf(before, parked.requestId!)).toBe("suspended");
     await act(before, flowBefore, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
-    expect((await rows(before, flowBefore))[0]).toMatchObject({ status: "completed", resumeOwed: true });
+    expect((await storedTasks(before, flowBefore))[0]).toMatchObject({ status: "completed", resumeOwed: true });
     // The process is gone after the ending's write, before any resume.
     await before.dispose();
     live.splice(live.indexOf(before), 1);
@@ -63,7 +63,7 @@ describe("wait across a SQLite cold restart", () => {
 
     expect(seen).toHaveLength(2);
     expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
-    const board = await rows(after, flowAfter);
+    const board = await storedTasks(after, flowAfter);
     expect(board).toHaveLength(1);
     expect(board[0]).toMatchObject({ status: "completed", resumeOwed: false });
     // Replayed again, nothing more is owed.

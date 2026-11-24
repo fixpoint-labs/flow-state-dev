@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangleIcon,
@@ -87,8 +87,8 @@ function highestSeverity(results: AnalyzerResult[]): "info" | "warning" | "criti
  * annotation details, and optional supplementary data (counter-arguments,
  * sycophancy scores, etc.).
  */
-export function AuditAnnotation({ item }: { item: ComponentItem }) {
-  const data = item.data as AuditAnnotationData;
+export function AuditAnnotation({ item }: { item: DataItem }) {
+  const data = item.value as AuditAnnotationData;
 
   if (!data?.surfacedResults || data.surfacedResults.length === 0) {
     return null;
@@ -113,7 +113,7 @@ export function AuditAnnotation({ item }: { item: ComponentItem }) {
         </div>
         <span
           className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+            "rounded-full px-2 py-0.5 text-xs font-medium",
             SEVERITY_BG[severity],
           )}
         >
@@ -181,7 +181,7 @@ function AnalyzerSection({ result }: { result: AnalyzerResult }) {
       {supplementary?.counterArguments &&
         supplementary.counterArguments.length > 0 && (
           <details className="group mt-1">
-            <summary className="flex cursor-pointer list-none items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground">
               <ChevronRightIcon
                 className="h-2.5 w-2.5 transition-transform group-open:rotate-90"
                 aria-hidden="true"
@@ -228,11 +228,11 @@ function AnnotationItem({ annotation }: { annotation: Annotation }) {
         />
         <div className="min-w-0">
           <p className="text-xs font-medium">{annotation.label}</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {annotation.description}
           </p>
           {annotation.evidence && (
-            <p className="mt-0.5 text-[10px] italic text-muted-foreground/70">
+            <p className="mt-0.5 text-xs italic text-muted-foreground/70">
               &ldquo;{annotation.evidence}&rdquo;
             </p>
           )}
@@ -260,7 +260,7 @@ function ScoreGauge({ score, label }: { score: number; label: string }) {
           style={{ width: `${widthPercent}%` }}
         />
       </div>
-      <span className="text-[10px] tabular-nums text-muted-foreground">
+      <span className="text-xs tabular-nums text-muted-foreground">
         {label}
       </span>
     </div>

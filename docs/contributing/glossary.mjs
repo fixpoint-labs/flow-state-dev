@@ -54,7 +54,7 @@ export const REFUSAL_MARKER = "retired-name-refusal";
 
 // A lab or an example is read like a package (FIX-2354).
 const CODE = /^(packages|apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
-const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
+const PUBLISHED = /^(apps\/docs\/docs\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);
@@ -97,127 +97,11 @@ const SEAT_MAILBOX_GOAL_NAMES = [
   "a-seat-reaches-the-documents-its-file-names",
 ];
 
-/** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
-const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
-/** `text` with every line and block comment blanked to spaces, newlines kept: same length, same offsets. */
-function blankComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => c.replace(/[^\n]/g, " "));
-}
-
-/** An export list, read forward: `export {…}` or `export type {…}`, its members, and whether it re-exports (`from`). */
-const EXPORT_LIST = /(?<![\w$.])export\s+(?:type\s+)?\{([^}]*)\}(\s*from\b)?/g;
-const IS_ROW_NAME = new RegExp(String.raw`^(?:${ROW_NAME}|rows?[A-Z]\w*)$`);
-
 /**
- * The Row names a module exports through a list: a local's own name (`export { readTaskRow }`), or an
- * alias's exported name (`export { x as fooRow }`, a re-export too). A plain re-export (`export { FooRow } from`)
- * is left: its declaration is where the name counts. Each hit is `{ index, name }`, `index` at the member.
- * @param {string} text
- * @returns {{ index: number; name: string }[]}
+ * A row name: `row` or `rows` as a word part, camelCase or snake: `row`, `rows`, `taskRow`, `rowId`, `TRow`,
+ * `TaskRowsPage`, `ROW_ID`. Not `arrow`, `narrow`, `Rowan`, `rowset`.
  */
-function rowNamesInExportLists(text) {
-  const hits = [];
-  EXPORT_LIST.lastIndex = 0;
-  for (let m = EXPORT_LIST.exec(text); m !== null; m = EXPORT_LIST.exec(text)) {
-    const reexport = m[2] !== undefined;
-    const bodyAt = m.index + m[0].indexOf("{") + 1;
-    let offset = 0;
-    for (const part of blankComments(m[1]).split(",")) {
-      const spec = /^\s*(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
-      if (spec !== null) {
-        const [, local, alias] = spec;
-        const exported = alias ?? local;
-        if ((alias !== undefined || !reexport) && IS_ROW_NAME.test(exported)) {
-          hits.push({ index: bodyAt + offset + part.indexOf(exported, alias !== undefined ? part.indexOf(" as ") : 0), name: exported });
-        }
-      }
-      offset += part.length + 1;
-    }
-  }
-  return hits;
-}
-
-/** An exported destructuring declaration's opening: `export const {` or `export let [`. */
-const EXPORT_PATTERN = /(?<![\w$.])export\s+(?:const|let|var)\s*([{[])/g;
-
-/** Split `text` at the commas that sit outside any bracket, keeping each part's offset. */
-function topLevelParts(text) {
-  const parts = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i <= text.length; i++) {
-    const c = text[i];
-    if (c === "{" || c === "[" || c === "(") depth++;
-    else if (c === "}" || c === "]" || c === ")") depth--;
-    else if ((c === "," && depth === 0) || i === text.length) {
-      parts.push({ text: text.slice(start, i), at: start });
-      start = i + 1;
-    }
-  }
-  return parts;
-}
-
-/** The names a destructuring pattern binds, each with its offset in `pattern` (the text inside the brackets). */
-function patternBindings(pattern, isObject) {
-  const out = [];
-  for (const part of topLevelParts(pattern)) {
-    let body = part.text;
-    let at = part.at;
-    // The default (`= …`) is read, not bound: cut it at the first top-level `=`.
-    let depth = 0;
-    for (let i = 0; i < body.length; i++) {
-      const c = body[i];
-      if (c === "{" || c === "[" || c === "(") depth++;
-      else if (c === "}" || c === "]" || c === ")") depth--;
-      else if (c === "=" && depth === 0) { body = body.slice(0, i); break; }
-    }
-    // In an object pattern `key: target` binds `target`; a bare key binds itself.
-    if (isObject) {
-      const colon = body.indexOf(":");
-      if (colon !== -1) { at += colon + 1; body = body.slice(colon + 1); }
-    }
-    const lead = body.length - body.trimStart().length;
-    at += lead;
-    body = body.trim().replace(/^\.\.\./, (m) => { at += m.length; return ""; });
-    const open = body[0];
-    if (open === "{" || open === "[") {
-      const close = body.lastIndexOf(open === "{" ? "}" : "]");
-      for (const b of patternBindings(body.slice(1, close), open === "{")) out.push({ name: b.name, at: at + 1 + b.at });
-    } else {
-      const name = /^[\w$]+/.exec(body)?.[0];
-      if (name) out.push({ name, at });
-    }
-  }
-  return out;
-}
-
-/**
- * The Row names an exported destructuring declaration binds: `export const { readTaskRow } = helpers`,
- * `export const { list: listTaskRows } = …`, nested and array patterns too. A property only read
- * (`{ taskRow: task }`) is left: `task` is the name a consumer meets.
- * @param {string} text
- * @returns {{ index: number; name: string }[]}
- */
-function rowNamesInExportedPatterns(text) {
-  const hits = [];
-  EXPORT_PATTERN.lastIndex = 0;
-  for (let m = EXPORT_PATTERN.exec(text); m !== null; m = EXPORT_PATTERN.exec(text)) {
-    const open = m.index + m[0].length - 1;
-    let depth = 0;
-    let close = -1;
-    for (let i = open; i < text.length; i++) {
-      const c = text[i];
-      if (c === "{" || c === "[" || c === "(") depth++;
-      else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) { close = i; break; } }
-    }
-    if (close === -1) continue;
-    for (const b of patternBindings(blankComments(text.slice(open + 1, close)), m[1] === "{")) {
-      if (IS_ROW_NAME.test(b.name)) hits.push({ index: open + 1 + b.at, name: b.name });
-    }
-    EXPORT_PATTERN.lastIndex = close;
-  }
-  return hits;
-}
+const ROW_NAME = /(?:^|_)rows?(?:$|[A-Z_0-9])|Rows?(?:$|[A-Z_0-9])|(?:^|_)ROWS?(?:$|_)/;
 
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
@@ -240,23 +124,29 @@ export const ENTRIES = [
         id: "collection-row",
         check: "tree",
         // The whole tree (epic ER-6): every in-scope file, so a name left anywhere counts, not only a new one.
+        // Row locals, parameters and properties are the exception, by the owner's staging (FIX-2631): only a
+        // change's new ones count, until FIX-2632 renames the existing ones package by package.
         say: "the resource: XResourceState for what is stored, XResourceRef for one instance; XStatus for a lifecycle",
         anchor: ["ResourceRef", "XResourceState", "XResourceRef", "XCollectionRef", "XStatus"],
-        // Code. A type declared with Row in its name, exported or not: Row is a store adapter's word, and a UI list's.
-        declaresRow: new RegExp(String.raw`(?<![\w$.])(?:type|interface|class|enum)\s+(${ROW_NAME})\s*(?:[<={]|extends\b|implements\b)`, "g"),
-        // Code. An exported value built on Row: `readRunRow`, `fooRowSchema`, `rowTruthOf`. A local is no name anyone meets.
-        exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
-        // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
-        // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
-        exportsRowInList: rowNamesInExportLists,
-        // Code. A Row name an exported destructuring declaration binds: `export const { readTaskRow } = helpers`.
-        exportsRowInPattern: rowNamesInExportedPatterns,
+        // Code. The guard reads the names a file declares with TypeScript's parser (FIX-2631 D2) and keeps the
+        // ones `rowName` matches. `treeKinds` count on every line of the tree: any type, interface, enum or class,
+        // an exported function, variable or destructured binding, a name an export list binds, and a type
+        // parameter. A local, a parameter, an import alias or a property is no name anyone meets yet, so it counts
+        // only when a change adds it (`--added-since`): a file may not declare more row names than its base did.
+        // A read (`entry.row`), an object key, a plain import and a plain re-export are uses, never counted.
+        rowName: ROW_NAME,
+        treeKinds: ["type", "class", "exported-value", "export", "type-parameter"],
+        // What a refusal of an added row name says to use instead.
+        sayAdded: "entry, or the resource's own name (taskEntry, task)",
         // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.
         declaresState: /(?<![\w$.])type\s+(\w*State)\s*=\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*\|?\s*["'`]|(?<![\w$.])(?:const|let|var)\s+(\w*State(?:Schema)?)\s*=\s*z\s*\.\s*enum\(|(?<![\w$.])enum\s+(\w*State)\s*\{/g,
         // Docs calling a resource in a collection a row: "collection row", "collection's row", "the row of the collection".
         prose: /\bcollection\s+rows?\b|\bcollection(?:'s|s')\s+rows?\b|\brows?\s+(?:in|of|from|inside|on)\s+(?:the\s+|a\s+|an\s+)?(?:[\w'-]+\s+){0,4}collection\b/i,
+        // Every line of every in-scope file, code and pages alike: a resource's own noun, then row or rows.
+        // "the subscription row", "a task's rows". The kept paths keep these too.
+        phrases: /\b(?:subscription|schedule|poll|task|worker|project)(?:'s)?\s+rows?\b/i,
       },
     ],
   },
@@ -268,8 +158,9 @@ export const ENTRIES = [
   },
   {
     term: "State",
-    means: "Scope state or resource state, and nothing else.",
-    decision: "Owner, 2026-11-06",
+    means:
+      "Scope state or resource state, and one other sense: a task's display state, what the user sees it as (orchestration's `TaskView.state`, `TaskViewStatus`, and harness-manager's coding board row's `state`, the same value). Nothing else.",
+    decision: "Owner, 2026-11-06; FIX-2766 D1 (the task's display state, kept under the name `TaskView` already gave it)",
     retires: [],
   },
   {
@@ -277,6 +168,18 @@ export const ENTRIES = [
     means: "A stream item: what a run streams back (`OutputItem`, `getItems`). Not a resource in a collection.",
     decision: "Owner, 2026-11-06",
     retires: [],
+  },
+  {
+    term: "Data item",
+    means: "The one stream item kind for structured content (`ctx.emit.data(dataType, value)`, `DataItem`). Code reads it by `dataType`: a routing decision, a task change, a received message. A client draws it only through a renderer registered for its `dataType`, which is how generative UI works; with none it stays invisible in the UI. It reaches the client and not model history unless `itemVisibility` says otherwise. There is no `component` item kind.",
+    decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
+    retires: [],
+  },
+  {
+    term: "Line",
+    means: "What a conversation screen draws: one `ItemLine` from React's `conversationLines(items, turns)` (user, assistant, steps, failed, stopped, suspension, data, item). The model decides each kind; a renderer decides only how it looks. Not workforce's coordinator `ConversationLine`, which is a line of a conversation's recent history read for the coordinator.",
+    decision: "Owner, 2026-11-19 (FIX-2848): React's render stream becomes the conversation model, renamed with no alias; its type is `ItemLine` so it doesn't reuse `ConversationLine`",
+    retires: [{ name: "buildItemRenderStream" }, { name: "ItemRenderSegment" }, { name: "BuildItemRenderStreamOptions" }],
   },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
@@ -418,6 +321,76 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Job queue",
+    means: "What carries a flow action to be run by another process (`createFlowState({ jobQueue })`, `bullmqJobQueue`). Its modes say which sides a process runs: `enqueue-only`, `process-only` or `colocated`.",
+    decision: "FIX-2751",
+    retires: [
+      {
+        id: "queue-worker-names",
+        check: "sweep",
+        // The queue was a "worker", which collided with Workforce workers. The user docs and package
+        // READMEs follow at release (release-docs), so this reads code and the architecture docs only.
+        files: new RegExp(`${CODE.source}|^docs/architecture/.*\\.md$`),
+        pattern:
+          /\b(bullmqWorker|BullmqWorkerOptions|BullmqWorkerAdapter|WorkerAdapter|WorkerMode|WorkerHandle|startWorker|createFlowWorker|CreateFlowWorkerOptions|FlowWorkerDeps|createWorkerRunner|CreateWorkerRunnerOptions|createScheduleDispatchWorker|CreateScheduleDispatchWorkerOptions|resolveWorkerConnection)\b|\b(dispatch|worker)-only\b/,
+        pathName: /^packages\/bullmq\/(src|test)\/worker(-default-write)?\.(test\.)?ts$/,
+      },
+    ],
+  },
+  {
+    term: "Scheduler",
+    means: "What decides when the app's one schedule tick runs (`createFlowState({ scheduler })`, `SchedulerAdapter`, `ScheduleTicker`). The default is the engine's local cron, held by one process through a store lease; `vercelScheduler()` runs the tick from one Vercel Cron route; `scheduler: false` turns scheduling off.",
+    decision: "FIX-2752",
+    retires: [
+      {
+        id: "per-host-schedule-tick-names",
+        check: "sweep",
+        // Each host had its own way to fire schedules; the engine's one tick replaces them all. The user
+        // docs and package READMEs follow at release (release-docs), so this reads code and the
+        // architecture docs only.
+        files: new RegExp(`${CODE.source}|^docs/architecture/.*\\.md$`),
+        pattern:
+          /\b(serveScheduleTicks|startScheduleTick|registerStaticSchedules|createScheduleDispatchProcessor|createBullmqScheduleIndex|createGetToPostCronShim|createScheduleTickHandler)\b/,
+      },
+    ],
+  },
+  {
+    term: "Schedule session",
+    means: "The one session every fire of a `per-schedule` schedule runs in. The scheduled dispatch derives its id from the org and user the fire runs as, the flow instance and the schedule id, under the reserved prefix `fsd-schedule.` (colon-free, beside the write session's `fsd-write.`): only the scheduled dispatch creates it or runs in it, and its owner lists and reads it. The flow's `session.retention` caps its history.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "Schedule session option",
+    means: "Where a schedule's fires run: `session: \"per-fire\"` (the default, a one-off run per fire) or `session: \"per-schedule\"` (one schedule session), on a schedule or on `createResourceCollectionScheduleResolver`. A preset, never an id; not the flow's `session` config, which declares the flow's session state and retention.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "oneOffSessionId",
+    means: "The one maker of a one-off session id (`oneOffSessionId()`, from `@flow-state-dev/core/helpers`): a fresh `ephemeral_…` id for a run that is a session of its own. A one-shot send passes it; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it for a run with no session. The prefix is display-only: the navigator folds those sessions under \"One-off runs\" (`isOneOffSessionId`).",
+    decision: "FIX-2907 D3",
+    retires: [],
+  },
+  {
+    term: "session-required",
+    means: "The HTTP action route's refusal of a send that names no session: `400 { error: \"session-required\" }`, before the flow is looked up, the caller resolved or anything written. Every request names its session; the server never makes one up for a caller that could have named it.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "SessionRequiredError",
+    means: "What `runAction`, `createExecutionContext` and `host.dispatch` throw for a run with no session id (code `session-required`), before anything is registered or written. Exported from `@flow-state-dev/engine/host`.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "legacy-sessionless-request",
+    means: "The refusal of running again a request recorded before every request named its session (`LegacySessionlessRequestError`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake or a queued job. Such a record is still read and stopped; a stop settles a parked one `aborted` without running it.",
+    decision: "FIX-2907",
+    retires: [],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",
@@ -477,6 +450,13 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Task input schema",
+    means:
+      "What a worker flow's tasks take, declared on its `work` entry (`workerTaskEntry({ inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })`): checked at every write that files a task for one of its workers or moves one onto it, parsed again at claim, and shown to a filer by `listDelegates` as `inputSchema` (JSON Schema, without its server-owned fields). Called an input schema, never an input: a task's `input` is the value it is checked against. A server-owned field is dropped from what a filer sends and written by the flow's `fill`, never refused. A flow that declares none takes any object.",
+    decision: "FIX-2894 (epic FIX-2876 ER-9); its `project` replaces the removed `needsProject` hire option",
+    retires: [],
+  },
+  {
     term: "Routed task",
     means: "A coordinator's post; the message it routes is named by the request that carried it (`messageRequestId`).",
     decision: "FIX-2246",
@@ -492,7 +472,7 @@ export const ENTRIES = [
   },
   {
     term: "Message budget",
-    means: "`hireWorkforce`'s `messages.budget`: the one budget a user's line starts.",
+    means: "The workforce kit's `messages.budget`: the one budget a user's line starts.",
     decision: "FIX-2246",
     retires: [
       {
@@ -520,15 +500,17 @@ export const ENTRIES = [
   },
   {
     term: "Session factory",
-    means: "What `defineSessionBoard` builds. Never a kit.",
-    decision: "FIX-2246",
+    means: "What `defineSessionBoard` builds. Never a kit: a kit is the installable unit (see Kit).",
+    decision: "FIX-2246; narrowed by FIX-2619 (epic FIX-2618 O5)",
     retires: [
       {
         id: "session-factory",
         check: "sweep",
         reach: "meaning",
         files: CODE_OR_PUBLISHED,
-        pattern: /\b(filing|session|task-filing|manager) kits?\b|\bthe kit('s)?\b|\b(const|this) kit\b|\bkit\.\w+/i,
+        // Only the session-factory sense. `the kit`, `const kit` / `this kit` and `kit.x` are the
+        // installable unit's ordinary spelling since O5 named it kit, so they are no longer refused.
+        pattern: /\b(filing|session|task-filing|manager) kits?\b/i,
       },
     ],
   },
@@ -615,6 +597,13 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "claimsUnassigned",
+    means:
+      "An `AssigneeRoster` flag: the board's default worker claims a task with no assignee, so a model's `createTask` may file one unassigned. Absent or false, the task goes to the roster's `soleAssignee()`, or the call is refused with `assignee_required`.",
+    decision: "FIX-2735: an unassigned task is filed only where something will run it; strict when absent",
+    retires: [],
+  },
+  {
     term: "Worker flow",
     means: "The flow a worker runs on.",
     decision: "Workforce vocabulary (BR-10)",
@@ -686,6 +675,8 @@ export const ENTRIES = [
   },
   { term: "Project", means: "A body of work, private to you or shared with your org.", decision: "Workforce vocabulary", published: true, retires: [] },
   { term: "Workstream", means: "One area of a shared project, with one owner.", decision: "Workforce vocabulary", published: true, retires: [] },
+  // FIX-2775 D3 coins it for the keys route's public names; FIX-2645 renames the MCP vocabulary to it and decides what it retires.
+  { term: "Connector", means: "An outside tool server a host offers its projects' runs, which each user holds their own key for.", decision: "FIX-2775 D3, a working name until FIX-2645", published: false, retires: [] },
   {
     term: "Project coordinator",
     means: "Your coordinator for one project: one session per user per project. Never a room or a talk session.",
@@ -733,6 +724,115 @@ export const ENTRIES = [
         pattern: /\b[Cc]hiefs? [Oo]f [Ss]taff\b|\bCoS\b/,
       },
     ],
+  },
+
+  // Views, kits and slots ---------------------------------------------------------------------
+  // Epic FIX-2618's names, landed by FIX-2619 with its concept doc,
+  // docs/internal/design/reading-writing-installing.md. Not published until the children that
+  // build them ship (FIX-2623 views, FIX-2626 kits and slots).
+  {
+    term: "View",
+    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared. A keyed view may answer for just the rows a change touches (a partial answer, `ctx.view.partial`), given the notice that woke its watcher (`ctx.view.changed`); one that says nothing answers whole.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call); FIX-2625 D1 (partial answers, opt-in)",
+    // "Read" retires as the hook's name, with FIX-2623's removal of `reads` (epic ER-9). "View"
+    // is not retired in any other sense: `readTaskView` and "derived views" in prose stay.
+    retires: [
+      {
+        // A flow's `reads`, removed (FIX-2623): the hook is a view. Identifiers only, never the
+        // English word, so FIX-2551's live read, FIX-2624's direct read and "the line reads:" pass.
+        id: "flow-reads",
+        check: "sweep",
+        files: CODE,
+        pattern: /\bReadConfig\b|\bReadEntry\b|\brunRead\b|\bRunReadOptions\b|\btaskToolReads\b|\bhandleRunRead\b|\breads\s*:\s*(board|sessionBoard)\.|\bflow\([^)]*\)\.read\s*[<(]|\/reads\//,
+      },
+      {
+        // A scope's `client.derived`, removed (FIX-2623): a computed value for a screen is a view.
+        // Identifiers only, never the English word, so "derived from" and `derivedCtx` pass.
+        id: "scope-derived",
+        check: "sweep",
+        files: CODE,
+        pattern: /\bClientDataComputeFn\b|\bClientDataContext\b|\bclient\??\.derived\b|\bderived\s*:\s*\{/,
+      },
+    ],
+  },
+  {
+    term: "Kit",
+    means: "FSD's own installable unit above a flow: a config, the kits it requires, slots other kits fill, an optional folder it owns in the app, and an install that returns flows (which carry the resources, views and capabilities). Screens use a kit through its package's ordinary exports; a kit has no client half.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619; FIX-2626 D1 (no kit client runtime)",
+    // Never a session factory (that entry). A third-party ecosystem stays a non-goal (docs/objectives.md).
+    retires: [],
+  },
+  {
+    term: "Slot",
+    means: "A typed, named place in a kit that only its owning kit declares, with a schema and a merge policy, and other kits fill at install. The same idea as a block's slot (`ToolsSlot`, `UsesSlot`, the context slot), one level up.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
+    retires: [],
+  },
+  {
+    term: "Harness",
+    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627",
+    retires: [],
+  },
+  {
+    term: "Mode",
+    means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. Not a stage of a task on a board.",
+    decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea",
+    // Code and goals only: the published pages and READMEs that still name the old type are rewritten at
+    // release (`/release-docs`), and a changeset names the old names to say what replaced them.
+    retires: [
+      {
+        id: "phase-spec",
+        check: "sweep",
+        files: new RegExp(`${CODE.source}|^goals\\/.*\\.(mts|ts)$`),
+        pattern: /\b(PhaseSpec|PhaseDoneVerdict|PhaseRunContext|codingPhase)\b/,
+      },
+    ],
+  },
+  {
+    term: "Starter",
+    means: "An app on FSD that ships as a template to start your own from: the Claude Code-style app and Teammates. Its screen reads and writes the server through `src/app/`, one file per job, whose `index.ts` exports `AppProvider` and `useApp`; its root component is `src/components/App.tsx`.",
+    decision: "Owner, 2026-11-17 (FIX-2755): the labs ship as app starters; the module is `src/app/` and its hook `useApp`, not `data`",
+    // A starter's own names say app, not lab. The folder is still `labs/`, beside apps there that are
+    // not starters, and the word "lab" in prose moves with it. Persisted names (the `lab-pins` and
+    // `lab-dismissals` refs, the `lab-context` flow) are wire names, not identifiers, and stay (BP-030).
+    retires: [
+      {
+        id: "starter-lab-names",
+        check: "sweep",
+        files: /^labs\/(claude-code-style|teammates)\/.*\.(ts|tsx|mts)$/,
+        pattern: /\b\w*Lab(?:[A-Z]\w*)?\b|\blab[A-Z]\w*\b/,
+      },
+    ],
+  },
+  {
+    term: "Live read",
+    means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
+    decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",
+    // Not published until the release that ships `client.live`. Nothing is retired: `subscribe`
+    // stays the lower-level call a live read rides, and "coalesced read" was never a public name.
+    retires: [],
+  },
+  {
+    term: "Direct read",
+    means: "Reading a user or org resource, or a collection's entries, by its scope and key, with no session: `client.resource(def)`. The caller is resolved through the sign-in of the flow that declares the resource, and the answer is the resource's client projection and its version. No block runs.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O3, ER-3; FIX-2624)",
+    retires: [
+      {
+        id: "own-session-helpers",
+        check: "sweep",
+        // FIX-2624: a session found or made only to read is gone from the apps and labs. Scoped to
+        // them: the engine's and orchestration's `ownSession` options mean a run's own session.
+        files: /^(apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$|^packages\/shift-manager\/(src|teams|test)\//,
+        pattern: /\b(ownSessions?|labSessions?|readerSessionId|withReaderSessions|openReaderSession)\b/,
+      },
+    ],
+  },
+  {
+    term: "Default write flow",
+    means: "The framework's flow that writes a user or org resource, or sets and deletes a collection's entries, marked `runBy: \"default\"`: it checks the schema, the owner and the resource's `canWrite`, and writes at the version the client read, in a write session the server keeps for that writer.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O3, ER-4; FIX-2624)",
+    retires: [],
   },
 
   // Execution tiers ---------------------------------------------------------------------------
@@ -800,23 +900,51 @@ export const ENTRIES = [
       { id: "side-chain-tier-value", check: "side-chain", position: "tier-value", names: ["work"] },
     ],
   },
+
+  // Routines ----------------------------------------------------------------------------------
+  {
+    term: "Routine",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed, polled or published).",
+    decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
+    // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
+    // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
+    // for a clock trigger's stored resource and an event trigger's.
+    retires: [
+      { name: "subscriptionTools" },
+      { name: "SUBSCRIPTION_TOOLS" },
+      { name: "saveSchedule" },
+      { name: "listSchedules" },
+      { name: "deleteSchedule" },
+      { name: "LIST_SCHEDULES_ACTION" },
+      { name: "listedScheduleSchema" },
+      { name: "ListedSchedule" },
+      { name: "ScheduledWorkOptions" },
+      {
+        id: "recurring-work-prose",
+        check: "sweep",
+        reach: "meaning",
+        files: CODE_OR_PUBLISHED,
+        // The user-facing names a routine replaces: "recurring work" for a clock routine, and the
+        // "Scheduled work" screen that listed only those.
+        pattern: /\brecurring work\b|\bscheduled work\b/i,
+      },
+    ],
+  },
+  {
+    term: "Topic",
+    means:
+      "A declared name an internal event is published on (`deploy.finished`), with its kinds, its data's schema and a description. A session publishes on one with `publishEvent`, and a routine follows one on the thread `internal:<topic>`; a topic or kind nobody declared is refused at both.",
+    decision: "FIX-2630 D1",
+    retires: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
 // 2. The exemptions
 // ---------------------------------------------------------------------------------------------
 
-/** A person who isn't the signed-in user stays (BR-5), pinned by file and phrase. */
-export const PERSON_PINS = [
-  // A support desk's example worker: a human on the support team, not the customer writing in.
-  { path: "apps/docs/docs/workforce/coordinators.md", phrase: /\bhow to reach a person\b/g },
-  // A triage worker's example: it escalates to a human, not back to the user who asked.
-  { path: "apps/docs/docs/workforce/overview.md", phrase: /\bor to a person\b/g },
-  { path: "apps/docs/docs/workforce/workers-on-disk.md", phrase: /\bhands off to a person\b/g },
-];
-
-/** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure. */
-const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$/;
+/** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure, and the revamp's Projects page with its sheets. */
+const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
 
 /**
  * Every place a retired word is kept on purpose. Each names the retirements it keeps and why.
@@ -834,10 +962,28 @@ const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workfo
 const EXEMPTIONS = [
   // ---- sweep ----
   {
+    path: /^labs\/claude-code-style\/test\/inventory\.test\.ts$/,
+    line: /\bLabAdapter\b/,
+    rules: ["starter-lab-names"],
+    why: "the Claude Code-style inventory's check that the retired `LabAdapter` seam stays gone, which names it to look for it",
+  },
+  {
     path: /^packages\/harness-manager\/README\.md$/,
     line: /^### Upgrading from `messageDoor`$|^Before `harnessSessionDoor`, a manager's `messageDoor` \(and `harnessMessageDoor`\) kept/,
     rules: ["message-door"],
     why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker",
+  },
+  {
+    path: /^packages\/workforce\/src\/service-flows\/github\/normalize\.ts$/,
+    line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
+  },
+  {
+    path: /^packages\/workforce\/src\/service-flows\/github\/poll\.ts$/,
+    line: /^const TIMELINE_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not a task's reopened shape",
   },
   {
     path: /^packages\/orchestration\/README\.md$/,
@@ -855,15 +1001,61 @@ const EXEMPTIONS = [
     path: /^labs\/teammates\/(?:src|test)\/|^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
     line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
     rules: ["shift-coordinator-names"],
-    why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+    why: "FIX-2354: the Teammates lab's Chief of Staff keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030)",
+  },
+  {
+    path: /^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
+    line: /^name: Chief of Staff$/,
+    rules: ["shift-coordinator-prose"],
+    why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
+  },
+  {
+    // The Harness runs and Workforce reference pages quote names and messages the code still spells with ask.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
+    line: /\brun\.askMarkerPath\b|Asks are read from worker sessions|it wasn't set at hire to change its own/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: Reference pages quoting the harness manager's `run.askMarkerPath` field and two workforce error messages verbatim; the pages must name what the code returns",
+  },
+  {
+    // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/messaging\.record\.md$/,
+    line: /"Asked <id>"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
+    // The UI components reference quotes the registry's own button and header text.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/ui-components(?:\.facts)?\.md$/,
+    line: /Ask for changes|"Asking ada…", "Asked ada"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
+    // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$|^apps\/docs\/docs\/(?:start\/figures\/what-just-started|catalog\/starters\/figures\/what-it-installs|catalog\/workforce\/figures\/messaging-two-ways)\.svg$/,
+    rules: ["shift-coordinator-names", "shift-coordinator-prose"],
+    why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
+  },
+  {
+    path: /^apps\/docs\/docs\/reference\/upgrading\/\d{4}-\d{2}-\d{2}\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions", "human-reasons"],
+    why: "a release's Upgrading page: it names each removed export and retired reason beside what replaces it (docs/contributing/release-docs.md, The Upgrading page)",
+  },
+  {
+    path: /^\.changeset\/one-conversation-model\.md$/,
+    releaseNote: true,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
+    why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
   },
   {
     path: /^\.changeset\/(retired-names-(contracts|react)|no-compat-engine)\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's",
   },
@@ -898,7 +1090,7 @@ const EXEMPTIONS = [
     why: "WR-7: a goal's dated verdict row, or a line saying the tool was removed: history",
   },
   {
-    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/)/,
+    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/|catalog\/starters\/shift-manager\.md$|reference\/glossary\.md$)/,
     line: /Shift Manager|AskCard|Inbox|approval|question|suspended|\bAsks?\b \|/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "Shift Manager's Ask: an approval or question to a person",
@@ -945,6 +1137,13 @@ const EXEMPTIONS = [
     line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on",
+  },
+  {
+    // The Task board reference names the midway question helper as orchestration exports it.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    line: /\baskMidway\b/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
@@ -997,7 +1196,7 @@ const EXEMPTIONS = [
     why: "WR-5: a claimed request record passed to the run that holds it, mid-work (D3)",
   },
   {
-    path: /^apps\/docs\/docs\/glossary\.md$/,
+    path: /^apps\/docs\/docs\/(?:reference\/)?glossary\.md$/,
     line: /^\| \*\*Hand-off\*\* \| orchestration \| A session that was doing the work passes it to another session, mid-work\./,
     rules: ["handoff-prose"],
     why: "D3: the glossary row that defines hand-off as mid-work only",
@@ -1046,7 +1245,7 @@ const EXEMPTIONS = [
     why: "WR-5: the kitchen sink shell's message box, where the person asks a worker; nothing waits on a task",
   },
   {
-    path: /^packages\/cli\/src\//,
+    path: /^packages\/fsdev\/src\//,
     rules: ["ask-symbol", "ask-prose"],
     why: "WR-5: the CLI asks the app who an in-process caller is; not a wait",
   },
@@ -1091,7 +1290,7 @@ const EXEMPTIONS = [
     why: "WR-5: two actions that ask a desk a question; not a wait",
   },
   {
-    path: /^packages\/workspace\/src\/(local-host|land)\.ts$/,
+    path: /^packages\/workspace\/src\/worktree\.ts$/,
     line: /core\.askPass/,
     rules: ["ask-symbol"],
     why: "git's own setting name",
@@ -1103,7 +1302,7 @@ const EXEMPTIONS = [
     why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as",
   },
   {
-    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-(purge|lifecycle)\.test\.ts)$/,
     line: /\baddTask\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection",
@@ -1121,7 +1320,7 @@ const EXEMPTIONS = [
     why: "FIX-2243: updateTask's live helper that answers a task's open question; the harness manager's removed answerQuestion() was another thing",
   },
   {
-    path: /^(packages\/(workforce|cli)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
+    path: /^(packages\/(workforce|fsdev)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
     line: /\banswerQuestion\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool",
@@ -1160,6 +1359,7 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/no-compat-[\w-]+\.md$/,
+    releaseNote: true,
     rules: ["question-hold-names", "task-tool-names", "handoff-symbol-in-docs", "message-budget"],
     why: "FIX-2454: the release notes that list what was removed, by its old name, so a consumer can find the uses to delete",
   },
@@ -1180,10 +1380,17 @@ const EXEMPTIONS = [
     why: "a field named kind: the engine's flow kind or a type discriminant (BR-10)",
   },
   {
+    id: "worker-detail-kind-prop",
+    terms: ["kind"],
+    where: (path) => /(?:^|\/)(?:WorkerDetail\.ts|worker-detail\.(?:test\.ts|stories\.tsx))$/.test(path),
+    strip: /\bkind\b/gi,
+    why: "`WorkerDetail`'s published `kind` prop, the flow a navigator row names (FIX-1500 S5), moved unchanged to workforce's /react entry (FIX-2627)",
+  },
+  {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
-    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|\bharnessFailureKind\b|`Kind`/g,
+    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), core's `harnessFailureKind` reader, and the engine flow kinds a test registers (BR-10)",
   },
   {
     id: "engine-flow-kind",
@@ -1194,13 +1401,13 @@ const EXEMPTIONS = [
   {
     id: "english-kind",
     terms: ["kind"],
-    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
+    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\b(?:two|three|four|five|six|seven|eight|nine|ten|\d+) kinds\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
     why: "the English word",
   },
   {
     id: "other-kinds",
     terms: ["kind"],
-    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry)[ -]kinds?\b/gi,
+    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry|state)[ -]kinds?\b/gi,
     why: "another subsystem's kind",
   },
   {
@@ -1248,6 +1455,19 @@ const EXEMPTIONS = [
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
   },
   {
+    id: "registry-thread-width",
+    terms: ["thread"],
+    strip: /--thread-width\b/g,
+    why: "the ui registry's column-width token (`--thread-width`, which its session overlay reads), set by a lab's theme and used by its screens to size their column: the registry's name for a chat column, not a mailbox's",
+  },
+  {
+    id: "codex-thread-option",
+    terms: ["thread"],
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/harnesses\/codex\./.test(path),
+    strip: /`thread`/g,
+    why: "the Codex block's own `thread` option, named in code font on the Codex page",
+  },
+  {
     id: "claude-code-threads",
     terms: ["thread"],
     where: (path) => path.startsWith("labs/claude-code-style/"),
@@ -1255,16 +1475,37 @@ const EXEMPTIONS = [
     why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
   },
   {
+    id: "claude-code-style-worker-ids",
+    terms: ["thread"],
+    where: (path) =>
+      /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
+    strip: /\bdesk\.thread(?:-coder(?:-[a-z]+)?)?\b|`thread-coder(?:-[a-z]+)?`/g,
+    why: "the Claude Code-style lab's worker ids (`desk.thread`, `desk.thread-coder`), quoted as the lab ships them; the lab names its threads mode after Claude Code's",
+  },
+  {
     id: "subscription-modules",
     terms: ["thread", "member", "kind"],
-    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
-    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
-    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+    // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
+    // FIX-2651: the service flows that route and deliver to subscriptions moved out of subscriptions/ and share its words.
+    // FIX-2779: the Lab check that a coding task follows its pull request names the subscription's thread.
+    where: (path) =>
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/service-flows\/|src\/routines\/|test\/subscriptions-|test\/routines(?:-seed)?\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx|test\/devteam-coder-follows-pull-request\.test\.ts)$/.test(path),
+    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
+    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+  },
+  {
+    id: "routines-page-thread-field",
+    terms: ["thread"],
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/routines\./.test(path),
+    strip: /"thread"(?=:)|\bthread:(?= ")/g,
+    why: "an event routine's own `thread` field, the key of the outside service's pull request or topic it follows, in the Routines page's examples",
   },
   {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
+    // The pages it covered were rewritten at the docs cutover; the release note is what is left.
+    releaseNote: true,
+    where: (path) => path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
@@ -1272,23 +1513,16 @@ const EXEMPTIONS = [
   {
     id: "old-page-redirect",
     terms: ["mailbox"],
-    where: (path) => path === "apps/docs/docusaurus.config.ts",
-    strip: /(?<=from: ")\/docs\/workforce\/mailboxes(?=")/g,
+    where: (path) => path === "apps/docs/redirects.mjs",
+    strip: /(?<=")\/docs\/workforce\/mailboxes(?=":)/g,
     why: "a redirect from a removed page's address, so an old link still lands",
   },
   {
     id: "registry-copies",
-    terms: ["kind", "person"],
-    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
-    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
-  },
-  {
-    id: "person-any-human",
-    terms: ["person"],
-    where: (path) => PERSON_PINS.some((pin) => pin.path === path),
-    strip: (path, line) => PERSON_PINS.filter((pin) => pin.path === path).reduce((out, pin) => out.replace(pin.phrase, " "), line),
-    why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)",
+    terms: ["kind", "person", "thread"],
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
+    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
   },
 
   // ---- side-chain ----
@@ -1319,18 +1553,6 @@ const EXEMPTIONS = [
     path: /(?:^|\/)(?:components|surfaces)\//,
     why: "a UI list module under components/ or surfaces/: a rendered row is a row (owner, 2026-11-06; FIX-2479, a path rule)",
   },
-  {
-    id: "released-quotes",
-    rules: ["collection-row"],
-    pages: /^(?:apps\/docs\/(?:docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md)$/,
-    // The owner-private refusal, the owner-writes refusal, and the first line of the startup overlap error.
-    quotes: [
-      /A row of an owner-private collection is readable only by the user it belongs to\./g,
-      /A row of an owner-writes collection is written only by the user it belongs to\./g,
-      /Collection pattern "[^"]*" can reach the rows of owner-(?:private|writes) collection/g,
-    ],
-    why: "FIX-2479 D4: a published page may quote a released message until /release-docs rewrites it, and deletes this in the same PR",
-  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -1356,6 +1578,7 @@ const TOOLING = /^scripts\/|^\.github\/|^\.husky\/|^\.omp\/|^\.claude\/|^\.curso
 /** Tracked files the sweep deliberately does not read, each with its reason. */
 export const EXCLUDE = [
   { path: /^docs\/contributing\/glossary\.mjs$/, over: true, why: "the glossary: it names every retired word on purpose" },
+  { path: /^docs\/contributing\/docs-revamp\/pages\/reference\/glossary\.(facts|record)\.md$/, over: true, why: "the Glossary page's fact sheet and record: they read the glossary's retired words, to keep the page off them" },
   { path: HISTORY, over: true, why: "history: specs, internal notes, changelogs, blog posts, the lockfile" },
   { path: KEPT_EXAMPLES, over: true, why: "a skill's worked example, kept for its shape: history" },
   { path: TOOLING, over: true, why: "tooling: scripts, CI and hook config, other harnesses' settings, the plugin" },
@@ -1372,7 +1595,7 @@ export const EXCLUDE = [
   },
   { path: /^(apps|packages|labs|examples)\/.*\.(md|mdx|svg)$/, why: "markdown outside the published docs and package READMEs (fixtures, worker files, app notes)" },
   { path: /^goals\/.*$/, why: "other goal files: only the rules that read goals read them" },
-  { path: /(^|\/)LICENSE\.upstream$|^docs\/contributing\/figures\/.*\.svg$|^docs\/(assets\/|PROMPT_CACHING\.md$)|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\.local)\.md$|^[^/]+\.(json|ya?ml|mjs)$/, why: "root config, assets and pages no rule reads" },
+  { path: /(^|\/)LICENSE\.upstream$|^docs\/contributing\/(?:[^/]+\/)*figures\/.*\.svg$|^docs\/(assets\/|PROMPT_CACHING\.md$)|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\.local)\.md$|^[^/]+\.(json|ya?ml|mjs)$/, why: "root config, assets and pages no rule reads" },
 ];
 
 /** The guard's own test plants retired words on purpose, so it is process tooling. */
@@ -1384,7 +1607,7 @@ export const AREAS = [
   {
     id: "process",
     scope: false,
-    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
+    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/contributing\\/docs-revamp\\/pages\\/reference\\/glossary\\.(facts|record)\\.md$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
     why: "process tooling (this glossary and the guard's own test among them)",
   },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },
@@ -1466,25 +1689,39 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Every exemption its author flagged `releaseNote: true`, of any check: the path names pending
+ * changesets and nothing else. The guard holds each to that against the tracked tree.
+ */
+export const RELEASE_NOTE_EXEMPTIONS = EXEMPTIONS.filter((e) => e.releaseNote === true);
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
 /**
  * A sweep-shaped exemption that keeps a bare retirement keeps it for the guard too, so one
  * exemption gives both checks one answer (D2): in the files it names, on the lines it keeps,
- * the guard strips the retired name.
+ * the guard strips the retired name. Exported so the guard's control builds its plants the
+ * same way the glossary's own exemptions are built.
+ * @param {{ path: RegExp, rules: string[], why: string, line?: RegExp, releaseNote?: boolean }} e
+ * @param {string} id
  */
-const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) => {
-  const terms = e.rules.filter((id) => BARE.has(id));
+export function sharedGuardExemption(e, id) {
+  const terms = e.rules.filter((rule) => BARE.has(rule));
   const res = GUARD_TERMS.filter((t) => terms.includes(t.id)).map((t) => t.re);
   return {
-    id: `shared-${i}-${terms.join("+")}`,
+    id,
     terms,
     why: e.why,
+    releaseNote: e.releaseNote === true,
     where: (path) => e.path.test(path),
     strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
   };
-});
+}
+
+const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) =>
+  sharedGuardExemption(e, `shared-${i}-${e.rules.filter((id) => BARE.has(id)).join("+")}`),
+);
 export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
 export const TREE_EXEMPTIONS = byCheck("tree");

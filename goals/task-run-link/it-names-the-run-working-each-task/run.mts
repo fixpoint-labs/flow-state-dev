@@ -51,15 +51,15 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import type { Task, TaskRunLink } from "@flow-state-dev/orchestration/tasks";
 import {
   TASK_ID_STATE_KEY,
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -69,6 +69,7 @@ import {
   actingAs,
   hearsMessages,
   modulePatchEnv,
+  readTree,
   runGoal,
   silentLogger,
   untilIdle,
@@ -78,7 +79,7 @@ import {
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_task_run_link";
 const ORG_ID = "org_task_run_link";
-const MARKER_COMPONENT = "run-link-goal-marker";
+const MARKER_DATA_TYPE = "run-link-goal-marker";
 /** A goal word the worker fails on, on its first attempt only. */
 const FAILS_ONCE = "[fails once]";
 /** A goal word the worker fails on, every attempt. */
@@ -154,11 +155,13 @@ await runGoal(async (failures) => {
   writeFileSync(OUTBOX, "", "utf8");
 
   // ---- a. the tree alone ----------------------------------------------------
-  const roster = await readWorkforce(TREE);
-  if (roster.errors.length > 0) {
-    return { failures: [`a: the tree did not load cleanly: ${JSON.stringify(roster.errors)}`], evidence: "" };
+  // The kit's own reader: a file it can't load is refused here, as it stops an app's start.
+  let workers: WorkerManifest[];
+  try {
+    workers = [...(await readTree(TREE)).workers];
+  } catch (error) {
+    return { failures: [`a: the tree did not load cleanly: ${(error as Error).message}`], evidence: "" };
   }
-  const workers: WorkerManifest[] = roster.workers;
   const byId = new Map(workers.map((w) => [w.id, w]));
   // The filer: the worker whose file names delegates. Its delegates are the
   // workers it files for, each on the flow its own file names.
@@ -190,7 +193,7 @@ await runGoal(async (failures) => {
         const taskId = String((ctx.session.state as Record<string, unknown>)[TASK_ID_STATE_KEY]);
         const attempt = readProofs().filter((p) => p.taskId === taskId).length + 1;
         const marker = `marker-${taskId}-${attempt}-${randomUUID()}`;
-        ctx.emit.component(MARKER_COMPONENT, { marker });
+        ctx.emit.data(MARKER_DATA_TYPE, { marker });
         const proof: Proof = {
           taskId,
           attempt,
@@ -205,31 +208,31 @@ await runGoal(async (failures) => {
       }
     });
 
-  // The installation every worker flow below runs its workers on. It reads the
-  // flows when it first needs them, so they are built on it below.
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
+  // The installation every worker flow below runs its workers on: the kit
+  // hires it from the tree and hands it to each flow's builder.
   const doorInput = z.object({ message: z.string() });
 
   // The filer's flow carries the session board: its delegates give it the
   // task tools and actions, and its board hands each task to the delegate's
   // own flow.
-  const board = defineSessionBoard({ installation, flowKind: filerKind });
   const filerTurn = handler({ name: "run-link-goal-filer-turn", inputSchema: doorInput, execute: async () => "Noted." });
-  const filerFlow = defineFlow({
-    kind: filerKind,
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
-    actions: {
-      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
-      ...board.actions
-    },
-    internal: { actions: board.entries(filerTurn, () => "fixed") }
-  } as never);
+  const filerFlow = (installation: WorkerInstallation) => {
+    const board = defineSessionBoard({ installation, flowKind: filerKind });
+    return defineFlow({
+      kind: filerKind,
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+      resources: { ...installation.resources, ...board.resources },
+      actions: {
+        respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+        ...board.actions
+      },
+      internal: { actions: board.entries(filerTurn, () => "fixed") }
+    } as never);
+  };
 
   // Each delegate's flow takes tasks through Workforce's task entry.
-  const takerFlow = (kind: string) => {
+  const takerFlow = (installation: WorkerInstallation, kind: string) => {
     const turn = turnFor(kind);
     return defineFlow({
       kind,
@@ -241,14 +244,14 @@ await runGoal(async (failures) => {
       task: { actions: { work: workerTaskEntry({ name: `run-link-goal-${kind}-task`, turn }) } }
     } as never);
   };
-  workerFlows = {
-    [filerKind]: { flow: filerFlow, roles: ["manager"] },
-    ...Object.fromEntries(kinds.map((kind) => [kind, { flow: takerFlow(kind), roles: ["contributor"] }]))
-  };
-
-  const hired = hireWorkforce(installation);
   const state = createFlowState({
-    flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [filerKind]: workerFlow(filerFlow, { roles: ["manager"] }),
+        ...Object.fromEntries(kinds.map((kind) => [kind, workerFlow((installation) => takerFlow(installation, kind), { roles: ["contributor"] })]))
+      }
+    },
     stores: { default: { primary: inMemoryStores() } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {
@@ -351,9 +354,9 @@ await runGoal(async (failures) => {
       const via = CONTROL === "board-flow" ? filerKind : owner;
       const stream = await call("GET", [via, "requests", link.requestId, "stream"]);
       const frames = stream.status === 200 ? sseFrames(stream.text) : [];
-      const items = frames.map((frame) => frame.item).filter((item) => item?.type === "component");
-      const changes = items.filter((item) => item.component === "task-change" && item.data?.taskId === f.taskId);
-      const marker = items.find((item) => item.component === MARKER_COMPONENT)?.data?.marker as string | undefined;
+      const items = frames.map((frame) => frame.item);
+      const changes = items.filter((item) => item?.type === "data" && item.dataType === "task-change" && item.value?.taskId === f.taskId);
+      const marker = items.find((item) => item?.type === "data" && item.dataType === MARKER_DATA_TYPE)?.value?.marker as string | undefined;
       const proof = proofOf(f.taskId, r!.attempts);
 
       if (f.worker.id === lone.id) {
@@ -370,7 +373,7 @@ await runGoal(async (failures) => {
         failures.push(`stream: ${f.taskId}'s run stream answered ${stream.status} through "${via}"`);
         continue;
       }
-      const last = changes.at(-1)?.data?.task as (Task & Record<string, unknown>) | undefined;
+      const last = changes.at(-1)?.value?.task as (Task & Record<string, unknown>) | undefined;
       judge("stream", f.taskId, last?.run, last?.attempts);
       if (last !== undefined && "claimedBy" in last) failures.push(`stream: ${f.taskId}'s change item carries claimedBy`);
     }

@@ -15,13 +15,14 @@ export type SuspensionHoldSource = {
   readonly kind: "suspension";
   /** The flow that owns the run's session; `null` when the session names none, which leaves the hold unanswerable. */
   readonly flowId: string | null;
-  readonly sessionId: string;
+  /** The session the run is parked in; `null` for a run with no conversation, answered through its flow alone. */
+  readonly sessionId: string | null;
   readonly requestId: string;
   readonly suspensionId: string;
 };
 
 /**
- * A hold kept on the task row itself (a question or a confirm): answered
+ * A hold kept on the task itself (a question or a confirm): answered
  * through the board's `updateTask` action, as the user, on the session that
  * holds the board.
  */
@@ -69,7 +70,7 @@ export type InboxTask = {
 export type InboxItem<TDetail = unknown> = {
   /** Its address in the Inbox: a task's item by its board and task, else a lone suspension's id. */
   readonly id: string;
-  /** The task it holds; `null` for a suspension in a request with no task row. */
+  /** The task it holds; `null` for a suspension in a request with no task. */
   readonly task: InboxTask | null;
   /** Its open holds, oldest first. Never empty. Each says where its own answer goes. */
   readonly holds: readonly InboxHold<TDetail>[];
@@ -81,7 +82,7 @@ export type InboxItem<TDetail = unknown> = {
   readonly unanswerable: string | null;
 };
 
-/** A task row, as much of it as the Inbox reads. A browser's board row and a server's `Task` both fit. */
+/** A task, as much of it as the Inbox reads. A browser's board row and a server's `Task` both fit. */
 export type InboxTaskInput = {
   /** The board's ref the row is on. */
   readonly board: string;
@@ -107,7 +108,8 @@ export type InboxTaskInput = {
 
 /** A suspension for the user a reader found in a session. */
 export type InboxSuspension<TDetail = unknown> = {
-  readonly sessionId: string;
+  /** The session the run is parked in; `null` for a run with no conversation. */
+  readonly sessionId: string | null;
   /** The flow that owns the session; `null` when it names none. */
   readonly flowId: string | null;
   readonly requestId: string;
@@ -117,6 +119,9 @@ export type InboxSuspension<TDetail = unknown> = {
   readonly title?: string;
   /** When it was raised, epoch ms. */
   readonly since: number;
+  // FIX-2774.
+  /** When it ends unanswered (its `expiresAt`), epoch ms: the hold's `due`. Absent when no deadline is set. */
+  readonly due?: number;
   readonly detail?: TDetail;
 };
 

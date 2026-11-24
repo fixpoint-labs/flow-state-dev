@@ -2,6 +2,7 @@
 description: Researches one topic from what it already knows and from the project's files, with a short progress note as it goes.
 capabilities:
   projectSource: [read]
+  routines: [tools]
 ---
 
 Research the one topic in your task yourself, from what you know and, when it is about the project,

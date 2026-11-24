@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Failure } from "../lib/reads";
+import { describeFailure, type Failure } from "../lib/failure";
 
 export function ResourceView({ sessionId, resourceRef }: { sessionId: string; resourceRef: string }) {
   const { client } = useLab();
@@ -28,7 +28,7 @@ export function ResourceView({ sessionId, resourceRef }: { sessionId: string; re
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="resource" data-resource-ref={resourceRef}>
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">RESOURCE · READ-ONLY</p>
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">RESOURCE · READ-ONLY</p>
         <h1 className="text-base font-semibold">{resourceRef}</h1>
       </header>
       {content === undefined ? (

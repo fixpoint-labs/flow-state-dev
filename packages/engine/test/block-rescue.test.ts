@@ -196,12 +196,9 @@ describe("FIX-742: action-root block rescue", () => {
     const flow = defineFlow({
       kind: "inflow-rescue-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ n: z.number() }),
-          block: sequencer({ name: "inflow-seq", inputSchema: z.object({ n: z.number() }) })
+        run: sequencer({ name: "inflow-seq", inputSchema: z.object({ n: z.number() }) })
             .step(safeFailing)
             .step(after)
-        }
       }
     })();
 

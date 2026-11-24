@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 364" role="img" aria-label="Today against after, on five aligned rows. Where it runs: on a session always, against at its data's scope with no session at user or org. Hooks: two, a flow read and a scope's derived value, against one, the view. Staying current: the app names topics, against the answer naming its topics. Row types: hand-typed at each caller, against ViewOutput from the view. A dependency added: a stale screen with no error, against heard because the run read it"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="364"/>
+
+  <g id="columns">
+    <rect class="lost" x="212" y="16" width="348" height="40" rx="5"/>
+    <text class="t-tag c-mute" x="228" y="33">TODAY</text>
+    <text class="t-h c-lost" x="228" y="50">A flow read, or a scope’s derived</text>
+    <rect class="chosen" x="576" y="16" width="348" height="40" rx="5"/>
+    <text class="t-tag c-code" x="592" y="33">AFTER</text>
+    <text class="t-h c-code" x="592" y="50">A view</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="92">WHERE IT</text>
+    <text class="t-lbl" x="32" y="105">RUNS</text>
+    <text class="mark minus" x="228" y="94">−</text>
+    <text class="t-b" x="248" y="93">On a session, always</text>
+    <text class="t-s" x="248" y="111">a roster makes one only to be read</text>
+    <text class="mark plus" x="592" y="94">+</text>
+    <text class="t-b" x="612" y="93">At its data’s scope</text>
+    <text class="t-s" x="612" y="111">user or org: no session at all</text>
+    <line class="row" x1="16" y1="124" x2="924" y2="124"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="148">HOOKS</text>
+    <text class="mark minus" x="228" y="150">−</text>
+    <text class="t-b" x="248" y="149">Two: a flow read, a scope’s derived</text>
+    <text class="t-s" x="248" y="167">derived rides inside the snapshot</text>
+    <text class="mark plus" x="592" y="150">+</text>
+    <text class="t-b" x="612" y="149">One: the view</text>
+    <text class="t-s" x="612" y="167">reads and derived go, with no alias</text>
+    <line class="row" x1="16" y1="180" x2="924" y2="180"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="204">STAYING</text>
+    <text class="t-lbl" x="32" y="217">CURRENT</text>
+    <text class="mark minus" x="228" y="206">−</text>
+    <text class="t-b" x="248" y="205">The app names topics</text>
+    <text class="t-s" x="248" y="223">and filters notices, in three copies</text>
+    <text class="mark plus" x="592" y="206">+</text>
+    <text class="t-b" x="612" y="205">The answer names its topics</text>
+    <text class="t-s" x="612" y="223">useView listens through one live read</text>
+    <line class="row" x1="16" y1="236" x2="924" y2="236"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="260">ROW TYPES</text>
+    <text class="mark minus" x="228" y="262">−</text>
+    <text class="t-b" x="248" y="261">Hand-typed at each caller</text>
+    <text class="t-s" x="248" y="279">read&lt;{ pinned: string[] }&gt;</text>
+    <text class="mark plus" x="592" y="262">+</text>
+    <text class="t-b" x="612" y="261">ViewOutput, from the view</text>
+    <text class="t-s" x="612" y="279">rows keyed for later partial reads</text>
+    <line class="row" x1="16" y1="292" x2="924" y2="292"/>
+  </g>
+
+  <g id="row-5">
+    <text class="t-lbl" x="32" y="316">A DEPENDENCY</text>
+    <text class="t-lbl" x="32" y="329">ADDED</text>
+    <text class="mark minus" x="228" y="318">−</text>
+    <text class="t-b" x="248" y="317">A stale screen, no error</text>
+    <text class="t-s" x="248" y="335">unless someone remembers the topic</text>
+    <text class="mark plus" x="592" y="318">+</text>
+    <text class="t-b" x="612" y="317">Heard: the run read it</text>
+    <text class="t-s" x="612" y="335">recorded per run, D1</text>
+    <line class="row" x1="16" y1="348" x2="924" y2="348"/>
+  </g>
+
+</svg>

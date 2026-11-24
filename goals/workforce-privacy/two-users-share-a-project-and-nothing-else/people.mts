@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 import type { Client, FlowHandle, SessionSummary } from "@flow-state-dev/client";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** A person the run acts as. */
 export interface Person {
@@ -115,7 +116,6 @@ export async function refusal(call: () => Promise<unknown>): Promise<{ status: n
 
 /** The request states a turn is still running in. */
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One action's end: its status, and its output or error, read back from the store. */
 export interface Acted {
@@ -153,8 +153,8 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
 /** The delegates a coordinator's routing record for post `messageRequestId` delivered it to, among a request's items. */
 function routedDelegates(items: readonly StoredItem[], messageRequestId: string): string[] {
   return items
-    .filter((i) => i.type === "component" && (i as { component?: unknown }).component === "coordinator-route")
-    .map((i) => i.data as { messageRequestId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
+    .filter((i) => i.type === "data" && (i as { dataType?: unknown }).dataType === "coordinator-route")
+    .map((i) => i.value as { messageRequestId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
     .filter((d) => d?.messageRequestId === messageRequestId)
     .flatMap((d) => (d?.delegates ?? []).filter((x) => x.outcome === "delivered").map((x) => String(x.worker)));
 }

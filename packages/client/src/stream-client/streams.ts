@@ -1,7 +1,7 @@
 /**
  * SSE stream readers for request and session streams.
  *
- * The openers here take a resolved URL and the fetcher of the client that
+ * The openers here take their URL and the fetcher of the client that
  * opens them: `createClient` is their only caller, so every stream goes
  * through the one transport a client holds. `createSSEClientFromResponse` is
  * the pure reader for a stream a POST already returned (inline streaming).
@@ -17,13 +17,6 @@ import type {
 } from "../types";
 import { ClientHttpError } from "../types";
 import { BACKOFF_INITIAL_MS, BACKOFF_MAX_MS, backoffDelay } from "../internal/backoff";
-
-/** Where an opener connects, and through what: the opening client's transport. */
-type StreamTarget = {
-  fetcher: ClientFetch;
-  /** The stream's URL, query included. */
-  url: string;
-};
 
 /** Resume options a request or user stream takes. */
 export type StreamResumeOptions = {
@@ -168,67 +161,171 @@ export function createSSEClientFromResponse(
 }
 
 /**
+ * Connections in a row that deliver no event before a request stream gives up.
+ * Each waits the client's backoff after the one before.
+ */
+const REQUEST_STREAM_MAX_EMPTY_CONNECTIONS = 5;
+
+/** Answers that say the request is not there for this caller: a reconnecting stream ends on them. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/** A request status after which the server sends nothing more on the stream. */
+function endsRequestStream(event: RequestStreamEvent): boolean {
+  return (
+    event.type === "request.completed" ||
+    event.type === "request.incomplete" ||
+    event.type === "request.failed" ||
+    event.type === "request.suspended" ||
+    event.type === "request.interrupted" ||
+    event.type === "request.aborted"
+  );
+}
+
+/**
  * Opens a request stream: parses frames and dispatches typed callbacks.
  * Internal; `request.stream()` is the public way in.
+ *
+ * The server can end the stream before the request ends, with no terminal
+ * status: it cuts off a reader that falls too far behind, and a host can end
+ * a long response. The stream then resumes after the last event it delivered:
+ * at once after a connection that delivered something or carried a heartbeat
+ * (the request was alive), otherwise after the client's backoff, and it gives
+ * up with `onError` after {@link REQUEST_STREAM_MAX_EMPTY_CONNECTIONS}
+ * connections in a row that delivered nothing and carried no heartbeat. An error answer (a 404 for a request that is not there,
+ * say) or a failed connection is reported with `onError` and not retried.
+ *
+ * With `reconnect: true` a failed connection opens again too, without limit,
+ * after the client's backoff (1 s, doubling, at most 30 s; reset once a
+ * connection delivers), resuming after the last event, with nothing reported.
+ * The give-up after empty answers still holds, so a request that already
+ * ended is not followed forever. A 401, 403 or 404 still ends the stream with
+ * `onError`, and `close()` ends it, a pending reconnect included.
  */
 export function openRequestStream(
-  target: StreamTarget,
-  options: RequestSSECallbacks & StreamResumeOptions
+  target: {
+    fetcher: ClientFetch;
+    /** The stream's URL for one connection, resuming after `startingAfter` when given. */
+    url: (startingAfter: number | undefined) => string;
+  },
+  options: RequestSSECallbacks & StreamResumeOptions & { reconnect?: boolean }
 ): RequestStreamHandle {
-  const { fetcher, url } = target;
+  const { fetcher } = target;
   const controller = new AbortController();
   const deduper = createSlidingEventDeduper(
     options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
   );
   let closed = false;
   let lastEventId = options.lastEventId;
+  let startingAfter = options.startingAfter;
+  let ended = false;
+  let emptyConnections = 0;
+  /** Connections in a row that delivered nothing, empty or failed: what the backoff waits on. */
+  let quietConnections = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
-  void consumeSSE({
-    fetcher,
-    url,
-    signal: controller.signal,
-    headers:
-      lastEventId === undefined || options.startingAfter !== undefined
-        ? undefined
-        : {
-            "last-event-id": lastEventId
-          },
-    onFrame: (frame) => {
-      if (closed) {
-        return;
-      }
-
-      if (frame.comment === true) {
-        options.onHeartbeat?.();
-        return;
-      }
-
-      if (frame.id !== undefined) {
-        lastEventId = frame.id;
-      }
-
-      if (frame.data === undefined) {
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(frame.data) as RequestStreamEvent;
-        const key = requestEventKey(parsed);
-        if (deduper.seen(key)) {
+  const connect = async (): Promise<void> => {
+    let delivered = false;
+    // A heartbeat means the server was following a live request on this
+    // connection: a host that caps response length ending it is not an empty
+    // answer, so it does not use up the give-up budget.
+    let alive = false;
+    // A failure the stream opens again after, under `reconnect`, rather than one it reports and stops on.
+    let retrying = false;
+    const failed = await consumeSSE({
+      fetcher,
+      url: target.url(startingAfter),
+      signal: controller.signal,
+      headers:
+        lastEventId === undefined || startingAfter !== undefined
+          ? undefined
+          : {
+              "last-event-id": lastEventId
+            },
+      onFrame: (frame) => {
+        if (closed) {
           return;
         }
 
-        dispatchRequestEvent(parsed, options);
-      } catch (error) {
-        options.onError?.(toError(error, "Unknown SSE client error"));
-      }
-    },
-    onError: (error) => {
-      if (!closed) {
+        if (frame.comment === true) {
+          alive = true;
+          options.onHeartbeat?.();
+          return;
+        }
+
+        if (frame.id !== undefined) {
+          lastEventId = frame.id;
+        }
+
+        if (frame.data === undefined) {
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(frame.data) as RequestStreamEvent;
+          const key = requestEventKey(parsed);
+          if (deduper.seen(key)) {
+            return;
+          }
+
+          // Only an event past the cursor is progress: a connection that
+          // replays what was already delivered counts as delivering nothing.
+          if (startingAfter === undefined || parsed.sequence_number > startingAfter) {
+            delivered = true;
+            startingAfter = parsed.sequence_number;
+          }
+          if (endsRequestStream(parsed)) {
+            ended = true;
+          } else if (
+            parsed.type.startsWith("request.") &&
+            (parsed as { status?: string }).status === "in_progress"
+          ) {
+            // Running again: a continuation's stream replays the earlier
+            // suspension before it, so that status no longer ends the stream.
+            ended = false;
+          }
+          dispatchRequestEvent(parsed, options);
+        } catch (error) {
+          options.onError?.(toError(error, "Unknown SSE client error"));
+        }
+      },
+      onError: (error) => {
+        if (closed) return;
+        if (options.reconnect === true && !STREAM_GONE.has((error as { status?: number }).status ?? 0)) {
+          retrying = true;
+          return;
+        }
         options.onError?.(error);
       }
+    });
+
+    if (closed || ended || (failed && !retrying)) return;
+    if (delivered || alive) {
+      emptyConnections = 0;
+      quietConnections = 0;
+      if (!failed) {
+        void connect();
+        return;
+      }
     }
-  });
+    // Every connection that brought nothing sets the backoff; only an empty answer counts toward giving
+    // up, under `reconnect` too: a settled request resumed past its end answers empty, every time.
+    quietConnections += 1;
+    if (!failed) emptyConnections += 1;
+    if (!failed && emptyConnections >= REQUEST_STREAM_MAX_EMPTY_CONNECTIONS) {
+      options.onError?.(
+        new Error(
+          `Request stream ended ${emptyConnections} times in a row with no event before the request ended`
+        )
+      );
+      return;
+    }
+    timer = setTimeout(() => {
+      timer = undefined;
+      void connect();
+    }, backoffDelay(quietConnections - 1));
+  };
+
+  void connect();
 
   return {
     close: () => {
@@ -237,6 +334,8 @@ export function openRequestStream(
       }
 
       closed = true;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
       deduper.clear();
       controller.abort();
     },
@@ -459,6 +558,7 @@ async function consumeSSEResponse(options: {
   }
 }
 
+/** Reads one GET connection. Resolves `true` when it failed or was aborted, `false` when the body ended. */
 async function consumeSSE(options: {
   fetcher: ClientFetch;
   url: string;
@@ -466,7 +566,7 @@ async function consumeSSE(options: {
   headers?: Record<string, string>;
   onFrame: (frame: Frame) => void;
   onError: (error: Error) => void;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const response = await options.fetcher(options.url, {
       method: "GET",
@@ -489,12 +589,14 @@ async function consumeSSE(options: {
       signal: options.signal,
       onFrame: options.onFrame
     });
+    return false;
   } catch (error) {
     if (isAbortError(error)) {
-      return;
+      return true;
     }
 
     options.onError(toError(error, "Unknown SSE client error"));
+    return true;
   }
 }
 

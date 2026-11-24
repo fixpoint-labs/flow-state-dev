@@ -43,7 +43,6 @@ const flow = defineFlow({
   kind: "result-scenario",
   actions: {
     refuseThenHookFails: {
-      inputSchema: taskInput,
       block: handler({ name: "refuse", inputSchema: taskInput, execute: () => refusal }),
       onCompleted: handler({
         name: "notify",
@@ -53,7 +52,6 @@ const flow = defineFlow({
       })
     },
     ask: {
-      inputSchema: taskInput,
       durable: true,
       block: sequencer({ name: "ask-seq", durable: true, inputSchema: taskInput }).step(gate)
     }

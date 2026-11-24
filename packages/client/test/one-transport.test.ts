@@ -71,6 +71,7 @@ describe("one client is one transport", () => {
     await fsd.resources.listCollectionResources("sess_1", "notes");
     await fsd.resources.getResourceManifest("sess_1");
     await fsd.transcribe({ audio: new Uint8Array([1]) });
+    await fsd.upload({ data: new Uint8Array([1]), mediaType: "image/png" });
     const flow = fsd.flow("f");
     await flow.createSession();
     const sent = await flow.send("a", {}, { sessionId: "sess_1" });
@@ -98,6 +99,7 @@ describe("one client is one transport", () => {
       "/api/flows/sessions/sess_1/requests",
       "/api/flows/sessions/sess_1/resources/notes",
       "/api/flows/transcribe",
+      "/api/flows/blobs",
       "/api/flows/f/sessions",
       "/api/flows/f/sess_1/actions/a",
       "/api/flows/f/requests/req_1/status",

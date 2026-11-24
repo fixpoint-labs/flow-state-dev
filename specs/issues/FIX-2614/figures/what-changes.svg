@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Before, on the left: recurring work, written by the roster actions saveSchedule and deleteSchedule and listed by listSchedules on the Scheduled work screen; and subscriptions, written by the subscribe and unsubscribe tools and listed nowhere. After, on the right: one routine with one trigger, a clock or an event, written and read by four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, which are the same on the roster flow's actions and a worker's tools; Shift Manager shows one Routines list; the app's declared routines seed each user's routines through the same writers. Below a fence, unchanged on both sides: the schedule collection and the subscription collection, with subscribe and unsubscribe still the event trigger's only writers."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .seed  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .store { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 5; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="before">
+    <text class="t-lbl" x="24" y="30">BEFORE · TWO NAMES, TWO SURFACES</text>
+    <rect class="gone" x="24" y="44" width="400" height="86" rx="5"/>
+    <text class="t-lbl" x="40" y="64">RECURRING WORK · ROSTER ACTIONS</text>
+    <text class="t-b" x="40" y="86">saveSchedule · deleteSchedule · listSchedules</text>
+    <text class="t-s" x="40" y="106">Shift Manager: Scheduled work</text>
+    <text class="t-x" x="40" y="122">no pause verb; enabled rides on save</text>
+    <rect class="gone" x="24" y="144" width="400" height="86" rx="5"/>
+    <text class="t-lbl" x="40" y="164">SUBSCRIPTIONS · WORKER TOOLS</text>
+    <text class="t-b" x="40" y="186">subscribe · unsubscribe</text>
+    <text class="t-s" x="40" y="206">listed nowhere</text>
+    <text class="t-x" x="40" y="222">only the conversation that made one can end it</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="476" y="30">AFTER · ONE ROUTINE, ONE TRIGGER</text>
+    <rect class="new" x="476" y="44" width="440" height="122" rx="5"/>
+    <text class="t-lbl" x="492" y="64">ROUTINE · CLOCK OR EVENT</text>
+    <text class="t-c" x="492" y="88">listRoutines · saveRoutine</text>
+    <text class="t-c" x="492" y="108">pauseRoutine · deleteRoutine</text>
+    <text class="t-s" x="492" y="130">the same on roster actions and worker tools</text>
+    <text class="t-s" x="492" y="148">Shift Manager: one Routines list, pause and delete</text>
+    <rect class="seed" x="476" y="180" width="440" height="50" rx="5"/>
+    <text class="t-lbl" x="492" y="200">APP CONFIG · routines.declared</text>
+    <text class="t-s" x="492" y="218">seeds each user's routines through the same writers, once</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="24" y1="262" x2="916" y2="262"/>
+    <text class="t-lbl" x="24" y="254">BELOW THE FENCE · UNCHANGED</text>
+  </g>
+
+  <g id="storage">
+    <rect class="store" x="24" y="280" width="420" height="96" rx="5"/>
+    <text class="t-lbl" x="40" y="300">THE CLOCK TRIGGER</text>
+    <text class="t-b" x="40" y="322">workforce/schedules/*</text>
+    <text class="t-s" x="40" y="342">keys, dispatch ids, fired records</text>
+    <text class="t-s" x="40" y="360">the schedule index mirror</text>
+    <rect class="store" x="496" y="280" width="420" height="96" rx="5"/>
+    <text class="t-lbl" x="512" y="300">THE EVENT TRIGGER · A SUBSCRIPTION</text>
+    <text class="t-b" x="512" y="322">workforce/subscriptions/*</text>
+    <text class="t-s" x="512" y="342">written only by subscribe and unsubscribe</text>
+    <text class="t-s" x="512" y="360">cursor, thread index, poll row, delivery</text>
+  </g>
+</svg>

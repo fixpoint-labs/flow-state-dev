@@ -2,7 +2,7 @@
  * FIX-918 — `getOrCreateTaskCollection({ changeVisibility })`.
  *
  * A task board that runs *inside* a tool-wrapped drain must not leak its
- * per-transition `task-change` component items into the calling generator's
+ * per-transition `task-change` data items into the calling generator's
  * LLM history (potentially O(tasks × transitions) items per single tool call).
  * The board still needs those items client-side so the live `<Plan />` UI
  * updates. `changeVisibility` lets the caller stamp `{ client: true, history:
@@ -17,7 +17,7 @@ import { getOrCreateTaskCollection } from "../../src/tasks";
 
 interface ChangeItem {
   type?: string;
-  component?: string;
+  dataType?: string;
   itemVisibility?: { client?: boolean; history?: boolean };
 }
 
@@ -51,7 +51,7 @@ describe("getOrCreateTaskCollection — changeVisibility (FIX-918)", () => {
     expect(result.error).toBeNull();
 
     const changes = (result.items as ChangeItem[]).filter(
-      (i) => i.type === "component" && i.component === "task-change",
+      (i) => i.type === "data" && i.dataType === "task-change",
     );
     expect(changes.length).toBeGreaterThan(0);
     for (const item of changes) {
@@ -61,18 +61,34 @@ describe("getOrCreateTaskCollection — changeVisibility (FIX-918)", () => {
     }
   });
 
-  it("does not force history:false by default (backward-compatible)", async () => {
+  it("defaults to client:true, history:false: the live board updates, no model sees the stream", async () => {
     const result = await testBlock(makeBoardMutator(), { input: undefined });
     expect(result.error).toBeNull();
 
     const changes = (result.items as ChangeItem[]).filter(
-      (i) => i.type === "component" && i.component === "task-change",
+      (i) => i.type === "data" && i.dataType === "task-change",
     );
     expect(changes.length).toBeGreaterThan(0);
-    // No explicit override → the emit does not carry a history:false stamp
-    // from this option (default visibility applies).
+    // The board stamps the change stream for the client and not history, so
+    // a board never puts a task change in a model's context.
     for (const item of changes) {
-      expect(item.itemVisibility?.history).not.toBe(false);
+      expect(item.itemVisibility).toEqual({ client: true, history: false });
+    }
+  });
+
+  it("honours an explicit changeVisibility exactly, not the default", async () => {
+    const result = await testBlock(
+      makeBoardMutator({ client: false, history: false }),
+      { input: undefined },
+    );
+    expect(result.error).toBeNull();
+
+    const changes = (result.items as ChangeItem[]).filter(
+      (i) => i.type === "data" && i.dataType === "task-change",
+    );
+    expect(changes.length).toBeGreaterThan(0);
+    for (const item of changes) {
+      expect(item.itemVisibility).toEqual({ client: false, history: false });
     }
   });
 });

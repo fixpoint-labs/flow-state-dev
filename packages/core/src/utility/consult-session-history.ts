@@ -32,8 +32,11 @@ import type { LLMMessage } from "../types/scope";
 /** The default hard cap on the history tokens the consult's generator receives. */
 export const CONSULT_DEFAULT_BUDGET_TOKENS = 24_000;
 // BP-042.
-/** The longest reading the tool hands back. */
-const MAX_READING_CHARS = 8_000;
+/**
+ * The longest reading of earlier conversation handed to a model: the consult
+ * tool's reading here, and a history summary's stored summary.
+ */
+export const MAX_READING_CHARS = 8_000;
 
 /** Where a consult reads: the session, and how the result names it. */
 export type ConsultTarget = { readonly ok: true; readonly sessionId: string; readonly of: unknown } | { readonly ok: false; readonly error: string };

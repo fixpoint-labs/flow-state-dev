@@ -74,14 +74,30 @@ export async function readEveryCollectionPage(
   options: ReadEveryCollectionPageOptions = {}
 ): Promise<CollectionListPage["items"]> {
   const { limit, keepReading } = options;
-  const rows: CollectionListPage["items"] = [];
+  return followEveryPage(
+    (cursor) =>
+      source.listCollectionResources(sessionId, ref, {
+        ...(limit === undefined ? {} : { limit }),
+        ...(cursor === undefined ? {} : { cursor })
+      }),
+    keepReading
+  );
+}
+
+/**
+ * The cursor loop under every whole-collection read: `readPage` for each page,
+ * from no cursor to the last, with the page ceiling and the repeated-cursor
+ * stop of {@link readEveryCollectionPage}.
+ */
+export async function followEveryPage<TEntry>(
+  readPage: (cursor: string | undefined) => Promise<{ items: readonly TEntry[]; nextCursor?: string }>,
+  keepReading?: () => boolean
+): Promise<TEntry[]> {
+  const rows: TEntry[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined;
   for (let pagesRead = 0; pagesRead < COLLECTION_READ_MAX_PAGES; ) {
-    const page = await source.listCollectionResources(sessionId, ref, {
-      ...(limit === undefined ? {} : { limit }),
-      ...(cursor === undefined ? {} : { cursor })
-    });
+    const page = await readPage(cursor);
     pagesRead += 1;
     rows.push(...page.items);
     if (keepReading !== undefined && !keepReading()) return rows;

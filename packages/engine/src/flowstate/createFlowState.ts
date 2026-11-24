@@ -17,7 +17,7 @@ import {
   type FlowStateSettings
 } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
-import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
+import { createFlowRegistry, registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import {
   createFlowApiRouter,
   disposeFlowApiRouter,
@@ -32,12 +32,14 @@ import {
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import { warnOnce } from "@flow-state-dev/core/internal";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { inMemoryStores } from "../stores";
 import { resolveProfileStores } from "./resolve-slots";
+import { installKits, planKits, type KitPlan } from "./kits";
 import type { FlowRunner } from "../transports/runner";
 import { refuseRetiredDispatcherOption } from "../transports/runner";
 import {
@@ -45,6 +47,7 @@ import {
   type DispatchOperation,
   type DispatchedRun
 } from "../context/dispatch-operation";
+import { createServiceRouteOperation } from "../durability/owner-runs";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
@@ -65,13 +68,24 @@ import {
   type ConcurrencyArbiter
 } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import { InMemoryLeaseStore } from "../stores/memory/lease-store";
+import { FilesystemLeaseStore } from "../stores/filesystem/lease-store";
+import { createLocalScheduler, type LocalScheduler } from "../execution/local-scheduler";
+import {
+  declaresTickedSchedules,
+  runScheduleTick,
+  scheduleDispatchRequest,
+  type ScheduleDispatch,
+  type ScheduleTickReport
+} from "../execution/schedule-tick";
 import type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
   FlowStateRuntime,
-  WorkerHandle,
-  WorkerMode
+  ProcessingHandle,
+  JobQueueMode,
+  ScheduleTicker
 } from "./types";
 
 /**
@@ -82,6 +96,9 @@ import type {
  * work is slow. High enough that legitimate nesting never hits it.
  */
 const MAX_DETACHED_DRAIN_ROUNDS = 32;
+
+/** Every `JobQueueAdapter.mode` `createFlowState` accepts. */
+const JOB_QUEUE_MODES: readonly JobQueueMode[] = ["colocated", "enqueue-only", "process-only"];
 
 /** How many outstanding children the truncation warning names before eliding. */
 const MAX_NAMED_TRUNCATED_CHILDREN = 5;
@@ -171,7 +188,7 @@ function resolveDispatchDrainTimeout(configured: number | undefined): number {
  * open", which inverted the whole mechanism: a child that never settles usually
  * owns no referenced handle either, an awaited promise keeps nothing alive on
  * its own, so Node drained the loop and exited *immediately* — before the
- * timeout fired, before the truncation was reported, and before the worker and
+ * timeout fired, before the truncation was reported, and before the job processing and
  * store adapters were closed. The budget existed and was never reached.
  *
  * Keeping it referenced is safe because every exit from this function goes
@@ -255,6 +272,8 @@ class InternalFlowState<TSettings extends object>
   /** No `stores` was given: the app runs in memory, and startup says so. */
   readonly #inMemoryByOmission: boolean;
   readonly #registry: FlowRegistry;
+  /** What construction settled about `kits`; installed at start-up. */
+  readonly #kitPlan: KitPlan;
   readonly #profileKeys: string[];
   readonly #allAdapters: StoreAdapter[];
   #resolvedProfile: string | undefined;
@@ -266,17 +285,17 @@ class InternalFlowState<TSettings extends object>
    * Whether a router — and therefore a stale-request sweeper — has been asked
    * for. Set by `#init()` BEFORE it awaits the runtime, so
    * `#buildRuntime` can stamp the sweep cadence onto the shared config it is
-   * about to hand `worker.startWorker`. A colocated worker starts consuming the
+   * about to hand `jobQueue.startProcessing`. A colocated job queue starts consuming the
    * moment it is started, and the host a job builds is built once, so a job
    * claimed before that stamp lands would carry `sweeper-not-running` for its
    * whole life — after `ready()` started the very sweeper it was refusing on
    * behalf of.
    */
   #routerRequested = false;
-  /** Runner built by the worker adapter during runtime init. */
-  #workerRunner: FlowRunner | undefined;
-  /** Started worker, closed by dispose() before store adapters. */
-  #workerHandle: WorkerHandle | undefined;
+  /** Runner built by the job queue adapter during runtime init. */
+  #jobQueueRunner: FlowRunner | undefined;
+  /** Started processing side, closed by dispose() before store adapters. */
+  #processingHandle: ProcessingHandle | undefined;
   /**
    * In-process dispatched children still running, drained by `dispose()`.
    *
@@ -315,18 +334,25 @@ class InternalFlowState<TSettings extends object>
    * policy silently not serialising, or a `reject` policy silently admitting.
    * Policy is a property of the flow, not of whichever host took the dispatch.
    *
-   * Built over the worker adapter's `leaseBackend` when it supplies one, so
+   * Built over the job queue adapter's `leaseBackend` when it supplies one, so
    * every process of the deployment lines up on the same keys.
    */
   readonly #arbiter: ConcurrencyArbiter;
+  // FIX-2752.
+  /** The built-in local cron, when `scheduler` is omitted; armed once a router or job processing starts. */
+  readonly #localScheduler: LocalScheduler | undefined;
+  /** The stores the local cron arms on, once this process may tick: a flow registered later arms it too. */
+  #tickStores: StoreRegistry | undefined;
+  /** What `dispose()` stops: the local cron, or an adapter's handle. */
+  readonly #schedulerHandle: { stop(): Promise<void> } | undefined;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
 
     this.#options = options;
     this.#arbiter = createConcurrencyArbiter(
-      options.worker?.leaseBackend !== undefined
+      options.jobQueue?.leaseBackend !== undefined
         ? {
-            backend: options.worker.leaseBackend,
+            backend: options.jobQueue.leaseBackend,
             logger: { warn: (message, context) => this.#logVia("warn", message, context) }
           }
         : {}
@@ -342,10 +368,24 @@ class InternalFlowState<TSettings extends object>
     }
 
     refuseRetiredDispatcherOption(options, "createFlowState");
-    if (options.worker !== undefined && options.runner !== undefined) {
+    // An older config's `worker` key would otherwise be dropped, and its work
+    // run in process instead of on the queue.
+    if ((options as { worker?: unknown }).worker !== undefined) {
       throw new FlowStateConfigError(
-        "createFlowState: `worker` and `runner` are mutually exclusive. " +
-          "The worker adapter provides its own runner; pass one or the other."
+        "createFlowState: the `worker` option is now `jobQueue`. Pass the same adapter as `jobQueue`."
+      );
+    }
+    const jobQueueMode = options.jobQueue?.mode;
+    if (jobQueueMode !== undefined && !JOB_QUEUE_MODES.includes(jobQueueMode)) {
+      throw new FlowStateConfigError(
+        `createFlowState: unknown job queue mode "${String(jobQueueMode)}". ` +
+          `Use one of ${JOB_QUEUE_MODES.map((m) => `"${m}"`).join(", ")}.`
+      );
+    }
+    if (options.jobQueue !== undefined && options.runner !== undefined) {
+      throw new FlowStateConfigError(
+        "createFlowState: `jobQueue` and `runner` are mutually exclusive. " +
+          "The job queue adapter provides its own runner; pass one or the other."
       );
     }
 
@@ -361,12 +401,37 @@ class InternalFlowState<TSettings extends object>
 
     // Build the registry synchronously so a duplicate flow kind/id surfaces
     // at construction rather than on the first request.
+    // The keyed record this option used to take is refused by name: a caller
+    // still passing it (from JavaScript, or through a cast) would otherwise
+    // fail as "not iterable" with nothing saying what changed.
+    if (options.flows !== undefined && !Array.isArray(options.flows)) {
+      throw new FlowStateConfigError(
+        "createFlowState: `flows` is a list of flows, each served under its own id: " +
+          "`flows: [readiness, context]`. The keyed record form was removed."
+      );
+    }
     this.#registry = createFlowRegistry();
-    for (const flow of Object.values(options.flows)) {
+    for (const flow of options.flows ?? []) {
       this.#registry.register(flow);
     }
+    // Kits: ordered, their slots merged and their folders resolved now, so a
+    // list nobody can install throws here. Their folders are read and their
+    // flows registered at start-up (`#buildRuntime`).
+    this.#kitPlan = planKits(options.kits ?? [], options.fill, options.root);
 
     this.#allAdapters = collectAdapters(this.#stores);
+
+    // The schedule tick's one entry point, handed to whichever scheduler runs it.
+    const ticker: ScheduleTicker = { tick: (tickOptions) => this.#tick(tickOptions?.baseUrl, undefined, tickOptions?.secret) };
+    if (options.scheduler === undefined) {
+      this.#localScheduler = createLocalScheduler({
+        tick: (signal) => this.#tick(undefined, signal),
+        logger: this.#deferredLogger
+      });
+      this.#schedulerHandle = this.#localScheduler;
+    } else if (options.scheduler !== false) {
+      this.#schedulerHandle = options.scheduler.start(ticker);
+    }
   }
 
   get activeProfile(): string {
@@ -379,6 +444,7 @@ class InternalFlowState<TSettings extends object>
 
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     this.#registry.register(flow, options);
+    if (this.#tickStores !== undefined) this.#armLocalScheduler(this.#tickStores);
   }
 
   unregister(id: string): boolean {
@@ -391,12 +457,8 @@ class InternalFlowState<TSettings extends object>
       // diagnostic answer to "what does this app serve", and the options map
       // stopped being that the moment `register` existed: a flow registered at
       // runtime would be served and absent from this list, and a flow that was
-      // unregistered would be listed and unreachable. Reading the registry
-      // also changes what the strings ARE — instance ids rather than the
-      // arbitrary keys of the `flows` record — which is the more useful answer
-      // of the two, because an id is what a caller puts on a URL. The two
-      // agree for every flow declared the ordinary way, since `createFlowState`
-      // keys its map by the instance it holds.
+      // unregistered would be listed and unreachable. The strings are
+      // instance ids, which is what a caller puts on a URL.
       flowKeys: this.#registry.list().map((flow) => flow.id),
       profileKeys: this.#profileKeys,
       declaredSlots: declaredSlots(this.#stores),
@@ -429,6 +491,14 @@ class InternalFlowState<TSettings extends object>
     if (this.#disposed) return;
     this.#disposed = true;
 
+    // The schedule tick dispatches through the router and writes the stores:
+    // stop it, and let a running tick settle, before either closes.
+    try {
+      await this.#schedulerHandle?.stop();
+    } catch (err) {
+      console.error("[flowstate] scheduler stop failed", err);
+    }
+
     // Let an in-flight init settle so adapters that opened pools mid-init
     // still get a clean dispose. Either surface (getRuntime / getRouter) can
     // be the one that opened the pools. A failed init is swallowed here —
@@ -453,12 +523,12 @@ class InternalFlowState<TSettings extends object>
     // router (`createServerApp`) is unaffected.
     if (router !== undefined) await disposeFlowApiRouter(router);
 
-    // Detached children first, for the same reason the worker is stopped before
+    // Detached children first, for the same reason job processing is stopped before
     // the stores: they are still writing. See `#drainDetachedChildren`.
     //
     // Guarded, and the guard is not defensive padding: the drain calls a
     // HOST-SUPPLIED `RuntimeLogger`, and a logger that throws would otherwise
-    // reject `dispose()` here — before the worker closes and before a single
+    // reject `dispose()` here — before job processing closes and before a single
     // store adapter is released. Diagnostics must never be able to strand the
     // backend they are describing. Reported through `console.error` for the
     // same reason the give-up report is: the logger is the thing that just
@@ -478,18 +548,18 @@ class InternalFlowState<TSettings extends object>
       await settledWithin(this.#recoverySweep, RECOVERY_SWEEP_DRAIN_MS);
     }
 
-    // Stop the execution backend before the stores close: the worker drains
+    // Stop the execution backend before the stores close: job processing drains
     // in-flight jobs (which write to the stores), then the adapter releases
     // its queue/connections.
     try {
-      await this.#workerHandle?.close();
+      await this.#processingHandle?.close();
     } catch (err) {
-      console.error("[flowstate] worker close failed", err);
+      console.error("[flowstate] job processing close failed", err);
     }
     try {
-      await this.#options.worker?.close?.();
+      await this.#options.jobQueue?.close?.();
     } catch (err) {
-      console.error("[flowstate] worker adapter close failed", err);
+      console.error("[flowstate] job queue adapter close failed", err);
     }
 
     for (const adapter of this.#allAdapters) {
@@ -510,7 +580,7 @@ class InternalFlowState<TSettings extends object>
    * script, a test — outliving the request would mean outliving the process, and
    * that is not on offer. The only two options there are draining and silently
    * truncating, and truncating is how a `fsdev run` of a detached board left its
-   * task row stranded `in_progress` with the child failing on a closed store.
+   * task stranded `in_progress` with the child failing on a closed store.
    * For the tool `AGENTS.md` names as the default way to verify a
    * flow change, that is the worse answer.
    *
@@ -609,7 +679,7 @@ class InternalFlowState<TSettings extends object>
    *
    * Reporting alone was not enough, and the gap was the dangerous kind. The
    * budget expired, the warning printed, and `dispose()` went on to close the
-   * worker and every store adapter — while the child kept running. Two things
+   * job processing and every store adapter — while the child kept running. Two things
    * followed: the process could stay alive well past the timeout it advertised
    * (the run's own heartbeat timer is a referenced handle), and the child went
    * on writing **through disposed adapters**, which is worse than either a hang
@@ -669,7 +739,7 @@ class InternalFlowState<TSettings extends object>
     // child outliving its parent process is the NORMAL case for durable work,
     // not an anomaly to tidy up:
     //
-    // - **The task row** recovers by lease. `isClaimable` admits a row whose
+    // - **The task** recovers by lease. `isClaimable` admits a row whose
     //   lease has lapsed even though its status is `in_progress`, and
     //   `claimDisposition` either re-claims it or settles it `errored` once
     //   `maxAbandonments` is exhausted — inside the atomic claim write. A
@@ -880,7 +950,7 @@ class InternalFlowState<TSettings extends object>
     }
     if (this.#initPromise === null) {
       // Before `#doInit()` is invoked, because it reaches `#buildRuntime` —
-      // and therefore `worker.startWorker` — inside its first await. See
+      // and therefore `jobQueue.startProcessing` — inside its first await. See
       // `#routerRequested`.
       this.#routerRequested = true;
       this.#initPromise = this.#doInit();
@@ -932,16 +1002,23 @@ class InternalFlowState<TSettings extends object>
    * stores or diverge on which `StoreRegistry` they use.
    */
   async #buildRuntime(): Promise<FlowStateRuntime> {
+    // Kits first: a folder with an unused file refuses the app before any
+    // store opens, and every entry point that reaches the runtime gets the
+    // same refusal. Registered here, so `meta.flowKeys` lists a kit's flows
+    // only after start-up.
+    for (const flow of await installKits(this.#kitPlan)) {
+      this.#registry.register(flow);
+    }
     const profileName = this.#resolveProfileName();
     const profile = this.#stores[profileName]!;
     const { stores: resolved } = await resolveProfileStores({ profileName, profile });
     // Every resource write keeps the app's declared indexes in step (FIX-2532
-    // D2). Wrapped here, before the router, the worker or `runtime.stores`
+    // D2). Wrapped here, before the router, the job queue or `runtime.stores`
     // takes the registry, so every handle derived from it writes through the
     // index writer, host code that writes the store directly included.
     const stores = withResourceIndexWriter(resolved, () => this.#registry.indexedCollections());
 
-    // Diagnostic on stderr (like the worker/dispose logs below): stdout is
+    // Diagnostic on stderr (like the job queue/dispose logs below): stdout is
     // reserved for data streams such as `fsdev run`'s NDJSON, which a config
     // load must not corrupt. Once per process per profile (see `firstInProcess`).
     if (firstInProcess(`engine/active-profile/${profileName}`)) {
@@ -974,17 +1051,17 @@ class InternalFlowState<TSettings extends object>
     // verbatim — adding a new forwarded field means one line here, not a
     // per-layer signature change.
     // Durable execution: build the default checkpoint provider from the SAME
-    // resolved stores the router/worker use, so checkpoints, suspensions, and
+    // resolved stores the router and job queue use, so checkpoints, suspensions, and
     // leases all read/write the active profile. On by default wherever those
     // stores persist (FIX-2063 D2); `durable: false` turns it off.
     const durabilityProvider = resolveDurabilityProvider({ stores, durable: this.#options.durable });
 
     // The request-host seam (FIX-999) belongs on the SHARED config, not on the
-    // router's copy of it. This config is handed to `worker.startWorker` below
-    // and to `createFlowApiRouter` in `#doInit`, so a colocated or worker-only
+    // router's copy of it. This config is handed to `jobQueue.startProcessing` below
+    // and to `createFlowApiRouter` in `#doInit`, so a colocated or process-only
     // execution reaches `createExecutionContext` through the same construction
     // inputs an HTTP request does. Stamping it only in the router left every
-    // worker-side `runAction` without the seam, so `requireRequestHost(ctx)`
+    // processing-side `runAction` without the seam, so `requireRequestHost(ctx)`
     // threw there for exactly the reason it used to throw everywhere.
     //
     // The sweeper facts come from `resolveStaleSweep` — the same rule the
@@ -1007,12 +1084,12 @@ class InternalFlowState<TSettings extends object>
     // through `getRuntime()` (`fsdev run`, `fsdev chat`) has nothing sweeping at
     // all. Stamping unconditionally advertised a sweeper that does not exist,
     // and the gate's third arm — the one that refuses precisely because an
-    // unswept shared registry reports a crashed worker as live forever — was
+    // unswept shared registry reports a crashed process as live forever — was
     // then satisfied by a number rather than by a fact.
     //
     // `#routerRequested` is what separates the two cases, and it has to be read
-    // HERE rather than after this method returns: `worker.startWorker` is called
-    // a few lines below with this very config, a colocated worker begins
+    // HERE rather than after this method returns: `jobQueue.startProcessing` is called
+    // a few lines below with this very config, a colocated job queue begins
     // consuming immediately, and the request host a job builds is built once. A
     // cadence recorded after this method returns therefore arrives too late for
     // every job claimed on the way up — each one carrying `sweeper-not-running`
@@ -1035,6 +1112,7 @@ class InternalFlowState<TSettings extends object>
       maxDebtAgeMs: this.#options.maxDebtAgeMs,
       waitDeadlines: this.#options.waitDeadlines,
       userDeadlineMs: this.#options.userDeadlineMs,
+      noticeIds: this.#options.noticeIds,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
@@ -1043,17 +1121,21 @@ class InternalFlowState<TSettings extends object>
         staleThresholdMs,
         // The seam's flow lookup, for a cross-flow dispatch address. Stamped
         // here for the same reason `dispatchOperation` is installed below —
-        // this config is the one a colocated worker and the router both copy,
+        // this config is the one a colocated job queue and the router both copy,
         // so wiring it anywhere later leaves one of them unable to resolve a
         // flow the process has plainly registered.
         resolveFlow: (address: string) => this.#registry.get(address),
+        // FIX-2623 D1: once any registered flow declares a view, every
+        // resource write publishes. Read per request: a flow registered
+        // later counts from its first request on.
+        hostHasViews: () => registryHasViews(this.#registry),
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
       }
     });
 
     this.#resolvedRuntimeConfig = runtimeConfig;
 
-    // BEFORE the worker wiring and before any router exists, so every later copy
+    // BEFORE the job queue wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
     this.#installWaitResume(runtimeConfig, stores);
@@ -1069,22 +1151,27 @@ class InternalFlowState<TSettings extends object>
       registry: this.#registry,
       stores,
       runtimeConfig,
+      resolvePrincipal: this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       ...(this.#options.chat !== undefined ? { chat: this.#options.chat } : {})
     };
 
     // Execution-backend wiring: the adapter gets the SAME resolved runtime
-    // the router uses, so the dispatch side and the worker can never
+    // the router uses, so the dispatch side and the processing side can never
     // disagree on stores. A failure here rejects runtime init on purpose —
     // a queue-routed deployment whose queue is unreachable should fail
     // loudly, not limp along half-wired.
-    const worker = this.#options.worker;
-    const workerMode = worker?.mode ?? "colocated";
-    if (worker !== undefined) {
-      if (workerMode !== "worker-only") {
-        this.#workerRunner = worker.createRunner(runtime);
+    const jobQueue = this.#options.jobQueue;
+    const mode = jobQueue?.mode ?? "colocated";
+    if (jobQueue !== undefined) {
+      if (mode !== "process-only") {
+        this.#jobQueueRunner = jobQueue.createRunner(runtime);
       }
-      if (workerMode !== "dispatch-only") {
-        this.#workerHandle = worker.startWorker(runtime);
+      if (mode !== "enqueue-only") {
+        this.#processingHandle = jobQueue.startProcessing(runtime);
+        // A job-queue worker ticks too (FIX-2752 D1): a web tier that can't is covered by its workers.
+        // Only a process-only worker, which builds no router: a colocated process arms when its router
+        // is built, so resolving the runtime alone (`fsdev run`, chat, block) never ticks.
+        if (mode === "process-only") this.#armLocalScheduler(stores);
       }
     }
 
@@ -1094,7 +1181,7 @@ class InternalFlowState<TSettings extends object>
   /**
    * Install the dispatch seam's operation on the shared config, before any fork
    * of `requestHost` exists, because `createFlowApiRouter` rebuilds `requestHost` as a
-   * fresh literal, so anything stamped there lands on a copy a colocated worker
+   * fresh literal, so anything stamped there lands on a copy a colocated job queue
    * never sees.
    *
    * The disposal gate is applied at the instant `dispose()` begins: a
@@ -1104,11 +1191,18 @@ class InternalFlowState<TSettings extends object>
   #installDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
     if (requestHost === undefined) return;
+    // FIX-2630: the seam's service route, over the same host, closed with admission as a dispatch is.
+    requestHost.serviceRoute ??= (route) => {
+      if (this.#disposed) return Promise.resolve({ ok: false, detail: "the runtime is shutting down and is no longer routing work" });
+      return createServiceRouteOperation(this.#hostForRequestHostOperations(runtimeConfig, stores), {
+        onRouting: (routing) => this.#trackDispatchedRun(routing)
+      })(route);
+    };
     if (requestHost.dispatchOperation !== undefined) return;
 
     let operation: DispatchOperation | undefined;
-    // Read per request: the worker's runner is wired after this.
-    requestHost.dispatchRunsHere ??= () => isInProcessRunner(this.#options.runner ?? this.#workerRunner);
+    // Read per request: the job queue's runner is wired after this.
+    requestHost.dispatchRunsHere ??= () => isInProcessRunner(this.#options.runner ?? this.#jobQueueRunner);
     requestHost.dispatchOperation = (spec) => {
       if (this.#disposed) {
         return Promise.resolve({
@@ -1151,8 +1245,8 @@ class InternalFlowState<TSettings extends object>
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
-      continueRequest: (options) =>
-        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+      continueRequest: continueWithoutReader((options) =>
+        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
     });
     if (requestHost.waitResume !== undefined) return;
 
@@ -1170,8 +1264,8 @@ class InternalFlowState<TSettings extends object>
       operation ??= createWaitResumeOperation({
         provider,
         stores,
-        continueRequest: (options) =>
-          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+        continueRequest: continueWithoutReader((options) =>
+          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
       });
       return operation(input);
     };
@@ -1181,9 +1275,9 @@ class InternalFlowState<TSettings extends object>
    * The host the request-host operations dispatch through, built on first use
    * and shared between the detached start and the dispatch seam.
    *
-   * Built lazily so everything it reads — the worker's runner, the shared
+   * Built lazily so everything it reads — the job queue's runner, the shared
    * arbiter — is resolved by the time it runs, rather than captured at a moment
-   * when the worker adapter has not been consulted yet.
+   * when the job queue adapter has not been consulted yet.
    *
    * Shared rather than one per operation because a second host in this process
    * would be a second place the same questions get answered — which runner
@@ -1204,7 +1298,7 @@ class InternalFlowState<TSettings extends object>
       resolvePrincipal:
         this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       runtimeConfig,
-      runner: this.#options.runner ?? this.#workerRunner,
+      runner: this.#options.runner ?? this.#jobQueueRunner,
       // One arbiter across every host in the process — see `#arbiter`.
       arbiter: this.#arbiter
     });
@@ -1217,7 +1311,7 @@ class InternalFlowState<TSettings extends object>
    * runner.
    */
   #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
-    const runner = this.#options.runner ?? this.#workerRunner;
+    const runner = this.#options.runner ?? this.#jobQueueRunner;
     const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
     const runsHere = isInProcessRunner(runner);
     return createDispatchOperation({
@@ -1244,8 +1338,99 @@ class InternalFlowState<TSettings extends object>
       .finally(() => this.#dispatchedRuns.delete(child));
   }
 
+  // FIX-2752.
+  /**
+   * The schedule tick: fire what is due across every registered flow. Over the
+   * network to `baseUrl` when given (each fire its own request to this
+   * deployment), else through this app's own router, which it builds when no
+   * one has. Bears `secretOverride` when the adapter passes one, else
+   * `CRON_SECRET` when the environment sets it, as a host's cron would.
+   */
+  async #tick(
+    baseUrl: string | undefined,
+    signal: AbortSignal | undefined,
+    secretOverride?: string
+  ): Promise<ScheduleTickReport> {
+    const runtime = await this.#runtime();
+    const secret = secretOverride ?? process.env.CRON_SECRET;
+    let send: (fire: ScheduleDispatch) => Promise<number>;
+    if (baseUrl !== undefined) {
+      send = async (fire) => {
+        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret });
+        const response = await fetch(url, init);
+        await response.body?.cancel();
+        return response.status;
+      };
+    } else {
+      const router = await this.#init();
+      send = async (fire) => {
+        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret });
+        const response = await router.POST(new Request(url, init), { params: { path } });
+        await response.body?.cancel();
+        return response.status;
+      };
+    }
+    return runScheduleTick({
+      flows: runtime.registry.list(),
+      resourceState: runtime.stores.resourceState,
+      dispatch: send,
+      ...(signal !== undefined ? { signal } : {}),
+      logger: this.#deferredLogger
+    });
+  }
+
+  // FIX-2752.
+  /**
+   * A `process-only` job-queue process's router has no runner: the router is
+   * typically never served there, and its jobs arrive from the queue. When it
+   * ticks schedules, a fire it claims dispatches through that router, so it is
+   * given the queue's runner: a fire is enqueued as an action is on this
+   * deployment, keeping the queue's retries and surviving a worker crash.
+   */
+  #tickRunner(runtime: FlowStateRuntime): FlowRunner | undefined {
+    const jobQueue = this.#options.jobQueue;
+    if (jobQueue === undefined || jobQueue.mode !== "process-only" || this.#options.scheduler === false) return undefined;
+    if (!this.#registry.list().some(declaresTickedSchedules)) return undefined;
+    return jobQueue.createRunner(runtime);
+  }
+
+  /**
+   * Start the local cron, when it is the scheduler and a registered flow
+   * declares a schedule it fires. Called once a router is built or job
+   * processing starts: a process that only resolves the runtime (`fsdev run`)
+   * never ticks. Called again by `register()` once a router or processing is
+   * up, so a scheduled flow registered after start arms it.
+   */
+  #armLocalScheduler(stores: StoreRegistry): void {
+    if (this.#localScheduler === undefined) return;
+    this.#tickStores = stores;
+    if (!this.#registry.list().some(declaresTickedSchedules)) return;
+    // D2: a lease that lives in one process (memory) or can race (filesystem)
+    // cannot keep a second server from ticking too. Warned, not refused: it is
+    // what `fsdev dev` and tests run on.
+    if (
+      process.env.NODE_ENV === "production" &&
+      (stores.leases instanceof InMemoryLeaseStore || stores.leases instanceof FilesystemLeaseStore)
+    ) {
+      warnOnce(
+        "engine/local-cron-unelected-lease",
+        "The local cron fires this app's schedules on in-memory or filesystem stores, whose lease can't keep a " +
+          "second server from firing them too: run one server, or use SQLite or Postgres stores."
+      );
+    }
+    if (process.env.VERCEL !== undefined && process.env.VERCEL.length > 0) {
+      warnOnce(
+        "engine/local-cron-on-vercel",
+        "This app declares schedules and runs on Vercel, where nothing keeps the local cron running between " +
+          "requests. Pass `scheduler: vercelScheduler()` (from `@flow-state-dev/vercel`) to createFlowState and export its `route` as the GET of the route one Vercel Cron entry calls."
+      );
+    }
+    this.#localScheduler.arm(stores.leases);
+  }
+
   async #doInit(): Promise<FlowApiRouter> {
-    const { registry, stores, runtimeConfig } = await this.#runtime();
+    const runtime = await this.#runtime();
+    const { registry, stores, runtimeConfig } = runtime;
 
     // The SECOND of the two places the sweep cadence reaches the shared config,
     // and the one that covers a caller who resolved the runtime first:
@@ -1256,9 +1441,9 @@ class InternalFlowState<TSettings extends object>
     // both sides resolve it from `this.#options` through `resolveStaleSweep`.
     //
     // Mutating the shared object rather than replacing it is what makes the
-    // fact reach the worker at all: `worker.startWorker(runtime)` captured this
+    // fact reach job processing at all: `jobQueue.startProcessing(runtime)` captured this
     // exact reference, and `createExecutionContext` reads the cadence per
-    // request, so the worker's next job sees it.
+    // request, so the next job processed sees it.
     //
     // A host that only ever calls `getRuntime()` never reaches this line and
     // keeps the named refusal (`runtime-only-liveness.test.ts`).
@@ -1267,7 +1452,7 @@ class InternalFlowState<TSettings extends object>
         resolveStaleSweep(this.#options).staleSweepIntervalMs;
     }
 
-    return createFlowApiRouter({
+    const router = createFlowApiRouter({
       registry,
       stores,
       runtimeConfig,
@@ -1280,11 +1465,13 @@ class InternalFlowState<TSettings extends object>
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
-      runner: this.#options.runner ?? this.#workerRunner,
+      runner: this.#options.runner ?? this.#jobQueueRunner ?? this.#tickRunner(runtime),
       // The same arbiter the dispatch operation uses, so one flow-level
       // concurrency policy is enforced once across the process — see `#arbiter`.
       arbiter: this.#arbiter
     });
+    this.#armLocalScheduler(stores);
+    return router;
   }
 }
 

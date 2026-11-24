@@ -8,7 +8,7 @@
  * board's generated `getTask_<board>` or `updateTask_<board>`, which names it
  * `id` ({@link taskIdField}). That covers the framework's task tools and an
  * app's own actions alike, and leaves an app's
- * unrelated `{ id }` action, such as a `deleteProject`, off task rows.
+ * unrelated `{ id }` action, such as a `deleteProject`, off tasks.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
  * are offered only on that board's rows; so is any action whose name ends with

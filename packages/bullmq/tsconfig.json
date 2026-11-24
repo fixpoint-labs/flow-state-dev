@@ -8,7 +8,6 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../core" },
-    { "path": "../engine" },
-    { "path": "../scheduled" }
+    { "path": "../engine" }
   ]
 }

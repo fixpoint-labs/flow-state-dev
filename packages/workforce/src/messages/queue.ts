@@ -12,7 +12,7 @@
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
  * - **in a task's session, an open hold on its task** (`hasOpenHold`): a stop for the user and a question both hold. A question has no
- *   request to wait on, so the message parks bound to the task row, with a
+ *   request to wait on, so the message parks bound to the task, with a
  *   short deadline, and looks again.
  *
  * Every resume looks again. While it waits, the row says so

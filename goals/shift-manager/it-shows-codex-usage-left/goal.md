@@ -2,7 +2,7 @@
 
 **Issue:** FIX-2141
 
-**Outcome:** A person running Shift Manager on their own subscription opens Usage and sees, for Codex, the percent used and reset time of every window Codex reports, with where it came from and how old it is. Anything else that wants those numbers reads them through the one `harnessUsage` query, and gets what the view shows.
+**Outcome:** A person running Shift Manager on their own subscription opens Usage and sees, for Codex, the percent used and reset time of every window Codex reports, with where it came from and how old it is. Anything else that wants those numbers reads them through the one usage view, and gets what the screen shows.
 
 **Input:** DevTeam's tree and `openLab`, served by Shift Manager's command (`lab/fsdev.config.mts`), with a Codex usage reader whose setup the check rewrites before each leg: the real Codex CLI from the pinned `@openai/codex` (0.152.1) over an empty `CODEX_HOME` and one where `codex login --with-api-key` stored a fake key, or `lab/scripted-app-server.mjs`, which answers in the shape the pinned CLI's `generate-ts` publishes. Three people boot with a stored reading: one stamped ten minutes ahead, one three hours old, one two minutes old. Each leg reads as its own person, so no leg reads another's row.
 
@@ -17,7 +17,7 @@
 - **f** (owed by a person): Jake's own ChatGPT sign-in shows the same percents as `codex` `/status` in the same minute. No CI has a sign-in, so until it is run the verdict is *goal met except leg f*, and the signed-in parse is proven against the CLI's published type only.
 
 **Anti-game:**
-- No assertion reads Shift Manager's modules or stubs the query. Rows are read through `harnessUsage` over the Lab's HTTP door, and the view in a browser.
+- No assertion reads Shift Manager's modules or stubs the query. Rows are read through the usage flow's `usage` view over the Lab's HTTP door, a refresh being a Re-check sent to the usage collection, and the screen in a browser.
 - Legs b and c run the real Codex CLI; leg a's answers come from the published protocol shape, not from the reader's expectations.
 - The child count is the scripted app-server's own log of starts, so a reader that skipped the throttle would show there.
 
@@ -44,3 +44,9 @@ The spec names *no vendor call* as where `ignore-age` fails leg e. Ignoring age 
 | 2026-10-23 | same, `GOAL_CONTROL=throttle-ignores-failures` | n/a | FAIL (expected) | **g:one-child**: three looks started 2 Codex processes. |
 | 2026-10-23 | same, `GOAL_CONTROL=key-by-account` | n/a | FAIL (expected) | **h:no-earlier-percent**: two rows, `codex` (`api-key`) and `codex-<hash>` still holding the signed-in windows; a and d fail too, since the view's `codex` row is never written. |
 | 2026-10-23 | claude/project-thread-3x3z3h (FIX-2142, pre-PR) | n/a | PASS (goal met except leg f) | 90 s, rerun over the reworked writer (run windows, `accountAt`); controls re-pointed at its new lines. All five controls fail on their assertions as before. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | PASS | *"legs a, b, c, d, e, g, h PASS in 102 s (leg f owed by a person: goal met except leg f)"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `ignore-age`: *"control ignore-age: failed on d:rolled-over, e:age, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `key-by-account`: *"control key-by-account: failed on h:no-earlier-percent, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `last-write-wins`: *"control last-write-wins: failed on a:leaves-the-stored-one, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `throttle-ignores-failures`: *"control throttle-ignores-failures: failed on g:one-child, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `unavailable-as-zero`: *"control unavailable-as-zero: failed on b:no-percent, c:no-percent, as it must"* |

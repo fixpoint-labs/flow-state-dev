@@ -147,7 +147,7 @@ const onPost = sequencer({ name: "asker-on-post", inputSchema: messageSchema }).
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
- * Build the worker flow `hireWorkforce` registers one copy of, which every `asker`
+ * Build the worker flow the workforce kit registers one copy of, which every `asker`
  * worker runs on: each session names its worker.
  *
  * @param installation The installation whose workers run on it.

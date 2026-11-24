@@ -8,7 +8,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import type { Client } from "@flow-state-dev/client";
-import { toWorker, type LabSnapshot, type Worker } from "../src/lib/reads";
+import { type LabSnapshot } from "../src/lib/reads";
+import type { Worker } from "../src/lib/workers";
+import { toWorker } from "../src/lib/workers";
 import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
 
 type Rule = { number: number; text: string; addedAt: number; sessionId: string | null };
@@ -40,6 +42,7 @@ let roster: () => Promise<unknown[]>;
 
 // One client for the page, as the app's own hook keeps one: a new one per render would read the list again on every render.
 const workforce = {
+  organization: async () => "acme",
   roster: () => roster(),
   // The roster watch, reporting one read.
   watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void (roster() as Promise<never[]>).then(onRoster, options?.onError), () => {}),
@@ -50,6 +53,11 @@ vi.mock("../src/lib/workforce", () => ({
 }));
 
 let fixture: LabSnapshot;
+// FIX-2775: the directory's reads are the fixture's, beside the real roster watch.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixtureReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixtureReads(() => fixture) };
+});
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
   return { ...real, createLabReader: () => ({ read: async () => fixture, readBoard: async () => [], resume: async () => {} }) };

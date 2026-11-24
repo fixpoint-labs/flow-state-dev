@@ -20,6 +20,7 @@ export type {
   InferFlowConfigFromSchema,
   RescueHandlerSpec,
   ResponseEmitterHandle,
+  EmitDataOptions,
   EmitMessageOptions,
   RetryPolicy,
   StateRef,
@@ -45,6 +46,7 @@ export type {
   DispatchSpec,
   DispatchType,
   InternalEntry,
+  InternalServiceRoute,
   SessionTarget,
   TaskBinding,
   TaskDispatchInput,
@@ -83,15 +85,14 @@ export {
 
 export type {
   ActionConfig,
-  ReadConfig,
+  ActionEntry,
+  NormalizedActions,
   TypedEntries,
   ActionCore,
   UserMessageEcho,
   ActionMcpConfig,
   CostEstimator,
   ModelUsageEntry,
-  ClientDataComputeFn,
-  ClientDataContext,
   FlowActionBlock,
   FlowActionInput,
   FlowConfigInput,
@@ -114,10 +115,14 @@ export type {
   RetentionPolicy,
   ScopeResourceConfig,
   SessionConfig,
+  SessionLabel,
+  SessionLabelInput,
   ToolLifecycleEvent,
   ToolsConfig,
   UserConfig
 } from "./flow";
+
+export type { ViewChange, ViewConfig, ViewDefinition, ViewHearing, ViewInput, ViewOutput, ViewElement, ViewRunContext, ViewScope } from "./view";
 
 export type {
   AuthenticationConfig,
@@ -131,6 +136,8 @@ export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./auth";
 
 export type {
   ScheduleConfig,
+  ScheduleDueEntry,
+  ScheduleDueSource,
   ScheduleInputContext,
   ScheduleInputFn,
   ScheduleResolutionContext,
@@ -140,6 +147,9 @@ export type {
 
 export {
   defineScheduleBinding,
+  FIRED_RECORDS_PATTERN,
+  firedRecordCollectionKey,
+  formatScheduleId,
   isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig
@@ -159,13 +169,16 @@ export type { TTSConfig, VoiceConfig } from "./speech";
 
 
 export type {
+  WebhookBindingsConfig,
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
+  WebhookServiceConfig,
+  WebhookServiceRoute,
   WebhookSubscriptionConfig
 } from "./webhooks";
 
-export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
+export { defineWebhookBinding, isWebhookServiceConfig, validateWebhookConfig } from "./webhooks";
 
 export {
   MAX_SUBSCRIPTION_EVENT_TEXT,
@@ -258,12 +271,17 @@ export type {
   ResourceRef,
   ResourceRefOptions,
   ResourceRegistry,
+  ResourceCanWrite,
+  ResourceRunBy,
+  ResourceWriteCheck,
   StateOf
 } from "./resource";
 export type { ResourceVisibility, ResourceVisibilityRule, ResourceVisibilityTarget } from "./resource-visibility";
 
 export type {
+  CollectionCanWrite,
   CollectionHookContext,
+  CollectionWriteCheck,
   DefinedResourceCollection,
   EvictionPolicy,
   ResourceCollectionConfig,
@@ -367,12 +385,20 @@ export type {
   SuspensionRecord,
   SuspensionSkipped,
   SuspensionStatus,
-  SuspendForUserKind
+  SuspendForUserKind,
+  PendingUserSuspension,
+  PendingUserSuspensionCursor,
+  PendingUserSuspensionQuery,
+  SelectedUserSuspension,
+  SuspensionShape
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
+  USER_SUSPENSION_REASONS,
   isUserSuspension,
+  projectUserSuspension,
   suspendForUserKindOf,
+  suspensionShape,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,
@@ -416,3 +442,5 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
+// The history summary's resource, from its leaf module: a browser screen reads it with no blocks.
+export { historySummaryResource } from "../utility/history-summary-resource";

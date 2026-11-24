@@ -112,13 +112,49 @@ export function criteriaOfState(workerId: string, state: Readonly<Record<string,
 }
 
 /** The session-state fields a criteria key can name, by key. A lookup returns only sessions carrying none it didn't name. */
-export const CRITERIA_STATE_KEYS: readonly string[] = [
+const CRITERIA_STATE_KEYS: readonly string[] = [
   WORKER_ID_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
   TASK_ID_STATE_KEY
 ];
+
+// FIX-2725: the one copy of which sessions are a user's conversations with a
+// worker, shared by the workforce client's lookups and the worker sessions view.
+/** The criteria keys a lookup by worker alone names. */
+const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
+
+/**
+ * Whether a session whose state is `state` carries no criteria key but the
+ * ones `named` holds. A session carrying another is a task's, a
+ * conversation's delegate, a workstream's lead, or the project coordinator's
+ * for one project, which only its coordinator's sessions carry.
+ */
+export function carriesOnly(state: Readonly<Record<string, unknown>>, named: ReadonlySet<string>): boolean {
+  return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
+}
+
+type Timed = { readonly updatedAt: number; readonly createdAt: number };
+
+/** Latest activity first. */
+export const byRecent = (a: Timed, b: Timed): number => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt;
+
+/**
+ * A user's conversations with a worker among `sessions` (their top-level
+ * sessions on its flow carrying its id): those carrying no other criteria
+ * key, the default (`defaultId`, the derived address) first and marked, the
+ * rest by latest activity.
+ */
+export function workerConversations<T extends Timed & { readonly id: string; readonly state: Readonly<Record<string, unknown>> }>(
+  sessions: readonly T[],
+  defaultId: string
+): Array<{ session: T; isDefault: boolean }> {
+  return sessions
+    .filter((candidate) => carriesOnly(candidate.state, WORKER_ONLY))
+    .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId) || byRecent(a, b))
+    .map((session) => ({ session, isDefault: session.id === defaultId }));
+}
 
 /** The inputs a derived id is computed from. */
 export type DeriveWorkerSessionIdInput = {

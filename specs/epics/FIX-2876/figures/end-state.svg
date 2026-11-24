@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What&#x27;s in the box. In the box, in orchestration, the harness kit and workforce: one coding flow, the harness kit&#x27;s coder, which Shift Manager runs on; a typed task input that filing and claim check, with harness, model and plan as its run settings, server-owned fields the flow&#x27;s filler writes, never the filer; one order, task then worker then kit default, run at the first claim and frozen on the run record, which work, steer, message, door and resume alike read, with a worker able to lock its harness, a refused harness failing the task and a refused model falling to the harness default by name; a model feed into every harness; Code with as a turn-written session field, codeWith, which the harness kit&#x27;s filler writes into the task at filing. A fence under it: what ran is read from the run, never from the pick. Composed in by the app: its default coder in one place, and its picker. Replaced in one line: Teammates&#x27; Coding harness text line (the lab&#x27;s Coder: line goes with its workers, in FIX-2598), Lead&#x27;s fallback and the client constant, the unread agent-flow harness setting, Shift Manager&#x27;s second harness list. Not built here: harness sessions&#x27; own model pick, the lab&#x27;s model picker (FIX-2598), run settings beyond harness, model and plan, and PR policy as coder-flow options (FIX-2583)."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .comp   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:7 4; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+    .c-pro  { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="in-the-box">
+    <rect class="chosen" x="16" y="16" width="596" height="262" rx="6"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · ORCHESTRATION, THE HARNESS KIT AND WORKFORCE</text>
+    <text class="t-b" x="32" y="60">One coding flow, the harness kit&#x27;s coder</text>
+    <text class="t-s" x="32" y="75">Shift Manager runs on it; coder.mts is deleted (FIX-2877)</text>
+    <text class="t-b" x="32" y="96">Typed task input; run settings are its fields</text>
+    <text class="t-s" x="32" y="111">harness, model, plan: server-owned; the flow&#x27;s filler writes them (FIX-2894, 2878)</text>
+    <text class="t-b" x="32" y="132">One order: task, worker, kit default; workers can lock</text>
+    <text class="t-s" x="32" y="147">frozen per run at first claim; a refused model runs the default</text>
+    <text class="t-b" x="32" y="168">A model feed into every harness&#x27;s model resolver</text>
+    <text class="t-s" x="32" y="183">the one HarnessSessionFeeds already has, on the task path</text>
+    <text class="t-b" x="32" y="204">Code with: a turn-written session field, codeWith</text>
+    <text class="t-s" x="32" y="219">the harness kit&#x27;s filler writes it into the task at filing (FIX-2879)</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="24" y1="292" x2="604" y2="292"/>
+    <text class="t-tag c-gone" x="24" y="310">FENCE · WHAT RAN IS READ FROM THE RUN, NEVER FROM THE PICK</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="comp" x="628" y="16" width="296" height="142" rx="6"/>
+    <text class="t-tag c-acc" x="644" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="644" y="60">Its default coder, in one place</text>
+    <text class="t-s" x="644" y="75">the kit&#x27;s defaultHarness (ER-3)</text>
+    <text class="t-b" x="644" y="96">Its picker, and what it offers</text>
+    <text class="t-s" x="644" y="111">the composer writes turn state</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="lost" x="628" y="172" width="296" height="138" rx="6"/>
+    <text class="t-tag c-lost" x="644" y="194">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="644" y="216">Teammates&#x27; Coding harness: line</text>
+    <text class="t-b" x="644" y="238">Lead&#x27;s fallback, LEAD_FALLBACK_HARNESS</text>
+    <text class="t-b" x="644" y="260">The unread agent-flow harness setting</text>
+    <text class="t-b" x="644" y="282">Shift Manager&#x27;s second harness list</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="input" x="16" y="330" width="908" height="124" rx="6"/>
+    <text class="t-tag c-pro" x="32" y="352">NOT BUILT HERE</text>
+    <text class="t-b" x="32" y="376">Harness sessions&#x27; own model pick</text>
+    <text class="t-s" x="32" y="391">Kitchen Sink&#x27;s harness mode: a session, not a task</text>
+    <text class="t-b" x="32" y="414">The lab&#x27;s model picker</text>
+    <text class="t-s" x="32" y="429">FIX-2598, which consumes this carrier (D3)</text>
+    <text class="t-b" x="482" y="376">Run settings beyond harness, model and plan</text>
+    <text class="t-s" x="482" y="391">the schema has room; nothing else is added</text>
+    <text class="t-b" x="482" y="414">PR policy as coder-flow options</text>
+    <text class="t-s" x="482" y="429">FIX-2583, beside this set</text>
+  </g>
+</svg>

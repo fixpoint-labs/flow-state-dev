@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workforce",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "The worker factory for flow-state-dev: worker records become configured workers.",
   "keywords": [
     "ai",
@@ -34,9 +34,17 @@
       "types": "./dist/browser.d.ts",
       "default": "./src/browser.ts"
     },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./src/react/index.ts"
+    },
     "./loader": {
       "types": "./dist/loader/index.d.ts",
       "default": "./src/loader/index.ts"
+    },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "default": "./src/kit/index.ts"
     },
     "./codegen": {
       "types": "./dist/codegen/index.d.ts",
@@ -45,6 +53,10 @@
     "./fsdev-gen": {
       "types": "./dist/codegen/fsdev-gen.d.ts",
       "default": "./src/codegen/fsdev-gen.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./src/internal.ts"
     }
   },
   "license": "MIT",
@@ -65,9 +77,17 @@
         "types": "./dist/browser.d.ts",
         "default": "./dist/browser.js"
       },
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
       "./loader": {
         "types": "./dist/loader/index.d.ts",
         "default": "./dist/loader/index.js"
+      },
+      "./kit": {
+        "types": "./dist/kit/index.d.ts",
+        "default": "./dist/kit/index.js"
       },
       "./codegen": {
         "types": "./dist/codegen/index.d.ts",
@@ -76,6 +96,10 @@
       "./fsdev-gen": {
         "types": "./dist/codegen/fsdev-gen.d.ts",
         "default": "./dist/codegen/fsdev-gen.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },
@@ -86,19 +110,37 @@
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.24.1"
   },
+  "peerDependencies": {
+    "@flow-state-dev/react": "workspace:*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@flow-state-dev/react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/memory": "workspace:*",
-    "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
     "cron-parser": "^5.5.0",
+    "happy-dom": "^20.12.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "vitest": "^3.2.4"
   },
   "scripts": {

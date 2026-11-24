@@ -2,7 +2,7 @@
  * Reaching a project by its address: which collections its row, its files and
  * its workstream entries live in, and the row itself.
  *
- * A shared project's row is the organization's `projects/<id>`; a private
+ * A shared project's entry is the organization's `projects/<id>`; a private
  * one's is the same key in the caller's own user scope. So a private address
  * names only the caller's own projects: another user's private project is not
  * there to find, and is refused exactly as a project that doesn't exist is.
@@ -32,8 +32,8 @@ import {
 import { ProjectRefusedError } from "./project-refusal";
 import { workstreamsAccessor, type WorkstreamEntry } from "./workstream-collections";
 
-/** The project rows at both visibilities, as one resource map a block spreads into its `resources`. */
-export const PROJECT_ROW_RESOURCES = {
+/** The project entries at both visibilities, as one resource map a block spreads into its `resources`. */
+export const PROJECT_ENTRY_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [PRIVATE_PROJECTS_RESOURCE]: definePrivateProjectsCollection()
 } as const;
@@ -61,7 +61,7 @@ export type ResourcesContext = { readonly resources?: object };
 export type MissingCollection = (accessor: string) => string;
 
 const spreadProjectResources: MissingCollection = (accessor) =>
-  `This block reads projects but does not declare "${accessor}". Spread PROJECT_ROW_RESOURCES and ` +
+  `This block reads projects but does not declare "${accessor}". Spread PROJECT_ENTRY_RESOURCES and ` +
   `PROJECT_FILE_RESOURCES into its \`resources\`.`;
 
 const spreadWorkstreamResources: MissingCollection = (accessor) =>

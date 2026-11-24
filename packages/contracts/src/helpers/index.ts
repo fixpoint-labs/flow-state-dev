@@ -10,7 +10,9 @@ export { camelToKebab, normalizeTagName } from "./string-case";
 export { mapLimit } from "./concurrency";
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
-export { getPatternPrefix } from "./pattern-prefix";
+export { extractBareTopic, getPatternPrefix } from "./pattern-prefix";
+export { isJsonMediaType } from "./json-media-type";
+export { ONE_OFF_SESSION_PREFIX, isOneOffSessionId, oneOffSessionId } from "./one-off-session";
 export {
   assertSetExpectedVersion,
   assertDeleteExpectedVersion,

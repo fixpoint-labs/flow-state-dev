@@ -13,6 +13,7 @@
 export { cursorAgent, type CursorAgentOptions } from "./agent";
 export { createCursorAgentCapability } from "./capability";
 export { CURSOR_PASS } from "./env-pass";
+export { cursorHarness, type CursorHarnessOptions } from "./harness";
 export { listCursorModels, type CursorModelVariant, type ListCursorModelsOptions } from "./model-list";
 export {
   createDefaultResolveCursorClient,
@@ -34,6 +35,7 @@ export {
   type CursorRunUsage,
   type CursorSdkMessage,
   type CursorSendOptions,
+  type CursorUserMessage,
   type CursorWireUsage,
   type ResolveCursorClient,
   type ResolvedCursorClient,

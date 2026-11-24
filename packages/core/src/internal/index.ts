@@ -36,6 +36,13 @@ export type {
   ResumeWaitResult,
   SessionHistory,
   SessionHistoryQuery,
+  SessionList,
+  SessionListQuery,
+  ListedSession,
+  SessionTurn,
+  SessionTurnsQuery,
+  UserSuspensionPage,
+  UserSuspensionsQuery,
   PeerSessionView,
   SettleParentTaskInput,
   SettleParentTaskResult,
@@ -73,6 +80,21 @@ export type {
 export { waitOnRequest } from "../blocks/wait-on-request";
 export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-request";
 
+// FIX-2519.
+/** The harness attachment seam: the request's file reader, under a symbol slot. */
+export { ATTACHMENT_SEAM } from "../types/attachment-seam";
+export type { AttachmentSeam } from "../types/attachment-seam";
+
+// FIX-2522.
+/** The user attachment seam: copies of a turn's files kept in the person's own scope. */
+export {
+  USER_ATTACHMENT_SEAM,
+  UserAttachmentsUnavailableError,
+  discardAttachmentsForUser,
+  keepAttachmentsForUser,
+} from "../types/user-attachment-seam";
+export type { UserAttachmentSeam } from "../types/user-attachment-seam";
+
 /** The dispatch seam: the runtime's dispatch operation, under a symbol slot. */
 export { DISPATCH_SEAM, NoDispatchSeamError, dispatchThroughSeam } from "../types/dispatch";
 export type { DispatchSeam } from "../types/dispatch";
@@ -92,6 +114,7 @@ export {
 export type {
   BackgroundFailure,
   RequestEndHook,
+  RequestEndHookOptions,
   RequestEndSeam,
   RequestEndStatus,
   RequestEndVerdict,
@@ -108,8 +131,8 @@ export { REQUEST_RESUME_SEAM, requestResumeOf } from "../types/request-resume";
 export type { RequestResume } from "../types/request-resume";
 
 /** The board-notice seam: a task board's change reaches the change bus. */
-export { BOARD_NOTICE_SEAM, publishBoardChange } from "../types/board-notice";
-export type { BoardChange, BoardNoticeSeam } from "../types/board-notice";
+export { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, publishBoardChange, publishBoardInsert, recordBoardRead } from "../types/board-notice";
+export type { BoardChange, BoardInsert, BoardNoticeSeam, BoardRead, BoardReadSeam } from "../types/board-notice";
 
 /** The request's side-chain pool: detached work a request drains before it ends. */
 export { getRequestSideChainPool } from "../execution/request-side-chain-pool";
@@ -151,7 +174,7 @@ export { walkBlockGraph } from "../helpers/block-graph";
 export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-status-message";
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";
 export { cacheTokensOf } from "../helpers/cache-tokens";
-export { isFiveFieldCron } from "../types/schedules";
+export { firedRecordKey, isFiveFieldCron, latestScheduledTime, nextScheduledTime } from "../types/schedules";
 /** A once-per-process warning that, unlike `warnOnceDev`, still prints in production. */
 export { warnOnce } from "../helpers/deprecation";
 
@@ -183,10 +206,14 @@ export { assertEvaluatorBlock } from "../blocks/evaluator";
 export { createBindingCache } from "../bindings";
 export { errorDetailsWithCause } from "../errors";
 export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
+// FIX-2894: a delegate's task input, as `listDelegates` shows it to a model.
+export { inlinedJsonSchema } from "../helpers/inlined-json-schema";
 
 /**
  * The change-notice and push-delivery wire the engine and the node host serve,
  * and the manifest-domain guard workforce reads, from `@flow-state-dev/contracts`.
  */
 export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey } from "@flow-state-dev/contracts";
+// FIX-2625: the one cap and union rule for a notice's ids, shared by the engine's fold and the client's merge.
+export { NOTICE_MAX_IDS, noticeIdsOf, noticePartitionOf, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";

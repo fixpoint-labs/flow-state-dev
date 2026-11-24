@@ -21,6 +21,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { JsonObject } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { RequestRecord } from "../stores/types";
 
 /**
@@ -45,6 +46,8 @@ export type InitialRequestRecordInput<TState extends JsonObject = JsonObject> = 
   source?: string;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  /** The person's files, in reference form; recorded only when there are some. */
+  attachments?: FileContent[];
   /** Request-scoped state seed. `{}` for external HTTP dispatch. */
   requestState?: TState;
 };
@@ -85,6 +88,7 @@ export function createInitialRequestRecord<TState extends JsonObject = JsonObjec
     finalizedAtMs: null,
     metadata: input.metadata,
     input: input.input,
+    ...(input.attachments !== undefined && input.attachments.length > 0 ? { attachments: input.attachments } : {}),
     state: (input.requestState ?? {}) as TState,
     version: 0,
     createdAt: ts,

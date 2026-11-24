@@ -1,189 +1,181 @@
+// @vitest-environment happy-dom
 /**
- * What a running task's working line reads, wired: the tool call its run
- * session shows still running, and the plan its harness recorded, read with
- * harness-manager's `readRecordedWork` for the task's own run request. A
- * finished call is no longer "now", and a run that records no plan has none.
+ * What a running task's working line reads, wired through the real client:
+ * the tool call its run is in now, and the plan its harness recorded for the
+ * run the board names now (harness-manager's recorded work view). The session
+ * stream sends an item only once it is finished, so a call that starts while
+ * the view is open is in flight only on the run request's own stream. And a
+ * re-run in the same session is a new request: its plan is the line's from
+ * the moment the board names it. The same reads as the Claude Code-style
+ * lab's copy of `useTaskWork` (`labs/claude-code-style/test/working-read.test.ts`).
  */
-import { describe, expect, it } from "vitest";
-import type { Client, WireNotice } from "@flow-state-dev/client";
-import { createLabAdapter, type WorkingNow } from "../src/adapter";
+import { cleanup, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { createClient, type ClientFetch } from "@flow-state-dev/client";
+import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { AppProvider, useTaskWork } from "../src/app";
+import { codingTask } from "./stub-server";
 
-const tool = (id: string, status: string, command: string) => ({
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+const tool = (id: string, requestId: string, status: string, command: string) => ({
   id,
-  requestId: "req_run",
+  requestId,
   type: "tool_output",
   status,
   ts: 1,
   itemIndex: 0,
   blockName: "Bash",
-  output: null,
+  output: status === "completed" ? "ok" : null,
   toolCall: { callId: id, name: "Bash", arguments: JSON.stringify({ command }), generatorBlock: "claude-code" },
 });
 
-/**
- * A run session holding `items`, and recording a plan when `plan` is given.
- * Its run request's own stream sends `live`, as each item is added.
- */
-function clientWith(items: unknown[], plan?: { title: string; status: string }[], live: unknown[] = [], dropAfter?: number) {
-  const listed: string[] = [];
-  const streamed: string[] = [];
-  const heard: Array<(notice: WireNotice | null) => void> = [];
-  const client = {
-    subscribe: (_topics: unknown, options: { onChange: (notice: WireNotice | null) => void }) => {
-      heard.push(options.onChange);
-      return { close() {} };
+/** An SSE body that sends `frames` and stays open until the caller aborts it, or drops once sent when `drop` is set. */
+function sse(frames: string[], signal: AbortSignal | null | undefined, drop = false) {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(new TextEncoder().encode(frame));
+      if (drop) setTimeout(() => controller.error(new TypeError("network connection lost")), 5);
+      signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
     },
-    flow: (flow: string) => ({
-      request: (requestId: string) => ({
-        // Each event carries its sequence number; a connection resumes after the one it asks for.
-        // With `dropAfter`, the first connection sends that many items, then fails.
-        stream: (callbacks: {
-          startingAfter?: number;
-          onEvent?: (event: { sequence_number: number }) => void;
-          onItemAdded?: (event: { item: unknown }) => void;
-          onError?: (error: Error) => void;
-        }) => {
-          const first = streamed.length === 0;
-          streamed.push(`${flow}/${requestId}${callbacks.startingAfter === undefined ? "" : `@${callbacks.startingAfter}`}`);
-          const after = callbacks.startingAfter ?? 0;
-          const end = first && dropAfter !== undefined ? dropAfter : live.length;
-          queueMicrotask(() => {
-            live.slice(after, end).forEach((item, i) => {
-              callbacks.onEvent?.({ sequence_number: after + i + 1 });
-              callbacks.onItemAdded?.({ item });
-            });
-            if (end < live.length) callbacks.onError?.(new TypeError("network connection lost"));
-          });
-          return { close() {} };
-        },
-      }),
-    }),
-    sessions: {
-      get: async (id: string) => ({ id, flowKind: "coder" }),
-      state: async () => ({ at: 1, sessionCreatedAt: 1, items, pagination: { hasMore: false, nextOffset: items.length } }),
-      stream: () => ({ close() {} }),
-    },
-    resources: {
-      getResourceManifest: async () => ({
-        resources:
-          plan === undefined
-            ? []
-            : [
-                { kind: "collection", pattern: "observed-plan/**", ref: "plan", client: { state: { read: true } } },
-                { kind: "collection", pattern: "observed-plan-list/**", ref: "markers", client: { state: { read: true } } },
-              ],
-      }),
-      listCollectionResources: async (_session: string, ref: string, options: { topicPrefix: string }) => {
-        listed.push(`${ref}:${options.topicPrefix}`);
-        if (ref !== "plan") return { items: [], nextCursor: null };
-        return { items: (plan ?? []).map((row, i) => ({ topic: `${options.topicPrefix}inv/${i}`, clientData: row })), nextCursor: null };
-      },
-    },
-  } as unknown as Client;
-  /** A notice on the run session, as push delivers it. */
-  const notify = (notice: WireNotice) => act(() => heard.forEach((hear) => hear(notice)));
-  return { client, listed, streamed, notify, setPlan: (rows: { title: string; status: string }[]) => (plan = rows) };
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
-/** Lets the reads a notice started settle. */
-const act = async (fire: () => void) => {
-  fire();
-  await new Promise((r) => setTimeout(r, 20));
-};
+const itemAdded = (requestId: string, seq: number, item: unknown) =>
+  `id: ${requestId}:${seq}\nevent: item.added\ndata: ${JSON.stringify({ stream: "request", type: "item.added", requestId, sequence_number: seq, ts: seq, item })}\n\n`;
+
+/**
+ * A host with one run session, `run1`: its stored items, each request's live
+ * stream, and the plan each request recorded, as the recorded work view
+ * answers it. A request in `drops` loses its first connection after that many
+ * items; a later one resumes after the sequence number it asks for.
+ */
+function host(options: { stored: unknown[]; live: Record<string, unknown[]>; plans?: Record<string, string[]>; drops?: Record<string, number> }) {
+  const calls: string[] = [];
+  const connections = new Map<string, number>();
+  const fetcher = (async (url: string, init?: RequestInit) => {
+    const parsed = new URL(url, "http://x");
+    const path = parsed.pathname;
+    calls.push(`${init?.method ?? "GET"} ${path}${parsed.search}`);
+    if (path.endsWith("/views/recordedWork")) {
+      const { requestId } = (JSON.parse(String(init?.body)) as { input: { requestId: string } }).input;
+      const rows = options.plans?.[requestId] ?? [];
+      return json({
+        output: { plan: rows.length === 0 ? null : { rows: rows.map((title, i) => ({ id: `p${i}`, title, status: "in_progress" })), truncated: false }, pullRequests: { rows: [], truncated: false } },
+        topics: [{ scope: "session", id: "run1" }],
+      });
+    }
+    const request = /\/requests\/([^/]+)\/stream$/.exec(path)?.[1];
+    if (request !== undefined) {
+      const opened = (connections.get(request) ?? 0) + 1;
+      connections.set(request, opened);
+      const after = Number(parsed.searchParams.get("starting_after") ?? 0);
+      const drop = opened === 1 ? options.drops?.[request] : undefined;
+      const frames = (options.live[request] ?? []).map((item, i) => itemAdded(request, i + 1, item)).slice(after, drop);
+      return sse(frames, init?.signal, drop !== undefined);
+    }
+    if (path.endsWith("/stream")) return sse([], init?.signal);
+    if (path.endsWith("/state")) {
+      const items = options.stored;
+      return json({ sessionId: "run1", flowKind: "f", at: 1, sessionCreatedAt: 1, clientData: {}, items, pagination: { offset: 0, limit: 200, total: items.length, hasMore: false, nextOffset: items.length } });
+    }
+    if (path.startsWith("/api/flows/sessions/")) return json({ session: { id: path.split("/").at(-1), flowKind: "f", updatedAt: 1, state: {} } });
+    return json({});
+  }) as ClientFetch;
+  const client = createClient({ userId: "u", baseUrl: "", fetcher });
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children);
+  return { client, calls, wrapper };
+}
 
 const until = async (check: () => boolean) => {
-  for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 300 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  if (!check()) throw new Error("condition never held");
 };
 
-describe("a running task's working line, as the adapter reads it", () => {
-  it("reads the call still running and the plan recorded for the task's own run request", async () => {
-    const { client, listed } = clientWith([tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")], [
-      { title: "Fix the ordering", status: "completed" },
-      { title: "Add regression test", status: "in_progress" },
-    ]);
-    let now: WorkingNow = {};
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
-    await until(() => now.inFlight !== undefined && now.plan !== undefined);
-    stop();
-    expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
-    expect(now.plan).toEqual([
-      { title: "Fix the ordering", status: "completed" },
-      { title: "Add regression test", status: "in_progress" },
-    ]);
-    expect(listed.some((read) => read.startsWith("plan:") && read.includes("req_run"))).toBe(true);
-  });
+afterEach(cleanup);
 
-  it("never names a call an earlier, crashed request left half-done in the same session", async () => {
-    // A reused run session: `req_old` crashed mid-call and left its call `in_progress` for good.
-    const crashed = { ...tool("t0", "in_progress", "rm -rf build"), requestId: "req_old" };
-    const { client } = clientWith([crashed, tool("t1", "completed", "ls")]);
-    const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
-    await until(() => seen.length > 0);
-    await new Promise((r) => setTimeout(r, 50));
-    stop();
-    expect(seen.some((now) => now.inFlight !== undefined)).toBe(false);
-  });
+/** A coding task the board names as running in `run1`, as request `requestId`. */
+const running = (requestId: string): CodingBoardTask =>
+  codingTask({ id: "t1", title: "Fix it", status: "in_progress", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: CODER_FLOW });
 
+/** Every work value the hook hands back, in order, deduped by identity. */
+function watch(h: ReturnType<typeof host>, task: CodingBoardTask) {
+  const seen: ReturnType<typeof useTaskWork>[] = [];
+  const hook = renderHook(
+    ({ task }: { task: CodingBoardTask }) => {
+      const work = useTaskWork(task);
+      if (work !== undefined && seen.at(-1) !== work) seen.push(work);
+      return work;
+    },
+    { wrapper: h.wrapper, initialProps: { task } },
+  );
+  return { seen, latest: () => hook.result.current, rerender: (next: CodingBoardTask) => hook.rerender({ task: next }) };
+}
+
+describe("a running task's working line", () => {
   it("names a call that started after the view opened, which only the run request's own stream sends", async () => {
-    // The session stream sends an item once it is finished: stored is the finished `ls` only.
-    const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")]);
-    let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
-    await until(() => now.inFlight !== undefined);
-    stop();
-    expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
-    expect(lab.streamed).toEqual(["coder/req_run"]);
+    // Stored: a finished `ls`. Live on the run's request: `pnpm test`, started and not done.
+    const h = host({ stored: [tool("c1", "q1", "completed", "ls")], live: { q1: [tool("c1", "q1", "completed", "ls"), tool("c2", "q1", "in_progress", "pnpm test")] } });
+    const w = watch(h, running("q1"));
+    await until(() => w.latest()?.working?.inFlight !== undefined);
+    expect(w.latest()?.working?.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
+    expect(h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream"))).toBe(true);
   });
 
   it("reconnects a dropped request stream and resumes it, so a call that starts after the drop still shows", async () => {
-    const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")], 1);
-    let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
-    await until(() => now.inFlight !== undefined);
-    stop();
-    expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
+    // The first connection carries the finished `ls`, then drops; `pnpm test` starts after it.
+    const h = host({ stored: [tool("c1", "q1", "completed", "ls")], live: { q1: [tool("c1", "q1", "completed", "ls"), tool("c2", "q1", "in_progress", "pnpm test")] }, drops: { q1: 1 } });
+    const w = watch(h, running("q1"));
+    await until(() => w.latest()?.working?.inFlight !== undefined);
+    expect(w.latest()?.working?.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
     // The second connection resumes after what the first one heard, rather than replaying it.
-    expect(lab.streamed).toEqual(["coder/req_run", "coder/req_run@1"]);
-  });
-
-  it("has nothing in flight once the feed holds the call's finished copy, whatever the request stream last said", async () => {
-    const lab = clientWith([tool("t2", "completed", "pnpm test")], undefined, [tool("t2", "in_progress", "pnpm test")]);
-    const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
-    await until(() => lab.streamed.length > 0 && seen.length > 0);
-    await new Promise((r) => setTimeout(r, 50));
-    stop();
-    expect(seen.at(-1)?.inFlight).toBeUndefined();
-  });
-
-  it("reads the plan again when the harness writes it, and not on the run's other notices", async () => {
-    const lab = clientWith([tool("t1", "in_progress", "pnpm test")], [{ title: "Fix the ordering", status: "in_progress" }]);
-    let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
-    await until(() => now.plan !== undefined);
-    lab.setPlan([
-      { title: "Fix the ordering", status: "completed" },
-      { title: "Add regression test", status: "in_progress" },
+    expect(h.calls.filter((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream"))).toEqual([
+      "GET /api/flows/coder/requests/q1/stream",
+      "GET /api/flows/coder/requests/q1/stream?starting_after=1",
     ]);
-    // A streamed chunk, or a write to another recorded collection, is not the plan: no read.
-    await lab.notify({ topic: { scope: "session", id: "dsx_run" }, kind: "items" });
-    await lab.notify({ topic: { scope: "session", id: "dsx_run", resource: "observed-file-ops/req_run/inv/src/a.ts" }, kind: "resource" });
-    expect(now.plan?.map((row) => row.title)).toEqual(["Fix the ordering"]);
-    // A write to the plan reads it again, and the line moves to the new step.
-    await lab.notify({ topic: { scope: "session", id: "dsx_run", resource: "observed-plan/conversation/c1/2" }, kind: "resource" });
-    await until(() => now.plan?.length === 2);
-    expect(now.plan?.at(-1)).toEqual({ title: "Add regression test", status: "in_progress" });
-    stop();
   });
 
-  it("has nothing in flight once every call finished, and no plan from a run that records none", async () => {
-    const { client } = clientWith([tool("t1", "completed", "ls")]);
-    const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
-    await until(() => seen.length > 0);
+  it("hands back nothing new for a stream delta that moves neither the work nor the call in flight", async () => {
+    // `pnpm test` starts, then two calls under it finish: the call in flight is still `pnpm test`.
+    const h = host({
+      stored: [tool("c1", "q1", "completed", "ls")],
+      live: { q1: [tool("c2", "q1", "in_progress", "pnpm test"), tool("c3", "q1", "completed", "cat a.ts"), tool("c4", "q1", "completed", "cat b.ts")] },
+    });
+    const w = watch(h, running("q1"));
+    await until(() => w.seen.some((work) => work.working?.inFlight !== undefined));
     await new Promise((r) => setTimeout(r, 50));
-    stop();
-    expect(seen.at(-1)).toEqual({});
+    expect(new Set(w.seen.filter((work) => work.working?.inFlight !== undefined).map((work) => JSON.stringify(work.working)))).toEqual(
+      new Set([JSON.stringify({ inFlight: { tool: "Bash", args: { command: "pnpm test" } } })]),
+    );
+  });
+
+  it("never names a call an earlier, crashed request left half-done in the same session", async () => {
+    // A reused run session: `q0` crashed mid-call and left its call `in_progress` for good. The board names `q1`.
+    const h = host({ stored: [tool("c0", "q0", "in_progress", "rm -rf build"), tool("c1", "q1", "completed", "ls")], live: { q1: [tool("c1", "q1", "completed", "ls")] } });
+    const w = watch(h, running("q1"));
+    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream")) && w.seen.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(w.seen.some((work) => work.working?.inFlight !== undefined)).toBe(false);
+  });
+
+  it("has nothing in flight once the feed holds the call's finished copy", async () => {
+    // The request stream dropped before the call's done arrived; the session stream has the finished copy.
+    const h = host({ stored: [tool("c2", "q1", "completed", "pnpm test")], live: { q1: [tool("c2", "q1", "in_progress", "pnpm test")] } });
+    const w = watch(h, running("q1"));
+    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream")) && w.seen.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(w.latest()?.working?.inFlight).toBeUndefined();
+  });
+
+  it("shows a re-run's plan as soon as the board names the new request in the same session", async () => {
+    // A feed shows nothing until it holds an item: the run has done one thing.
+    const h = host({ stored: [tool("c1", "q1", "completed", "ls")], live: {}, plans: { q1: ["Old run's step"], q2: ["Re-run's step"] } });
+    const w = watch(h, running("q1"));
+    await until(() => w.latest()?.working?.plan?.[0]?.title === "Old run's step");
+    // A re-run in the same session: the board names q2.
+    w.rerender(running("q2"));
+    await until(() => w.latest()?.working?.plan?.[0]?.title === "Re-run's step");
   });
 });

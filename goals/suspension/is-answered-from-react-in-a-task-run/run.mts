@@ -156,7 +156,7 @@ const flow = defineFlow({
 
 // A persisting store, so execution is durable as it is in an app.
 const state = createFlowState({
-  flows: { approvals: flow } as never,
+  flows: [flow] as never,
   stores: { default: { primary: sqliteStores({ filename: join(SCRATCH, `host-${RUN_STAMP}.db`) }) } },
   logger: silentLogger
 } as never);

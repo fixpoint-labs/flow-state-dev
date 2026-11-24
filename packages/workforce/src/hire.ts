@@ -72,14 +72,14 @@ import {
 import { heldPackageProblems, resolveHeldPackages } from "./worker-packages";
 import { recordWorkerDescription } from "./worker-description";
 import { CONTRACT_KEYS, undeclaredSettings, workerFlowProblems } from "./worker-flow-contract";
-import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
+import { isWorkerFlowBuilder, needsProjectRemoved, type WorkerFlowBuilder } from "./workers/worker-flow";
 import { builtInRolesOf, type WorkerRole } from "./worker-roles";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
  * `name` is the worker's display name, for people only: views read it off the
- * worker's rows, and no worker flow is handed it.
+ * worker's entries, and no worker flow is handed it.
  *
  * `resources`, `references` and `packages` join them rather than travelling to
  * the worker flow as settings: each is an instruction to THIS step about what to mint
@@ -121,10 +121,8 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * value for them rides on its `roster()` row. Every other setting stays on
  * the server. Omitted, none shows.
  *
- * `needsProject` says the flow's tasks work in a project's files, as a coding
- * run does: a board refuses a task for one of its workers that is filed with
- * no project to work in, before any row or run exists (`no_project`), so the
- * app can ask for a project first. Omitted, a task files without one.
+ * Whether the flow's tasks need a project, and what else they take, is the
+ * flow's own: its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  */
 export type WorkerFlowEntry =
   | AnyFlowType
@@ -133,7 +131,6 @@ export type WorkerFlowEntry =
       standardOnly?: boolean;
       roles?: readonly WorkerRole[];
       showSettings?: readonly string[];
-      needsProject?: boolean;
     }
   | WorkerFlowBuilder;
 
@@ -143,7 +140,6 @@ export type ResolvedWorkerFlow = {
   standardOnly: boolean;
   roles: readonly WorkerRole[];
   showSettings: readonly string[];
-  needsProject: boolean;
 };
 
 /**
@@ -162,6 +158,8 @@ export function resolveWorkerFlows(
   const all: Record<string, WorkerFlowEntry> = { [AGENT_FLOW]: builtInAgentWorkerFlow, ...workerFlows };
   const resolved: Record<string, ResolvedWorkerFlow> = {};
   for (const [name, entry] of Object.entries(all)) {
+    // FIX-2894; BP-030: a removed option is refused by name, never ignored.
+    if (typeof entry === "object" && entry !== null && Object.hasOwn(entry, "needsProject")) throw needsProjectRemoved(`Worker flow "${name}"`);
     if (isWorkerFlowBuilder(entry)) {
       throw new Error(
         `Worker flow "${name}" is a workerFlow(...) builder, which is built on an installation: ` +
@@ -170,13 +168,12 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [], needsProject: false }
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [] }
         : {
             flow: entry.flow,
             standardOnly: entry.standardOnly === true,
             roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [],
-            showSettings: [...(entry.showSettings ?? [])],
-            needsProject: entry.needsProject === true
+            showSettings: [...(entry.showSettings ?? [])]
           };
   }
   return resolved;

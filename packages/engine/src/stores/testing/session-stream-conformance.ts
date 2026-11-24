@@ -262,7 +262,7 @@ async function act(
   const res = await router.POST(
     new Request(`http://localhost/api/flows/${kind}/${sessionId}/actions/${action}`, {
       method: "POST",
-      headers: opts.headers ?? {},
+      headers: { "content-type": "application/json", ...opts.headers },
       body: JSON.stringify({ userId: "alice", input })
     }),
     { params: { path: [kind, sessionId, "actions", action] } }

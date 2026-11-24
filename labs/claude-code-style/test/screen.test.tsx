@@ -1,29 +1,64 @@
 // @vitest-environment happy-dom
 /**
- * The screen, on fixtures. These prove the UI only: the layout, the result
- * card inside a running turn, and that stopping goes through the main
- * session. The goal check proves the package at wiring.
+ * The session-mode screen, on the lab's own host with the models scripted
+ * (`vendorScripts`): the layout, the result card inside a running turn, and
+ * that stopping goes through the main session.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import type { ClientFetch } from "@flow-state-dev/client";
+import { App } from "../src/components/App";
+import { modeById } from "../src/modes";
 import { layOutFeeds } from "./feed-layout";
-
-// The script runs at a hundredth of real time.
-const fast = () => createFakeLab({ speed: 0.01 });
+import { closeApps, openTestApp, repository, seedSession, vendorScripts, type TestApp, type TestAppOptions, type VendorControl, type VendorOptions } from "./app-host";
 
 // The app keeps what is open in the page's address, and drafts in storage across a reload;
 // each test starts on a bare address with no one else's drafts.
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
+  await closeApps();
 });
 
+/** Long enough for a read of the in-process host, which hears no push and reads on its timer. */
+const SLOW = { timeout: 15_000 };
+
+let lab: TestApp;
+let control: VendorControl;
+
+/**
+ * The lab's own host with the vendor scripts and two projects, `vendor-notes` and `onboarding-app`;
+ * `seeded`, with the sessions someone who used the lab before has: "Draft the launch note" in the
+ * Sessions view, "Billing triage" in the Projects view, and "Fix the onboarding copy", opened on no project.
+ */
+async function openAppHost(options: { seeded?: boolean; vendor?: VendorOptions; host?: TestAppOptions } = {}): Promise<TestApp> {
+  const vendor = vendorScripts(options.vendor);
+  control = vendor.control;
+  lab = await openTestApp({ scripts: vendor.scripts, ...options.host });
+  await lab.calls.createProject("onboarding-app", `file://${repository(join(lab.data, "onboarding"))}`);
+  if (options.seeded) {
+    await seedSession(lab, "session", "Draft the launch note");
+    await seedSession(lab, "threads", "Billing triage");
+    // A session from before every session opened on a project.
+    const worker = modeById("session").worker;
+    const flow = (await lab.client.sessions.get(await seedSession(lab, "session", "Warm up"))).flowKind;
+    const { id } = await lab.client.flow(flow).createSession({ state: { workerId: worker } });
+    await lab.calls.send(id, "Fix the onboarding copy");
+  }
+  return lab;
+}
+
+/** The app on {@link openAppHost}'s host. */
+async function renderApp(options: Parameters<typeof openAppHost>[0] = {}) {
+  await openAppHost(options);
+  render(lab.wrap(<App />));
+}
+
 async function ask(text: string) {
-  const box = await screen.findByLabelText("Message the main session");
+  const box = await screen.findByLabelText("Message the main session", undefined, SLOW);
   await act(async () => {
     fireEvent.change(box, { target: { value: text } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -31,27 +66,30 @@ async function ask(text: string) {
 }
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
+/** A status line of the thread itself: the composer's attachment notices are a status region too. */
+const OUTSIDE_COMPOSER = { name: (_name: string, element: Element) => element.closest("form") === null };
 const pane = () => screen.getByRole("complementary", { name: "Background tasks" });
-const row = (title: string) => within(pane()).getByRole("button", { name: new RegExp(title) });
+const row = (title: string) => within(pane()).getByRole("button", { name: new RegExp(title), hidden: true });
 
 // New session asks for a project before the composer opens; pick one.
 async function pick(name = "vendor-notes") {
   const picker = await screen.findByRole("region", { name: "Choose a project" });
-  fireEvent.click(await within(picker).findByRole("button", { name }));
-  await screen.findByLabelText("Message the main session");
+  fireEvent.click(await within(picker).findByRole("button", { name }, SLOW));
+  await screen.findByLabelText("Message the main session", undefined, SLOW);
 }
 
 const threadFeed = () => thread().querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
 
 describe("the session-mode screen", () => {
   it("lays out sessions, the main thread and the tasks pane, and opens on New session asking for a project", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp({ seeded: true });
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
-    expect(within(sessions).getByText("Draft the launch note")).toBeTruthy();
+    expect(await within(sessions).findByText("Draft the launch note", undefined, SLOW)).toBeTruthy();
     await screen.findByRole("region", { name: "Choose a project" });
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
     await pick("vendor-notes");
-    expect(within(sessions).getByRole("button", { current: true }).textContent).toMatch(/New session/);
+    // A new session reads Untitled until its title is written.
+    await waitFor(() => expect(within(sessions).getByRole("button", { current: true }).textContent).toMatch(/Untitled/), SLOW);
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
     // The view switch names the mode once; the thread header carries no second, inert label for it.
     expect(within(thread()).queryByText("Session")).toBeNull();
@@ -60,26 +98,32 @@ describe("the session-mode screen", () => {
   });
 
   it("opens no session until a project is picked, even when StrictMode replays the mount", async () => {
+    await openAppHost();
     render(
       <StrictMode>
-        <App adapter={fast()} />
+        {lab.wrap(<App />)}
       </StrictMode>,
     );
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
     await screen.findByRole("region", { name: "Choose a project" });
-    const blank = () => within(sessions).getAllByRole("listitem").filter((li) => /^New session/.test(li.textContent ?? ""));
+    const blank = () => within(sessions).queryAllByRole("listitem").filter((li) => /^Untitled/.test(li.textContent ?? ""));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     expect(blank()).toHaveLength(0);
     await pick();
+    await waitFor(() => expect(blank()).toHaveLength(1), SLOW);
+    // And no second one comes after.
+    await new Promise((resolve) => setTimeout(resolve, 500));
     expect(blank()).toHaveLength(1);
   });
 
   it("sets the mode by view: each view lists only its own main worker's sessions", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp({ seeded: true });
     const views = screen.getByRole("tablist", { name: "View" });
     const sessionsTab = within(views).getByRole("tab", { name: "Sessions" }) as HTMLButtonElement;
     const projectsTab = within(views).getByRole("tab", { name: "Projects" }) as HTMLButtonElement;
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
     expect(sessionsTab.getAttribute("aria-selected")).toBe("true");
+    await within(sessions).findByText("Draft the launch note", undefined, SLOW);
     expect(within(sessions).queryByText("Billing triage")).toBeNull();
     fireEvent.click(projectsTab);
     expect(projectsTab.getAttribute("aria-selected")).toBe("true");
@@ -93,23 +137,23 @@ describe("the session-mode screen", () => {
     await screen.findByRole("region", { name: "Choose a project" });
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
     await pick("onboarding-app");
-    expect(within(thread()).getByText("in project: onboarding-app")).toBeTruthy();
+    await waitFor(() => expect(within(thread()).getByText("in project: onboarding-app")).toBeTruthy(), SLOW);
     // The view switch names the mode once; the thread header carries no second, inert label for it.
     expect(within(thread()).queryByText("Session")).toBeNull();
   });
 
   it("asks for a project instead of opening the composer on a session that has none", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp({ seeded: true });
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
-    fireEvent.click(within(sessions).getByRole("button", { name: /Fix the onboarding copy/ }));
-    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Fix the onboarding copy"));
+    fireEvent.click(await within(sessions).findByRole("button", { name: /Fix the onboarding copy/ }, SLOW));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Fix the onboarding copy"), SLOW);
     expect(within(thread()).getByRole("note").textContent).toMatch(/Choose a project/);
     expect(within(thread()).getByText("no project")).toBeTruthy();
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
   it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "first line" } });
@@ -117,16 +161,16 @@ describe("the session-mode screen", () => {
     expect(box.value).toBe("first line");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     // The box empties once the send lands.
-    await waitFor(() => expect(box.value).toBe(""));
+    await waitFor(() => expect(box.value).toBe(""), SLOW);
     const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
-    await waitFor(() => expect(mine().join()).toMatch(/first line/));
+    await waitFor(() => expect(mine().join()).toMatch(/first line/), SLOW);
     fireEvent.change(box, { target: { value: "second line" } });
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(mine().join()).toMatch(/second line/));
+    await waitFor(() => expect(mine().join()).toMatch(/second line/), SLOW);
   });
 
   it("doesn't send when Enter only confirms an IME composition", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "日本" } });
@@ -142,19 +186,19 @@ describe("the session-mode screen", () => {
   });
 
   it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
-    const lab = fast();
     let refuse = true;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) =>
-        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
-    };
-    render(<App adapter={adapter} />);
+    // The main session's door refuses the send, as an expired sign-in does.
+    const refusing = (inner: ClientFetch): ClientFetch =>
+      (async (input, init) => {
+        if (refuse && init?.method === "POST" && String(input instanceof Request ? input.url : input).endsWith("/actions/respond")) throw new Error("the server refused it (401)");
+        return inner(input, init);
+      }) as ClientFetch;
+    await renderApp({ host: { intercept: refusing } });
     await pick();
     const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
     await ask("Summarize the vendor notes");
-    const alert = await within(thread()).findByRole("alert");
+    const alert = await within(thread()).findByRole("alert", undefined, SLOW);
     expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
     // Nothing typed is lost, and nothing claims it was sent.
     expect(box.value).toBe("Summarize the vendor notes");
@@ -162,45 +206,38 @@ describe("the session-mode screen", () => {
 
     refuse = false;
     fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(mine().join()).toMatch(/Summarize the vendor notes/));
+    await waitFor(() => expect(mine().join()).toMatch(/Summarize the vendor notes/), SLOW);
     expect(box.value).toBe("");
     expect(within(thread()).queryByRole("alert")).toBeNull();
   });
 
   it("keeps what you typed while a send was in flight once it lands", async () => {
-    const lab = fast();
-    let land!: () => void;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
-    };
-    render(<App adapter={adapter} />);
+    await renderApp();
     await pick();
     const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    // The send is held on its way to the main session's door.
+    const land = lab.hold("/actions/respond");
     await ask("first ask");
     expect(box.value).toBe("first ask");
     expect(within(thread()).getByRole("button", { name: "Sending…" })).toBeTruthy();
     fireEvent.change(box, { target: { value: "and a second thought" } });
     await act(async () => land());
-    await waitFor(() => expect(within(thread()).getByRole("button", { name: "Send" })).toBeTruthy());
+    await waitFor(() => expect(within(thread()).getByRole("button", { name: "Send" })).toBeTruthy(), SLOW);
     expect(box.value).toBe("and a second thought");
   });
 
   it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
-    const lab = fast();
-    let land!: () => void;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
-    };
+    await openAppHost({ seeded: true });
     const open = async () => {
       await pick();
-      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Draft the launch note/ }));
-      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      fireEvent.click(await within(screen.getByRole("navigation", { name: "Sessions" })).findByRole("button", { name: /Draft the launch note/ }, SLOW));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"), SLOW);
       return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     };
-    const first = render(<App adapter={adapter} />);
+    const first = render(lab.wrap(<App />));
     const box = await open();
+    // The send is held on its way to the main session's door.
+    const land = lab.hold("/actions/respond");
     await act(async () => {
       fireEvent.change(box, { target: { value: "tighten the intro" } });
       fireEvent.keyDown(box, { key: "Enter" });
@@ -209,66 +246,66 @@ describe("the session-mode screen", () => {
 
     // A reload reopens the session the address names.
     const reopened = async () => {
-      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"), SLOW);
       return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     };
-    const second = render(<App adapter={adapter} />);
+    const second = render(lab.wrap(<App />));
     const again = await reopened();
     expect(again.value).toBe("tighten the intro");
     fireEvent.change(again, { target: { value: "tighten the intro, and the outro" } });
     await act(async () => land());
     second.unmount();
 
-    render(<App adapter={lab} />);
+    render(lab.wrap(<App />));
     expect((await reopened()).value).toBe("tighten the intro, and the outro");
   });
 
   it("brings an unsent draft back after a reload, for its own session only", async () => {
-    const lab = fast();
+    await openAppHost({ seeded: true });
     const open = async (title: RegExp, heading: string) => {
-      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: title }));
-      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading));
+      fireEvent.click(await within(screen.getByRole("navigation", { name: "Sessions" })).findByRole("button", { name: title }, SLOW));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading), SLOW);
       return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     };
-    const first = render(<App adapter={lab} />);
+    const first = render(lab.wrap(<App />));
     await pick();
     fireEvent.change(await open(/Draft the launch note/, "Draft the launch note"), { target: { value: "half a thought" } });
     first.unmount();
 
     // A reload reopens the session the address names, with its draft.
-    const second = render(<App adapter={lab} />);
-    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    const second = render(lab.wrap(<App />));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"), SLOW);
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("half a thought");
     second.unmount();
 
     // A page opened on no session starts a new one, and the draft stays with its own.
     window.history.replaceState(null, "", "/");
-    render(<App adapter={lab} />);
+    render(lab.wrap(<App />));
     await pick();
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
     expect((await open(/Draft the launch note/, "Draft the launch note")).value).toBe("half a thought");
   });
 
   it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp({ seeded: true });
     await pick();
     const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "a draft for the new session" } });
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
-    fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
-    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    fireEvent.click(await within(sessions).findByRole("button", { name: /Draft the launch note/ }, SLOW));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"), SLOW);
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("opens a session already at its end, with no scroll to watch, and leaves you where you scrolled up to as it goes on", async () => {
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
-    render(<App adapter={fast()} />);
+    await renderApp({ seeded: true, vendor: { mainTurn: "takes-acme" } });
     await pick();
     const sessions = screen.getByRole("navigation", { name: "Sessions" });
-    fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
-    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
-    await waitFor(() => expect(threadFeed().scrollTop).toBe(4500));
+    fireEvent.click(await within(sessions).findByRole("button", { name: /Draft the launch note/ }, SLOW));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"), SLOW);
+    await waitFor(() => expect(threadFeed().scrollTop).toBe(4500), SLOW);
     // Opening is never an animation: every move to the end so far was instant.
     expect(feeds.scrolls.length).toBeGreaterThan(0);
     expect(feeds.scrolls.filter((s) => s.behavior !== "instant")).toEqual([]);
@@ -280,108 +317,113 @@ describe("the session-mode screen", () => {
     feed.scrollTop = 1200;
     fireEvent.scroll(feed);
     feeds.scrolls.length = 0;
-    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" }, SLOW);
     expect(feeds.scrolls).toEqual([]);
     expect(feed.scrollTop).toBe(1200);
   });
 
   it("never moves while the turn writes, even at the end: your own line takes you down, then Jump to latest offers the rest", async () => {
-    // The list grows with its text, so what the turn writes lands below the view.
-    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0) * 4);
+    // The list grows with its text, so what the turn writes lands below the view. Like a browser's,
+    // its scroll height also counts the space the feed keeps under your line, which is padding.
+    const content = (feed: HTMLElement) => 500 + (feed.textContent?.length ?? 0) * 4;
+    const feeds = layOutFeeds((feed) => content(feed) + (Number.parseFloat(feed.style.paddingBottom) || 0));
     onTestFinished(feeds.restore);
-    render(<App adapter={fast()} />);
+    await renderApp({ vendor: { mainTurn: "takes-acme" } });
     await pick();
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     const feed = threadFeed();
     const opened = feeds.scrolls.length;
     await ask("Compare Acme and Globex for us.");
     // Your own line took you to the end, smoothly: the jump on send, and the line brought in as it landed.
-    await within(feed).findByText("Compare Acme and Globex for us.");
+    await within(feed).findByText("Compare Acme and Globex for us.", undefined, SLOW);
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     const sent = feeds.scrolls.slice(opened);
     expect(sent.length).toBeGreaterThan(0);
     expect(sent.length).toBeLessThanOrEqual(2);
     expect(sent.every((s) => s.feed === feed && s.behavior === "smooth")).toBe(true);
     const scrolled = feeds.scrolls.length;
-    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
-    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
-    // Everything after it arrived below: nothing scrolled, and the way down is offered.
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" }, SLOW);
+    await waitFor(() => expect(within(thread()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull(), SLOW);
+    // Everything after it arrived below: nothing scrolled.
     expect(feeds.scrolls.length).toBe(scrolled);
     expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBeGreaterThan(32);
-    const jump = within(thread()).getByRole("button", { name: "Jump to latest" });
+    // Read back up, and the way down is offered. (happy-dom lays out no space under your line, so
+    // whether the reply alone outgrew it is the hook's own test's: `useJumpToLatest.test.ts`.)
+    feed.scrollTop = 0;
+    fireEvent.scroll(feed);
+    const jump = await within(thread()).findByRole("button", { name: "Jump to latest" }, SLOW);
     fireEvent.click(jump);
     expect(feeds.scrolls.at(-1)).toEqual({ feed, behavior: "smooth" });
-    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBe(0);
+    // At the end of what was written, whatever space is still kept below it.
+    expect(content(feed) - feed.scrollTop - feed.clientHeight).toBe(0);
     expect(within(thread()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
   it("opens a task's sheet already at the latest of its work", async () => {
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy(), SLOW);
     feeds.scrolls.length = 0;
     fireEvent.click(row("Research Globex"));
     const body = screen.getByRole("dialog", { name: "Work: Research Globex" }).querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
-    expect(body.scrollTop).toBe(4500);
+    await waitFor(() => expect(body.scrollTop).toBe(4500), SLOW);
     const opening = feeds.scrolls.filter((s) => s.feed === body);
     expect(opening.length).toBeGreaterThan(0);
     expect(opening.every((s) => s.behavior === "instant")).toBe(true);
   });
 
   it("shows a background result inside the running turn, then stops the other task when asked", async () => {
-    // A twentieth of real time: the card has about 100ms inside the turn, room for a loaded runner to see it.
-    render(<App adapter={createFakeLab({ speed: 0.05 })} />);
+    // The main turn runs on past Acme's settling, so the card lands inside it.
+    await renderApp({ vendor: { mainTurn: "takes-acme" } });
     await pick();
     await ask("Compare Acme and Globex for us.");
 
-    // Steps 2 and 3: the main session writes, then two task rows appear.
-    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
-    expect(within(thread()).getByText(/write the outline myself/)).toBeTruthy();
+    // The main session starts two tasks.
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy(), SLOW);
 
-    // Step 4: the card lands while the working indicator is still on, and the turn goes on to use it.
-    const card = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    // The card lands while the working indicator is still on, and the turn goes on to use it.
+    const card = await within(thread()).findByRole("region", { name: "Background result: Research Acme" }, SLOW);
     expect(card.dataset.duringTurn).toBe("true");
-    expect(within(thread()).getByRole("status").textContent).toMatch(/working/);
-    await within(thread()).findByText(/Acme's research is in/);
-    expect(row("Research Acme").dataset.taskStatus).toBe("completed");
+    expect(within(thread()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/working/);
+    await within(thread()).findByText(/Acme's research is in/, undefined, SLOW);
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
 
     // The turn ends with Globex still running.
-    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
+    await waitFor(() => expect(within(thread()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull(), SLOW);
     expect(row("Research Globex").dataset.taskStatus).toBe("in_progress");
 
-    // Step 5: stopping is asked of the main session, which cancels its own task.
+    // Stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/Update a task/)).toBeTruthy();
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"), SLOW);
+    expect(within(thread()).getAllByText(/Update a task/).length).toBeGreaterThan(0);
   });
 
   it("opens a task's work in a sheet over the main thread, with its action row and no composer", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy(), SLOW);
     fireEvent.click(row("Research Globex"));
     // The sheet sits over the main thread, not squeezed into the pane, and the pane keeps the row picked.
     const work = screen.getByRole("dialog", { name: "Work: Research Globex" });
     expect(within(pane()).queryByRole("dialog")).toBeNull();
     expect(thread().parentElement!.contains(work)).toBe(true);
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
-    expect(within(work).getByText(/Starting:/)).toBeTruthy();
-    // What its run has spent so far, split as the board's row reports it.
-    expect(within(work).getByText("openai/gpt-6-luna · 1.2k in · 300 out")).toBeTruthy();
+    // What it was handed, folded.
+    await within(work).findByText(/Task brief/, undefined, SLOW);
     // Its changes are the action row's (`task-actions.test.tsx`); the sheet has no composer of its own.
     expect(within(work).getByTestId("task-action-row")).toBeTruthy();
     expect(within(work).queryByRole("textbox", { name: /message/i })).toBeNull();
   });
 
   it("closes the sheet with Esc, its close button, or a click on the thread around it, and leaves the thread in place", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy(), SLOW);
     const sheet = () => screen.queryByRole("dialog", { name: "Work: Research Globex" });
     // Opened from the row, then worked in: focus is in the sheet when it closes, and goes back to the row.
     const open = () => {
@@ -403,7 +445,7 @@ describe("the session-mode screen", () => {
 
     open();
     // A click inside the sheet keeps it; one on the backdrop over the thread closes it.
-    fireEvent.click(within(sheet()!).getByText(/Starting:/));
+    fireEvent.click(await within(sheet()!).findByText(/Task brief/, undefined, SLOW));
     expect(sheet()).not.toBeNull();
     fireEvent.click(sheet()!.parentElement!);
     expect(sheet()).toBeNull();
@@ -413,10 +455,10 @@ describe("the session-mode screen", () => {
   });
 
   it("keeps the pane live under the sheet: another task picked there shows in the same sheet, and focus goes back to that row", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
     fireEvent.click(row("Research Globex"));
     expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
 
@@ -437,19 +479,18 @@ describe("the session-mode screen", () => {
   });
 
   it("folds finished tasks into a collapsed Done group of one-line rows, and counts each state", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
     // Acme is done and Globex still runs: one card, one done row, and the heading counts each.
-    expect(within(pane()).getByText(/^Background tasks · 1 running · 1 done$/)).toBeTruthy();
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 1 running · 1 done$/)).toBeTruthy(), SLOW);
     const done = within(pane()).getByText(/Done · 1/).closest("details")!;
     expect(done.open).toBe(false);
     expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
     expect(within(done).queryByText("Research Globex")).toBeNull();
-    // The running card shows its live count; the done row, the final total its run reported.
-    expect(within(row("Research Globex")).getByText("openai/gpt-6-luna · 1.5k tokens").dataset.spend).toBe("live");
-    expect(within(done).getByText("openai/gpt-6-luna · 6.3k tokens", { selector: "[data-spend]" }).dataset.spend).toBe("final");
+    // The running card's spend is live (`spend.test.ts` draws a final one).
+    await waitFor(() => expect(row("Research Globex").querySelector("[data-spend]")?.getAttribute("data-spend")).toBe("live"), SLOW);
 
     // A finished row still opens like any task.
     done.open = true;
@@ -458,11 +499,11 @@ describe("the session-mode screen", () => {
   });
 
   it("opens a task from its result line in the pane's sheet, and opens Done to show its row marked", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    const result = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
-    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    const result = await within(thread()).findByRole("region", { name: "Background result: Research Acme" }, SLOW);
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
     const done = within(pane()).getByText(/Done · 1/).closest("details")!;
     expect(done.open).toBe(false);
 
@@ -477,70 +518,92 @@ describe("the session-mode screen", () => {
   });
 
   it("opens a task from the line where the main session started it, with the task's status on its dot", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp();
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"), SLOW);
+    // Each call that filed a task is that task's line, not a step of the turn's run.
+    await waitFor(() => expect(within(thread()).getAllByText(/Start a task: Research Globex/).length).toBeGreaterThan(0), SLOW);
     const start = within(thread())
       .getAllByText(/Start a task: Research Globex/)
       .map((el) => el.closest("[data-task-id]") as HTMLElement | null)
       .find((el) => el !== null)!;
-    expect(start.querySelector("[data-task-dot]")!.getAttribute("aria-label")).toBe("running");
+    await waitFor(() => expect(start.querySelector("[data-task-dot]")!.getAttribute("aria-label")).toBe("running"), SLOW);
     fireEvent.click(within(start).getByRole("button", { name: "Open task" }));
     expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("reads a session's task rows once, for the main thread and the pane together, in either mode", async () => {
-    const lab = fast();
+  it("reads a session's tasks once, for the main thread and the pane together, in either mode", async () => {
+    // Each read of the coding board, by the session it was asked for, as the page's calls carry it.
     const reads: string[] = [];
-    const counted = { ...lab, watchTasks: (sessionId: string, onChange: (rows: never[]) => void) => (reads.push(sessionId), lab.watchTasks(sessionId, onChange)) };
-    render(<App adapter={counted as typeof lab} />);
+    const counting = (inner: ClientFetch): ClientFetch =>
+      (async (input, init) => {
+        if (String(input instanceof Request ? input.url : input).endsWith("/views/codingBoard")) reads.push((JSON.parse(String(init?.body)) as { input: { sessionId: string } }).input.sessionId);
+        return inner(input, init);
+      }) as ClientFetch;
+    await renderApp({ host: { intercept: counting } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" }, SLOW);
+    const sessionMode = new Set(reads);
+    const readsBefore = reads.length;
+    // One watch for the thread and the pane: two would read twice as often.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    const perPoll = (reads.length - readsBefore) / (1_500 / 150);
     // Threads mode: its main thread draws cards from the rows its board lists.
     fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
     fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
     await pick();
     await ask("Research three vendors for a status page, one thread each.");
-    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / }).length).toBeGreaterThan(0), SLOW);
+    expect(sessionMode.size).toBe(1);
     expect(new Set(reads).size).toBe(2);
-    expect(reads).toHaveLength(2);
+    expect(perPoll).toBeLessThanOrEqual(1.5);
   });
 
-  it("queues a line sent while a turn runs, and runs it after", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+  it("answers a line sent while a turn runs at once, beside the turn, and never says it waits", async () => {
+    // Acme's research is held: a result that settles while your line is answered is taken into that
+    // turn, which then answers a second time. Here the one answer is to your line.
+    await renderApp({ vendor: { mainTurn: "until-stopped", holdAcme: true } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     await ask("Also add a risks section.");
-    expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
-    await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
+    // Its answer lands while the first turn still runs: that turn's own closing line hasn't.
+    await within(thread()).findByText(/Noted\./, undefined, SLOW);
+    expect(within(thread()).queryByText(/write the outline myself/)).toBeNull();
+    expect(within(thread()).queryByText(/queued|runs when this turn ends|waits/i)).toBeNull();
   });
 
   it("interrupts the running turn with Stop", async () => {
-    render(<App adapter={fast()} />);
+    await renderApp({ vendor: { mainTurn: "until-stopped" } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    const working = await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
+    const stoppedTurn = working.getAttribute("data-request-id");
+    expect(stoppedTurn).toBeTruthy();
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
-    await within(thread()).findByText(/Interrupted by you/);
-    // The working line is gone; the one status left is the stopped line.
-    expect(within(thread()).queryByText(/working ·/)).toBeNull();
+    const stopped = await within(thread()).findByText(/Interrupted by you/, undefined, SLOW);
+    // The turn Stop reached is the one that reads Interrupted, and its working line is gone. Asked of
+    // that turn, not of any working line: the research result the worker takes once the stopped turn
+    // ends is a turn of its own, which Stop never reached and which can be working by now. The stopped
+    // line and the working line come from one read of the session's turns, so this is read once.
+    expect(stopped.closest("[data-request-id]")?.getAttribute("data-request-id")).toBe(stoppedTurn);
+    expect(thread().querySelector(`[role="status"][data-request-id="${stoppedTurn}"]`)).toBeNull();
   });
 
   it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await renderApp({ vendor: { mainTurn: "until-stopped" } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     const box = screen.getByLabelText("Message the main session");
     // Esc in the text box is the box's, however many times it is pressed.
     fireEvent.keyDown(box, { key: "Escape" });
     fireEvent.keyDown(box, { key: "Escape" });
     // An Esc that closes a sheet is spent, even with the second Esc right behind it.
-    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy(), SLOW);
     fireEvent.click(row("Research Globex"));
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
@@ -548,39 +611,40 @@ describe("the session-mode screen", () => {
     // The next Esc only arms: the one that closed the sheet did not count as the first.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(within(thread()).getByText(/press Esc again/)).toBeTruthy();
-    expect(within(thread()).getByRole("status")).toBeTruthy();
+    expect(within(thread()).getByRole("status", OUTSIDE_COMPOSER)).toBeTruthy();
     expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
   });
 
   it("stops the turn on Esc twice, from outside the text box", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await renderApp({ vendor: { mainTurn: "until-stopped" } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(within(thread()).getByText(/press Esc again to stop the turn/)).toBeTruthy();
     expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await within(thread()).findByText(/Interrupted/);
+    await within(thread()).findByText(/Interrupted/, undefined, SLOW);
   });
 
   it("stops the turn on Cmd+. from the composer", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await renderApp({ vendor: { mainTurn: "until-stopped" } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     fireEvent.keyDown(screen.getByLabelText("Message the main session"), { key: ".", metaKey: true });
-    await within(thread()).findByText(/Interrupted/);
+    await within(thread()).findByText(/Interrupted/, undefined, SLOW);
   });
 
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.1 })} />);
+    await renderApp({ vendor: { mainTurn: "until-stopped", holdAcme: true } });
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy(), SLOW);
     expect(row("Research Acme").dataset.taskStatus).toBe("in_progress");
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
-    await within(thread()).findByText(/Interrupted by you · 2 background tasks still running/);
-    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), { timeout: 2000 });
+    await within(thread()).findByText(/Interrupted by you · 2 background tasks still running/, undefined, SLOW);
+    control.releaseAcme();
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
   });
 });

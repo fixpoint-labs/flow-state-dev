@@ -7,7 +7,8 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { createClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
+import type { PrincipalResolutionContext } from "@flow-state-dev/core/types";
 import { intentFreeEnv, refuseIfAnswering, repoPath, sleep, stopProcessGroup } from "../lib/index.mts";
 
 const LAB = repoPath("labs", "teammates");
@@ -37,7 +38,7 @@ export async function startTeammates(
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
-  const child = spawn("npx", ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", app, "--port", String(port), "--no-open"], {
+  const child = spawn("npx", ["tsx", "../../packages/fsdev/bin/fsdev.ts", "dev", "--app", app, "--port", String(port), "--no-open"], {
     cwd: LAB,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -63,6 +64,27 @@ export async function startTeammates(
   stopProcessGroup(child);
   throw new Error(`setup: the lab did not answer on ${origin} within 120s; log tail:\n${log.slice(-2000)}`);
 }
+
+/**
+ * Two signed-in users on one lab: the lab takes every request as its own user,
+ * so a goal with a second one serves a host whose `user` option is
+ * {@link signedInUser}, and calls it through {@link signedInClient}, which says
+ * who is calling the way a session cookie would.
+ */
+const SIGNED_IN = "x-user";
+/** The caller a request names in {@link SIGNED_IN}, for `openTeammates`'s `user`; `undefined` without one. */
+export const signedInUser = (context: PrincipalResolutionContext) => context.request?.headers.get(SIGNED_IN) ?? undefined;
+/** `userId`'s client on the lab at `baseUrl`, signed in as that user. */
+export const signedInClient = (userId: string, baseUrl: string) =>
+  createClient({
+    userId,
+    baseUrl,
+    fetcher: (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set(SIGNED_IN, userId);
+      return fetch(input, { ...init, headers });
+    },
+  });
 
 /** Every item of a session. */
 export async function itemsOf(fsd: Fsd, sessionId: string): Promise<Item[]> {

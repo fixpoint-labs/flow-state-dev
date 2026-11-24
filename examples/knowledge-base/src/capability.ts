@@ -19,7 +19,6 @@
 // session/user resource tiers — v0 is one collection in one scope.
 // ---------------------------------------------------------------------------
 
-import type { z } from "zod";
 import { defineCapability } from "@flow-state-dev/core";
 import { resourceSearchTools, readResourceContentTool } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
@@ -86,7 +85,7 @@ export function createKnowledgeBaseCapability() {
   const capability = defineCapability({
     name: "knowledgeBase" as const,
     resources: { concepts: collection },
-    fns: (ctx) => {
+    fns: (ctx: any) => {
       const ref = () => ctx.resources.concepts as ResourceCollectionRef<ConceptState>;
       return {
         /** All concept IDs (bundle paths), sorted. */
@@ -111,7 +110,7 @@ export function createKnowledgeBaseCapability() {
           await r.edges.add({ from, to, type });
         },
         /** Create a NEW concept (frontmatter state + body). Rejects if the id already exists. */
-        createConcept: async (id: string, state: z.input<typeof conceptStateSchema>, body: string): Promise<void> => {
+        createConcept: async (id: string, state: ConceptState, body: string): Promise<void> => {
           assertSafeConceptId(id);
           const c = ref();
           if (await c.getOptional(id)) {
@@ -155,7 +154,7 @@ export function createKnowledgeBaseCapability() {
     presets: {
       /** Inject the concept listing under <knowledge>. Default-on. */
       index: {
-        context: (_input, ctx) =>
+        context: (_input: any, ctx: any) =>
           formatKnowledgeIndex(ctx.resources.concepts as ResourceCollectionRef<ConceptState>),
       },
       /**

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 940 500">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<!-- Filing -->
+<text class="lb" x="24" y="70">FILED</text>
+<circle class="ink" cx="40" cy="150" r="5"/>
+<line class="ln" x1="45" y1="150" x2="104" y2="150" marker-end="url(#ah)"/>
+<path class="ln-dash" d="M40,155 L40,270 L134,270" marker-end="url(#ah)"/>
+<text class="sub" x="48" y="262">held: true</text>
+
+<!-- Pending -->
+<rect class="solid" x="106" y="128" width="140" height="44"/>
+<text class="c" x="120" y="155">pending</text>
+
+<!-- Held -->
+<rect class="solid" x="136" y="250" width="140" height="40"/>
+<text class="c" x="150" y="275">held</text>
+<line class="ln" x1="176" y1="250" x2="176" y2="174" marker-end="url(#ah)"/>
+<rect class="ground" x="146" y="205" width="60" height="15"/><text class="plate" x="176" y="216" text-anchor="middle">RELEASE</text>
+
+<!-- Claim -->
+<line class="ln" x1="246" y1="150" x2="374" y2="150" marker-end="url(#ah)"/>
+<rect class="hl" x="270" y="132" width="82" height="15"/><text class="plate on-hl" x="276" y="143">01 CLAIM</text>
+<text class="sub" x="254" y="168">deps completed,</text>
+<text class="sub" x="254" y="182">nothing holds it</text>
+
+<!-- In progress -->
+<rect class="solid" x="376" y="128" width="150" height="56"/>
+<text class="c" x="390" y="155">in_progress</text>
+<text class="sub" x="390" y="174">one claim at a time</text>
+
+<!-- Claim runs out: taken again -->
+<path class="ln" d="M420,128 C420,96 482,96 482,124" marker-end="url(#ah)"/>
+<text class="sub" x="388" y="88">claim runs out: taken again</text>
+
+<!-- Throw with attempts left -->
+<path class="ln" d="M451,184 L451,240 L226,240 L226,174" marker-end="url(#ah)"/>
+<rect class="ground" x="258" y="233" width="176" height="15"/><text class="plate" x="264" y="244">THROW, ATTEMPTS LEFT</text>
+
+<!-- Endings -->
+<rect fill="url(#hatch)" x="624" y="56" width="292" height="10"/><line class="thin" x1="624" y1="66.5" x2="916" y2="66.5"/>
+<rect class="solid" x="624" y="56" width="292" height="244"/>
+<text class="lb" x="638" y="88">ENDED · EACH IS FINAL</text>
+
+<rect class="thin" x="638" y="100" width="130" height="34"/><text class="c" x="650" y="122">completed</text>
+<text class="sub" x="776" y="114">its assignee</text><text class="sub" x="776" y="128">returned</text>
+
+<rect class="thin" x="638" y="160" width="130" height="34"/><text class="c" x="650" y="182">errored</text>
+<text class="sub" x="776" y="174">threw, no</text><text class="sub" x="776" y="188">attempts left</text>
+
+<rect class="thin" x="638" y="220" width="130" height="34"/><text class="c" x="650" y="242">cancelled</text>
+<text class="sub" x="776" y="234">cancelled, or a</text><text class="sub" x="776" y="248">dependency ended</text>
+
+<line class="ln" x1="526" y1="142" x2="636" y2="117" marker-end="url(#ah)"/>
+<line class="ln" x1="526" y1="152" x2="636" y2="177" marker-end="url(#ah)"/>
+<line class="ln" x1="526" y1="162" x2="636" y2="235" marker-end="url(#ah)"/>
+<text class="sub" x="638" y="284">a completed task never reopens</text>
+
+<!-- Retry -->
+<path class="ln-dash" d="M624,206 L596,206 L596,326 L116,326 L116,174" marker-end="url(#ah)"/>
+<rect class="ground" x="300" y="319" width="166" height="15"/><text class="plate" x="306" y="330">02 RETRY · SAME TASK</text>
+<text class="sub" x="300" y="350">errored or cancelled only</text>
+
+<!-- Waits -->
+<line class="hi" x1="0" y1="368" x2="940" y2="368"/>
+<text class="lb" x="24" y="396">WAITING · THE STATUS DOESN'T CHANGE</text>
+<text class="n" x="24" y="426">03</text>
+<text class="t" x="56" y="426">On its dependencies. A pending task isn't claimed until every task it depends on has completed.</text>
+<text class="n" x="24" y="452">04</text>
+<text class="t" x="56" y="452">On a person. A question keeps the task where it is, and nothing else claims it while it's open.</text>
+<text class="n" x="24" y="478">05</text>
+<text class="t" x="56" y="478">On an event, such as a pull request merging. The board moves on to other work meanwhile.</text>
+<text class="t" x="24" y="512">01 A claim is held by one assignee. 02 A retry keeps the task's id and what it has done so far.</text>
+</svg>

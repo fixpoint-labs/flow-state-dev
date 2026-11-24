@@ -20,3 +20,5 @@
 | 2026-10-08 | 7e896278 | vercel/openai/gpt-5.4-mini | PASS | held-out swap (another note, user, org, worker `ops.staffing`, hire `weekend-support`): same signals, roster gained `["weekend-support"]` |
 | 2026-10-08 | 7e896278 | vercel/openai/gpt-5.4-mini | FAIL (expected) | mutation, worker `tools: []`: `b:roster-row` (0 rows added) |
 | 2026-10-08 | 7e896278 | vercel/openai/gpt-5.4-mini | FAIL (expected) | mutation, approval step removed: `a:suspends` (the note was written before approval) |
+| 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | PASS | On the workforce kit (the worker written as a folder, the agent with its one-entry catalog a builder in `workerFlows`, the roster the kit's). Leg b's turn now sends `respond`, the agent flow's door: it sent `run`, which the flow no longer defines, and failed the same 500 unconverted on `claude/fix-2627-impl-e`. Model `vercel:openai/gpt-5.4-mini`; both legs passed. |
+| 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | FAIL (expected) | `GOAL_CONTROL=no-as` on the kit: `a:calls-new-name` (the model called `["notes.write"]`), `b:flow-loads` (defineAgentWorkerFlow refused 1 catalog entry). |

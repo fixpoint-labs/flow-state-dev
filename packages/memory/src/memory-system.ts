@@ -110,7 +110,13 @@ export const memorySystemResource = defineResource({
   ref: 'memorySystem',
   scope: 'session',
   stateSchema: memorySystemStateSchema,
-  default: memorySystemStateSchema.parse({}),
+  default: {
+    lastProcessedIndex: -1,
+    readMessages: null,
+    episodicWritesSinceLastConsolidation: 0,
+    evictedPersistentSinceLastConsolidation: 0,
+    lastConsolidationTurn: 0,
+  },
   writable: true,
 })
 

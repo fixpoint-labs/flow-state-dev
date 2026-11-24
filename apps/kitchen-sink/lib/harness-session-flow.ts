@@ -8,7 +8,8 @@
  *   (`lib/harness-worktree.ts`), from the one reader of the host setting
  *   (`lib/harness-workspace.ts`).
  * - **The host's commands** (`readHarnessCommands`): the setup command a fresh
- *   worktree runs, and the checks a finished turn runs (the package's `verify`).
+ *   worktree runs, and the checks a finished turn runs (the package's `verify`),
+ *   which each turn's prompt also names (`inBrief`).
  * - **Its goal controls** (`lib/goal-control.ts`): each swaps one feed for a
  *   broken stand-in, so a goal leg can be seen to fail. Read only in a
  *   test-mode build.
@@ -93,6 +94,8 @@ export interface KitchenSinkHarnessFlowOptions {
    * waits on them (the package's `approveTools`). Off by default.
    */
   readonly approveTools?: boolean;
+  /** What the harness is called, for the error a silent turn ends with. */
+  readonly harnessLabel?: string;
 }
 
 /** A harness mode's session flow. */
@@ -103,8 +106,9 @@ export function kitchenSinkHarnessFlow(options: KitchenSinkHarnessFlowOptions) {
     workspace,
     ...(options.defaultModel === undefined ? {} : { defaultModel: options.defaultModel }),
     ...(options.approveTools === true ? { approveTools: true } : {}),
-    // The host's checks, after a turn the harness finished; the turn notice shows them.
-    ...(checks.length === 0 ? {} : { verify: { commands: [...checks], timeoutMs: HARNESS_CHECKS_TIMEOUT_MS } }),
+    ...(options.harnessLabel === undefined ? {} : { harnessLabel: options.harnessLabel }),
+    // The host's checks, after a turn the harness finished; the turn notice shows them, and each turn's prompt names them.
+    ...(checks.length === 0 ? {} : { verify: { commands: [...checks], timeoutMs: HARNESS_CHECKS_TIMEOUT_MS, inBrief: true } }),
     agent: (feeds) => options.agent(withGoalControls(feeds, options.defaultModel)),
   });
 }

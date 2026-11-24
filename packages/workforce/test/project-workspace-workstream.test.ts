@@ -26,7 +26,7 @@ import {
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "../src/projects/project-address";
+import { PROJECT_ENTRY_RESOURCES, projectResourcesAt } from "../src/projects/project-address";
 import { bootProjectsHost } from "./projects-harness";
 
 const root = mkdtempSync(join(tmpdir(), "project-workspace-workstream-"));
@@ -88,7 +88,7 @@ const takeOffProject = handler({
   name: "take-off-project",
   inputSchema: z.object({ id: z.string(), user: z.string() }),
   outputSchema: z.object({}),
-  resources: { ...PROJECT_ROW_RESOURCES },
+  resources: { ...PROJECT_ENTRY_RESOURCES },
   execute: async (input, ctx) => {
     const row = await projectResourcesAt(ctx, "shared").get(input.id);
     await row.updateState((state) => ({ ...state, members: state.members.filter((member) => member !== input.user) }));
@@ -229,7 +229,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       configSchema: workerConfigSchema(),
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
-      actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+      actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
       internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
     } as never);
   }
@@ -252,7 +252,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       configSchema: workerConfigSchema(),
       session: installation.session(),
       resources: { ...installation.resources },
-      actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+      actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
       task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   }

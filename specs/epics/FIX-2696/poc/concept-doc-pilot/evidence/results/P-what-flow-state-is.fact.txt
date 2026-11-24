@@ -1,0 +1,37 @@
+Checked against the repo's kits code and specs, the page has one wrong claim: the `harnesses` import path. I didn't run any code, and I only read the engine and spec sources the findings cite.
+
+The engine side of kits is already in `packages/` (`createFlowState({ kits, fill, flows })`). The `workforce()`, `harnesses()` and `claudeCode()` factories are not in the code yet. I checked those against the kits specs (FIX-2618, FIX-2626, FIX-2627).
+
+## 1. WRONG
+
+| Claim | Why wrong | Evidence |
+|---|---|---|
+| `import { harnesses } from "@flow-state-dev/harness-manager"` | The harness kit is exported from the `/kit` subpath. The package root keeps `harnessManager`, `goalJudge` and the other existing exports, and imports no workforce. | `specs/issues/FIX-2627/DECISIONS.md:102-104` ("from `@flow-state-dev/harness-manager/kit`… Only that subpath imports workforce"). `specs/issues/FIX-2627/SPEC.md:28` ("importing `@flow-state-dev/harness-manager` pulls in workforce" is a not-done-if). `SPEC.md:117-118` (root stays and imports no workforce). `packages/harness-manager/package.json` has no `./kit` export yet. |
+
+## 2. UNSUPPORTED
+
+| Claim | Where I looked |
+|---|---|
+| "A **starter** is a complete working app in the Flow State repository: pages, a team of workers and a host file… Alice copies one" | No starters folder exists in the repo (`examples/` has `hello-chat`, `knowledge-base` and `guides`), and `fsdev` has no starter command. The FIX-2626 and FIX-2627 specs describe `init` copying starter files into a kit's folder: one team, one worker, no flow file. That is not a whole app with pages and a host file. |
+| Links to `./kits.md` and `./workers.md` (and the shapes of `./flows.md` and `./blocks.md`) | `apps/docs/docs/` has no `kits.md` or `workers.md`. FIX-2627 says a "Kits" page is FIX-2626's. `flows.md` and `blocks.md` exist only under `fundamentals/`. |
+| "Change how a screen looks: the pages in `src/app/`" | No lab or example I checked has a `src/app/` folder. The kits specs don't describe an app page layout. |
+
+## 3. RIGHT: 30 claims
+
+Ten representative ones:
+
+1. `createFlowState` is imported from `@flow-state-dev/engine`: `packages/engine/src/index.ts:25`.
+2. `createFlowState` takes `kits`: `engine/src/flowstate/types.ts:137`.
+3. `flows` is an array, and the keyed record is refused: `types.ts:124`, `createFlowState.ts:372`.
+4. The app config is `fsdev.config.ts` with a default-exported `createFlowState(...)`: `examples/hello-chat/fsdev.config.ts:17`, `packages/fsdev/src/commands/serve.ts:6`.
+5. Kits can be listed in any order and install in `requires` order, so `claudeCode` loads after `harnesses` even when listed first: `engine/src/flowstate/kits.ts:56-85`.
+6. The app fills a slot with `fill`, and a kit may fill only the slot of a kit it requires, so kits meet only through slots: `types.ts:139-145`, `kits.ts:139`.
+7. A stray file in a kit's folder stops the app and names the file: `kits.ts:278-290`, `FIX-2618/DECISIONS.md:140`.
+8. The `workforce({ directory, agent: { model } })`, `harnesses({ workspace })` and `claudeCode()` call shapes match the spec's host diff: `specs/issues/FIX-2627/SPEC.md:67-72`.
+9. A worker lives at `teams/<team>/workers/<name>/WORKER.md`. `name` and `description` are read, and `flow:` defaults to the built-in `"agent"` flow: `workforce/src/loader/read-workforce-directory.ts:4-5`, `workers/standard-workers.ts:42-50`, `agent-worker-flow.ts:120`.
+10. `flow: coder` is a flow the harness kit installs, and `harness: claude-code` is an existing worker setting. `claudeCode()` is a kit filling the `harnesses` slot, imported from the claude-code package root: `FIX-2627/SPEC.md:45`, `DECISIONS.md:107`, `FIX-2458/DECISIONS.md:69`, `labs/claude-code-style/.../coder/WORKER.md:4`.
+
+The other 20 are: kit, slot and flow definitions; no registry or marketplace; sessions belong to one user; the five block kinds; scaffolded files are never auto-updated; and the table rows (add a worker, change the model or fill, add a flow).
+
+TOTALS right=30 wrong=1 unsupported=3
+exit 0

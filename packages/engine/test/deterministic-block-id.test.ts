@@ -61,10 +61,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const flow = defineFlow({
       kind: "retry-flow",
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: flakyHandler
-        }
+        run: flakyHandler
       }
     })();
 
@@ -129,7 +126,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const flow = defineFlow({
       kind: "nested-flow",
       actions: {
-        run: { inputSchema: z.number(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -186,7 +183,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const flow = defineFlow({
       kind: "parallel-flow",
       actions: {
-        run: { inputSchema: z.number(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -248,7 +245,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const flow = defineFlow({
       kind: "rescue-flow",
       actions: {
-        run: { inputSchema: z.number(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -305,7 +302,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const flow = defineFlow({
       kind: "foreach-flow",
       actions: {
-        run: { inputSchema: z.array(z.number()), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -358,7 +355,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
 
     const flow = defineFlow({
       kind: "attempt-flow",
-      actions: { run: { inputSchema: z.number(), block: observer } }
+      actions: { run: observer }
     })();
 
     const result = await runAction({

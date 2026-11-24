@@ -2,9 +2,8 @@
  * `defineScheduleCollection` — opinionated wrapper around
  * `defineResourceCollection` that mirrors every create/update/delete on
  * a user-scoped schedule collection into a `ScheduleIndex`. The index
- * is what the tick handler (`createScheduleTickHandler` in
- * `@flow-state-dev/vercel/schedules`) scans each cron beat for due
- * rows.
+ * is what the engine's schedule tick claims due rows from, when the flow
+ * names it as `schedules.index`.
  *
  * Behaviour:
  *  - `enabled: false` rows are removed from the index (or skipped on
@@ -21,6 +20,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
+import type { CollectionClientConfig, ResourceRunBy } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { parseNextFireAt } from "./parseNextFireAt";
 import type { ScheduleIndex, ScheduleIndexEntry } from "./scheduleIndex";
@@ -60,7 +60,14 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   timezone: z.string().optional(),
   onOverlap: z.enum(["skip", "allow"]).optional(),
   description: z.string().optional(),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  // FIX-2614; BP-030.
+  /**
+   * The writer's own fields, kept with the schedule and never read here: the
+   * resolver, the index and dispatch ignore them. Optional, so a schedule from
+   * before it reads as it always did.
+   */
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 /** Inferred state shape for a schedule resource instance. */
@@ -80,6 +87,25 @@ export interface DefineScheduleCollectionOptions {
    * schema.
    */
   index?: ScheduleIndex;
+  /**
+   * The collection's own `flowIsolation`. Omitted, it follows the declaring
+   * flow's `isolateUserState`, as any collection does. `false` keeps one set
+   * of schedules for the user across flows, so one written by one flow is read
+   * and fired by another.
+   */
+  flowIsolation?: boolean;
+  // FIX-2624.
+  /**
+   * The collection's client config, as on `defineResourceCollection`.
+   * Omitted, no client reads the schedules.
+   */
+  client?: CollectionClientConfig;
+  /**
+   * The flow a client's write of a schedule runs through, as on
+   * `defineResourceCollection`; it needs a `client` that reads state.
+   * Omitted, a client can't write the schedules.
+   */
+  runBy?: ResourceRunBy;
 }
 
 /**
@@ -98,7 +124,10 @@ export function defineScheduleCollection(
     // admitted under, and a reschedule that omits it keeps it, so the resolver
     // has the stored target it requires and the schedule fires (BR-19,
     // FIX-1545).
-    stampOrgId: true
+    stampOrgId: true,
+    ...(opts.flowIsolation === undefined ? {} : { flowIsolation: opts.flowIsolation }),
+    ...(opts.client === undefined ? {} : { client: opts.client }),
+    ...(opts.runBy === undefined ? {} : { runBy: opts.runBy })
   };
 
   const { index } = opts;

@@ -21,6 +21,7 @@ import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/t
 import { createFlowState } from "../../flowstate/createFlowState";
 import { runAction } from "../../execution/runAction";
 import type { StoreRegistry } from "../types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Options for {@link createFindByConformanceTests}. */
 export type CreateFindByConformanceTestsOptions = {
@@ -79,7 +80,7 @@ function ledgerFlow(work: ReturnType<typeof ledger>) {
   });
   return defineFlow({
     kind: "find-by-ledger",
-    actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+    actions: { file, find },
   })();
 }
 
@@ -103,12 +104,13 @@ function countScans(stores: StoreRegistry): { scans: number } {
 /** Boot an app over `raw` and return its actions. */
 async function boot(raw: StoreRegistry, flow: FlowInstance) {
   const state = createFlowState({
-    flows: { ledger: flow } as never,
+    flows: [flow] as never,
     stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
   });
   const runtime = await state.getRuntime();
   const act = async (actionName: "file" | "find", input: unknown, userId = "alice") => {
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName,
       input,
@@ -217,9 +219,9 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
               (row) => row.path
             ),
         });
-        const flow = defineFlow({ kind: "find-by-notes", actions: { find: { inputSchema: z.object({}), block: find } } })();
+        const flow = defineFlow({ kind: "find-by-notes", actions: { find } })();
         const state = createFlowState({
-          flows: { notes: flow } as never,
+          flows: [flow] as never,
           stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
         });
         const runtime = await state.getRuntime();
@@ -227,6 +229,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         await runtime.stores.resourceState.set("org", ORG, `notes/${ownerSegment("bob")}/b`, { topic: "x" }, "any");
         const as = async (userId: string) =>
           (await runAction({
+              sessionId: oneOffSessionId(),
               flow,
               actionName: "find",
               input: {},
@@ -288,7 +291,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         });
         const flow = defineFlow({
           kind: "find-by-cells",
-          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+          actions: { file, find },
         })();
         const app = await boot(raw, flow);
         await app.file([
@@ -348,7 +351,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         });
         const flow = defineFlow({
           kind: "find-by-single-cell",
-          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+          actions: { file, find },
         })();
         const app = await boot(raw, flow);
         await app.file([{ key: "public", id: "x" }]);
@@ -389,9 +392,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
           const taggedFlow = defineFlow({
             kind: "find-by-tagged",
             actions: {
-              file: {
-                inputSchema: tagInput,
-                block: handler({
+              file: handler({
                   name: "file-tagged",
                   inputSchema: tagInput,
                   outputSchema: z.array(z.string()),
@@ -402,15 +403,12 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
                     return (await ref.findBy("byTag", input.tag.toLowerCase())).map((row) => row.path);
                   },
                 }),
-              },
             },
           })();
           const titledFlow = defineFlow({
             kind: "find-by-titled",
             actions: {
-              file: {
-                inputSchema: tagInput,
-                block: handler({
+              file: handler({
                   name: "file-titled",
                   inputSchema: tagInput,
                   outputSchema: z.array(z.string()),
@@ -420,16 +418,16 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
                     return [];
                   },
                 }),
-              },
             },
           })();
           const state = createFlowState({
-            flows: { tagged: taggedFlow, titled: titledFlow } as never,
+            flows: [taggedFlow, titledFlow] as never,
             stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
           });
           const runtime = await state.getRuntime();
           const run = async (flow: FlowInstance) => {
             const result = await runAction({
+              sessionId: oneOffSessionId(),
               flow,
               actionName: "file",
               input: { tag: "Red" },

@@ -79,7 +79,7 @@ const readFlow = defineFlow({
   kind: "read-flow",
   user: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) },
   org: { stateSchema: z.object({}).passthrough() },
-  actions: { read: { inputSchema: z.object({}), block: readBack } },
+  actions: { read: readBack },
 });
 
 /**
@@ -123,7 +123,7 @@ describe("userSeedCell agrees with the engine's routing", () => {
       kind: "parity",
       isolateUserState,
       resources,
-      actions: { write: { inputSchema: z.object({}), block: write } },
+      actions: { write },
     })() as unknown as FlowInstance;
     const stores = createInMemoryStores();
     const result = await testFlow({ flow, action: "write", input: {}, userId: "alice", stores });

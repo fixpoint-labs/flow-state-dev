@@ -151,7 +151,7 @@ describe("testFlow and a step that waits for a person", () => {
         return { name: answer.cancelled ? "" : answer.answer.name };
       }
     });
-    const flow = defineFlow({ kind: "names", actions: { name: { inputSchema: z.object({}), block: nameStep } } })({ id: "names" });
+    const flow = defineFlow({ kind: "names", actions: { name: nameStep } })({ id: "names" });
     const run = await testFlow({ flow, action: "name", input: {}, userId: "u1" });
     expect(run.suspension).toMatchObject({ kind: "input" });
 
@@ -207,7 +207,7 @@ describe("testFlow and a step that waits for a person", () => {
         return {};
       }
     });
-    const flow = defineFlow({ kind: "hooks", actions: { run: { inputSchema: z.object({}), block: wait } } })({ id: "hooks" });
+    const flow = defineFlow({ kind: "hooks", actions: { run: wait } })({ id: "hooks" });
     const run = await testFlow({ flow, action: "run", input: {}, userId: "u1" });
     expect(run.status).toBe("suspended");
 
@@ -231,7 +231,7 @@ describe("testFlow and a step that waits for a person", () => {
     const desk = defineFlow({
       kind: "desk",
       cardinality: "collection",
-      actions: { run: { inputSchema: z.object({}), block: step } }
+      actions: { run: step }
     })({ id: "desk-east" });
 
     const run = await testFlow({ flow: desk, action: "run", input: {}, userId: "u1" });
@@ -253,10 +253,10 @@ describe("testFlow and a step that waits for a person", () => {
         throw new Error("post-stop failure");
       }
     });
-    const flow = defineFlow({ kind: "pays", actions: { pay: { inputSchema: z.object({}), block: step } } })({ id: "pays" });
+    const flow = defineFlow({ kind: "pays", actions: { pay: step } })({ id: "pays" });
     const failing = defineFlow({
       kind: "fails",
-      actions: { pay: { inputSchema: z.object({}), block: handler({ name: "pay", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => { throw new Error("post-stop failure"); } }) } }
+      actions: { pay: handler({ name: "pay", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => { throw new Error("post-stop failure"); } }) }
     })({ id: "fails" });
     const direct = await testFlow({ flow: failing, action: "pay", input: {}, userId: "u1" });
 

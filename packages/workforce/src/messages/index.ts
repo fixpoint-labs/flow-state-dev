@@ -1,12 +1,12 @@
 // FIX-1989; FIX-2238.
 /**
  * Worker messages: any worker with a conversation can message any
- * other on its user's roster. Talk, not delegation: no task row, no delegate,
+ * other on its user's roster. Talk, not delegation: no task, no delegate,
  * no task-chain count. The session factory carries the tool and the entry; a
  * worker flow without it mounts `messageReceivedEntry` itself, and the hire
  * refuses one with neither. `hireWorkforce`'s `messages` sets the budget.
  */
-export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./keys";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_DATA_TYPE } from "./keys";
 export {
   messageReceivedEntry,
   messageReceivedInputSchema,
@@ -27,6 +27,8 @@ export {
   type MessageAddress,
   type WorkerMessageResourceState
 } from "./message-log";
+// FIX-2771 D1: a worker's open messages, and the answers to the ones on screen.
+export { workerMessagesViewRef } from "./worker-messages-view-ref";
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
 export { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipients, type WorkerRecipients } from "./recipients";

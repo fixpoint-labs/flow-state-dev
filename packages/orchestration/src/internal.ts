@@ -19,10 +19,10 @@ export { createStateBackedTaskCollection, type StateBackedOptions } from "./task
 export { taskLedgerResources, hasFrozenLedgerAssignee } from "./tasks/collection/define-task-collection";
 export { findTaskPartitions } from "./tasks/collection/find-task-partitions";
 export { readCommittedTask } from "./tasks/collection/read-committed";
-export { TaskWriteRefusedError } from "./tasks/collection/refused-write";
 export { resolveTaskCapDefaults, RETRY_BUDGET_NOT_APPLICABLE } from "./tasks/collection/task-caps";
 export { CASCADE_DUE_MS, cascadeEndedAt, DEFAULT_LEASE_DURATION_MS } from "./tasks/collection/internal";
-export { type TaskChangeEvent, type TaskChangeKind, SERVER_ONLY_TASK_FIELDS } from "./tasks/collection/change-event";
+// `TaskChangeKind` is public on `./tasks` (FIX-2776).
+export { type TaskChangeEvent, SERVER_ONLY_TASK_FIELDS } from "./tasks/collection/change-event";
 export type { TaskClaimIdentity } from "./tasks/schema/task";
 export type { TaskWorkerRegistry } from "./tasks/workers/types";
 export { taskClaimTicketSchema } from "./tasks/claim-ticket";
@@ -92,14 +92,15 @@ export { RENEWAL_DIVISOR } from "./tasks/lease-renewal";
 // The task board's own blocks and markers.
 export { taskBoardStateSchema } from "./task-board/schemas";
 export { packWorkerInput } from "./task-board/blocks/worker-step";
-export { TASK_BOARD_META_COMPONENT_TYPE } from "./task-board/blocks/board-meta";
-export { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "./task-board/goal-seek-loop";
+export { TASK_BOARD_META_DATA_TYPE } from "./task-board/blocks/board-meta";
+export { GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE } from "./task-board/goal-seek-loop";
 export { assertDispatchEntrySupported } from "./task-board/dispatch-assignee";
 export { afterTaskCheck, STEER_TURN_DUE_MS } from "./task-board/task-request";
 export { TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
 
 // The task tools' and skills' pieces a worker flow composes itself.
-export { taskToolsForTurn, taskToolReads, STATUS_NOTE_LIMIT, readTaskView } from "./skills/task-tools-capability";
+export { taskToolsForTurn, STATUS_NOTE_LIMIT, readTaskView, readable } from "./skills/task-tools-capability";
+export { taskToolViews } from "./skills/views/task-list-view";
 export { taskToolSuffix } from "./skills/task-tool-suffix";
 export {
   createSteerContext,
@@ -113,6 +114,12 @@ export {
 } from "./skills/steer-context";
 export { pushActiveSkill, type ActiveSkillEntry } from "./skills/active-skill-state";
 export { formatAllowedToolsIntentNote } from "./skills/render-skill-body";
+// The skills listing itself, so workforce's default layer can print its line only beside it.
+export { buildLoadCatalogContext } from "./skills/load-tool";
 
 // The frontmatter dialect `SKILL.md` and workforce's `WORKER.md` share.
 export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
+// FIX-2725 D2: the board's own list code, for a view another package serves
+// over a board it reads (the coding board).
+export { taskListEntriesFor } from "./skills/task-tools-capability";
+export { listedTaskSchema } from "./skills/task-listing";

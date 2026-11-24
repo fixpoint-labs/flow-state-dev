@@ -39,7 +39,7 @@ The **@coder** route and its **picker** leg are gone (FIX-1792 P4). Their whole 
 
 **Controls:**
 
-- `GOAL_CONTROL=optimistic-turn`: Shift Manager is rebuilt with `src/lib/send.ts` swapped for `controls/optimistic-turn.ts`. It reports a line delivered without calling the door. Must fail at **delivered**. The build fails if the swap never fired.
+- `GOAL_CONTROL=optimistic-turn`: Shift Manager is rebuilt with `src/lib/deliver.ts` (the send path since FIX-2776) swapped for `controls/optimistic-turn.ts`. It reports a line delivered without calling the door. Must fail at **delivered**. The build fails if the swap never fired.
 - `GOAL_CONTROL=fresh-session`: the harness drops the resume id it is offered, so every attempt starts a new coding session. Must fail at **continued**, naming the resume id.
 
 **Before-state:** `GOAL_PAGES=<dir>` serves pages built elsewhere instead of building them. Pages built before the composers existed fail every route.
@@ -65,3 +65,6 @@ The **@coder** route and its **picker** leg are gone (FIX-1792 P4). Their whole 
 | 2026-10-28 | main 0c9eb57 + #4102 | n/a | FAIL (before) | Task composer: `stopped` (request `in_progress`, not `aborted`), `continued`, `standing`, `delivered` after. The door steers since FIX-2086 and DevTeam's coder never stopped a run for a steer, so the held run never took it. `em door` failed too: FIX-2299 (FIX-2293) |
 | 2026-10-28 | fix/FIX-2293 on #4102, with #4132 (FIX-2299) applied | n/a | PASS | Composer legs graded as a steer: same request `in_progress`, next run resumed the previous session with the line, attempts 1 → 1, link unchanged. EM door answered |
 | 2026-10-28 | same (controls) | n/a | FAIL (expected) | `fresh-session`: only **continued** ("resumed nothing (the resume id)"). `optimistic-turn`: **delivered** on every route, with continued/em door/heard following |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | PASS | The asker Lab installs the workforce kit with `asker` and `coordinator` in its slot. *"Shift Manager built with Vite and served by its command over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record."* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `fresh-session`: **continued**, *"[task composer] continued: the next run resumed nothing (the resume id), wanted the previous run's session sess_turn_goal_bce02bdc"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `optimistic-turn`: **delivered**, *"[task composer] delivered: the composer read delivered while dsx_e51d5dce… held no user item with the line"* |

@@ -22,6 +22,8 @@ needs is a gap filed against the package.
   after it failed reads "failed · now running", since the line's words keep what it reported.
   A line from a task the board doesn't list has no *Open task*. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
+- **Files:** paste an image, pick files with **+**, or drop them on the box; each shows above the
+  text with a remove button, and your line keeps them, after a reload too. The main session sees them.
 - **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
   *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
   nothing and answers with a plan), *Codex* or *Cursor*. Any choice but *Auto* adds one line to
@@ -31,7 +33,7 @@ needs is a gap filed against the package.
   by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
   it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
   task shows its error. Each action is the board's own, and a refusal shows in the board's words.
-  You can still ask the main session to stop or steer a task. The open task's row is marked,
+  You can still ask the main session to stop or steer a task. The open task is marked,
   whether you opened it here or from the main thread; *Done* opens to show it when it is finished.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
@@ -44,13 +46,16 @@ In the Projects view, the main session is a coordinator, `desk.lead`. It hands e
 threads, each a task in a session of its own, and the right pane is the status board, *Tasks*.
 
 - **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
-  lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
-  *Request changes* when it is ready for review. A result line's *Open task* opens the thread's
+  lead filed it, with *View task*, *Answer* when it asks you something, and, when it is ready for review, the
+  accept and *Request changes*. A coding thread's accept offers *Open a PR* and *Merge locally*, the ways its
+  review lists its work can land, and a thread with none offers *Resolve*. A landed thread shows its pull
+  request or the branch it was merged into; a landing that fails shows why, with a retry. A result line's *Open task* opens the thread's
   view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
-  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
-  shows the error and offers *Retry*.
+  status and what it waits on, plus two marks of your own: your pins, and the failures you
+  dismissed. A failed thread waits on you; its view shows the error and offers *Retry* and
+  *Dismiss*, which moves that failed attempt to *Resolved* (a retry that fails again waits on you again).
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **The page's address** names the view, the open session and the task open in its pane
@@ -100,16 +105,16 @@ only 404s.
 `harness: cursor`, need that harness signed in too (Cursor reads `CURSOR_API_KEY`).
 A coding run starts with only the variables its harness
 needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), never the rest of the
-host's environment. That filters what a run starts with; it isn't a security boundary. At start
-the lab logs which harnesses this machine can run, with what to run for one that can't
-(`✗ Codex: … Run \`codex login\`, or set CODEX_API_KEY.`), and the `harness-readiness` flow's
-`read` action returns the same rows; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
+host's environment. That filters what a run starts with; it isn't a security boundary. The
+harness kit's `harnesses` flow serves a `readiness` view of which harnesses this machine can
+run, with what to run for one that can't, with no session; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
 | Setting | Default | What it is |
 |---|---|---|
 | `CLAUDE_CODE_STYLE_MODEL` | `openai/gpt-5.4` | The model every worker answers with |
+| `CLAUDE_CODE_STYLE_UTILITY_MODEL` | `openai/gpt-6-luna` | The smaller model for background work: session titles, and a consult of another conversation (`intent/utility`) |
 | `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's worktree under `runs/` |
 | `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
@@ -117,6 +122,49 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
 | `CLAUDE_CODE_STYLE_HARNESS` | the harness each coder names | `stub` runs every coding task on harness-manager's scripted coder, with no model, for a goal check |
 | `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` | `2000` | With `stub`, the pause before each of the scripted coder's five steps |
+| `CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS` | one minute | With `stub`, how long a silent request waits before the server takes it as interrupted, so a goal can read a dead run's row before the board takes it back |
+| `CLAUDE_CODE_STYLE_CHECKS` | none | The commands a coding run that changed files must pass in its worktree, `;`-separated, each one command with no shell; a shell operator stops the lab at start |
+| `GITHUB_TOKEN` | what `gh auth token` answers at start | The token a routine that follows a GitHub pull request reads GitHub with, for `CLAUDE_CODE_STYLE_USER` alone; with none, GitHub routines are refused |
+| `GOAL_CONTROL`, `GOAL_FLOWS` | unset | A goal check's alone: `no-repository-check` leaves the project repository check off, `first-repository` answers every run the first listed repository, and `GOAL_FLOWS` names a module whose default export lists the goal's own flows |
+
+### The host
+
+`fsdev.config.mts` reads the settings above and calls `openClaudeCodeStyle` in `host.mts`, which puts the
+server together from package pieces; the screen tests call `openClaudeCodeStyle` too, with a scripted model
+(`test/app-host.ts`), so `src/app/`'s hooks run over the same host the page does.
+
+- `desk.main`, the session-mode main worker, is on the built-in `agent` flow with
+  `answerAgain: true`: a background result that settles while its turn runs is taken into that
+  turn. `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on the built-in
+  `coordinator` flow.
+- A session works in a repository: the workforce kit's one session field, `repository`
+  (`flows/session-repository.mts`), which the server writes when the session opens and every
+  hand-over carries down to the tasks it files. The run source is the workspace's
+  `sessionRepositorySource` over that field: a repository the lab lists runs in a worktree of it,
+  any other `file://` one in a clone once the workspace host's `checkRepository` passes, and a
+  session with none is refused.
+- The `agent` flow carries `projectSourceCapability` over the same host the coding runs use, so
+  a worker whose file names its `read` preset reads the session's repository itself.
+- `desk.coder` and `desk.thread-coder` are on the harness kit's coding worker flow, `coder`; only
+  `desk.thread-coder` waits for your review. The harness kit's `harnesses` flow serves which
+  coding harnesses can run on this machine.
+- `projects` (`flows/projects.mts`, the lab's own) lists and creates the projects the picker
+  offers and declares your pins and dismissals (`flows/user-marks.mts`). A project's repository
+  is checked when it is made, by the same `checkRepository`.
+- Routines: the routine tools ride on every worker, polls and clock routines tick from
+  `sqliteScheduleIndex` files of their own in the data folder, and GitHub is workforce's
+  `operatorGitHub` on the operator's token, for the operator alone.
+
+**Routines.** Every conversation worker (the main worker, the researcher, a thread and its lead)
+can follow a GitHub pull request for you, or run something on a clock. Ask in words: *"Follow
+globex/billing#77 and tell me about every review on it."* The worker saves a routine, and each new
+review on that pull request reaches the same session as a message, once. *"What are you
+following?"* lists your routines, and you can ask it to pause or delete one. A clock routine
+(*"Every Monday at 9, check the open pull requests"*) files a task at its time. The lab polls
+GitHub, so it needs no public address, with the token of whoever runs it; the lab takes every request
+as its own user, whatever user the request names, so the token serves nobody else. The lab keeps its data in its own organization (`claude-code-style-lab`), so conversations saved before the lab named one don't open. With no token,
+a GitHub routine is refused, naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and polls tick from `clock.db` and `poll.db` in the data
+folder.
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
@@ -124,16 +172,19 @@ coding runs work on. The host allows `file://` repositories only, and the reposi
 checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
 same project (`repository-unusable`). The picker also says what its view does and shows which
 coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
-the composer. A run works in a git worktree of the repository under
-the data folder, on a branch of its own that you'll find in the repository, so your checked-out
+the composer. A session opened on a project works in the project's repository: the server writes
+it on the session when it opens, and every task the session files carries it down, so each coding
+run and each source read finds its repository from its session. A run works in a git worktree of
+that repository under the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
-let it through, and threads mode shows its verdict on the coding thread's card. A run is also done only when
-its project's checks pass: the commands the project names in `checks` (none by default) run in the
-run's worktree after the harness finishes, and a red one sends the run back with the command's
-output in its next brief. A run that changed no files, such as one that answers a question, skips
-them, so you can still ask about a project whose branch is already red.
+let it through, and threads mode shows its verdict on the coding thread's card. A run that changed files
+is done only when the host's checks pass: the commands `CLAUDE_CODE_STYLE_CHECKS` names
+(`;`-separated, each one command with no shell; none by default) run in the run's worktree after
+the harness finishes, and a red one sends the run back with the command's output in its next
+brief. A run that changed no files, such as one that answers a question, skips them. A project's
+own `checks` are not read.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a
@@ -151,51 +202,61 @@ dropped), it keeps the last rows and never calls a task quiet from them. A finis
 board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
 and done.
 
-Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
-never imports. The contract tests in `test/contract/` keep the two honest: five scenarios (a result
-that lands mid-turn, a failed turn, a held question and its answer, a stop, a lapsed connection)
-run against the double and against the real adapter over the lab's own server (`host.mts`), in
-process, with only the model scripted. A scenario the real adapter can't show yet is marked to fail
-with the issue that adds it.
+Both modes are wired. The screen tests run on the lab's own server (`host.mts`), in process, with
+only the models scripted and every coding run on harness-manager's scripted coder
+(`test/app-host.ts`). The contract tests in `test/contract/` hold what the hooks hand the screen
+through scenarios (a result that lands mid-turn, a failed turn, a held question and its answer, a
+stop, a lapsed connection). A component's own test that draws one screen from data it names stands
+in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
+`src/app/`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
+and small flows: no adapter, nothing of the app's in `workforce/`, every file classed, at most three
+flows of under 200 lines each, at most 300 lines of configuration (the `WORKER.md` tree included), no screen file
+that reaches the server itself (`src/app/` included: it imports no client value and calls no
+`.subscribe(` or `.flow(`), no hand-written type for a row a view returns, and no host wiring a kit
+replaces. Its rules live in the shared module `labs/test-support/inventory.mts`, which Teammates and
+Shift Manager run too; the lab's settings are in `test/inventory-settings.ts` and its allowlist,
+`test/inventory-allowlist.json`, is empty. The epic's closure goal
+(`goals/kits/an-app-is-config-ui-and-small-flows/`) grades the same rules and settings. A rule the
+lab doesn't meet yet is an `it.fails`.
 
 ## How the screen reaches the package
 
-Everything the screen reads and writes goes through one adapter, `src/adapter.ts`, and each verb is
-a package call:
+Everything the screen reads and writes goes through `src/app/`: thin wrappers over
+`@flow-state-dev/react`'s hooks (`useView`, `useSessionFeed`, `useRequestStream`, `useResource`)
+on the kit packages' views and direct reads, and the calls the screen makes, each a package call
+(workforce's client, orchestration's inbox client). `AppProvider` holds the one client, which
+`src/main.tsx` builds.
 
 | The screen | Package piece |
 |---|---|
-| The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
-| *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
-| The picker's harness chips | the `harness-readiness` flow's `read` action |
-| Sending and the thread | the `respond` action, and the session's message and tool items |
+| The sessions list (`useSessions`) | workforce's worker sessions view, `workerSessionsViewRef()`, per mode's worker: each row's title, whether a turn runs, its project from `state.workProjectId`, and the tasks that wait on you, less the failures you dismissed |
+| *New session* and a session's project | workforce's client: `startSession(worker, { fields })` with the project's repository, the session's `repository` (`flows/session-repository.mts`) that the host's run source reads, then `setWorkProject` |
+| The project picker and *New project* | the projects collection, read by scope, and its `createProject` and `checkRepository` (`flows/projects.mts`) |
+| The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |
+| Sending and the thread (`useThread`) | workforce's client `send`, streamed into the open thread; the session's message, tool, error and data items on react's `useSessionFeed`; its turns (running, stopped, failed, and which a Retry may run again) from workforce's session turns view, `sessionTurnsViewRef()`; React's `conversationLines` turns both into the thread's lines, drawn by the UI registry's `conversation-lines` and `workforce-lines` copies (in `src/components/flow-state/`) and the lab's own looks (`src/components/lines.tsx`) |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
-| The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
-| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
-| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
-| The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
+| The main session reading the repository's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host and its run source, the session's repository; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
+| Interrupting | workforce's client `stopTurns`: the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, with the count of background work still running from the session stream's runs |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the registry's failed line; Retry is workforce's client `retryTurn`, offered on the newest turn when its turn is `retryable` |
+| The tasks pane and the board (`useTasks`) | harness-manager's coding board view, `codingBoardViewRef()`, at user scope: each row with its open holds and where their answers go, its harness, how its review ended, where its work landed, why it failed, and the pull requests it waits on |
+| A task's work (`useTaskWork`) | the items of the task's run session on `useSessionFeed`; while it runs, the call in flight from the run request's own stream (react's `useRequestStream`, reconnecting, on the flow the board's row names in `runFlow`), and the plan its harness recorded, from harness-manager's recorded work view, `recordedWorkViewRef()`, which also gives each pull request's link |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
-| A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
-| The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
-| A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
+| A thread card, and *Sent to a task* | the `workforce:task` line the lead's filing wrote in the session's items |
+| The board's columns | each row's status and its first open hold, plus your pins and dismissals |
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
-| *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
-| Answering in a thread | the Inbox client's `answerOne` on its open question; with none, `updateTask_tasks` with your line as a steer |
-| Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
+| Answering in a thread | the Inbox client's `answerOne` on its open question, from the row's holds; with none, the board's `steer` |
+| *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
+| *Pin* and *Unpin* (`usePins`) | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope with react's `useResource` and written through the default write flow |
+| *Dismiss* (`useDismissed`) | your `lab-dismissals` user resource, the same way, kept per task attempt |
 
-The thread and a task's work follow their session's stream. The rest reads when something changes,
-through `client.subscribe`: a row of the sessions list on its session's notices (a turn, a board
-change, a resource), the thread's running turn on a request notice, and pins on a change to your
-user state. A session you open in another tab joins the list at the next reload. On a host whose
-push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
-the list and pins every 3 seconds, the running turn every 1.5.
-| *Resolve* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
-| *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
+The thread and a task's work follow their session's stream. Every view reads again when a change
+it read could have moved, through the client's live read; pins and dismissals read on a notice of
+them on your user topic. On a host whose push can miss a change, such as the SQLite store the lab
+runs on, each also reads every 3 seconds.
 
-`desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
-`workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
-`harness:` line, working in the session's project through `projectWorkspace()`. A worker with
+`desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the harness kit's
+coding worker flow, `coder`: a `harnessManager` per harness, picked by the worker's
+`harness:` line, working in the session's repository (the host's run source). A worker with
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's coders have no review line, since that mode has no review to answer.
@@ -203,16 +264,14 @@ Session mode's coders have no review line, since that mode has no review to answ
 | Worker (session mode · threads mode) | Its `WORKER.md` | The chip |
 |---|---|---|
 | `desk.coder` · `desk.thread-coder` | `harness: claude-code` | *Auto* |
-| `desk.coder-plan` · `desk.thread-coder-plan` | `harness: claude-code`, `permissionMode: plan`, no review (it commits nothing) | *Plan first* |
+| `desk.coder-plan` · `desk.thread-coder-plan` | `harness: claude-code-plan` (Claude Code in plan mode, `claudeCode({ plan: true })`), no review (it commits nothing) | *Plan first* |
 | `desk.coder-codex` · `desk.thread-coder-codex` | `harness: codex` | *Codex* |
 | `desk.coder-cursor` · `desk.thread-coder-cursor` | `harness: cursor` | *Cursor* |
 
 The threads-mode coders but the plan one carry `review: true`. `desk.main` and `desk.lead` name
 them all as delegates, and their files say which one a `Coder:` line or your words pick.
 
-The flow builds Claude Code, Codex and Cursor, so a coding worker on any of them is one more
-`WORKER.md` with that `harness:` line. A Claude Code worker can also name a `permissionMode:`:
-`acceptEdits` (the default) or `plan`. The flow builds a manager for each. `default` isn't offered:
-the manager turns no tool approval into a wait on you, so a run in it would only be refused its
-tools. Nor is `bypassPermissions`, which a worker's own line shouldn't be able to turn on. A worker on another harness that names a `permissionMode:` is
-refused when its task runs.
+The flow builds a manager for each harness the host fills: Claude Code (`acceptEdits`), Claude
+Code in plan mode (`claude-code-plan`), Codex and Cursor, so a coding worker on any of them is one
+more `WORKER.md` with that `harness:` line. A worker naming a harness the host didn't fill is
+refused at start.

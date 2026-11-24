@@ -4,26 +4,23 @@
  * read for a new period that fails never leaves the last period's totals
  * standing under the new tab.
  */
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { useWorkerUsage } from "../src/lib/usage";
 
-const client = {
-  userId: "alice",
-  flows: async () => [{ id: "projects", actions: ["workerUsage"] }],
-} as unknown as Client;
-
 /** What each period's read answers: a worker whose input tokens are the period's days, or a failure. */
 let answer: (days: number) => Promise<unknown>;
 
+/** A connection whose worker usage view answers `answer` for the period asked. */
+const client = {
+  userId: "alice",
+  view: async (_ref: unknown, input: { days: number }) => ({ value: await answer(input.days), topics: [] }),
+  // The view is kept current by its notices; none arrive here.
+  subscribe: () => ({ close: () => {} }),
+} as unknown as Client;
+
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
-vi.mock("../src/lib/action", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/action")>()),
-  runAction: async (_client: Client, _flow: string, _session: string, _action: string, input: { days: number }) => ({
-    output: await answer(input.days),
-  }),
-}));
 
 const totals = (days: number) => ({
   workers: [{ worker: "researcher", gone: false, tokens: { input: days, output: 0 }, costUsd: null, bySource: [] }],
@@ -32,7 +29,7 @@ const totals = (days: number) => ({
 describe("Usage by worker across a period change", () => {
   it("shows no rows under a period whose read failed, never the last period's", async () => {
     answer = async (days) => totals(days);
-    const { result, rerender } = renderHook(({ days }) => useWorkerUsage(0, days), { initialProps: { days: 30 } });
+    const { result, rerender } = renderHook(({ days }) => useWorkerUsage(days), { initialProps: { days: 30 } });
     await waitFor(() => expect(result.current.rows?.[0]?.tokens.input).toBe(30));
 
     answer = async () => {
@@ -47,13 +44,13 @@ describe("Usage by worker across a period change", () => {
 
   it("keeps the last rows beside a failure when the same period is read again", async () => {
     answer = async (days) => totals(days);
-    const { result, rerender } = renderHook(({ readAt }) => useWorkerUsage(readAt, 7), { initialProps: { readAt: 0 } });
+    const { result } = renderHook(() => useWorkerUsage(7));
     await waitFor(() => expect(result.current.rows?.[0]?.tokens.input).toBe(7));
 
     answer = async () => {
       throw new Error("usage read failed");
     };
-    rerender({ readAt: 1 });
+    act(() => result.current.reread());
     await waitFor(() => expect(result.current.failure).toBeDefined());
     expect(result.current.rows?.[0]?.tokens.input).toBe(7);
   });

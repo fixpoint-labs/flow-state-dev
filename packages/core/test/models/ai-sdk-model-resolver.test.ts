@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { APICallError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import { serializeError } from "../../src/errors/serialize-error";
 import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
 
 function makeLargeSystemContent(): string {
@@ -864,6 +866,42 @@ describe("createAiSdkModelResolver — AI SDK 7 stream part mapping", () => {
     expect(caught).toBeDefined();
     expect((caught as Error).name).toBe("ModelStreamError");
     expect((caught as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it("names the provider's refusal (status + message) instead of the NoOutputGenerated wrapper, keys redacted", async () => {
+    // A provider that refuses the call (bad key → 401) reaches the stream as
+    // an error part; the SDK then rejects the settled-finish promises with a
+    // generic NoOutputGeneratedError. The person must see why the provider
+    // refused, not "No output generated", and never the key itself.
+    const model = wrapAiSdkModel(new MockLanguageModelV3({
+      doStream: async () => {
+        throw new APICallError({
+          message: "Incorrect API key provided: sk-proj-AbCdEf1234567890abcdef. You can find your API key at https://platform.openai.com/account/api-keys.",
+          url: "https://api.openai.com/v1/responses",
+          requestBodyValues: {},
+          statusCode: 401,
+          responseBody: '{"error":{"code":"invalid_api_key"}}',
+          isRetryable: false,
+        });
+      }
+    }));
+
+    let caught: unknown;
+    try {
+      await collect(model);
+    } catch (err) {
+      caught = err;
+    }
+    const error = caught as Error & { cause?: Error & { statusCode?: number } };
+    expect(error.name).toBe("ModelStreamError");
+    expect(error.message).toMatch(/401/);
+    expect(error.message).toMatch(/Incorrect API key provided/);
+    expect(error.cause?.name).toBe("AI_APICallError");
+    expect(error.cause?.statusCode).toBe(401);
+    // The key never travels: not on the turn's message, not on the cause a
+    // serializer copies onto the error item's details.
+    expect(error.message).not.toContain("AbCdEf1234567890abcdef");
+    expect(JSON.stringify(serializeError(error))).not.toContain("AbCdEf1234567890abcdef");
   });
 
   it("yields the framework cancel path (ModelStreamError with abort cause), not an unhandled rejection, on abortSignal cancellation", async () => {

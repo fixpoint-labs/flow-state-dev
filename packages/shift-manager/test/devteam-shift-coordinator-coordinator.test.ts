@@ -203,8 +203,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
       const items = await settledItems(lab, id);
       expect(routeCalls).toHaveLength(1);
       expect((model as any).judgmentSteps()).toBe(1);
-      const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-      expect(record.data).toMatchObject({ by: "judgment", policy: "best-fit", delegates: [], fit: { reason } });
+      const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+      expect(record.value).toMatchObject({ by: "judgment", policy: "best-fit", delegates: [], fit: { reason } });
       expect(textOf(items.filter((item) => item.type === "message" && item.role === "assistant").at(-1) ?? {})).toBe("Handed on.");
     });
   }
@@ -218,9 +218,15 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     expect(listed.error).toBeUndefined();
     // What each one does (its WORKER.md description) and takes: both flows take a conversation's
     // tasks (FIX-1866, FIX-2083). What the Shift Coordinator picks a routed task and a filing by.
+    // On this projects workspace a coding task needs a project, which the coder's input schema says (FIX-2894).
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks" },
-      { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
+      { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks", inputSchema: null },
+      {
+        worker: "eng.coder",
+        description: "Does the work a filed row names, in a checkout of its own.",
+        takes: "tasks",
+        inputSchema: { project: "required", jsonSchema: { $schema: "http://json-schema.org/draft-07/schema#", type: "object", additionalProperties: {} } },
+      },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
     const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: SHIFT_COORDINATOR } } });
@@ -257,8 +263,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     const items = await settledItems(lab, id);
     const answer = items.find((item) => item.type === "message" && item.agentName === "licenses");
     expect(answer).toBeDefined();
-    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "judgment", delegates: [{ worker: "licenses", outcome: "delivered" }] });
+    const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+    expect(record.value).toMatchObject({ by: "judgment", delegates: [{ worker: "licenses", outcome: "delivered" }] });
     expect((await act(lab, id, "listDelegates", {})).output.delegates.map((d: { worker: string }) => d.worker)).toEqual([
       "eng.em",
       "eng.coder",
@@ -296,8 +302,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     ]);
     expect((model as any).judgmentSteps()).toBe(0);
     expect(items.filter((item) => item.type === "message" && item.role === "assistant").map((item) => item.agentName)).toEqual(["eng.em"]);
-    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+    expect(record.value).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The coder's task, on the board of the EM session the post reached: feature work, naming the issue
     // and the phase, for the coder.
     const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);

@@ -6,10 +6,9 @@ import {
   defaultParseScheduleId
 } from "../src";
 import type { ScheduleResolutionContext } from "@flow-state-dev/core/types";
-import { resolveUserStorageKey } from "@flow-state-dev/engine";
 
 // Handler blocks keyed by the persisted `kind` discriminator. A serialized
-// schedule row can't carry a block, so it stores `kind` and the resolver maps
+// schedule entry can't carry a block, so it stores `kind` and the resolver maps
 // it back to a real block via this `blocks` map (FIX-838).
 const sendDigest = handler({
   name: "send-digest",
@@ -35,9 +34,10 @@ function buildCtx(
     flowKind: "reminders",
     gatewayPrincipal: { userId: "system", orgId: "org_sys" },
     request: new Request("https://example.com/dispatch"),
-    // The engine's derivation, as the dispatch endpoint hands it in.
-    userStorageKey: (userId, orgId) =>
-      resolveUserStorageKey(userId, orgId, { id: "reminders", isolateUserState: false }),
+    // The shared user cell's shape, as the dispatch endpoint hands it in. The
+    // engine's real derivation is exercised end to end in the integration
+    // suite (schedule-cell.test.ts), so this package needs no engine.
+    userStorageKey: (userId, orgId) => `${userId}:~org:${orgId}`,
     stores: {
       resourceState: {
         async get(scopeType, scopeId, resourceKey) {
@@ -238,5 +238,29 @@ describe("createResourceCollectionScheduleResolver", () => {
     expect(config?.timezone).toBe("America/New_York");
     expect(config?.onOverlap).toBe("allow");
     expect(config?.description).toBe("Weekly Monday digest");
+  });
+
+  describe("session", () => {
+    // A row that tries to pick its own session: stored data must not choose
+    // where a fire runs, so only the resolver's option counts.
+    const records = new Map([
+      [
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest", session: "per-schedule" })
+      ]
+    ]);
+
+    it("sets the option's session on every row it resolves", async () => {
+      const resolve = createResourceCollectionScheduleResolver({ collection, blocks, session: "per-schedule" });
+      const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
+      expect(config?.session).toBe("per-schedule");
+    });
+
+    it("leaves session unset without the option, whatever the row says", async () => {
+      const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
+      const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
+      expect(config).not.toBeNull();
+      expect(config).not.toHaveProperty("session");
+    });
   });
 });

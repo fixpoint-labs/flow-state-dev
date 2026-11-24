@@ -1,0 +1,50 @@
+# Docs revamp
+
+Working files for the rewrite of the user docs. Nothing here is published: the pages live in this
+folder until the release that carries kits, and move under `apps/docs/` through the release-docs
+process.
+
+| File | What it is |
+| --- | --- |
+| [`../user-docs.md`](../user-docs.md) | How to write a page: page types, the outline, the moves, the ten passes, the checks. [`WRITING-BRIEF.md`](./WRITING-BRIEF.md) points there |
+| [`pilot/what-flow-state-is.md`](./pilot/what-flow-state-is.md) | Pilot: the first page of Start |
+| [`pilot/tasks-and-boards.md`](./pilot/tasks-and-boards.md) | Pilot: a concept page |
+| [`pilot/workers.md`](./pilot/workers.md) | Pilot: a concept page |
+| [`pilot/figures/`](./pilot/figures) | The three figures, redrawn to the figure rules: the exemplars |
+| [`../user-docs-figures.md`](../user-docs-figures.md) | The figure rules: what each mark means, the key, canvas sizes, light and dark, the lint rules |
+| [`figures/render.sh`](./figures/render.sh) | Renders a figure as the site draws it, light and dark, into [`figures/rendered/`](./figures/rendered) |
+| [`specs/epics/FIX-2696/SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md) | The page plan: every page of the new site, with its contents, questions, figures, examples and sources |
+| `pages/` | The records and fact sheets of the pages written through the ten passes. The pages themselves moved to the site at the docs cutover: `apps/docs/docs/<path>.md` has its sidecars at `pages/<path>.{facts,record}.md` |
+| `pages/*.facts.md` | A page's fact sheet: every fact the page states, with file and line, collected before drafting (step 1 of the loop). The page states nothing that is not on it. Never published |
+| `pages/*.record.md` | A page's record: the sitemap id, one section per pass of the loop and what it found, and the rows pass 6 moved to Reference. CI fails a page whose record misses a pass, and a page edited without a new pass 4 and pass 5 entry. The format is in the checker's header. Never published |
+| [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length, code titles, and the record. With no arguments it checks every page under `apps/docs/{docs,guides}` and its record; given a page, the page rules only, as pass 4 runs it. CI checks the pages a PR touches, and every page on `main` |
+
+## The pages are written for the release that carries kits
+
+They describe Workforce, the harnesses and Claude Code as kits an app installs:
+
+```ts
+kits: [workforce({ directory: "./workforce" }), harnesses({ workspace }), claudeCode()]
+```
+
+Those kit factories are specified and not built. Before a page moves under `apps/docs/`, reconcile
+these against what shipped:
+
+- The `kits: [...]` snippets in `what-flow-state-is.md` and `workers.md`, and each kit's config keys.
+  The specs disagree on whether `workforce(...)` needs a model (`model` in `docs/architecture/kits.md`,
+  `agent: { model }` in the FIX-2627 spec); the pages show `directory` alone.
+- `harnesses({ workspace: { root, sourceRepo, baseRef } })` from `@flow-state-dev/harness-manager/kit`:
+  the page shows today's `WorkspaceConfig` shape; the kit specs give `{ root, repositories, setup }`,
+  `{ root, source, setup }` or a workspace host. Reconcile the keys.
+- `tools: [search, fetch]` in the researcher file in `what-flow-state-is.md` works only where the app's
+  tool catalog has both names.
+- "A file the kit can't use stops the app from starting and names the file" in `workers.md`.
+- The kit names in `pilot/figures/layers.svg`.
+- Every link. The pages link to the planned site structure, and most targets do not exist yet.
+
+## Moving a page to the site
+
+1. Fix the links for the page's real location.
+2. Nothing to do for figures drawn to [`user-docs-figures.md`](../user-docs-figures.md): the page
+   already uses the site's `Figure`, and the SVG carries no styles. `pages/blocks.md` and its
+   figure predate that; FIX-2701 brings them over.

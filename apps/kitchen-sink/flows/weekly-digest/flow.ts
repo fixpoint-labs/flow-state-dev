@@ -53,8 +53,8 @@ const scheduleDigestInputSchema = z.object({
  * Idempotently install the per-user digest schedule. Subsequent calls
  * with a different cron/action update the same row, so a user can only
  * have one active digest at a time. The `defineScheduleCollection` hook
- * mirrors create/update into the `ScheduleIndex`, which the polling
- * tick (`/api/cron/schedule-tick`) fans out.
+ * mirrors create/update into the `ScheduleIndex`, which the app's
+ * schedule tick claims and fans out.
  */
 const scheduleDigest = handler({
   name: "schedule-digest",

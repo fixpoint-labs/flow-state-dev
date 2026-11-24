@@ -16,6 +16,7 @@ import { createFlowState, type StoreRegistry } from "@flow-state-dev/engine";
 import { type FlowApiRouter } from "@flow-state-dev/engine/host";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import { servePeer } from "../../lib/peers.mts";
+import { sleep } from "../../lib/time.mts";
 
 const NAME = process.env.GOAL_PEER_NAME ?? "peer";
 const URL_ = process.env.GOAL_DB_URL!;
@@ -86,7 +87,7 @@ function chatFlow() {
 }
 
 const flowState = createFlowState({
-  flows: { chat: chatFlow() },
+  flows: [chatFlow()],
   stores: {
     default: {
       primary: postgresStores({
@@ -102,8 +103,6 @@ const flowState = createFlowState({
 const router: FlowApiRouter = await flowState.getRouter();
 const stores: StoreRegistry = (await flowState.getRuntime()).stores;
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -116,6 +115,7 @@ const peer = servePeer({
     const res = await router.POST(
       new Request(`http://localhost/api/flows/chat/${session}/actions/${action}`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "alice", orgId: DEFAULT_ORG_ID, input })
       }),
       { params: { path: ["chat", session, "actions", action] } }
@@ -131,7 +131,7 @@ const peer = servePeer({
       const record = await stores.request.get(requestId);
       if (record !== undefined && record.status !== "in_progress") return Date.now();
       if (Date.now() > deadline) throw new Error(`request ${requestId} never finished`);
-      await delay(5);
+      await sleep(5);
     }
   },
 
@@ -149,7 +149,7 @@ const peer = servePeer({
         if (running.length > 0) return Date.now();
       }
       if (Date.now() > deadline) throw new Error("the background run never started");
-      await delay(5);
+      await sleep(5);
     }
   },
 

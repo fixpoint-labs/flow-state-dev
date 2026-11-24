@@ -2,13 +2,13 @@
  * Roster: every worker the user has, grouped on shift and off shift, for
  * all teams or one (`/roster[?team=]`). The workers are the user's roster,
  * read through Workforce's client: their own workers and the standard ones, each on the flow it names. A standard worker's row is the
- * worker inventory's. The roster is read again with every snapshot, so a worker
- * hired or fired on a turn shows on the next read.
+ * worker inventory's. Both are followed (`directory.tsx`), so a worker hired
+ * or fired on a turn shows when the roster hears it.
  *
  * Every status, slot and count is read from the one `workerStates` result over
- * the snapshot, the same one the sidebar and Shift Coordinator draw, so a
- * worker reads the same everywhere. Nothing is polled: Roster draws the
- * snapshot and says when it was read.
+ * the directory and the Inbox view, the same one the sidebar and Shift
+ * Coordinator draw, so a worker reads the same everywhere, and its status
+ * moves when the Inbox does. Roster says when the directory was read.
  *
  * In design v2's form (v2:693-725): a column header, each group's heading
  * with what its status means, and WAITING ON YOU as boxed tags, a task or an
@@ -16,10 +16,10 @@
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { shiftCoordinatorOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
+import { shiftCoordinatorOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type WorkerState, type ShiftStatus } from "../lib/shift";
 import { themeLabel, type ThemeLook } from "../lib/theme";
-import { useLab } from "../lib/lab-data";
-import { useRoster, withRoster } from "../lib/roster";
+import { useWorkers } from "../lib/directory";
+import { askWord, useInbox } from "../lib/inbox";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -42,8 +42,8 @@ const GROUP_SUB: Record<ShiftStatus, string> = {
  */
 function WaitEntry({ kind, id, what, when }: { kind: "task" | "ask"; id: string; what: string; when: string }) {
   return (
-    <li className="grid grid-cols-[66px_minmax(0,1fr)] items-baseline gap-2 font-mono text-[11px] font-medium" data-testid="roster-wait" data-kind={kind} data-id={id}>
-      <span className="border border-foreground bg-attention px-1 text-center text-[9.5px] tracking-[0.1em] text-attention-foreground" data-testid="roster-wait-tag">
+    <li className="grid grid-cols-[66px_minmax(0,1fr)] items-baseline gap-2 font-mono text-xs font-medium" data-testid="roster-wait" data-kind={kind} data-id={id}>
+      <span className="border border-foreground bg-attention px-1 text-center text-xs tracking-[0.1em] text-attention-foreground" data-testid="roster-wait-tag">
         WAITING
       </span>
       <span className="flex min-w-0 flex-col">
@@ -82,7 +82,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <span className="font-medium">{workerLabel(worker.displayName)}</span>
           <span className="text-xs text-muted-foreground">{worker.teamName}</span>
           {own ? (
-            <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
+            <span className="border px-1 text-xs tracking-widest text-muted-foreground" data-testid="roster-worker-own">
               YOURS
             </span>
           ) : null}
@@ -143,46 +143,38 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
       </div>
       <ul className="min-w-0 space-y-[5px]">
         {waitsOnYou.length === 0 && asks.length === 0 ? (
-          <li className="pt-[3px] font-mono text-[11px] font-medium text-muted-foreground" data-testid="roster-no-wait">
+          <li className="pt-[3px] font-mono text-xs font-medium text-muted-foreground" data-testid="roster-no-wait">
             —
           </li>
         ) : null}
         {waitsOnYou.map((row) => (
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
-        {asks.map((ask) => (
-          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.title || ask.item.message || "waiting on you"} />
+        {asks.map((hold) => (
+          <WaitEntry key={hold.id} kind="ask" id={hold.id} what={`you · ${askWord(hold)}`} when={hold.ask.title || hold.ask.prompt || "waiting on you"} />
         ))}
       </ul>
     </li>
   );
 }
 
-export function RosterView({
-  snapshot,
-  team: asked,
-  gaps,
-  look,
-}: {
-  snapshot: LoadedSnapshot;
-  team: string | null;
-  gaps: Gaps;
-  look?: ThemeLook;
-}) {
-  const { refresh } = useLab();
+export function RosterView({ team: asked, gaps, look }: { team: string | null; gaps: Gaps; look?: ThemeLook }) {
   const lookName = useLookName(look);
-  const roster = useRoster();
-  const { snapshot: withOwn, workers, own } = withRoster(snapshot, roster);
-  if (!snapshot.inventory.ok && workers.length === 0) {
+  const { inventory, workers, own, roster, readAt, refresh } = useWorkers();
+  const inbox = useInbox();
+  if (inventory === undefined) {
+    return <p className="p-4 text-sm text-muted-foreground" data-testid="roster-reading">Reading the roster…</p>;
+  }
+  if (!inventory.ok && workers.length === 0) {
     return (
       <div className="p-4" data-testid="roster">
-        <SectionFailure what="Roster" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
+        <SectionFailure what="Roster" failure={inventory.failure} onRetry={refresh} testId="roster-inventory-failure" />
       </div>
     );
   }
   const ownIds = new Set(own.map((worker) => worker.id));
   const team = pickedTeam(workers, asked);
-  const states = workerStates(withOwn);
+  const states = workerStates(workers, inbox.section?.ok === true ? inbox.section.value : undefined);
   // The Shift Coordinator first: the coordinator the user's work goes through.
   const shiftCoordinator = shiftCoordinatorOf(workers);
   const first = shiftCoordinator.kind === "one" ? shiftCoordinator.worker.id : undefined;
@@ -190,7 +182,6 @@ export function RosterView({
     .filter((s) => team === null || s.worker.team === team)
     .sort((a, b) => Number(b.worker.id === first) - Number(a.worker.id === first));
   const counts = shiftCounts(states, team ?? undefined);
-  const unread = Object.entries(snapshot.boards).flatMap(([workstreamId, boards]) => (boards.ok ? [] : [{ workstreamId, failure: boards.failure }]));
   const title = [lookName ?? "Roster", ...(team === null ? [] : [team])].join(" · ");
 
   return (
@@ -199,13 +190,13 @@ export function RosterView({
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <ScreenTitle testId="roster-title">{title}</ScreenTitle>
-            <span className="border px-1 text-[10px] tracking-widest text-muted-foreground">ROSTER</span>
+            <span className="border px-1 text-xs tracking-widest text-muted-foreground">ROSTER</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             <span data-testid="roster-summary">
               {counts["on shift"]} on shift · {counts["off shift"]} off shift · {counts.waiting} waiting on you
             </span>
-            <span data-testid="roster-read-at"> · read {new Date(snapshot.readAt).toLocaleTimeString()}</span>
+            {readAt === undefined ? null : <span data-testid="roster-read-at"> · read {new Date(readAt).toLocaleTimeString()}</span>}
             {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
           </p>
         </div>
@@ -226,7 +217,7 @@ export function RosterView({
         </div>
       </header>
       <div
-        className={`${COLUMNS_GRID} border-b border-foreground/20 px-7 pt-[9px] pb-[7px] font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground`}
+        className={`${COLUMNS_GRID} border-b border-foreground/20 px-7 pt-[9px] pb-[7px] font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground`}
         data-testid="roster-columns"
       >
         <span>WORKER</span>
@@ -235,9 +226,9 @@ export function RosterView({
         <span>WAITING ON YOU</span>
       </div>
       <div className="flex-1 overflow-y-auto px-5 pb-6">
-        {snapshot.inventory.ok ? null : (
+        {inventory.ok ? null : (
           <div className="mt-3">
-            <SectionFailure what="The worker inventory" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
+            <SectionFailure what="The worker inventory" failure={inventory.failure} onRetry={refresh} testId="roster-inventory-failure" />
           </div>
         )}
         {roster !== undefined && "failure" in roster ? (
@@ -245,22 +236,17 @@ export function RosterView({
             Your own workers didn't load: {roster.failure.message}
           </p>
         ) : null}
-        {snapshot.asks.ok ? null : (
+        {inbox.section === undefined || inbox.section.ok ? null : (
           <div className="mt-3">
-            <SectionFailure what="Asks" failure={snapshot.asks.failure} onRetry={() => void refresh()} testId="roster-asks-failure" />
+            <SectionFailure what="Asks and tasks" failure={inbox.section.failure} onRetry={inbox.refresh} testId="roster-asks-failure" />
           </div>
         )}
-        {unread.map(({ workstreamId, failure }) => (
-          <div key={workstreamId} className="mt-3">
-            <SectionFailure what={`${workstreamId}'s tasks`} failure={failure} onRetry={() => void refresh()} testId="roster-boards-failure" />
-          </div>
-        ))}
         {SHIFT_STATUSES.map((status) => {
           const group = shown.filter((s) => s.status === status);
           if (group.length === 0) return null;
           return (
             <section key={status} data-testid="roster-group" data-status={status}>
-              <h2 className="flex items-center gap-[9px] border-b border-foreground/30 px-2 pt-[18px] pb-[7px] font-mono text-[11px] font-medium text-foreground/80">
+              <h2 className="flex items-center gap-[9px] border-b border-foreground/30 px-2 pt-[18px] pb-[7px] font-mono text-xs font-medium text-foreground/80">
                 <ShiftMark status={status} className="size-[9px]" />
                 <span className="font-semibold tracking-[0.1em] text-foreground" data-testid="roster-group-label">
                   {status.toUpperCase()}

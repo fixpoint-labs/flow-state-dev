@@ -24,6 +24,8 @@ import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 import type { SessionCreateCheck } from "./session-create";
 import type { ResourceVisibilityRule } from "./resource-visibility";
+import type { ViewDefinition } from "./view";
+import type { FileContent } from "../items/content";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -50,47 +52,18 @@ export type AnyResourceHandle =
   | ProjectedResourceCollectionRef<any>;
 
 /**
- * Context provided to a clientData compute function.
- * Contains the scope state and, where applicable, the scope's resource handles.
- */
-export type ClientDataContext<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = {
-  state: Readonly<TState>;
-  resources: TResources;
-};
-
-/**
- * A compute function that derives client-visible data from scope state.
- * Always client-visible (no `client: true` flag). Returns serializable data.
- */
-export type ClientDataComputeFn<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = (
-  ctx: ClientDataContext<TState, TResources>
-) => JsonValue | Promise<JsonValue>;
-
-/**
  * Scope-level client config. Declares what state crosses the
  * server/client boundary. Absent or empty means the scope's state is
  * private to the server.
  *
  * - `expose`: top-level state field names whose values are passed
  *   verbatim into `clientData.<scope>.<name>`.
- * - `derived`: named projections computed from `{ state, resources }`,
- *   surfaced under `clientData.<scope>.<name>`.
  *
- * Names in `expose` and `derived` share a namespace (the scope's
- * `clientData` object). They must not collide.
+ * A value computed for a screen is a view (`defineView`, in the flow's
+ * `views`), not client data.
  */
-export type ScopeClientConfig<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = {
+export type ScopeClientConfig<TState extends JsonObject = JsonObject> = {
   expose?: ReadonlyArray<keyof TState & string>;
-  derived?: Record<string, ClientDataComputeFn<TState, TResources>>;
 };
 
 export type HookHandler<TInput = unknown> = (
@@ -170,12 +143,12 @@ export interface ActionMcpConfig {
   // BP-031.
   /**
    * How the MCP adapter derives the dispatch `sessionId` for this action.
-   * MCP is sessionless — by default every `tools/call` mints a fresh
-   * ephemeral session. This directive lets a specific action reuse or hand
+   * MCP is sessionless — by default every `tools/call` runs in a fresh
+   * one-off session the adapter makes (`oneOffSessionId()`). This directive lets a specific action reuse or hand
    * out a session id, so a client can group related calls together.
    *
-   * - Omitted (default): stateless — every `tools/call` mints a fresh
-   *   ephemeral session (v1 behavior).
+   * - Omitted (default): stateless — every `tools/call` runs in a fresh
+   *   one-off session.
    * - `string`: a template for a freshly minted id. Only the FIRST `*` is
    *   replaced by a random token (`"conv_*"` → `"conv_1784…_a1b2"`; extra `*`
    *   stay literal); with no `*` the token is appended. Use to hand the caller
@@ -196,10 +169,21 @@ export interface ActionMcpConfig {
   session?: string | { fromInput: string };
 }
 
-/** What an action's `userMessage` may return beside plain text: the text, and the item's `metadata`. */
+/** What an action's `userMessage` may return beside plain text: the text, the item's `metadata`, and files the flow hands the line. */
 export type UserMessageEcho = {
   readonly text: string;
   readonly metadata?: Record<string, unknown>;
+  // FIX-2522.
+  /**
+   * Files the line carries that the flow kept itself, in reference form
+   * (`FileContent` whose `data` is `fsd-blob:<id>`), such as a task's brief
+   * files read off its row. Written as `file` parts after the person's own
+   * files, so a model reads them as part of the line. Read off server-written
+   * state, never off the action's input: a reference from input is a claim
+   * the action route never checked. A run reads only files its session or its
+   * person's own scope owns, so any other reference reads nothing.
+   */
+  readonly attachments?: ReadonlyArray<FileContent>;
 };
 
 /**
@@ -294,30 +278,37 @@ export type ActionConfig<
    * communicate (1) what the tool does, (2) when to use it vs. siblings,
    * (3) preconditions and side effects, (4) what each argument means.
    * Used by the devtool for tooltips even when MCP is not enabled.
+   *
+   * Defaults to `block.description`: `defineFlow` resolves it once, so every
+   * consumer reads the one value. Set it when a public MCP tool needs
+   * wording of its own.
    */
   description?: string;
   /** Per-action MCP overrides. */
   mcp?: ActionMcpConfig;
 };
 
-// FIX-2286.
 /**
- * A read: a block an app runs on a session to watch a view the flow
- * computes, such as a conversation's task list. It is answered in the HTTP
- * response and stored nowhere: no request record, no items, no concurrency
- * slot. Its context refuses every write (resource, content and session state,
- * and dispatch) with code `read_only`, so a read cannot change what it reads.
- *
- * The one hook for watching a computed view: an app polls it, or calls it when
- * a push tells it something changed. Anything that changes state is an action.
+ * What an author writes for an entry: the block alone, or the object form when
+ * the entry sets anything beyond its block (`userMessage`, `mcp`,
+ * `concurrency`, a description that differs from the block's, …).
+ * `defineFlow` turns a bare block into `{ block }`, so an instance only ever
+ * carries the object form.
  */
-export type ReadConfig<TBlock extends BlockDefinition = BlockDefinition> = {
-  block: TBlock;
-  /** Overrides `block.inputSchema` for the read's input, as on an action. */
-  inputSchema?: TBlock["inputSchema"];
-  /** Human-readable description, for tooling. */
-  description?: string;
+export type ActionEntry<TBlock extends BlockDefinition = BlockDefinition> =
+  | TBlock
+  | ActionConfig<TBlock>;
+
+/** One entry as `defineFlow` publishes it: a bare block as `{ block }`. Distributes over an optional entry's `undefined`. */
+type NormalizedEntry<TEntry> = TEntry extends BlockDefinition
+  ? ActionConfig<TEntry>
+  : Extract<TEntry, ActionConfig | undefined>;
+
+/** An `actions` map as `defineFlow` publishes it: each bare block as `{ block }`. */
+export type NormalizedActions<TActions extends Record<string, ActionEntry>> = {
+  [K in keyof TActions]: NormalizedEntry<TActions[K]>;
 };
+
 
 /**
  * The entries of one dispatch type, nested under the type so a per-type
@@ -378,8 +369,8 @@ export type SessionConfig = {
   cas?: CASOptions;
   /**
    * Declares which slice of session state crosses to the client. State is
-   * private by default — only `expose`d field names and `derived`
-   * projections appear in `clientData.session`.
+   * private by default — only `expose`d field names appear in
+   * `clientData.session`.
    */
   client?: ScopeClientConfig<JsonObject>;
   /** Retention policy that bounds session item log size. */
@@ -414,12 +405,34 @@ export type SessionConfig = {
    */
   serverOwned?: readonly string[];
   /**
+   * What a reader calls one of this flow's sessions when it has no title:
+   * "Amy" rather than `wks_9b74…`. Runs on every read of a session
+   * (the listing and the single read) and goes out as the session's `label`.
+   * It sees only the state the session shows (its readonly and `client.expose`
+   * fields), so it cannot publish a private one. Keep it cheap and pure.
+   * Called once per session per read. Return `undefined` to name nothing; a
+   * throw leaves that session unlabelled and is warned about once per flow kind.
+   * Display only, never an address or an authority.
+   */
+  label?: SessionLabel;
+  /**
    * Framework-facing, not a flow-author field: a request-end hook the package
    * that built this session config adds to every request of the flow (see
    * `SESSION_REQUEST_END_HOOK` in `./request-end`).
    */
   readonly [SESSION_REQUEST_END_HOOK]?: SessionRequestEndHook;
 };
+
+/** What {@link SessionConfig.label} is handed: the session as a reader sees it. */
+export type SessionLabelInput = {
+  /** The session's id, as a caller addresses it. */
+  readonly id: string;
+  /** The state fields the session shows, with the schema's defaults applied. */
+  readonly state: Readonly<JsonObject>;
+};
+
+/** See {@link SessionConfig.label}. */
+export type SessionLabel = (session: SessionLabelInput) => string | undefined;
 
 export type RequestConfig = {
   stateSchema?: ZodTypeAny;
@@ -538,7 +551,7 @@ export type FlowConfigValue<TConfigSchema extends ZodTypeAny | undefined> =
     : Readonly<Record<string, unknown>>;
 
 export type FlowDefinition<
-  TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
+  TActions extends Record<string, ActionEntry> = Record<string, ActionEntry>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
@@ -547,6 +560,12 @@ export type FlowDefinition<
   TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   kind: string;
+  /**
+   * What the flow is for, in a sentence a person reads beside its name in a
+   * flow list (the developer tool shows it on an empty session list). Display
+   * only; it goes out on the flow list.
+   */
+  description?: string;
   /**
    * Instance cardinality — see {@link FlowCardinality}. Omitted means
    * `"singleton"`. Definition-only: `rejectDefinitionOnlyOptions` refuses it
@@ -595,7 +614,8 @@ export type FlowDefinition<
 
   /**
    * The flow's `public` entries — what a caller may name over HTTP, MCP or
-   * voice, each authorized per request. The public API of the flow.
+   * voice, each authorized per request. The public API of the flow. Each is
+   * a block, or `{ block, ... }` when the entry sets more than its block.
    */
   actions: TActions;
 
@@ -610,7 +630,7 @@ export type FlowDefinition<
    * background job in a child session, a wake sent to a coordinator, a
    * follow-up delivered into a session that already exists.
    */
-  internal?: TypedEntries<InternalEntry>;
+  internal?: TypedEntries<InternalEntry | BlockDefinition>;
 
   /**
    * The flow's `task` entries — `task: { actions: { implement: { block } } }`
@@ -620,14 +640,16 @@ export type FlowDefinition<
    * board the flow reaches. `defineFlow` puts each entry behind that board's
    * claim gate and refuses an entry no board addresses.
    */
-  task?: TypedEntries<TaskEntry>;
+  task?: TypedEntries<TaskEntry | BlockDefinition>;
 
+  // FIX-2623.
   /**
-   * The flow's reads: blocks an app runs on a session to watch a view the
-   * flow computes, answered in the response and stored nowhere. See
-   * {@link ReadConfig}. A read may share a name with an action.
+   * The flow's views: blocks a screen watches, each with a scope (`session`,
+   * or `user` / `org` with no session) and, for a list, a row key. Declared
+   * with `defineView`. A view writes nothing and calls no model; each run's
+   * answer names the change topics its reads fall under.
    */
-  reads?: Record<string, ReadConfig>;
+  views?: Record<string, ViewDefinition>;
 
   session?: TSession;
   request?: TRequest;
@@ -662,9 +684,10 @@ export type FlowDefinition<
   webhooks?: WebhookConfig;
 
   /**
-   * Per-flow scheduled-action config. When set, the
-   * `@flow-state-dev/scheduled` adapter mounts
-   * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
+   * Per-flow scheduled-action config. When set, the router's built-in
+   * scheduled endpoint answers
+   * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow
+   * (with no `schedules`, it answers as for an unknown flow).
    * Static entries are validated at registration; dynamic entries
    * returned by `resolve` are validated at dispatch.
    */
@@ -746,7 +769,13 @@ export type FlowInstanceOptions<
   config?: FlowConfigInput<TConfigSchema>;
   requireUser?: boolean;
   authentication?: AuthenticationConfig;
-  actions?: Partial<TActions> & Record<string, ActionConfig>;
+  /**
+   * Per-instance action overrides, merged over the definition's. Each is a
+   * block, or `{ block, ... }`. An existing action's override is typed off that
+   * action (`TActions[K]`), so it keeps the block's input type the client was
+   * typed with; a new name takes any entry.
+   */
+  actions?: { [K in keyof TActions]?: TActions[K] | TActions[K]["block"] } & Record<string, ActionEntry>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -785,6 +814,8 @@ export type FlowInstance<
    */
   id: string;
   kind: string;
+  /** See {@link FlowDefinition.description}. Absent when the definition has none. */
+  description?: string;
   /** Normalized from the definition; see {@link FlowCardinality}. */
   cardinality: FlowCardinality;
   requireUser: boolean;
@@ -808,8 +839,8 @@ export type FlowInstance<
    * a `task` dispatch can only ever reach the worker through that gate.
    */
   task?: TypedEntries<TaskEntry>;
-  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
-  reads?: Record<string, ReadConfig>;
+  /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
+  views?: Record<string, ViewDefinition>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -890,8 +921,8 @@ export type FlowType<
   internal?: TypedEntries<InternalEntry>;
   /** Mirror of `FlowInstance.task`. */
   task?: TypedEntries<TaskEntry>;
-  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
-  reads?: Record<string, ReadConfig>;
+  /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
+  views?: Record<string, ViewDefinition>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;

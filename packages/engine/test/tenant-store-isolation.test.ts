@@ -36,7 +36,7 @@ function buildCountingFlow(seen?: { sessionIdentityId?: string }) {
   return defineFlow({
     kind: "counter-flow",
     session: { stateSchema: z.object({ count: z.number().default(0) }) },
-    actions: { run: { inputSchema: z.object({ by: z.number() }), block: bump } }
+    actions: { run: bump }
   })();
 }
 

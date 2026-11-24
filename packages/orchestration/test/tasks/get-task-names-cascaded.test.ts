@@ -199,7 +199,7 @@ const pastNoticeDue = () => new Promise((r) => setTimeout(r, 2_600));
 describe.each(STORES)("getTask names the dependents a failure it delivers cancelled (%s)", { timeout: 30_000 }, (_name, stores) => {
   async function host(flow: FlowInstance, waitDeadlines?: { minMs: number }) {
     const state = createFlowState({
-      flows: { "wait-board": flow },
+      flows: [flow],
       stores: { default: { primary: await stores() } },
       durable: true,
       ...(waitDeadlines !== undefined ? { durabilityRetention: { sweepIntervalMs: 25 }, waitDeadlines } : {})

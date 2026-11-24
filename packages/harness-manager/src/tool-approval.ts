@@ -94,13 +94,6 @@ export const toolGrantSchema = z.object({
 });
 export type ToolGrant = z.infer<typeof toolGrantSchema>;
 
-/** The call held on a turn, grants left by its answers and the number of resumed steps. */
-export const toolApprovalStateSchema = z.object({
-  pending: heldToolCallSchema.nullable().default(null),
-  grants: z.array(toolGrantSchema).default([]),
-  steps: z.number().int().default(0),
-});
-
 /** The data a yes sends for *Allow for this run*. A plain yes sends none. */
 export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional() }).strict();
 

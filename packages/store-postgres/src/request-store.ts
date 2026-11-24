@@ -647,6 +647,20 @@ export function createPostgresRequestStore(
       if (pending) await pending;
     },
 
+    async releaseItemTracking(requestId: string): Promise<void> {
+      // Let a write still queued or in flight land first: it records what it
+      // wrote when it finishes, which would put the memory back. A failed
+      // write is the run's to report, not this release's.
+      for (
+        let pending = pendingItemWrites.get(requestId);
+        pending !== undefined;
+        pending = pendingItemWrites.get(requestId)
+      ) {
+        await pending.catch(() => undefined);
+      }
+      clearItemMaps(requestId);
+    },
+
     async countItems(requestId: string): Promise<number> {
       const { rows } = await executor.query(
         "SELECT COUNT(*)::int AS c FROM request_items WHERE request_id = $1",

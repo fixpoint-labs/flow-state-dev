@@ -1,19 +1,29 @@
 /**
  * Harness readiness: the kept read, its refresh, its refusal, the formatter,
- * the action through a real flow, and the coordinator's context entry.
+ * the view through a real router, and the
+ * coordinator's context entry.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { createClient } from "@flow-state-dev/client";
 import { defineFlow } from "@flow-state-dev/core";
 import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   formatHarnessReadiness,
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
+  harnessReadinessView,
   READINESS_GUIDANCE,
+  type HarnessReadinessRead,
   type HarnessReadinessView,
 } from "../src/readiness";
+import { harnessReadinessViewRef } from "../src/browser";
+
+const routers: ReturnType<typeof createFlowApiRouter>[] = [];
+afterEach(async () => {
+  await Promise.all(routers.splice(0).map((router) => disposeFlowApiRouter(router)));
+});
 
 const READY: HarnessReadiness = { ready: true };
 const SIGNED_OUT: HarnessReadiness = { ready: false, reason: "Codex has no credential: Not logged in", remedy: "Run `codex login`, or set CODEX_API_KEY" };
@@ -151,34 +161,78 @@ describe("formatHarnessReadiness", () => {
   });
 });
 
-describe("harnessReadinessAction — through a real flow", () => {
-  it("returns the rows, and refresh: true checks again", async () => {
-    const codex = scripted([SIGNED_OUT, READY]);
-    const readiness = harnessReadiness({ codex: { label: "Codex", check: codex.check } });
-    const flow = defineFlow({ kind: "readiness-flow", actions: { harnessReadiness: harnessReadinessAction(readiness) } } as never)({
-      id: "readiness-flow",
-    } as never);
-    const state = createFlowState({ flows: { "readiness-flow": flow }, stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
-    const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
-    const act = async (input: unknown): Promise<HarnessReadinessView[]> => {
-      const result = (await runAction({
-        flow,
-        actionName: "harnessReadiness",
-        input,
-        userId: "alice",
-        orgId: "org_1",
-        sessionId: `s_${Math.random().toString(36).slice(2)}`,
-        stores: rt.stores,
-        runtimeConfig: { ...rt.runtimeConfig },
-      } as never)) as { output?: { harnesses: HarnessReadinessView[] }; error?: unknown };
-      if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
-      return result.output!.harnesses;
-    };
+describe("harnessReadinessView — read by scope, with no session", () => {
+  // Three callers, signed in by the flow: two users in one org, one in another.
+  const signIn = (context: { request?: Request }) => {
+    const user = context.request?.headers.get("x-user");
+    const org = context.request?.headers.get("x-org");
+    return user == null || org == null ? null : { userId: user, orgId: org };
+  };
+  const callers = { alice: "org-a", bob: "org-a", carol: "org-b" } as const;
 
-    expect((await act({}))[0]).toMatchObject({ harness: "codex", label: "Codex", ready: false });
-    expect((await act({}))[0]!.ready).toBe(false);
-    expect((await act({ refresh: true }))[0]!.ready).toBe(true);
+  function host(readiness: HarnessReadinessRead) {
+    const flow = defineFlow({
+      kind: "harness-readiness",
+      views: { readiness: harnessReadinessView(readiness) },
+      authentication: { resolvePrincipal: signIn },
+    } as never)();
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    routers.push(router);
+    const clientOf = (userId: keyof typeof callers) =>
+      createClient({
+        userId,
+        fetcher: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(new URL(String(input instanceof Request ? input.url : input), "http://localhost"), init);
+          request.headers.set("x-user", userId);
+          request.headers.set("x-org", callers[userId]);
+          const path = new URL(request.url).pathname.replace(/^\/api\/flows\//, "").split("/");
+          return request.method === "GET" ? router.GET(request, { params: { path } }) : router.POST(request, { params: { path } });
+        },
+      });
+    return { stores, router, clientOf };
+  }
+
+  it("answers each user in each org the machine's rows, makes no session for any of them, and Re-check checks again", async () => {
+    const codex = scripted([SIGNED_OUT, READY]);
+    const { stores, clientOf } = host(harnessReadiness({ codex: { label: "Codex", check: codex.check } }));
+    const ref = harnessReadinessViewRef("harness-readiness");
+
+    for (const user of ["alice", "bob", "carol"] as const) {
+      const answer = await clientOf(user).view(ref, {});
+      // Machine state, not user data: every caller reads the same kept rows, and the
+      // answer names no user or org topic, so nothing of one caller reaches another.
+      expect(brief(answer.value)).toEqual([{ harness: "codex", ready: false, remedy: "Run `codex login`, or set CODEX_API_KEY", unanswered: false }]);
+      expect(answer.topics).toEqual([]);
+      expect(answer.keys).toEqual(["codex"]);
+    }
+    // One check for three readers: the read is the kept one.
+    expect(codex.calls()).toBe(1);
+
+    // Re-check from the second org's user checks again, and the next reader sees it.
+    expect((await clientOf("carol").view(ref, { refresh: true })).value[0]!.ready).toBe(true);
+    expect((await clientOf("alice").view(ref, {})).value[0]!.ready).toBe(true);
     expect(codex.calls()).toBe(2);
+
+    // No reader had a session found or made for it.
+    expect(await stores.session.list({})).toEqual([]);
+  });
+
+  it("refuses a caller the flow doesn't sign in, and runs no check for them", async () => {
+    const codex = scripted([READY]);
+    const { router } = host(harnessReadiness({ codex: { check: codex.check } }));
+    const path = ["harness-readiness", "views", "readiness"];
+    const request = new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "mallory", input: {} }),
+    });
+    const res = await router.POST(request, { params: { path } });
+    // The flow's sign-in names no user for it: a body's claimed user is never taken.
+    expect(res.status, await res.clone().text()).toBe(400);
+    expect(codex.calls()).toBe(0);
   });
 });
 

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 502">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="864" height="350"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">YOUR PROJECT</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="60" width="480" height="298"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="56" y="82">src/flows/hello-chat/</text>
+<rect class="hl" fill="#e8f551" x="56" y="94" width="452" height="44"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="94" width="452" height="44"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="70" y="112">flow.ts</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="128">the flow, and the action a page calls</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="146" width="452" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="70" y="164">blocks/chat-generator.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="180">what the model is told</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="198" width="452" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="70" y="216">blocks/count-message.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="232">adds one to the session's count</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="250" width="452" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="70" y="268">blocks/chat-pipeline.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="284">runs the two blocks in order</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="302" width="452" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="70" y="320">flow.test.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="336">the test, with a scripted model</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="538" y="60" width="340" height="142"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="552" y="82">app/</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="552" y="94" width="312" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="566" y="112">page.tsx</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="566" y="128">the chat page</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="552" y="146" width="312" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="566" y="164">api/flows/[[...path]]/route.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="566" y="180">the route the page calls</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="538" y="218" width="340" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="552" y="236">fsdev.config.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="552" y="252">the app: the flows it serves</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="398" x2="920" y2="398"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="424">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="424">To change what the model is told, edit the prompt in chat-generator.ts.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="449">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="449">fsdev run finds a flow at src/flows/hello-chat/flow.ts, so the terminal needs no config file.</text>
+<g id="key">
+<rect class="hl" fill="#e8f551" x="28" y="470" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="480">THE FILE TO OPEN</text>
+</g>
+</svg>

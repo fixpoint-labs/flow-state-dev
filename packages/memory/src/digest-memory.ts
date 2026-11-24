@@ -64,7 +64,7 @@ export function createDigestMemoryResource(scope: 'user' | 'org', options?: Memo
     ref: 'digestMemory',
     scope,
     stateSchema: digestMemoryStateSchema,
-    default: digestMemoryStateSchema.parse({}),
+    default: { totalGenerated: 0 },
     writable: true,
     ...flowIsolationEntry(options),
   })

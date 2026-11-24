@@ -73,6 +73,6 @@ Don't paper over gaps. If something doesn't work well, fix it or document the li
 ## Non-Goals (for now)
 
 - Production deployment guides or infrastructure tooling
-- Plugin/extension ecosystem
+- A third-party plugin or extension ecosystem: publishing, discovery, versioning, a registry. FSD's own installable unit, the kit, is in scope (epic FIX-2618)
 - Performance optimization beyond correctness
 - Multi-provider abstraction (Vercel AI SDK is the Phase 1 provider)

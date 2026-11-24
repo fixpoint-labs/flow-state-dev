@@ -10,7 +10,7 @@
  *    nothing infers from absence (BP-030).
  * 2. **It never reaches a client.** Schema membership is itself a publication:
  *    the factory spreads the whole post-mutation row into a `task-change`
- *    component item and the delegation board marks that stream client-visible.
+ *    data item and the delegation board marks that stream client-visible.
  *    Without the omission at that boundary, a worker's session and request ids
  *    reach every subscribed browser on the first claim.
  *
@@ -442,22 +442,22 @@ describe("claimedBy — the emission boundary (the leak this PR must not ship)",
     const changes = (
       result.items as Array<{
         type?: string;
-        component?: string;
-        data?: { kind?: string; task?: Record<string, unknown> };
+        dataType?: string;
+        value?: { kind?: string; task?: Record<string, unknown> };
       }>
-    ).filter((i) => i.type === "component" && i.component === "task-change");
+    ).filter((i) => i.type === "data" && i.dataType === "task-change");
 
-    const claimEvent = changes.find((i) => i.data?.kind === "claimed");
+    const claimEvent = changes.find((i) => i.value?.kind === "claimed");
     expect(claimEvent).toBeDefined();
-    expect(claimEvent?.data?.task).not.toHaveProperty("claimedBy");
+    expect(claimEvent?.value?.task).not.toHaveProperty("claimedBy");
     // ...and the envelope is still whole, which FIX-1011 relies on.
-    expect(claimEvent?.data?.task?.status).toBe("in_progress");
-    expect(claimEvent?.data?.task?.attempts).toBe(1);
-    expect(claimEvent?.data?.task?.goal).toBe("do a thing");
+    expect(claimEvent?.value?.task?.status).toBe("in_progress");
+    expect(claimEvent?.value?.task?.attempts).toBe(1);
+    expect(claimEvent?.value?.task?.goal).toBe("do a thing");
 
     // No change event on this board publishes it, not just the claim.
     for (const change of changes) {
-      expect(change.data?.task).not.toHaveProperty("claimedBy");
+      expect(change.value?.task).not.toHaveProperty("claimedBy");
     }
   });
 });

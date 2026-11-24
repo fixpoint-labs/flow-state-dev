@@ -1,6 +1,6 @@
 /**
  * append-entry — add an entry to the workspace resource if not already
- * present, emit a keyed `rb-entry` component for live rendering.
+ * present, emit a keyed `rb-entry` data record for live rendering.
  *
  * Deduplication: skip when an entry with the same `type` + `topic`
  * already exists. Concurrent forEach dispatches can produce duplicates
@@ -57,14 +57,14 @@ export function createAppendEntry(
       const seqState = seq?.state as { emissionCount?: number } | undefined;
       const emissionCount = seqState?.emissionCount ?? state.entries.length;
 
-      ctx.emit.component(
+      ctx.emit.data(
         "rb-entry",
         {
           type: entryType,
           topic: entryTopic,
           body: (entry as Record<string, unknown>).body,
         },
-        { key: `entry-${emissionCount}` }
+        { key: `entry-${emissionCount}`, itemVisibility: { client: true, history: false } }
       );
     },
   });

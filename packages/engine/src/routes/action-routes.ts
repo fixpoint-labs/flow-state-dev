@@ -33,13 +33,18 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
+import { claimRequestAttachments } from "./attachment-claim";
+import { resolveActionCore } from "../execution/resolve-action-core";
+import { asServerResourceSend, DEFAULT_WRITE_FLOW, isWriteSessionId, WRITE_SESSION_PREFIX } from "../resources/default-write-flow";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../transports/scheduled/schedule-session-id";
+import type { ResourceSend } from "./scope-routes";
 
 type ActionRunInput = {
   flowKind: string;
   actionName: string;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  sessionId: string;
   requestId: string;
   /** Always set — it comes from the resolved principal, which requires one. */
   orgId: string;
@@ -61,20 +66,55 @@ type ActionRouteContext = {
   tenantIdHeader?: string;
 };
 
+// FIX-2624: `resourceSend`.
+/**
+ * Run an action. `resourceSend` is a send addressed to a user or org resource
+ * (`scope-routes.ts`): the writing flow, the writer's session and the caller,
+ * already resolved through the resource's declaring flow.
+ */
 export async function handleExecuteAction(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "execute_action" }>,
-  ctx: ActionRouteContext
+  ctx: ActionRouteContext,
+  resourceSend?: ResourceSend
 ): Promise<Response> {
-  const flow = ctx.registry.get(route.flowKind);
-  if (flow === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown flow "${route.flowKind}"`
+  const body = await parseJsonBody(request);
+  const namedSessionId = resourceSend?.sessionId ?? route.sessionId ?? getString(body.sessionId);
+  // Every run names its session, and only the caller knows which
+  // conversation it means: a send with none is refused by name, before the
+  // flow is looked up, the caller is resolved or anything is written (so it
+  // answers the same for every address). The server never makes one up.
+  if (namedSessionId === undefined || namedSessionId.length === 0) {
+    return jsonResponse(400, {
+      error: "session-required",
+      message:
+        "Name the session this action runs in, in the path or as `sessionId` in the body: " +
+        "a session from createSession(), or oneOffSessionId() from @flow-state-dev/core/helpers for a run of its own."
     });
   }
+  const sessionId: string = namedSessionId;
 
-  const body = await parseJsonBody(request);
-  const sessionId = route.sessionId ?? getString(body.sessionId);
+  const flowKind = resourceSend?.flowKind ?? route.flowKind;
+  const flow = ctx.registry.get(flowKind);
+  // The default write flow runs only on a send addressed to a resource.
+  if (flow === undefined || (resourceSend === undefined && flow.id === DEFAULT_WRITE_FLOW)) {
+    return jsonResponse(404, {
+      error: `Unknown flow "${flowKind}"`
+    });
+  }
+  // A write session is the server's to find or make for its writer (FIX-2624):
+  // a client that names one could take another writer's.
+  if (resourceSend === undefined && isWriteSessionId(sessionId)) {
+    return jsonResponse(400, {
+      error: "reserved-session-id",
+      message: `Session ids starting with "${WRITE_SESSION_PREFIX}" are the server's write sessions; a client can't name one.`
+    });
+  }
+  // FIX-2886: only the scheduled dispatch runs in a schedule session, a
+  // resource send included.
+  if (isScheduleSessionId(sessionId)) {
+    return jsonResponse(400, { error: "reserved-session-id", message: new ScheduleSessionIdError(sessionId).message });
+  }
   const metadata = asObject(body.metadata);
   // FIX-406 6D: optional tenant id from a configurable header.
   const tenantId = extractTenantId(request, ctx.tenantIdHeader);
@@ -84,7 +124,7 @@ export async function handleExecuteAction(
   // without re-parsing the request.
   let principal;
   try {
-    principal = await ctx.host.resolvePrincipal({
+    principal = resourceSend?.principal ?? await ctx.host.resolvePrincipal({
       source: "http",
       request,
       envelope: {
@@ -166,7 +206,7 @@ export async function handleExecuteAction(
     }
   };
 
-  const dispatchEnvelope = {
+  const envelope = {
     source: "http" as const,
     flowKind: resolvedActionInput.flowKind,
     action: resolvedActionInput.actionName,
@@ -180,135 +220,173 @@ export async function handleExecuteAction(
     signal: resolvedActionInput.signal
   };
 
+  // The files this message names: checked against the limits and the
+  // action's user line, then claimed into its session before any block runs
+  // (FIX-824, FIX-2517). Handed back if the send is refused before it is
+  // admitted. An action this route can't resolve is refused by the dispatch
+  // below, as without files.
+  const claimed = await claimRequestAttachments(body.attachments, {
+    stores: ctx.stores,
+    sessionId,
+    tenantId,
+    uploader: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
+    takesFiles: resolveActionCore(flow, route.actionName, "http", undefined)?.userMessage !== undefined
+  });
+  if ("refused" in claimed) return claimed.refused;
+  const built = {
+    ...envelope,
+    ...(claimed.attachments.length > 0 ? { attachments: claimed.attachments } : {})
+  };
+  // Only the server's own resource send may reach the default write flow or a write session.
+  const dispatchEnvelope = resourceSend === undefined ? built : asServerResourceSend(built);
+  let admitted = false;
   try {
-    await ctx.host.validateDispatch(dispatchEnvelope);
-  } catch (e) {
-    if (e instanceof OrgRequiredError) {
-      return jsonResponse(400, {
-        error: "OrgRequired",
-        message: e.message
-      });
-    }
-    if (e instanceof UnknownFlowError) {
-      return jsonResponse(404, { error: e.message });
-    }
-    throw e;
-  }
-
-  let handle;
-  try {
-    handle = ctx.host.dispatch(dispatchEnvelope);
-  } catch (error) {
-    // A concurrency `reject` refusal arrives through `accepted` below on every
-    // backend (the place is taken after the ownership check, FIX-1837). It is
-    // still mapped here, the same way, so a refusal thrown from `dispatch`
-    // could not fall through to a 500 — see `concurrencyRefusalResponse`.
-    const refused = concurrencyRefusalResponse(error, "action");
-    if (refused !== undefined) return refused;
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("active stream capacity")) {
-      return jsonResponse(503, { error: message });
-    }
-    if (error instanceof UnknownFlowError) {
-      return jsonResponse(404, { error: error.message });
-    }
-    throw error;
-  }
-
-  // Hold the ack until the request is accepted, so a 202 means "discoverable"
-  // and a store-write or enqueue failure becomes a failed POST rather than an
-  // ack for a request that never runs (FIX-828). What acceptance costs differs
-  // by dispatch path — see `InboundDispatchHandle.accepted` — but the ack's meaning
-  // does not: in-process now waits for the run's own registration rather than
-  // acking a request whose registry write could still fail (FIX-982).
-  if (handle.accepted !== undefined) {
     try {
-      await handle.accepted;
+      await ctx.host.validateDispatch(dispatchEnvelope);
+    } catch (e) {
+      if (e instanceof OrgRequiredError) {
+        return jsonResponse(400, {
+          error: "OrgRequired",
+          message: e.message
+        });
+      }
+      if (e instanceof UnknownFlowError) {
+        return jsonResponse(404, { error: e.message });
+      }
+      throw e;
+    }
+
+    let handle;
+    try {
+      handle = ctx.host.dispatch(dispatchEnvelope);
     } catch (error) {
-      // Concurrency `reject`, on any backend: refused at admission with
-      // nothing written — see `concurrencyRefusalResponse`.
+      // A concurrency `reject` refusal arrives through `accepted` below on every
+      // backend (the place is taken after the ownership check, FIX-1837). It is
+      // still mapped here, the same way, so a refusal thrown from `dispatch`
+      // could not fall through to a 500 — see `concurrencyRefusalResponse`.
       const refused = concurrencyRefusalResponse(error, "action");
       if (refused !== undefined) return refused;
-      // A session another user or organization owns: refused at admission
-      // with nothing written, and answered as the session routes answer it,
-      // as an id with no session behind it. Neither the owner, its
-      // organization, nor the session's existence reaches the caller.
-      if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
-        return unknownSessionResponse(error.sessionId);
-      }
-      // A session this action would have created, refused by the flow: an
-      // action carries no initial state, so a flow whose sessions need some
-      // is created through the session-create route instead.
-      if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
-      // A request id another principal took between the check above and the
-      // dispatch's write. Nothing of theirs was touched, and the same call
-      // retried resolves to this caller's own request.
-      if (error instanceof RequestOwnerMismatchError) {
-        return jsonResponse(409, {
-          error: "request-id-in-use",
-          message: `Request "${error.requestId}" cannot be used by this caller`
-        });
-      }
-      // A session or request this instance does not own: refused at admission
-      // with nothing written, named by which record, without disclosing who
-      // does own it. Deterministic and non-retryable until the caller
-      // addresses the owning instance.
-      if (error instanceof FlowInstanceBindingMismatchError) {
-        return jsonResponse(409, {
-          error:
-            error.reason === "migration-required"
-              ? "migration-required"
-              : error.record === "session"
-                ? "wrong-instance-session"
-                : "wrong-instance-request",
-          message:
-            `${error.record === "session" ? "Session" : "Request"} "${error.recordId}" is not ` +
-            `owned by flow instance "${error.addressedFlowId}"`
-        });
-      }
       const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse(500, { error: "DispatchFailed", message });
-    }
-  }
-
-  // Inline streaming: when the client sends Accept: text/event-stream, return
-  // the SSE stream directly from the POST response. This keeps the action
-  // execution and stream delivery on the same function instance — essential
-  // for serverless platforms where POST and GET may hit different instances.
-  const accept = request.headers.get("accept") ?? "";
-  if (accept.includes("text/event-stream") && handle.liveStream !== null) {
-    return new Response(handle.liveStream.readable, {
-      status: 200,
-      headers: {
-        ...SSE_HEADERS,
-        // Vercel/Nginx proxy anti-buffering headers — needed here because
-        // the Vercel adapter skips heartbeat wrapping for POST responses.
-        "cache-control": "no-cache, no-transform",
-        "x-accel-buffering": "no",
-        "x-request-id": handle.requestId,
-        "x-session-id": resolvedActionInput.sessionId ?? ""
+      if (message.includes("active stream capacity")) {
+        return jsonResponse(503, { error: message });
       }
-    });
-  }
+      if (error instanceof UnknownFlowError) {
+        return jsonResponse(404, { error: error.message });
+      }
+      throw error;
+    }
 
-  const accepted = jsonResponse(202, {
-    status: "in_progress",
-    request: {
-      id: handle.requestId,
-      flowKind: flow.kind,
-      flowId: flow.id,
-      actionName: resolvedActionInput.actionName,
-      status: "in_progress"
-    },
-    session:
-      resolvedActionInput.sessionId === undefined
-        ? undefined
-        : {
-            id: resolvedActionInput.sessionId
-          }
-  });
-  // The id the request runs under, as the SSE path sends it: a caller whose
-  // supplied id was already another principal's reads its own here.
-  accepted.headers.set("x-request-id", handle.requestId);
-  return accepted;
+    // Hold the ack until the request is accepted, so a 202 means "discoverable"
+    // and a store-write or enqueue failure becomes a failed POST rather than an
+    // ack for a request that never runs (FIX-828). What acceptance costs differs
+    // by dispatch path — see `InboundDispatchHandle.accepted` — but the ack's meaning
+    // does not: in-process now waits for the run's own registration rather than
+    // acking a request whose registry write could still fail (FIX-982).
+    if (handle.accepted !== undefined) {
+      try {
+        await handle.accepted;
+      } catch (error) {
+        // Concurrency `reject`, on any backend: refused at admission with
+        // nothing written — see `concurrencyRefusalResponse`.
+        const refused = concurrencyRefusalResponse(error, "action");
+        if (refused !== undefined) return refused;
+        // A session another user or organization owns: refused at admission
+        // with nothing written, and answered as the session routes answer it,
+        // as an id with no session behind it. Neither the owner, its
+        // organization, nor the session's existence reaches the caller.
+        if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
+          return unknownSessionResponse(error.sessionId);
+        }
+        // A session this action would have created, refused by the flow: an
+        // action carries no initial state, so a flow whose sessions need some
+        // is created through the session-create route instead.
+        if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
+        // A request id another principal took between the check above and the
+        // dispatch's write. Nothing of theirs was touched, and the same call
+        // retried resolves to this caller's own request.
+        if (error instanceof RequestOwnerMismatchError) {
+          return jsonResponse(409, {
+            error: "request-id-in-use",
+            message: `Request "${error.requestId}" cannot be used by this caller`
+          });
+        }
+        // A session or request this instance does not own: refused at admission
+        // with nothing written, named by which record, without disclosing who
+        // does own it. Deterministic and non-retryable until the caller
+        // addresses the owning instance.
+        if (error instanceof FlowInstanceBindingMismatchError) {
+          return jsonResponse(409, {
+            error:
+              error.reason === "migration-required"
+                ? "migration-required"
+                : error.record === "session"
+                  ? "wrong-instance-session"
+                  : "wrong-instance-request",
+            message:
+              `${error.record === "session" ? "Session" : "Request"} "${error.recordId}" is not ` +
+              `owned by flow instance "${error.addressedFlowId}"`
+          });
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        return jsonResponse(500, { error: "DispatchFailed", message });
+      }
+    }
+
+    // Admitted: the session check passed and the request runs, so its files stay claimed.
+    admitted = true;
+    // Bookkeeping after the request already runs: a failure here must not answer
+    // 500, or a client's retry starts a second run. An unconfirmed send stays
+    // pending, which keeps its files in the session all the same.
+    try {
+      await claimed.confirm();
+    } catch (error) {
+      console.warn("[flow-state] confirming a send's attachments failed:", error);
+    }
+
+    // Inline streaming: when the client sends Accept: text/event-stream, return
+    // the SSE stream directly from the POST response. This keeps the action
+    // execution and stream delivery on the same function instance — essential
+    // for serverless platforms where POST and GET may hit different instances.
+    const accept = request.headers.get("accept") ?? "";
+    if (accept.includes("text/event-stream") && handle.liveStream !== null) {
+      return new Response(handle.liveStream.readable, {
+        status: 200,
+        headers: {
+          ...SSE_HEADERS,
+          // Vercel/Nginx proxy anti-buffering headers — needed here because
+          // the Vercel adapter skips heartbeat wrapping for POST responses.
+          "cache-control": "no-cache, no-transform",
+          "x-accel-buffering": "no",
+          "x-request-id": handle.requestId,
+          "x-session-id": resolvedActionInput.sessionId ?? ""
+        }
+      });
+    }
+
+    // Nobody reads the live stream past a 202 (the caller follows the
+    // request through its GET stream): close it so it fills no further.
+    handle.liveStream?.close();
+    const accepted = jsonResponse(202, {
+      status: "in_progress",
+      request: {
+        id: handle.requestId,
+        flowKind: flow.kind,
+        flowId: flow.id,
+        actionName: resolvedActionInput.actionName,
+        status: "in_progress"
+      },
+      session:
+        resolvedActionInput.sessionId === undefined
+          ? undefined
+          : {
+              id: resolvedActionInput.sessionId
+            }
+    });
+    // The id the request runs under, as the SSE path sends it: a caller whose
+    // supplied id was already another principal's reads its own here.
+    accepted.headers.set("x-request-id", handle.requestId);
+    return accepted;
+  } finally {
+    if (!admitted) await claimed.release();
+  }
 }

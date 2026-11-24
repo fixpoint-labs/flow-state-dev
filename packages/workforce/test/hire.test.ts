@@ -487,6 +487,7 @@ describe("hireWorkforce", () => {
         workerPackages: z.array(z.any()).optional(),
         workerId: z.string().optional(),
         delegates: z.array(z.string()).optional(),
+        defaults: z.any().optional(),
         retries: z.number().default(3)
       }),
       actions: { run: { inputSchema, block: work }, ...workerDoor }

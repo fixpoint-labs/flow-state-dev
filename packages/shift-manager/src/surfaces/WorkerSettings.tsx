@@ -6,17 +6,16 @@
  */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
-import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
-import { useRoster, withRoster } from "../lib/roster";
+import { shiftCoordinatorOf } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
 import { RouteLink } from "../components/RouteLink";
 
 // FIX-1747.
 /** What Shift Manager calls the `shift-coordinator` worker. */
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
-export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {
-  const roster = useRoster();
-  const { workers } = withRoster(snapshot, roster);
+export function WorkerSettingsView({ workerId, devtoolUrl }: { workerId: string; devtoolUrl?: string }) {
+  const { workers, roster } = useWorkers();
   const worker = workers.find((w) => w.id === workerId);
   const shiftCoordinator = shiftCoordinatorOf(workers);
   const name = shiftCoordinator.kind === "one" && shiftCoordinator.worker.id === workerId ? SHIFT_COORDINATOR_NAME : (worker?.name ?? workerId);
@@ -29,7 +28,7 @@ export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapsho
         </RouteLink>
         <div className="mt-1 flex items-baseline gap-2">
           <ScreenTitle testId="worker-settings-title">{name}</ScreenTitle>
-          <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="worker-settings-tag">
+          <span className="border px-1 text-xs tracking-widest text-muted-foreground" data-testid="worker-settings-tag">
             SETTINGS
           </span>
         </div>
@@ -53,7 +52,7 @@ export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapsho
           <StandingRules key={worker.id} workerId={worker.id} name={name} devtoolUrl={devtoolUrl} />
         ) : (
           <section className="max-w-2xl space-y-3">
-            <h2 className="font-mono text-[11px] font-semibold tracking-[0.1em]">RULES</h2>
+            <h2 className="font-mono text-xs font-semibold tracking-[0.1em]">RULES</h2>
             <p className="text-sm text-muted-foreground" data-testid="rules-not-kept">
               This worker's flow doesn't keep standing rules.
             </p>

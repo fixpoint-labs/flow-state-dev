@@ -11,23 +11,23 @@ import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  ROSTER_FLOW,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
   defineSubscriptionServiceFlow,
-  hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
-  subscriptionTools,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type SubscriptionProvider,
-  type WorkerManifest
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ORG = "acme";
@@ -39,7 +39,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A delivery's id without its session: one key per object version, as one dedupe key would have it.
   "one-key": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`@\$\{object\.version\}\$\{tenant\}:\$\{sessionId\}`,
       to: "@${object.version}"
     }
@@ -47,7 +47,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A thread's closing ends only the subscriptions the closing event reached: the end-only runs are dropped.
   "close-gated": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`for \(const candidate of closing\) if \(!delivered\.has\(candidate\.subscription\)\) ownerRuns\.push\(runFor\(candidate, true\)\);`,
       to: ""
     }
@@ -55,7 +55,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A closing event ends every subscription it reaches, the whole repo's too.
   "close-whole": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`const closes = closedThreadOf\(event\) === row\.thread;`,
       to: "const closes = event.closes === true;"
     }
@@ -120,42 +120,40 @@ const github: SubscriptionProvider = {
   self: (ctx) => `${(ctx.session.identity as { userId: string }).userId}-gh`
 };
 
-const installationFlows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({
-  standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
-  workerFlows: () => installationFlows as never
-});
-const tools = subscriptionTools({ providers: [github] });
+const directory = workforceTree([{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "" }]);
 const doorInput = z.object({ message: z.string() });
 const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
-installationFlows.follower = {
-  roles: ["contributor"],
-  flow: defineFlow({
-    kind: "follower",
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
-    actions: {
-      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe },
-      unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
-    },
-    // No turn: a message lands as its items and nothing runs.
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
-    task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
-  })
-};
-const instances: Record<string, FlowInstance> = Object.fromEntries(
-  hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+const follower = workerFlow(
+  (installation) => {
+    // The worker verbs as actions, called as a model would; their providers come from the kit's routines.
+    const tools = workerRoutineVerbs(installation);
+    return defineFlow({
+      kind: "follower",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
+      actions: {
+        respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+        ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
+      },
+      // No turn: a message lands as its items and nothing runs.
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+      task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
+    });
+  },
+  { roles: ["contributor"] }
 );
-instances["github-service"] = defineSubscriptionServiceFlow({
-  kind: "github-service",
-  provider: github,
-  installation,
-  trustedBots: BOTS,
-  // High enough that no subscription in the fixture reaches it: the cap is the unit tests'.
-  capPerHour: 10_000
-});
+/** The service flow, built on the installation the kit hires. */
+const service = (installation: WorkerInstallation): FlowInstance[] => [
+  defineSubscriptionServiceFlow({
+    kind: "github-service",
+    provider: github,
+    installation,
+    trustedBots: BOTS,
+    // High enough that no subscription in the fixture reaches it: the cap is the unit tests'.
+    capPerHour: 10_000
+  }) as FlowInstance
+];
 
 const mocks = createMockModelResolver({});
 const modelResolver = Object.assign((modelId: string, blockName?: string) => {
@@ -166,7 +164,8 @@ const modelResolver = Object.assign((modelId: string, blockName?: string) => {
 let captured: InboundTransportHost | undefined;
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: instances,
+  kits: [workforce({ directory, routines: { providers: [github] } })],
+  fill: { [workforce.slots.workerFlows]: { follower }, [workforce.slots.flows]: { service } },
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,
@@ -178,6 +177,11 @@ const state = createFlowState({
 } as never);
 const router = (await state.getRouter()) as any;
 const runtime = await state.getRuntime();
+const followerFlow: FlowInstance =
+  runtime.registry.get("follower") ??
+  (() => {
+    throw new Error("setup: the workforce kit serves no follower flow");
+  })();
 
 // Every read of a user's cell, tagged with whose request made it.
 const resourceState = runtime.stores.resourceState as unknown as Record<string, (...args: unknown[]) => unknown>;
@@ -198,8 +202,6 @@ const host: InboundTransportHost = {
   stores: captured!.stores,
   dispatch: (envelope) => runningAs.run(envelope.principal.userId, () => captured!.dispatch(envelope))
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Wait until no request is running or unfinalized. */
 async function settled(): Promise<void> {
@@ -230,7 +232,7 @@ async function createFollower(user: string): Promise<string> {
 
 async function act(user: string, sessionId: string, action: string, input: unknown) {
   return (await runAction({
-    flow: instances.follower!,
+    flow: followerFlow,
     actionName: action,
     input,
     userId: user,
@@ -249,9 +251,10 @@ const refusedAtSubscribe = new Map<string, string>();
 for (const sub of SUBSCRIPTIONS) {
   const sessionId = await createFollower(sub.user);
   sessions.set(sub.label, sessionId);
-  const outcome = await act(sub.user, sessionId, "subscribe", { provider: "github", ...sub.input });
-  if (outcome.output?.id !== undefined) subscriptionIds.set(sub.label, outcome.output.id);
-  else refusedAtSubscribe.set(sub.label, String(outcome.output?.refused ?? JSON.stringify(outcome.error)));
+  // An event routine, saved as the follower's model would: its id names the subscription it wrote.
+  const outcome = await act(sub.user, sessionId, "saveRoutine", { trigger: { event: { provider: "github", ...sub.input } } });
+  if (outcome.output?.ok === true) subscriptionIds.set(sub.label, String(outcome.output.routine.id).replace(/^event:/, ""));
+  else refusedAtSubscribe.set(sub.label, String(outcome.output?.error ?? JSON.stringify(outcome.error)));
 }
 
 // The share, derived here from the verdicts routing returns: production output carries no share.
@@ -276,7 +279,7 @@ const route = async (event: SubscriptionEvent) => {
 for (const [label, id] of subscriptionIds) labelOf.set(id, label);
 for (const [i, event] of EVENTS.entries()) {
   for (const sub of SUBSCRIPTIONS) {
-    if (sub.unsubscribeAt === i) await act(sub.user, sessions.get(sub.label)!, "unsubscribe", { id: subscriptionIds.get(sub.label) });
+    if (sub.unsubscribeAt === i) await act(sub.user, sessions.get(sub.label)!, "deleteRoutine", { id: `event:${subscriptionIds.get(sub.label)}` });
   }
   const output = await route(event);
   verdictsCut += output.verdictsCut;

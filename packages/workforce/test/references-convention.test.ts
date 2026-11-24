@@ -41,7 +41,7 @@ import { defineFlow, defineResource, handler, type DeclaredResources } from "@fl
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { readReferencesDirectory, readResourcesDirectory } from "../src/loader";
+import { readReferencesDirectory, readResourcesDirectory } from "../src/loader/readers";
 import { discoverResourceModules } from "../src/codegen/discover-resource-modules";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";
@@ -133,7 +133,7 @@ function flowWith(resources: DeclaredResources) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
-    actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } },
+    actions: { ...workerDoor, run: work },
   });
 }
 

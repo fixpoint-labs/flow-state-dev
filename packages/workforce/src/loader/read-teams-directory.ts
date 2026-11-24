@@ -38,8 +38,8 @@ import {
   openRoot,
   refusedSymlink,
   unreadable,
-  walkTeams,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
+import { walkTeams } from "./structural-directory";
 
 /**
  * Why one thing that should have produced a team record did not — the
@@ -108,7 +108,7 @@ export async function readTeamsDirectory(
   const teams: TeamManifest[] = [];
   const errors: TeamManifestError[] = [];
 
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   /** File a structural refusal the shared walk met on the way to a team. */
   const report = (at: string, error: Error): void => {

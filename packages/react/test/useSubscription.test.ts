@@ -256,4 +256,30 @@ describe("useSubscription", () => {
     await gate.settle();
     expect(gate.read).toHaveBeenCalledTimes(1);
   });
+
+  // FIX-2551 D2.
+  it("tries a read that threw again on its own, 1 s later, with no notice: push runs no timer to recover on", async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      renderHook(() =>
+        useSubscription([S1], async () => {
+          reads += 1;
+          if (reads === 1) throw new Error("down");
+        })
+      );
+      await act(async () => subscriptions[0]!.options.onChange(null));
+      expect(reads).toBe(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(reads).toBe(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(reads).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

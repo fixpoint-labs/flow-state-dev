@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { z } from "zod";
 import { hashContent } from "@flow-state-dev/workspace";
 import { createBashTool } from "../src/bash/create-bash-tool";
+import { createBashCapability } from "../src/bash/capability";
 import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
@@ -1941,5 +1943,105 @@ describe("createBashBlocks", () => {
 
     expect(warn.mock.calls.flat().join(" ")).not.toContain("0 files under writable mounts");
     warn.mockRestore();
+  });
+
+  /**
+   * A collection that stores whatever state it is given, and refuses a state
+   * whose `updatedAt` is not a string — the schema the bash types document.
+   */
+  function createStringUpdatedAtCollection(pattern: string) {
+    const schema = z
+      .object({
+        path: z.string(),
+        hash: z.string(),
+        updatedAt: z.string(),
+      })
+      .passthrough();
+    const store = new Map<string, { state: z.infer<typeof schema>; content: string | null }>();
+
+    const parse = (value: unknown) => {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues.map((issue) => issue.message).join("; "));
+      }
+      return parsed.data;
+    };
+
+    const refFor = (key: string) => {
+      const entry = store.get(key)!;
+      return {
+        path: key,
+        get state() {
+          return entry.state;
+        },
+        patchState: async (updates: Record<string, unknown>) => {
+          entry.state = parse({ ...entry.state, ...updates });
+        },
+        readContent: async () => entry.content,
+        writeContent: async (content: string) => {
+          entry.content = content;
+        },
+      };
+    };
+
+    return {
+      pattern,
+      scope: "session" as const,
+      async get(key: string) {
+        const ref = store.has(key) ? refFor(key) : undefined;
+        if (!ref) throw new Error(`Not found: ${key}`);
+        return ref;
+      },
+      async getOptional(key: string) {
+        return store.has(key) ? refFor(key) : undefined;
+      },
+      async getOrCreate(key: string, initial?: Record<string, unknown>) {
+        if (!store.has(key)) store.set(key, { state: parse(initial), content: null });
+        return refFor(key);
+      },
+      async list() {
+        return [...store.keys()].map(refFor);
+      },
+      async count() {
+        return store.size;
+      },
+      async delete(key: string) {
+        store.delete(key);
+      },
+      config: { pattern, stateSchema: schema },
+    } as unknown as ResourceCollectionRef<FileEntryState>;
+  }
+
+  function blocksOf(cap: ReturnType<typeof createBashCapability>) {
+    const tools =
+      (cap as unknown as { __presetDefs?: { tools?: { tools?: unknown[] } } }).__presetDefs?.tools
+        ?.tools ?? [];
+    const byName = new Map<string, unknown>();
+    for (const tool of tools) {
+      const named = tool as { config?: { name?: string }; name?: string };
+      const name = named.config?.name ?? named.name;
+      if (name) byName.set(name, tool);
+    }
+    return byName;
+  }
+
+  it("saves every file into a collection whose updatedAt is a string", async () => {
+    const artifacts = createStringUpdatedAtCollection("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const cap = createBashCapability({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const write = blocksOf(cap).get("bash-write-file");
+    const ctx = buildCtx("string-updated-at", { session: { artifacts } });
+
+    await runForTest(write as never, { path: "artifacts/notes.md", content: "one" }, ctx);
+    await runForTest(write as never, { path: "artifacts/other.txt", content: "two" }, ctx);
+
+    for (const key of ["notes.md", "other.txt"]) {
+      const state = (await artifacts.get(key)).state;
+      expect(z.string().datetime().safeParse(state.updatedAt).success).toBe(true);
+    }
+    expect((await artifacts.get("notes.md")).state.title).toBe("notes.md");
   });
 });

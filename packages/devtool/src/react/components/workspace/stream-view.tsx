@@ -60,7 +60,7 @@ const STREAM_TYPES = new Set([
   "reasoning",
   "tool_output",
   "error",
-  "component",
+  "data",
   "container",
   "status",
   "source",

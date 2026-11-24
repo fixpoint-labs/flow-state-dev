@@ -36,10 +36,10 @@ const CONTROLS: Record<string, Patch[]> = {
   // The chips drawn from a constant list where every harness is ready: what a strip that never reads the machine shows.
   "fixed-chips": [
     {
-      file: "src/adapter.ts",
-      from: 'return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: LabHarness[] }).harnesses;',
+      file: "src/components/App.tsx",
+      from: "const harnesses = rechecked ?? readiness.value ?? (readiness.stale ? [] : undefined);",
       to:
-        "void refresh; return [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as LabHarness[];",
+        "void rechecked; const harnesses = [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as HarnessReadinessChipRow[];",
       why: "the chips read a constant all-ready list, not harness-manager's readiness",
     },
   ],
@@ -54,6 +54,14 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   symlinkSync(join(LAB, "node_modules"), join(root, "node_modules"));
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // The build config reads its build-inputs plugin, and the repository it records, from two folders up: the checkout's.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(
+    viteConfig,
+    readFileSync(viteConfig, "utf8")
+      .replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts/build-inputs.mjs")))
+      .replace('fileURLToPath(new URL("../..", import.meta.url))', JSON.stringify(REPO_ROOT)),
+  );
   for (const patch of patches) {
     const path = join(root, patch.file);
     const before = readFileSync(path, "utf8");

@@ -7,9 +7,10 @@
  * the org's topics and each listed session but Shift Manager's own. Only the
  * notices that change what the snapshot reads start a read: never a streamed
  * item, never a resource the snapshot doesn't read, never Shift Manager's own
- * reading and usage sessions, or each read would start the next. The summary
- * says when it was last read (D1), and counts dim only while a read the user
- * asked for runs (D2).
+ * reading and usage sessions, or each read would start the next. No screen
+ * reads the snapshot any more (FIX-2775): the summary says when its own reads
+ * last landed (D1), and its refresh and R read those again, never the
+ * snapshot.
  *
  * The client's `subscribe` and the reader are swapped for ones the test drives.
  */
@@ -18,9 +19,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { App } from "../src/App";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import { inboxSection, PROJECT_READER_FLOW, readerSessionId, type LabSnapshot } from "../src/lib/reads";
+import { inboxSection, type LabSnapshot } from "../src/lib/reads";
+import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { heard, heardSessionIds, SNAPSHOT_POLL_MS } from "../src/lib/snapshot-subscribe";
+import { liveRead } from "@flow-state-dev/client/internal";
+import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths } from "../src/lib/snapshot-subscribe";
 import { clockTime } from "../src/lib/shell";
 
 const USER = "u_test";
@@ -35,12 +38,36 @@ const subscribe = vi.fn((topics: readonly WireTopic[], options: { onChange: (not
 /** The subscription open now. */
 const live = () => opened.filter((o) => !o.closed);
 
-vi.mock("../src/lib/connection", () => ({
-  connect: (connection: { userId: string }) => ({ userId: connection.userId, subscribe }),
-  readConnection: () => ({ userId: USER }),
-}));
-const workforce = { watchRoster: () => () => {} };
+vi.mock("../src/lib/connection", async () => {
+  const { liveRead } = await import("@flow-state-dev/client/internal");
+  return {
+    // The client's own live read, over the subscription the test drives.
+    connect: (connection: { userId: string }) => ({
+      userId: connection.userId,
+      subscribe,
+      live: (topics: readonly WireTopic[], options: Parameters<typeof liveRead>[2]) => liveRead(subscribe as never, topics, options),
+    }),
+    readConnection: () => ({ userId: USER }),
+  };
+});
+const workforce = { organization: async () => "acme", watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+// FIX-2774: the summary's needs-you numbers read the inbox view, whose own subscription isn't this test's.
+/** When the view's answer last landed, as `useInbox` says it, and its refresh. */
+let viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
+/** The directory the page draws: one good read, as one landed. */
+let directoryShown: LabSnapshot | undefined;
+const viewRefresh = vi.fn();
+vi.mock("../src/lib/inbox", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/lib/inbox")>();
+  const { viewOfSnapshot } = await import("./helpers/inbox-view");
+  return { ...real, useInbox: () => ({ section: viewOfSnapshot(snapshotOf()), stale: false, refresh: viewRefresh, readAt: viewReadAt }) };
+});
+// FIX-2775: the directory's reads, whose own subscriptions aren't this test's either.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixedReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixedReads(() => directoryShown) };
+});
 
 let sessions: SessionSummary[] = [];
 let readAt = Date.UTC(2026, 10, 4, 14, 2);
@@ -91,64 +118,85 @@ const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
 beforeEach(() => {
   opened.length = 0;
   subscribe.mockClear();
-  sessions = [session("conv-1"), session(readerSessionId(USER, "roster"), "roster"), session("usage-own-abc", "codex")];
+  sessions = [session("conv-1")];
   readAt = Date.UTC(2026, 10, 4, 14, 2);
   reads = 0;
   held = undefined;
   holdNext = false;
+  viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
+  viewRefresh.mockClear();
+  directoryShown = snapshotOf();
 });
 afterEach(() => cleanup());
+
+/**
+ * Whether the snapshot's live read reads on `notice`: its `hear` and `paths`,
+ * through the client's own filter, counted as reads.
+ */
+function snapshotHears(notice: WireNotice): boolean {
+  let onChange: ((n: WireNotice | null) => void) | undefined;
+  let count = 0;
+  const watching = liveRead(
+    (_topics, options) => {
+      onChange = options.onChange;
+      return { close: () => {} };
+    },
+    [],
+    { read: () => void (count += 1), hear: heard, paths: snapshotPaths, readNow: false, pollIntervalMs: null },
+  );
+  onChange!(notice);
+  watching.close();
+  return count === 1;
+}
 
 describe("what the snapshot hears", () => {
   it("reads on a session's request or run, never on its streamed items", () => {
     const conv = { scope: "session", id: "conv-1" } as const;
-    expect(heard(notice(conv, "request"))).toBe(true);
-    expect(heard(notice(conv, "run"))).toBe(true);
-    expect(heard(notice(conv, "items"))).toBe(false);
-    expect(heard(notice(conv, "state"))).toBe(false);
-    expect(heard(notice({ ...conv, resource: "tasks" }, "board"))).toBe(false);
+    expect(snapshotHears(notice(conv, "request"))).toBe(true);
+    expect(snapshotHears(notice(conv, "run"))).toBe(true);
+    expect(snapshotHears(notice(conv, "items"))).toBe(false);
+    expect(snapshotHears(notice(conv, "state"))).toBe(false);
+    expect(snapshotHears(notice({ ...conv, resource: "tasks" }, "board"))).toBe(false);
   });
 
   it("reads on a resource in a collection the snapshot reads, and on no other under the user or the org", () => {
     const user = (resource?: string) => notice({ scope: "user", ...(resource === undefined ? {} : { resource }) }, "resource");
     const org = (resource: string) => notice({ scope: "org", resource }, "resource");
     // A task filed or moved, a private project, a hire, a standard worker.
-    expect(heard(user("tasks/s%5Fconv%7Eab/task_1"))).toBe(true);
-    expect(heard(user("projects/p1"))).toBe(true);
-    expect(heard(user("workforce/workers/pm"))).toBe(true);
-    expect(heard(user("workforce/standard-workers/eng.pm"))).toBe(true);
+    expect(snapshotHears(user("tasks/s%5Fconv%7Eab/task_1"))).toBe(true);
+    expect(snapshotHears(user("projects/p1"))).toBe(true);
+    expect(snapshotHears(user("workforce/workers/pm"))).toBe(true);
+    expect(snapshotHears(user("workforce/standard-workers/eng.pm"))).toBe(true);
     // Usage's readings and the messages between workers: the snapshot reads neither.
-    expect(heard(user("worker-usage/codex/2026-11"))).toBe(false);
-    expect(heard(user("workforce/messages/m1"))).toBe(false);
-    expect(heard(user("tasks__ids/t1"))).toBe(false);
+    expect(snapshotHears(user("worker-usage/codex/2026-11"))).toBe(false);
+    expect(snapshotHears(user("workforce/messages/m1"))).toBe(false);
+    expect(snapshotHears(user("tasks__ids/t1"))).toBe(false);
     // A row whose path a notice can't name may be one the snapshot reads.
-    expect(heard(user())).toBe(true);
-    expect(heard(org("inventory/workers/eng.pm"))).toBe(true);
-    expect(heard(org("projects/p1"))).toBe(true);
-    expect(heard(org("licenses/l1"))).toBe(false);
-    expect(heard(notice({ scope: "user" }, "state"))).toBe(false);
-    expect(heard(notice({ scope: "org" }, "resync"))).toBe(true);
+    expect(snapshotHears(user())).toBe(true);
+    expect(snapshotHears(org("inventory/workers/eng.pm"))).toBe(true);
+    expect(snapshotHears(org("projects/p1"))).toBe(true);
+    expect(snapshotHears(org("licenses/l1"))).toBe(false);
+    expect(snapshotHears(notice({ scope: "user" }, "state"))).toBe(false);
+    expect(snapshotHears(notice({ scope: "org" }, "resync"))).toBe(true);
   });
 
-  it("subscribes every listed session but Shift Manager's own, and leaves out a run whose parent it hears", () => {
+  it("subscribes every listed session, and leaves out a run whose parent it hears", () => {
     const listed = [
       session("conv-1"),
-      session(readerSessionId(USER, "roster"), "roster"),
-      session(readerSessionId(USER, "codex"), "codex"),
-      session("usage-own-1a2b", "codex"),
       session("task-1", "doer", "conv-1"),
       session("sub-1", "doer", "task-1"),
       session("orphan-run", "doer", "not-listed"),
     ];
     // task-1's writes reach conv-1 as `run`. sub-1's reach only task-1, which is left out, so it is heard itself.
-    expect(heardSessionIds(listed, USER)).toEqual(["conv-1", "orphan-run", "sub-1"]);
+    expect(heardSessionIds(listed)).toEqual(["conv-1", "orphan-run", "sub-1"]);
   });
 
-  it("leaves out the roster session Schedules reads through, even when its id was generated", () => {
-    // Workforce's client opens a roster session without an id; the project reader reuses it, and
-    // Schedules runs an action on it after every read. Hearing it would make each read start the next.
-    const listed = [session("conv-1"), session("roster-generated-7f3a", PROJECT_READER_FLOW)];
-    expect(heardSessionIds(listed, USER)).toEqual(["conv-1"]);
+  // FIX-2624.
+  it("hears a roster session like any other: Shift Manager reads through none of the user's sessions", () => {
+    // Routines, Usage and the projects are views and direct reads now, so no listed session is
+    // Shift Manager's own, and a roster session a worker's write used is the user's to hear.
+    const listed = [session("conv-1"), session(`${ROSTER_FLOW}-own-${USER}`, ROSTER_FLOW), session("roster-generated-7f3a", ROSTER_FLOW)];
+    expect(heardSessionIds(listed)).toEqual(["conv-1", "roster-generated-7f3a", `${ROSTER_FLOW}-own-${USER}`].sort());
   });
 });
 
@@ -274,39 +322,33 @@ describe("the summary's age and R", () => {
     return screen.findByTestId("shift-coordinator-as-of");
   }
 
-  it("says when the snapshot was last read, never that it is live, and moves when a read lands (D1)", async () => {
+  it("says when the summary's own reads last landed, never that it is live (D1)", async () => {
+    viewReadAt = Date.UTC(2026, 10, 4, 14, 7);
     const line = await openShiftCoordinator();
-    expect(line.textContent).toBe(`as of ${clockTime(readAt)} · refresh`);
+    expect(line.textContent).toBe(`as of ${clockTime(viewReadAt)} · refresh`);
     expect(line.textContent).not.toMatch(/live/i);
-    readAt += 5 * 60_000;
-    await waitFor(() => expect(live()).toHaveLength(1));
-    await hear(notice({ scope: "session", id: "conv-1" }, "request"));
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-as-of").textContent).toBe(`as of ${clockTime(readAt)} · refresh`));
   });
 
-  it("reads now from its refresh link and from R, dimming the counts until the read lands, but not from R typed in a field", async () => {
+  it("reads the summary's reads again from its refresh link and from R, and nothing of the snapshot; not from R typed in a field", async () => {
     await openShiftCoordinator();
     await settle();
     const before = reads;
-    holdNext = true;
     fireEvent.click(screen.getByTestId("shift-coordinator-as-of-refresh"));
-    await waitFor(() => expect(held).toBeDefined());
-    expect(reads).toBe(before + 1);
-    expect(screen.getByTestId("nav-inbox-count").getAttribute("data-asking")).toBe("true");
-    expect(screen.getByTestId("shift-coordinator-summary").querySelector("[data-look='summary-prose']")!.getAttribute("data-asking")).toBe("true");
-    await act(async () => held!.land());
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").getAttribute("data-asking")).toBeNull());
+    await settle();
+    expect(viewRefresh).toHaveBeenCalledTimes(1);
 
     act(() => void fireEvent.keyDown(window, { key: "r" }));
     await settle();
-    expect(reads).toBe(before + 2);
+    expect(viewRefresh).toHaveBeenCalledTimes(2);
 
     const field = document.createElement("input");
     document.body.appendChild(field);
     act(() => void fireEvent.keyDown(field, { key: "r" }));
     act(() => void fireEvent.keyDown(window, { key: "r", metaKey: true }));
     await settle();
-    expect(reads).toBe(before + 2);
+    expect(viewRefresh).toHaveBeenCalledTimes(2);
     field.remove();
+    // Nothing on screen asked the snapshot for a read.
+    expect(reads).toBe(before);
   });
 });

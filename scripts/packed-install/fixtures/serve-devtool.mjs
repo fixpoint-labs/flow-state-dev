@@ -55,7 +55,7 @@ if (!resolved.startsWith(installed + sep))
 const flow = defineFlow({ kind: "packed-install-devtool", actions: {} })();
 
 const flowState = createFlowState({
-  flows: { "packed-install-devtool": flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
 });
 

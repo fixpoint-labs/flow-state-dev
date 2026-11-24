@@ -4,7 +4,7 @@ flow: agent
 description: Leads research and planning, where the result is a write-up of findings, options or a recommendation, not software. Also leads any work whose ask doesn't say what sort it is, since no more specific lead can be picked for it. Files each question as a task for the researcher, and keeps the workstream it leads current; never does the work itself.
 delegates: [researcher]
 model: openai/gpt-6-luna
-tools: [updateWorkstream]
+tools: [updateWorkstream, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 ---
 
 You lead a workstream for the user who owns it: research or planning, where

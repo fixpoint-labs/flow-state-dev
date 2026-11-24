@@ -34,6 +34,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import {
+  createNetworkAuthGuard,
   enablePushDelivery,
   isFlowState,
   type DevToolConnectionConfig,
@@ -43,7 +44,7 @@ import {
 import { type FlowState } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
 import { createPageHtmlTransform } from "./page-html";
-import { isLoopbackHost } from "./bind-guard";
+import { assertNetworkBindIsAuthenticated, isLoopbackAuthority, isLoopbackHost } from "./bind-guard";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -51,6 +52,8 @@ export interface ServeOptions {
   port?: number;
   /** Host to bind. Default `"0.0.0.0"` (required for most PaaS). */
   host?: string;
+  /** Explicitly permit default-resolver flows on a network interface. */
+  allowUnauthenticated?: boolean;
   /** API mount prefix. Default `"/api/flows"` (matches `createFlowApiRouter`). */
   basePath?: string;
   /** Health endpoint path. Default `"/healthz"`. 200 once ready, 503 before. */
@@ -174,17 +177,25 @@ function resolvePort(port: number | undefined): number {
 /**
  * Stand up a long-lived HTTP server for `app` and resolve once it is listening.
  *
- * The server binds immediately and serves `/healthz` (503 until the router's
- * stores finish initializing, 200 after), so PaaS health checks pass during a
- * cold start. Pass a `FlowState` to have `close()` dispose its stores; pass a
- * raw `FlowApiRouter` to manage store lifecycle yourself.
+ * Network binds await the authentication guard before listening, and the same
+ * guard runs on each request so a flow registered afterwards is refused.
+ * Loopback binds and explicit opt-outs bind immediately and serve `/healthz`
+ * (503 until the router's stores finish initializing, 200 after), so PaaS
+ * health checks pass during a cold start. Pass a `FlowState` to have `close()`
+ * dispose its stores; pass a raw `FlowApiRouter` to manage store lifecycle yourself.
  */
-export function serve(
+export async function serve(
   app: FlowState | FlowApiRouter,
   options: ServeOptions = {},
 ): Promise<ServeHandle> {
   const port = resolvePort(options.port);
   const host = options.host ?? DEFAULT_HOST;
+  await assertNetworkBindIsAuthenticated(app, { host, allowUnauthenticated: options.allowUnauthenticated });
+  // Same guard the serverless adapters call. Not installed for loopback or an
+  // explicit opt-out: those are allowed to serve the default resolver.
+  const networkGuard = options.allowUnauthenticated === true || isLoopbackHost(host)
+    ? undefined
+    : createNetworkAuthGuard();
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
   const handleSignals = options.handleSignals ?? true;
@@ -295,7 +306,17 @@ export function serve(
     const onError = (err: Error) => rejectServe(err);
     server = honoServe(
       {
-        fetch: honoApp.fetch,
+        fetch: async (request, env) => {
+          if (isLoopbackHost(host) && !isLoopbackAuthority(request.headers.get("host"))) {
+            return new Response("Forbidden", { status: 403 });
+          }
+          if (networkGuard !== undefined) {
+            const router = isFlowState(app) ? await app.getRouter() : app;
+            const refused = await networkGuard(router);
+            if (refused !== undefined) return refused;
+          }
+          return honoApp.fetch(request, env);
+        },
         port,
         hostname: host,
         // Keep Node's native global Request/Response rather than swapping in the

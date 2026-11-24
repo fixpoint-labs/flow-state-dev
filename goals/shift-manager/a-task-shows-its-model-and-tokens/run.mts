@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, labRoutes, startShiftManager, type LabRoutes, type LabUser, type ServedShiftManager } from "../../lib/shift-manager.mts";
+import { workerUsageView } from "@flow-state-dev/workforce/browser";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_CROWD, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { SPEND_TICK_MS } from "../../../packages/orchestration/src/task-board/task-request.ts";
@@ -108,11 +110,10 @@ await runGoal(async () => {
     writeFileSync(join(SCRATCH, `${label}.log`), served.log());
   };
 
-  /** The `workerUsage` query, as `user`: the worker's tokens. */
+  /** The roster flow's `workerUsage` view, as `user`, with no session: the worker's tokens. */
   const usageOf = async (served: ServedShiftManager, user: LabUser, worker: (row: UsageRow) => boolean) => {
-    const done = await labRoutes(served.origin, user).act(PROJECTS_FLOW, `${PROJECTS_FLOW}-own-${user.userId}`, "workerUsage", {});
-    if (done.status !== "completed") throw new Error(`workerUsage as ${user.userId} ended ${done.status}: ${done.error ?? ""}`);
-    return (done.output as { workers: UsageRow[] }).workers.find(worker)?.tokens ?? { input: 0, output: 0 };
+    const client = connect({ userId: user.userId, baseUrl: served.origin, bearerToken: user.bearer });
+    return ((await client.view(workerUsageView, {})).value.workers as UsageRow[]).find(worker)?.tokens ?? { input: 0, output: 0 };
   };
 
   /** A conversation that files tasks, as `user`: a Shift Coordinator's, or the general lead's. */

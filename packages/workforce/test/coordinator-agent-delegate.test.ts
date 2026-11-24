@@ -66,7 +66,7 @@ async function postToOtto(answer: MockGeneratorInstance, message: string, desk: 
   flows = { agent: agentFlow, coordinator };
   const copies = hireWorkforce(installation);
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": answer },

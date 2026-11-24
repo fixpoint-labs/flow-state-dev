@@ -247,18 +247,18 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
   // The test above and this one are the two halves of "stop once no further
   // fenced write can follow": there, one can; here, none can.
 
-  /** A ctx that accepts an awaited component emit and records what it got. */
+  /** A ctx that accepts an awaited data emit and records what it got. */
   function ctxWith(
     fx: Fixture,
-    emitted: Array<{ component: string; data: Record<string, unknown> }>
+    emitted: Array<{ dataType: string; value: Record<string, unknown> }>
   ): BlockContext {
     return {
       sequencer: fx.sequencer,
-      _emitComponentAwaited: async (
-        component: string,
-        data: Record<string, unknown>
+      _emitDataAwaited: async (
+        dataType: string,
+        value: Record<string, unknown>
       ) => {
-        emitted.push({ component, data });
+        emitted.push({ dataType, value });
       },
     } as unknown as BlockContext;
   }
@@ -275,7 +275,7 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
       },
     } as unknown as TaskCollectionRef;
 
-    const emitted: Array<{ component: string; data: Record<string, unknown> }> =
+    const emitted: Array<{ dataType: string; value: Record<string, unknown> }> =
       [];
     const block = createRecordSuccess({
       name: "record-success",
@@ -291,7 +291,7 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
     await runForTest(block, { ok: true }, ctxWith(fx, emitted));
 
     expect(emitted).toHaveLength(1);
-    expect(emitted[0]?.data).toMatchObject({ verdict: "committed" });
+    expect(emitted[0]?.value).toMatchObject({ verdict: "committed" });
     // The assertion this block exists for.
     expect(fx.pending()).toBe(0);
   });
@@ -308,7 +308,7 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
       },
     } as unknown as TaskCollectionRef;
 
-    const emitted: Array<{ component: string; data: Record<string, unknown> }> =
+    const emitted: Array<{ dataType: string; value: Record<string, unknown> }> =
       [];
     const block = createRecordError({
       name: "record-error",
@@ -320,7 +320,7 @@ describe("the swallow path releases the driver itself (FIX-963)", () => {
     await runForTest(block, new Error("boom"), ctxWith(fx, emitted));
 
     expect(emitted).toHaveLength(1);
-    expect(emitted[0]?.data).toMatchObject({ recorder: "fail" });
+    expect(emitted[0]?.value).toMatchObject({ recorder: "fail" });
     expect(fx.pending()).toBe(0);
   });
 });

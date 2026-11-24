@@ -18,7 +18,7 @@ import { aliceIn, proofsOf, ownHolds, serveLab, show, sleep, TERMINAL, type Row,
 
 type Contextual = (alice: Context["alice"], files: { proof: string; store: string }) => Context;
 
-/** The component a received worker message is drawn by (`RECEIVED_MESSAGE_COMPONENT`). */
+/** The data type a received worker message is recorded as (`RECEIVED_MESSAGE_DATA_TYPE`). */
 const RECEIVED = "workforce:received";
 
 /** Every received-message item in her conversation from `from`, with the request it landed in. */
@@ -26,8 +26,8 @@ async function receivedFrom(c: Context, from: string): Promise<Array<{ text: str
   const requests = await c.alice.client.sessions.requests(c.alice.conversation, { includeItems: true });
   return requests.flatMap((request: Row) =>
     ((request.items ?? []) as Row[])
-      .filter((item) => item.type === "component" && item.component === RECEIVED && item.data?.from === from)
-      .map((item) => ({ text: String(item.data?.text ?? ""), requestId: request.id as string, action: request.actionName as string | undefined })),
+      .filter((item) => item.type === "data" && item.dataType === RECEIVED && item.value?.from === from)
+      .map((item) => ({ text: String(item.value?.text ?? ""), requestId: request.id as string, action: request.actionName as string | undefined })),
   );
 }
 

@@ -39,15 +39,12 @@ function flow(kind: string, authentication?: Parameters<typeof defineFlow>[0]["a
     kind,
     authentication,
     actions: {
-      respond: {
-        inputSchema: echoInput,
-        block: handler({
+      respond: handler({
           name: `${kind}-respond`,
           inputSchema: echoInput,
           outputSchema: z.object({ reply: z.string() }),
           execute: async (input) => ({ reply: input.message })
         })
-      }
     }
   })();
 }
@@ -70,7 +67,7 @@ async function outcome(p: Promise<unknown>): Promise<string> {
 describe("resolveInProcessPrincipal · the host's own answer", () => {
   it("returns the host resolver's organization for a flow with no resolver of its own", async () => {
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: () => ({ userId: "devuser", orgId: "kitchen-sink" })
     });
@@ -83,9 +80,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
 
   it("asks the flow's own resolver before the host's, as the routes do", async () => {
     const app = createFlowState({
-      flows: {
-        own: flow("own", { resolvePrincipal: () => ({ userId: "flow-user", orgId: "flow-org" }) })
-      },
+      flows: [flow("own", { resolvePrincipal: () => ({ userId: "flow-user", orgId: "flow-org" }) })],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: () => ({ userId: "devuser", orgId: "kitchen-sink" })
     });
@@ -98,7 +93,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
 
   it("with no resolver anywhere, keeps the caller-named user in the development organization", async () => {
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } }
     });
     await expect(app.resolveInProcessPrincipal(question("echo", "alice"))).resolves.toEqual({
@@ -124,7 +119,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
 
   it("refuses a resolver that claims the placeholder organization, as the host does", async () => {
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: () => ({ userId: "x", orgId: DEFAULT_ORG_ID })
     });
@@ -135,14 +130,12 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
 
   it("refuses a credential-checking flow: the terminal carries no credential", async () => {
     const app = createFlowState({
-      flows: {
-        admin: flow("admin", {
-          resolvePrincipal: createBearerSecretPrincipalResolver({
-            secret: "s3cret",
-            principal: { userId: "admin", orgId: "kitchen-sink" }
-          })
-        })
-      },
+      flows: [flow("admin", {
+                resolvePrincipal: createBearerSecretPrincipalResolver({
+                  secret: "s3cret",
+                  principal: { userId: "admin", orgId: "kitchen-sink" }
+                })
+              })],
       stores: { default: { primary: inMemoryStores() } }
     });
     expect(await outcome(app.resolveInProcessPrincipal(question("admin")))).toBe(
@@ -153,7 +146,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
   it("hands the resolver a terminal's question: source cli, no request, an HTTP-shaped body", async () => {
     const seen: PrincipalResolutionContext[] = [];
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: (ctx) => {
         seen.push(ctx);
@@ -175,7 +168,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
   it("hands the resolver a frozen context, so a kept reference cannot be rewritten and replayed", async () => {
     let seen: PrincipalResolutionContext | undefined;
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: (ctx) => {
         seen = ctx;
@@ -217,7 +210,7 @@ describe("source \"cli\" is reserved for the in-process entry point", () => {
   it("refuses an adapter-built context stamped cli, whatever source the adapter declared", async () => {
     const stash: { host?: InboundTransportHost } = {};
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: cliBranch,
       adapters: [stashingAdapter(stash)]
@@ -244,7 +237,7 @@ describe("source \"cli\" is reserved for the in-process entry point", () => {
     let captured: PrincipalResolutionContext | undefined;
     const stash: { host?: InboundTransportHost } = {};
     const app = createFlowState({
-      flows: { echo: flow("echo") },
+      flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: (ctx) => {
         captured ??= ctx;

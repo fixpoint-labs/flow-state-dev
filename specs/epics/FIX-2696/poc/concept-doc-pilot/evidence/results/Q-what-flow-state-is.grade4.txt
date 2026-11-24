@@ -1,0 +1,9 @@
+R1 1 whole app, repo-owned, includes workers and config
+R2 1 installable, config-listed, flows, slots all present
+R3 1 HTTP backend, actions, streaming, typed state
+R4 0.5 Block kinds listed but sequencer/evaluator mismatch key
+R5 0.5 (a) and (b) right; (c) block right but wording
+P1.1 1 WORKER.md, no TypeScript, restart noted
+P1.2 1 Both kits added, slot relationships correct
+P1.3 1 generator, handler, router all correct
+SCORE 7 / 8

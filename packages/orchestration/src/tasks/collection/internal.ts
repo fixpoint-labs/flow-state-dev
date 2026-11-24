@@ -3,7 +3,7 @@
  *
  * Centralizing init/transition logic here keeps the two backings in
  * lockstep on default values, claim eligibility, and the post-mutation
- * task shape that ends up on the emitted `task-change` component item.
+ * task shape that ends up on the emitted `task-change` data item.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
@@ -14,6 +14,7 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
+  isTaskStatus,
   isTerminalStatus,
   isTransitionAllowed,
 } from "../schema/task-status";
@@ -22,7 +23,7 @@ import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder
 import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, withoutNoticeMarkers, type TaskNotice } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
-import { steersForAttempt, untakenSteers } from "../steers";
+import { steersForAttempt, untakenBy, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
 import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isOwnHold, keptOnEnding, newOwnHolds, openOwnHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
@@ -108,6 +109,7 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
+    ...(init.attachments !== undefined && init.attachments.length > 0 ? { attachments: [...init.attachments] } : {}),
     status,
     attempts: 0,
     // A conversation-result task has one attempt: unset reads as 1. Any other
@@ -333,34 +335,31 @@ export interface TaskSettingsPatch {
   metadata?: Record<string, unknown>;
   /** Who works it. A follow-up keeps its root's worker. */
   assignee?: string;
-}
-
-
-// FIX-2080; BP-030.
-/**
- * A release and nothing else, of a row an older version stored `blocked`
- * (`heldFromBlocked`, set only at the read boundary). Such a row may have
- * started before it was blocked, and a release is how it runs again.
- * No current path holds a started row, so any other started held
- * row keeps the field table's rule: no release. Field edits stay locked.
- */
-function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
-  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
+  // FIX-2894.
+  /**
+   * Write only while the row is still at this `revision` (a row stored with
+   * none reads as `0`): decided inside the write, so an edit decided on an
+   * earlier read of the row is declined `revision-moved`, never written over
+   * the newer one. Omitted, the edit lands on whatever the row is now.
+   */
+  ifRevision?: number;
 }
 
 /**
  * The status check the field table leaves: a settings edit lands only on a
- * pending or held row. Which fields a started row still takes is the
- * table's call (`lockedFields`), not this one's.
+ * pending or held row. A status the board does not know is declined
+ * `unknown-status`, and the row is left as stored. Which fields a started
+ * row still takes is the table's call (`lockedFields`), not this one's.
  */
 function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
 }
 
 /** The fields a patch names, in the field table's words. */
 function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
   return (Object.keys(patch) as Array<keyof TaskSettingsPatch>).filter(
-    (field) => patch[field] !== undefined,
+    (field) => field !== "ifRevision" && patch[field] !== undefined,
   ) as TaskEditField[];
 }
 
@@ -393,7 +392,8 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
-  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  if (patch.ifRevision !== undefined && (task.revision ?? 0) !== patch.ifRevision) return { decline: "revision-moved" };
+  const locked = lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
@@ -401,8 +401,6 @@ export function settingsWrite(
   if (patch.held === true && task.status === "pending") update.status = "held";
   if (patch.held === false && task.status === "held") {
     update.status = "pending";
-    // The legacy mark serves one release; a later hold is an ordinary one.
-    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
   }
   if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
     assertDepsEditable(task.id, patch.deps, lookup);
@@ -861,6 +859,7 @@ export function transitionDeclineReason(
   now: number,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   // FIX-2133: a held row settles only by cancel, whoever writes, guarded or
   // not. Its holds close first: an answer, a deadline, or the cancel itself.
   if (
@@ -1253,7 +1252,7 @@ export function requireClaimTicket(
   }
 }
 
-// FIX-2086; FIX-2077; FIX-2133.
+// FIX-2086; FIX-2077; FIX-2133; FIX-2795.
 /**
  * The patch `setKeptOpenBy` writes: set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
@@ -1268,13 +1267,35 @@ export function requireClaimTicket(
  * advances the turn generation and clears the mark. Set with `owesTurn`, the
  * wait is a turn owed (the steer turn), which the claim may take.
  *
- * @throws when clearing without a finite `leaseUntil`: a programming error.
+ * Cleared with `owesTurn` and no `leaseUntil`: a later request
+ * that took an owed turn with no wait beside it (the last question answered)
+ * was stopped, and gives the turn back. The row drops its lease and owes the
+ * turn again, as the answer left it, so the claim may take it.
+ *
+ * With `untakeSteersOf` (a request id), the steers that request took on
+ * this attempt are untaken again, in the same write: a stopped request never
+ * answered them, so the turn after it must read them. Applies to a wait set
+ * and to a turn given back, owed or not.
+ *
+ * @throws when clearing without a finite `leaseUntil`, other than to give a
+ *   turn back: a programming error.
  */
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+  options: {
+    leaseUntil?: number;
+    answer?: { output: unknown };
+    hold?: SuspensionHold;
+    resume?: boolean;
+    owesTurn?: boolean;
+    untakeSteersOf?: string;
+  }
 ): Partial<Task> {
+  const untaken = options.untakeSteersOf === undefined ? {} : untakeSteersPatch(task, options.untakeSteersOf);
+  if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
+    return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true, ...untaken };
+  }
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
     const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
@@ -1304,7 +1325,15 @@ export function waitingOnPatch(
     ...kept,
     ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
     ...(options.owesTurn === true ? { turnOwed: true as const } : {}),
+    ...untaken,
   };
+}
+
+// FIX-2795.
+/** The steers `requestId` took on `task`'s current attempt, untaken again; nothing when it took none. */
+function untakeSteersPatch(task: Task, requestId: string): Partial<Task> {
+  const next = untakenBy(task, requestId);
+  return next === task ? {} : { steers: next.steers };
 }
 
 /** Whether a progress report names anything to write. */

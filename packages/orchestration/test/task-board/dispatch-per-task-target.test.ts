@@ -137,11 +137,11 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
       ],
     });
     const state = createFlowState({
-      flows: {
-        [sender.id]: sender,
-        "taker-alice": takerFlow("taker-alice", ran),
-        "taker-bob": takerFlow("taker-bob", ran),
-      },
+      flows: [
+        sender,
+        takerFlow("taker-alice", ran),
+        takerFlow("taker-bob", ran)
+      ],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });
@@ -180,7 +180,7 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
       tasks: [{ id: "t-nobody", assignee: "nobody" }, { id: "t-unnamed" }],
     });
     const state = createFlowState({
-      flows: { [sender.id]: sender, "taker-alice": takerFlow("taker-alice", ran) },
+      flows: [sender, takerFlow("taker-alice", ran)],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });

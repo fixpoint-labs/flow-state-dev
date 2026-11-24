@@ -1747,7 +1747,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
 describe("a durable host with no retention policy still keeps its gates (BR-11a, BR-14)", () => {
   function durableHost(flow: FlowInstance) {
     return createFlowState({
-      flows: { parking: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true
     });

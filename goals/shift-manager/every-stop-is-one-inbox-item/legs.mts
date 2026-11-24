@@ -139,6 +139,8 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     if (holds.some((h) => h.source.kind !== (SUSPENDS[stop] ? "suspension" : "task"))) c.fail(`${tag}:six-items`, `the ${stop} item answers through ${show(holds.map((h) => h.source.kind))}`);
     if (holds.some((h) => h.due !== undefined)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} item has a deadline: ${show(holds.map((h) => h.due))}`);
   }
+  // FIX-2774 D2: each task's screen draws its Inbox item's holds, from the same answer.
+  for (const stop of STOPS) if (ids[stop] !== undefined) await taskEqualsItem(c, stop, ids[stop]!, tag);
   const strays = items.filter((item) => item.task === null || !Object.values(ids).includes(item.task.taskId));
   if (strays.length > 0) c.fail(`${tag}:six-items`, `the Inbox lists ${strays.length} item(s) beside the six: ${show(strays.map((i) => [i.task?.taskId ?? i.id, i.holds.map((h) => h.ask.kind)]))}`);
   const drift = await c.alice.reconciled([]);
@@ -179,6 +181,16 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     }
     if (proofsFor(c, id, "resumed").length > 0) c.fail(`${tag}:no-deadline-waits`, `the ${stop} task's block resumed with no answer: ${show(proofsFor(c, id, "resumed"))}`);
   }
+}
+
+/**
+ * `<tag>:task-equals-item` (FIX-2774 D2): the asks a task's screen draws are exactly its Inbox
+ * item's holds, read from the one inbox view both read; after the answer, neither shows one.
+ */
+export async function taskEqualsItem(c: Context, stop: Stop, id: string, tag: string): Promise<void> {
+  const { screen, item } = await c.alice.taskAndItem(id);
+  if (screen === null) c.fail(`${tag}:task-equals-item`, `the inbox view lists no row for the ${stop} task`);
+  else if (JSON.stringify(screen) !== JSON.stringify(item)) c.fail(`${tag}:task-equals-item`, `the ${stop} task's screen draws ${show(screen)}, its Inbox item holds ${show(item)}`);
 }
 
 /** The answer each stop takes in the Inbox. */
@@ -251,6 +263,7 @@ export async function legB(c: Context, filed: Filed, tag = "b", only: readonly S
       c.fail(`${tag}:${stop}-same-attempt`, `the ${stop} task has no Inbox item to answer`);
       continue;
     }
+    await taskEqualsItem(c, stop, id, tag);
     const sent = await c.alice.answer(item, answerFor(c, stop));
     if (sent !== "ok") c.fail(`${tag}:${stop}-same-attempt`, `the Inbox's answer to the ${stop} stop was refused: ${sent}`);
     else {
@@ -262,6 +275,7 @@ export async function legB(c: Context, filed: Filed, tag = "b", only: readonly S
     const done = await c.alice.until(() => c.alice.row(id), (row) => TERMINAL.has(row?.status), settleMs);
     await carriedOn(c, stop, id, done, tag);
     if ((await c.alice.itemOf(id)) !== undefined) c.fail(`${tag}:answered-once`, `the ${stop} task's item is still listed after its answer`);
+    await taskEqualsItem(c, stop, id, tag);
     // A row hold takes the same words again as a success (FIX-2133), so the second answer differs.
     const again = await c.alice.answerOne(item.holds[0]!, SUSPENDS[stop] ? answerFor(c, stop) : { text: "A different answer." });
     // Only the stop's own refusal counts: 409 for a suspension, question_answered for a row hold.

@@ -49,9 +49,8 @@ import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync,
 import { createServer } from "node:net";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, intentFreeEnv, readTree, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -218,8 +217,8 @@ await runGoal(async (failures) => {
   evidence.push(`${packed.length} tarballs npm-installed into an empty project; the Lab copied from ${relative(REPO_ROOT, LAB)}`);
 
   // The oracle: the tree on disk.
-  const tree = await readDeclaredRoster(join(project, "lab", "workforce"));
-  if (tree.problems.length > 0) throw new Error(`the Lab's tree did not load: ${tree.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the Lab's tree whole if anything did not load.
+  const tree = await readTree(join(project, "lab", "workforce"));
   const workers = tree.workers.map((w) => w.id);
   // The worker that files: its file names delegates, and it is no coordinator.
   // Its tasks are on its own conversation's board, which the Lab opens at boot.

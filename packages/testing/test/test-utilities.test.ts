@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCapability, defineFlow, defineResource, generator, handler, router, sequencer } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   mockGenerator,
@@ -69,6 +70,25 @@ describe("testing utilities", () => {
     expect(seeded.error).toBeNull();
     expect(seeded.output).toEqual({ count: 0, mode: "auto", pinned: ["first"], active: false });
     expect(seeded.state.session.other).toBe("keep");
+
+    // A hand-built instance contributes the flow's own schema alongside the block's.
+    const flow: FlowInstance = {
+      id: "hand-built",
+      kind: "hand-built",
+      cardinality: "singleton",
+      actions: {},
+      config: {},
+      requireUser: true,
+      isolateUserState: false,
+      isolateOrgState: false,
+      flowLevelResourceKeys: new Set(),
+      session: { stateSchema: z.object({ label: z.string().default("supplied") }) }
+    };
+    const supplied = await testBlock(pipeline, { flow, input: {}, session: { state: { count: 8 } } });
+    expect(supplied.error).toBeNull();
+    expect(supplied.output).toEqual({ count: 8, mode: "auto", pinned: [], active: true });
+    expect(supplied.state.session.label).toBe("supplied");
+    expect(flow.scopeStateSchemas).toBeUndefined();
   });
 
   it("registers a block's declared resources so ctx.resources is wired without explicit seeding", async () => {

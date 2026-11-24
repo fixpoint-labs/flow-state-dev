@@ -50,6 +50,47 @@ describe("FIX-662: generator user-slot dedup", () => {
     expect(users[0]).toEqual({ role: "user", content: "1" });
   });
 
+  // A person's line with files carries them after the text; the `user` slot
+  // has the same words alone. Two user turns would show the model the words
+  // twice, and keeping the slot's would drop the files.
+  it("keeps the history's line with its files when the user slot has the same words", async () => {
+    const captured: { messages?: CapturedMessages } = {};
+    const line = {
+      role: "user",
+      content: [
+        { type: "text", text: "what is this?" },
+        { type: "image", image: "aGk=", mediaType: "image/png" }
+      ]
+    };
+    const block = generator({
+      name: "with-files",
+      model: "mock",
+      prompt: "p",
+      history: () => [line],
+      user: () => "what is this?"
+    });
+
+    await runForTest(block, { value: "x" }, makeCapturingCtx(captured));
+
+    expect(userMessages(captured.messages)).toEqual([line]);
+  });
+
+  it("keeps both when the user slot's words differ from a line with files", async () => {
+    const captured: { messages?: CapturedMessages } = {};
+    const line = { role: "user", content: [{ type: "text", text: "what is this?" }, { type: "image", image: "aGk=" }] };
+    const block = generator({
+      name: "with-files-reworded",
+      model: "mock",
+      prompt: "p",
+      history: () => [line],
+      user: () => "Describe: what is this?"
+    });
+
+    await runForTest(block, { value: "x" }, makeCapturingCtx(captured));
+
+    expect(userMessages(captured.messages)).toHaveLength(2);
+  });
+
   it("keeps both when user-slot content differs from historyValues tail", async () => {
     const captured: { messages?: CapturedMessages } = {};
     const block = generator({

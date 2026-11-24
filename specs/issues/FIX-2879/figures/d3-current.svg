@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D3, which coder runs a coding task filed from a session no person writes to, such as a researcher&#x27;s task. Chosen: the person&#x27;s current pick, read from their conversation. Instead of: the pick that session was opened with, or refusing such filings. It comes down to the first row: refusing leaves the researcher unable to ask for the fix, and the opened-with pick may be stale or empty. The price is the second row: when the person moves Code with, a delegate&#x27;s next task follows it, while the opened-with pick stays put and refusing files nothing. The third row: the chosen option is never wider than the person&#x27;s pick, the opened-with pick can be, and refusing files nothing. Locks in: a coding run&#x27;s triple; else the root conversation&#x27;s current codeWith, then the server default, else refused. Flips if: delegated work must keep its old pick."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A researcher’s task asks for a code change. Which coder runs it?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The person’s current pick</text>
+    <rect class="lost" x="455" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="471" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="471" y="112">The pick it opened with</text>
+    <rect class="lost" x="697" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="713" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="713" y="112">Refuse the filing</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE RESEARCHER</text>
+    <text class="t-lbl" x="32" y="169">WHO FINDS A BUG</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Files the fix</text>
+    <text class="t-s" x="248" y="179">on the person’s pick now</text>
+    <text class="mark minus" x="471" y="162">−</text>
+    <text class="t-b" x="491" y="161">Files it, but…</text>
+    <text class="t-s" x="491" y="179">on a stale or empty pick</text>
+    <text class="mark minus" x="713" y="162">−</text>
+    <text class="t-b" x="733" y="161">Can’t ask for it</text>
+    <text class="t-s" x="733" y="179">Lead has to file it</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="226">A PERSON WHO</text>
+    <text class="t-lbl" x="32" y="239">MOVES CODE WITH</text>
+    <text class="mark minus" x="228" y="232">−</text>
+    <text class="t-b" x="248" y="231">Next task follows</text>
+    <text class="t-s" x="248" y="249">work in flight stays (ER-2)</text>
+    <text class="mark plus" x="471" y="232">+</text>
+    <text class="t-b" x="491" y="231">Stays put</text>
+    <text class="t-s" x="491" y="249">the pick at hand-over</text>
+    <text class="mark plus" x="713" y="232">+</text>
+    <text class="t-b" x="733" y="231">No question</text>
+    <text class="t-s" x="733" y="249">it files nothing</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="284">WIDER THAN THE PICK?</text>
+    <text class="mark plus" x="228" y="290">+</text>
+    <text class="t-b" x="248" y="289">Never</text>
+    <text class="t-s" x="248" y="307">its pick, or its default</text>
+    <text class="mark minus" x="471" y="290">−</text>
+    <text class="t-b" x="491" y="289">Can be</text>
+    <text class="t-s" x="491" y="307">empty falls to the kit</text>
+    <text class="mark plus" x="713" y="290">+</text>
+    <text class="t-b" x="733" y="289">Never</text>
+    <text class="t-s" x="733" y="307">it files nothing</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A run’s triple; else the root’s current codeWith</text>
+    <text class="t-s" x="32" y="387">then the server default, else refused · amends ER-5, ER-10</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Delegated work must keep its old pick</text>
+    <text class="t-s" x="494" y="387">then the pick is stamped at hand-over</text>
+  </g>
+</svg>

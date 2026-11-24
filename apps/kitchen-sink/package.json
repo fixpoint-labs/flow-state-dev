@@ -2,6 +2,9 @@
   "name": "@flow-state-dev/kitchen-sink",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "WATCHPACK_POLLING=true next dev",
     "build": "pnpm fsdev gen && next build",
@@ -99,7 +102,7 @@
     "@types/pg": "^8.11.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "happy-dom": "^20.8.3",
+    "happy-dom": "^20.12.0",
     "tailwindcss": "^4.2.0",
     "tsx": "^4.21.0"
   }

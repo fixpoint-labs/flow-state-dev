@@ -2,9 +2,11 @@
  * task-board › a settled task reaches the board (FIX-2429).
  *
  * Real `serve()` hosts on bound ports, real WebSocket clients, and the board
- * views as the apps run them: the Teammates lab adapter's `watchTasks`, the
- * claude-code-style lab adapter's `watchTasks` (a view of the merged
- * `listTasks_tasks` read and nothing else), and a live `BoardList`'s read
+ * views as the apps run them: the Teammates lab's own hooks over
+ * harness-manager's coding board view (`useTasks`, a task card's read, and
+ * `useTaskDetail`, an open popup's read of one task), rendered by react-dom
+ * over happy-dom, a live read of the merged `listTasks_tasks` view and nothing else
+ * (`merged-view.mts`, as an app's `useView` keeps it), and a live `BoardList`'s read
  * (`client.subscribe` on the board's narrowed topic, `listCollectionResources` on
  * each wake). Every assertion reads what a view showed, timed against when the
  * row's change could be read from the store, and counts the board reads each
@@ -25,30 +27,39 @@
  *        completed within its own poll interval plus 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
- *   GOAL_CONTROL=running-session  publish on the session that wrote: a's 1 s signal must FAIL.
- *   GOAL_CONTROL=whole-topic      the lab views subscribe the whole session topic: a's 0-reads must FAIL.
- *   GOAL_CONTROL=tasks-only       the merged read's views subscribe `tasks` alone: a's plan-step signal must FAIL.
+ *   GOAL_CONTROL=whole-topic      the lab views hear the whole session topic (no `hears`): a's 0-reads must FAIL,
+ *                                 on Teammates' card read and its popup's `taskId` read as on the merged view.
+ *   GOAL_CONTROL=tasks-only       the lab views hear `tasks` alone (no plan topics): a's plan-step signal must FAIL.
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Window } from "happy-dom";
+import React, { createElement, useEffect } from "react";
+import { createRoot } from "react-dom/client";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createClient, topic, type Client, type ClientFetch } from "@flow-state-dev/client";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { scriptedHarness } from "@flow-state-dev/harness-manager";
+import { harnesses } from "@flow-state-dev/harness-manager/kit";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { createFlowState, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import type { Task, TaskInit } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { startPostgres } from "../../lib/postgres.mts";
 import {
@@ -62,10 +73,11 @@ import {
   runGoal,
   silentLogger,
   sleep,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
-import { createLabAdapter as teammatesLab } from "../../../labs/teammates/src/adapter.ts";
-import { createWiredLab as claudeCodeStyleLab } from "../../../labs/claude-code-style/src/adapter.ts";
+import { AppProvider as TeammatesProvider, useTaskDetail, useTasks } from "../../../labs/teammates/src/app/index.ts";
+import { watchMergedBoard } from "./merged-view.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("a-settled-task-reaches-the-board");
@@ -78,29 +90,30 @@ const DOER_MS = 1_500;
 /** How long a plan step's turn takes. */
 const STEP_MS = 1_500;
 /** Each view's pace where push can miss a change: today's. */
-const PACE = { teammates: 1_500, "claude-code-style": 2_000, "board-list": 3_000 } as const;
+const PACE = { teammates: 1_500, "teammates-popup": 1_500, "merged-view": 2_000, "board-list": 3_000 } as const;
 type ViewName = keyof typeof PACE;
 
-const TEAMMATES = "labs/teammates/src/adapter.ts";
-const CLAUDE_CODE_STYLE = "labs/claude-code-style/src/adapter.ts";
+/** Where the Teammates lab's hooks hear a view's answer: `useView`'s shared watch, which keeps the answer's `hears`. */
+const VIEW_WATCH = "packages/client/src/view/view.ts";
+const MERGED_VIEW = "goals/task-board/a-settled-task-reaches-the-board/merged-view.mts";
 const PATCHES: Record<string, ModulePatch[]> = {
-  // Publish on the session that wrote, not the one that filed.
-  "running-session": [
-    {
-      module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
-      from: String.raw`event\.task\.filer\?\.sessionId \?\? legacyFiler\?\.\(event\.task\) \?\? runningSession`,
-      to: "runningSession"
-    }
-  ],
-  // The lab views subscribe the conversation's whole topic.
+  // The lab views hear every notice under the conversation's whole topic: the view's answer's `hears` is dropped.
   "whole-topic": [
-    { module: TEAMMATES, from: String.raw`BOARD_LEDGERS\.map\(\(resource\) => topic\.session\(sessionId, \{ resource \}\)\)`, to: "[topic.session(sessionId)]" },
-    { module: CLAUDE_CODE_STYLE, from: String.raw`BOARD_LEDGERS\.map\(\(resource\) => topic\.session\(sessionId, \{ resource \}\)\)`, to: "[topic.session(sessionId)]" }
+    {
+      module: VIEW_WATCH,
+      from: String.raw`return \{ value: keepUnchangedEntries\(entry, result\), topics: result\.topics, \.\.\.\(result\.hears !== undefined \? \{ hears: result\.hears \} : \{\}\) \};`,
+      to: "return { value: keepUnchangedEntries(entry, result), topics: result.topics };"
+    },
+    { module: MERGED_VIEW, from: String.raw`, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`, to: " };" }
   ],
-  // The merged read's views subscribe `tasks` alone.
+  // The merged read's views hear `tasks` alone: the plan's topics and hearings are dropped. (Only the
+  // merged view is graded on the plan step: Teammates' coding board shows the tasks board.)
   "tasks-only": [
-    { module: TEAMMATES, from: String.raw`const BOARD_LEDGERS = \["tasks", "plan"\] as const;`, to: 'const BOARD_LEDGERS = ["tasks"] as const;' },
-    { module: CLAUDE_CODE_STYLE, from: String.raw`const BOARD_LEDGERS = \["tasks", "plan"\] as const;`, to: 'const BOARD_LEDGERS = ["tasks"] as const;' }
+    {
+      module: MERGED_VIEW,
+      from: String.raw`topics: answer\.topics, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`,
+      to: 'topics: answer.topics.filter((t) => t.resource !== "plan"), ...(answer.hears === undefined ? {} : { hears: answer.hears.filter((h) => h.topic.resource !== "plan") }) };'
+    }
   ]
 };
 
@@ -142,13 +155,19 @@ globalThis.WebSocket = class TappedWebSocket extends NativeWebSocket {
   }
 } as typeof WebSocket;
 
+const happy = new Window();
+// tsx compiles the lab's `.tsx` files with the classic JSX transform, which calls the global `React`.
+Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_ACT_ENVIRONMENT: false, React });
+
 // ---------------------------------------------------------------------------
 // The app: a conversation whose worker files a task for a handler delegate and
 // a step for itself
 // ---------------------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer", delegates: [] })];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 const STEP = "You are working a step you filed for yourself";
 const ANSWER = "The steps you filed for yourself have ended";
 
@@ -158,82 +177,94 @@ type Script = { op: "file"; tasks: TaskInit[] } | { op: "step"; id: string; goal
 const ranOn: Array<{ host: string; goal: string }> = [];
 
 function buildHost(name: string, stores: StoreAdapter): FlowState {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; both flows are built once on it.
+  let built: { desk: unknown; doer: unknown } | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): { desk: unknown; doer: unknown } => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  const deskTurn = handler({
-    name: "board-notices-desk-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    resources: { ...installation.resources, ...deskBoard.resources },
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      if (input.message.startsWith(STEP)) {
-        await sleep(STEP_MS);
-        return "step done";
-      }
-      if (input.message.startsWith(ANSWER)) return "answered";
-      if (input.message.startsWith('Task "')) return "heard";
-      const script = JSON.parse(input.message) as Script;
-      if (script.op === "chat") {
-        // A reply streaming in the conversation: items kept, no task touched.
-        for (let n = 0; n * 200 < script.ms; n += 1) {
-          ctx.emit.message(`part ${n} of a long reply`);
-          await sleep(200);
+    const deskTurn = handler({
+      name: "board-notices-desk-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      resources: { ...installation.resources, ...deskBoard.resources },
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        if (input.message.startsWith(STEP)) {
+          await sleep(STEP_MS);
+          return "step done";
         }
-        return "chatted";
+        if (input.message.startsWith(ANSWER)) return "answered";
+        if (input.message.startsWith('Task "')) return "heard";
+        const script = JSON.parse(input.message) as Script;
+        if (script.op === "chat") {
+          // A reply streaming in the conversation: items kept, no task touched.
+          for (let n = 0; n * 200 < script.ms; n += 1) {
+            ctx.emit.message(`part ${n} of a long reply`);
+            await sleep(200);
+          }
+          return "chatted";
+        }
+        if (script.op === "step") {
+          const ref = await deskBoard.board.turnResolver(ctx as never);
+          await ref!.createTask({ id: script.id, goal: script.goal, assignee: "lead" });
+          return "planned";
+        }
+        const ref = await deskBoard.board.resolver(ctx as never);
+        return { ids: (await ref!.createTasks(script.tasks)).map((t) => t.id) };
       }
-      if (script.op === "step") {
-        const ref = await deskBoard.board.turnResolver(ctx as never);
-        await ref!.createTask({ id: script.id, goal: script.goal, assignee: "lead" });
-        return "planned";
-      }
-      const ref = await deskBoard.board.resolver(ctx as never);
-      return { ids: (await ref!.createTasks(script.tasks)).map((t) => t.id) };
-    }
-  });
-  const planned = deskBoard.planned(deskTurn);
-
-  const doerTurn = handler({
-    name: "board-notices-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input) => {
-      ranOn.push({ host: name, goal: input.message });
-      await sleep(DOER_MS);
-      return `done: ${input.message}`;
-    }
-  });
-
-  const resolveWorker = (kind: string) =>
-    handler({
-      name: `board-notices-${kind}-resolve-worker`,
-      inputSchema: z.unknown(),
-      outputSchema: z.object({ worker: z.string() }),
-      resources: { ...installation.resources },
-      execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, kind)).id })
     });
-  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: unknown) =>
-    defineFlow({
-      kind,
-      configSchema: workerConfigSchema(),
-      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-      resources: { ...installation.resources, ...board.resources },
-      request: { onStarted: resolveWorker(kind) },
-      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      reads: { ...board.reads },
-      internal: { actions: board.entries(turn as never) },
-      task: { actions: { work: workerTaskEntry({ name: `board-notices-${kind}-task`, turn: turn as never }) } }
-    } as never);
-  workerFlows = {
-    desk: { flow: flowOf("desk", deskBoard, planned), roles: ["contributor", "manager"] },
-    doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] }
+    const planned = deskBoard.planned(deskTurn);
+
+    const doerTurn = handler({
+      name: "board-notices-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input) => {
+        ranOn.push({ host: name, goal: input.message });
+        await sleep(DOER_MS);
+        return `done: ${input.message}`;
+      }
+    });
+
+    const resolveWorker = (kind: string) =>
+      handler({
+        name: `board-notices-${kind}-resolve-worker`,
+        inputSchema: z.unknown(),
+        outputSchema: z.object({ worker: z.string() }),
+        resources: { ...installation.resources },
+        execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, kind)).id })
+      });
+    const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: unknown) =>
+      defineFlow({
+        kind,
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        request: { onStarted: resolveWorker(kind) },
+        actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+        views: { ...board.views },
+        internal: { actions: board.entries(turn as never) },
+        task: { actions: { work: workerTaskEntry({ name: `board-notices-${kind}-task`, turn: turn as never }) } }
+      } as never);
+    return (built = { desk: flowOf("desk", deskBoard, planned), doer: flowOf("doer", doerBoard, doerTurn) });
   };
+  // The harness kit serves harness-manager's coding board view, which the Teammates lab reads; no task here runs on a harness.
+  const workspace = localWorkspaceHost({ root: join(tmpdir(), "a-settled-task-runs"), remotes: { allow: [] }, source: () => ({ kind: "repo", repo: tmpdir() }) });
+  const coder = { id: "codex", label: "Codex", agent: scriptedHarness({ stepEveryMs: 1 }).slot, readiness: async () => ({ ready: true }), pass: [] };
   return createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    kits: [harnesses({ workspace, logReadiness: false }), workforce({ directory: TREE })],
+    fill: {
+      [harnesses.slots.harnesses]: [coder],
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     stores: { default: { primary: stores } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {
@@ -279,7 +310,7 @@ function tab(on: Host) {
   const counted = { reads: 0 };
   const fetcher: ClientFetch = (input, init) => {
     const url = String(input);
-    if (url.includes("/reads/listTasks_tasks") || /\/resources\/tasks(\?|$)/.test(url)) counted.reads += 1;
+    if (url.includes("/views/listTasks_tasks") || url.includes("/views/codingBoard") || /\/resources\/tasks(\?|$)/.test(url)) counted.reads += 1;
     return fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: `Bearer ${TOKEN}` } });
   };
   return { client: createClient({ userId: USER, baseUrl: on.base, fetcher }), counted };
@@ -298,19 +329,42 @@ function personOn(state: FlowState) {
 type Shown = { at: number; rows: Map<string, { status: string; run?: string }> };
 type View = { name: ViewName; shown: Shown[]; reads(): number; close(): void };
 
-function viewsOn(on: Host, conversation: string): View[] {
-  const teammates = tab(on);
-  const tShown: Shown[] = [];
-  const stopTeammates = teammatesLab(teammates.client).watchTasks(conversation, (tasks) =>
-    tShown.push({
-      at: Date.now(),
-      rows: new Map(tasks.map((t) => [t.id, { status: t.status === "done" ? "completed" : t.status, ...(t.runSessionId !== undefined ? { run: t.runSessionId } : {}) }]))
-    })
-  );
+/** What a Teammates read showed: each row's status and its run's session, as the coding board view answers it. */
+const shownOf = (tasks: readonly CodingBoardTask[]): Shown => ({
+  at: Date.now(),
+  rows: new Map(tasks.map((t) => [t.id, { status: t.status, ...(t.run?.sessionId !== undefined ? { run: t.run.sessionId } : {}) }]))
+});
+
+/**
+ * The Teammates lab's hooks on one tab, rendered: a task card's read of the conversation's board
+ * (`useTasks`), or, with `open`, an open popup's read of that one task (`useTaskDetail`), which the
+ * lab's `AppProvider` hands the tab's client at the lab's own pace.
+ */
+function teammatesOn(on: Host, conversation: string, open?: string) {
+  const t = tab(on);
+  const shown: Shown[] = [];
+  function Cards() {
+    const tasks = useTasks(conversation).value;
+    useEffect(() => void (tasks !== undefined && shown.push(shownOf(tasks))), [tasks]);
+    return null;
+  }
+  function Popup({ taskId }: { taskId: string }) {
+    const tasks = useTaskDetail(conversation, taskId).value;
+    useEffect(() => void (tasks !== undefined && shown.push(shownOf(tasks))), [tasks]);
+    return null;
+  }
+  const root = createRoot(happy.document.createElement("div") as unknown as Element);
+  root.render(createElement(TeammatesProvider, { client: t.client, pollIntervalMs: PACE.teammates }, open === undefined ? createElement(Cards) : createElement(Popup, { taskId: open })));
+  return { shown, reads: () => t.counted.reads, close: () => root.unmount() };
+}
+
+function viewsOn(on: Host, conversation: string, open: string): View[] {
+  const teammates = teammatesOn(on, conversation);
+  const popup = teammatesOn(on, conversation, open);
 
   const ccs = tab(on);
   const cShown: Shown[] = [];
-  const stopCcs = claudeCodeStyleLab(ccs.client).watchTasks(conversation, (rows) =>
+  const stopCcs = watchMergedBoard(ccs.client, "desk", conversation, (rows) =>
     cShown.push({ at: Date.now(), rows: new Map(rows.map((r) => [r.id, { status: r.status }])) })
   );
 
@@ -343,8 +397,9 @@ function viewsOn(on: Host, conversation: string): View[] {
   void read();
 
   return [
-    { name: "teammates", shown: tShown, reads: () => teammates.counted.reads, close: stopTeammates },
-    { name: "claude-code-style", shown: cShown, reads: () => ccs.counted.reads, close: stopCcs },
+    { name: "teammates", ...teammates },
+    { name: "teammates-popup", ...popup },
+    { name: "merged-view", shown: cShown, reads: () => ccs.counted.reads, close: stopCcs },
     { name: "board-list", shown: lShown, reads: () => list.counted.reads, close: () => subscription.close() }
   ];
 }
@@ -436,14 +491,14 @@ await runGoal(async (failures, tell) => {
       const store = storeWatch(on);
       closers.push(store.stop);
 
+      // A task held open: the window below has a task open, and Teammates' popup open on it.
+      const held = `held-${RUN_STAMP}`;
       const before = taps.length;
-      const views = viewsOn(on, conversation);
+      const views = viewsOn(on, conversation, held);
       closers.push(() => views.forEach((v) => v.close()));
-      const crossed = await until(() => taps.slice(before).length >= 3 && taps.slice(before).every((t) => t.crossedAt !== undefined), 5_000);
+      const crossed = await until(() => taps.slice(before).length >= views.length && taps.slice(before).every((t) => t.crossedAt !== undefined), 5_000);
       if (!crossed) failures.push("a:crossing: the views' sockets never all said crosses: true within 5 s");
 
-      // A task held open: the window below has a task open.
-      const held = `held-${RUN_STAMP}`;
       await script(person, conversation, { op: "file", tasks: [{ id: held, goal: "stays open", assignee: "eng.doer", held: true }] });
       for (const view of views) {
         if ((await shownAt(view, held, () => true, 5_000)) === undefined) failures.push(`a:setup: ${view.name} never showed the held task`);
@@ -498,7 +553,7 @@ await runGoal(async (failures, tell) => {
       await script(person, conversation, { op: "step", id: step, goal: "a step for itself" });
       const stepAt = await store.at("step:completed", 15_000);
       tell.over("a:plan-step · the step's ending in the store", stepAt === undefined ? [] : [stepAt]);
-      const merged = views.find((v) => v.name === "claude-code-style")!;
+      const merged = views.find((v) => v.name === "merged-view")!;
       if (stepAt !== undefined) {
         const shown = await shownAt(merged, step, (row) => row.status === "completed", 4_000);
         if (shown === undefined || shown - stepAt >= 1_000) failures.push(`a:plan-step: ${merged.name} showed the step completed ${shown === undefined ? "never (4 s)" : `${shown - stepAt} ms`} after the store (bound 1000)`);
@@ -522,9 +577,9 @@ await runGoal(async (failures, tell) => {
       await script(person, conversation, { op: "file", tasks: [{ id: task, goal: "settled on process 2", assignee: "eng.doer", held: true }] });
 
       const before = taps.length;
-      const views = viewsOn(p1, conversation);
+      const views = viewsOn(p1, conversation, task);
       closers.push(() => views.forEach((v) => v.close()));
-      const crossed = await until(() => taps.slice(before).length >= 3 && taps.slice(before).every((t) => t.crossedAt !== undefined), 15_000);
+      const crossed = await until(() => taps.slice(before).length >= views.length && taps.slice(before).every((t) => t.crossedAt !== undefined), 15_000);
       if (!crossed) failures.push("b:crossing: the views' sockets never all said crosses: true within 15 s");
       for (const view of views) await shownAt(view, task, () => true, 5_000);
       // The window starts once the views have gone quiet: the opening burst (each connect's read, the
@@ -570,10 +625,10 @@ await runGoal(async (failures, tell) => {
       const conversation = (await person.flow("desk").createSession({ state: { workerId: "lead" } })).id;
       const store = storeWatch(on);
       closers.push(store.stop);
-      const views = viewsOn(on, conversation);
+      const task = `c-task-${RUN_STAMP}`;
+      const views = viewsOn(on, conversation, task);
       closers.push(() => views.forEach((v) => v.close()));
       await sleep(500);
-      const task = `c-task-${RUN_STAMP}`;
       store.watch("c:completed", task, (row) => row.status === "completed");
       await script(person, conversation, { op: "file", tasks: [{ id: task, goal: "settles with no push", assignee: "eng.doer" }] });
       const completedAt = await store.at("c:completed", 15_000);

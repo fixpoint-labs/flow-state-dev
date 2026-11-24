@@ -23,6 +23,10 @@ The PR author picks the branch name and the label, so the check catches accident
 control. The same goes for the manifest that turns the release gate green. To make either a hard
 gate, put `apps/docs/` and `packages/*/README.md` under CODEOWNERS.
 
+Each published package's `packages/<dir>/README.md` is short: an install line, one example under 20
+lines, and a link to the package's section of the generated API reference. The docs cutover moved
+these into place from `docs-revamp/readmes/`, and retired the check that held the two copies in step.
+
 ## In a normal PR
 
 - Write a changeset if a user of a published package needs to know
@@ -60,6 +64,34 @@ Production skips every docs deploy while either of these is true
 
 The rest of the time, site code and `docs-fix` merges deploy as usual. If a publish fails, rerunning
 `release.yml` publishes and deploys the docs.
+
+## The Upgrading page
+
+Migration notes live on one page per release, `reference/upgrading/<date>`, and nowhere else: no
+concept, guide or catalog page carries an "After upgrading" or "Migrating" section. Each release's
+docs pass writes that release's page and deletes the one before. Each package's `CHANGELOG.md`
+keeps the older releases; the page links to them instead of repeating them.
+
+- **What goes on it:** only what a user must do. A changeset whose body says a caller changes their
+  code (a renamed or removed export, a changed default, a new required field, a pre-1.0 `minor`
+  that breaks callers) is a row. A change a user needs to do nothing about is not, even when it is
+  on a concept page.
+- **Its shape:** `type: reference` frontmatter, one sentence saying which release it covers, then
+  one table, a row per change, grouped by package:
+
+  | Package | What changed | What to do |
+  | --- | --- | --- |
+
+  It ends with a link to each changed package's `CHANGELOG.md`. A release with nothing to act on
+  gets a page that says so in one sentence, with the links.
+- **`<date>`** is the date of the docs pass, the same as its `release-docs/<date>` branch. Packages
+  version on their own, so no one version number names a release.
+- **The old address keeps working.** Deleting the previous page breaks every link to it, and the
+  site build fails on a broken link (`onBrokenLinks: "throw"`). In the same pass, point the sidebar
+  entry and every inbound link at the new page, and repoint the client redirects in
+  `apps/docs/redirects.mjs` (set `UPGRADING`, add the removed page's address to `EARLIER_UPGRADING`): every earlier
+  `reference/upgrading/<date>` address, the one just removed included, goes to the new page.
+- **The first Upgrading page** was written at the docs cutover, from the changesets pending then.
 
 ## Setup (once)
 

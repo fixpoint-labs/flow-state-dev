@@ -19,8 +19,6 @@ export {
   type TaskRunLink,
   type TaskStatus,
 } from "./schema/task";
-// A stored row read in the current shapes (BP-030): for a reader of raw stored rows, such as a browser's list.
-export { withRetiredShapes } from "./schema/retired-shapes";
 // What a task's runs spent (FIX-2288): the stored shape, and the fold a reader shows.
 export {
   taskSpendSchema,
@@ -72,6 +70,8 @@ export {
   type TaskSettingsSupport,
 } from "./collection/filing";
 export type { TaskSettingsPatch } from "./collection/internal";
+// FIX-2894: a write refused by a rule, named by its code; the refusal a flow's task-input hooks throw.
+export { TaskWriteRefusedError } from "./collection/refused-write";
 // Steers (FIX-2086): words sent into an open task, kept on the task.
 export { taskSteerSchema, type TaskSteer } from "./schema/steer";
 export {
@@ -105,6 +105,9 @@ export {
 // `onChange` itself can apply the same omission; see
 // `collection/change-event.ts` for why it is a deny-list.
 export { toEmittedTask } from "./collection/change-event";
+// The values of the items a board writes: a `task-change`'s kind, and a `task-board-meta`'s value.
+export type { TaskChangeKind } from "./collection/change-event";
+export type { TaskBoardCounts, TaskBoardMeta } from "./board-meta-value";
 
 // Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
 // and renderer-side per-task expansion.

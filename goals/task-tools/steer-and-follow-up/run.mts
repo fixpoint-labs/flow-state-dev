@@ -14,19 +14,19 @@ import { harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
-  createWorkerInstallation,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
   filingConversationBoard,
-  hireWorkforce,
   startOwedSteerTurn,
   steerTurnEntry,
   workerTaskEntry,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { seedRepo } from "../../../packages/harness-manager/test/fixtures.ts";
 import {
   REPO_ROOT,
@@ -40,8 +40,10 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const ALICE = "u_steer_alice";
 const ORG = "org_steer";
@@ -106,7 +108,6 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
   process.exit(child.status ?? 1);
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value);
 
 /** Wait for `promise`, failing loudly instead of hanging. */
@@ -266,13 +267,13 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
   const manager = harnessManager({
     ledgers: conversationLedgers,
     tenant: undefined,
-    phase: { phase: "answer", buildPrompt: async (run: { issue: string }) => `Work on task ${run.issue}.`, isDone: () => true },
+    mode: { name: "answer", instructions: async (run: { issue: string }) => `Work on task ${run.issue}.`, doneWhen: { check: () => true } },
     workspace: { root: checkouts, sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
     runTimeoutMs: 60_000,
     stopsOnAbort: true,
     harness: fakeHarness
   } as never) as TaskWorker;
-  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
+  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), mode: { name: "answer" } });
   const message = harnessSessionDoor({
     name: "steer-goal-coder",
     harness: fakeHarness,
@@ -301,24 +302,27 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
 
 // ---- the host ------------------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("desk", { flow: "coordinator", delegates: ["writer", "helper", "coder"], description: "Alice's desk." }),
   worker("writer", { flow: "agent", delegates: ["helper"], description: "Writes, and hands pieces on." }),
   worker("helper", { flow: "agent", description: "Does pieces." }),
   worker("coder", { flow: "coder", description: "Codes." })
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 function buildHost(filename: string, repo: string, checkouts: string) {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => flows as never });
-  const agent = defineAgentWorkerFlow({ installation });
-  const coder = defineCoderFlow(installation, repo, checkouts);
-  const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
-  flows = { agent, coordinator, coder: { flow: coder, roles: ["contributor"] } };
-  const instances = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
+  // The agent and coordinator flows as the goal builds them, in place of the kit's own.
   const state = createFlowState({
-    flows: instances,
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        agent: workerFlow((installation) => defineAgentWorkerFlow({ installation })),
+        coordinator: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })),
+        coder: workerFlow((installation) => defineCoderFlow(installation, repo, checkouts), { roles: ["contributor"] })
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     modelResolver: modelResolver(),

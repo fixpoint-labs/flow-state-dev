@@ -25,10 +25,7 @@ export const engineerDefinition = defineFlow({
   kind: ENGINEER_KIND,
   cardinality: "collection",
   actions: {
-    inspect: {
-      inputSchema: empty,
-      block: handler({ name: "engineer-inspect", inputSchema: empty, execute: () => ({}) }),
-    },
+    inspect: handler({ name: "engineer-inspect", inputSchema: empty, execute: () => ({}) }),
   },
   // Exposed to the client on purpose: the DevTool's Session Context panel shows
   // the client projection, so a marker that is not exposed cannot be inspected
@@ -42,9 +39,7 @@ export function engineerInstance(id: string, marker: string) {
   return engineerDefinition({
     id,
     actions: {
-      inspect: {
-        inputSchema: empty,
-        block: handler({
+      inspect: handler({
           name: `engineer-inspect-${id}`,
           inputSchema: empty,
           outputSchema: z.object({ marker: z.string() }),
@@ -54,7 +49,6 @@ export function engineerInstance(id: string, marker: string) {
             return { marker };
           },
         }),
-      },
     },
   });
 }
@@ -66,9 +60,7 @@ export function engineerInstance(id: string, marker: string) {
 export const reportsFlow = defineFlow({
   kind: REPORTS_KIND,
   actions: {
-    summarize: {
-      inputSchema: empty,
-      block: handler({
+    summarize: handler({
         name: "reports-summarize",
         inputSchema: empty,
         outputSchema: z.object({ marker: z.string() }),
@@ -78,7 +70,6 @@ export const reportsFlow = defineFlow({
           return { marker: "reports-ran" };
         },
       }),
-    },
   },
   // Exposed to the client on purpose: the DevTool's Session Context panel shows
   // the client projection, so a marker that is not exposed cannot be inspected

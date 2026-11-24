@@ -39,16 +39,16 @@ function createdTaskIds(items: readonly unknown[], collectionId: string): Set<st
   const ids = new Set<string>();
   for (const item of items as Array<{
     type?: string;
-    component?: string;
-    data?: { collectionId?: string; taskId?: string };
+    dataType?: string;
+    value?: { collectionId?: string; taskId?: string };
   }>) {
     if (
-      item.type === "component" &&
-      item.component === "task-change" &&
-      item.data?.collectionId === collectionId &&
-      typeof item.data.taskId === "string"
+      item.type === "data" &&
+      item.dataType === "task-change" &&
+      item.value?.collectionId === collectionId &&
+      typeof item.value.taskId === "string"
     ) {
-      ids.add(item.data.taskId);
+      ids.add(item.value.taskId);
     }
   }
   return ids;
@@ -348,20 +348,20 @@ describe("eventActors re-emission — the workspace is visible before dispatch",
     // proves exactly the property the fix is about.
     const items = result.items as Array<{
       type?: string;
-      component?: string;
-      data?: { topic?: string; task?: { assignee?: string } };
+      dataType?: string;
+      value?: { topic?: string; task?: { assignee?: string } };
     }>;
     const lastEntryIdx = items.reduce(
       (acc, it, i) =>
-        it.component === "rb-entry" && (it.data?.topic === "one" || it.data?.topic === "two")
+        it.dataType === "rb-entry" && (it.value?.topic === "one" || it.value?.topic === "two")
           ? i
           : acc,
       -1,
     );
     const firstDownstreamTaskIdx = items.findIndex(
       (it) =>
-        it.component === "task-change" &&
-        (it.data?.task?.assignee === "alpha" || it.data?.task?.assignee === "beta"),
+        it.dataType === "task-change" &&
+        (it.value?.task?.assignee === "alpha" || it.value?.task?.assignee === "beta"),
     );
     expect(lastEntryIdx).toBeGreaterThanOrEqual(0);
     expect(firstDownstreamTaskIdx).toBeGreaterThanOrEqual(0);
@@ -575,16 +575,16 @@ describe("retry budget — reaches the patterns that can retry, refused where it
 
     type MetaItem = {
       type?: string;
-      component?: string;
-      data?: { status?: string; maxTotalRetries?: number | null };
+      dataType?: string;
+      value?: { status?: string; maxTotalRetries?: number | null };
     };
     const meta = (result.items as MetaItem[]).find(
       (i) =>
-        i.type === "component" &&
-        i.component === "task-board-meta" &&
-        i.data?.status === "completed",
+        i.type === "data" &&
+        i.dataType === "task-board-meta" &&
+        i.value?.status === "completed",
     );
     expect(meta).toBeDefined();
-    expect(meta?.data?.maxTotalRetries).toBeNull();
+    expect(meta?.value?.maxTotalRetries).toBeNull();
   });
 });

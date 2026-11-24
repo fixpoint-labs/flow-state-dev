@@ -42,13 +42,13 @@ function getCollection(ctx: BlockContext) {
 
 const handleSearch = handler({
   name: "handle-search",
-  inputSchema: taskWorkerInputSchema.extend({ input: searchInputSchema }),
+  inputSchema: taskWorkerInputSchema,
   outputSchema: z.object({ found: z.string() }),
   execute: async (input, ctx) => {
-    const { query } = input.input;
+    const { query } = searchInputSchema.parse(input.input);
     const found = `Search results for "${query}": [doc-1, doc-2, doc-3]`;
 
-    const collection = await getCollection(ctx);
+    const collection = await getCollection(ctx as unknown as BlockContext);
     await collection.createTask({
       goal: `analyze: ${query}`,
       assignee: "ANALYZE",
@@ -62,15 +62,15 @@ const handleSearch = handler({
 
 const handleAnalyze = handler({
   name: "handle-analyze",
-  inputSchema: taskWorkerInputSchema.extend({ input: analyzeInputSchema }),
+  inputSchema: taskWorkerInputSchema,
   outputSchema: z.object({ analysis: z.string() }),
   execute: async (input, ctx) => {
-    const { data } = input.input;
+    const { data } = analyzeInputSchema.parse(input.input);
     const hasStructuredData = data.includes("doc-");
     const analysis = `Analyzed: ${data.slice(0, 60)}`;
 
     if (hasStructuredData) {
-      const collection = await getCollection(ctx);
+      const collection = await getCollection(ctx as unknown as BlockContext);
       await collection.createTask({
         goal: "extract fields",
         assignee: "EXTRACT",
@@ -85,10 +85,10 @@ const handleAnalyze = handler({
 
 const handleExtract = handler({
   name: "handle-extract",
-  inputSchema: taskWorkerInputSchema.extend({ input: extractInputSchema }),
+  inputSchema: taskWorkerInputSchema,
   outputSchema: z.object({ extracted: z.record(z.string()) }),
   execute: async (input, ctx) => {
-    const { fields } = input.input;
+    const { fields } = extractInputSchema.parse(input.input);
     const extracted: Record<string, string> = {};
     for (const field of fields) {
       extracted[field] = `<${field} from source>`;

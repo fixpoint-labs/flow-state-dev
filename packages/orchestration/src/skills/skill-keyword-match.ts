@@ -47,7 +47,8 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
         return { skillsMatched: 0 };
       }
 
-      const lowered = input.message.toLowerCase();
+      const message = (input as { message: string }).message ?? "";
+      const lowered = message.toLowerCase();
 
       const matchedSkills: Array<{ name: string }> = [];
       const collection = resolveSkillsCollection(ctx, opts.collectionKey);
@@ -71,10 +72,11 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
       }
 
       if (matchedSkills.length > 0) {
+        const existing = ctx.sequencer?.state.skills ?? [];
         await ctx.sequencer!.patchState({
           resolved: true,
           skills: [
-            ...ctx.sequencer!.state.skills,
+            ...existing,
             ...matchedSkills.map((s) => ({
               name: s.name,
               input: "",

@@ -15,7 +15,6 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkerInstallation, type WorkerManifest } from "@flow-state-dev/workforce";
 
 import { goalControl, pageGoalControl } from "@/lib/goal-control";
 
@@ -81,16 +80,23 @@ describe("V4 · every control is read through the gate, and only in this app (BR
 
   /** Each control, off and on: what it hands back outside test mode, and in it. */
   const catalog = {};
-  const workers = [
-    { id: "support.help", declared: { flow: "coordinator", routing: "best-fit", delegates: ["support.general"] }, body: "", skills: [] },
-  ] as unknown as WorkerManifest[];
   const agentFlow = { kind: "agent", task: { actions: { work: {} } } };
+  /** The coordinator's file in the folder the app would serve, and whether `line` is in it. */
+  const servedSays = async (line: string) => {
+    const { workforceFolderUnderControl } = await import("@/lib/coordinator-control");
+    const root = fileURLToPath(new URL("../workforce", import.meta.url));
+    const served = workforceFolderUnderControl(root);
+    const says = readFileSync(join(served, "teams/support/workers/help/WORKER.md"), "utf8").split("\n").includes(line);
+    // The app's own tree is never changed: a control edits a copy.
+    const own = readFileSync(join(root, "teams/support/workers/help/WORKER.md"), "utf8").split("\n").includes(line);
+    return { swapped: says && served !== root && !own };
+  };
 
   const controls: Array<[name: string, apply: () => Promise<{ swapped: boolean }>]> = [
-    ["no-landing", async () => ({ swapped: (await import("@/lib/landing-control")).landingControl(catalog, createWorkerInstallation()) !== undefined })],
-    ["no-route", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
-    ["answers-go-on", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
-    ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).agentFlowUnderControl(agentFlow) !== agentFlow })],
+    ["no-landing", async () => ({ swapped: (await import("@/lib/landing-control")).landingControl(catalog) !== undefined })],
+    ["no-route", () => servedSays("routing: everyone")],
+    ["answers-go-on", () => servedSays("rounds: 1")],
+    ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).agentFlowUnderControl(() => agentFlow) !== undefined })],
     [
       "gate-open",
       async () => {

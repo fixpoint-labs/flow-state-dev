@@ -180,9 +180,9 @@ async function harness(
   const flow = defineFlow({
     kind: 'capture-evaluator-test',
     actions: {
-      say: { block: turn, inputSchema: z.string(), userMessage: (text: string) => text },
-      poll: { block: turn, inputSchema: z.string() },
-      whisper: { block: hiddenTurn, inputSchema: z.string() },
+      say: { block: turn, userMessage: (text: string) => text },
+      poll: turn,
+      whisper: hiddenTurn,
     },
     resources: { ...mem.sessionResources, ...mem.userResources },
     ...(historyTurns === undefined ? {} : { session: { historyWindow: { turns: historyTurns } } }),

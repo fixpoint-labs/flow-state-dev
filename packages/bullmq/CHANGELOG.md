@@ -1,5 +1,158 @@
 # @flow-state-dev/bullmq
 
+## 0.4.0
+
+### Minor Changes
+
+- 61efa05: The app fires its own schedules (FIX-2752). One tick in the engine fires every schedule of every flow, static and dynamic, once per scheduled time. A long-lived server or `fsdev dev` needs no outside cron, several servers on one store tick from one process, and a serverless host adds one route. The five old ways to fire a schedule are removed, with no aliases.
+
+  - **engine:** `createFlowState` takes `scheduler`. Omitted, a built-in local cron ticks each minute in a process that serves the app (`ready()`, `getRouter()`, `serve()`, `fsdev dev`) or works a job queue, never in `fsdev run`, `fsdev chat` or `fsdev block`, and only when a flow declares a static schedule or a schedule index. It ticks only while it holds a lease in `stores.leases`, so one process ticks across servers that share a SQLite or Postgres store; if that process dies, another takes over within three minutes. In production on in-memory or filesystem stores it warns at start: run one server, or use SQLite or Postgres. `scheduler: false` fires nothing; a `SchedulerAdapter` (from `@flow-state-dev/engine/host`, with `ScheduleTicker` and `ScheduleTickReport`) decides when the tick runs. After downtime each schedule fires once, late, for the latest time it missed; earlier missed times are dropped. On Vercel with the local default, startup warns to pass `vercelScheduler()`.
+  - **vercel:** `vercelScheduler({ secret? })` is the scheduler for Vercel: pass it as `scheduler` and export its `route` as the `GET` of one route that one Vercel Cron entry calls (`CRON_SECRET` by default; an empty secret refuses every call). Each call fires every due schedule of every flow, each as its own request to the deployment the call reached, and answers 500 when a schedule index fails so the next beat retries. `createGetToPostCronShim` and `createScheduleTickHandler` are removed, with the `@flow-state-dev/vercel/schedules` entry: replace each per-schedule cron entry and route, and each per-flow tick route, with the one route. A once-a-minute beat needs Vercel Pro; a daily beat (Hobby) fires each schedule once a day, late.
+  - **bullmq:** `registerStaticSchedules`, `createScheduleDispatchProcessor` and `createBullmqScheduleIndex` are removed, with the `@flow-state-dev/bullmq/schedules` entry. A BullMQ deployment wires nothing for schedules: the local cron runs in its job-queue processes too, elected by the shared store's lease. A static schedule's fire is enqueued like any action, with the queue's retries; a dynamic schedule's fire runs in the process that ticked, since its block can't ride a job, so it has no queue retries and a crash mid-run loses it. Dynamic schedules use the SQLite or Postgres schedule index. The pending rename of `createScheduleDispatchWorker` to `createScheduleDispatchProcessor` in this release ends in this removal.
+  - **node:** `serveScheduleTicks` is removed. `serve()` no longer ticks schedule indexes itself; the app's local cron fires static and dynamic schedules alike.
+  - **scheduled:** `runScheduleTick`, `startScheduleTick` and `scheduleDispatchRequest` are removed from `@flow-state-dev/scheduled/collection` (the tick is the engine's), and `formatScheduleId` from the package root (it is core's). The pending note that added the first three in this release is superseded by this removal.
+  - **core:** `formatScheduleId(orgId, userId, key)` is exported from `@flow-state-dev/core`. `ScheduleDueEntry` names `cron` and `timezone`, so a custom schedule index returns the cron and zone each row already carries.
+
+  Docs: apps/docs/docs/server/scheduled.md (rewritten: the app fires its own schedules; the local cron, the lease, and what one server on in-memory or filesystem stores means; after downtime, once late for the latest missed time; the Vercel route; `scheduler: false`), apps/docs/docs/server/schedule-index.md (drop the "bring a cron" section; the tick claims the index), apps/docs/guides/scheduled-vercel-cron.md (the one-route walkthrough with `vercelScheduler()`, one cron entry, the Pro and Hobby beats), apps/docs/guides/scheduled-dynamic.md (no tick handler; the app's tick claims the index), apps/docs/guides/background-jobs-bullmq.md (drop the schedule wiring), apps/docs/guides/keeping-a-flow-running.md (drop the outside-cron mention), packages/vercel/README.md (`vercelScheduler` replaces the `./schedules` helpers), packages/bullmq/README.md (drop the `./schedules` section and `createBullmqScheduleIndex`), packages/scheduled/README.md (the tick is the engine's; no `runScheduleTick` or `startScheduleTick`), packages/node/README.md (`serve()` no longer ticks indexes itself), packages/engine/README.md (the `scheduler` option, `SchedulerAdapter`, `ScheduleTicker`), packages/core/README.md (`formatScheduleId`; `ScheduleDueEntry`'s `cron` and `timezone`).
+
+- 00b3426: A flow dispatched to a BullMQ worker no longer holds its streamed events, or its Redis connections, after the run is over (FIX-2677).
+
+  - **bullmq:** `createRedisStreamBridge`'s subscriber keeps no events until `events()` is called. Events published before that are dropped rather than buffered, so a dispatch whose events nobody reads no longer grows with every item update. Read `events()` before the run starts if you need every event; late readers recover from the store, as before.
+  - **bullmq:** `createWorkerRunner`'s `finished` settles when the job has ended in BullMQ (completed, failed for good, or removed) even if the worker's terminal message never arrived: with the job's own return value when it completed, or an error carrying the job's failure reason. The runner checks the job's state every 10 seconds (`DEFAULT_LEASE_MS`). The subscriber and its two Redis connections close either way. A job still waiting, delayed for a retry, or running keeps the dispatch open.
+
+  Docs: packages/bullmq/README.md (the stream bridge section: `events()` buffers only from its first call; the runner section: `finished` also settles from the job's end state, checked every `DEFAULT_LEASE_MS`).
+
+- ae56d59: The queue integration is now called a job queue, so its names no longer collide with Workforce workers (FIX-2751). This is a breaking rename with no aliases.
+
+  - **engine:** the `createFlowState` option `worker` is now `jobQueue`. Passing `worker` throws and names `jobQueue`. `WorkerAdapter` is `JobQueueAdapter`, `WorkerMode` is `JobQueueMode`, and `WorkerHandle` is `ProcessingHandle`. The adapter's `startWorker(runtime)` method is `startProcessing(runtime)`.
+  - **engine:** the modes are `"enqueue-only"` (was `"dispatch-only"`), `"process-only"` (was `"worker-only"`) and `"colocated"`. An unknown mode throws at `createFlowState` rather than running as `colocated`.
+  - **bullmq:** `bullmqWorker(...)` is `bullmqJobQueue(...)`, with `BullmqJobQueueOptions` and `BullmqJobQueueAdapter`. The lower-level factories follow: `createFlowWorker` is `createJobProcessor` (with `CreateJobProcessorOptions` and `JobProcessorDeps`), `createWorkerRunner` is `createJobQueueRunner` (with `CreateJobQueueRunnerOptions`), `resolveWorkerConnection` is `resolveProcessorConnection`, and the runtime handle's `createWorker` is `createJobProcessor`. From `@flow-state-dev/bullmq/schedules`, `createScheduleDispatchWorker` is `createScheduleDispatchProcessor`. The `@flow-state-dev/bullmq/worker` subpath is `@flow-state-dev/bullmq/job-processor`.
+
+  To migrate: `createFlowState({ jobQueue: bullmqJobQueue({ connection, mode: "enqueue-only" }) })`, and rename any `FSD_WORKER_MODE`-style environment switch to the new mode values.
+
+  Docs: packages/bullmq/README.md (the `jobQueue: bullmqJobQueue(...)` setup, the three modes, `createJobProcessor`, `createJobQueueRunner`, `resolveProcessorConnection`, `createScheduleDispatchProcessor`, the `./job-processor` subpath row), packages/engine/README.md (the `JobQueueAdapter` / `ProcessingHandle` / `JobQueueMode` entry and the `jobQueue` option), packages/core/README.md (the queue example), packages/claude-code/README.md (`JobQueueAdapter.leaseBackend`), apps/docs/guides/background-jobs-bullmq.md, apps/docs/guides/background-work.md, apps/docs/guides/keeping-a-flow-running.md, apps/docs/docs/configuration/runtime.md (the `jobQueue` option and the mode table), apps/docs/docs/server/background-work.md, apps/docs/docs/cli/overview.md (the `process-only` section and its anchor), apps/docs/docs/advanced/concurrency-policies.md, apps/docs/docs/tools/claude-code-sdk.md. Say "job queue" in prose where these pages say "worker adapter" or "queue worker".
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+- aa45e92: A user or org resource is read by scope and key with no session, and a client writes it only through the flow it names (FIX-2624).
+
+  - **core:** `defineResource` takes `runBy` and `canWrite`. `runBy: "default"` lets a client write the resource through the framework's default write flow, which checks the schema, the owner and `canWrite({ prev, next, userId, orgId })`, and writes at the version the client read. `runBy: { flow }` names a flow of your app that writes it instead. With no `runBy`, a client can't write the resource; server flows still write it from their actions. User or org scope only, and with a `client` config.
+  - **core:** an org resource with `runBy: "default"` and no `canWrite` is a definition error: your app refuses to start until you declare who may write it, even everyone (`canWrite: () => true`). A user resource needs no rule: it is its owner's. Also refused at definition: `runBy` on a session resource, with `flowIsolation: true` or with no `client` config, `runBy: "default"` with a computed `client.data`, `writable: false`, or (any `runBy`) a `client` config that projects no state, and `canWrite` without `runBy: "default"`.
+  - **engine:** three routes. `GET /api/flows/resources/:scope/:key` reads the caller's copy (`{ value, version }`) with no session and no request, projected exactly as the session snapshot projects it: a resource with no `expose`, `exclude` or `data` (content-only) returns no `value`. `POST /api/flows/resources/:scope/:key/actions/:action` writes through the resource's `runBy` flow, in a session the server keeps per writer; it records a request like any action. `GET /api/flows/:flow/identity` answers the user and org the server acts as under that flow's sign-in. Each resolves the caller through the declaring flows' own sign-in (a send to `runBy: { flow }` through that flow's, as a direct call to its action would), never the body, query or headers. Until a caller is signed in by every flow that declares the key, and admitted by one declaring instance's pin, every answer is the `404` an unknown key gets. If the declaring flows' sign-in resolves one request to different users or orgs, the read or write is refused (`500 resolver_disagreement`). A key two flows declare with different sign-ins or client settings is refused per request, naming both. Write sessions are the server's: no route or transport takes one from a client (session create included), the default write flow answers as an unknown flow, and no listing shows a write's session or request.
+  - **bullmq:** the job processor runs default writes too. A worker started through `createFlowState({ worker: bullmqWorker(...) })` is given the host's `resolvePrincipal` itself (on `FlowStateRuntime`); one built directly with `createFlowWorker` takes `resolvePrincipal` in its deps, the same host-level resolver your web host is given, so the worker decides whether two flows that declare one resource agree exactly as the host does. Default: the development resolver.
+  - **client:** `client.resource(def)` returns a handle with `read()`, `state()`, `set(value, { version })` and `update(updater)`. `update` reads, applies your updater and writes at that version; when another write landed first it reads again and re-applies, three times at most, then rejects with `ResourceWriteError` (`code: "stale_version"`). `client.flow(kind).identity()` returns `{ userId, orgId }`.
+
+  - **core (definition error):** `runBy` of either kind on a single resource whose `client` config projects no state (neither `expose`, `exclude` nor `data`, for example `client: {}`) now throws at definition. With no state projection a client reads none of the resource's state, so it has nothing to write back. To fix it, list the fields the client reads and writes: `client: { expose: ["pinned"] }` (or `exclude: [...]`). A resource with no `runBy` and no state projection (content-only) is not served by the direct read: it answers as an unknown key.
+
+  Docs: apps/docs/docs/resources/client-access.md (reading a user or org resource by scope with `client.resource`; the three routes in the endpoint table), new apps/docs/docs/resources/client-writes.md after `client-access` in the Resources sidebar (`runBy`, the default write flow and its checks, `canWrite` and the org-resource startup error, versions and `update`'s retry), apps/docs/docs/client/overview.md (`client.resource`, `flow().identity()`), packages/core/README.md (`runBy`, `canWrite`), packages/engine/README.md (the three routes), packages/client/README.md (`client.resource`, `identity()`, `ResourceWriteError`), packages/bullmq/README.md (the worker deps' `resolvePrincipal`)
+
+### Patch Changes
+
+- 8e111c9: A message's files reach the model, and the conversation shows them on the person's line (FIX-2517).
+
+  - **client:** `flow(address).send(action, input, { sessionId, attachments })` sends the message's files beside the input. Each is the `FileContent` that `upload` returned, in the order attached. The flow's input schema never sees them.
+  - **react:** `useSession().sendAction(action, input, { userMessage, attachments })` sends them the same way. The line the view shows at once holds the files after the text, as the server's copy will.
+  - **engine:** an action with `userMessage` takes files. The user line it writes holds a `file` part per file after the text, as references, so a reload shows them. An action without `userMessage` refuses files with 400 `attachments_not_accepted`. A message over the limits answers 400 `attachment_limit` (with the `index` of the file that went over and the `limit`), a type off the list answers 400 `attachment_type_refused`, and a file named as another type than it was uploaded as answers 400 `attachment_invalid`. Nothing is claimed or run on a refusal.
+  - **engine:** a generator with `history` gets the files as image parts (PDFs as file parts) with the bytes inline, on the person's turn. Later turns still carry earlier files: counting back from the newest message, up to 10 images and 5 documents, the same limits as one message. An older file is named on its turn as `[image: shot.png, not re-sent]`. A file that can no longer be read is named as `no longer available` instead of failing the call. Re-sent files are billed as input on every call; prompt caching (on by default) keeps that cost down.
+  - **engine:** retrying a turn (`POST …/requests/:id/retry`) carries its files: the retried line, its record and the model get the same references.
+  - **core:** `ModelResolver.prepareMessages(messages)`, optional: a generator passes the messages of every model call through it. The engine's run sets it to read the person's files at the call, so a run's records (a generator's trace, a tool loop's prelude) hold references and never the bytes. A custom model resolver needs nothing new.
+  - **core:** `ctx.request.attachments` lists the request's files as references, for a block that hands files on itself. Empty when the message carried none. A generator whose `user` slot repeats the person's words no longer sends the turn twice when that turn carries files.
+  - **contracts / core:** `attachmentLimitRefusal(files)` in `@flow-state-dev/core/attachments` checks one message against the limits set, the same check the server makes, so a composer can refuse before send.
+  - **bullmq:** a queued job carries the request's files to its worker.
+
+  Docs: a new guide page, "A user turn can carry files": sending files from the client and React, what the model receives, the history rule (newest files up to one message's limits, older ones named), the limits and the named refusals, `ctx.request.attachments`. packages/client/README.md (`attachments` on `send`), packages/react/README.md (`attachments` on `sendAction`), packages/engine/README.md (the user line's file parts and the refusals), packages/core/README.md (`ctx.request.attachments`, `attachmentLimitRefusal`), packages/contracts/README.md (`attachmentLimitRefusal`).
+
+- 8dfcb2e: Every request names its session, from the first write of its record (FIX-2907). The engine no longer makes up a session for a run that names none.
+
+  - **Breaking: a send needs a session id.** `client.flow(f).send(action, input, { sessionId })` and `useAction`'s `execute(input, sessionId)` require it, and so does `runAction` (`sessionId`) and a custom transport's `host.dispatch` envelope. An HTTP send with none is refused `400 { error: "session-required" }` before anything is written, and the route stays registered; `runAction`, `createExecutionContext` and `host.dispatch` throw `SessionRequiredError` (from `@flow-state-dev/engine/host`). Pass the conversation's id (`client.flow(f).createSession()`), or, for a one-shot send, `oneOffSessionId()` from `@flow-state-dev/core/helpers`: the same one-off run as before, folded under "One-off runs" in the navigator.
+  - **No behaviour change for runs with no conversation.** A webhook binding that names no session, a `per-fire` schedule fire and an MCP `tools/call` with no session directive still run in a fresh one-off session; the webhook route, the scheduled endpoint and the MCP adapter now make its id before they dispatch, so the request record and its gates name it. A one-off webhook session is born with `metadata.source: "webhook"` like a named one.
+  - **Requests recorded with no session before this release** stay readable and stoppable (a stop settles a parked one `aborted`). Running one again is refused by name: a resume, continuation, retry or wake answers `legacy-sessionless-request` (`409` over HTTP), and a queued BullMQ job with no session is settled failed under `LegacySessionlessRequestError` and not retried.
+  - `ConcurrencyKeyContext.sessionId` is now always set.
+
+  Docs: apps/docs/docs/client/overview.md (`send` takes a session id and how to get one; drop the "no session" sentences), apps/docs/docs/fundamentals/state-and-scopes.md (the "sent without a session id" line under the create check: such a send is refused), apps/docs/docs/server/connection-resilience.md (the snapshot's `sessionId` is absent only on a request recorded before sessions were required), apps/docs/docs/server/mcp.md and apps/docs/docs/server/scheduled.md (a one-off run gets a fresh session made for it, no behaviour change), packages/client/README.md and packages/react/README.md (`sessionId` on `send` and `execute`)
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [e238e18]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [42980e4]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [18adad9]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+- Updated dependencies [ee91375]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes

@@ -9,7 +9,7 @@
  *
  * A **worker** has no session. What it is — its id and the worker flow it was hired into
  * — is the roster the process was hired from, which the binder already holds,
- * so the worker rows go out in ONE run carrying all of them.
+ * so the worker entries go out in ONE run carrying all of them.
  *
  * **Nothing is deleted for being absent.** A row means *was registered in this
  * org*, not *still declared*. A roster handed to one boot may be a partial one,
@@ -61,7 +61,7 @@ export interface InventoryRoster {
 export interface InventoryActionRequest {
   /** The action's name: {@link INVENTORY_REGISTER_WORKERS}. */
   action: string;
-  /** The action's input: the worker rows. */
+  /** The action's input: the worker entries. */
   input: unknown;
   /** The user the run is made as. */
   userId: string;
@@ -89,7 +89,7 @@ export interface InventoryActionRequest {
   source?: string;
 }
 
-/** Where the worker rows are written. @see OpenInventoryOptions.workerWriter */
+/** Where the worker entries are written. @see OpenInventoryOptions.workerWriter */
 export interface InventoryWorkerWriter {
   /** A flow kind carrying {@link INVENTORY_REGISTER_WORKERS}. */
   flowKind: string;
@@ -127,16 +127,16 @@ export interface OpenInventoryOptions {
    * signal this package can read.
    *
    * Return the action's output, or a run result carrying it as `output`
-   * (`runAction`'s shape), and `InventoryBinding.workers` counts the worker rows
+   * (`runAction`'s shape), and `InventoryBinding.workers` counts the worker entries
    * that actually landed; any other return counts the rows sent.
    */
   run: (request: InventoryActionRequest) => Promise<unknown>;
 
   /**
-   * Where the WORKER rows are written.
+   * Where the WORKER entries are written.
    *
    * A worker has no session of its own, and a collection can only be written from
-   * inside a running flow — so the worker rows need a flow to run in, and the
+   * inside a running flow — so the worker entries need a flow to run in, and the
    * binder cannot derive one. Any flow of the app's own that spreads
    * `inventoryWriterActions()` into its `internal.actions` carries the writer.
    * Naming it is one line, and it is the single thing
@@ -164,7 +164,7 @@ export interface OpenInventoryOptions {
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
   /**
-   * How many worker rows were written. The count is the worker action's own, read
+   * How many worker entries were written. The count is the worker action's own, read
    * from what `run` returns: the action's output, or a run result carrying it
    * as `output`. A door whose return carries neither (an HTTP action client
    * returns no output) gets the number of rows sent instead.
@@ -201,7 +201,7 @@ function messageOf(error: unknown): string {
  * record's own id, so nothing duplicates and nothing appends.
  *
  * @param roster  The hired workers.
- * @param options `run`: the action door. `workerWriter`: the flow the worker rows
+ * @param options `run`: the action door. `workerWriter`: the flow the worker entries
  *   are written through. `userId` / `orgId`: who and where.
  * @returns What was written, and one named entry per failure. Nothing is
  *   retried.
@@ -257,7 +257,7 @@ export async function openInventory(
     try {
       const ran = await options.run({
         action: INVENTORY_REGISTER_WORKERS,
-        // Id, kind, door (and whether it takes a task), rules, display names, origin and incarnation only. A worker's row is the whole of what the
+        // Id, kind, door (and whether it takes a task), rules, display names, origin and incarnation only. A worker's entry is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {

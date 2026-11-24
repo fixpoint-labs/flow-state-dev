@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   INVENTORY_REGISTER_WORKERS,
@@ -104,7 +105,7 @@ async function host(adapter: unknown = inMemoryStores()) {
   };
   const reader = (readerFlow as any)();
   const state = createFlowState({
-    flows: { ...byFlow, [reader.kind]: reader },
+    flows: [...Object.values(byFlow), reader],
     stores: { default: { primary: adapter } }
   } as never);
   const runtime = await state.getRuntime();
@@ -158,6 +159,7 @@ async function host(adapter: unknown = inMemoryStores()) {
         input: {},
         userId: USER_ID,
         orgId: ORG_ID,
+        sessionId: oneOffSessionId(),
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig },
         ...opts
@@ -338,7 +340,7 @@ describe("running it twice", () => {
 
     // A second boot over the SAME storage, from a roster that lost a worker.
     // Nothing is reconciled: a binder that dropped what its roster no longer
-    // names would take a live worker's row with it.
+    // names would take a live worker's entry with it.
     const second = await host(adapter);
     try {
       const result = await bind(second, { workers: [{ id: "eng.lead", kind: "agent", actions: {} }] });

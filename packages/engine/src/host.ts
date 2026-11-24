@@ -88,7 +88,10 @@ export {
   createInMemoryWakeStore
 } from "./stores";
 export { createInMemoryBus } from "./bus/in-memory-bus";
+export { installBuiltIns } from "./resources/default-write-flow";
 export { withChangeBus } from "./bus/publish-writes";
+// FIX-2695: a host that writes a scope's state outside a run (fsdev run's --seed-session) publishes it as a run would.
+export { publishScopeChange, type ScopeChange } from "./bus/scope-changes";
 export {
   enablePushDelivery,
   type EnablePushDeliveryOptions,
@@ -108,9 +111,12 @@ export {
   type FlowStateModelsConfig,
   type FlowStateRuntime,
   type FlowStateVoiceConfig,
-  type WorkerAdapter,
-  type WorkerHandle,
-  type WorkerMode
+  type JobQueueAdapter,
+  type ProcessingHandle,
+  type JobQueueMode,
+  type SchedulerAdapter,
+  type ScheduleTicker,
+  type ScheduleTickReport
 } from "./flowstate/types";
 export {
   createResponseEmitter,
@@ -187,6 +193,7 @@ export {
   type QueueWaitStep,
   resolveInProcessPrincipal,
   type RunnerHandle,
+  SessionRequiredError,
   type SlackWebhookVerifierOptions,
   type StreamBridge,
   type StreamBridgeEvent,
@@ -221,9 +228,22 @@ export {
 export { type OwnedRecord, ownsRecord } from "./context/record-owner";
 export { type InstancePinCaller, pinRejectsCaller } from "./context/instance-pin";
 export { isOrgAttributed, UnattributedOrgError } from "./context/org-attribution";
+export { LEGACY_SESSIONLESS_REQUEST, LegacySessionlessRequestError } from "./context/record-session";
 export {
   type DurabilityProvider,
   type Lease,
   type LeaseOptions
 } from "./durability/types";
 export { type DurabilityRetentionConfig } from "./durability/durability-sweeper";
+export {
+  type BlobClaimResult,
+  type BlobPut,
+  type BlobRecord,
+  type BlobStore,
+  type BlobUploader
+} from "./blobs/types";
+export { decideClaim, isSweepable } from "./blobs/shared";
+export { createLocalBlobStore } from "./blobs/local-blob-store";
+export { declareEphemeralDisk } from "./blobs/host-disk";
+
+export { networkAuthenticationError, createNetworkAuthGuard } from "./routes/network-auth";

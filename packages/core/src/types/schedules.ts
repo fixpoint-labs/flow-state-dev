@@ -2,10 +2,11 @@
  * Per-flow scheduled-action configuration types.
  *
  * The framework owns the configuration model and dispatch contract — the
- * `@flow-state-dev/scheduled` adapter mounts a route per flow, validates
- * incoming dispatches, and invokes `runAction`. The host owns the actual
- * scheduler (Vercel Cron, Cloud Scheduler, EventBridge, GitHub Actions,
- * `node-cron`) and any storage backing dynamic schedules.
+ * engine's router mounts the scheduled endpoint on every app, validates
+ * incoming dispatches, and invokes `runAction`. The engine's one schedule
+ * tick fires every static and dynamic schedule through that endpoint; when it
+ * runs is `createFlowState({ scheduler })` (the engine's local cron by
+ * default). The app owns any storage backing dynamic schedules.
  *
  * `schedules` is a *resolution surface*: a static map (the framework-cron
  * case) plus an optional `resolve(scheduleId, ctx)` hook that returns a
@@ -196,6 +197,23 @@ export type ScheduleConfig = ActionCore & {
    */
   onOverlap?: "skip" | "allow";
 
+  // FIX-2886 D1.
+  /**
+   * Where this schedule's fires run.
+   *
+   * - `"per-fire"` (default): each fire is a one-off run in a session of its
+   *   own.
+   * - `"per-schedule"`: every fire runs in one session, kept for this
+   *   schedule. The framework derives its id from the org and user the fire
+   *   runs as, the flow instance and the schedule id, and reserves its
+   *   prefix: only a scheduled dispatch may create the session or run in it,
+   *   while its owner can still list and read it. The flow's
+   *   `session.retention` caps its history.
+   *
+   * A preset, not an id: a schedule can't name the session it fires into.
+   */
+  session?: "per-fire" | "per-schedule";
+
   /**
    * Optional human description, surfaced in DevTool and the listing
    * endpoint. Free text.
@@ -234,6 +252,114 @@ export type SchedulesConfig = {
     scheduleId: string,
     ctx: ScheduleResolutionContext
   ) => Promise<ScheduleConfig | null> | ScheduleConfig | null;
+
+  // FIX-2536.
+  /**
+   * The schedule index this flow's dynamic schedules are mirrored into
+   * (`@flow-state-dev/scheduled`'s `ScheduleIndex`). The app's schedule tick
+   * claims due entries from it and dispatches them to this flow, so the
+   * flow's schedules fire with no cron of the host's own. One index serves
+   * one flow. Typed structurally so this contract can live in core.
+   */
+  index?: ScheduleDueSource;
+};
+
+/**
+ * One due entry a schedule index hands back: who it runs as, in which org, its
+ * key, the time it was due, and the cron and time zone it runs on (so a tick
+ * that comes late fires it for its latest due time, not the first it missed).
+ */
+export type ScheduleDueEntry = {
+  userId: string;
+  orgId?: string;
+  key: string;
+  cron: string;
+  /** IANA time zone the cron is read in. Default `"UTC"`. */
+  timezone?: string;
+  nextFireAt: number;
+};
+
+// FIX-2752.
+/**
+ * The dispatch id of a dynamic schedule: `<orgId>/<userId>/<key>`, each part
+ * URL-encoded so an org or user id containing `/` round-trips. The engine's
+ * schedule tick dispatches by it, and `@flow-state-dev/scheduled`'s
+ * `defaultParseScheduleId` reads it back.
+ *
+ * Put it on a dispatch URL as one more encoded path segment, since the router
+ * decodes each segment once:
+ * `/api/flows/<kind>/schedules/${encodeURIComponent(formatScheduleId(...))}/dispatch`.
+ */
+export function formatScheduleId(orgId: string, userId: string, key: string): string {
+  return [orgId, userId, key].map(encodeURIComponent).join("/");
+}
+
+// FIX-2752.
+/**
+ * The latest scheduled time of `cron` in `timezone` at or before `at` (ms), or
+ * `null` when the cron has none (or does not parse). Shared by the engine's
+ * schedule tick, which fires each schedule for its latest due time, and the
+ * scheduled endpoint, which checks the time a fire carries.
+ */
+export function latestScheduledTime(cron: string, timezone: string, at: number): number | null {
+  try {
+    // `prev()` is strictly before its current date, so start a millisecond on.
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at + 1) })
+      .prev()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
+
+// FIX-2753.
+/**
+ * The first scheduled time of `cron` in `timezone` strictly after `at` (ms), or
+ * `null` when the cron has none (or does not parse). The scheduled endpoint
+ * reads it beside {@link latestScheduledTime} to find the scheduled time a
+ * fire's carried time is nearest.
+ */
+export function nextScheduledTime(cron: string, timezone: string, at: number): number | null {
+  try {
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at) })
+      .next()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
+
+// FIX-2753.
+/**
+ * Where the scheduled endpoint keeps each schedule's fired record: the latest
+ * scheduled time it fired, one row per schedule, in the user cell of the
+ * principal the schedule runs as. A flow that deletes a schedule deletes its
+ * record with it, through a collection over this pattern, at user scope. A
+ * key holds `/`, so any depth.
+ */
+export const FIRED_RECORDS_PATTERN = "scheduled-fires/**";
+
+/** {@link FIRED_RECORDS_PATTERN}'s prefix, without its wildcard. */
+const FIRED_RECORDS_PREFIX = "scheduled-fires/";
+
+/**
+ * A schedule's fired-record key within {@link FIRED_RECORDS_PATTERN}: the
+ * flow the schedule is dispatched on, then its dispatch id.
+ */
+export function firedRecordCollectionKey(flowKind: string, scheduleId: string): string {
+  return `${flowKind}/${scheduleId}`;
+}
+
+/** A schedule's fired-record resource key, prefix included. */
+export function firedRecordKey(flowKind: string, scheduleId: string): string {
+  return `${FIRED_RECORDS_PREFIX}${firedRecordCollectionKey(flowKind, scheduleId)}`;
+}
+
+/** What a host's tick needs of a schedule index: claim the entries due by `now`, advancing them. */
+export type ScheduleDueSource = {
+  claimDue(now: number, limit?: number): Promise<readonly ScheduleDueEntry[]>;
 };
 
 // ---------------------------------------------------------------------------
@@ -348,6 +474,17 @@ export function validateScheduleConfig(args: {
     throw new Error(
       `Flow "${kind}" schedule "${id}" has unsupported onOverlap value ${JSON.stringify(schedule.onOverlap)}. ` +
         `Use "skip" (default) or "allow". "queue" is reserved for a future durable-queue release.`
+    );
+  }
+
+  if (
+    schedule.session !== undefined &&
+    schedule.session !== "per-fire" &&
+    schedule.session !== "per-schedule"
+  ) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has unsupported session value ${JSON.stringify(schedule.session)}. ` +
+        `Use "per-fire" (default) or "per-schedule". A schedule can't name its session: the framework derives it.`
     );
   }
 

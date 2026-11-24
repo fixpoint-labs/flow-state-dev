@@ -75,7 +75,7 @@ import { retryOnConflict } from "./cas-retry";
 import { projectAddressSchema, type ProjectAddress } from "./collections";
 import { defineLeadFitCheck, LEAD_FIT_STATE, leadFitCaseSchema, leadFitRecordSchema, leadFitStateSchema, type LeadFitCase } from "./lead-fit";
 import { isMember } from "./membership-gate";
-import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
 import { isAlreadyExists } from "./store-errors";
 import {
@@ -374,7 +374,7 @@ function leadDiffers(id: string, lead: string): ProjectRefusedError {
  * @throws When a lead flow declares no `onWorkstreamOpened` entry.
  * @example
  *   const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentFlow] });
- *   defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions, ...workstreams.actions } });
  */
 export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): WorkstreamBlocks {
   const { installation } = options;
@@ -402,7 +402,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
     return undefined;
   };
-  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES };
+  const resources = { ...installation.resources, ...PROJECT_ENTRY_RESOURCES, ...WORKSTREAM_RESOURCES };
 
   /**
    * Check the open: everything that can refuse, short of the lead's fit, runs

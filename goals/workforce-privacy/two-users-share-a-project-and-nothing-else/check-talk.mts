@@ -48,10 +48,10 @@ const said = (requestId: string, text: string, agentName?: string): Item => ({
 });
 const routedTo = (worker: string): Item => ({
   id: "route_record",
-  type: "component",
-  component: "coordinator-route",
+  type: "data",
+  dataType: "coordinator-route",
   requestId: POST,
-  data: { messageRequestId: POST, round: 0, policy: "everyone", by: "everyone", delegates: [{ worker, outcome: "delivered" }] },
+  value: { messageRequestId: POST, round: 0, policy: "everyone", by: "everyone", delegates: [{ worker, outcome: "delivered" }] },
 });
 
 /** A person connected to `session`, through fakes of the two surfaces `talk` reads. */
@@ -89,7 +89,7 @@ const routed = new ScriptedSession((s, tick) => {
     s.requests.push({ id: "req_dispatch", status: "in_progress" });
   }
   if (tick === 9) {
-    s.items.push({ id: "dispatch_change", type: "component", component: "task-change", requestId: "req_dispatch" });
+    s.items.push({ id: "dispatch_change", type: "data", dataType: "task-change", requestId: "req_dispatch" });
     s.requests.find((r) => r.id === "req_dispatch")!.status = "completed";
   }
 });

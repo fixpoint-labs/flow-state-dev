@@ -195,13 +195,15 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: (run) =>
+    mode: {
+      name: PHASE,
+      instructions: (run) =>
         [`Work on ${run.issue}, attempt ${run.attempt}.`, "To ask, write it as the entire contents of this file:", `  ${run.askMarkerPath}`].join("\n"),
-      isDone: async () => {
-        await duringVerdict.shift()?.();
-        return true;
+      doneWhen: {
+        check: async () => {
+          await duringVerdict.shift()?.();
+          return true;
+        },
       },
     },
     workspace,
@@ -277,7 +279,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "held-flow" } as never);
   const state = createFlowState({
-    flows: { "held-flow": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 90_000,

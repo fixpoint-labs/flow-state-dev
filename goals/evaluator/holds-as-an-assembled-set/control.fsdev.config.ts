@@ -30,11 +30,9 @@ function withFakeConfidence(model: EvaluationModel): EvaluationModel {
 }
 
 export default createFlowState({
-  flows: {
-    "routing-with-evaluators": createRoutingFlow({
-      confident: JEV,
-      withoutConfidence: withFakeConfidence(modelWithoutConfidence()),
-    }),
-  },
+  flows: [createRoutingFlow({
+        confident: JEV,
+        withoutConfidence: withFakeConfidence(modelWithoutConfidence()),
+      })],
   stores: { default: { primary: inMemoryStores() } },
 });

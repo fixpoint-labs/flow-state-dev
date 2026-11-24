@@ -17,25 +17,23 @@ import { createInMemoryStores } from "../src/host";
 import { createFlowRegistry } from "../src/registry/flow-registry";
 import { handleGetRequestStatus } from "../src/routes/request-status-routes";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const computeFlow = defineFlow({
   kind: "compute",
   actions: {
-    square: {
-      inputSchema: z.object({ n: z.number() }),
-      block: handler({
+    square: handler({
         name: "compute-square",
         inputSchema: z.object({ n: z.number() }),
         execute: (input: { n: number }) => ({ squared: input.n * input.n })
       })
-    }
   }
 })();
 
 describe("status route: the stored result, by request id", () => {
   it("returns what a real action computed when asked, and no result when not", async () => {
     const state = createFlowState({
-      flows: { compute: computeFlow },
+      flows: [computeFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     const fetcher = createInProcessFetch(state);
@@ -43,7 +41,7 @@ describe("status route: the stored result, by request id", () => {
       const sent = await fetcher("http://x.invalid/api/flows/compute/actions/square", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u1", input: { n: 7 } })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { n: 7 } })
       });
       expect(sent.status).toBeLessThan(300);
       const body = (await sent.json()) as { request?: { id: string }; requestId?: string };

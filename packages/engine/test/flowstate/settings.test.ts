@@ -4,6 +4,7 @@ import { defineFlow, handler, type FlowStateSettings } from "@flow-state-dev/cor
 import { z } from "zod";
 import { runAction } from "../../src";
 import { createInMemoryStores } from "../../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /**
  * Build a flow whose single handler captures `ctx.settings` into the
@@ -24,14 +25,12 @@ async function runCapturingSettings(
   const flow = defineFlow({
     kind: "settings-flow",
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: capture
-      }
+      run: capture
     }
   })();
 
   await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

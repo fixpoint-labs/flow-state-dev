@@ -11,7 +11,6 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   pushActiveSkill,
-  activeSkillStateSchema,
   readActiveSkills,
   type ActiveSkillEntry,
 } from "./active-skill-state";
@@ -31,8 +30,8 @@ export const inlineActivate = handler({
   name: "skillInlineActivate",
   inputSchema: inlineActivateInputSchema,
   outputSchema: inlineActivateOutputSchema,
-  sessionStateSchema: activeSkillStateSchema,
   execute: async (input, ctx) => {
+    const current = readActiveSkills(ctx.session.state);
     const entry: ActiveSkillEntry = {
       name: input.skillName,
       mode: "inline",
@@ -40,8 +39,8 @@ export const inlineActivate = handler({
       activatedAt: Date.now(),
     };
     await ctx.session.patchState({
-      activeSkills: pushActiveSkill(readActiveSkills(ctx.session.state), entry),
-    });
+      activeSkills: pushActiveSkill(current, entry),
+    } as never);
     return {
       skill: input.skillName,
       mode: "inline" as const,

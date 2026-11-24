@@ -17,7 +17,6 @@ const message = z.object({ message: z.string() });
 /** A door that answers by saying what it heard. */
 function hearing(name: string) {
   return {
-    inputSchema: message,
     userMessage: (input: { message: string }) => input.message,
     block: handler({
       name: `${name}-hear`,
@@ -46,25 +45,22 @@ export function defineFlows(workers: WorkerInstallation) {
   });
 
   /** A coordinator: its delegates live in its session state. */
-  const coordinatorSession = workers.session({ delegates: z.array(z.string()).default([]) });
   const coordinatorFlow = defineFlow({
     kind: "coordinator",
     internal: { actions: hearsMessages(workers, "coordinator") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    session: coordinatorSession,
+    session: workers.session({ delegates: z.array(z.string()).default([]) }),
     resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: {
-        inputSchema: message,
         userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "coordinator-route",
           inputSchema: message,
-          sessionStateSchema: coordinatorSession.stateSchema,
-          outputSchema: coordinatorSession.stateSchema.pick({ delegates: true }),
+          outputSchema: z.object({ delegates: z.array(z.string()) }),
           execute: (_input, ctx) => {
-            const { delegates } = ctx.session.state;
+            const delegates = (ctx.session.state as { delegates?: string[] }).delegates ?? [];
             ctx.emit.message(`delegates: ${delegates.join(", ") || "none"}`);
             return { delegates };
           },
@@ -87,9 +83,7 @@ export function defineFlows(workers: WorkerInstallation) {
     resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: hearing("sharer"),
-      share: {
-        inputSchema: noteInput,
-        block: handler({
+      share: handler({
           name: "sharer-share",
           inputSchema: noteInput,
           outputSchema: z.object({ shared: z.string() }),
@@ -100,7 +94,6 @@ export function defineFlows(workers: WorkerInstallation) {
             return { shared: input.key };
           },
         }),
-      },
     },
   });
 
@@ -113,19 +106,20 @@ export function defineFlows(workers: WorkerInstallation) {
     ...bound,
     actions: {
       respond: hearing("org-keeper"),
-      keep: {
-        inputSchema: noteInput,
-        block: handler({
+      keep: handler({
           name: "org-keeper-keep",
           inputSchema: noteInput,
           outputSchema: z.object({ kept: z.string() }),
           resources: { board },
           execute: async (input, ctx) => {
-            await ctx.resources.board.create(input.key, { text: input.text }, { replace: true });
+            await (
+              ctx.resources.board as unknown as {
+                create: (key: string, state: { text: string }, options?: { replace?: boolean }) => Promise<unknown>;
+              }
+            ).create(input.key, { text: input.text }, { replace: true });
             return { kept: input.key };
           },
         }),
-      },
     },
   });
 
@@ -137,10 +131,7 @@ export function defineFlows(workers: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     ...bound,
     actions: {
-      work: {
-        inputSchema: note,
-        block: handler({ name: "doorless-work", inputSchema: note, outputSchema: note, execute: (input) => input }),
-      },
+      work: handler({ name: "doorless-work", inputSchema: note, outputSchema: note, execute: (input) => input }),
     },
   });
 

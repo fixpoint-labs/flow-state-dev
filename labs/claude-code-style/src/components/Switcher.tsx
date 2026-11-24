@@ -1,4 +1,4 @@
-import type { LabSession } from "../adapter";
+import type { AppSession } from "../app";
 import {
   Command,
   CommandEmpty,
@@ -34,8 +34,8 @@ export function Switcher({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sessions: LabSession[];
-  /** The modes the adapter serves; a view it doesn't serve is left out. */
+  sessions: AppSession[];
+  /** The modes the lab serves; a view it doesn't serve is left out. */
   modes: readonly ModeId[];
   /** `id` undefined is *New session* in that view. */
   onPick: (view: ModeId, id: string | undefined) => void;

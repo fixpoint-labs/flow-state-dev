@@ -5,7 +5,7 @@
  * verified bearer.
  *
  * Every change goes through the install's routes as that person: the
- * `projects` flow's `createProject`, `projectSetup`, `openWorkstream` and
+ * `projects` flow's `createProject`, `projectSetup` view, `openWorkstream` and
  * `updateWorkstream`, the roster flow's `hire`, a turn in a session, or the
  * registered `goal-entry-writer` flow. Nothing is seeded. Every grade reads
  * back what that person gets from the routes, and, for a coordinator's
@@ -19,11 +19,13 @@
  */
 import { randomBytes } from "node:crypto";
 import { createClient } from "@flow-state-dev/client";
-import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, projectProgress, PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
+import { isProviderError } from "../../lib/provider.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** One person the run acts as. */
 export interface Person {
@@ -48,9 +50,7 @@ type WorkstreamInput = { id: string; title: string; objectives: string[]; due: s
 /** The engine's refusal of a write by anyone but the row's owner. */
 const OWNER_RULE = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
-const PROJECTS_FLOW = "projects";
 const ROSTER_KIND = "workforce-roster";
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const pick = <T,>(list: readonly T[]): T => list[randomBytes(1)[0]! % list.length]!;
@@ -125,7 +125,7 @@ const LEAD_INSTRUCTIONS =
   "for eng.coder with createTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
-/** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
+/** The person's own session on a flow, at one id per person and flow. */
 const ownSession = (who: Connected, kind: string, suffix = "") => `${kind}-own-${who.person.userId}${suffix}`;
 
 /** Make sure `who` holds a session at `id` on `kind`; a 409 is one they made before. */
@@ -198,8 +198,6 @@ interface Turn {
   providerRetry?: string;
 }
 
-const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|stream failed/i.test(text);
-
 /** Say `words` in `sessionId` (on `kind`); a provider error re-runs it once. */
 async function talk(who: Connected, kind: string, sessionId: string, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
@@ -218,7 +216,7 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
     return turn;
   };
   let turn = await once();
-  if (turn.status !== "completed" && providerError(turn.reply)) {
+  if (turn.status !== "completed" && isProviderError(turn.reply)) {
     const first = turn.reply;
     turn = await once();
     turn.providerRetry = first.slice(0, 200);
@@ -332,10 +330,11 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
 
   // ---- leg b: one owner per workstream ------------------------------------
   const r = leg("b");
-  const setup = await act(alice, PROJECTS_FLOW, ownSession(alice, PROJECTS_FLOW), "projectSetup", {});
-  const projectCoordinator = setup.output?.projectCoordinator as string | null | undefined;
-  if (setup.status !== "completed" || typeof projectCoordinator !== "string") {
-    throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.output)} ${setup.error ?? ""}`);
+  // The projects flow's `projectSetup` view, read with no session.
+  const setup = await alice.routes.call("POST", `/${PROJECTS_FLOW}/views/projectSetup`, { userId: alice.person.userId, input: {} });
+  const projectCoordinator = setup.body?.output?.projectCoordinator as string | null | undefined;
+  if (setup.status !== 200 || typeof projectCoordinator !== "string") {
+    throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.body)}`);
   }
   r.notes.push(`projectSetup: project coordinator "${projectCoordinator}"`);
 
@@ -531,9 +530,9 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     }
     if (ledger.length === 0 && Date.now() - sent > 30_000) break;
   }
-  const routing = (await alice.routes.items(coordinator.id, "component"))
-    .filter((i) => (i as { component?: string }).component === "coordinator-route")
-    .map((i) => i.data as Record<string, any>)
+  const routing = (await alice.routes.items(coordinator.id, "data"))
+    .filter((i) => (i as { dataType?: string }).dataType === "coordinator-route")
+    .map((i) => i.value as Record<string, any>)
     .filter((x) => postIds.has(x?.messageRequestId));
   const bobsItems = holdsWord(await bob.routes.items(bobWs.view.sessionId, "message"));
   c.notes.push(`the post's ledger: ${show(ledger)}; routing: ${show(routing.map((x) => ({ by: x.by, delegates: x.delegates })))}`);

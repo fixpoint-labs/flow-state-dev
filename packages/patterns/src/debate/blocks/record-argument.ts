@@ -59,12 +59,12 @@ export function createRecordArgument(opts: {
       });
       await collection.complete(task.id, { text });
 
-      // Surface the turn as a renderable component item. The renderer
+      // Surface the turn as a renderable data record. The renderer
       // groups these by round to draw the transcript timeline.
-      ctx.emit.component(
+      ctx.emit.data(
         "debate-turn",
         { round, agentName: opts.agentName, stance: opts.stance, text },
-        { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}` },
+        { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}`, itemVisibility: { client: true, history: false } },
       );
     },
   });

@@ -116,8 +116,8 @@ function finalStatuses(
   collectionId: string = COLLECTION_ID
 ): Record<string, string> {
   const statuses: Record<string, string> = {};
-  for (const item of itemsByType(items as never, "component")) {
-    const data = (item as { data?: Record<string, unknown> }).data;
+  for (const item of itemsByType(items as never, "data")) {
+    const data = (item as { value?: Record<string, unknown> }).value;
     if (data?.collectionId !== collectionId) continue;
     const task = data.task as { id?: string; status?: string } | undefined;
     if (task?.id === undefined || task.status === undefined) continue;
@@ -153,8 +153,8 @@ describe("FIX-951: task-board drain containment on a settled task", () => {
     // Anti-hollow-pass: a board that abandoned its siblings could still
     // report them as some status. Assert their OUTPUT carries the salt, so
     // the workers demonstrably ran.
-    const outputs = itemsByType(result.items, "component")
-      .map((i) => (i as { data?: Record<string, unknown> }).data)
+    const outputs = itemsByType(result.items, "data")
+      .map((i) => (i as { value?: Record<string, unknown> }).value)
       .filter((d) => d?.collectionId === COLLECTION_ID)
       .map((d) => (d?.task as { output?: { ok?: string } } | undefined)?.output?.ok)
       .filter((v): v is string => typeof v === "string");
@@ -379,8 +379,8 @@ describe("FIX-964: task-board drain containment on a custom store", () => {
 
     // Anti-hollow-pass, as above: prove the siblings' workers actually ran
     // rather than trusting a status the board could report either way.
-    const outputs = itemsByType(result.items, "component")
-      .map((i) => (i as { data?: Record<string, unknown> }).data)
+    const outputs = itemsByType(result.items, "data")
+      .map((i) => (i as { value?: Record<string, unknown> }).value)
       .filter((d) => d?.collectionId === LEGACY_COLLECTION_ID)
       .map((d) => (d?.task as { output?: { ok?: string } } | undefined)?.output?.ok)
       .filter((v): v is string => typeof v === "string");

@@ -1740,7 +1740,7 @@ function foldMultiPrScan(row, fresh, refreshedLive) {
  * dependency-free.
  *
  * @param carried  the durable table (may be undefined for a first report)
- * @param reported the worker's rows
+ * @param reported the worker's entries
  */
 function mergeSubPrs(carried, reported) {
   // Normalized to ONE spelling on the way in, so no later reader has to know there are two. Absence

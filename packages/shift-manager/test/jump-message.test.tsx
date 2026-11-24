@@ -5,14 +5,28 @@
  * composer, which sends it as if typed there, so the feed follows it and a
  * failure shows in the composer. A palette with no one to send to stays open.
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as draw, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
-import { TurnNotDelivered } from "../src/lib/send";
+import { TurnNotDelivered } from "../src/lib/deliver";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { clearHandedLine, handToShiftCoordinator, useHandedLine } from "../src/lib/outbox";
 import { GAPS as gaps } from "../src/gaps";
 import { JumpTo } from "../src/surfaces/JumpTo";
+import { DirectoryProvider } from "../src/lib/directory";
+
+// FIX-2775: Jump to finds its workers and projects in the page's directory: here, the case's snapshot.
+let drawn: LoadedSnapshot | undefined;
+vi.mock("../src/lib/lab-data", () => {
+  const lab = { client: {} };
+  return { useLab: () => lab };
+});
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixedReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixedReads(() => drawn) };
+});
+const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 
 const withWorkers = (workers: unknown[]) =>
   ({
@@ -41,14 +55,16 @@ function Composer({ send, blocked = null }: { send: (message: string) => Promise
 
 describe("`> ` in Jump to messages the Shift Coordinator", () => {
   it("opens already in message mode when seeded with the prefix (Shift+⌘K)", () => {
-    render(<JumpTo snapshot={snapshot} gaps={gaps} initialQuery="> " onClose={vi.fn()} />);
+    drawn = snapshot;
+    render(<JumpTo gaps={gaps} initialQuery="> " onClose={vi.fn()} />);
     expect(screen.getByTestId("jump-message")).toBeTruthy();
     expect(screen.queryAllByTestId("jump-result")).toHaveLength(0);
   });
 
   it("switches off the results, then hands the text after the prefix over and closes", () => {
     const onClose = vi.fn();
-    render(<JumpTo snapshot={snapshot} gaps={gaps} onClose={onClose} />);
+    drawn = snapshot;
+    render(<JumpTo gaps={gaps} onClose={onClose} />);
     type("> ship the release");
     expect(screen.getByTestId("jump-message")).toBeTruthy();
     expect(screen.queryAllByTestId("jump-result")).toHaveLength(0);
@@ -58,12 +74,13 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
     cleanup();
     const send = vi.fn(async () => undefined);
     render(<Composer send={send} />);
-    expect(send).toHaveBeenCalledWith("ship the release", expect.any(Function));
+    expect(send).toHaveBeenCalledWith("ship the release", expect.any(Function), []);
   });
 
   it("stays open with the reason when there is no Coordinator, and hands nothing over", () => {
     const onClose = vi.fn();
-    render(<JumpTo snapshot={withWorkers([])} gaps={gaps} onClose={onClose} />);
+    drawn = withWorkers([]);
+    render(<JumpTo gaps={gaps} onClose={onClose} />);
     type("> hello");
     enter();
     expect(screen.getByTestId("jump-message-failure")).toBeTruthy();
@@ -73,7 +90,8 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
   });
 
   it("a plain query still searches, and a bare `>` hands nothing over", () => {
-    render(<JumpTo snapshot={snapshot} gaps={gaps} onClose={() => undefined} />);
+    drawn = snapshot;
+    render(<JumpTo gaps={gaps} onClose={() => undefined} />);
     type("chief");
     expect(screen.queryByTestId("jump-message")).toBeNull();
     type("> ");
@@ -91,7 +109,7 @@ describe("the Coordinator's composer sends a handed line like a typed one", () =
     view.rerender(<Composer send={send} />);
     await act(async () => undefined);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("later", expect.any(Function));
+    expect(send).toHaveBeenCalledWith("later", expect.any(Function), []);
   });
 
   it("keeps the line in the draft, with the composer's own error, when it is refused", async () => {

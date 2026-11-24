@@ -4,18 +4,18 @@
  * names. A session names its worker once, when it is created, and loads it on
  * every turn.
  *
- * - `createWorkerInstallation`: the create check, `resolveWorker`, and the
- *   session declaration and collections a worker flow spreads in.
- * - `createWorkerHireBlocks`: hire, fork, edit and fire, as writes to the
+ * - `WorkerInstallation`: the create check, `resolveWorker`, and the session
+ *   declaration and collections a worker flow spreads in. The workforce kit
+ *   builds it and hands it to every worker flow's builder.
+ * - `createWorkerHireBlocks`: hire, fork, edit, fire and reset, as writes to the
  *   caller's roster.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
- * - `hireWorkforce`: the copies to register, one per worker flow, and the
- *   roster flow.
  * - `workerConfigOf`: the configuration of the worker a turn loaded.
  * - `workerFlow`: a worker flow built on its installation, for a flow that
  *   lives in its own file.
- * - `workerUsageAction`: the `workerUsage` query, each worker's tokens over a
- *   period, read from the `worker-usage` records every request adds to.
+ * - `workerUsageView`: the roster flow's `workerUsage` view, each worker's
+ *   tokens over a period, read from the `worker-usage` records every request
+ *   adds to, with no session.
  * - `createWorkforceClient`: find or start a session with a worker. Exported
  *   from `./browser` only: it is an app's, and the server never calls it.
  */
@@ -28,6 +28,7 @@ export {
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
   ROSTER_FLOW,
+  SET_SESSION_FIELDS_ACTION,
   SET_WORK_PROJECT_ACTION,
   STANDARD_WORKERS_PATTERN,
   STANDARD_WORKERS_RESOURCE,
@@ -46,34 +47,36 @@ export {
 export { defineWorkerCollection, parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
 export { defineStandardWorkerCollection, standardWorkerResourceStateSchema, type StandardWorkerResourceState } from "./standard-workers";
 export {
-  createWorkerInstallation,
   verifiedWorkerOf,
   WorkerTurnRefusedError,
   type ResolvedWorker,
   type RosterWorker,
   type WorkerGrants,
   type WorkerInstallation,
-  type WorkerInstallationOptions,
   type WorkerSessionStateShape,
   type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";
-export { hireWorkforce, inventoryWorkers, type HireWorkforceOptions } from "./register";
+export { inventoryWorkers } from "./register";
 export { workerConfigOf } from "./verified-worker";
 export {
   readWorkerUsage,
   recordWorkerSpend,
   workerSpendHook,
-  workerUsageAction,
   workerUsageCollection,
   workerUsageStateSchema,
-  WORKER_USAGE_ACTION,
   WORKER_USAGE_DEFAULT_DAYS,
   WORKER_USAGE_MAX_DAYS,
   WORKER_USAGE_RESOURCE,
   type WorkerSourceSpend,
   type WorkerUsageView,
+  type WorkerUsageViewDefinition,
   type WorkerUsageState
 } from "./worker-usage";
+export { workerUsageView } from "./worker-usage-ref";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";
+export { rosterView } from "./roster-view-ref";
+export type { RosterView } from "./roster-view";
+export { sessionTurnsViewRef, workerSessionsViewRef } from "./session-views-ref";
+export { TURN_ACTIONS } from "./turn-actions";

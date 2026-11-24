@@ -62,6 +62,7 @@ import {
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { sleep } from "../../lib/time.mts";
 
 type Role = "devices" | "accounts" | "fsd" | "general";
 
@@ -146,7 +147,6 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 /** The origin of the journey in progress, for the server's index. */
 let ORIGIN = "";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const secs = (from: number, to: number | undefined) => (to === undefined ? "never" : `+${((to - from) / 1000).toFixed(1)}s`);
 
 // ---------------------------------------------------------------------------

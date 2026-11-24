@@ -147,7 +147,7 @@ describe("a cross-flow task-board dispatch", () => {
     const sender = senderFlow();
     const recipient = recipientFlow(ran);
     const state = createFlowState({
-      flows: { [SENDER]: sender, [RECIPIENT]: recipient },
+      flows: [sender, recipient],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });
@@ -312,9 +312,9 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     kind: COORD,
     ...(isolated ? { isolateUserState: true } : {}),
     actions: {
-      file: { inputSchema: file.inputSchema, block: file },
+      file,
       drain: { block: board.drain },
-      read: { inputSchema: read.inputSchema, block: read },
+      read,
       // The board's task tools as public actions: `listTasks_partition-tasks`, …
       ...taskToolActions(board),
     },
@@ -415,7 +415,7 @@ async function bootPartitioned(sameFlow = false, isolated = false) {
   const coordinator = partitionCoordinator(sameFlow, isolated);
   const agent = partitionAgent();
   const state = createFlowState({
-    flows: { [COORD]: coordinator, [AGENT]: agent },
+    flows: [coordinator, agent],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
   });

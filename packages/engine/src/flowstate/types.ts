@@ -11,6 +11,7 @@ import type {
   FlowInstance,
   FlowStateSettings,
   InstanceOwnerPin,
+  KitInstance,
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
@@ -24,6 +25,9 @@ import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
+import type { ScheduleTickReport } from "../execution/schedule-tick";
+
+export type { ScheduleTickReport } from "../execution/schedule-tick";
 
 /** Model-resolver config, re-shaped for the FlowState surface. */
 export interface FlowStateModelsConfig {
@@ -49,49 +53,49 @@ export interface FlowStateVoiceConfig {
 }
 
 /**
- * Which sides of an execution backend this process runs.
+ * Which sides of a job queue this process runs.
  *
- * - `"colocated"` — dispatch and process in one process. The local-dev
- *   default: actions route through the backend's queue and a worker in the
- *   same process consumes them against the same resolved runtime.
- * - `"dispatch-only"` — enqueue only (the web process in a separated
- *   deployment). A dedicated worker process consumes the queue.
- * - `"worker-only"` — process only (a dedicated worker container). Build
+ * - `"colocated"` — enqueue and process in one process. The local-dev
+ *   default: actions route through the queue and are processed in the
+ *   same process against the same resolved runtime.
+ * - `"enqueue-only"` — enqueue only (the web process in a separated
+ *   deployment). A dedicated processing process consumes the queue.
+ * - `"process-only"` — process only (a dedicated processing container). Build
  *   the same `createFlowState(...)` from shared config and call `ready()`;
  *   no runner is installed and the router is typically never served.
  */
-export type WorkerMode = "colocated" | "dispatch-only" | "worker-only";
+export type JobQueueMode = "colocated" | "enqueue-only" | "process-only";
 
-/** Handle for a started worker; `close()` drains and stops it. */
-export interface WorkerHandle {
+/** Handle for a started processing side; `close()` drains and stops it. */
+export interface ProcessingHandle {
   close(): Promise<void>;
 }
 
 /**
- * An execution-backend adapter for the `worker` option of `createFlowState`.
+ * A job queue adapter for the `jobQueue` option of `createFlowState`.
  *
  * Adapter packages (e.g. `@flow-state-dev/bullmq`) return an object whose
  * shape satisfies this interface. `createFlowState` resolves the runtime
  * once and hands the SAME `{ registry, stores, runtimeConfig }` to both
- * sides, so the dispatch path and the worker can never disagree on stores —
- * the invariant that makes streaming, refresh, and the devtool read what
- * the worker writes.
+ * sides, so the enqueue path and the processing side can never disagree on
+ * stores — the invariant that makes streaming, refresh, and the devtool read
+ * what processed jobs write.
  */
-export interface WorkerAdapter {
+export interface JobQueueAdapter {
   /** Which sides this process runs. Default `"colocated"`. */
-  readonly mode?: WorkerMode;
+  readonly mode?: JobQueueMode;
   /**
-   * Build the dispatch side (enqueue + live-event bridge). Installed as the
-   * router's `FlowRunner` unless mode is `"worker-only"`.
+   * Build the enqueue side (enqueue + live-event bridge). Installed as the
+   * router's `FlowRunner` unless mode is `"process-only"`.
    */
   createRunner(runtime: FlowStateRuntime): FlowRunner;
   /**
    * Start the processing side against the resolved runtime. Called during
-   * runtime init unless mode is `"dispatch-only"`. The returned handle is
+   * runtime init unless mode is `"enqueue-only"`. The returned handle is
    * closed by `FlowState.dispose()` before store adapters are disposed, so
    * in-flight jobs drain against open stores.
    */
-  startWorker(runtime: FlowStateRuntime): WorkerHandle;
+  startProcessing(runtime: FlowStateRuntime): ProcessingHandle;
   /** Release backend resources (queues, connections). Called by `dispose()`. */
   close?(): Promise<void>;
   /**
@@ -103,7 +107,7 @@ export interface WorkerAdapter {
    * arbiter keeps the policy; the backend only orders places on a key. With
    * one, a delivery into an existing session is accepted and carries its
    * place on the job (`DispatchEnvelope.leasePlace`), which the adapter's
-   * worker waits on and gives back.
+   * processing side waits on and gives back.
    *
    * Absent → each process arbitrates only its own in-process runs, work handed
    * to the queue is not arbitrated, and a delivery into an existing session is
@@ -112,11 +116,74 @@ export interface WorkerAdapter {
   readonly leaseBackend?: ConcurrencyLeaseBackend;
 }
 
+// FIX-2752.
+/**
+ * Fires what is due: the app's one schedule tick, handed to a
+ * {@link SchedulerAdapter}. Every caller (the built-in local cron, a host's
+ * cron route) goes through it, and it is the one writer of the last-tick record.
+ */
+export interface ScheduleTicker {
+  /**
+   * Fire what is due now, static and dynamic, every flow, each for its latest
+   * due time. Builds the runtime when it hasn't been, so a cold function's
+   * first request can be the tick. `baseUrl`: dispatch over the network to
+   * this deployment (each fire its own request) instead of through the
+   * app's router in this process. `secret`: the bearer each fire carries
+   * (default `process.env.CRON_SECRET`), so an adapter that authenticates its
+   * own caller with a configured secret sends that same secret on. Rejects
+   * when a schedule index's claim does, after firing everything else.
+   */
+  tick(options?: { baseUrl?: string; secret?: string }): Promise<ScheduleTickReport>;
+}
+
+/**
+ * Decides when the app's schedule tick runs. `createFlowState` calls `start`
+ * once, at construction; `dispose()` calls the handle's `stop` before the
+ * stores close.
+ */
+export interface SchedulerAdapter {
+  /** Run `ticker.tick()` when the schedules should be checked. */
+  start(ticker: ScheduleTicker): { stop(): Promise<void> };
+}
+
 export interface CreateFlowStateOptions<
   TSettings extends object = FlowStateSettings
 > {
-  /** Flows to register. Map of stable keys to flow instances. */
-  flows: Record<string, FlowInstance<any, any>>;
+  /**
+   * Flows to register, as a list. Each is served under its own `flow.id`
+   * (its `kind` unless the instance was given another); two with one id are
+   * refused.
+   */
+  flows?: readonly FlowInstance<any, any>[];
+
+  /**
+   * Kits to install, each a kit's factory called with its config, in any
+   * order: `kits: [harnesses({}), workforce({ model })]`. They install in
+   * `requires` order, each slot filled once from the kits that require its
+   * owner; their flows are served beside `flows`.
+   *
+   * An order nobody can satisfy, a slot filled twice under one key, a fill by
+   * a kit that doesn't require the slot's owner and an entry its slot's schema
+   * refuses throw here. Each kit's folder is read at start-up, and any file in
+   * it no reader used rejects `ready()` and every request, naming each file.
+   */
+  kits?: readonly KitInstance[];
+
+  /**
+   * The app's own entries for the kits' slots, by slot key:
+   * `fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness()] }`.
+   * A keyed slot takes a record, or a list of entries each keyed by its `id`;
+   * a list slot gets the app's entries last.
+   */
+  fill?: Readonly<Record<string, unknown>>;
+
+  /**
+   * The app's folder, which a kit's default folder is read against: a path,
+   * or a URL such as `import.meta.url` (its directory). Defaults to the
+   * working directory. A `directory` given in a kit's config reads against
+   * the working directory instead.
+   */
+  root?: string | URL;
 
   /** Model resolver config. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. */
   models?: FlowStateModelsConfig;
@@ -319,25 +386,46 @@ export interface CreateFlowStateOptions<
    * stopped or cancelled. One second to 365 days.
    */
   userDeadlineMs?: RuntimeConfig["userDeadlineMs"];
+
+  // FIX-2625 D2.
+  /**
+   * Which topic scopes' change notices may name what changed (a task, an
+   * entry, a session). On by default; `{ org: false }` sends no org notice to
+   * a browser with ids or a collection entry's key, where even an org's change
+   * timing is sensitive. Read by every push edge of the app.
+   */
+  noticeIds?: RuntimeConfig["noticeIds"];
   
   /**
    * Low-level escape hatch: a pre-built FlowRunner controlling where
    * flow actions execute. Default: in-process (runAction called directly).
-   * Most deployments should use `worker` instead — it wires the runner
+   * Most deployments should use `jobQueue` instead — it wires the runner
    * AND the processing side from one adapter. Mutually exclusive with
-   * `worker`.
+   * `jobQueue`.
    */
   runner?: FlowRunner;
 
   /**
-   * Execution-backend adapter (e.g. `bullmqWorker(...)` from
-   * `@flow-state-dev/bullmq`). Wires the dispatch side and/or the worker
+   * Job queue adapter (e.g. `bullmqJobQueue(...)` from
+   * `@flow-state-dev/bullmq`). Wires the enqueue side and/or the processing
    * side per the adapter's `mode`, both against the same resolved runtime.
-   * Worker startup happens on first `ready()` / `getRouter()` /
+   * Processing starts on first `ready()` / `getRouter()` /
    * `getRuntime()` — call `ready()` eagerly in processes that must consume
    * the queue from boot. Mutually exclusive with `runner`.
    */
-  worker?: WorkerAdapter;
+  jobQueue?: JobQueueAdapter;
+
+  // FIX-2752.
+  /**
+   * When the app's schedules fire. Omitted: the built-in local cron, which
+   * ticks each minute in a process that builds the router (`ready()`,
+   * `getRouter()`, a server) or starts a job queue's processing, when a
+   * registered flow declares static schedules or a schedule index. A lease in
+   * `stores.leases` elects one process to tick across a deployment that
+   * shares its store. `false`: nothing fires the tick. An adapter (a host's
+   * cron route) fires it itself.
+   */
+  scheduler?: SchedulerAdapter | false;
 
   /**
    * Interactive-harness defaults. `chat.default` is the target `fsdev chat`
@@ -379,7 +467,7 @@ export interface DevToolConnectionConfig {
  * The runtime internals of a {@link FlowState}, resolved alongside the router.
  * Off-transport consumers — background workers, queue processors, scripts —
  * need these directly rather than reaching through the HTTP router. The shape
- * is exactly what a worker runtime's `createWorker(deps)` consumes.
+ * is exactly what a job queue runtime's `createJobProcessor(deps)` consumes.
  */
 export interface FlowStateRuntime {
   /** The flow registry built from the configured `flows`. */
@@ -390,6 +478,14 @@ export interface FlowStateRuntime {
   runtimeConfig: RuntimeConfig;
   /** Interactive-harness defaults forwarded from `createFlowState` options. */
   chat?: { default?: string };
+  // FIX-2624.
+  /**
+   * The host-level resolver the router's host is given (`createFlowState`'s
+   * `resolvePrincipal`, else the development resolver). A worker hands it to
+   * the built-in flows it holds, so the default write flow decides whether
+   * two declarations agree exactly as the host does.
+   */
+  resolvePrincipal: NonNullable<CreateFlowApiRouterOptions["resolvePrincipal"]>;
 }
 
 /**

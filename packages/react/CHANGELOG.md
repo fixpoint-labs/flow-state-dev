@@ -1,5 +1,448 @@
 # @flow-state-dev/react
 
+## 0.6.0
+
+### Minor Changes
+
+- 04812f3: A server block can read the running user's pending asks across every session in one call, `sessions.userSuspensions({ flowKinds })`, and a view that reads it wakes only when a suspension changes (FIX-2770).
+
+  - **engine (breaking for custom stores):** `SuspensionStore` has a new required method, `listPendingForUser(query)`: one query that joins each suspension to its request and applies the user, tenant, organization, flow, pending status, expiry and waits-on-a-person checks inside it, returning rows built with `projectUserSuspension`. A custom suspension store gets a type error until it implements it; run `createPendingUserSuspensionsConformanceTests` from `@flow-state-dev/engine/testing` against it. `createInMemorySuspensionStore({ requests })` and `createFilesystemSuspensionStore(rootDir, { requests })` take the request store they join to; built without it, the method throws a `FlowStateConfigError`. `createInMemoryStores` and `createFilesystemStores` pass it for you.
+  - **core:** the request host's `sessions` gains `userSuspensions({ flowKinds, after? })`: the principal's pending suspensions on 0 to 50 named flow kinds (more throws `FlowStateConfigError`), oldest first, 200 a page, with `more` and a `next` cursor `{ createdAt, requestId, suspensionId }` to pass back as `after`. Each row carries the ids, flow, session, kind, card shape, title, message, allowed actions, schema, render and times, never the run's `stepInput`, `resumeData` or `data`. A user or session view may call it; an org view may not.
+  - **contracts / client:** a new change kind, `"suspension"`, published on a user's topic when a suspension waiting on them is written or deleted (never for a wait gate or an outside event's stop). A client that switches over every `ChangeKind` gets a new case.
+  - **core:** `suspensionShape`, `SuspensionShape` and `USER_SUSPENSION_REASONS` (every stored reason that waits on a person) are exported from `@flow-state-dev/core/types`, beside `isUserSuspension`, along with `projectUserSuspension` and the row and query types a store builds. `@flow-state-dev/react` still exports `suspensionShape`, `SuspensionShape`, `SchemaField` and `SuspensionValueKind`, the same functions and types it had.
+  - **contracts:** the card shape and schema analysis (`suspensionShape`, `analyzeResumeSchema`) and `USER_SUSPENSION_REASONS` live on the `@flow-state-dev/contracts/types/suspension` subpath, which core and react re-export from.
+
+  Docs: packages/core/README.md (request host section: `sessions.userSuspensions`), packages/engine/README.md (the store method an adapter implements), apps/docs/docs/api/client.md (the `suspension` notice kind)
+
+- 801aa5e: A stop answered from a React screen is answered whatever started its run, a task board's or a webhook's included (FIX-2450).
+
+  - **react:** `useApproval`, `useSuspensionForm`, `useSuspensions` and `session.answerSuspension` answer a user's stop (`ctx.suspendForUser`, or a raw `user_approval` / `user_input`) through the client's `answer`, and a developer's own custom-reason `ctx.suspend` through `resume`. Before, they always called `resume`, which answers 404 for a task's or a webhook's run.
+  - **react:** `session.resumeSuspension` is renamed to `session.answerSuspension`. The old name is removed. To migrate, rename your calls and pass `session.answerSuspension` to `<SuspensionResolverProvider resolve>`.
+  - **react:** `resumedBy` is gone from the arguments of `answerSuspension`, `SuspensionResolver` and `resolveSuspension`. The server sets who answered; the field was ignored. Remove it from your calls.
+  - **client:** `request.answer(body, { stream: true })` returns the answer route's SSE `Response`, as `resume` and `continue` do. `resumedBy` is gone from `ResumeSuspensionBody`; it has been ignored since 0.3.0. Remove it from your calls.
+  - **devtool:** the suspension panel answers a user's stop through `answer`, so it approves a task's stop.
+
+  Docs: packages/react/README.md (`session.answerSuspension` replaces `session.resumeSuspension` in the session example, the `SuspensionResolverProvider` snippet and `useSuspensions`; a note that a user's stop goes through `answer` and a custom-reason `ctx.suspend` through `resume`; the old name is removed, with no alias), packages/client/README.md (`answer` and `resume` rows: which stop each answers, `answer(body, { stream: true })`, no `resumedBy`), apps/docs/docs/api/client.md (same as the client README), apps/docs/docs/api/react.md (same as the React README), apps/docs/docs/client/react.md (`answerSuspension` in the inline-card streaming section), apps/docs/guides/human-in-the-loop.md (the two HTTP routes, `answer` for a user's stop, no `resumedBy` in the body), apps/docs/docs/advanced/durable-execution.md (`answerSuspension` where it names the React call)
+
+- ffbe992: An app can follow and drive its users' worker sessions through package hooks and calls, with no stream, subscription or flow address of its own (FIX-2757).
+
+  - **client:** a session feed's snapshot has `historyLoaded`, `true` once the history read has landed, so an empty session can be told from one still being read. `request(id).stream({ reconnect: true })` keeps following until the request ends: a failed connection opens again after the client's backoff (1 s, doubling, at most 30 s), resuming after the last event, without reporting it; five empty answers in a row (a request that already ended) or a 401, 403 or 404 still end it with `onError`, and `close()` ends it, a reconnect waiting on its backoff included. A user or org collection's handle has `listAll()`, every entry page after page, stopping with `CollectionReadStoppedError` on a repeated cursor or past 1,000 pages.
+  - **react:** `useSessionFeed(sessionId, { itemTypes, client })` follows one session live (its items once the history lands, `[]` for an empty session even while its stream is still connecting; its unfinished runs and connection state, `loadEarlier`, and `followResponse` for a streamed send). `useRequestStream` takes `reconnect: true`, handed to the client's stream above, a `client` of the host's own, and asks for no flow while `enabled: false`. `useResource` takes `client` and `pollIntervalMs` at user and org scope.
+  - **workforce:** the workforce client opens a new session with a worker (`startSession(worker, { fields })`, writing the app's session fields at open), sends to it (`send`, or `send(..., { stream: true })` for the streamed `Response`), each on the instance of its flow that owns the session, stops its running turns (`stopTurns`, resolving to the ids it stopped) and runs a failed turn again (`retryTurn`). `operatorGitHub({ operator, token })` and `operatorGitHubToken()` give a single-user host GitHub routines on the operator's own token, for the operator alone.
+  - **harness-manager:** each coding board row names `runFlow`, the flow its run's session runs on, so a screen reads that run's own stream without looking the session up.
+  - **workspace:** `sessionRepositorySource({ field, repositories, check })` is the run source for a host whose sessions each work in one repository a session field names; `listedRepository` maps a path or `file://` remote to the listed repository it is. `setupCommandFrom(value, setting)` reads a setup command from a setting, beside `checkCommandsFrom`.
+  - **store-sqlite:** `sqliteScheduleIndex({ filename })` is a schedule index on a SQLite file of its own.
+
+  Docs: packages/client/README.md (the session feed snapshot's `historyLoaded`; `request(id).stream`'s `reconnect`; a collection handle's `listAll`), packages/react/README.md (`useSessionFeed`; `useRequestStream`'s `reconnect` and `client`; `useResource`'s `client` and `pollIntervalMs`), packages/workforce/README.md (the client's `startSession`, `send`, `stopTurns`, `retryTurn`; `operatorGitHub`), packages/harness-manager/README.md (the coding board row's `runFlow`), packages/workspace/README.md (`sessionRepositorySource`, `listedRepository`, `setupCommandFrom`), packages/store-sqlite/README.md (`sqliteScheduleIndex`)
+
+- 4b4a7d4: A turn's images reach Claude Code, Codex and Cursor (FIX-2519).
+
+  - **core:** `HarnessRunInput` takes `attachments`, the turn's files as stored references (`FileContent` whose `data` is `fsd-blob:<id>`); `harnessRunInputSchema` refuses bytes in their place. A harness block declares the types it takes on `accepts`. From `@flow-state-dev/core/harness`: `readHarnessAttachments(ctx, files)` reads the bytes through the engine for the conversation the request runs in, `refuseUnacceptedAttachments(harness, accepts, files)` refuses a type a harness can't take, and the two named errors, `HarnessAttachmentRefusedError` and `HarnessAttachmentUnavailableError`.
+  - **engine:** a block's context can read the request's files for a harness, for its own conversation and person only. A server with no blob store reads none, and the harness refuses the turn.
+  - **claude-code:** a turn with images sends one user message on the SDK's streaming input: the prompt's text, then each image as a base64 image block. Takes PNG, JPEG, WebP and GIF.
+  - **codex:** a turn with images writes them to a folder of the turn's own under this user's private temp folder (`<tmpdir>/fsd-codex-<uid>/turn-…`), never the checkout, and hands Codex their paths as `local_image`. The folder is removed when the turn ends, however it ends. A host whose sandbox limits what Codex reads must allow that folder. Takes PNG, JPEG, WebP and GIF. Now depends on `@flow-state-dev/workspace`.
+  - **cursor:** a turn with images sends them as base64 with the prompt on `agent.send`. Takes PNG, JPEG, WebP and GIF. Now depends on `@flow-state-dev/workspace`.
+  - **every harness:** a file of a type the harness doesn't take refuses the turn before it starts, naming the file and the harness. A file that can't be read refuses it too. A turn never runs without a file the person sent.
+  - **harness-manager:** `harnessSessionFlow`'s `turn` hands the harness the request's files. A harness that declares no `accepts` is never handed one: the turn fails on its record, naming the file.
+  - **react:** `useHarnessLines().send(prompt, { attachments })` sends a line with files. A line with files never steers: while a turn runs it waits as the next turn, files and all.
+
+  Docs: the harness table in the attachments guide (what each harness takes, how a file reaches it, what it refuses); a line in packages/claude-code/README.md, packages/codex/README.md and packages/cursor/README.md on images; packages/react/README.md (`attachments` on `useHarnessLines().send`); packages/core/README.md (`attachments` on `HarnessRunInput`, `accepts`).
+
+- 8e111c9: A message's files reach the model, and the conversation shows them on the person's line (FIX-2517).
+
+  - **client:** `flow(address).send(action, input, { sessionId, attachments })` sends the message's files beside the input. Each is the `FileContent` that `upload` returned, in the order attached. The flow's input schema never sees them.
+  - **react:** `useSession().sendAction(action, input, { userMessage, attachments })` sends them the same way. The line the view shows at once holds the files after the text, as the server's copy will.
+  - **engine:** an action with `userMessage` takes files. The user line it writes holds a `file` part per file after the text, as references, so a reload shows them. An action without `userMessage` refuses files with 400 `attachments_not_accepted`. A message over the limits answers 400 `attachment_limit` (with the `index` of the file that went over and the `limit`), a type off the list answers 400 `attachment_type_refused`, and a file named as another type than it was uploaded as answers 400 `attachment_invalid`. Nothing is claimed or run on a refusal.
+  - **engine:** a generator with `history` gets the files as image parts (PDFs as file parts) with the bytes inline, on the person's turn. Later turns still carry earlier files: counting back from the newest message, up to 10 images and 5 documents, the same limits as one message. An older file is named on its turn as `[image: shot.png, not re-sent]`. A file that can no longer be read is named as `no longer available` instead of failing the call. Re-sent files are billed as input on every call; prompt caching (on by default) keeps that cost down.
+  - **engine:** retrying a turn (`POST …/requests/:id/retry`) carries its files: the retried line, its record and the model get the same references.
+  - **core:** `ModelResolver.prepareMessages(messages)`, optional: a generator passes the messages of every model call through it. The engine's run sets it to read the person's files at the call, so a run's records (a generator's trace, a tool loop's prelude) hold references and never the bytes. A custom model resolver needs nothing new.
+  - **core:** `ctx.request.attachments` lists the request's files as references, for a block that hands files on itself. Empty when the message carried none. A generator whose `user` slot repeats the person's words no longer sends the turn twice when that turn carries files.
+  - **contracts / core:** `attachmentLimitRefusal(files)` in `@flow-state-dev/core/attachments` checks one message against the limits set, the same check the server makes, so a composer can refuse before send.
+  - **bullmq:** a queued job carries the request's files to its worker.
+
+  Docs: a new guide page, "A user turn can carry files": sending files from the client and React, what the model receives, the history rule (newest files up to one message's limits, older ones named), the limits and the named refusals, `ctx.request.attachments`. packages/client/README.md (`attachments` on `send`), packages/react/README.md (`attachments` on `sendAction`), packages/engine/README.md (the user line's file parts and the refusals), packages/core/README.md (`ctx.request.attachments`, `attachmentLimitRefusal`), packages/contracts/README.md (`attachmentLimitRefusal`).
+
+- e3ca793: User and org collections are read by entry with no session, and a client writes an entry only through the flow the collection names (FIX-2624).
+
+  - **core:** `defineResourceCollection` takes `runBy` and `canWrite`, with the same rules as a single resource: an org collection on `runBy: "default"` with no `canWrite` refuses to start. A collection's `canWrite({ key, prev, next, userId, orgId })` gets the entry's storage key, no `prev` on a create and no `next` on a delete. Also refused at definition: `runBy` without `client: { state: { read: true } }`, and `runBy: "default"` with `writable: false` or an eviction policy.
+  - **engine:** `GET /api/flows/resources/:scope/:pattern/entries` lists the caller's entries (`{ items: [{ topic, storageKey, value, version }], nextCursor }`, with `limit`, `cursor` and `topicPrefix`), and `GET .../entries/:entry` reads one (`null` when absent). The default write flow's `set` takes an `entry` for a collection, and its new `delete` deletes one, each at the version the client read, behind the owner rule of an owner-keyed collection and the collection's `canWrite`. Each entry write publishes the entry's change on its user or org topic. A collection's address is its pattern; reading it at `GET /resources/:scope/:key` answers 400.
+  - **client:** `client.resource(collection)` returns `list()`, `entry(key)` (with `read()`, `set()`, `update()` and `delete()`) and `send(action, input)`. A single resource's handle gets `send` too: a named action of the resource's own `runBy` flow, with no session.
+  - **react (breaking):** `useResource(def, { session })` replaces `useResource(session, ref)`; the old form is gone, with no alias. Migrate `useResource(session, "soul")` to `useResource(soul, { session })`. It returns `{ value, stale }` instead of `{ clientData, fetchContent }`: a user or org resource or collection is read with no session and kept current on its scope's change notices, with `set` and `update` (a collection's take an entry, and it has `delete`). For a session resource's content, use `useResourceContent`.
+  - **workforce:** the workers collection is written through the roster flow (`runBy: { flow: "workforce-roster" }`). `createWorkforceClient`'s `hire`, `fork`, `edit`, `reset` and `fire` no longer find or make a roster session, and the organization a worker's conversation is derived under comes from the roster flow's identity read. The client it's built over needs `resource` (any `createClient` client has it).
+
+  Docs: apps/docs/docs/resources/client-access.md (listing and reading a collection's entries by scope; the two entries routes in the endpoint table; the reshaped `useResource`), apps/docs/docs/resources/client-writes.md (collection entries: `set` and `delete`, the collection `canWrite` check), apps/docs/docs/client/react.md (`useResource(def, { session })` and its result), apps/docs/docs/client/overview.md (`client.resource` on a collection, `send`), packages/core/README.md, packages/client/README.md, packages/react/README.md (`useResource`), packages/workforce/README.md (roster writes)
+
+- e505adf: Structured content is one item kind, `data`, emitted with `ctx.emit.data(dataType, value, { key? })` (FIX-2738). The `component` item kind is removed, with no alias: a "component" is now a `dataType` with a renderer registered for it.
+
+  **Breaking.**
+
+  - **core / engine:** `ctx.emit.component` is removed. `ctx.emit.data(dataType, value, options?)` emits `{ type: "data", dataType, value, key? }`. Options are `key` (keyed snapshot: id `item_data_keyed:<key>`, one entry per request and key, `value` replaced), `itemVisibility`, `agentName` and `transient` (default `false`, persisted). Migrate `ctx.emit.component(name, data, opts)` to `ctx.emit.data(name, data, opts)`.
+  - **contracts / core:** `ComponentItem` is removed from the `OutputItem` union; `DataItem` replaces it. With no `itemVisibility` a data item reaches the client and never model history (`{ client: true, history: false }`); `itemVisibility` overrides both. With `history: true`, a turn's history replays it as one assistant line, `[dataType] <value as JSON>`. A reader filters `item.type === "data"` and `item.dataType`, and reads `item.value` (not `item.data`).
+  - **react:** `RendererRegistry.data` holds item renderers, keyed by `dataType`. A data item with no renderer there renders nothing, never the JSON fallback, so it stays invisible in the UI and readable by code. `renderers.component` no longer draws items: it holds only the renderers a `suspension` item names with `render.component`. Move `renderers={{ component: { x: X } }}` to `renderers={{ data: { x: X } }}`; `X` receives `{ item: DataItem }`. Keyed data items dedup per request and key, and a container renderer manages the data items it owns. `useContainerItems` reads a container's `state` from its latest data item whose `dataType` is the container's `component`; `componentsByKey` is renamed `dataByKey`, with no alias.
+  - **testing:** `testItems(items).components()` is removed; use `testItems(items).data(dataType?)`.
+  - **orchestration:** `task-change`, `task-board-meta`, `task-board-recorder-failure` and `goal-seek-loop-termination` are data items. The constants are renamed, with no alias: `TASK_CHANGE_DATA_TYPE`, `TASK_BOARD_META_DATA_TYPE`, `TASK_BOARD_RECORDER_FAILURE_DATA_TYPE`, `GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE`. The recorder-failure and termination records reach no client.
+  - **workforce:** `coordinator-route` and `workforce:received` are data items; `RECEIVED_MESSAGE_COMPONENT` is renamed `RECEIVED_MESSAGE_DATA_TYPE`, with no alias. An app renderer for either moves to `renderers.data` and reads `item.value`.
+  - **patterns:** debate's `debate-turn`, `debate-turn-pending`, `debate-decision` and `debate-verdict`, event actors' `rb-entry`, routed specialists' `routedSpecialists` snapshot and the response auditor's `audit-annotation` are data items. An app renderer for one moves to `renderers.data` and reads `item.value`.
+  - **ui registry:** the generative `link-card` and `info-card` tools emit data items, and their renderers register under `renderers.data`.
+  - **devtool / shift-manager:** draw data items; the devtool's component item view is gone.
+
+  **Stored sessions.** A request stored before this can hold `component` items. The request store reads each one back as a data item (`component` → `dataType`, `data` → `value`, same status and key), in a record and in a replayed or resumed stream, so every reader sees data items. A keyed item's id reads back as `item_data_keyed:<key>`, so a resumed request's next snapshot of that key replaces it. This applies on every entry that runs flows (`createFlowState`, `createFlowApiRouter`, `runAction`, `fsdev run`, `dev` and `chat`); host code reading a store directly, past those entries, sees the stored shape. Nothing is rewritten in the store.
+
+  Docs: apps/docs/docs/streaming/emitting-items.md (one item kind for structured content: `ctx.emit.data`, `value`, keyed snapshots, default visibility, drawing through `renderers.data`; remove every `ctx.emit.component` section), apps/docs/docs/streaming/overview.md and apps/docs/docs/configuration/blocks.md (emitter tables), apps/docs/docs/client/react.md, apps/docs/docs/api/react.md and packages/react/README.md (`renderers.data`, `renderers.component` for suspensions only, `useContainerItems` `dataByKey`), packages/core/README.md (emitters), apps/docs/docs/orchestration/task-board.md, apps/docs/docs/orchestration/task-substrate.md, apps/docs/docs/sequencers/wait-for-condition.md and packages/orchestration/README.md (task records are data items, renamed constants), apps/docs/docs/patterns/plan-and-execute.md, apps/docs/docs/patterns/response-auditor.md, apps/docs/docs/patterns/event-actors.md and packages/patterns/README.md (pattern records are data items, renderers go under `data`), apps/docs/docs/ui/flow-aware-components.md and packages/ui/README.md (generative cards and the chat registry use the `data` slot), apps/docs/docs/workforce/coordinators.md, packages/workforce/README.md and packages/shift-manager/README.md (routing records and received messages are data items, renamed constant), apps/docs/docs/api/testing.md, apps/docs/docs/testing/testing-flows.md, apps/docs/docs/testing/overview.md and packages/testing/README.md (`testItems().data()`, `components()` removed).
+
+- 8dfcb2e: Every request names its session, from the first write of its record (FIX-2907). The engine no longer makes up a session for a run that names none.
+
+  - **Breaking: a send needs a session id.** `client.flow(f).send(action, input, { sessionId })` and `useAction`'s `execute(input, sessionId)` require it, and so does `runAction` (`sessionId`) and a custom transport's `host.dispatch` envelope. An HTTP send with none is refused `400 { error: "session-required" }` before anything is written, and the route stays registered; `runAction`, `createExecutionContext` and `host.dispatch` throw `SessionRequiredError` (from `@flow-state-dev/engine/host`). Pass the conversation's id (`client.flow(f).createSession()`), or, for a one-shot send, `oneOffSessionId()` from `@flow-state-dev/core/helpers`: the same one-off run as before, folded under "One-off runs" in the navigator.
+  - **No behaviour change for runs with no conversation.** A webhook binding that names no session, a `per-fire` schedule fire and an MCP `tools/call` with no session directive still run in a fresh one-off session; the webhook route, the scheduled endpoint and the MCP adapter now make its id before they dispatch, so the request record and its gates name it. A one-off webhook session is born with `metadata.source: "webhook"` like a named one.
+  - **Requests recorded with no session before this release** stay readable and stoppable (a stop settles a parked one `aborted`). Running one again is refused by name: a resume, continuation, retry or wake answers `legacy-sessionless-request` (`409` over HTTP), and a queued BullMQ job with no session is settled failed under `LegacySessionlessRequestError` and not retried.
+  - `ConcurrencyKeyContext.sessionId` is now always set.
+
+  Docs: apps/docs/docs/client/overview.md (`send` takes a session id and how to get one; drop the "no session" sentences), apps/docs/docs/fundamentals/state-and-scopes.md (the "sent without a session id" line under the create check: such a send is refused), apps/docs/docs/server/connection-resilience.md (the snapshot's `sessionId` is absent only on a request recorded before sessions were required), apps/docs/docs/server/mcp.md and apps/docs/docs/server/scheduled.md (a one-off run gets a fresh session made for it, no behaviour change), packages/client/README.md and packages/react/README.md (`sessionId` on `send` and `execute`)
+
+- 509e54c: `useHarnessLines` takes an `input` option, the turn action's input for a line (default `{ prompt: line }`), so any flow's turn action can use it, a plain chat's included. It returns `waiting`, the lines still waiting for the running turn, oldest first, for a page to mark. It now keeps one waiting turn on the server at a time: a later line waits in the page and is sent once the turn before it has started, because `defer` doesn't start waiting requests in the order they arrived. A line held in the page is lost on a reload; moving the view to another session sends the held lines to the session left. (FIX-2376)
+- 182fb96: One conversation model: React turns a session's items and turns into the lines a conversation screen draws, and workforce writes its own lines as data items with renderers to match (FIX-2848).
+
+  - **react (breaking):** `buildItemRenderStream` is now `conversationLines(items, turns?, options?)`, with no alias. `ItemRenderSegment` and `BuildItemRenderStreamOptions` are gone; it returns `ItemLine[]` and takes `ConversationLinesOptions` (`renderers`, `deduplicateByKey`, `showSubAgents`). `groupToolCalls` is gone: tool calls and the thinking between them are always one `steps` line, which never spans two turns. Each line has a `kind` (`user`, `assistant`, `steps`, `failed`, `stopped`, `suspension`, `data`, `item`), an `id` that stays the same as it changes, and its `requestId`. `turns` is `LineTurn[]` (`{ id, status, retryable? }`): a `failed` line has `retryable: true` only on the newest turn that drew a line, and only when that turn is `retryable`; a turn that ended `aborted` gets a `stopped` line after its last line; an assistant line is `streaming` while its turn runs and `incomplete` when its turn failed or was stopped. A reply that ended saying nothing is no line. A tool call that wrote a `data` item keyed by that call is drawn as that item, not as a step.
+  - **react:** `ItemsRenderer` takes `lines` (computed where the items and turns change); `items` still works and is read as `conversationLines(items)`. A registered renderer receives the line beside the item (`{ item, line }`). The registry has a new `stopped` slot for the stopped line; unset, a plain "Stopped" line draws, and `false` draws none.
+  - **core / engine:** `SessionTurn` (from `ctx.sessions.turns`) carries `retryable`: whether the engine's retry route runs that turn again for its caller, decided by the route's own rule with the host's `publicReentrySources`. Offer Retry from it rather than from a copy of the source list.
+  - **workforce:** the session turns view carries `retryable` on each turn. `sendMessage` writes a `workforce:sent` line for every send (a refused one says why, and a waited send's line is written again with its answer, or as `failed` with the error when its wait fails), a conversation's filing writes `workforce:task`, and a filed task's ending writes `workforce:result`. All three are client-only data items beside `workforce:received`; their value types (`SentMessageValue`, `FiledTaskValue`, `TaskResultValue`, `ReceivedMessageValue`) and dataType constants come from `@flow-state-dev/workforce/browser`. Their look is the UI registry's `workforce-lines` item (`fsdev ui add workforce-lines`), whose `workforceLineRenderers` go in a registry's `data` slot: `data: { ...workforceLineRenderers, ...appRenderers.data }`. The board's message saying that ending stays in the model's history and no longer reaches a client (`itemVisibility: { client: false, history: true }`), so the ending draws once, as its result line; a client that read the ending from that message (`parseNotice`, `delegateAnswerOf` over session items) reads the `workforce:result` line instead. Conversations stored before this show those three as ordinary steps and messages.
+
+  `PUBLIC_REENTRY_SOURCES` is no longer exported from `@flow-state-dev/engine`. Each turn now carries `retryable`, set by the engine, so a client no longer keeps its own copy of the retry list to check against it. A host's `publicReentrySources` option still extends the list.
+
+  Docs: apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`conversationLines`, `ItemsRenderer`'s `lines`, the `stopped` slot), apps/docs/docs/workforce/ui.md and apps/docs/docs/workforce/messaging-workers.md (the line types and the `workforce-lines` registry item), packages/react/README.md and packages/workforce/README.md
+
+- 3ef3979: **Breaking:** package scaffolding leaves the roots, and names another package declares are re-exported, not copied (FIX-2449). No deprecated aliases.
+
+  - **react:** `reactPackageMarker`, `coreItemImportProof`, `CoreItemImportProof` and `CoreTypeImportProof` are removed. `RosterWorker` is no longer exported from `@flow-state-dev/react/workforce`; workforce's type of that name is unchanged. `FlowCardinality` is now core's type, re-exported, with the same two values.
+  - **testing:** `testingPackageMarker` is removed.
+  - **vercel:** `FlowApiRouter` is now engine's type, re-exported; its shape is unchanged.
+
+- ec23e9e: **Breaking:** the `@flow-state-dev/react` root drops fifteen names (FIX-2604): three that only the framework reads, and the twelve voice primitives, which move to a new subpath, `@flow-state-dev/react/voice`. No deprecated aliases: an old root import fails to compile with "has no exported member". The hooks these names sit behind, `useVoice` among them, stay on the root unchanged.
+
+  - `deriveSuspensions` moves to `@flow-state-dev/react/internal`, for the framework's own packages. An app reads pending stops through `useSuspensions`.
+  - `analyzeResumeSchema` is no longer published. Use `useSuspensionForm`, or `suspensionShape` to classify a stop.
+  - `INTERRUPT_WINDOW_MS` is no longer published. `useInterruptKeys` and `createInterruptKeys` keep the same window.
+  - The voice primitives move to `@flow-state-dev/react/voice`: `createAudioRecorder`, `createAudioPlayer`, `createSpeechRecognition`, `isSpeechRecognitionAvailable`, and the types `AudioRecorder`, `AudioRecorderOptions`, `AudioRecorderStatus`, `AudioPlayer`, `AudioPlayerCallbacks`, `AudioPlayerStatus`, `SpeechRecognitionCallbacks` and `SpeechRecognitionHandle`. Change `from "@flow-state-dev/react"` to `from "@flow-state-dev/react/voice"` for these names. `AudioRecorderStatus` and `AudioPlayerStatus` were `AudioRecorderState` and `AudioPlayerState` on the root.
+
+  Docs: packages/react/README.md (a `@flow-state-dev/react/voice` entry: the recorder, player and speech-recognition primitives `useVoice` drives, for an app that builds its own voice loop, with the twelve names above; `useVoice` stays on the root).
+
+- 866945a: The workforce panels move to a new subpath, `@flow-state-dev/react/workforce`, so a chat app's view of the root no longer lists them (FIX-2456). Import `Roster`, `BoardColumns`, `BoardList`, `WorkerDetail`, `groupIntoColumns`, `BOARD_STATUS_COLUMNS` and their types (`RosterProps`, `BoardCardRow`, `PanelRowSource` and the rest) from there. **Breaking:** the old root names are removed, with no deprecated aliases; change `from "@flow-state-dev/react"` to `from "@flow-state-dev/react/workforce"` for these names. `rosterPropNames`, `boardColumnsPropNames` and `boardListPropNames` are removed from the public API with no new home.
+
+  Docs: packages/react/README.md (the panels section and its `Roster`, `BoardColumns`, `BoardList` and `WorkerDetail` snippets import from `@flow-state-dev/react/workforce`; the panels moved there and the old root names are removed), apps/docs/docs/workforce/ui.md (every panel import from `@flow-state-dev/react/workforce`; the old root names are removed), apps/docs/docs/api/react.md (the panels paragraph: `Roster`, `BoardColumns`, `BoardList` and `WorkerDetail` moved to `@flow-state-dev/react/workforce` and are no longer on the root; `FlowNavigator` stays on the root), apps/docs/guides/writing-ui-stories.md (the `Roster` story import from `@flow-state-dev/react/workforce`)
+
+- f9daf5a: A flow and its sessions can say what they are, so a flow list reads by who and what instead of by hashed ids (FIX-2875).
+
+  - **core / engine / client:** `defineFlow({ description })` goes out on the flow list as `FlowListEntry.description`. `session.label: ({ id, state }) => string | undefined` names a session on every read of it, as `SessionSummary.label`. It sees only the state the session shows (readonly and exposed fields). A label that throws leaves that session unlabelled, and the server warns once for that flow kind.
+  - **react:** `FlowNavigator` reads a session's title, then its `label`, then a shortened id (derived ids such as `dsx_…` shorten too). In every app that uses `FlowNavigator`, a collection flow with one copy whose id is the flow's kind draws one level; a single copy with a different id keeps its own line. Sessions run with no session id of their own (`ephemeral_…`) fold into one closed "One-off runs (N)" line, together with every run they started. An empty session list shows the flow's description, which is also the flow line's tooltip.
+  - **devtool:** each session line has a copy button for its id.
+  - **workforce:** every worker flow labels a session by its worker's name (a standard worker's `name:`, else the worker id), plus the task id for a task's session. The `agent` worker flow and service flows have descriptions; so do harness manager's `coder` and `harnesses` flows and the Claude Code kit's flow.
+
+  Docs: apps/docs (flow definition: `description`, `session.label`; the DevTool's flow tree)
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+- 6407fbf: An action's answer is read with one call, by the request's id, however long its session is (FIX-2455).
+
+  - **client:** `request.result({ pollMs?, timeoutMs?, signal? })` on every request handle polls the request by its id, as `wait()` does, with its stored result, and returns the read that found it settled. It resolves `{ status, output?, outputNotRecorded?, error? }` for every way a request settles: branch on `status`. A failure resolves `failed` with its `error`, and a stop for a user resolves `suspended`. It rejects only past `timeoutMs`, on a transport error, or when `signal` aborts. New types: `RequestResult` and `WaitOptions`. `wait()` takes `signal` too. Stopping either wait never stops the run. `steerRunningTurn` reads the steer's answer by id, so a steer behind 20 newer requests no longer reads as not taken.
+  - **react:** `useAction({ action, result: true })`: `execute` resolves to `request.result()`'s shape, `loading` holds until the request settles, and an unmount stops the wait without stopping the run. Without the option, `execute` resolves on acceptance, as before.
+  - **react (breaking):** `useReadFence` and `ReadFence` are no longer exported from `@flow-state-dev/react`. They moved to `@flow-state-dev/react/internal`, a subpath for the framework's own packages, with no alias. Apps should not import it.
+  - **orchestration:** the Inbox client's board actions and row answers read the board's answer by request id. A session holding more than 2,000 requests no longer rejects an answer the board gave.
+  - **workforce:** the Workforce client's roster and project actions (`hire`, `fork`, `edit`, `fire`, the standing rules and the work project) read their answer by request id, so a roster session longer than 100 requests no longer reads a finished action as unread.
+  - **shift-manager:** actions, sent lines, interrupts and answered asks wait through the client's one wait and read their answer by request id.
+
+  Docs: packages/client/README.md (a `result()` row in the request handle table, with its resolved shape and the rule that it resolves for every ending; `wait`'s `signal`; the _Sending an action_ example reads `const { status, output, error } = await sent.result()` instead of listing the session's requests), packages/react/README.md (`useAction`'s `result: true` option: what `execute` resolves to and how long `loading` holds; drop `useReadFence`), packages/engine/README.md (the status endpoint's `include_result_output` is what `result()` reads), apps/docs/docs/client/overview.md (_Sending an action_ and the _Requests_ table: `result()`), apps/docs/docs/fundamentals/actions.md (_From the client SDK_: read the answer with `sent.result()`), apps/docs/docs/api/client.md (`result` and `wait`'s `signal`), apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`useAction`'s `result` option), apps/docs/docs/fundamentals/flows.md (_Reads_: one line pointing at the `useSubscription` recipe in `client/react.md`), the package-roots page FIX-2448 adds, apps/docs/docs/api/package-roots.md (react's row gains `react/internal`: our packages' entry, not for apps)
+
+- c82adfa: **Breaking:** one word for a stored thing, _resource_, and _Status_ for a lifecycle (FIX-2479). Exported names that said _row_ or _collection item_ for a resource, or _row_ for a task, are renamed, with no aliases. Stored field names, storage keys and HTTP paths do not change: a worktree record keeps its `state` field, now typed `WorktreeStatus`.
+
+  ### Renamed exports
+
+  | Package                            | Old                                                      | New                                                                                        |
+  | ---------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+  | `core` (`/internal`)               | `WaitRow`                                                | `TaskAddress`                                                                              |
+  | `core` (`/harness`)                | `planRowsPrefix`                                         | `planResourcesPrefix`                                                                      |
+  | `core` (`/harness`)                | `readPlanTarget(...)` result field `rowsPrefix`          | `resourcesPrefix`                                                                          |
+  | `core`                             | `SessionCreateCheckInput.readCollectionItem(ref, topic)` | `readCollectionResource(ref, topic)`                                                       |
+  | `engine`                           | `DebugCollectionItem`                                    | `DebugCollectionResource`                                                                  |
+  | `engine`                           | `DebugCollectionItemsResponse`                           | `DebugCollectionResourcesResponse` (its `items` wire field is unchanged)                   |
+  | `engine`                           | `ResourceIndexBuildState`                                | `ResourceIndexBuildStatus`                                                                 |
+  | `workspace`                        | `WorktreeRow`                                            | `WorktreeResourceState`                                                                    |
+  | `workspace`                        | `worktreeRowSchema`                                      | `worktreeResourceStateSchema`                                                              |
+  | `workspace`                        | `WorktreeState`                                          | `WorktreeStatus`                                                                           |
+  | `workspace`                        | `worktreeStateSchema`                                    | `worktreeStatusSchema`                                                                     |
+  | `scheduled`                        | `ScheduleIndexRow`                                       | `ScheduleIndexEntry` (one schedule's entry in the schedule index)                          |
+  | `client`                           | `CollectionItemHandle`                                   | `CollectionResourceHandle`                                                                 |
+  | `client`                           | `CollectionItemState`                                    | `CollectionResourceState`                                                                  |
+  | `client`                           | `CreateCollectionItemOptions`                            | `CreateCollectionResourceOptions`                                                          |
+  | `client`                           | `ListCollectionItemsOptions`                             | `ListCollectionResourcesOptions`                                                           |
+  | `client`                           | `DebugCollectionItem`                                    | `DebugCollectionResource`                                                                  |
+  | `client`                           | `DebugCollectionItemsResponse`                           | `DebugCollectionResourcesResponse` (its `items` wire field is unchanged)                   |
+  | `client`                           | `ListDebugCollectionItemsOptions`                        | `ListDebugCollectionResourcesOptions`                                                      |
+  | `client`                           | `client.resources.listCollectionItems`                   | `listCollectionResources`                                                                  |
+  | `client`                           | `client.resources.createCollectionItem`                  | `createCollectionResource`                                                                 |
+  | `client`                           | `client.resources.getCollectionItemState`                | `getCollectionResourceState`                                                               |
+  | `client`                           | `client.resources.getCollectionItemContent`              | `getCollectionResourceContent`                                                             |
+  | `client`                           | `client.resources.deleteCollectionItem`                  | `deleteCollectionResource`                                                                 |
+  | `client`                           | `client.sessions.debug.listCollectionItems`              | `listCollectionResources` (the debug route's URL is unchanged)                             |
+  | `client`                           | `client.sessions.debug.fetchCollectionItemContent`       | `fetchCollectionResourceContent`                                                           |
+  | `client`                           | `SessionConnectionState`                                 | `SessionConnectionStatus`                                                                  |
+  | `react`                            | `useResourceCollectionItem`                              | `useCollectionResource` (its result's `item` field is unchanged)                           |
+  | `react`                            | `UseResourceCollectionItemResult`                        | `UseCollectionResourceResult`                                                              |
+  | `react` (`/workforce`)             | `PanelRowSource`, `PanelItemSource`                      | unchanged names; they now pick `listCollectionResources` and `getCollectionResourceState`  |
+  | `orchestration` (`/tasks`)         | `rowHoldSchema`                                          | `ownHoldSchema` (a task's own hold: a question, a confirm or an external wait)             |
+  | `orchestration` (`/tasks`)         | `RowHold`                                                | `OwnHold`                                                                                  |
+  | `orchestration` (`/inbox`)         | `RowHoldSource`                                          | `OwnHoldSource` (its `kind` is `"task"`, was `"row"`)                                      |
+  | `orchestration` (`/inbox`)         | `InboxRow`                                               | `InboxTaskInput`                                                                           |
+  | `orchestration` (`/inbox`)         | `RefileRow`                                              | `RefiledTask`                                                                              |
+  | `orchestration` (`/inbox`)         | `taskRowView(row, holds?)`                               | `taskView(task, holds?)`                                                                   |
+  | `orchestration` (`/inbox`)         | `TaskRowView`                                            | `TaskView`                                                                                 |
+  | `orchestration` (`/inbox`)         | `TaskViewRow`                                            | `TaskViewInput`                                                                            |
+  | `orchestration` (`/inbox`)         | `TaskRowState`                                           | `TaskViewStatus`                                                                           |
+  | `orchestration` (`/inbox/check`)   | `RowTruth`                                               | `TaskTruth` (its `rowHolds` field is `ownHolds`)                                           |
+  | `orchestration` (`/inbox/check`)   | `rowTruthOf`                                             | `taskTruthOf`                                                                              |
+  | `orchestration` (`/internal`)      | `isRowHold`, `openRowHolds`                              | `isOwnHold`, `openOwnHolds`                                                                |
+  | `orchestration` (`/internal`)      | `rowsInSession`                                          | `tasksInSession`                                                                           |
+  | `engine` (`/internal`)             | `OwnerRunRefusal` value `"no_row"`                       | `"no_resource"`                                                                            |
+  | `harness-manager`                  | `HarnessReadinessRow`                                    | `HarnessReadinessView`                                                                     |
+  | `harness-manager`                  | `harnessReadinessRowSchema`                              | `harnessReadinessViewSchema`                                                               |
+  | `harness-manager`                  | `HarnessUsageRow`                                        | `HarnessUsageView`                                                                         |
+  | `harness-manager`                  | `HarnessUsageWindowRow`                                  | `HarnessUsageWindowView`                                                                   |
+  | `harness-manager` (and `/browser`) | `PullRequestRecordRow`                                   | `PullRequestRecordResourceState`                                                           |
+  | `harness-manager` (and `/browser`) | `PullRequestWaitRow`                                     | `PullRequestWaitInput`                                                                     |
+  | `harness-manager`                  | `PlaceState`                                             | `PlaceStatus` (a run record's place keeps its `state` field, now typed `PlaceStatus`)      |
+  | `harness-manager`                  | `placeStateSchema`                                       | `placeStatusSchema`                                                                        |
+  | `harness-manager`                  | `readRunRow`                                             | `readRunRecord`                                                                            |
+  | `workforce`                        | `WorkerRow`                                              | `WorkerResourceState` (the worker's configuration, as stored)                              |
+  | `workforce`                        | `workerRowSchema`                                        | `workerResourceStateSchema`                                                                |
+  | `workforce`                        | `parseWorkerRow(value)`                                  | `parseWorkerResourceState(value)`, answering `{ worker }` (was `{ row }`) or `{ problem }` |
+  | `workforce`                        | `StandardWorkerRow`                                      | `StandardWorkerResourceState`                                                              |
+  | `workforce`                        | `standardWorkerRowSchema`                                | `standardWorkerResourceStateSchema`                                                        |
+  | `workforce`                        | `ProjectRow`                                             | `ProjectResourceState`                                                                     |
+  | `workforce`                        | `projectRowSchema`                                       | `projectResourceStateSchema`                                                               |
+  | `workforce`                        | `WorkerInventoryRow`                                     | `WorkerInventoryResourceState`                                                             |
+  | `workforce`                        | `workerInventoryRowSchema`                               | `workerInventoryResourceStateSchema`                                                       |
+  | `workforce`                        | `SubscriptionRow`                                        | `SubscriptionResourceState`                                                                |
+  | `workforce`                        | `subscriptionRowSchema`                                  | `subscriptionResourceStateSchema`                                                          |
+  | `workforce` (and `/browser`)       | `WorkerMessageRow`                                       | `WorkerMessageResourceState`                                                               |
+  | `workforce` (and `/browser`)       | `workerMessageRowSchema`                                 | `workerMessageResourceStateSchema`                                                         |
+  | `workforce`                        | `WorkerUsageRow`                                         | `WorkerUsageView` (one worker's line in the `workerUsage` query's answer)                  |
+  | `workforce`                        | `ReportRow`                                              | `ReportResourceState`                                                                      |
+
+  ### For client developers: values and messages an app branches on or matches
+
+  Code that branches on one of these values, or matches one of these messages, changes when it upgrades. In each message only the noun changes; the rest of the sentence is the same.
+
+  | What                                                                                            | Old                                                                             | New                                                                                                                  |
+  | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+  | A task's own hold (`Task.holds[].source.kind`, and the Inbox's `InboxHold.source.kind`)         | `"row"`                                                                         | `"task"`. A hold stored as `"row"` still reads as `"task"` and can still be answered; `"row"` is never written again |
+  | Dispatch refusal (`DispatchOutcome.refused`)                                                    | `"external-dispatcher"`                                                         | `"external-flow-runner"`                                                                                             |
+  | Owner-private refusal                                                                           | starts "A row of an owner-private …"                                            | "A resource in an owner-private collection is readable only by the user it belongs to."                              |
+  | Owner-writes refusal                                                                            | starts "A row of an owner-writes …"                                             | "A resource in an owner-writes collection is written only by the user it belongs to."                                |
+  | Startup overlap error                                                                           | `Collection pattern "<P>" can reach the rows of owner-<mode> collection "<Q>".` | `Collection pattern "<P>" can reach the resources of owner-<mode> collection "<Q>".`                                 |
+  | Owner-segment refusal ("That segment is reserved for the user an owner-private collection's …") | "… row belongs to, …"                                                           | "… resource belongs to, …"                                                                                           |
+
+  Every other error and refusal message that said _row_ follows one rule: _task_ where the row was a task (dispatch, the task board, the ledger), _resource_ elsewhere, and _collection resources_ for _collection items_. In this release that covers the task board's, the task entry's, the ledger's and the task collection's errors in `orchestration` (and the `listTasks` tool's description a model reads), the Inbox check's drift lines, the dispatcher's and `defineFlow`'s task-entry errors, the faceted and owner-writes collection errors in `core`, the parent-task, owner-run and cross-board errors in `engine`, the schedule-index warning in `scheduled`, the harness manager's superseded-attempt, run-record, worktree-resource, phase-mismatch and foreign-run errors and the scripted coder's steps and commit message in `harness-manager`, the worker inventory's, the shadowed-reference, the hire and roster-loader document, the project-read tool's description and the project-link errors in `workforce`, and the DevTool's "Failed to fetch collection resources" (was "…collection items").
+
+  Docs: every published page and package README that still names a renamed export or value, by page, with the names it uses. Pages: `docs/glossary.md` ("A task is a row", "A project is one row", "One row, in user or org scope", "A resource row") and `docs/resources/collections.md` (the collections pages say _resource_; collections.md also quotes the owner-private and owner-writes refusals and the overlap error, and names `CollectionItemHandle`); `docs/workforce/projects.md` (quotes the owner-writes refusal; `getCollectionItemContent`); `docs/orchestration/task-substrate.md` (the hold marker `"row"` is `"task"`, and its refusal tables' `external-dispatcher` is `external-flow-runner`); `docs/advanced/concurrency-policies.md`, `docs/server/background-work.md` and `guides/keeping-a-flow-running.md` (`external-dispatcher`); `docs/tools/coding-agents.md` (`planRowsPrefix`, `readPlanTarget`'s `rowsPrefix`); `docs/fundamentals/state-and-scopes.md` (`readCollectionItem`); `docs/api/client.md` (`CollectionItemState` and the client methods `listCollectionItems`, `createCollectionItem`, `getCollectionItemState`, `getCollectionItemContent`, `deleteCollectionItem`); `docs/client/overview.md` (`listCollectionItems`, `getCollectionItemState`); `docs/client/react.md` (`CollectionItemHandle`, `useResourceCollectionItem`); `docs/resources/client-access.md` (`createCollectionItem`, `getCollectionItemContent`, `deleteCollectionItem`, `useResourceCollectionItem`); `docs/workforce/delegating-work.md`, `docs/workforce/inventory.md` and `docs/workforce/ui.md` (`listCollectionItems`); `guides/writing-ui-stories.md` (`resources.listCollectionItems`, `getCollectionItemState`, and the story fixtures `loadingRowsSource` and `failingRowsSource`, now `loadingResourcesSource` and `failingResourcesSource`); `docs/workforce/messaging-workers.md` (`workerMessageRowSchema`); `docs/orchestration/harness-manager.md` (its readiness section: `HarnessReadinessRow`, `harnessReadinessRowSchema`); `docs/orchestration/task-board.md` (`taskRowView`); `docs/server/schedule-index.md` and `guides/scheduled-dynamic.md` (`ScheduleIndexRow`). READMEs, each with the old names it still uses (the tables above give the new ones): packages/core/README.md (`planRowsPrefix`, `readPlanTarget`'s `rowsPrefix`, `useResourceCollectionItem`, `external-dispatcher`, and a quote of the owner-writes refusal); packages/claude-code/README.md and packages/cursor/README.md (`readPlanTarget`'s `rowsPrefix`); packages/client/README.md (`CollectionItemState`, `listCollectionItems`, `createCollectionItem`, `getCollectionItemState`, `getCollectionItemContent`, `deleteCollectionItem`, `SessionConnectionState`); packages/react/README.md (`CollectionItemHandle`, `resources.listCollectionItems`, `resources.getCollectionItemState`, `useResourceCollectionItem`); packages/orchestration/README.md (`taskRowView`, `rowsInSession`); packages/harness-manager/README.md (`openRowHolds`, `HarnessReadinessRow`, `harnessReadinessRowSchema`, `HarnessUsageRow`, `readRunRow`); packages/workforce/README.md (`listCollectionItems`, `taskRowView`, `workerRowSchema`, `parseWorkerRow`, `WorkerInventoryRow`, `workerInventoryRowSchema`, `subscriptionRowSchema`, `WorkerMessageRow`, `workerMessageRowSchema`, `WorkerUsageRow`, and a quote of the owner-writes refusal); packages/engine/README.md (`no_row`). packages/workspace/README.md (a worktree record is `WorktreeResourceState`, its `state` field typed `WorktreeStatus`, parsed with `worktreeStatusSchema`).
+
+- da9484b: `useSuspensions({ reasons })` throws on `human_approval` or `human_input`, naming `user_approval` or `user_input`, and a `user_*` filter also matches a stop core 0.2.0 stored under the old reason; `suspensionShape` reads a stored `human_input` stop as input (FIX-2454).
+
+  Docs: none
+
+- 88b65e5: A message box's send, with its files, is one hook: `useDraftSend` (FIX-2717).
+
+  - **react:** `useDraftSend(namespace, id, attachments?)` returns `{ text, setText, sending, failure, submit, canSend }`. It is `useDraft` and `useSubmit` together: the text stays in the box until `submit(send)` lands, a send that lands clears it (unless something else was typed meanwhile), and one that fails keeps the text and sets `failure` to why. A second `submit` while one runs does nothing; an empty box sends nothing.
+  - **react:** pass the box's files as `attachments`, any object with `files` (`{ id, status }`), `refusals`, `settle()` and `consume(ids, shown)`, such as the UI registry's `useAttachments`. The send waits for their uploads, hands their `FileContent` references to `send` beside the line, and removes them from the box only once it lands. A box with files and no text sends too; a file refused while it uploaded is never sent, and a box left with nothing to send sends nothing. A file added while a send waits stays for the next one.
+  - **react:** also exported: the types `DraftSend`, `DraftSendFn` and `DraftSendAttachments`.
+
+  Docs: packages/react/README.md gains `useDraftSend` beside `useDraft` and `useSubmit`: its return, the `attachments` handle and what a send that fails keeps. apps/docs/docs/api/react.md: the same entry.
+
+- 97c85bc: `useResource` can keep a whole user or org collection current and says why a read failed (FIX-2775).
+
+  - **react:** `useResource(def, { all: true })` reads every page of a user or org collection through the client's `listAll()`, not its first 200 entries. A change notice that names entries reads just those and merges them in, a new entry in storage-key order and a deleted one dropped, so an append-only log never re-lists for a new entry; the collection is listed again only on a notice that names no entry, a missed-notice resync, or an entry read that failed. `topicPrefix` (with `all`) keeps only the entries whose storage key starts with it, and hears only the change notices that may touch them. Every user or org result now has `refresh()`, to read again now, and `failure` while `stale`: the same `{ message, httpStatus? }` `useView` gives, the server's own words for a refused read, and a `CollectionReadStoppedError`'s message when a read stopped on a repeated cursor or past the page ceiling.
+  - **contracts:** `extractBareTopic(pattern, storageKey)` is exported from `@flow-state-dev/contracts/helpers`, beside `getPatternPrefix`, so a browser package can name a collection entry without core's runtime; `@flow-state-dev/core/types` still exports it.
+
+  Docs: packages/react/README.md (`useResource`'s `all`, `topicPrefix`, `failure` and `refresh()`)
+
+- 556aabe: `useView` returns `refresh()`, which reads the view again now for every screen sharing the read, and `failure` (`{ message, httpStatus? }`), why the last read failed while `stale` (FIX-2774).
+
+  Docs: packages/react/README.md (`useView`)
+
+- ec1fdf9: Watch a view from a screen, with no topics to name (FIX-2623).
+
+  - **client:** `viewRef<typeof myView>(flow, name)` names a view for the client, typed by the view through a type import, so the view's block never reaches the browser bundle. `client.view(ref, input?, { sessionId? })` runs it once and resolves to `{ value, topics, keys? }`: the answer, typed as `ViewOutput` of the view, the change topics of what its run read, and a keyed view's row keys in order. Pass `sessionId` for a session view; a user or org view takes none. Types `ViewRef`, `ViewResult`, `ViewCallOptions`, `ViewValueOf` and `ViewInputOf`.
+  - **react:** `useView(ref, input?, { sessionId?, enabled?, pollIntervalMs? })` returns `{ value, stale }`. `value` is `undefined` until the first answer. The hook listens to the topics each answer names and reads again on a change; it reads again on its own after a failure, and `stale` is `true` until a read lands. Every component watching the same view with the same input and session shares one read. A keyed view's rows that didn't change keep their object identity across answers.
+  - **engine:** a keyed view's answer carries `keys`, the rows' keys in order.
+
+  Docs: packages/client/README.md (`viewRef`, `client.view` and its answer, `ViewResult`, `ViewValueOf`, `ViewInputOf`), packages/react/README.md (`useView`, `{ value, stale }`, shared reads, keyed rows keeping identity), the new apps/docs "Views" page (watching a view from React and from the client), apps/docs/docs/api/client.md and apps/docs/docs/api/react.md (the same, as reference).
+
+- 1970b12: A keyed view can answer for just the rows a change touched, and a collection read re-reads just the entries that changed (FIX-2625).
+
+  - **core:** in a view's run, `ctx.view.changed` is the notice that woke its watcher: its topic, kind and `ids`. It is set only when the notice named ids and the view declares a `key`. Return `ctx.view.partial(rows, { removed })` to answer for just those rows. A view that never calls it answers whole, as before. `partial` throws on a run with no change, or in a view with no `key`. A partial answer never reorders rows: answer whole wherever a change could move a row. A partial answer that brings a row the screen doesn't hold makes the screen read the view whole, since only a whole run says where it goes. New types: `ViewChange`, `ViewRunContext`.
+  - **engine:** the view routes take `changed` in the body. A partial answer comes back as `{ output, topics, keys, partial: { removed } }`.
+  - **client:** `client.view(ref, input, { changed })` sends the notice, and `ViewResult.partial` marks a partial answer. `watchView` (and so `useView`) asks a keyed view for just the rows a notice names, and places the answer by key over the rows it holds. In development and tests, it compares each partial answer with a whole run, logs the view's name when they differ, and shows the whole run.
+  - **react:** `useResource` on a user or org collection re-reads just the entries a notice names, when it shows them all. A new entry, a notice with no ids, or an org with ids turned off still reads the collection.
+  - **orchestration:** the board's task-list view (`taskToolViews`) answers a board notice with just the named tasks' rows and the rest of their follow-up chains.
+
+  Docs: the Views page FIX-2623 adds at release (answering for the rows that changed: `ctx.view.changed`, `ctx.view.partial`, the never-reorder rule, the development check), apps/docs/guides/realtime.md (what a screen re-reads on a notice with ids), packages/core/README.md (`ctx.view`), packages/client/README.md (`client.view`'s `changed`, `ViewResult.partial`), packages/react/README.md (`useResource` re-reads named entries)
+
+- f63ef40: Workforce and the coding harnesses install as kits (FIX-2627).
+
+  - **workforce:** `workforce` (`@flow-state-dev/workforce/kit`) installs workforce with one config object: `createFlowState({ kits: [workforce({ agent: { model } })] })`. It reads the app's `workforce/` folder, builds every worker, and serves one copy of each worker flow and the roster flow. Every file in the folder is used or refused: a file workforce doesn't read, or one a reader can't load, stops the app starting, named. Three slots take what other kits and the app add: `workerFlows` (worker flows, built on the installation by `workerFlow(…)`; one keyed `agent` or `coordinator` replaces the kit's own), `uses` (capabilities for the agent and coordinator flows the kit builds), and `flows` (flows that aren't worker flows but are built on the installation, such as an app's projects flow: each entry is handed the installation and returns flows the kit serves). Config: `agent`, `coordinator`, `consult`, `routines`, `github`, `generated` (the app's `workforce.gen.ts`), `taskChainLimit`, `messages` (`MessageLimits`), `projectCoordinator`, `sessionFields`, `internalEvents`.
+  - **workforce:** `sessionFields`, a zod schema per field the app declares on every worker session (`createWorkerInstallation({ sessionFields })` takes the same option; `installation.session()` declares them). Only the server writes one: once on a user's own conversation, through the agent and coordinator flows' `setSessionFields` action (`SET_SESSION_FIELDS_ACTION`, input `{ fields, worker? }`), which refuses a field already set, one the app doesn't declare, a value its schema refuses, and a task's, a delegate's or a project coordinator's session; and on a task's session at each hand-over, which carries the filer's values down beside the filing project. A session create that seeds a field is refused with a 400 naming it, and the client reads it in the session's client data. Every field is visible to the session's browser: never put a secret in one. A field named like one workforce keeps on the session refuses start.
+  - **workforce:** `internalEvents` in the kit's config serves the internal service flow for its `topics` and adds its provider to routines; a worker flow built on the installation reaches its `publishEvent`, resources and tool with `internalEventsOf(installation)` (`./kit`).
+  - **workforce:** `readWorkforceFolder` (`./loader`) is the kit's folder reader.
+  - **workforce:** **Breaking:** `hireWorkforce`, `createWorkerInstallation` (with `HireWorkforceOptions` and `WorkerInstallationOptions`) leave the package root, and `./loader` exports `readWorkforceFolder` and `WorkforceFolder` only: `readDeclaredRoster`, `readWorkforce`, the per-convention readers and `walkTeams` are gone from it, with no alias. In place of `createWorkerInstallation` and `hireWorkforce`, install workforce with the kit: `createFlowState({ kits: [workforce({ directory })] })`, `workforce` from `@flow-state-dev/workforce/kit`; a worker flow of the app's own is a `workerFlow(build)` in the kit's `workerFlows` slot, and its builder is handed the installation. In place of the readers, `readWorkforceFolder` (`./loader`) reads the folder the way the kit does.
+  - **workforce:** Starter files: `fsdev ui add workforce-starter` copies one team with one worker on the built-in agent flow (`workforce/teams/team/TEAM.md`, `workforce/teams/team/workers/assistant/WORKER.md`) into an app, and the kit starts on them.
+  - **workforce:** `sourceReadCapability({ workspace })`: a worker reads the source its workspace host runs on (`globSource`, `readSource`, `grepSource`, under the `read` preset) with no coding run and no project; it names no project to the model and installs no project resources. `projectSourceCapability` keeps its tools and the project resources.
+  - **harness-manager:** `harnesses` (`@flow-state-dev/harness-manager/kit`) requires workforce and declares a `harnesses` slot of harness values. It contributes `coder`, one coding worker flow every coding worker names in `flow:` and picks its harness for in `harness:`, and serves the `harnesses` flow's `readiness` view, one entry per harness filled. Its policy is config: `workspace`, `defaultHarness`, `review`, `pullRequests`, `judge`, `checks`, `project`, `runTimeoutMs`, `logReadiness`. `codingDrainBudgetMs` gives the shutdown wait for `dispatchDrainTimeoutMs`. An app with a coding flow of its own switches `coder` off with `harnesses(…).without(workforce.slots.workerFlows, "coder")`. The package root never imports workforce.
+  - **harness-manager:** `Harness`, one coding harness as a value: `{ id, label?, agent, readiness, pass, usage?, models? }`. `CODER_FLOW` is on `./browser`.
+  - **workforce:** `@flow-state-dev/workforce/react` carries the workforce components: `Roster` (which reads the roster view by default), `BoardColumns`, `BoardList`, `WorkerDetail`, `groupIntoColumns`, `BOARD_STATUS_COLUMNS` and their types. React is an optional peer, used only behind this entry.
+  - **react:** **Breaking:** `@flow-state-dev/react/workforce` is removed, with no alias. Import those components from `@flow-state-dev/workforce/react`.
+  - **codex:** `codexHarness(options?)`. **cursor:** `cursorHarness(options?)`, Cursor's `"default"` model unless the options name one.
+  - **claude-code:** `claudeCode()`, a kit: it fills the harness slot with Claude Code (and, with `{ plan: true }`, `claude-code-plan`) and serves the collections a run records into.
+
+  Docs: apps/docs/docs/workforce/overview.md (the kit, its folder's claim, its slots, `sessionFields`, starting from `fsdev ui add workforce-starter`), every Workforce page that installs workforce, apps/docs/docs/orchestration/harness-manager.md (the harness kit, the harness value, the coding worker flow's config, readiness), apps/docs/docs/api reference entries for the kits, packages/workforce/README.md, packages/harness-manager/README.md, packages/claude-code/README.md, packages/codex/README.md, packages/cursor/README.md, packages/react/README.md (the panels section imports from `@flow-state-dev/workforce/react`), apps/docs/docs/workforce/ui.md (components from `@flow-state-dev/workforce/react`), apps/docs/docs/api/react.md (the workforce panels left for `@flow-state-dev/workforce/react`), apps/docs/guides/writing-ui-stories.md (the `Roster` story import)
+
+### Patch Changes
+
+- bf4dd7b: Shift Manager draws its conversations from React's conversation model (FIX-2848).
+
+  - **react:** `conversationLines(items, turns, { renderers })` makes no line for a `data` item the given registry has no renderer for, or turns off (`false`): no renderer, no line. A record such as a task board's change no longer takes Retry off the failed turn before it. With no `renderers` given, every `data` item is still a line. `ItemsRenderer` hands a `toolGroupRenderer` the steps line itself as `line` (with `ended` once its turn is over), beside `items` and `live`.
+  - **shift-manager:** a worker's failed turn says why with a Retry when the engine retries it, and a turn you stopped says so after its last line. In a task's Session, a failed run says why with a Retry while the task stands failed on its board; Retry runs the task again there, as the task's own Retry does. A filed task's result shows where the board ended it. A message the worker sent is drawn from its own line only; a `sendMessage` call that wrote no line is a quiet tool line like any other.
+  - **shift-manager:** a worker's tool calls read in the same words as the other apps' (_Read src/a.ts_, _Read 2 files and searched the code_); a failed call that a later call of the same tool redid reads _Tried …_, and the run doesn't read as failed for it. A message to or from another worker keeps the time it landed and its link to Messages.
+  - **workforce:** `sentTargetLabel(to)` from `@flow-state-dev/workforce/browser` words who a sent message went to (a worker's id, `task <id>`, `conversation <id>`, else `another worker`), as the `workforce-lines` registry item's sent line does, for an app drawing its own look over it.
+  - **workforce:** a conversation's lines are drawn by two UI registry items, installed with `fsdev ui add conversation-lines workforce-lines`: `conversation-lines` holds the failed, stopped, approval and compact steps lines and one line context (`LineContext`) a screen sets for names, pictures, what a click opens and Retry; `workforce-lines` holds the sent, received, filed task and task ending lines and `withBrief`, which folds a task's brief to one line. `@flow-state-dev/workforce/react` no longer exports line renderers.
+
+- 1a2eaf3: Keep a screen current on change notices with one call, `client.live`, the live read (FIX-2551). Every watch in the framework now runs on it, so every live screen behaves the same way.
+
+  - **client:** `client.live(topics, { read, onValue, hear, paths, onStale, onError, pollIntervalMs, readNow })` reads now and again on each notice under `topics` that `hear` (which notices) and `paths` (which resource paths, as roots or roots per scope) let through. One read runs at a time with at most one waiting, however many notices land; a waiting read is handed the notice that woke it, or `null` for several different ones. A value is reported only when it changed, compared by value. A read that fails tries again on its own, 1 s doubling to 30 s, and `onStale(true)` says the screen is stale until a read lands (`onStale(false)`). Where push can miss a change it reads on a timer, every 3 s by default (`pollIntervalMs: null` for none). With `topicsFromResult: true`, `read` returns `{ value, topics }` and the live read re-subscribes when that set of topics changes, then reads once more. Returns `{ refresh(), close() }`. New types: `LiveRead`, `LiveReadOptions`, `LiveReadWithTopicsOptions`, `LiveResult`, `LivePaths`.
+  - **react:** a `useSubscription` read that throws, and a live panel's read that fails (`Roster`, `BoardColumns`, `BoardList`, `useSessionList`), now try again on their own, 1 s doubling to 30 s. Before, they waited for the next change, which while push is up may never come. `useSubscription`'s signature is unchanged.
+  - **workforce:** `watchRoster` runs on `client.live`: a failed read is tried again on its own, with no change needed. `WorkforceClientSource` now picks `live` from the client instead of `subscribe`; a full client from `createClient` already has it. If you pass a slice of your own, add `live`.
+  - **shift-manager:** the snapshot's lapsed read tries again on the client's backoff (1 s, doubling to 30 s), where it used its own (2 s, doubling).
+
+  Docs: apps/docs/guides/realtime.md (keeping a screen current is `client.live`; how `hear` and `paths` decide which notices read, the retry and `onStale`, the 3 s timer, and topics from the last result), packages/client/README.md (a `client.live` row and example beside `subscribe`), apps/docs/docs/api/client.md (same as the client README), apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (where they describe `useSubscription`: it runs on the live read, and a read that throws tries again on its own), packages/workforce/README.md (`watchRoster` retries a failed read; `WorkforceClientSource` needs `live`). No new page.
+
+- 0e0df19: An app on workforce's client can stop one run, upload a file through a worker's flow, change a conversation's delegates and watch them live, without addressing a worker's flow itself (FIX-2776).
+
+  - **workforce:** `WorkforceClient.send` sets each send's request id and resolves to `{ requestId }`, so a screen can match the line and its turn, or stop it, before the turn ends. It takes `taskId`, the task the line is sent from, and passes it only to a door that takes one (the worker inventory's `doorTakesTask` for the session's flow), so a strict door is never handed a key it refuses. A caller that awaited `send` for nothing gets a value it can ignore.
+  - **workforce:** `WorkforceClient.stopRun(sessionId, requestId)` stops one run of a session through the flow it runs on; a run that already ended is no failure. `stopTurns` still stops every running turn.
+  - **workforce:** `WorkforceClient.upload(worker, request)` uploads a file for a line through the worker's flow, whose sign-in the send runs; a first line with no session yet uploads this way too.
+  - **workforce:** `WorkforceClient.addDelegate(sessionId, worker, note?)` and `removeDelegate(sessionId, worker)` change a conversation's delegates through its own actions, rejecting with the coordinator's reason.
+  - **workforce:** every flow built on `defineSessionBoard` declares a `delegates` session view (`views`): what `listDelegates` answers, each delegate with what it does and takes, read without writing. Watch it with `useView(delegatesViewRef(flow), {}, { sessionId })` from `@flow-state-dev/workforce/browser`; it hears every change to the list, the coordinator's own tool's included. Reading it never pins the list, `delegates: all`'s included. A flow that builds its own `views` spreads `board.views` to get it.
+  - **react:** `UseRequestStreamResult.completedAt` is when the followed request ended (the time of its ending status event), for a screen that follows one request by id rather than a session's latest turn.
+  - **orchestration:** `TaskChangeKind`, `TaskBoardCounts` and `TaskBoardMeta`, the values of the `task-change` and `task-board-meta` items a board writes, are exported from `@flow-state-dev/orchestration/tasks`. `TaskChangeKind` is no longer exported from `./internal`. The board's task-list view and `listTasks_<board>` action (never the model's tool) carry a row's `error`, `deps` and brief `attachments`.
+
+  Docs: packages/workforce/README.md (client section: `stopRun`, `upload`, `addDelegate`, `removeDelegate`, `send`'s `taskId` and answer, the delegates view), apps/docs/docs/workforce/delegating-work.md (the view beside `listDelegates`), packages/react/README.md (`useRequestStream`'s `completedAt`)
+
+- 995e1a8: A request's stream that ends before the request does is picked up again instead of leaving the view hanging (FIX-2675).
+
+  - **client:** `request(id).stream()` resumes after the last event it delivered when the server ends the stream with no terminal `request.*` status (the server cuts off a reader that falls 4 MiB behind). It reconnects at once after a connection that delivered events, backs off (1 s, doubling) after one that delivered nothing, and gives up with `onError` after five such connections in a row. An error answer such as a 404 or 409 is reported with `onError` and not retried, and a local `close()` stops it.
+  - **react:** when the inline stream of a turn `useSession` sent ends with no terminal status, the hook follows the request on `request(id).stream()` from the last event it applied, so the turn finishes with every item once rather than staying "streaming" until `isStuck`. A turn the caller stopped is not picked up again.
+
+  Docs: apps/docs streaming / resume page (request streams resume themselves after an early end; `createSSEClientFromResponse` callers resume with `request(id).stream({ startingAfter })` from `onClose`), packages/client and packages/react READMEs if they describe stream ends.
+
+- 4a6643c: A scope's `client.derived` is removed; a value computed for a screen is a view (FIX-2623).
+
+  - **core, breaking:** `ScopeClientConfig` has only `expose`. `defineFlow` refuses a `derived` key on `session.client`, `user.client` or `org.client` with an error naming views, rather than defining the flow and sending nothing. `ClientDataComputeFn` and `ClientDataContext` are removed from `@flow-state-dev/core/types`, with no alias. To move a derived value, declare it as a view: `views: { modeStatus: defineView({ scope: "session", block }) }`, where `block` reads `ctx.session.state` (or `ctx.user`, `ctx.org`, or resources) and declares its `outputSchema`, and read it with `useView(viewRef<typeof modeStatus>(flow, "modeStatus"), {}, { sessionId })` or `client.view`. A value that only copies a state field can stay client data with `expose: ["field"]`.
+  - **core:** a view whose answer is one object, not a list, is now a flow's `views` entry with no cast in strict TypeScript. Its `key` was typed as a function over `never`, which `strictFunctionTypes` refused.
+  - **engine:** the session state route returns only `expose`d fields as client data. A resource write publishes on its scope's topic when the resource has a `client` config, or when any flow on the host declares a view.
+  - **react:** a live session view no longer re-reads state on every resource change of a scope that has client data. Client data is exposed state, which a resource change can't move.
+
+  Docs: apps/docs pages on scope client data (`derived` retires; `expose` stays; computed values point at Views), packages/core/README.md (the `client` config and its example), packages/engine/README.md (what publishes on a scope's topic), packages/react/README.md (`useClientData` without `client.derived` values).
+
+- 246f0ba: A screen that follows a conversation with `useSessionFeed` can draw where the worker's word-for-word reading begins, and whether the turns before it were summarized, without a `useSession` view (FIX-2772).
+
+  - **workforce:** each row of the session turns view (`sessionTurnsViewRef()`) carries `historyStart: { requestId } | null`: the first turn that turn's history window held, once earlier turns had left it; `null` while none had.
+  - **core / engine:** a session turn read in a view (`sessions.turns(...)`, `SessionTurn`) carries the request's optional `historyStart`, the mark the engine already records on each request.
+  - **core / workforce:** the history summary's session resource has one exported definition, `historySummaryResource`: from `@flow-state-dev/workforce/browser`, the one a screen on workforce imports, and from `@flow-state-dev/core/types`, where workforce takes it from (core's root is not browser-safe). It is the resource every `historySummary(...)` at its default name installs, worker answers included; its public face is the mark (`throughRequestId`), `complete` and `folds`.
+  - **react:** `useResource(def, { sessionId })` reads a session resource by the session's id, for a screen with no `useSession` view: it reads the session's state without its items, again on that session's notice for the resource, and on the client's timer wherever push can miss a change. Pass `client` and `pollIntervalMs` as for a user or org resource. It has no setters. `useResource(def, { session })` reads the `useSession` snapshot as before.
+
+  Docs: packages/react/README.md (`useResource` by `sessionId`), packages/workforce/README.md (the session turns view's `historyStart`; `historySummaryResource`)
+
+- 23bac7e: A view's watcher reads again only on a change to what the view read, and a task board's view re-reads only the tasks a change named (FIX-2625).
+
+  - **engine:** a view's answer adds `hears`: for each of its topics, the kinds of change that may touch what its run read and, for a resource, the storage roots a change's path must fall under. A write to another resource of the same scope, or a run's own bookkeeping, no longer wakes it. A user-scope collection entry's change notice now names its collection's root (the static prefix of its pattern), never the entry's key, so a screen of another user resource can skip it.
+  - **core:** new type `ViewHearing`, the shape of each `hears` entry: a topic, its `kinds`, and for a resource its `paths`.
+  - **client:** `ViewResult.hears` carries it (`ViewHearing[]`), and `watchView` (and so `useView`) reads again only on a notice it admits, through the same path rule `client.live` uses. An answer from a server that sends no `hears` reads on every notice under its topics, as before.
+  - **react:** a session collection list (`useResourceCollection`, `useResourceCollectionList`) reads once for one change. It holds each change signal (a named change, its count moving) for 50 ms and reads once after the last, and at least every 250 ms while signals keep coming. A list now shows a change up to 50 ms later than before.
+  - **orchestration:** a view that reads a task board through its task collection hears the board's own notices, which name the tasks that changed, and no longer hears its ledger's notices on the user topic, which can't. Every write to a task ledger publishes the board notice.
+
+  Docs: the Views page (what a view's watcher reads again on), apps/docs/guides/realtime.md (a user-scope entry's notice names its collection's root; a board view hears its board's notices), packages/core/README.md (`ViewHearing`, the shape of a view answer's `hears`), packages/client/README.md (`ViewResult.hears`)
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [801aa5e]
+- Updated dependencies [61efa05]
+- Updated dependencies [ffbe992]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [e238e18]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [1a2eaf3]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [ae106d2]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [6407fbf]
+- Updated dependencies [995e1a8]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [da9484b]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [8127ab6]
+- Updated dependencies [18adad9]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [97c85bc]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/contracts@0.5.0
+  - @flow-state-dev/client@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

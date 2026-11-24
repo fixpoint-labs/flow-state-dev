@@ -7,8 +7,8 @@
  * row its owner holds, or a standard worker from the files), so hiring one
  * registers nothing, and nothing here mints a copy per worker or pins one to
  * an owner. Beside the worker flows sits the roster flow, through which an
- * app reads and writes a user's roster, and which keeps and fires the user's
- * schedules.
+ * app reads and writes a user's roster, and which keeps the user's routines
+ * and fires their clock ones.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";
@@ -19,8 +19,13 @@ import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import { messageReceivedProblem } from "../messages/message-received-entry";
 import { sendWithoutPassProblem } from "../messages/delivery";
-import { defineScheduledWork, type ScheduledWorkOptions } from "../schedules/scheduled-work";
+import { checkDeclaredRoutines, defineRoutineActions, seedDeclaredRoutines, type RoutinesOptions } from "../routines/routines";
+import { setRoutineSeed, setRoutinesReach } from "../routines/routines-options";
+import { assertPollCadence } from "../subscriptions/poll";
+import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
+import { taskInputSourceOf, unregisterTaskDoor } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf } from "../worker-task-entry";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 
@@ -48,12 +53,16 @@ export interface HireWorkforceOptions {
    */
   messages?: MessageLimits;
   /**
-   * Recurring work: the user's schedules, each filing a task on a worker's
-   * board when it is due. Always kept and fired through the roster flow;
-   * `index` is optional, a polling or BullMQ schedule index to mirror every
-   * saved schedule into. Omit it and the host's own cron POSTs per schedule.
+   * Routines: the user's standing instructions that fire on their own, on a
+   * clock (filing a task on a worker's board) or on an event (a PR, an issue or a
+   * repo a worker's conversation hears). Always kept on the roster flow. `index` is a
+   * polling or BullMQ schedule index to mirror every clock routine into (omit
+   * it and the host's own cron POSTs per schedule); `providers` are the ones an
+   * event routine follows a PR, an issue or a repo on; `declared` are the app's own routines,
+   * seeded for each user; `poll` turns polling on for the event routines, with a
+   * schedule index of its own and the default cadence.
    */
-  schedules?: ScheduledWorkOptions;
+  routines?: RoutinesOptions;
 }
 
 /**
@@ -73,9 +82,31 @@ export interface HireWorkforceOptions {
  *   and nothing is registered: a short roster that still runs is the failure.
  */
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
+  try {
+    return hire(installation, options);
+  } catch (error) {
+    // A refused hire gives up its flows' doors (FIX-2894): one that shares a prebuilt flow with a live
+    // installation never takes that door from it.
+    unregisterInstallationDoors(installation);
+    throw error;
+  }
+}
+
+function hire(installation: WorkerInstallation, options: HireWorkforceOptions): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   if (options.messages !== undefined) setMessageLimits(installation, options.messages);
+  const poll = options.routines?.poll;
+  if (poll?.everyMinutes !== undefined) assertPollCadence(poll.everyMinutes, "hireWorkforce routines.poll");
+  // One index ticks one flow: the clock routines' index dispatches to the roster, the polls' to the service flow.
+  if (poll !== undefined && poll.index === options.routines?.index) {
+    throw new Error("hireWorkforce: routines.poll.index is routines.index. Give polling a schedule index of its own: one index ticks one flow.");
+  }
+  // The routines capability a worker flow uses, and the service flow's polling, read these from here.
+  setRoutinesReach(installation, options.routines ?? {});
+  // FIX-2624: every worker request seeds the app's declared routines for its user, as a roster request does.
+  setRoutineSeed(installation, (ctx) => seedDeclaredRoutines(ctx, installation, options.routines ?? {}));
   checkWorkerFlows(installation.workerFlows());
+  checkDeclaredRoutines(options.routines?.declared ?? []);
   const copies: FlowInstance[] = [];
   const unbound: string[] = [];
   for (const [flowName, { flow }] of Object.entries(installation.workerFlows()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
@@ -108,8 +139,9 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
         problems.map((problem) => `  - ${problem}`).join("\n")
     );
   }
-  const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
-  const scheduled = defineScheduledWork(installation, options.schedules);
+  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation);
+  const scheduled = defineScheduledWork(installation, options.routines?.index);
+  const routines = defineRoutineActions(installation, options.routines ?? {}, scheduled.resources);
   const roster = defineWorkerRosterFlow(
     installation,
     {
@@ -117,12 +149,29 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       fork: { inputSchema: fork.inputSchema, block: fork },
       edit: { inputSchema: edit.inputSchema, block: edit },
       fire: { inputSchema: fire.inputSchema, block: fire },
-      ...scheduled.actions
+      reset: { inputSchema: reset.inputSchema, block: reset },
+      ...routines.actions
     },
-    scheduled
+    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
   return copies;
+}
+
+/** Give up `installation`'s claim on each of its flows' `work` doors, which its flows' resolution made. */
+function unregisterInstallationDoors(installation: WorkerInstallation): void {
+  const source = taskInputSourceOf(installation);
+  if (source === undefined) return;
+  let flows: ReturnType<WorkerInstallation["workerFlows"]>;
+  try {
+    flows = installation.workerFlows();
+  } catch {
+    return;
+  }
+  for (const { flow } of Object.values(flows)) {
+    const door = conversationTaskDoorOf(flow);
+    if (door !== undefined) unregisterTaskDoor(door, source);
+  }
 }
 
 /**

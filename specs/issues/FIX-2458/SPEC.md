@@ -114,7 +114,7 @@ public entry, and that shared shapes come from `core/harness`.
 | The debt | |
 |---|---|
 | **Removes** | Kitchen Sink's hand list of Cursor models and its own model type · its hand SDK checks for Codex and Cursor · four per-harness model types · four copies of 13 environment names (shift-manager's `CODEX_USAGE_PASS` too) · two copies of the installed-version reader, the version gate and its error class · 8 names on two or three entries · claude-code's `./cli`, its translate and emit names, and its second spellings |
-| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate, its range match and one error class on `core/internal`, shared by the three. No deprecated aliases (Q1 answered break) |
+| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate, its range match, its readiness form (`sdkVersionReadiness`) and one error class on `core/internal`, shared by the three ([amended Nov 10](DECISIONS.md#d2)). `engines.node` `>=22.3` on core and the three harnesses. No deprecated aliases (Q1 answered break) |
 | **Leaves** | Three near-copied `emit.ts` and `errors.ts` (LAB-156) · usage's two shapes (FIX-2330) · `useHarnessLines`'s name (FIX-2557) |
 
 **Net: down.** Three copies become one per job; about 35 public names leave the entries for about 7 added.

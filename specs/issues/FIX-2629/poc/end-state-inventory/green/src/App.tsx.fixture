@@ -1,0 +1,6 @@
+import { useSessions, useTasks, usePins } from "./lab";
+export function App() {
+  const sessions = useSessions();
+  const pins = usePins();
+  return <main>{sessions.value?.map((s) => <button key={s.id} onClick={() => pins.update((p) => ({ pinned: [...p.pinned, s.id] }))}>{s.title}</button>)}</main>;
+}

@@ -17,7 +17,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
 import { mockEvaluationModel, mockGenerator, type MockEvaluationModel, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createWorkforceClient } from "../src/browser";
+import { createWorkforceClient, workerSessionsViewRef } from "../src/browser";
 import {
   COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
@@ -195,6 +195,9 @@ async function boot(
   );
   const lab = (user: string, org?: string) => h.openSession(user, "lab", undefined, org);
   const client = (user: string, org?: string) => createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, org) }));
+  /** `user`'s conversations with `worker`: the worker sessions view (FIX-2725). */
+  const workerSessions = async (user: string, worker: string, org?: string) =>
+    (await createClient({ userId: user, fetcher: h.fetcherFor(user, org) }).view(workerSessionsViewRef(), { worker })).value;
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "apollo", title: "Apollo", members: ["bob"] });
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "notes", title: "My notes", visibility: "private" });
 
@@ -256,13 +259,13 @@ async function boot(
       .sort((a: { createdAt: number }, b: { createdAt: number }) => a.createdAt - b.createdAt)
       .flatMap((request: unknown) => (request as { items?: any[] }).items ?? []);
     return {
-      records: all.filter((item) => item.type === "component" && item.component === COORDINATOR_ROUTE).map((item) => item.data),
+      records: all.filter((item) => item.type === "data" && item.dataType === COORDINATOR_ROUTE).map((item) => item.value),
       messages: all
         .filter((item) => item.type === "message")
         .map((item) => ({ agentName: item.agentName as string | undefined, text: JSON.stringify(item.content ?? item.text ?? "") }))
     };
   };
-  return { ...h, heard, counting, lab, client, open, mark, coordinator, delegates, eventually, internal, settled, items };
+  return { ...h, heard, counting, lab, client, workerSessions, open, mark, coordinator, delegates, eventually, internal, settled, items };
 }
 
 describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
@@ -332,12 +335,26 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const project = await h.coordinator("alice");
     const app = h.client("alice");
     // Listed before her default conversation exists: the project session is top-level and names the worker.
-    expect(await app.listWorkerSessions(PROJECT_COORDINATOR)).toEqual([]);
+    expect(await h.workerSessions("alice", PROJECT_COORDINATOR)).toEqual([]);
     const main = await app.ensureWorkerSession({ worker: PROJECT_COORDINATOR });
-    const listed = await app.listWorkerSessions(PROJECT_COORDINATOR);
-    expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([[main.id, true]]);
-    expect(listed.map((entry) => entry.session.id)).not.toContain(project);
+    const listed = await h.workerSessions("alice", PROJECT_COORDINATOR);
+    expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[main.id, true]]);
+    expect(listed.map((entry) => entry.id)).not.toContain(project);
   });
+
+  it("not-crowded-out · lists her conversation behind more than 100 newer project sessions, which share the worker's id", async () => {
+    // The list reads sessions newest first and then leaves out project
+    // sessions: read once, 100 newer ones would leave her nothing.
+    const h = await boot();
+    const main = await h.client("alice").ensureWorkerSession({ worker: PROJECT_COORDINATOR });
+    for (let at = 0; at < 101; at += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: `p${at}`, title: `P${at}`, visibility: "private" });
+      await h.coordinator("alice", { visibility: "private", id: `p${at}` });
+    }
+    const listed = await h.workerSessions("alice", PROJECT_COORDINATOR);
+    expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[main.id, true]]);
+  }, 120_000);
 });
 
 describe("its delegates (BR-21a, BR-21b)", () => {

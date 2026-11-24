@@ -38,8 +38,7 @@ import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { userStateSchema } from "../../../shared/schemas";
-import { coalesceKitchenSinkModel } from "../../../../../lib/models";
+import type { PipelineConfig } from "./config";
 
 /** Stable board id. Hashed into every child session this board starts — renaming it re-keys live ones. */
 const BOARD_ID = "kitchen-sink-background-work";
@@ -126,6 +125,14 @@ function renderOutput(output: unknown): string {
 }
 
 /**
+ * Build the `background-work` pipeline from the resolved router config.
+ *
+ * The board is constructed here rather than at module scope because its worker
+ * takes the router's model resolver, and because the dispatch its assignee
+ * carries reaches the flow through this pipeline being a route — a board
+ * nobody composes declares nothing.
+ */
+/**
  * Session state this pipeline persists: which finished ledger rows it has
  * already announced.
  *
@@ -181,8 +188,9 @@ export function alreadyReportedTaskIds(
   ]);
 }
 
-/** Build the background pipeline and its worker entry around the same board. */
-export function createBackgroundWorkPipeline() {
+export function createBackgroundWorkPipeline(config: PipelineConfig) {
+  const { modelId } = config;
+
   /**
    * The dispatched worker.
    *
@@ -195,8 +203,7 @@ export function createBackgroundWorkPipeline() {
    */
   const briefWorker = generator({
     name: "background-brief",
-    userStateSchema: userStateSchema.pick({ selectedModel: true }),
-    model: (_input, ctx) => coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
+    model: modelId,
     // The substrate's own worker-input shape, which is what `TaskWorker` is
     // typed against. `input.input` is `unknown` there by design — the board
     // carries heterogeneous payloads — so the parse below is reading an

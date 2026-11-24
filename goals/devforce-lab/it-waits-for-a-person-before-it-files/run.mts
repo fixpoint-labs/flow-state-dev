@@ -54,6 +54,7 @@ import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { RAISE_ASK_STEP, raiseAsk, workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/worker-config.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -81,8 +82,6 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const EM_SESSION = workerSessionId(fixture.coordinatorSeat);
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** What the coder's run "did": write a file and commit it, so the row can settle done. */
 const commitWork = (run: StubRun): void => {

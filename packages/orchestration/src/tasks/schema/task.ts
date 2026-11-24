@@ -8,7 +8,8 @@
  * narrows them at the consumer's call site.
  */
 import { z } from "zod";
-import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
+import { attachmentReferenceSchema } from "@flow-state-dev/core/attachments";
+import { taskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
 import { taskHoldSchema } from "./hold";
 import { taskSpendSchema } from "./spend";
@@ -32,9 +33,18 @@ export const taskSchema = z.object({
    * it at planning time (see `@flow-state-dev/patterns` planning-entry).
    */
   context: z.string().optional(),
+  // FIX-2522; epic FIX-2516 ER-7.
+  /**
+   * The brief's files, beside `context`: stored files' references, in the
+   * order attached, owned by the board's scope (the filer's own, for a
+   * conversation's board) and handed to every run of the task. Set at filing
+   * by the filing path, never from model input; fixed once the task starts,
+   * as `context` is (`TASK_FIELD_RULES`). A file found later goes to the
+   * worker as a line, not into the brief. Absent on a row filed with none.
+   */
+  attachments: z.array(attachmentReferenceSchema).optional(),
 
-  // Decoded from a stored row, so it tolerates the pre-FIX-1245 member.
-  status: persistedTaskStatusSchema,
+  status: taskStatusSchema,
   attempts: z.number().int().nonnegative().default(0),
   /**
    * Optional retry budget. When set and `attempts < maxAttempts`, a
@@ -339,15 +349,6 @@ export const taskSchema = z.object({
    * named no source: a cascade, a substrate write-back, an older row.
    */
   cancelledVia: z.enum(["tool", "action"]).optional(),
-  // FIX-2080, BP-030; FIX-2081.
-  /**
-   * The row was stored `blocked` and read as `held`. Set
-   * only at the read boundary, and persisted with the row when it is next
-   * written; a release clears it. Such a row may have started before it was
-   * blocked, and a release alone is how it runs again; no current path holds
-   * a row that has started.
-   */
-  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 

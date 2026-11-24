@@ -96,7 +96,7 @@ type Host = { durable: boolean; router: boolean; sweepIntervalMs?: number };
 
 async function host(flow: FlowInstance, options: Host) {
   const state = createFlowState({
-    flows: { "wait-board": flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     durable: options.durable,
     ...(options.sweepIntervalMs !== undefined ? { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } } : {})

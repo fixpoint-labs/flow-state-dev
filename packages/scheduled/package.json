@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/scheduled",
-  "version": "0.3.2",
-  "description": "Scheduled-actions transport for flow-state-dev.",
+  "version": "0.4.0",
+  "description": "Schedule collections, the schedule resolver and the schedule-index contract for flow-state-dev.",
   "keywords": [
     "ai",
     "agents",
@@ -10,8 +10,7 @@
     "typescript",
     "flow-state-dev",
     "scheduled",
-    "cron",
-    "transport"
+    "cron"
   ],
   "homepage": "https://flow-state.dev",
   "repository": {
@@ -70,7 +69,6 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/engine": "workspace:*",
     "cron-parser": "^5.5.0",
     "zod": "^3.25.76"
   },
@@ -83,7 +81,6 @@
     }
   },
   "devDependencies": {
-    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.0.0"
   },

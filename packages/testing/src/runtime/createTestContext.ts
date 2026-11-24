@@ -1,7 +1,6 @@
 import { DEFAULT_ORG_ID, type DeclaredResources } from "@flow-state-dev/core";
-import type { BlockDefinition, FlowInstance, StateRef } from "@flow-state-dev/core/types";
+import type { FlowInstance, StateRef } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
-import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import {
   createExecutionContext,
@@ -104,11 +103,11 @@ function buildFlatResourceMap(
   );
 }
 
-/** Build the stand-alone test flow from its resource seeds and the block's declarations. */
-export function createTestFlow(options: CreateTestContextOptions, block?: BlockDefinition): FlowInstance {
+/** Build a stand-alone flow with the resources declared or seeded by the test. */
+export function createTestFlow(options: CreateTestContextOptions): FlowInstance {
   // Test seeds override the block's resource definitions so fixtures can supply their own values.
   const resources: Record<string, unknown> = {
-    ...(block?.declaredResources ?? options.declaredResources),
+    ...options.declaredResources,
     ...buildFlatResourceMap(options.session?.resources, "session"),
     ...buildFlatResourceMap(options.user?.resources, "user"),
     ...buildFlatResourceMap(options.org?.resources, "org")
@@ -126,8 +125,7 @@ export function createTestFlow(options: CreateTestContextOptions, block?: BlockD
     resources: Object.keys(resources).length > 0 ? resources : undefined,
     session: {},
     user: {},
-    org: options.org?.resources === undefined ? undefined : {},
-    scopeStateSchemas: block && mergeFlowScopeStateSchemas("testing-flow", {}, walkBlockGraph([block]))
+    org: options.org?.resources === undefined ? undefined : {}
   } as unknown as FlowInstance;
 }
 
@@ -407,6 +405,11 @@ function createTargetRef(
   };
 }
 
+/**
+ * Create an isolated execution context with the given flow and scope seeds.
+ * A raw context has no block from which to collect state schemas. Pass a flow
+ * to read its scope defaults, or use `testBlock` to include a block's declarations.
+ */
 export async function createTestContext<TInput = unknown>(
   options: CreateTestContextOptions<TInput> = {}
 ): Promise<TestContextRuntime> {

@@ -1,0 +1,2 @@
+import { openLab } from "./host.mts";
+export default openLab({ data: process.env.LAB_DATA ?? ".lab", model: process.env.LAB_MODEL ?? "openai/gpt-5.4" });

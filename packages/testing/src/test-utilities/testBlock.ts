@@ -1,4 +1,5 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
@@ -100,8 +101,13 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestBlockResult<BlockOutput<TBlock>>> {
   const startedAt = Date.now();
+  let flow = options.flow ?? createTestFlow({ ...options, declaredResources: block.declaredResources });
+  if (flow.scopeStateSchemas === undefined) {
+    // Hand-built and stand-alone flows have yet to collect their block declarations.
+    flow = { ...flow, scopeStateSchemas: mergeFlowScopeStateSchemas(flow.kind, flow, walkBlockGraph([block])) };
+  }
   const runtime = await createTestContext({
-    flow: options.flow ?? createTestFlow(options, block),
+    flow,
     request: options.request,
     session: options.session,
     user: options.user,

@@ -32,7 +32,7 @@ if (profile === "prod" && !process.env.KB_MCP_SECRET) {
 }
 
 export default createFlowState({
-  flows: { knowledge: knowledgeFlow },
+  flows: [knowledgeFlow],
   adapters: [createMcpTransportAdapter()], // mounts POST /api/flows/knowledge/mcp
   stores: {
     dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },

@@ -16,7 +16,7 @@
  *   .tap(stashWorkerOutput)    — capture worker output for applyVerdict
  *                                AND stamp reviewMetadata[taskId].entered=true
  *                                on the supervisor sequencer state
- *   .map(...)                 — adapt workerOutput → ReviewerInput
+ *   .map(buildReviewerInput)   — adapt workerOutput → ReviewerInput
  *   .step(reviewerGenerator)   — produces ReviewerVerdict
  *   .step(applyVerdict)        — approve flows workerOutput through; reject throws
  *
@@ -36,23 +36,30 @@ import {
   getOrCreateTaskCollection,
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { reviewerVerdictSchema, type ReviewerInput, type SupervisorState } from "../schemas";
+import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
+
+type SupervisorReviewState = {
+  reviewMetadata: Record<
+    string,
+    { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" }
+  >;
+};
 
 /** Patch a single `reviewMetadata[taskId]` slot on the supervisor sequencer's
  * outer state without touching sibling slots. The supervisor sequencer is
  * looked up by name; if it can't be found (e.g. the worker is composed
  * outside a supervisor for testing), the write is a silent no-op. */
 async function patchSupervisorReviewMetadata(
-  target: StateRef<SupervisorState> | undefined,
+  target: StateRef<SupervisorReviewState> | undefined,
   taskId: string,
-  patch: SupervisorState["reviewMetadata"][string],
+  patch: { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" },
 ): Promise<void> {
   if (target === undefined) return;
   await target.atomicState((state) => {
-    const previous = state.reviewMetadata?.[taskId];
+    const previous = state.reviewMetadata?.[taskId] ?? {};
     return {
       reviewMetadata: {
-        ...state.reviewMetadata,
+        ...(state.reviewMetadata ?? {}),
         [taskId]: { ...previous, ...patch },
       },
     };
@@ -61,8 +68,8 @@ async function patchSupervisorReviewMetadata(
 
 const reviewedWorkerStateSchema = z.object({
   taskId: z.string().optional(),
-  goal: z.string().default(""),
-  attempts: z.number().int().nonnegative().default(1),
+  goal: z.string().optional(),
+  attempts: z.number().int().nonnegative().optional(),
   workerOutput: z.unknown().optional(),
 });
 
@@ -114,13 +121,29 @@ export function buildReviewedWorker(
       const taskId = ctx.sequencer!.state.taskId;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorState>(name),
+          ctx.getTarget<SupervisorReviewState>(name),
           taskId,
           { entered: true },
         );
       }
     },
   });
+
+  function buildReviewerInput(
+    workerOutput: unknown,
+    ctx: { sequencer?: { state: z.infer<typeof reviewedWorkerStateSchema> } },
+  ): ReviewerInput {
+    const state = ctx.sequencer!.state;
+    return {
+      taskId: state.taskId ?? "",
+      goal: state.goal ?? "",
+      attempts: state.attempts ?? 1,
+      workerOutput,
+      ...(reviewCriteria && reviewCriteria.length > 0
+        ? { criteria: reviewCriteria }
+        : {}),
+    };
+  }
 
   // approve → flow upstream workerOutput through; reject/needs-revision
   // → throw so substrate's recordError + maxAttempts handle the retry.
@@ -136,7 +159,7 @@ export function buildReviewedWorker(
       const { workerOutput, taskId } = ctx.sequencer!.state;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorState>(name),
+          ctx.getTarget<SupervisorReviewState>(name),
           taskId,
           { entered: true, lastVerdict: verdict.decision },
         );
@@ -181,16 +204,7 @@ export function buildReviewedWorker(
     .step(workerBlock)
     .tap(stashWorkerOutput)
     .tap(emitReviewingStatus)
-    .map((workerOutput, ctx): ReviewerInput => {
-      const { taskId, goal, attempts } = ctx.sequencer!.state;
-      return {
-        taskId: taskId ?? "",
-        goal,
-        attempts,
-        workerOutput,
-        ...(reviewCriteria?.length ? { criteria: reviewCriteria } : {}),
-      };
-    })
+    .map(buildReviewerInput)
     .step(reviewerGenerator)
     .step(applyVerdict);
 }

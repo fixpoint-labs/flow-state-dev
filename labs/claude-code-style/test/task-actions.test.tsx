@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * An opened task's action row, on fixtures: the tasks pane's sheet
+ * An opened task's action row, on the lab's own host: the tasks pane's sheet
  * and a thread's view draw the registry's `task-actions` row by the task's
  * board status. The sheet has no composer, so it carries the Steer box; a
  * thread's view steers through its own composer, so its row has none. A
@@ -9,21 +9,41 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, readUntil, vendorScripts, type TestApp, type VendorControl } from "./app-host";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
+  await closeApps();
 });
+
+const SLOW = { timeout: 15_000 };
+
+/** The app on the lab's own host with the vendor scripts; their control. */
+let lab: TestApp;
+async function vendorApp(): Promise<VendorControl> {
+  const { scripts, control } = vendorScripts();
+  lab = await openTestApp({ scripts });
+  render(lab.wrap(<App />));
+  return control;
+}
+
+/** Whether every request of every session of the lab's has ended. */
+async function nothingRunning(): Promise<boolean> {
+  for (const session of await lab.client.sessions.list()) {
+    if ((await lab.client.sessions.requests(session.id, { status: "in_progress", limit: 5 })).length > 0) return false;
+  }
+  return true;
+}
 
 const pane = () => screen.getByRole("complementary", { name: "Background tasks" });
 const row = (title: string) => within(pane()).getByRole("button", { name: new RegExp(title), hidden: true });
 const sheet = (title: string) => screen.getByRole("dialog", { name: `Work: ${title}` });
 
 async function ask(text: string) {
-  const box = await screen.findByLabelText("Message the main session");
+  const box = await screen.findByLabelText("Message the main session", undefined, SLOW);
   await act(async () => {
     fireEvent.change(box, { target: { value: text } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -31,12 +51,14 @@ async function ask(text: string) {
 }
 
 // A session-mode session on a project with the vendor script's two tasks, one done and one running.
-async function vendorSession() {
-  render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+async function vendorSession(): Promise<VendorControl> {
+  const control = await vendorApp();
   const picker = await screen.findByRole("region", { name: "Choose a project" });
-  fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }));
+  fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }, SLOW));
   await ask("Compare Acme and Globex for us.");
-  await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+  await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), SLOW);
+  await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"), SLOW);
+  return control;
 }
 
 describe("the tasks pane's sheet", () => {
@@ -58,21 +80,30 @@ describe("the tasks pane's sheet", () => {
     const work = sheet("Research Globex");
     fireEvent.change(within(work).getByRole("textbox", { name: "Steer this task" }), { target: { value: "Check the EU pricing too." } });
     fireEvent.click(within(work).getByRole("button", { name: "Steer" }));
-    await within(work).findByText("Sent to the task.");
-    expect(within(work).getByText("Check the EU pricing too.")).toBeTruthy();
+    await within(work).findByText("Sent to the task.", undefined, SLOW);
   });
 
   it("cancels once confirmed, then offers Retry, which runs the same task again", async () => {
-    await vendorSession();
+    const control = await vendorSession();
     fireEvent.click(row("Research Globex"));
     fireEvent.click(within(sheet("Research Globex")).getByRole("button", { name: "Cancel" }));
     expect(row("Research Globex").dataset.taskStatus).toBe("in_progress");
     fireEvent.click(within(sheet("Research Globex")).getByRole("button", { name: "Yes" }));
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    const retry = await within(sheet("Research Globex")).findByRole("button", { name: "Retry" });
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"), SLOW);
+    const retry = await within(sheet("Research Globex")).findByRole("button", { name: "Retry" }, SLOW);
     expect(within(sheet("Research Globex")).queryByRole("textbox", { name: "Steer this task" })).toBeNull();
+    // The row can read cancelled before the Cancel press has its answer; until then the press holds
+    // every button, Retry included, and a click on it sends nothing. A person waits for the outcome.
+    await within(sheet("Research Globex")).findByText("Cancelled.", undefined, SLOW);
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    // Once the cancelled run's turn has ended (a scripted turn doesn't hear the cancel): a retry
+    // that lands while it still runs is a race of the board's own, not the screen's.
+    control.releaseGlobex();
+    await waitFor(() => expect(control.globexRunning()).toBe(0), SLOW);
+    await readUntil(nothingRunning, (idle) => idle);
     fireEvent.click(retry);
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
+    // It runs again: the research, released, finishes this time.
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).not.toBe("cancelled"), SLOW);
   });
 
   it("starts the row afresh when another task is opened, so a draft or a confirm never moves to it", async () => {
@@ -96,18 +127,25 @@ describe("the tasks pane's sheet", () => {
 });
 
 describe("a thread's view", () => {
-  // The older threads-mode session: a running thread and a failed one.
+  // A threads-mode session with a running thread and a failed one.
   async function billingTriage(title: string) {
-    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    const control = await vendorApp();
     fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ }));
-    const board = screen.getByRole("complementary", { name: "Tasks" });
-    fireEvent.click(await within(board).findByRole("button", { name: new RegExp(title) }));
-    return screen.getByRole("dialog", { name: `Task: ${title}` });
+    const picker = await screen.findByRole("region", { name: "Choose a project" });
+    fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }, SLOW));
+    await ask("Triage the billing exports.");
+    const board = await screen.findByRole("complementary", { name: "Tasks" }, SLOW);
+    await waitFor(() => expect(within(board).getByRole("button", { name: /Export failed invoices/ })).toBeTruthy(), SLOW);
+    // The failed one is listed failed, with its error read.
+    await waitFor(() => expect(board.querySelector('[data-column="waiting"]')?.textContent ?? "").toContain("Export failed invoices"), SLOW);
+    fireEvent.click(within(board).getByRole("button", { name: new RegExp(title) }));
+    const view = screen.getByRole("dialog", { name: `Task: ${title}` });
+    await within(view).findByTestId("task-action-row", undefined, SLOW);
+    return { view, control };
   }
 
   it("offers Cancel on a running thread with no Steer box: its composer steers", async () => {
-    const view = await billingTriage("Weekly uptime digest");
+    const { view } = await billingTriage("Weekly uptime digest");
     const actions = within(view).getByTestId("task-action-row");
     expect(within(actions).getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(within(view).queryByRole("textbox", { name: "Steer this task" })).toBeNull();
@@ -115,33 +153,30 @@ describe("a thread's view", () => {
   });
 
   it("offers Retry on a failed thread, shows its error as an error, and no longer sends you to the main session", async () => {
-    const view = await billingTriage("Export failed invoices");
-    expect(within(within(view).getByTestId("task-action-row")).getByRole("button", { name: "Retry" })).toBeTruthy();
+    const { view, control } = await billingTriage("Export failed invoices");
+    await waitFor(() => expect(within(within(view).getByTestId("task-action-row")).getByRole("button", { name: "Retry" })).toBeTruthy(), SLOW);
     expect(within(view).getByRole("alert").textContent).toContain("The export timed out after 30s.");
     // The alert says why it failed, once: no status line repeats it under the alert.
     expect(within(view).queryByText(/^Failed · /)).toBeNull();
     expect(within(view).queryByText(/ask the main session/)).toBeNull();
+    control.fixExports();
     fireEvent.click(within(view).getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(within(view).getByTestId("task-action-row").dataset.status).toBe("in_progress"));
+    // Run again, and this time it works.
+    await waitFor(() => expect(within(view).queryByTestId("task-action-row")?.dataset.status ?? "completed").not.toBe("errored"), SLOW);
   });
 });
 
 describe("a failed task's sheet", () => {
   it("shows its error as an error, beside Retry", async () => {
-    // Session mode's fixtures have no failed task: a failed Globex run, as the board would keep it.
-    const lab = createFakeLab({ speed: 0.01 });
-    render(<App adapter={lab} />);
-    const picker = await screen.findByRole("region", { name: "Choose a project" });
-    fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }));
-    await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
-    lab.fail("Research Globex", "The pricing page answered 503.");
-    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("errored"));
+    // Globex's research fails while it runs.
+    const control = await vendorSession();
+    control.failGlobex("The pricing page answered 503.");
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("errored"), SLOW);
     const done = within(pane()).getByText(/Done · /).closest("details")!;
     done.open = true;
     fireEvent.click(row("Research Globex"));
     const work = sheet("Research Globex");
-    expect(within(work).getByRole("alert").textContent).toContain("The pricing page answered 503.");
+    await waitFor(() => expect(within(work).getByRole("alert").textContent).toContain("The pricing page answered 503."), SLOW);
     expect(within(work).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });

@@ -49,7 +49,7 @@ const licenses = defineResourceCollection({
   client: { state: { read: true } }
 });
 
-/** An org collection with no `client` config, in a scope whose derived value may read it. */
+/** An org collection with no `client` config. */
 /** An org collection whose rows only their owner may read. */
 const drafts = defineResourceCollection({
   pattern: "drafts/[owner]/[id]",
@@ -57,7 +57,7 @@ const drafts = defineResourceCollection({
   scope: "org",
   flowIsolation: false,
   stateSchema: z.object({ title: z.string().default("") }),
-  // A write grant, and an org scope with a derived value: either makes it publish.
+  // A write grant makes it publish.
   client: { content: { update: true } }
 });
 
@@ -75,7 +75,7 @@ const audit = defineResourceCollection({
   stateSchema: z.object({ n: z.number().default(0) })
 });
 
-/** A session collection no client can read, in a scope with no derived value. */
+/** A session collection no client can read. */
 const ledger = defineResourceCollection({
   pattern: "ledger/*",
   scope: "session",
@@ -89,7 +89,7 @@ function app() {
     kind: "desk",
     org: {
       stateSchema: z.object({ plan: z.string().default("free") }),
-      client: { expose: ["plan"], derived: { audited: () => true } }
+      client: { expose: ["plan"] }
     },
     user: { stateSchema: z.object({ theme: z.string().default("light") }) },
     session: { stateSchema: z.object({ topic: z.string().default("") }) },
@@ -177,7 +177,9 @@ describe("scope-state writes publish on their scope's topic", () => {
     const topiced = await run(bus, "sessionTopic", "billing");
     await run(bus, "requestStep", "two");
     expect(ofKind(user, "state").map((n) => n.origin)).toEqual([{ requestId: themed }]);
-    expect(ofKind(session, "state").map((n) => n.origin)).toEqual([{ requestId: topiced }]);
+    // Each run here births its session, and a birth publishes `state` with no
+    // origin (publish-writes.ts); the run's own state write carries its request.
+    expect(ofKind(session, "state").filter((n) => n.origin !== undefined).map((n) => n.origin)).toEqual([{ requestId: topiced }]);
     expect(ofKind(org, "state")).toEqual([]);
   });
 });
@@ -188,15 +190,17 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
     const heard = hear(bus, orgTopic);
     const requestId = await run(bus, "addLicense", "ada");
     expect(ofKind(heard, "resource")).toEqual([
-      { topic: { ...orgTopic, resource: "licenses/ada" }, kind: "resource", origin: { requestId } }
+      { topic: { ...orgTopic, resource: "licenses/ada" }, kind: "resource", origin: { requestId }, ids: ["licenses/ada"] }
     ]);
   });
 
-  it("publishes a resource with no client config when its scope declares a derived value", async () => {
+  // A scope's `derived` once made every resource of its scope publish; it is
+  // removed, and only a view on the host does that now (views.test.ts).
+  it("publishes nothing for a resource with no client config, on a host with no view", async () => {
     const bus = createInMemoryBus();
     const heard = hear(bus, orgTopic);
     await run(bus, "audit", "a1");
-    expect(ofKind(heard, "resource").map((n) => n.topic.resource)).toEqual(["audit/a1"]);
+    expect(ofKind(heard, "resource")).toEqual([]);
   });
 
   it("publishes a single resource a client can read, though it is neither live nor reactive", async () => {
@@ -254,13 +258,13 @@ describe("the client's resource routes publish the session's topic", () => {
     const ctx = { registry, stores };
 
     const created = await handleCreateCollectionResource(
-      new Request("http://x/sessions/sess_1/resources/notes", { method: "POST", body: JSON.stringify({ topic: "a" }) }),
+      new Request("http://x/sessions/sess_1/resources/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic: "a" }) }),
       { kind: "create_collection_item", sessionId: "sess_1", ref: "notes" },
       ctx
     );
     await tick();
     const updated = await handleUpdateResourceContent(
-      new Request("http://x/sessions/sess_1/resources/notes/a/content", { method: "PATCH", body: JSON.stringify({ content: "x" }) }),
+      new Request("http://x/sessions/sess_1/resources/notes/a/content", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: "x" }) }),
       { kind: "update_resource_content", sessionId: "sess_1", ref: "notes", topic: "a" },
       ctx
     );
@@ -272,7 +276,8 @@ describe("the client's resource routes publish the session's topic", () => {
     );
     await tick();
     expect([created.status, updated.status, deleted.status]).toEqual([201, 200, 200]);
-    const notice = { topic: { ...sessionTopic("sess_1"), resource: "notes/a" }, kind: "resource" };
+    // FIX-2625: the entry's storage key, beside the path that names it, so a reader reads one field.
+    const notice = { topic: { ...sessionTopic("sess_1"), resource: "notes/a" }, kind: "resource", ids: ["notes/a"] };
     expect(ofKind(heard, "resource")).toEqual([notice, notice, notice]);
   });
 });

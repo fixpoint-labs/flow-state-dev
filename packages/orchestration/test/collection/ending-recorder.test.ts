@@ -32,7 +32,7 @@ const LEDGER = "ending-tasks";
 
 function ctxFor(): BlockContext {
   return {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
     request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;
@@ -132,7 +132,7 @@ describe("an ending written with its recorder's metadata, in one write", () => {
     expect(r.seen.map((s) => s.ending)).toEqual([{ kind: "cancelled", reason: "not needed" }]);
   });
 
-  it("errored by the claim path, when a dead worker's row has no abandonments left", async () => {
+  it("errored by the claim path, when a dead worker's entry has no abandonments left", async () => {
     let clock = 1_000;
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding, () => clock);

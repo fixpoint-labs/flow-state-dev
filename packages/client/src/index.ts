@@ -31,6 +31,7 @@ export {
   type StreamOption,
   type TranscribeRequest,
   type TranscribeResponse,
+  type UploadRequest,
   type TypedFlow,
   type UntypedFlow,
   type UpdateResourceContentOptions,
@@ -39,6 +40,15 @@ export {
 } from "./client";
 
 export type { SubscribeOptions, Subscription } from "./subscribe/push-hub";
+export type { LiveRead, LivePaths, LiveReadOptions, LiveReadWithTopicsOptions, LiveResult } from "./live/live-read";
+export {
+  viewRef,
+  type ViewCallOptions,
+  type ViewInputOf,
+  type ViewRef,
+  type ViewResult,
+  type ViewValueOf
+} from "./view/view";
 // The wire topics `subscribe` takes, and the notice `onChange` gets.
 export { topic } from "@flow-state-dev/contracts";
 export type { ChangeKind, PushCapability, TopicOptions, WireNotice, WireTopic } from "@flow-state-dev/contracts";
@@ -99,6 +109,17 @@ export {
   type CollectionReadStopReason,
   type ReadEveryCollectionPageOptions
 } from "./resource-client/read-every-page";
+export {
+  ResourceWriteError,
+  type ScopeCollectionHandle,
+  type ScopeEntry,
+  type ScopeEntryHandle,
+  type ScopeEntryPage,
+  type ScopeHandleOf,
+  type ScopeResourceDef,
+  type ScopeResourceHandle,
+  type ScopeResourceRead
+} from "./resource-client/scope-resource";
 
 export type {
   ClientFetch,

@@ -1,4 +1,5 @@
-import type { LabWorker } from "../adapter";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import { displayName, roleOf } from "../lib/roster";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ownEscape, useFocusReturn } from "../lib/keys";
@@ -20,7 +21,7 @@ export function Switcher({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  teammates: LabWorker[];
+  teammates: RosterEntry[];
   onPick: (worker: string) => void;
   onHire: () => void;
 }) {
@@ -44,14 +45,14 @@ export function Switcher({
                 <CommandItem
                   key={w.id}
                   value={w.id}
-                  keywords={[w.name, w.role]}
+                  keywords={[displayName(w), roleOf(w)]}
                   onSelect={() => {
                     focus.picked();
                     onPick(w.id);
                   }}
                 >
-                  <span className="truncate">{w.name}</span>
-                  {w.role ? <span className="ml-auto truncate text-xs text-muted-foreground">{w.role}</span> : null}
+                  <span className="truncate">{displayName(w)}</span>
+                  {roleOf(w) ? <span className="ml-auto truncate text-xs text-muted-foreground">{roleOf(w)}</span> : null}
                 </CommandItem>
               ))}
             </CommandGroup>

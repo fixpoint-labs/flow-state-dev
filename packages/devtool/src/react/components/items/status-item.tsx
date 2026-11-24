@@ -10,17 +10,18 @@ import type { StatusItem } from "@flow-state-dev/core/items";
 import { sideChainTaskCount, sideChainTaskLabel } from "../../lib/side-chain-task-count";
 import { Loader2 } from "lucide-react";
 
-export function StatusItemView({ item }: { item: StatusItem }) {
-  const hasMessage = typeof item.message === "string" && item.message.length > 0;
+/**
+ * The label a status item renders, or `null` when it has nothing to show.
+ * `ItemRenderer` reads this too, so a label-less item gets no row wrapper.
+ */
+export function statusItemLabel(item: StatusItem): string | null {
+  if (typeof item.message === "string" && item.message.length > 0) return item.message;
   const pending = sideChainTaskCount(item);
+  return pending === undefined ? null : sideChainTaskLabel(pending);
+}
 
-  let label: string | null = null;
-  if (hasMessage) {
-    label = item.message;
-  } else if (pending !== undefined) {
-    label = sideChainTaskLabel(pending);
-  }
-
+export function StatusItemView({ item }: { item: StatusItem }) {
+  const label = statusItemLabel(item);
   if (label === null) return null;
 
   return (

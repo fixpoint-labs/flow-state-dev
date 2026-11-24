@@ -101,7 +101,7 @@ function host() {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: "implement", buildPrompt: async (run) => `Work on ${run.issue}.`, isDone: async () => true },
+    mode: { name: "implement", instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     // Long past the test's wait: the run ends early only if the steer stops it.
     runTimeoutMs: 15_000,
@@ -153,7 +153,7 @@ function host() {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "cc-steer-host" } as never);
   const state = createFlowState({
-    flows: { "cc-steer-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

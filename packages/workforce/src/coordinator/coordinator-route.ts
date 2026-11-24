@@ -114,9 +114,10 @@ export type CoordinatorRouteRecord = z.infer<typeof coordinatorRouteRecordSchema
  * fire-and-forget emitter.
  */
 export async function emitCoordinatorRoute(ctx: BlockContext, record: CoordinatorRouteRecord): Promise<void> {
-  const emit = ctx._emitComponentAwaited;
+  const emit = ctx._emitDataAwaited;
   if (emit === undefined) {
     throw new Error("coordinator route: this context cannot confirm the decision was recorded, so it routes nobody");
   }
-  await emit.call(ctx, COORDINATOR_ROUTE, coordinatorRouteRecordSchema.parse(record));
+  // A client draws the record beside the conversation; no model reads it as a line.
+  await emit.call(ctx, COORDINATOR_ROUTE, coordinatorRouteRecordSchema.parse(record), { itemVisibility: { client: true, history: false } });
 }

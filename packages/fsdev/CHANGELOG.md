@@ -1,0 +1,636 @@
+# @flow-state-dev/fsdev
+
+## 1.0.0
+
+### Patch Changes
+
+- 819c2a5: **Breaking:** `getAssetPath()` is renamed `getDevToolAssetPath()`, so the name no longer means two things across published packages (FIX-2449). `getAssetPath()` stays the name an app package exports for `fsdev dev --app`. No deprecated alias. `fsdev`'s optional peer on `@flow-state-dev/devtool` is now a caret range on this release, so an older DevTool no longer satisfies it.
+
+  Docs: packages/devtool/README.md (the `getAssetPath(): string` section and its example become `getDevToolAssetPath()`)
+
+- 44b199d: FIX-2805: Every host now refuses to serve an app that still trusts `body.userId`, on any `NODE_ENV`, including when it is unset. `serve()` throws before listening on a non-loopback host, and a flow registered after that still gets a 500. Lambda, Next, and Vercel do the same on each request. The 500 body is `Internal server error`; the flow kinds are logged once. A loopback bind (`127.0.0.1`, `localhost`) is unchanged. `allowUnauthenticated: true`, and `fsdev serve` / `fsdev dev --allow-unauthenticated`, is the override.
+
+  A network `serve()` initializes stores before the port opens, so `/healthz` is not up during that cold start.
+
+  Docs: packages/node/README.md (the quick start `await serve(flowState)` and `await serve(flowState, { pushSecret })` throw on the default host `0.0.0.0` unless every flow has a resolver or the call passes `host: "127.0.0.1"` or `allowUnauthenticated: true`; the network-bind section should say `serve()` runs the check itself, keeps checking after `register()`, and that Lambda, Next, and Vercel return a generic 500 with the kinds only in the log), apps/docs/docs/server/host-adapters.md (`await serve(flowstate, { basePath: "/flows" })` needs a resolver or a loopback host), apps/docs/docs/configuration/client.md (the `serve(flowstate, { basePath: "/flows" })` comment, same), apps/docs/guides/deployment.md (a hand-written `serve()` runs the same guard as `fsdev serve`), apps/docs/guides/realtime.md (`serve(flowstate, { pushSecret })` needs a resolver or `host: "127.0.0.1"`). `apps/docs/docs/workforce/overview.md` already sets `resolvePrincipal`, so that `serve(flowState, { port: 3000 })` sample keeps working.
+
+- 3973e1f: An idle view stops re-reading on changes that can't touch what it shows (FIX-2695).
+
+  - **client:** `client.live` with `topicsFromResult` now applies a result's `hears` (a view's answer, from `client.view`): a notice under the answer's topics that its hearings don't admit reads nothing. `LiveResult` gains an optional `hears`. Before, only `useView` applied it; a screen that passed `client.view`'s answer to `client.live` re-read on every notice under the topics, including each chunk of a reply streaming in the session.
+  - **client:** when a live read's answer names new topics, it subscribes them before it lets go of the old ones, so a client whose only subscription is that live read keeps its socket instead of closing it and opening another.
+  - **engine:** a view that reads a session's state hears only that session's `state` notices. A reply streaming in the session (`items`, `request`) and a request stamping the session record (`run`) no longer wake it. A view that reads the session itself (its items, metadata, window or journal, or another session through the request host) still hears every kind but `resource` and `board`.
+  - **engine:** `publishScopeChange` is exported from `@flow-state-dev/engine/host`, for a host that writes a scope's state outside a run.
+  - **fsdev:** `fsdev run --seed-session` on an existing session publishes a `state` notice on that session, so a live view that read its state reads again.
+
+  Docs: none for users beyond the client reference's `client.live` entry (`hears` on a `topicsFromResult` result), if it lists `LiveResult`'s fields.
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [801aa5e]
+- Updated dependencies [61efa05]
+- Updated dependencies [ffbe992]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [abed271]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [819c2a5]
+- Updated dependencies [8523060]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [78daf33]
+- Updated dependencies [4394069]
+- Updated dependencies [5f1c26a]
+- Updated dependencies [7ddae5c]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [58db1c3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [2e63b30]
+- Updated dependencies [e238e18]
+- Updated dependencies [cc91d7a]
+- Updated dependencies [3f23173]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [8d4dd64]
+- Updated dependencies [42980e4]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [6b68a97]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [18adad9]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [9f8b8d3]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [5ce9228]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [298aae0]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [89b40bc]
+- Updated dependencies [b5b52b9]
+- Updated dependencies [d0e892d]
+- Updated dependencies [ee91375]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/store-sqlite@0.5.0
+  - @flow-state-dev/devtool@0.4.0
+  - @flow-state-dev/node@0.4.0
+  - @flow-state-dev/workspace@0.5.0
+  - @flow-state-dev/testing@0.4.0
+
+## 0.5.0
+
+### Minor Changes
+
+- 7871b26: `fsdev` now loads `fsdev.config.ts` / `fsdev.config.mts` itself on any Node 22, so the config and the files it imports use extensionless relative imports (`./src/flows/chat/flow`) and your `tsconfig` path aliases (`@/...`) like the rest of the app, with no tsx, no `allowImportingTsExtensions` and no Node 22.18 requirement; `jiti` is now a runtime dependency, and `fsdev.config.js` / `.mjs` load with a plain Node import as before (FIX-2451). The app's runtime lives in one file: default-export `createFlowState(...)` from `fsdev.config.ts`, which both `fsdev` and the app's route import, and mount it in Next.js with one optional catch-all route, `src/app/api/flows/[[...path]]/route.ts` exporting `GET, POST, PATCH, DELETE` from `createNextHandler`, which also answers the bare `/api/flows`.
+
+  Docs: apps/docs/docs/getting-started/quick-start.md, apps/docs/docs/getting-started/your-first-flow.md, apps/docs/docs/getting-started/installation.md, apps/docs/docs/getting-started/project-structure.md, apps/docs/docs/getting-started/setting-up-models.md, apps/docs/docs/getting-started/existing-project.md, apps/docs/docs/cli/configuration.md, packages/cli/README.md, packages/next/README.md
+
+### Patch Changes
+
+- c67aa49: `fsdev run` says why an `intent/*` model has nothing to resolve to when no `fsdev.config.*` is found (FIX-2451). After the run's error, stderr names the directory searched, says that the file which calls `createFlowState` is not read, and points at default-exporting `createFlowState(...)` from `fsdev.config.ts` or passing `--config <path>`. `--quiet` suppresses it. Runs that load a config, and failures of any other kind, are unchanged.
+
+  `@flow-state-dev/core` now throws that resolver failure as `UnresolvedIntentError`, a `FlowError` with `code: UNRESOLVED_INTENT_CODE` (`"unresolved_intent"`) and `details.intent`, so callers can recognise it without matching the message. Both are exported from the `@flow-state-dev/core/errors/unresolved-intent-error` subpath, not the package root. The message is unchanged.
+
+- Updated dependencies [73f8352]
+- Updated dependencies [531bf32]
+- Updated dependencies [a124a8e]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [4d3f49e]
+- Updated dependencies [a1386ea]
+- Updated dependencies [46e4297]
+- Updated dependencies [d3eaa00]
+- Updated dependencies [f1e6315]
+- Updated dependencies [45c158b]
+- Updated dependencies [bc65135]
+- Updated dependencies [65ee4c5]
+- Updated dependencies [dabee4a]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/workspace@0.4.0
+  - @flow-state-dev/engine@0.5.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/store-sqlite@0.4.0
+  - @flow-state-dev/devtool@0.3.2
+  - @flow-state-dev/node@0.3.0
+  - @flow-state-dev/testing@0.3.2
+
+## 0.4.0
+
+### Minor Changes
+
+- cc0ab62: Choose where a coding session starts, and remove what it left on disk (FIX-2419).
+
+  - `@flow-state-dev/workspace`: a `baseRef` naming a pinned remote's branch (`origin/main`) in a listed repository is fetched before the cut, and refused as `remote-unreadable` when the fetch fails. `PlaceRequest.existing` checks a branch out instead of cutting one, making it from the remote's when absent (`no-such-branch` when there is none). `localWorkspaceHost` gains `list()` and `remove(target, { deleteBranch?, force? })`, the one removal path, which refuses uncommitted work (`uncommitted-work`), a place mid-provision (`place-busy`) and, unless forced, deleting a branch that holds the only copy of a commit, or removing a detached HEAD that does (`unique-commits`). `pullRequestHead` resolves a same-repository pull request to its head branch. `occupyWorktree` holds a worktree in use (`<dir>.lock`), and `remove` refuses one a run holds (`in-use`); `checkedOutBranch` reads the branch a worktree is on.
+  - `@flow-state-dev/harness-manager`: harness session state gains `start` (`{ base } | { branch } | { pullRequest } | { worktreeOf }`, fixed at create like `model`) and a server-owned `workspace` record. `HarnessSessionWorkspace.provision(place, { start })` may return `{ path, branch }`; the turn-end pull-request check reads the recorded branch. A `removeWorktree` action, refused while a turn runs, calls the workspace's optional `remove`. `resolveHarnessSessionStart` maps a start to a workspace host's request. `{ worktreeOf: sessionId }` attaches a session to another session's worktree and branch: refused at create (404) when that worktree isn't there in the caller's tenant and at its turn when it isn't in the user's own list of worktrees, each turn holds the same in-use lock as the owner's, only the owner may `removeWorktree`, and an attached turn that leaves the worktree on another branch is recorded as failed. The workspace record carries `owner`.
+  - `@flow-state-dev/fsdev`: `fsdev worktrees <root>` lists a workspace host's worktrees and removes one with `--remove`.
+
+### Patch Changes
+
+- e0daf6e: Stores profiles take a `bus` slot: a change bus that carries notices that something under a session, user or org changed (`ChangeBus`, `ChangeNotice`, `BusTopic`, `createInMemoryBus`). Every request and session write publishes on its session's topic, through `withChangeBus`, which `resolveStores`, `createFlowState`, `runAction`, BullMQ's job processor and `fsdev run` / `chat` apply. The session stream (`GET /sessions/:id/stream`) now reads when a notice wakes it, at most once a second; on a bus that crosses processes it reads nothing while the session is idle. The in-memory bus, the default and the only one that ships today, keeps the once-a-second read as well, so nothing changes for a deployment that sets no `bus`. A `bus` adapter declares `"bus"` in its capabilities and resolves `{ bus }`. `@flow-state-dev/contracts` (re-exported by core) adds `ChangeKind` and the wire topic constructors `topic.session(id)`, `topic.user()` and `topic.org()` (FIX-2426).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [70f09b5]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [9a355b2]
+- Updated dependencies [488b203]
+- Updated dependencies [824ce87]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [8469809]
+- Updated dependencies [6c4a3b3]
+- Updated dependencies [cb395b2]
+- Updated dependencies [cc0ab62]
+  - @flow-state-dev/engine@0.4.0
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/devtool@0.3.1
+  - @flow-state-dev/workspace@0.3.0
+  - @flow-state-dev/node@0.2.1
+  - @flow-state-dev/store-sqlite@0.3.1
+  - @flow-state-dev/testing@0.3.1
+
+## 0.3.0
+
+### Minor Changes
+
+- b75c1ed: `fsdev run` and `fsdev chat` now run as whoever the app's resolver names (new `FlowState.resolveInProcessPrincipal`, with `source: "cli"` reserved for it), stop with exit 2 before writing anything when that resolver or a seat's pin refuses the terminal (a `--session` owned by another user or organization now also exits 2 instead of 1), and take `--org`/`--user` to name the identity locally (FIX-1551).
+- ad5df6f: Durable execution is on by default wherever stores persist (FIX-2063). `createFlowState` over filesystem, SQLite or Postgres stores now installs the checkpoint durability provider without `durable: true`; over in-memory stores it still installs none unless `durable: true` is set. `resolveDurabilityProvider({ stores, durable })` exports the rule for hosts that build `createFlowApiRouter` or call `runAction` themselves, and the in-memory checkpoint and suspension stores declare `persists: false`.
+
+  `ctx.suspend()` on a host without durable execution now throws an error that names the rule and the setting to change, instead of "requires a DurabilityProvider". The durability sweeper arms for a pending stop's deadline as it does for a wait's, and reads the store's deadlines once at start.
+
+  A no-config `fsdev run` now writes to `.fsdev/data/fsdev.db` (the SQLite file `fsdev dev` reads) instead of JSON files under `.fsdev/data`, and runs as `devuser`, the DevTool's default user (exported as `DEFAULT_LOCAL_USER_ID` from `@flow-state-dev/core`), instead of `cli-user`. `fsdev run` and `fsdev chat` use `devuser` as the default user with a config too. A run that stops for a person exits 0 with a `suspended` NDJSON event, `result.suspended` in `--capture`, and a waiting report on stderr. The no-config `fsdev dev` router is durable and sweeps. `--store filesystem` on `fsdev run` and `fsdev dev` keeps the JSON-file store, single-process.
+
+  **Migration.** An app on persisting stores that never set `durable` now:
+
+  - writes a checkpoint at every step of every sequencer (sequencers already default to `durable: true`),
+  - resumes a request that crashed instead of rerunning it,
+  - holds a raw `ctx.suspend()` until it is answered, where it used to fail the request,
+  - runs the durability sweeper wherever it serves a router: a lease and a scan of pending stops on each tick, even when nothing waits.
+
+  Set `durable: false` on `createFlowState` to keep the old behavior. Sessions a no-config `fsdev run` wrote as JSON files are not read by the SQLite default; pass `--store filesystem` to read them. Scripts that look up CLI sessions by `cli-user` should use `devuser`, or pass `--user cli-user`.
+
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+- a600325: `fsdev gen` no longer depends on `@flow-state-dev/workforce`. It runs the generator a dependency of the app exports on a `./fsdev-gen` subpath (typed as `FsdevGenerator`), and `@flow-state-dev/workforce` now exports its generator there, so a Workforce app runs `fsdev gen` as before. `GenResult` reports `generator`, `entries`, `paths` and `summary` in place of the Workforce discovery lists, and `--root` defaults to the generator's own folder (FIX-1771).
+- e9f9316: `fsdev gen` now finds the blocks in every package's `blocks/` folder and writes them to a new `packageBlocks` export, so `fsdev gen --check` reports a generated file that predates them as out of date (FIX-1459).
+- 7da156e: Organization ids are now validated as well-formed, non-blank Unicode everywhere (resolver, `runAction`, dispatch, BullMQ jobs, schedules, `fsdev run --org`) and seat addresses escape any such id, while route segments are decoded exactly once on every host (`parseFlowRoute` now takes decoded segments, built from a raw URL by the new `decodePathSegments`), so escaped seat ids resolve on Next and Vercel and stored rows or queued jobs with a lone-surrogate org id are now refused (FIX-1757).
+- 97894aa: A flow can check every new session's initial state with `session.createCheck`, refuse caller-seeded fields with `session.serverOwned`, and fix a field for a session's life by declaring it `.readonly()` in its session `stateSchema`; `listSessions({ state })` and the list route's `state.<field>` filter select sessions by a readonly field. On a flow that binds its sessions this way (a readonly field or a create check), an initial state that fails the `stateSchema` is refused on every path that creates a session; other flows keep it as sent. A dispatcher's `session: { key, state }` and a task dispatcher's `state` create the child session with that state. `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).
+
+### Patch Changes
+
+- 204860e: `declaredDevtoolConfig(flowState)` is now exported: the `devtool` block (user and bearer) an app's `fsdev.config.*` declares, or `undefined` when the block is empty, exactly as `fsdev dev` reads it. A host that serves its own pages through `serve()` can hand the same config to them (FIX-1662).
+- 7f892f6: `fsdev dev` gains `--app <package|dir>`, which serves an app's built pages at the root of the port beside the flow API and moves the DevTool to a port of its own, handing each page its address as the `fsdev-devtool-url` meta; and `--host` with `--allow-unauthenticated`, where a non-loopback host runs `fsdev serve`'s authentication check, refuses a config that hands its page a bearer token, and keeps the debug surface closed. `--port` now refuses a value that isn't a whole number, and `executeDevCommand` resolves with a handle to close the server (FIX-1770).
+- 9cc903f: `fsdev dev --app` also takes the path of a package's module file, `locateConfig` is exported so a wrapping command finds the config the way `fsdev dev` does, and a `--watch` restart exits after at most 3 seconds instead of waiting on runs still going (FIX-1770).
+- 83c48a7: `fsdev dev` gains `--watch`: the server restarts on the same port when a file the config loaded, or a file in the config's folder, is saved, and the pages open on it reload by themselves; a failed restart waits for the next save, and it binds loopback only. With `--app`, a package that also exports `getSourceRoot()` is served from that folder through the Vite its own install resolves, falling back to its built pages (FIX-1770).
+- 82ec64e: `fsdev ui add a b c` installs every component in one shadcn call. It used to call shadcn once per component, so a later component that shared a dependency with an earlier one stopped at an overwrite prompt for the file the earlier call had just written (FIX-1655).
+- 65ddb90: Each request's record now stores its action result (`output` as JSON, and/or `error`) with its final status, `listSessionRequests` returns it (the output with `includeResultOutput`), the DevTool task row reads it instead of reconstructing it from traces, and a run a completion hook failed after the action answered now reports that answer as `output` (including `fsdev run`'s result, where it was `null`) (FIX-1661).
+- Updated dependencies [92b2b70]
+- Updated dependencies [20aa58f]
+- Updated dependencies [5d31955]
+- Updated dependencies [bea14a0]
+- Updated dependencies [15f7c6b]
+- Updated dependencies [24afa6e]
+- Updated dependencies [f8df86f]
+- Updated dependencies [82eea02]
+- Updated dependencies [e2c190e]
+- Updated dependencies [0d55d46]
+- Updated dependencies [1abab86]
+- Updated dependencies [8e67ce5]
+- Updated dependencies [920adc3]
+- Updated dependencies [283fb2a]
+- Updated dependencies [dd353e2]
+- Updated dependencies [3221d05]
+- Updated dependencies [58ffc93]
+- Updated dependencies [f97b0ed]
+- Updated dependencies [397cfa7]
+- Updated dependencies [9f06d39]
+- Updated dependencies [452b702]
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [3b5266a]
+- Updated dependencies [2ffc03c]
+- Updated dependencies [646f8d2]
+- Updated dependencies [16a8dab]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [698e06b]
+- Updated dependencies [25ac53a]
+- Updated dependencies [456fe85]
+- Updated dependencies [6453d2c]
+- Updated dependencies [62133c4]
+- Updated dependencies [f282bcb]
+- Updated dependencies [651c87e]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [d5ce1e0]
+- Updated dependencies [55c62a6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [89af7db]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [9490722]
+- Updated dependencies [a3bfbc2]
+- Updated dependencies [f6461ea]
+- Updated dependencies [f469423]
+- Updated dependencies [2c213b4]
+- Updated dependencies [5492a77]
+- Updated dependencies [6819520]
+- Updated dependencies [099906a]
+- Updated dependencies [ad5df6f]
+- Updated dependencies [5902deb]
+- Updated dependencies [2ce15c7]
+- Updated dependencies [4f2e13e]
+- Updated dependencies [211679a]
+- Updated dependencies [dd80e01]
+- Updated dependencies [2ce15c7]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [04ff39d]
+- Updated dependencies [e71ea1a]
+- Updated dependencies [60d1bf4]
+- Updated dependencies [49d6397]
+- Updated dependencies [bb1c224]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [42bfbe6]
+- Updated dependencies [fe5df7d]
+- Updated dependencies [423a405]
+- Updated dependencies [08a9b05]
+- Updated dependencies [57323b9]
+- Updated dependencies [7da156e]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [430db1b]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [f9995b1]
+- Updated dependencies [5a55080]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [3a6c910]
+- Updated dependencies [80f6e25]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [3cbab3a]
+- Updated dependencies [3cbab3a]
+- Updated dependencies [b2d2679]
+- Updated dependencies [bb16f3a]
+- Updated dependencies [849f6ec]
+- Updated dependencies [028af6f]
+- Updated dependencies [a965a50]
+- Updated dependencies [008c63e]
+- Updated dependencies [7f892f6]
+- Updated dependencies [83c48a7]
+- Updated dependencies [eb831f8]
+- Updated dependencies [41638f3]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [a64132b]
+- Updated dependencies [db7df1c]
+- Updated dependencies [0d6278e]
+- Updated dependencies [968faa6]
+- Updated dependencies [653549d]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [c6b2db9]
+- Updated dependencies [6a3ecf5]
+- Updated dependencies [839e915]
+- Updated dependencies [711ed0e]
+- Updated dependencies [72c5b17]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [0935a47]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [0995afe]
+- Updated dependencies [adbcf0b]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [1027b98]
+- Updated dependencies [1cfd80c]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [3b0161c]
+- Updated dependencies [d86c7db]
+- Updated dependencies [385d01e]
+- Updated dependencies [fa7b22e]
+- Updated dependencies [a4e626b]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [83cd9c2]
+- Updated dependencies [3311cc2]
+- Updated dependencies [2ab7ea2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [637b6d5]
+- Updated dependencies [60c8192]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [71b0174]
+- Updated dependencies [295e96a]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [97894aa]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [334c1e3]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [92a8b49]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [9f32967]
+- Updated dependencies [b7c523b]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [b552b50]
+- Updated dependencies [a021cd1]
+- Updated dependencies [0d02bcf]
+- Updated dependencies [c8c8b38]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [cd180d7]
+- Updated dependencies [6306a75]
+- Updated dependencies [68b8957]
+- Updated dependencies [e11764a]
+- Updated dependencies [2c43888]
+- Updated dependencies [872a088]
+- Updated dependencies [9cd314d]
+- Updated dependencies [9af8ce5]
+- Updated dependencies [30aa133]
+- Updated dependencies [912ae98]
+- Updated dependencies [7052203]
+- Updated dependencies [6e1a819]
+- Updated dependencies [5f9980c]
+- Updated dependencies [387f95c]
+- Updated dependencies [0d6278e]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [a26e426]
+- Updated dependencies [69ba29c]
+- Updated dependencies [d97031f]
+- Updated dependencies [f741004]
+- Updated dependencies [49d2aca]
+- Updated dependencies [3c10d9d]
+- Updated dependencies [ce8f765]
+- Updated dependencies [96ff077]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/devtool@0.3.0
+  - @flow-state-dev/store-sqlite@0.3.0
+  - @flow-state-dev/testing@0.3.0
+  - @flow-state-dev/node@0.2.0
+
+## 0.2.0
+
+### Minor Changes
+
+- 17e9748: Workers can call custom tools written as files. A `blocks/` folder registers a block name for the workers that can see it — the app's own folder for everyone, a team's for that team, a worker's own for that one seat — and a worker's `tools:` resolves a name nearest first. Registering does not grant use: the worker still names the block. `fsdev gen` exports the per-seat map as `seatBlocks`, which `hireWorkforce` now takes.
+
+  Migration: a worker kind that hand-declares the admission contract instead of composing `workerConfigSchema()` must add the new `seatTools` key, or it refuses its roster at startup naming that key (FIX-1416).
+
+- b48158a: Organization identity is now required on every request (FIX-1442).
+
+  A session, request, dispatched child and scheduled job each carry an
+  organization, and the server checks it on reads and execution alongside the
+  user. It comes from a configured `resolvePrincipal`, or — when an app
+  configures no resolver — from the new reserved `DEFAULT_ORG_ID` exported by
+  `@flow-state-dev/core`. A caller-supplied `orgId` is never authoritative.
+
+  **What you need to change**
+
+  - A resolver must return a verified `orgId`. Returning none, a blank one, or
+    `DEFAULT_ORG_ID` is refused with 401. A machine transport may return
+    `{ orgId }` alone and let `defaultUserId` name its system user.
+  - Direct `runAction` calls must pass `orgId` — your verified organization, or
+    `DEFAULT_ORG_ID` for single-organization development.
+  - `authentication.requireOrg` and a block's `requireOrg` are removed.
+    Organization is unconditional, so the declaration had nothing left to say;
+    a config that still carries either is rejected at definition time rather
+    than ignored.
+  - Client and React session APIs no longer take an `orgId` — the server owns
+    it. `SessionDetail.orgId` is now required on the way back.
+  - `openChannels` no longer takes an `orgId`; the server binds the channel.
+  - A queued BullMQ job that carries no organization now fails terminally
+    instead of being retried: a worker runs below principal resolution, so no
+    later attempt could supply one. Subscribers receive an error terminal rather
+    than waiting for a job that never completes.
+
+  **The schedule index stores the organization.** `schedule_index` gains a
+  nullable `org_id` column in both the SQLite and PostgreSQL adapters, so the
+  organization a schedule fires into survives a round trip through the database.
+  The column is added for you on the next schema init — there is no manual DDL
+  step. Existing rows read back with no organization and are quarantined rather
+  than dispatched, so a schedule written before this upgrade does not fire until
+  it is attributed; rewriting it stamps the organization of the execution that
+  writes it.
+
+  **Upgrading a store with existing data.** Records written before this carry no
+  organization. They are preserved and refused (`409 migration-required`) rather
+  than guessed at, and listings and scheduler scans skip them. Attribute them
+  offline first — the procedure, including dynamic schedules, index rebuild and
+  the reserved-id collision check, is in the persistence guide under "Which
+  organization a record belongs to".
+
+- 8bfb08c: `fsdev gen` now finds the TypeScript in a workforce tree's `resources/` folders and exports it as a fourth map, `resourceModules` (FIX-1388).
+
+  **Your committed `workforce.gen.ts` goes stale on upgrade**, whether or not your tree has any `resources/` modules: the file gains the fourth map and a line of its header. `fsdev gen --check` stays red until you run `fsdev gen` and commit the result.
+
+  `renderWorkforceCode` takes the discovered modules as a second argument.
+
+### Patch Changes
+
+- Updated dependencies [0f812c9]
+- Updated dependencies [b597600]
+- Updated dependencies [8faf08e]
+- Updated dependencies [68fb69c]
+- Updated dependencies [17e9748]
+- Updated dependencies [0508765]
+- Updated dependencies [795b550]
+- Updated dependencies [9062055]
+- Updated dependencies [802c053]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [3e43c96]
+- Updated dependencies [4cd4f13]
+- Updated dependencies [d49f255]
+- Updated dependencies [1a3a009]
+- Updated dependencies [8291951]
+- Updated dependencies [b48158a]
+- Updated dependencies [0056b97]
+- Updated dependencies [f7e98d9]
+- Updated dependencies [f25f03c]
+- Updated dependencies [8bfb08c]
+- Updated dependencies [c315362]
+- Updated dependencies [68d836a]
+- Updated dependencies [e4c443e]
+- Updated dependencies [caffe1c]
+- Updated dependencies [bff5e06]
+- Updated dependencies [e4b6576]
+  - @flow-state-dev/workforce@0.3.0
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/devtool@0.2.0
+  - @flow-state-dev/engine@0.2.0
+  - @flow-state-dev/testing@0.2.0
+  - @flow-state-dev/store-sqlite@0.2.0
+  - @flow-state-dev/node@0.1.3
+
+## 0.1.2
+
+### Patch Changes
+
+- b56e7d1: Every package can be imported again: 0.1.1 shipped JavaScript whose relative imports were missing the file extensions Node's ESM resolver requires, so importing any 0.1.1 package failed with `ERR_MODULE_NOT_FOUND` (FIX-1431).
+- Updated dependencies [b56e7d1]
+  - @flow-state-dev/core@0.1.2
+  - @flow-state-dev/devtool@0.1.2
+  - @flow-state-dev/engine@0.1.2
+  - @flow-state-dev/node@0.1.2
+  - @flow-state-dev/store-sqlite@0.1.2
+  - @flow-state-dev/testing@0.1.2
+  - @flow-state-dev/workforce@0.2.1
+
+## 0.1.1
+
+### Patch Changes
+
+- 2b728c2: Custom flow kinds and blocks now register from the file tree: `fsdev gen` walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/` and writes a committed module exporting the `kinds`, `channelKinds` and `blocks` maps that `hireWorkforce`, `channelInstances` and a task board already take, so adding one no longer needs a startup line (FIX-1357).
+- Updated dependencies [7c52923]
+- Updated dependencies [cee0c62]
+- Updated dependencies [8270f00]
+- Updated dependencies [efd4981]
+- Updated dependencies [3c15e14]
+- Updated dependencies [d195a90]
+- Updated dependencies [33c8d10]
+- Updated dependencies [2b728c2]
+- Updated dependencies [a8e22c4]
+- Updated dependencies [bbecd2d]
+- Updated dependencies [23bc757]
+- Updated dependencies [119936d]
+- Updated dependencies [2f74e07]
+- Updated dependencies [7986a48]
+- Updated dependencies [8a1173a]
+- Updated dependencies [70f787e]
+- Updated dependencies [f9a3626]
+- Updated dependencies [af6d6b9]
+- Updated dependencies [d46fb72]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/workforce@0.2.0
+  - @flow-state-dev/devtool@0.1.1
+  - @flow-state-dev/engine@0.1.1
+  - @flow-state-dev/node@0.1.1
+  - @flow-state-dev/store-sqlite@0.1.1
+  - @flow-state-dev/testing@0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- b3e6e22: Initial release (FIX-1187).
+
+### Patch Changes
+
+- afcac3d: A flow declares its `cardinality` — `"singleton"` (the default: `myFlow()` is the one instance, addressed by its kind, and `myFlow({ id: "default" })` now throws) or `"collection"` (several configured copies, each registered under its own required `id`) — every address (the action, stream, resume, retry and continue routes, `fsdev run`, dispatchers, BullMQ jobs, MCP, webhook and schedule dispatch) is the exact instance id with no first-registered fallback, every session and request records its owning `flowId` and is refused when reached through another instance (`FlowInstanceBindingMismatchError`; `409 wrong-instance-session` / `wrong-instance-request` / `migration-required` on the routes), and SQLite and Postgres add a nullable indexed `flow_id` column with no backfill (FIX-1321, FIX-1322).
+- Updated dependencies [67b4157]
+- Updated dependencies [527c5ca]
+- Updated dependencies [e2fda9d]
+- Updated dependencies [4e562d0]
+- Updated dependencies [afcac3d]
+- Updated dependencies [3cbc411]
+- Updated dependencies [b3e6e22]
+- Updated dependencies [ce85e80]
+- Updated dependencies [af40427]
+- Updated dependencies [d7208f7]
+- Updated dependencies [1b94521]
+- Updated dependencies [5fa52aa]
+- Updated dependencies [229da65]
+- Updated dependencies [2c4b0f5]
+- Updated dependencies [4054c64]
+- Updated dependencies [fda9b15]
+  - @flow-state-dev/core@0.1.0
+  - @flow-state-dev/engine@0.1.0
+  - @flow-state-dev/devtool@0.1.0
+  - @flow-state-dev/store-sqlite@0.1.0
+  - @flow-state-dev/node@0.1.0
+  - @flow-state-dev/testing@0.1.0
+
+## Pre-1.0 history
+
+Captured from the project's pre-Changesets development log (root `changelog.md`,
+deleted on FIX-653). Entries are listed newest-first.
+
+### 2026-05-01 — `fsdev run` as primary CLI dev loop (FIX-490)
+
+`fsdev run` now emits `[flow-state] *` runtime events to stderr by default at `info` level — action lifecycle, block lifecycle, retries, errors. New `--quiet` and `--log-level <debug|info|warn|error>` flags. New `--capture <path>` writes the full structured run output to a JSON file (`{ command, events, result }`). The CLI always passes an explicit logger so the server's `console.*`-backed default never corrupts the NDJSON stream.
+
+### 2026-04-26 — Org scope rename (FIX-428) [BREAKING]
+
+CLI seed flags and resolved-flow contracts renamed `project` → `org` (`--seed-org`).
+
+### 2026-04-11 — DevTool: `fsdev dev` command (FIX-261)
+
+Added `fsdev dev` command — starts an HTTP dev server that serves both the flow API routes and the DevTool UI from a single port. Auto-discovers flows from conventional directories, registers them in an in-memory `FlowRegistry`, and creates filesystem stores at `.fsdev/data/`. Bridges Node.js `http` to the Web API `Request`/`Response` interface, with SSE streaming support. Options: `--port` (default 4200), `--flow-dir` (repeatable), `--model`, `--no-open`. `@flow-state-dev/devtool` listed as an optional peer dependency.
+
+### 2026-03-09 — CLI: `fsdev run` (FIX-212)
+
+Added `fsdev run <flowKind> <action>` for executing flow actions from the terminal with real-time NDJSON streaming to stdout. New `resolve-flow.ts` with `discoverFlows()` (`src/flows/`, `flows/`) and explicit `resolveFlow()`. NDJSON event types: `item_added`, `content_delta`, `state_change`, `flow_complete`, `error`. Supports session reuse, model override, and state seeding via inline JSON or file.

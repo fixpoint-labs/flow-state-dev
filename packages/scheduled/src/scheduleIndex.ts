@@ -1,10 +1,10 @@
 /**
  * `ScheduleIndex` — opt-in store-adapter interface that mirrors schedule
  * rows for due-row scanning. Store packages (Postgres, SQLite) implement
- * it as a small table keyed by `(cell, key)`. The tick handler in
- * `@flow-state-dev/vercel/schedules` calls `claimDue` once per cron beat
- * to atomically read + advance due rows, then POSTs them to the
- * scheduled-actions dispatch endpoint.
+ * it as a small table keyed by `(cell, key)`. The engine's schedule tick
+ * calls `claimDue` once per tick (each minute under the local cron, or each
+ * call of a scheduler adapter's route) to atomically read + advance due rows,
+ * then POSTs them to the scheduled-actions dispatch endpoint.
  *
  * The collection of schedule resources stays the source of truth. The
  * index is a derived read-model populated by `defineScheduleCollection`
@@ -13,7 +13,7 @@
  *
  * Contract: at-most-once. `claimDue` advances rows before returning
  * them; a dispatch that fails after the row has been advanced is dropped
- * (logged via `onDispatch`) — at-most-once is the explicit framework
+ * (and logged) — at-most-once is the explicit framework
  * contract for scheduled actions.
  */
 
@@ -68,7 +68,7 @@ export interface ScheduleIndexEntry {
  */
 export interface ScheduleIndex {
   /**
-   * Insert or update a schedule row. Idempotent on primary key
+   * Insert or update a schedule entry. Idempotent on primary key
    * `(cell, key)`. The caller passes the freshly-computed
    * `nextFireAt` — implementations do not parse cron themselves.
    */

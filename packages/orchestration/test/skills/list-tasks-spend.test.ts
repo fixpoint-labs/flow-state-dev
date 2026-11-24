@@ -97,4 +97,26 @@ describe("listTasks and a task's spend", () => {
     const told = (await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "listTasks"), {} as never, ctx)) as { tasks: Array<Record<string, unknown>> };
     for (const row of told.tasks) for (const field of ["createdAt", "startedAt", "completedAt"]) expect(field in row).toBe(false);
   });
+
+  // A task's screen draws a failed task's error, its brief's files and what it waits on from the
+  // board's view alone (FIX-2776): the action carries them, the model's tool doesn't.
+  it("answers a row's error, the tasks it waits on and its brief's files on the action, and leaves them off the tool", async () => {
+    const { ctx } = buildDelegationCtx({ self: false });
+    const ref = (await ownStateResolver(ctx as never))!;
+    const file = { type: "file" as const, mediaType: "image/png", data: "fsd-blob:b_shot0000000000000000000001", filename: "bug.png" };
+    await ref.createTask({ id: "t_first", goal: "Find the bug" });
+    await ref.createTask({ id: "t_then", goal: "Fix it", deps: ["t_first"], attachments: [file] } as never);
+    const claimed = (await ref.claim("w", { leaseDurationMs: 10_000 }))!;
+    await ref.fail(claimed.id, "The repository can't be read.", { claim: ticketForClaim(ref.collectionId, claimed) });
+
+    const actions = taskToolActions("desk", ownStateResolver);
+    const caller = { ...(ctx as object), user: { identity: { userId: "u1" } } };
+    const acted = (await runForTest(actions["listTasks_desk"]!.block as never, {} as never, caller as never)) as { tasks: Array<Record<string, unknown>> };
+    const byId = Object.fromEntries(acted.tasks.map((t) => [t.id, t]));
+    expect(byId["t_first"]).toMatchObject({ status: "errored", error: "The repository can't be read." });
+    expect(byId["t_then"]).toMatchObject({ deps: ["t_first"], attachments: [file] });
+
+    const told = (await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "listTasks"), {} as never, ctx)) as { tasks: Array<Record<string, unknown>> };
+    for (const task of told.tasks) for (const field of ["error", "deps", "attachments"]) expect(field in task).toBe(false);
+  });
 });

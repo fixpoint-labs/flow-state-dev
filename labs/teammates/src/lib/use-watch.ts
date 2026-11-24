@@ -1,24 +1,10 @@
 import { useEffect, useState } from "react";
-import type { LabAdapter, Unsubscribe } from "../adapter";
+import { useConversation } from "../app";
 import { isFeedStale } from "../components/flow-state/connection-banner";
 
-/**
- * The latest value a keyed `watch*` reports. `undefined` until the first
- * report, and while `key` is missing.
- */
-export function useWatch<T>(watch: (key: string, onChange: (value: T) => void) => Unsubscribe, key: string | undefined): T | undefined {
-  const [value, setValue] = useState<T>();
-  useEffect(() => {
-    setValue(undefined);
-    if (key === undefined) return;
-    return watch(key, setValue);
-  }, [watch, key]);
-  return value;
-}
-
 /** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
-export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
-  const connection = useWatch(adapter.watchConnection, sessionId);
+export function useStale(sessionId: string | undefined): boolean {
+  const connection = useConversation(sessionId)?.connection;
   return connection !== undefined && isFeedStale(connection);
 }
 

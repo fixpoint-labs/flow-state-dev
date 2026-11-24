@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { StandingRulesActionOutput } from "@flow-state-dev/workforce/browser";
-import { describeFailure, type Failure } from "./reads";
+import { describeFailure, type Failure } from "./failure";
 import { useWorkforce } from "./workforce";
 
 /** One rule as the page draws it. */

@@ -14,24 +14,24 @@
  * - {@link askWorker}: one line to a worker's conversation over the public
  *   client, waited until every conversation of the person's goes quiet, and
  *   recorded as a {@link Turn}: the reply, the tool calls, the clock.
- * - {@link runChecks}, {@link turnChecks}: the checks record a coder grader reads
- *   beside a reply (a run record's, or a harness session turn's); the fold
+ * - {@link settledRunChecks}, {@link turnChecks}: the checks record a coder grader reads
+ *   beside a reply (a settled run record's, or a harness session turn's); the fold
  *   is read by `goals/lib/history.mts`'s `foldOf`, as `history-window` reads it.
  * - {@link runClosure}: the loop every app runs: 3 runs, each ask its app
  *   counts in, graded, written to the pass's sheet, and reported through
  *   `runGoal`.
  */
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { harnessSessionStateSchema, runRecordStateSchema } from "@flow-state-dev/harness-manager";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
+import { harnessSessionStateSchema, runRecordStateSchema, type RunRecordState } from "@flow-state-dev/harness-manager";
+import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, readTree, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
   ASKS,
   cellsFor,
@@ -53,7 +53,7 @@ import {
   type Turn,
 } from "./asks.mts";
 import { draw, type Draw } from "./fixtures.mts";
-import { closureModel, servedModel, type ClosureModel } from "./model.mts";
+import { claudeCodeSettings, closureModel, servedModel, type ClosureModel } from "./model.mts";
 
 export type Fsd = ReturnType<typeof createClient>;
 
@@ -145,7 +145,7 @@ export async function serveFsdev(options: { root: string; cwd: string; args?: st
   const model = servedModel(options.model, options.args ?? []);
   const child = spawn(
     join(options.root, "node_modules", ".bin", "tsx"),
-    [join(options.root, "packages", "cli", "src", "bin.ts"), "serve", ...model.args, "--host", "127.0.0.1", "--port", String(port)],
+    [join(options.root, "packages", "fsdev", "src", "bin.ts"), "serve", ...model.args, "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: options.cwd,
       detached: true,
@@ -216,9 +216,19 @@ export function clientFor(origin: string, userId: string, bearer?: string): Fsd 
  * Where {@link planted} keeps what it must put back, until it has: a run the
  * machine killed mid-way (no `finally`, no signal) leaves the app's tree
  * planted, and the next run puts it back from here before it plants anything.
- * One journal per app, so the four scripts can run side by side.
+ * One journal per app and tree ({@link plantKey}), so the four scripts, and a
+ * pass on one tree beside a pass on another, can run side by side.
  */
 const journalFile = (key: string) => join(tmpdir(), `fsd-goal-closure-planted-${key}.json`);
+
+/**
+ * The journal key for one app's run on the tree at `root`: the app and a hash of the tree's path, so a
+ * pass on this checkout and a control on another commit's tree, run side by side, never read each
+ * other's journal as a killed run's and put the other's tree back mid-run.
+ */
+export function plantKey(app: string, root: string): string {
+  return `${app}-${createHash("sha256").update(resolve(root)).digest("hex").slice(0, 12)}`;
+}
 
 type Journal = { before: Record<string, string | null>; made: string[] };
 
@@ -239,14 +249,17 @@ function restoreFrom(file: string, journal: Journal): void {
  * error). The served tree is this checkout or a scratch tree; either way it
  * leaves as it came. What is to be put back is journaled first, so a run
  * killed before its `finally` is undone by the next one, before `plant`
- * reads the tree.
+ * reads the tree. A journal left under `legacyKey` (the per-app key used before
+ * the key named the tree) is put back first in the same way.
  */
-export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>): Promise<T> {
+export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>, legacyKey?: string): Promise<T> {
   const file = journalFile(key);
-  // Put back what a killed run left first: `plant` reads the tree it planted into.
-  if (existsSync(file)) {
-    console.error(`putting back what a killed run left planted (${file})`);
-    restoreFrom(file, JSON.parse(readFileSync(file, "utf8")) as Journal);
+  // Put back what a killed run left first: `plant` reads the tree it planted into. `legacyKey` is the
+  // journal's key from before it was keyed per tree (the app alone), read once so its tree is put back too.
+  for (const left of legacyKey === undefined ? [file] : [journalFile(legacyKey), file]) {
+    if (!existsSync(left)) continue;
+    console.error(`putting back what a killed run left planted (${left})`);
+    restoreFrom(left, JSON.parse(readFileSync(left, "utf8")) as Journal);
   }
   const files = plant();
   const journal: Journal = { before: {}, made: [] };
@@ -301,9 +314,9 @@ export function skillFiles(workerDir: string, skill: Draw["skill"], switchOn: bo
   return files;
 }
 
-/** The skill names the worker `workerId` holds, as the loader resolves them from the served tree. */
+/** The skill names the worker `workerId` holds, as the workforce kit reads them from the served tree. */
 export async function heldSkills(tree: string, workerId: string): Promise<string[]> {
-  const { workers } = await readWorkforce(tree);
+  const { workers } = await readTree(tree);
   return (workers.find((w) => w.id === workerId)?.skills ?? []).map((s) => s.name);
 }
 
@@ -471,24 +484,48 @@ export function turnOf(items: readonly OutputItem[], askedAt: Date, answeredAt: 
 }
 
 /**
- * The checks the latest coding run recorded, read off the app's SQLite store
- * after the run: harness-manager's run record (`runs/**`, which no client
- * route reads by design), normalized by {@link checksFrom}. `null` when no
- * run recorded any.
+ * Every coding run's record in the app's SQLite store: harness-manager's run
+ * record (`runs/**`, which no client route reads by design), each row through
+ * harness-manager's own schema, so a row that is not one fails loudly. Oldest
+ * update first. None when the store does not exist yet.
  */
-export function runChecks(dbFile: string): Turn["checks"] {
-  if (!existsSync(dbFile)) return null;
+function runRecords(dbFile: string): RunRecordState[] {
+  if (!existsSync(dbFile)) return [];
   const db = new DatabaseSync(dbFile, { readOnly: true });
   try {
     const rows = db.prepare("SELECT state FROM resource_state WHERE resource_key LIKE 'runs/%'").all() as { state: string }[];
-    // Each row through harness-manager's own run-record schema: a row that is not one fails loudly.
-    const records = rows
-      .map((row) => runRecordStateSchema.parse(JSON.parse(row.state)))
-      .filter((record) => record.checks !== null)
-      .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
-    return records.length === 0 ? null : checksFrom(records.at(-1)!.checks);
+    return rows.map((row) => runRecordStateSchema.parse(JSON.parse(row.state))).sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
   } finally {
     db.close();
+  }
+}
+
+/** The checks the latest coding run that recorded any holds, normalized by {@link checksFrom}. `null` when none did. */
+function runChecks(records: RunRecordState[]): Turn["checks"] {
+  const recorded = records.filter((record) => record.checks !== null);
+  return recorded.length === 0 ? null : checksFrom(recorded.at(-1)!.checks);
+}
+
+/** How long a coder ask waits, after the worker's turn ends, for the coding run it filed to settle. */
+const CODER_SETTLE_MS = 20 * 60_000;
+
+/**
+ * The checks of the coding run a coder ask filed, read once that run has
+ * settled: the store holds a run record and every record's `outcome` is
+ * `succeeded` or `failed`. A worker can end its turn as soon as it files the
+ * task, before the run has written anything, so a read at the end of the turn
+ * races the run. Each run of the closure has its own store, so every record
+ * in it is this ask's. Past `timeoutMs`, `unsettled` says so, and the coder
+ * ask fails on that rather than on a record still being written.
+ */
+export async function settledRunChecks(dbFile: string, timeoutMs = CODER_SETTLE_MS, pollMs = 5_000): Promise<Pick<Turn, "checks" | "unsettled">> {
+  for (const until = Date.now() + timeoutMs; ; await sleep(pollMs)) {
+    const records = runRecords(dbFile);
+    if (records.length > 0 && records.every((record) => record.outcome === "succeeded" || record.outcome === "failed")) return { checks: runChecks(records) };
+    if (Date.now() >= until) {
+      const seen = records.length === 0 ? "no run was recorded" : `outcomes: ${records.map((record) => record.outcome ?? "none").join(", ")}`;
+      return { unsettled: `the coding run did not settle within ${Math.round(timeoutMs / 1000)}s (${seen})` };
+    }
   }
 }
 
@@ -522,6 +559,15 @@ export function gitRepository(dir: string, files: Record<string, string>): strin
   git("add", "-A");
   git("commit", "-q", "-m", "start");
   return dir;
+}
+
+/**
+ * A coder ask's project repository, a git checkout at `dir`: the draw's files, the coder ask's failing
+ * check, the `.gitignore` line for `.fsdev/` a harness-manager run refuses to start without (it writes
+ * its question under `.fsdev/ask/`), and on Haiku the project settings that set its Claude Code runs to Haiku.
+ */
+export function coderRepository(dir: string, d: Draw, model: ClosureModel): string {
+  return gitRepository(dir, { ...d.files, [d.coder.file]: d.coder.script, ".gitignore": ".fsdev/\n", ...claudeCodeSettings(model) });
 }
 
 /** Run one action and hand back its output, or throw why it failed. */
@@ -619,7 +665,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     for (let n = 1; n <= runs; n += 1) {
       const d = draw();
       const scratch = goalTmpDir(`closure-${driver.app}-${p.pass}-${n}`);
-      await planted(driver.app, () => driver.plant(d, p, scratch), async () => {
+      await planted(plantKey(driver.app, p.root), () => driver.plant(d, p, scratch), async () => {
         // Its server is stopped by `planted`, however this ends.
         const run = await driver.start(d, p, scratch);
         for (const ask of asks) {
@@ -632,7 +678,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
           notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);
           console.error(`[${driver.app} ${ask} run ${n}] ${graded.length === 0 ? "pass" : graded.join("; ")}\n  reply: ${JSON.stringify(turn.reply.slice(0, 400))}\n  tools: ${turn.tools.map((t) => t.name).join(", ")}`);
         }
-      });
+      }, driver.app);
     }
     tell.over("asks graded", asks.flatMap((ask) => sheet[ask]?.[driver.app] ?? []));
     // A run of a subset (`GOAL_ASKS`) replaces only the asks it graded in the pass's sheet.

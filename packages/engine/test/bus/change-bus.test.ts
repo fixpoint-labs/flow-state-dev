@@ -17,7 +17,8 @@ import {
 import { type StoreRegistry } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 import { resolveStores } from "../../src/routes/http-handlers";
-import { storeIdentity } from "../../src/bus/publish-writes";
+import { publishSessionOwnerRun, storeIdentity } from "../../src/bus/publish-writes";
+import { writeSessionId } from "../../src/resources/default-write-flow";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -221,6 +222,30 @@ describe("withChangeBus · every request and session write publishes its session
     expect(heard).toEqual([]);
   });
 
+  it("publishes `state` when a session is born or deleted, so a view that read only its state hears it come and go", async () => {
+    const { stores, bus } = wired();
+    const heard = hear(bus, sessionTopic("s1"));
+    await stores.session.set("s1", session("s1"), "absent");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "born").toContain("state");
+
+    heard.length = 0;
+    await stores.session.delete("s1");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "deleted").toContain("state");
+
+    // An ordinary rewrite of a live record (a request's stamp, a title) is no state change.
+    await stores.session.set("s1", session("s1"), "absent");
+    await tick();
+    heard.length = 0;
+    await stores.session.set("s1", session("s1", { version: 1 }), "any");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "rewritten").not.toContain("state");
+  });
+
   it("publishes nothing for a write that did not land", async () => {
     const { stores, bus } = wired();
     await stores.session.set("s1", session("s1"), "any");
@@ -301,8 +326,105 @@ describe("withChangeBus · every request and session write publishes its session
     alice.length = 0;
     await stores.session.delete("s_new");
     await tick();
-    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+    // FIX-2770: a delete also takes its pending suspensions out of the owner's pending read.
+    expect(alice.map((n) => n.kind)).toEqual(["run", "suspension"]);
     expect(bob).toEqual([]);
+  });
+
+  // FIX-2864: a client's write runs in a write session, which no listing
+  // shows (FIX-2624). A `run` on the owner's topic for it made every open
+  // session list read again for a change it could never show.
+  it("names no owner's user topic for a write session's writes, which no list of their sessions shows", async () => {
+    const { stores, bus } = wired();
+    const alice = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+    const write = writeSessionId({ scope: "user", key: "schedules", writer: "fsd-default-write" }, { userId: "alice", orgId: DEFAULT_ORG_ID });
+    const own = hear(bus, sessionTopic(write));
+
+    await stores.session.set(write, session(write), "absent");
+    await stores.request.set("w1", request("w1", write), "any");
+    await tick();
+    await tick();
+    await stores.request.set("w1", request("w1", write, { status: "completed" } as never), "any");
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+    // The write session's own topic still hears its writes.
+    expect([...new Set(own.map((n) => n.kind))].sort()).toEqual(["request", "run", "state"]);
+
+    // Under a tenant, by the namespaced storage key.
+    const t1 = hear(bus, { scope: "user", id: "alice", tenantId: "t1" });
+    await stores.session.set(`t1:${write}`, session(`t1:${write}`, { tenantId: "t1" }), "absent");
+    await stores.request.set("w2", request("w2", write, { tenantId: "t1" } as never), "any");
+    await tick();
+    await tick();
+    expect(t1).toEqual([]);
+
+    // Nor an exposed field's delta, which the execution context publishes beside the store.
+    publishSessionOwnerRun(bus, session(write));
+    await tick();
+    expect(alice).toEqual([]);
+
+    // A session a list shows still names its owner's topic, for a write and for an exposed field's delta.
+    await stores.session.set("s_listed", session("s_listed"), "absent");
+    await tick();
+    publishSessionOwnerRun(bus, session("s_listed"));
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run", "run"]);
+  });
+
+  // FIX-2625: a notice names what changed, from the ids the wrapper already
+  // holds, so a reader of one row reads that row; items and own-session run
+  // notices name nothing.
+  it("names the request on its session's request notice and the session on its parent's run notice, and nothing on its owner's", async () => {
+    const { stores, bus } = wired();
+    await stores.session.set("run_a", session("run_a", { parentSessionId: "s1" }), "any");
+    await stores.request.set("seed", request("seed", "run_a"), "any");
+    await tick();
+    await tick();
+    const parent = hear(bus, sessionTopic("s1"));
+    const own = hear(bus, sessionTopic("run_a"));
+    const owner = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+
+    await stores.request.set("r1", request("r1", "run_a"), "any");
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["request", ["r1"]]]);
+    expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    // The user topic spans the user's orgs: a session id there would reach their screens in another org.
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
+
+    own.length = 0;
+    parent.length = 0;
+    owner.length = 0;
+    await stores.session.set("run_a", session("run_a", { parentSessionId: "s1", title: "renamed" }), "any");
+    await tick();
+    // The session's own topic is that one session: nothing to name.
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
+    expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
+
+    own.length = 0;
+    stores.request.persistItems("r1", [message("r1", "m1")]);
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["items", undefined]]);
+  });
+
+  it("folds two requests' notices on one session into one naming both", async () => {
+    const { stores, bus } = wired();
+    await stores.session.set("s1", session("s1"), "any");
+    await stores.request.set("r1", request("r1", "s1"), "any");
+    await stores.request.set("r2", request("r2", "s1"), "any");
+    await tick();
+    await tick();
+    const own = hear(bus, sessionTopic("s1"));
+    await Promise.all([
+      stores.request.set("r1", request("r1", "s1", { status: "completed" } as never), "any"),
+      stores.request.set("r2", request("r2", "s1", { status: "completed" } as never), "any")
+    ]);
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["request", ["r1", "r2"]]]);
   });
 
   it("names the owner's user topic under the record's tenant", async () => {

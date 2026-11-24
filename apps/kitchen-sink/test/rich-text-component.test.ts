@@ -37,14 +37,14 @@ const emptySemanticMemory = { facts: [] };
 const testFlow = defineFlow({
   kind: "rich-text-component-test",
   actions: {
-    copyedit:    { inputSchema: copyeditInputSchema,    block: copyeditGenerator    },
-    improve:     { inputSchema: improveInputSchema,     block: improveGenerator     },
-    changeTone:  { inputSchema: changeToneInputSchema,  block: changeToneGenerator  },
-    translate:   { inputSchema: translateInputSchema,   block: translateGenerator   },
-    summarize:   { inputSchema: summarizeInputSchema,   block: summarizeGenerator   },
-    expand:      { inputSchema: expandInputSchema,      block: expandGenerator      },
-    fixCode:     { inputSchema: fixCodeInputSchema,     block: fixCodeGenerator     },
-    personalize: { inputSchema: personalizeInputSchema, block: personalizeGenerator },
+    copyedit:    copyeditGenerator,
+    improve:     improveGenerator,
+    changeTone:  changeToneGenerator,
+    translate:   translateGenerator,
+    summarize:   summarizeGenerator,
+    expand:      expandGenerator,
+    fixCode:     fixCodeGenerator,
+    personalize: personalizeGenerator,
   },
   resources: { ...(mem.userResources ?? {}) },
 })({ id: "test" });

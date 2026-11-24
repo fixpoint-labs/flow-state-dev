@@ -32,6 +32,12 @@
  * merged, is cancelled once it closed unmerged, or runs the line on the same
  * coding session while it is still open.
  *
+ * **A run follows the pull request it opens** (`onPullRequestRecorded`, when
+ * the host passes workforce's `followPullRequest`): its session is subscribed
+ * to it the moment it is recorded, so the pull request's reviews, comments and
+ * CI reach that session and wake the task waiting on it. Nobody saves a
+ * routine for it.
+ *
  * **Jev reads the work** (D4). Both managers carry the judge, which reads a
  * task's goal against the run's answer and commits before it closes.
  *
@@ -79,10 +85,10 @@ import {
   taskIssueSegment,
   type HarnessFeeds,
   type HarnessJudge,
-  type PhaseSpec,
+  type ModeSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, PullRequestFollower } from "@flow-state-dev/core/harness";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
@@ -94,6 +100,7 @@ import {
   projectWorkspaceCapability,
   startOwedSteerTurn,
   steerTurnEntry,
+  taskInputSchema,
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
@@ -110,6 +117,9 @@ import {
 
 /** The flow name the working `WORKER.md` names. **Pinned** — the basename must match. */
 export const CODER_FLOW = "coder";
+
+/** What each coding run's branch starts with, so a branch says Shift Manager cut it. */
+export const CODER_BRANCH_PREFIX = "shift-manager/";
 
 /** The answer manager's name: its blocks are named apart from the implement manager's. */
 const ANSWER_MANAGER = "harness-manager-answer";
@@ -185,6 +195,13 @@ export interface CoderWorkerFlowOptions {
    * a run works in its project's repository or on its project's files.
    */
   workspace: WorkspaceConfig | WorkspaceHost;
+  // FIX-2894.
+  /**
+   * `"required"`: a task for a coder works in a project's files, so one filed
+   * with no project to work in is refused at filing (`no_project`). Set it on
+   * a projects workspace; a fixed repository always has somewhere to work.
+   */
+  project?: "required";
   /**
    * Where an answer task works: a workspace host whose source is
    * `projectWorkspace()`, so a task works in its project and is refused with
@@ -192,11 +209,17 @@ export interface CoderWorkerFlowOptions {
    */
   answerWorkspace: WorkspaceHost;
   /** The implement phase: how a feature task's prompt is built, and what counts as done. */
-  phase: PhaseSpec;
+  phase: ModeSpec;
   /** The answer phase: the same for a task that names no feature work. */
-  answerPhase: PhaseSpec;
+  answerPhase: ModeSpec;
   /** The judge both managers run on a task. Absent, a task settles on its phase's check alone. */
   judge?: HarnessJudge;
+  /**
+   * What both managers do with each pull request a run records: workforce's
+   * `followPullRequest({ providers, installation })`, which subscribes the
+   * run's session to it. Absent: nothing follows a pull request.
+   */
+  onPullRequestRecorded?: PullRequestFollower;
   /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
   reviewChanges?: boolean;
   /** Both managers ask the user before a run's tool calls (`approveTools`). Absent: off. */
@@ -219,7 +242,7 @@ export interface CoderWorkerFlowOptions {
  * Build the working worker flow.
  *
  * @param options The installation, the harness slot, the workspaces, the phases, the judge and the documents.
- * @returns The flow factory `hireWorkforce` registers one copy of, which every coder worker runs on.
+ * @returns The flow factory the workforce kit registers one copy of, which every coder worker runs on.
  * @throws If the harness isn't detached: the claim gate would refuse the entry.
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
@@ -231,14 +254,16 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.approveTools === true ? { approveTools: true } : {}),
     // A task whose work is a pull request (its run's own, or an accept's Open a PR) is done when it merges.
     awaitPullRequests: true,
+    // And its session hears that pull request's reviews, comments and CI, which wake the task.
+    ...(options.onPullRequestRecorded === undefined ? {} : { onPullRequestRecorded: options.onPullRequestRecorded }),
   };
 
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), mode: { name: feature.phase ?? options.phase.name } };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
-    return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
+    return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), mode: options.answerPhase };
   };
 
   // The board this session's run is on: the one of the session its task was
@@ -265,11 +290,12 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       ledgers: conversationLedgers,
       ...checks,
       tenant: undefined,
-      phase: options.phase,
+      mode: options.phase,
       workspace: options.workspace,
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
       harness: harness.slot,
+      branchPrefix: CODER_BRANCH_PREFIX,
       // The collections a project's run source reads, on the blocks that ask it.
       ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
     } as never) as TaskWorker;
@@ -280,11 +306,12 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       ledgers: conversationLedgers,
       ...checks,
       tenant: undefined,
-      phase: options.answerPhase,
+      mode: options.answerPhase,
       workspace: options.answerWorkspace,
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
       harness: harness.slot,
+      branchPrefix: CODER_BRANCH_PREFIX,
       uses: [projectWorkspaceCapability],
     } as never) as TaskWorker;
 
@@ -412,7 +439,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byTask }),
+        work: workerTaskEntry({
+          name: `${CODER_FLOW}-work`,
+          block: byTask,
+          ...(options.project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: options.project }) }),
+        }),
       },
     },
   } as never);

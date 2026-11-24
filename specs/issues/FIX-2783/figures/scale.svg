@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="The labs' text, by role, today and after, drawn at the real pixel sizes. Meta, labels and mono ids: 9.5 to 11px today, often hard-coded, 12px after. Controls, lists and code: 14px, unchanged. Feed body: 14px today, 16px with a 26px line after. Composer: 14px in most composers today, 16px in every composer after. Headings: 18, 22 and 26px, now named steps. Every size is one value in the design system's type file that all three labs import." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .after { fill:var(--code-soft); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-role{ fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .old   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; }
+    .new   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; }
+    .mono  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .sz    { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="14" width="908" height="30" rx="5"/>
+    <text class="t-lbl" x="32" y="33">ROLE · STEP</text>
+    <text class="t-lbl" x="272" y="33">TODAY</text>
+    <rect class="after" x="600" y="14" width="324" height="30" rx="5"/>
+    <text class="t-lbl" x="616" y="33">AFTER · ONE VALUE IN THE TYPE FILE</text>
+  </g>
+
+  <g id="meta">
+    <text class="t-role" x="32" y="76">Meta, labels, mono ids</text>
+    <text class="t-s" x="32" y="94">text-xs</text>
+    <text class="old mono" x="272" y="72" font-size="10">COORDINATOR · 3 WAITING</text>
+    <text class="sz" x="272" y="92">9.5–11px, 190 hard-coded below 12px</text>
+    <text class="new mono" x="616" y="76" font-size="12">COORDINATOR · 3 WAITING</text>
+    <text class="sz" x="616" y="94">12 / 16 · the floor</text>
+    <line class="row" x1="16" y1="108" x2="924" y2="108"/>
+  </g>
+
+  <g id="controls">
+    <text class="t-role" x="32" y="140">Controls, lists, code</text>
+    <text class="t-s" x="32" y="158">text-sm</text>
+    <text class="old" x="272" y="140" font-size="14" style="fill:var(--ink)">Inbox · Tasks · Workers</text>
+    <text class="sz" x="272" y="158">14 / 20</text>
+    <text class="new" x="616" y="140" font-size="14">Inbox · Tasks · Workers</text>
+    <text class="sz" x="616" y="158">14 / 20 · unchanged</text>
+    <line class="row" x1="16" y1="172" x2="924" y2="172"/>
+  </g>
+
+  <g id="body">
+    <text class="t-role" x="32" y="204">Feed body</text>
+    <text class="t-s" x="32" y="222">text-base</text>
+    <text class="old" x="272" y="200" font-size="14">The run finished. Two tests failed</text>
+    <text class="old" x="272" y="220" font-size="14">in the store; the diff is ready.</text>
+    <text class="sz" x="272" y="240">14 / 20 in every feed</text>
+    <text class="new" x="616" y="200" font-size="16">The run finished. Two tests</text>
+    <text class="new" x="616" y="226" font-size="16">failed in the store.</text>
+    <text class="sz" x="616" y="246">16 / 26</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+
+  <g id="composer">
+    <text class="t-role" x="32" y="292">Composer</text>
+    <text class="t-s" x="32" y="310">text-base</text>
+    <text class="old" x="272" y="292" font-size="14">Ask the coordinator…</text>
+    <text class="sz" x="272" y="310">14 in most composers; 16 in one</text>
+    <text class="new" x="616" y="292" font-size="16">Ask the coordinator…</text>
+    <text class="sz" x="616" y="310">16 / 26 in every composer</text>
+    <line class="row" x1="16" y1="324" x2="924" y2="324"/>
+  </g>
+
+  <g id="headings">
+    <text class="t-role" x="32" y="362">Headings</text>
+    <text class="t-s" x="32" y="380">text-lg · xl · 2xl</text>
+    <text class="old" x="272" y="366" font-size="18" style="fill:var(--ink)">Shift</text>
+    <text class="old" x="324" y="366" font-size="22" style="fill:var(--ink)">Shift</text>
+    <text class="old" x="388" y="366" font-size="26" style="fill:var(--ink)">Shift</text>
+    <text class="sz" x="272" y="392">18, then 22 and 26 hard-coded</text>
+    <text class="new" x="616" y="366" font-size="18">Shift</text>
+    <text class="new" x="668" y="366" font-size="22">Shift</text>
+    <text class="new" x="732" y="366" font-size="26">Shift</text>
+    <text class="sz" x="616" y="392">18 · 22 · 26, as named steps</text>
+    <line class="row" x1="16" y1="410" x2="924" y2="410"/>
+  </g>
+  <text class="t-s" x="32" y="430">Sizes are px / line height. The after column is the recommended set; the size choice is the open sign-off.</text>
+</svg>

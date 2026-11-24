@@ -141,3 +141,38 @@ export async function installRegistryHost(dir: string, items: string[]): Promise
     server.close();
   }
 }
+
+/**
+ * The same host as {@link installRegistryHost}, with the items copied from the
+ * registry instead of installed by `fsdev ui add`: each item's files, through
+ * its registry dependencies, at the targets the manifest names, and the token
+ * defaults in the stylesheet. For a machine that cannot reach the shadcn
+ * registry the CLI fetches its primitives from; a goal that uses it must say
+ * so in its verdict, because it no longer proves the install.
+ */
+export function copyRegistryHost(dir: string, items: string[]): RegistryHost {
+  const host = join(dir, "host");
+  makeHost(host);
+  const manifest = JSON.parse(readFileSync(join(UI, "registry.json"), "utf8")) as {
+    items: Array<{ name: string; registryDependencies: string[]; files?: Array<{ path: string; target: string }> }>;
+  };
+  const byName = new Map(manifest.items.map((i) => [i.name, i]));
+  const shipped = new Map<string, string>();
+  const seen = new Set<string>();
+  const visit = (name: string) => {
+    const item = byName.get(name);
+    if (item === undefined || seen.has(name)) return;
+    seen.add(name);
+    for (const file of item.files ?? []) shipped.set(file.target, file.path);
+    for (const dep of item.registryDependencies) visit(dep);
+  };
+  for (const item of items) visit(item);
+  for (const [target, source] of shipped) {
+    mkdirSync(join(host, target, ".."), { recursive: true });
+    cpSync(join(UI, source), join(host, target));
+  }
+  writeFileSync(join(host, "app", "globals.css"), `@import "tailwindcss";\n${readFileSync(join(UI, "registry", "token-defaults.css"), "utf8")}`);
+  cpSync(join(UI, ".storybook", "shadcn"), host, { recursive: true });
+  linkModules(host);
+  return { host, shipped };
+}

@@ -1,9 +1,9 @@
 /**
- * Helpers that produce `task-change` and `task-board-meta` `ComponentItem`s
+ * Helpers that produce `task-change` and `task-board-meta` `DataItem`s
  * shaped exactly the way `<TaskPlan />` expects to read them off the session
  * stream.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import type {
   BoardMeta,
   Task,
@@ -11,11 +11,11 @@ import type {
   TaskStatus,
 } from "../../registry/components/task-plan-state";
 import {
-  TASK_BOARD_META_COMPONENT,
-  TASK_CHANGE_COMPONENT,
+  TASK_BOARD_META_DATA_TYPE,
+  TASK_CHANGE_DATA_TYPE,
 } from "../../registry/components/task-plan-state";
 
-import { componentItem } from "./items";
+import { dataItem } from "./items";
 
 export function makeTask(overrides: Partial<Task> & { id: string; goal: string }): Task {
   return {
@@ -32,11 +32,11 @@ export type TaskChangeOptions = {
   id?: string;
 };
 
-export function makeTaskChange(options: TaskChangeOptions): ComponentItem {
+export function makeTaskChange(options: TaskChangeOptions): DataItem {
   const { collectionId, task, kind, requestId = "req-tasks", id } = options;
-  return componentItem({
-    component: TASK_CHANGE_COMPONENT,
-    data: {
+  return dataItem({
+    dataType: TASK_CHANGE_DATA_TYPE,
+    value: {
       collectionId,
       taskId: task.id,
       task,
@@ -55,11 +55,11 @@ export type BoardMetaOptions = {
   id?: string;
 };
 
-export function makeBoardMeta(options: BoardMetaOptions): ComponentItem {
+export function makeBoardMeta(options: BoardMetaOptions): DataItem {
   const { collectionId, meta = { status: "active" }, requestId = "req-tasks", id } = options;
-  return componentItem({
-    component: TASK_BOARD_META_COMPONENT,
-    data: { collectionId, ...meta },
+  return dataItem({
+    dataType: TASK_BOARD_META_DATA_TYPE,
+    value: { collectionId, ...meta },
     key: collectionId,
     requestId,
     ...(id !== undefined ? { id } : {}),

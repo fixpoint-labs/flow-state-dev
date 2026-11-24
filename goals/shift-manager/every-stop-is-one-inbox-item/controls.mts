@@ -76,6 +76,18 @@ export const CONTROLS: Record<string, Control> = {
     mustFail: ["a:no-deadline-waits"],
     patches: [{ module: "packages/core/src/types/suspend-for-user.ts", from: String.raw`options\.deadline \?\? ctx\.requestHost\?\.userDeadlineMs`, to: "options.deadline ?? ctx.requestHost?.userDeadlineMs ?? 1500" }],
   }),
+  // FIX-2774's: the inbox view drops every ask with no conversation, as the Inbox did before it.
+  "session-only": control("session-only", {
+    legs: ["nc"],
+    mustFail: ["nc:listed"],
+    patches: [
+      {
+        module: "packages/workforce/src/workers/inbox-view.ts",
+        from: String.raw`if \(entry\.sessionId === undefined \|\| isOneOffSessionId\(entry\.sessionId\)\) return \[\{ \.\.\.entry, sessionId: null, workerId: null \}\];`,
+        to: "if (entry.sessionId === undefined || isOneOffSessionId(entry.sessionId)) return [];",
+      },
+    ],
+  }),
   // FIX-2407's: j3's crash signals only the `tsx` wrapper, which leaves the server under it running.
   "wrapper-kill": control("wrapper-kill", {
     legs: ["j3"],

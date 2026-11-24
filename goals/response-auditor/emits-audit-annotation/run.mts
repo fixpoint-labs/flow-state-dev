@@ -4,7 +4,7 @@
  * Real model, real path, out of CI. See goal.md for the contract.
  *
  * FIX-847 moved the emit into the `responseAuditor` pattern: when it surfaces
- * results it emits an `audit-annotation` component item, which is what a UI card
+ * results it emits an `audit-annotation` data item, which is what a UI card
  * renders off. The harness runs the REAL `biasAnalyzer` (the same one
  * apps/kitchen-sink wires into `responseAuditor`) over a held-out, deliberately
  * one-sided response, through the real block engine, with a real model bound
@@ -70,7 +70,7 @@ await runGoal((failures) => {
 
   if (last === undefined || !last.cardEmitted) {
     failures.push(
-      `no audit-annotation component item was emitted after ${MAX_ATTEMPTS} attempts — either ` +
+      `no audit-annotation data item was emitted after ${MAX_ATTEMPTS} attempts — either ` +
         "the real analyzer never scored the held-out response above threshold, or the pattern's " +
         "emit is not wired (the *.spec.ts unit test would catch the latter deterministically)",
     );
@@ -83,8 +83,8 @@ await runGoal((failures) => {
     failures,
     evidence:
       `the real biasAnalyzer (model: ${last?.model}) scored the held-out response ` +
-      `${last?.overallScore} and responseAuditor emitted an audit-annotation component item with ` +
-      `${last?.surfaced} surfaced result(s) into the stream. Asserted the emitted component item, ` +
+      `${last?.overallScore} and responseAuditor emitted an audit-annotation data item with ` +
+      `${last?.surfaced} surfaced result(s) into the stream. Asserted the emitted data item, ` +
       `not the auditor block's return value.`,
   };
 });

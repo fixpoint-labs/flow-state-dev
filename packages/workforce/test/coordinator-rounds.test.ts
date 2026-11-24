@@ -27,7 +27,7 @@
  *   BR-27  a message and a filing can't carry a round; no caller reaches the route-on entry;
  *   BR-28  every decision, in every round, is one `coordinator-route` record.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import {
@@ -499,7 +499,7 @@ describe("rounds (V5)", () => {
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
     // Round 0 closed at its deadline, before the coder's late answer came in.
-    const roundOne = all.findIndex((item: any) => item.type === "component" && item.data?.round === 1);
+    const roundOne = all.findIndex((item: any) => item.type === "data" && item.value?.round === 1);
     const coderLine = all.findIndex((item: any) => item.type === "message" && item.agentName === "eng.coder");
     expect(roundOne).toBeGreaterThanOrEqual(0);
     expect(roundOne).toBeLessThan(coderLine);
@@ -559,6 +559,18 @@ describe("rounds (V5)", () => {
 });
 
 describe("a delegate that never answers (V5, BR-24b)", () => {
+  // The coder's run is held past the round's deadline by its `[hang:eng.coder]` mark: it says
+  // nothing, and its task stays in progress. Not stopped: a stopped request settles its task
+  // (cancelled), which closes the round at once (the cancel case below).
+  const held: Host[] = [];
+  const hung = async (host: Host) => {
+    held.push(host);
+    await host.untilHung("eng.coder");
+  };
+  afterEach(() => {
+    for (const host of held.splice(0)) host.releaseHangs();
+  });
+
   /** Wait until every open round of the conversation is past its deadline. */
   const untilOverdue = async (host: Host, id: string) => {
     const open = (await host.sessionState(id)).openRounds as Array<{ deadlineAt?: number }>;
@@ -573,7 +585,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   /**
    * The EM's answer to the message went on to the coder in round 1: a routed
    * task for it, filed. While the coder's round-0 task is still stuck in its
-   * session (its run stopped and said nothing), this one waits behind it, as
+   * session (its run is held and says nothing), this one waits behind it, as
    * a session works one task at a time (FIX-2080, rule 5).
    */
   const routedOnToCoder = async (host: Host) =>
@@ -619,7 +631,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
       const id = await host.conversation("alice", "desk");
       expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-      expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+      await hung(host);
       await quiet(host);
       expect(passedToCoder(host, "status?")).toHaveLength(0);
       const answered = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em")!;
@@ -642,7 +654,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, durable: true });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await hung(host);
     await quiet(host);
     const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
     const wakes = (await host.state.getRuntime()).stores.wakes!;
@@ -668,7 +680,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await hung(host);
     await quiet(host);
     const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
     for (let i = 0; i < 400 && (await host.sessionState(id)).openRounds.length > 0; i += 1) {
@@ -682,7 +694,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await hung(host);
     await quiet(host);
     const [stale] = (await host.sessionState(id)).openRounds;
     // With no delegates left, the next post makes no delivery, so no answer wakes anything.
@@ -700,11 +712,11 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   });
 
   it("closes an overdue round on the conversation's next wake, once, and the new post routes as well", async () => {
-    // The coder's run is cancelled and says nothing, as one whose process stopped would.
+    // The coder's run says nothing before the deadline, as one stuck in a long step would.
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await hung(host);
     await quiet(host);
     const [first] = (await host.sessionState(id)).openRounds;
     expect(first).toMatchObject({ round: 0 });

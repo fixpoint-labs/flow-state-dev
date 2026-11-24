@@ -27,12 +27,18 @@ import {
   readSkillsDirectory,
   type SkillsBindingConfig,
 } from "@flow-state-dev/orchestration";
-import { sessionStateSchema } from "../schemas";
+import { z } from "zod";
+import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "../artifacts";
 import { selectBashProvider } from "./bash";
 import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const featuresSessionStateSchema = z.object({
+  mode: modeSchema,
+  features: featuresSchema.default({}),
+});
 
 // Web tools — instantiated once, included conditionally by the features cap.
 // agentControlsTier lets the model pick search depth per query (e.g. "deep").
@@ -124,7 +130,6 @@ export const bashCap = createBashCapability({
   provider: selectBashProvider(),
   createState: (relativePath) => ({
     title: path.basename(relativePath),
-    updatedAt: Date.now(),
   }),
 });
 
@@ -146,7 +151,7 @@ export const bashCap = createBashCapability({
  */
 export const featuresCapability = defineCapability({
   name: "features",
-  sessionStateSchema: sessionStateSchema.pick({ features: true }),
+  sessionStateSchema: featuresSessionStateSchema,
 
   uses: [
     // Static: skills library binding — installs the skills collection resource

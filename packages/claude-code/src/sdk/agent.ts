@@ -30,14 +30,25 @@ import {
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
+  reportHarnessEvent,
   reportHarnessSpend,
+  type HarnessAttachmentBytes,
   type HarnessBilling,
 } from "@flow-state-dev/core/harness";
+import {
+  ATTACHMENT_DOCUMENT_TYPES,
+  ATTACHMENT_IMAGE_TYPES,
+  attachmentKind,
+  type AttachmentAccepts,
+} from "@flow-state-dev/core/attachments";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
@@ -109,6 +120,41 @@ const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
  * `bypassPermissions` every tool is already allowed.
  */
 const SEARCH_TOOLS = ["Grep", "Glob"] as const;
+
+// FIX-2519, FIX-2520.
+/**
+ * What Claude Code reads as a turn's files: images, as image blocks, and
+ * PDFs, as document blocks, on the turn's user message. A text-like file
+ * reaches it as text after the prompt.
+ */
+const CLAUDE_CODE_ACCEPTS: AttachmentAccepts = [...ATTACHMENT_IMAGE_TYPES, ...ATTACHMENT_DOCUMENT_TYPES];
+
+/**
+ * The query's prompt: the text alone, or, with files, one user message on
+ * the SDK's streaming input, the text then each file as a base64 block (an
+ * image block, or a document block for a PDF). The input ends after that
+ * message, so the run is one turn as with text.
+ */
+function queryPrompt(text: string, files: ReadonlyArray<HarnessAttachmentBytes>): string | AsyncIterable<unknown> {
+  if (files.length === 0) return text;
+  const message = {
+    type: "user" as const,
+    message: {
+      role: "user" as const,
+      content: [
+        { type: "text" as const, text },
+        ...files.map((file) => ({
+          type: attachmentKind(file.mediaType) === "image" ? ("image" as const) : ("document" as const),
+          source: { type: "base64" as const, media_type: file.mediaType, data: file.base64() },
+        })),
+      ],
+    },
+    parent_tool_use_id: null,
+  };
+  return (async function* () {
+    yield message;
+  })();
+}
 
 /** The live status from the moment a run starts until Claude Code says anything. */
 const STARTING_STATUS = "Starting Claude Code…";
@@ -510,7 +556,7 @@ export interface ClaudeCodeAgentOptions {
    *   derived from. It arbitrates DISPATCHES, so it does not cover two
    *   invocations in one dispatch (a model calling this tool twice in one step),
    *   nor two external workers unless their queue adapter supplies a shared
-   *   lease backend (`WorkerAdapter.leaseBackend`). Reuse a checkout for one
+   *   lease backend (`JobQueueAdapter.leaseBackend`). Reuse a checkout for one
    *   agent step per run on a single-instance host, or on workers sharing a
    *   lease backend; derive a fresh directory otherwise.
    *
@@ -611,6 +657,13 @@ export interface ClaudeCodeAgentOptions {
    * Not awaited, and a throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -752,7 +805,9 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * told its conversation does not exist. Bounded so a process that never exits
  * cannot hold the block: past it, the block sends the process `SIGKILL` and
  * waits for it to exit, so the block never returns while its
- * process still runs.
+ * process still runs. Off Windows that `SIGKILL`, and the SDK's `SIGTERM`
+ * before it, go to the process's whole group, so the commands it started end
+ * with it (see `process-exit.ts`).
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
@@ -812,9 +867,11 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * bounded, for the agent's process to exit (observed through the SDK's spawn
  * hook — the SDK's own stream can end first), so the session's transcript is
  * complete before anyone can resume it. A process still running at the bound
- * is sent `SIGKILL` and waited for. A subprocess the agent's process spawned (a
- * `Bash` tool command) can still outlive the abort — the working directory's
- * sandbox is the fence for that, not this block's deadline.
+ * is sent `SIGKILL` and waited for. Off Windows both signals reach the
+ * process's whole group, so a command the agent's process started (a `Bash`
+ * tool command) ends with the abort too; one that moved itself into a group of
+ * its own is outside that reach. On Windows the signals reach the agent's
+ * process alone, and its commands can outlive the abort.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
@@ -860,6 +917,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onSession,
     onUsage,
     onActivity,
+    onEvent,
     settingSources,
     settings,
     env,
@@ -930,7 +988,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       : {}),
     ...(uses !== undefined ? { uses } : {}),
     ...(onErrored !== undefined ? { onErrored } : {}),
-    execute: async (input, ctx): Promise<ClaudeCodeAgentHandle> => {
+    // `ctx` is annotated rather than inferred. `uses` widens the context type
+    // that `handler()` infers — capability namespaces and state targets appear
+    // in it — and every helper below takes a plain `BlockContext`, so without
+    // this the widening propagates into two dozen signatures that have no
+    // interest in it. Narrowing here keeps the option's cost at the option.
+    execute: async (
+      input,
+      ctx: HarnessCallbackContext,
+    ): Promise<ClaudeCodeAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
       )?.trim();
@@ -939,6 +1005,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           "claudeCodeAgent requires a non-empty prompt.",
         );
       }
+      // A file Claude Code can't take refuses the run before anything starts,
+      // and every file is read before the query is: a file that can't be read
+      // stops the turn rather than running it without the file.
+      const turnFiles = await readHarnessTurnFiles("Claude Code", ctx, CLAUDE_CODE_ACCEPTS, input.attachments);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
@@ -955,7 +1025,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // default provider's `release` is a no-op for exactly this reason.
       let session: ClaudeCodeSession = { sdkSessionId: null };
       if (!detached) {
-        const priorSessionId = ctx.session.state[CLAUDE_CODE_SESSION_ID_KEY];
+        const priorSessionId = (ctx.session.state as Record<string, unknown>)[
+          CLAUDE_CODE_SESSION_ID_KEY
+        ];
         session = await sessionProvider.resolve(
           typeof priorSessionId === "string" ? priorSessionId : "",
         );
@@ -1215,7 +1287,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
             }
             const running = resolved.query({
-              prompt: promptText,
+              prompt: queryPrompt(promptWithTurnText(promptText, turnFiles), turnFiles.files),
               options: queryOptions,
             });
             // One `accountInfo()` answers both how the run is billed and, for
@@ -1231,6 +1303,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               });
             let accountLookup: Promise<AccountInfo | undefined> | undefined = lookUpAccount();
             for await (const message of running) {
+              // Every message the SDK sends, partial ones included, says the run is still working.
+              reportHarnessEvent(onEvent, ctx);
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.
@@ -1561,7 +1635,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
           }
           await ctx.session.patchState(CLAUDE_CODE_AGENT_RUNS_KEY, (prev) => [
-            ...(prev ?? []),
+            ...((prev as ClaudeCodeAgentHandle[] | undefined) ?? []),
             handle,
           ]);
         }
@@ -1602,7 +1676,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  }), { stopsOnAbort: true as const });
+  }), { stopsOnAbort: true as const, accepts: CLAUDE_CODE_ACCEPTS });
 }
 
 /**

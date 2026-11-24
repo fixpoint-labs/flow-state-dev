@@ -150,23 +150,26 @@ Two behaviours to know before changing it:
 ## Scheduled actions demo
 
 The `weekly-digest` flow is the live reference for the docs in
-`apps/docs/docs/server/scheduled.md` and `…/schedule-index.md`. Two
-Vercel cron routes drive it (`vercel.json`):
+`apps/docs/docs/server/scheduled.md` and `…/schedule-index.md`. The app fires
+its own schedules, static and dynamic, through one engine tick:
 
-- `GET /api/cron/static/[scheduleId]` — Vercel Cron → POST shim for static schedules.
-- `GET /api/cron/schedule-tick` — 15-minute polling tick that claims due rows from the `ScheduleIndex` and fans out dispatches.
+- **Locally** (`next dev`, `fsdev dev`) the default local cron ticks each minute.
+- **On Vercel** (`VERCEL` set) `fsdev.config.ts` passes `scheduler: vercelScheduler()`,
+  and one Vercel Cron entry (`vercel.json`, every 15 minutes) calls its route,
+  `GET /api/cron/schedules`. Each due schedule is dispatched back to the
+  deployment the cron call reached.
 
-Env vars required at runtime: `CRON_SECRET` (shared bearer between cron
-routes and the dispatch endpoint) and `NEXT_PUBLIC_BASE_URL` (deployment
-URL the shims POST back into). The index lives in Postgres alongside
-the rest of the stores, so `FSD_DB_URL` / `DATABASE_URL` is required too.
+Env vars required on Vercel: `CRON_SECRET` (the bearer Vercel Cron sends to
+the route and the tick sends to the dispatch endpoint). The index lives in
+Postgres alongside the rest of the stores, so `FSD_DB_URL` / `DATABASE_URL`
+is required too.
 
 Profile selection: `lib/flowstate.ts` declares a `prod` (Postgres) and a
 `dev` (SQLite, `.fsdev/data/flowstate.db`) store profile. It defaults to `prod` whenever a database
 URL (`FSD_DB_URL` / `DATABASE_URL`) is configured — the deployed/Vercel case —
 and to `dev` otherwise (local dev with no DB). Set `FSD_ENV=prod` / `FSD_ENV=dev`
-to override the default explicitly. The scheduler index only resolves under
-`prod`, so the cron tick no-ops without a Postgres profile.
+to override the default explicitly. The schedule index only resolves under
+`prod`, so without a Postgres profile the tick fires the static schedule only.
 
 ## UI Components: Upstream-First Convention
 

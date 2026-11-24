@@ -36,8 +36,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
 import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -274,7 +273,7 @@ type Control = {
 };
 
 /** DevForce's declared seats, written into the static-names control's build. */
-const devforceSeats = async () => (await readDeclaredRoster(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
+const devforceSeats = async () => (await readTree(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
 
 const CONTROLS: Control[] = [
   {
@@ -301,7 +300,7 @@ const CONTROLS: Control[] = [
   {
     name: "optimistic-post",
     build: async () => {
-      const swap = swapOf("send.ts", "it-opens-a-lab", "optimistic-post.ts");
+      const swap = swapOf("deliver.ts", "it-opens-a-lab", "optimistic-post.ts");
       return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
     },
     must: ["a4"],
@@ -310,7 +309,7 @@ const CONTROLS: Control[] = [
   {
     name: "worker-session",
     build: async () => {
-      const swap = swapOf("run.ts", "it-shows-and-stops-a-task-run", "worker-session.ts");
+      const swap = swapOf("session-feeds.tsx", "it-shows-and-stops-a-task-run", "worker-session.ts");
       return { themed: await swapBuild("ctl-worker-session", swap, false), noTheme: await swapBuild("ctl-worker-session-no-theme", swap, true) };
     },
     must: ["a2"],

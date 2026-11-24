@@ -6,7 +6,7 @@
  * and drives the page the way a person does: New project, pick it, type a
  * line, ask to stop a task, ask for a code change. Each signal is graded from
  * the rendered page and from the server's own records (requests, `listTasks`,
- * the run's clone), never from the adapter or the lab's React state.
+ * the run's clone), never from the lab's hooks or its React state.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command):
  *   - `answer-again-off`: the lab with `CLAUDE_CODE_STYLE_ANSWER_AGAIN=off`. Must FAIL signal 4.

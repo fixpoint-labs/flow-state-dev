@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Before: two ways into the subscriptions layer, a GitHub webhook push and a poll, and a session inside the app can only message or dispatch to a session it names. After: a third way in, a publish from any session through the dispatch seam, which the host routes as service internal. Everything after it is unchanged: the thread index, the screens, the cursor and cap, and delivery to each routine that follows the topic, once, at the event's hop plus 1."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .n-box2 { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .edge-new { stroke:var(--accent); stroke-width:1.8; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-new { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; letter-spacing:.1em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="ways-in">
+    <text class="t-lbl" x="16" y="26">WAYS IN</text>
+    <rect class="n-in" x="16" y="38" width="250" height="56" rx="5"/>
+    <text class="t-b" x="30" y="61">push · a GitHub webhook</text>
+    <text class="t-s" x="30" y="80">FIX-2535 · webhook transport</text>
+    <rect class="n-in" x="16" y="108" width="250" height="56" rx="5"/>
+    <text class="t-b" x="30" y="131">poll · a row per subscription</text>
+    <text class="t-s" x="30" y="150">FIX-2536 · delivers as the user</text>
+    <rect class="n-new" x="16" y="178" width="250" height="66" rx="5"/>
+    <text class="t-acc" x="30" y="196">NEW · THIRD WAY IN</text>
+    <text class="t-b" x="30" y="215">publish · publishEvent</text>
+    <text class="t-s" x="30" y="233">any session · a declared topic</text>
+  </g>
+
+  <g id="seam">
+    <rect class="n-new" x="306" y="178" width="190" height="66" rx="5"/>
+    <text class="t-acc" x="320" y="196">NEW · SEAM RULE</text>
+    <text class="t-b" x="320" y="215">dispatch seam</text>
+    <text class="t-s" x="320" y="233">routed as service:internal</text>
+  </g>
+
+  <g id="layer">
+    <rect class="n-box2" x="536" y="38" width="210" height="206" rx="6"/>
+    <text class="t-lbl" x="550" y="58">UNCHANGED · FIX-2534</text>
+    <text class="t-b" x="550" y="84">routeServiceEvent</text>
+    <text class="t-s" x="550" y="110">thread index</text>
+    <text class="t-s" x="550" y="130">config screens · own drops self</text>
+    <text class="t-s" x="550" y="150">cursor · 30 an hour cap</text>
+    <text class="t-s" x="550" y="170">sendMessage exempt path</text>
+    <text class="t-s" x="550" y="190">routine list · FIX-2614</text>
+  </g>
+
+  <g id="out">
+    <rect class="n-box" x="786" y="38" width="138" height="96" rx="5"/>
+    <text class="t-b" x="800" y="62">sessions that</text>
+    <text class="t-b" x="800" y="80">follow a PR</text>
+    <text class="t-s" x="800" y="104">once per object</text>
+    <rect class="n-box" x="786" y="148" width="138" height="96" rx="5"/>
+    <text class="t-b" x="800" y="172">routines on</text>
+    <text class="t-b" x="800" y="190">internal:topic</text>
+    <text class="t-s" x="800" y="214">once · at hop + 1</text>
+  </g>
+
+  <g id="edges">
+    <path class="edge" d="M266 66 H530"/>
+    <path class="head" d="M536 66 l-8 -4 v8 z"/>
+    <path class="edge" d="M266 136 H530"/>
+    <path class="head" d="M536 136 l-8 -4 v8 z"/>
+    <path class="edge-new" d="M266 211 H300"/>
+    <path class="head-new" d="M306 211 l-8 -4 v8 z"/>
+    <path class="edge-new" d="M496 211 H530"/>
+    <path class="head-new" d="M536 211 l-8 -4 v8 z"/>
+    <path class="edge" d="M746 86 H780"/>
+    <path class="head" d="M786 86 l-8 -4 v8 z"/>
+    <path class="edge-new" d="M746 196 H780"/>
+    <path class="head-new" d="M786 196 l-8 -4 v8 z"/>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-gone" x="16" y="264" width="908" height="50" rx="5"/>
+    <text class="t-lbl" x="30" y="284">NOT ADDED</text>
+    <text class="t-s" x="30" y="302">a bus · a flow variant · a sender kind · a second cap · a RequestHost verb · a task filed · a reply asked · a recipient count</text>
+  </g>
+</svg>

@@ -80,9 +80,8 @@ import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planResourcesPrefix, readPlanTarget } from "@flow-state-dev/core/harness";
 import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/internal";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, intentFreeEnv, readTree as readKitTree, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -137,8 +136,8 @@ const CONVERSATION_BOARD = "tasks";
 type Tree = { leadId: string; leadFlow: string; members: string[]; sharedFlow: string };
 
 async function readTree(): Promise<Tree> {
-  const roster = await readDeclaredRoster(TREE);
-  if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the tree whole if anything did not load.
+  const roster = await readKitTree(TREE);
   const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
   if (lead === undefined) throw new Error("the tree declares no worker that files for delegates");
   const members = lead.declared.delegates as string[];
@@ -153,9 +152,12 @@ type Board = { conversation: string };
 
 // ---- building Shift Manager --------------------------------------------------------
 
-/** The module each control swaps out: the run's reads, unless it says otherwise. */
+/** The module each control swaps out: the run's reads (`task-items.ts`), unless it says otherwise. */
 const SWAPPED: Record<string, string[]> = {
   "wrong-board": ["src", "lib", "reads.ts"],
+  // The stop goes through workforce's client (FIX-2776 D3); the Session's items through the page's feed.
+  "optimistic-interrupt": ["src", "lib", "workforce.ts"],
+  "worker-session": ["src", "lib", "session-feeds.tsx"],
   "no-error-body": ["src", "components", "flow-state", "error.tsx"],
 };
 
@@ -164,7 +166,7 @@ async function buildShiftManager(control: string, boardFlow: string): Promise<st
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap =
-    control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "run.ts"])), with: join(HERE, "controls", `${control}.ts`) };
+    control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "task-items.ts"])), with: join(HERE, "controls", `${control}.ts`) };
   let swapped = 0;
   await vite.build({
     root: SHIFT_MANAGER,
@@ -453,7 +455,7 @@ async function checkItems({ page, origin, api, fail }: Ctx, row: Row, running: b
       resolve(undefined);
     }, 5_000);
     const handle = follow(origin, owner, row.run!.requestId, (item) => {
-      if (item.taskId !== row.id || known.has(item.id) || item.type === "component") return;
+      if (item.taskId !== row.id || known.has(item.id) || item.type === "data") return;
       clearTimeout(timer);
       handle.close();
       resolve(item);

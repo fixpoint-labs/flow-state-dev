@@ -25,7 +25,7 @@
  *   answers while one asks something, at most {@link MAX_ANSWERS_AGAIN} times
  *   in a request, the plan's answer included. After the last, no source runs.
  * - **The answering turn files no step for itself.** Its filing is refused,
- *   telling it to do the work or answer (`planAnswering`). A task it
+ *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
  *   files for a delegate is dispatched as usual.
  *
  * - **A step in a session of its own**. A step filed
@@ -107,21 +107,32 @@ async function ownPlanLedger(ctx: BlockContext): Promise<TaskCollectionRef | und
 /** How many attempts a step gets: one. A step that fails is the answering turn's to handle. */
 export const STEP_ATTEMPTS = 1;
 
-/** The running request's plan and the state of its answer-again loop. */
-const planRequestStateSchema = z.object({
-  planAnswering: z.boolean().optional(),
-  planStepping: z.boolean().optional(),
-  /** Steps already ended when the drain began. */
-  planSeen: z.array(z.string()).optional(),
-  /** Decided before the drain so a resume still answers for the steps it worked. */
-  planOwed: z.boolean().optional(),
-  /** The ended steps have already been put to the worker. */
-  planBriefed: z.boolean().optional(),
-  answersAgain: z.number().optional(),
-  answerRoundMessages: z.array(z.string()).optional()
-});
+/**
+ * Request state: set while the turn that answers after the plan drained runs.
+ * A step it files for itself is refused. Request-scoped, so it ends with the
+ * request.
+ */
+const PLAN_ANSWERING_STATE = "planAnswering";
 
-export type PlanRequestState = z.infer<typeof planRequestStateSchema>;
+/**
+ * Request state: set while a step's turn runs. A step it files for itself is
+ * refused, so one request's steps are the ones its turn filed, and further work
+ * goes in the step's answer. Request-scoped, so it ends with the request.
+ */
+const PLAN_STEPPING_STATE = "planStepping";
+
+/** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
+const PLAN_SEEN_STATE = "planSeen";
+
+// FIX-2110.
+/**
+ * Request state: whether the turn left steps to work, decided once, right
+ * after the turn. A drain that waits on a step in a session of its
+ * own suspends the request; on its resume the sequencer asks again whether to
+ * answer, and by then the plan ledger may hold no open step. The answer is
+ * this recorded decision, not a fresh read of the ledger.
+ */
+const PLAN_OWED_STATE = "planOwed";
 
 // FIX-2159.
 /**
@@ -133,6 +144,20 @@ export type PlanRequestState = z.infer<typeof planRequestStateSchema>;
  * the board's pass rounds, which count drains.
  */
 export const MAX_ANSWERS_AGAIN = 3;
+
+/** Request state: how many times this request answered again. */
+const ANSWERS_AGAIN_STATE = "answersAgain";
+
+/** Request state: what this round's sources asked the worker to answer about, in order. */
+const ANSWER_ROUND_MESSAGES_STATE = "answerRoundMessages";
+
+/** Request state: the plan's ended steps were put to the worker once, so its source has nothing more. */
+const PLAN_BRIEFED_STATE = "planBriefed";
+
+/** Whether the running request is in its answering turn. */
+export function isAnsweringTurn(ctx: BlockContext): boolean {
+  return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_ANSWERING_STATE] === true;
+}
 
 // FIX-2113.
 /**
@@ -201,6 +226,11 @@ export async function markPlanWaiting(ctx: BlockContext): Promise<void> {
 export async function clearPlanWaiting(ctx: BlockContext): Promise<void> {
   const own = ctx.request.identity.id;
   if (markedRequests(ctx).includes(own)) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, own);
+}
+
+/** Whether the running request is in a step's turn. */
+export function isSteppingTurn(ctx: BlockContext): boolean {
+  return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
 }
 
 // FIX-2080.
@@ -290,13 +320,12 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
 
   const notePlanStart = handler({
     name: "plan-note-start",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     resources: { ...planLedgerResources },
     execute: async (_input, ctx) => {
       const own = await ownPlanLedger(ctx);
       const seen = (own?.list() ?? []).filter((row) => isTerminalStatus(row.status)).map((row) => row.id);
-      await ctx.request.patchState({ planSeen: seen });
+      await ctx.request.patchState({ [PLAN_SEEN_STATE]: seen } as never);
     }
   });
 
@@ -306,7 +335,6 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
    */
   const briefAnswer = handler({
     name: "plan-brief-answer",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     outputSchema: z.object({ message: z.string() }),
     resources: { ...planLedgerResources },
@@ -316,11 +344,11 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       for (const row of rows.filter(isWorkable)) {
         await own!.cancel(row.id, "A step it depends on didn't complete, so it couldn't run.");
       }
-      const seen = new Set(ctx.request.state.planSeen ?? []);
+      const seen = new Set(((ctx.request.state as Record<string, unknown> | undefined)?.[PLAN_SEEN_STATE] ?? []) as string[]);
       const ended = (own?.list() ?? [])
         .filter((row) => isTerminalStatus(row.status) && !seen.has(row.id))
         .sort((a, b) => a.createdAt - b.createdAt);
-      await ctx.request.patchState({ planBriefed: true });
+      await ctx.request.patchState({ [PLAN_BRIEFED_STATE]: true } as never);
       return { message: answerMessage(ended) };
     }
   });
@@ -329,10 +357,9 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
   const stepping = (on: boolean) =>
     handler({
       name: on ? "plan-step-start" : "plan-step-end",
-      requestStateSchema: planRequestStateSchema,
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        await ctx.request.patchState({ planStepping: on });
+        await ctx.request.patchState({ [PLAN_STEPPING_STATE]: on } as never);
       }
     });
   const stepStart = stepping(true);
@@ -340,10 +367,9 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
 
   const endAnswer = handler({
     name: "plan-end-answer",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      await ctx.request.patchState({ planAnswering: false });
+      await ctx.request.patchState({ [PLAN_ANSWERING_STATE]: false } as never);
     }
   });
 
@@ -354,7 +380,6 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
    */
   const decidePlan = handler({
     name: "plan-decide",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     resources: { ...planLedgerResources },
     sessionStateSchema: planWaitingSessionState,
@@ -362,7 +387,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       const own = await ownPlanLedger(ctx);
       const workable = (own?.list() ?? []).filter(isWorkable);
       // The answer-again step starts afresh for this turn: nothing briefed, nothing answered again yet.
-      await ctx.request.patchState({ planOwed: workable.length > 0, planBriefed: false, answersAgain: 0, answerRoundMessages: [] });
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0, [PLAN_BRIEFED_STATE]: false, [ANSWERS_AGAIN_STATE]: 0, [ANSWER_ROUND_MESSAGES_STATE]: [] } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
       if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx);
     }
@@ -380,23 +405,22 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
   });
 
   /** Whether the turn left steps to work, as {@link decidePlan} recorded it. */
-  const owesPlan = (_answer: unknown, ctx: BlockContext<PlanRequestState>): boolean =>
-    ctx.request.state.planOwed === true;
+  const owesPlan = (_answer: unknown, ctx: BlockContext): boolean =>
+    ctx.request.state[PLAN_OWED_STATE] === true;
 
   /** The plan's source: due once, when the turn left steps to work. */
-  const planDue = (value: unknown, ctx: BlockContext<PlanRequestState>): boolean =>
-    owesPlan(value, ctx) && ctx.request.state.planBriefed !== true;
+  const planDue = (value: unknown, ctx: BlockContext): boolean =>
+    owesPlan(value, ctx) && ctx.request.state[PLAN_BRIEFED_STATE] !== true;
 
   /** Keep what a source asked the worker to answer about, when it asked anything. */
   const keepMessage = handler({
     name: "answer-again-keep-message",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     execute: async (value, ctx) => {
       const message = (value as { message?: unknown } | null | undefined)?.message;
       if (typeof message !== "string" || message.trim() === "") return;
-      const kept = ctx.request.state.answerRoundMessages ?? [];
-      await ctx.request.patchState({ answerRoundMessages: [...kept, message] });
+      const kept = ((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWER_ROUND_MESSAGES_STATE] ?? []) as string[];
+      await ctx.request.patchState({ [ANSWER_ROUND_MESSAGES_STATE]: [...kept, message] } as never);
     }
   });
 
@@ -410,21 +434,20 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
    */
   const briefRound = handler({
     name: "answer-again-brief",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: roundSchema,
     outputSchema: roundEndSchema,
     execute: async (value, ctx): Promise<z.infer<typeof roundEndSchema>> => {
-      const state = ctx.request.state;
-      const messages = state.answerRoundMessages ?? [];
+      const state = (ctx.request.state ?? {}) as Record<string, unknown>;
+      const messages = (state[ANSWER_ROUND_MESSAGES_STATE] ?? []) as string[];
       if (messages.length === 0) return { answer: value.answer, again: false };
       await ctx.request.patchState({
-        answersAgain: (state.answersAgain ?? 0) + 1,
+        [ANSWERS_AGAIN_STATE]: Number(state[ANSWERS_AGAIN_STATE] ?? 0) + 1,
         // Consumed, so the next round does not ask these again.
-        answerRoundMessages: [],
-        planAnswering: true,
+        [ANSWER_ROUND_MESSAGES_STATE]: [],
+        [PLAN_ANSWERING_STATE]: true,
         // A step that threw left its mark: the answering turn is no step.
-        planStepping: false
-      });
+        [PLAN_STEPPING_STATE]: false
+      } as never);
       return { answer: value.answer, again: true, message: messages.join("\n\n") };
     }
   });
@@ -435,11 +458,10 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
    */
   const answeredAgain = handler({
     name: "answer-again-answered",
-    requestStateSchema: planRequestStateSchema,
     inputSchema: z.unknown(),
     outputSchema: roundEndSchema,
     execute: (answer, ctx): z.infer<typeof roundEndSchema> => {
-      const answered = ctx.request.state.answersAgain ?? 0;
+      const answered = Number((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWERS_AGAIN_STATE] ?? 0);
       return { answer, again: answered < MAX_ANSWERS_AGAIN };
     }
   });

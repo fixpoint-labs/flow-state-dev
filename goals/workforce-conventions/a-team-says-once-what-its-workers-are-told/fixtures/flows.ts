@@ -94,6 +94,8 @@ const recordLayers = handler({
   }
 });
 
+const clientView = { expose: ["team", "teamKeyPresent", "own", "desk", "runs"] as const };
+
 /**
  * Composes the contract. No model, no generator — handlers only. One copy runs
  * every worker on it; a session names its worker, and the flow's
@@ -119,13 +121,6 @@ export function defineTriageFlow(installation: WorkerInstallation) {
       block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordLayers)
     }
   },
-  session: {
-    ...installation.session(seatState.shape),
-    client: {
-      derived: {
-        ran: ({ state: { team, teamKeyPresent, own, desk, runs } }) => ({ team, teamKeyPresent, own, desk, runs })
-      }
-    }
-  }
+  session: { ...installation.session(seatState.shape), client: clientView }
 });
 }

@@ -1,0 +1,195 @@
+diff --git a/packages/engine/src/context/createExecutionContext.ts b/packages/engine/src/context/createExecutionContext.ts
+index 017cfa3e..04eb4095 100644
+--- a/packages/engine/src/context/createExecutionContext.ts
++++ b/packages/engine/src/context/createExecutionContext.ts
+@@ -190,6 +190,32 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
+ import { readSettledTurns } from "./settled-turns";
+ import { cancelledWithTask } from "../durability/cancel-user-suspension";
+ 
++/** POC (no-session view): what reaching for a session throws in a view with none. */
++export class NoSessionError extends Error {
++  constructor(what: string) {
++    super(`This view runs with no session: it can't ${what}`);
++    this.name = "NoSessionError";
++  }
++}
++/** POC: stands where `ctx.session` would, and refuses every use. */
++function noSessionHandle(): never {
++  return new Proxy({}, {
++    get(_t, prop) {
++      if (typeof prop === "symbol" || prop === "then") return undefined;
++      throw new NoSessionError(`use ctx.session (${prop})`);
++    }
++  }) as never;
++}
++/** POC: stands where the session record would, and refuses every use. */
++function noSessionRecord(): SessionRecord {
++  return new Proxy({} as SessionRecord, {
++    get(_t, prop) {
++      if (typeof prop === "symbol" || prop === "then") return undefined;
++      throw new NoSessionError(`read the session record (${prop})`);
++    }
++  });
++}
++
+ // FIX-2063.
+ /**
+  * Why `ctx.suspend()` refused, and what to change: the rule
+@@ -711,6 +737,12 @@ export async function createExecutionContext<
+     accessorScope[accessor] = scope;
+   }
+ 
++  if (options.noSession === true) {
++    for (const accessor of Object.keys(sessionResourceConfigs)) {
++      delete sessionResourceConfigs[accessor];
++      delete accessorScope[accessor];
++    }
++  }
+   resolveStringContentTemplates(sessionResourceConfigs);
+   resolveStringContentTemplates(userResourceConfigs);
+   resolveStringContentTemplates(orgResourceConfigs);
+@@ -765,7 +797,7 @@ export async function createExecutionContext<
+   // recorded what it handed on, so the read below sees it (FIX-2145).
+   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
+   const [loadedSession, loadedRequest] = await Promise.all([
+-    stores.session.get(sessionKey),
++    options.noSession === true ? undefined : stores.session.get(sessionKey),
+     stores.request.get(requestId)
+   ]);
+   if (
+@@ -823,7 +855,9 @@ export async function createExecutionContext<
+     // all()/client() (via priorItems) and history() (via loadLLMHistory);
+     // `historyStart` names the first turn the window holds when an earlier
+     // turn is out of view (FIX-1613).
+-    readSettledTurns({
++    options.noSession === true
++      ? ({ window: [], retried: new Set(), parked: new Set(), waiting: new Set(), open: new Set(), settled: [] } as unknown as Awaited<ReturnType<typeof readSettledTurns>>)
++      : readSettledTurns({
+       requests: stores.request,
+       scope: turnScope,
+       turns: historyWindowTurns,
+@@ -947,6 +981,7 @@ export async function createExecutionContext<
+   // (FIX-1068), so this request cannot overwrite a concurrent first action and
+   // cannot invent a second address for the same session.
+   let sessionRecord =
++    options.noSession === true ? noSessionRecord() :
+     loadedSession ??
+     ((await ensureSessionRecord(
+       stores,
+@@ -978,7 +1013,7 @@ export async function createExecutionContext<
+     })
+     )) as typeof loadedSession & object);
+ 
+-  ensureJournalDefaults(sessionRecord);
++  if (options.noSession !== true) ensureJournalDefaults(sessionRecord);
+ 
+   // The binding checks run HERE, on one path, rather than inside the
+   // already-existed branch. A request that loses the create race adopts the
+@@ -987,7 +1022,7 @@ export async function createExecutionContext<
+   // another principal's or another tenant's session. Running them
+   // unconditionally costs a comparison on the branch that built the record
+   // itself, where they pass by construction, and that is the cheaper mistake.
+-  {
++  if (options.noSession !== true) {
+     // Flow-instance binding. A record this request loaded was checked above;
+     // this is for the create-race WINNER, which a losing creator adopts
+     // without ever having loaded it — and which may belong to another instance
+@@ -1040,10 +1075,11 @@ export async function createExecutionContext<
+   // nobody ever recorded the right one. One of those is fixed by changing the
+   // request and the other only by the offline migration, so they must not share
+   // an answer (BR-14).
+-  if (!isOrgAttributed(sessionRecord)) {
++  // POC: with no session, the run's own (validated) org is the org.
++  if (options.noSession !== true && !isOrgAttributed(sessionRecord)) {
+     throw new UnattributedOrgError("executing against this session");
+   }
+-  const sessionOrgId = sessionRecord.orgId as string;
++  const sessionOrgId = options.noSession === true ? optionsOrgId : (sessionRecord.orgId as string);
+   if (optionsOrgId !== sessionOrgId) {
+     throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
+   }
+@@ -1094,7 +1130,7 @@ export async function createExecutionContext<
+   // an unstamped session's lineage id were its session key the two would be
+   // indistinguishable — routing unshared resources into the lineage namespace
+   // along with the shared ones.
+-  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
++  const lineageId = resolveLineageId({ id: sessionKey, lineageId: options.noSession === true ? undefined : sessionRecord.lineageId });
+ 
+   const resolvedOrgKey = resolveOrgStorageKey(resolvedOrgId, flow);
+   let orgRecord: OrgRecord | undefined = loadedOrg;
+@@ -2529,7 +2565,9 @@ export async function createExecutionContext<
+     readUserState(userRef.current.state),
+     userRef.current.version
+   );
+-  const sessionContainer = createStateContainer<TSessionState>(
++  const sessionContainer = options.noSession === true
++    ? createStateContainer<TSessionState>({} as TSessionState, 0)
++    : createStateContainer<TSessionState>(
+     readSessionState(sessionRef.current.state),
+     sessionRef.current.version
+   );
+@@ -3083,7 +3121,7 @@ export async function createExecutionContext<
+       maxAttempts
+     );
+   };
+-  const sessionHandle = defineStateProperty(
++  const sessionHandle = options.noSession === true ? noSessionHandle() : defineStateProperty(
+     {
+       identity: {
+         type: "session" as const,
+diff --git a/packages/engine/src/context/types.ts b/packages/engine/src/context/types.ts
+index 2d0e1e2b..a083338d 100644
+--- a/packages/engine/src/context/types.ts
++++ b/packages/engine/src/context/types.ts
+@@ -75,6 +75,8 @@ export type CreateExecutionContextOptions<
+   requestId: string;
+   userId?: string;
+   sessionId?: string;
++  /** POC (no-session view): build the context with no session at all. */
++  noSession?: boolean;
+   // FIX-1442.
+   /**
+    * The organization this execution runs under. **Required** —
+diff --git a/packages/engine/src/execution/runRead.ts b/packages/engine/src/execution/runRead.ts
+index 837cc323..2600fe0a 100644
+--- a/packages/engine/src/execution/runRead.ts
++++ b/packages/engine/src/execution/runRead.ts
+@@ -145,7 +145,7 @@ function seedingInScratch<T extends { get(id: string): Promise<unknown>; set(id:
+  * org record go to a fresh in-memory registry dropped when the read ends; any
+  * other write throws `read_only`.
+  */
+-function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
++export function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
+   const scratch = createInMemoryStores();
+   return {
+     ...stores,
+diff --git a/packages/engine/src/execution/types.ts b/packages/engine/src/execution/types.ts
+index 7477c7fc..c29ba459 100644
+--- a/packages/engine/src/execution/types.ts
++++ b/packages/engine/src/execution/types.ts
+@@ -224,6 +224,16 @@ export type RunActionOptions<
+ /**
+  * Builds execution metadata from context with optional caller overrides.
+  */
++/** POC (no-session view): the session id, or none in a view with no session. */
++function sessionIdOrNone(ctx: ExecuteBlockContext): string | undefined {
++  try {
++    return ctx.session.identity.id;
++  } catch (error) {
++    if ((error as Error).name === "NoSessionError") return undefined;
++    throw error;
++  }
++}
++
+ export function createExecutionMetadata(
+   ctx: ExecuteBlockContext,
+   overrides: Partial<ExecutionMetadata> = {}
+@@ -237,7 +247,7 @@ export function createExecutionMetadata(
+       ctx.user.identity.userId ??
+       ctx.request.identity.userId ??
+       "unknown_user",
+-    sessionId: overrides.sessionId ?? ctx.session.identity.id,
++    sessionId: overrides.sessionId ?? sessionIdOrNone(ctx),
+     orgId: overrides.orgId ?? ctx.request.identity.orgId,
+     blockName: overrides.blockName,
+     blockKind: overrides.blockKind,

@@ -9,6 +9,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createNextHandler } from "../src/createNextHandler";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ESCAPED_ORG = "org%5Fpentest%5Flab.helper";
 const ESCAPED_USER = "acme.~alice%40acme%2Ecom.helper";
@@ -17,15 +18,12 @@ function runFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.object({ ok: z.boolean() }),
           execute: () => ({ ok: true })
         })
-      }
     }
   })();
 }
@@ -36,10 +34,11 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
     ["an escaped user segment", ESCAPED_USER]
   ])("dispatches an action on %s, decoded once by Next", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { worker: runFlow(kind) },
+      flows: [runFlow(kind)],
       stores: { default: { primary: inMemoryStores() } }
     });
-    const { POST } = createNextHandler(flowstate);
+    // Routing, not the network guard. The flow has no resolver.
+    const { POST } = createNextHandler(flowstate, { allowUnauthenticated: true });
 
     // The URL the client builds (`encodeURIComponent(kind)`), and the
     // `params.path` Next derives from it: one decodeURIComponent per segment.
@@ -50,7 +49,7 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
       new Request(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u1", input: {} })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: {} })
       }),
       { params: Promise.resolve({ path: nextPath }) }
     );

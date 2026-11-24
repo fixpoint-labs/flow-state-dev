@@ -14,12 +14,17 @@
  * synchronously with `flush: "immediate"` for low-volume or deterministic-test
  * use; `"raf"` auto-falls back to immediate when `requestAnimationFrame` is
  * unavailable (SSR / Node).
+ *
+ * `reconnect` hands a `{ requestId }` stream the client's own `reconnect`
+ * option, which opens a dropped connection again until the request ends.
+ * `client` streams through a host's own client instead of the provider's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bindStoreToCallbacks,
   createRequestStreamStore,
   createSSEClientFromResponse,
+  type Client,
   type RequestStreamHandle,
   type RequestStreamStore
 } from "@flow-state-dev/client";
@@ -63,7 +68,21 @@ export type UseRequestStreamOptions = {
   reconnectToken?: number;
   /** Snapshot flush policy. `"raf"` (default) coalesces; `"immediate"` flushes synchronously. */
   flush?: "raf" | "immediate";
+  /** `false` opens nothing, and a `{ requestId }` source needs no flow or id. Default `true`. */
   enabled?: boolean;
+  /**
+   * Open a `{ requestId }` stream again when it drops while the request is in
+   * progress: the client's `request(id).stream({ reconnect: true })`, which
+   * backs off, resumes after the last event and ends on a 401, 403 or 404.
+   * Default `false`.
+   */
+  reconnect?: boolean;
+  /**
+   * The client to stream through, for a host that holds its own (its user,
+   * origin and `fetcher`). Pass a stable reference. Default: the provider's
+   * client.
+   */
+  client?: Pick<Client, "flow">;
   onSessionMetadataChanged?: () => void;
 };
 
@@ -80,8 +99,29 @@ export type UseRequestStreamResult = {
   /** True when the main execution chain has completed but background work tasks are still running. */
   readonly isFinishing: boolean;
   readonly lastEventId?: string;
+  /**
+   * When the request ended, in ms: the time of the status event that ended it
+   * (`completed`, `failed`, `aborted`, `incomplete` or `interrupted`).
+   * `undefined` while it runs or waits (`suspended`). A screen that follows
+   * one request by id, rather than a session's latest turn, reads its end
+   * time here: no session read names it.
+   */
+  readonly completedAt?: number;
   close: () => void;
 };
+
+/** The statuses a request ends on; `in_progress` and `suspended` haven't ended. */
+const ENDED: ReadonlySet<RequestStatus> = new Set<RequestStatus>(["completed", "failed", "aborted", "incomplete", "interrupted"]);
+
+/** The time of the status event `store`'s current status came from, when that status ended the request. */
+function endedAt(store: RequestStreamStore): number | undefined {
+  if (!ENDED.has(store.status)) return undefined;
+  for (let i = store.statusEvents.length - 1; i >= 0; i -= 1) {
+    const event = store.statusEvents[i]!;
+    if (event.status === store.status) return typeof event.ts === "number" ? event.ts : undefined;
+  }
+  return undefined;
+}
 
 function passesTypeFilter(
   item: OutputItem,
@@ -99,20 +139,22 @@ export function useRequestStream(
 ): UseRequestStreamResult {
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
-  // The request stream goes through the provider's transport (its fetcher).
-  const fsd = useClient({ baseUrl: options.baseUrl });
+  // The request stream goes through the provider's transport (its fetcher), or the host's own client.
+  const built = useClient({ baseUrl: options.baseUrl });
+  const fsd = options.client ?? built;
   const {
     source,
     filter,
     includeTrace,
     reconnectToken,
     enabled = true,
+    reconnect = false,
     onSessionMetadataChanged
   } = options;
 
   const isResponseSource = "response" in source;
 
-  if (!isResponseSource) {
+  if (enabled && !isResponseSource) {
     if (!flowKind?.trim()) {
       throw new Error(
         "useRequestStream requires flowKind (option or FlowProvider) for a { requestId } source"
@@ -132,6 +174,7 @@ export function useRequestStream(
 
   const [items, setItems] = useState<OutputItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>("in_progress");
+  const [completedAt, setCompletedAt] = useState<number | undefined>(undefined);
   // Transport error or manual close — distinct from a terminal request status.
   const [ended, setEnded] = useState(false);
 
@@ -151,6 +194,7 @@ export function useRequestStream(
     store.flushDeltas();
     setItems(store.getSorted());
     setStatus(store.status);
+    setCompletedAt(endedAt(store));
   }, []);
 
   const scheduleFlush = useCallback(() => {
@@ -185,6 +229,7 @@ export function useRequestStream(
     store.clear();
     setItems([]);
     setStatus("in_progress");
+    setCompletedAt(undefined);
     setEnded(false);
 
     const callbacks = {
@@ -198,12 +243,14 @@ export function useRequestStream(
       }
     };
 
+    // With `reconnect`, the client's stream opens a dropped connection again itself.
     const handle = responseObj
       ? createSSEClientFromResponse({ response: responseObj, ...callbacks })
       : fsd.flow(flowKind!).request(reqId!).stream({
           includeTrace,
           lastEventId: sourceLastEventId,
           startingAfter,
+          ...(reconnect ? { reconnect: true } : {}),
           ...callbacks
         });
 
@@ -228,7 +275,8 @@ export function useRequestStream(
     startingAfter,
     sourceLastEventId,
     responseObj,
-    scheduleFlush
+    scheduleFlush,
+    reconnect
   ]);
 
   const messages = useMemo(
@@ -280,6 +328,7 @@ export function useRequestStream(
     currentStatus,
     isStreaming,
     isFinishing,
+    ...(completedAt === undefined ? {} : { completedAt }),
     get lastEventId() {
       return handleRef.current?.lastEventId;
     },

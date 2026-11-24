@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 382">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="380" height="230"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">THE SEQUENCER</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="68">handleTicket</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="82" x2="408" y2="82"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="96" width="200" height="56"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="56" y="120">lookUpOrder</text>
+<text class="sub x" fill="#a83e28" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="56" y="140">throws</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="170" width="200" height="56"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="56" y="194">draftReply</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="56" y="214">never runs</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="24" width="372" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="534" y="46">THE CALLER, ON THE STREAM</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="534" y="70">error item</text>
+<text class="c x" fill="#a83e28" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="654" y="70">FAILED</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="92">the message you threw, no stack trace</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="112">then request.failed ends the stream</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="168" width="372" height="86"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="534" y="190">AFTER THE ITEM IS SENT</text>
+<rect class="hl" fill="#e8f551" x="528" y="200" width="356" height="24"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="542" y="217">onErrored</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="244">errorCapture, for your error tracker</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="242" y1="124" x2="518" y2="124" marker-end="url(#ah)"/>
+<line class="ln x" fill="none" stroke="#a83e28" stroke-width="1.3" x1="262" y1="114" x2="262" y2="134"/>
+<rect class="ground" fill="#f0ece1" x="437" y="117" width="54" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="464" y="128" text-anchor="middle">THROWS</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="706" y1="128" x2="706" y2="166" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="278" x2="920" y2="278"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="304">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="304">Nothing catches the throw, so the sequencer stops and the request ends failed.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="329">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="329">The hooks run after the caller has the item, so they cannot change what it sees.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="356" x2="54" y2="356" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="360">THE ERROR TRAVELS</text>
+<rect class="hl" fill="#e8f551" x="222" y="350" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="256" y="360">WHERE YOU LISTEN</text>
+<line class="ln x" fill="none" stroke="#a83e28" stroke-width="1.3" x1="408" y1="356" x2="434" y2="356"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="442" y="360">THE FAILURE</text>
+</g>
+</svg>

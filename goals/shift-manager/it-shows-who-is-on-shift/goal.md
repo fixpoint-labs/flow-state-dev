@@ -1,6 +1,6 @@
 # shift-manager › it shows who is on shift
 
-**Issue:** FIX-1723
+**Issue:** FIX-1723; the **one answer** leg by FIX-2775 (epic FIX-2683), whose spec's goal is `specs/issues/FIX-2775/SPEC.md` → "The goal, and how we'll know it's met".
 
 **Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
 
@@ -18,6 +18,7 @@
 - **sidebar**: the Roster entry's on-shift count and the footer's equal the store's, and the sidebar never says on call.
 - **TEAMS**: one row per group, Staff first, each with a square per seat carrying the store's status, and its on-shift count over its seats.
 - **filter**: each TEAMS row opens Roster for exactly that team, names it in the title, and is marked current.
+- **one answer** (spread 1, after the legs above): a worker on the seat flow that is off shift stops for an approval, opened by this script through the Lab's routes; then the person approves it from Inbox. In every state the page draws, the Inbox lists the ask exactly when the worker's TEAMS square reads on shift, so the two move in one update, both when it is asked and when it is answered. Each state is read by a `MutationObserver` in the page, whose callback runs once per committed change, so no state is skipped and none is read half-drawn.
 
 **Anti-game:**
 - No assertion reads Shift Manager's modules. The oracle is the store, read by this script through the Lab's HTTP routes (the inventory, the person's conversation ledger, each seat session's suspensions). A row's board is the conversation whose partition keeps it, `<sessionId>.tasks`, by the script's own match against the listed sessions, so a HOLDING chip is graded against the real board ref.
@@ -28,9 +29,10 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts`
 
-**Controls:** each rebuilds Shift Manager with `src/lib/derive.ts` swapped for a module under `controls/`.
+**Controls:** each rebuilds Shift Manager with `src/lib/shift.ts` swapped for a module under `controls/` (`src/lib/derive.ts` before FIX-2775, when status read the snapshot).
 - `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must fail at **status** on the worker whose only wait is an ask.
 - `GOAL_CONTROL=count-queued`: queued rows count as slots. Must fail at **slots** on the worker holding a queued row.
+- `GOAL_CONTROL=status-from-snapshot`: status counts the snapshot's walked asks, read through the page's provider, while the Inbox lists the view's. Must fail at **one answer**.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -50,3 +52,10 @@
 | 2026-10-13 | FIX-1964 on 321a97b0 + uncommitted | n/a | PASS | On Call removed: two statuses. A running row, a parked row or a pending ask is on shift. Spread 1: eng.coder, eng.reviewer and ops.asker on shift; spread 2: eng.coder, eng.reviewer, eng.spare and ops.waiter on shift. The sidebar's Roster entry and footer carry the on-shift count alone. |
 | 2026-10-13 | same, `GOAL_CONTROL=ignore-asks` | n/a | FAIL (expected) | **status** on the workers whose only wait is an ask (eng.spare in spread 2, among others), drawn off shift where the store says on shift, with the **summary** and **TEAMS** counts that follow. |
 | 2026-10-26 | `fix/fix-2131` on `f32747683`, uncommitted | n/a | PASS | The `parked` state is `asked` (FIX-2131): the run holds its task on a question with `askQuestion`. Spread 1: eng.coder, eng.reviewer (1 held, 1 wait) and ops.asker on shift; spread 2: eng.coder, eng.reviewer, eng.spare and ops.waiter on shift. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | PASS | The shift-lab installs the workforce kit with `lead`, `seat` and `coordinator` in its slot. *"Shift Manager built with Vite and served by its command over the shift-lab under 2 spreads; Roster, each team and the sidebar graded in Chromium against the store read through the Lab's routes."* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (control broken, not from this change) | `count-queued` never reaches a leg: the control's build fails, *"controls/count-queued.ts (10:9): \"readStatus\" is not exported by \"packages/shift-manager/src/lib/columns.ts\""*. Neither file is touched here. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `ignore-asks`: **status**, *"[spread 1] status: All: ops.asker is drawn under \"off shift\" (row says \"off shift\"), the store says \"on shift\""*, with the sidebar and TEAMS counts that follow. |
+| 2026-11-20 | fix-2775-screen-migration on b8d86d908c (FIX-2775 PR 3) | n/a | PASS | Status and counts read the Inbox view's `workerId` (`src/lib/shift.ts`). Both spreads as before, 9 workers in [_general, eng, ops]. *"one answer: eng.spare's approval listed and its square on shift in one update, over 3 drawn states; after Approve both cleared together, over 6"* |
+| 2026-11-20 | same | n/a | FAIL (expected) | `status-from-snapshot`: *"[spread 1] one answer: eng.spare's approval: 1 of 3 drawn states disagree, the first {"count":"3","status":"off shift","listed":true}"* and *"after Approve: 1 of 8 drawn states disagree, the first {"count":"2","status":"on shift","listed":false}"*, with the sidebar's on-shift count that follows |
+| 2026-11-20 | same | n/a | FAIL (expected) | `ignore-asks`: **status** on eng.spare (spread 2) and ops.asker (spread 1), drawn off shift where the store says on shift, with the summary and TEAMS counts that follow |
+| 2026-11-20 | same | n/a | FAIL (expected) | `count-queued` (its build fixed by the retarget onto `shift.ts`): **slots** and **holding** on eng.coder and ops.asker (spread 2), *"shows \"1 in use\" … it holds 0 row(s) (and 1 queued)"* |

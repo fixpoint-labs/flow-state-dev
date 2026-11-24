@@ -1,6 +1,8 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError } from "./cas";
+import { createLocalBlobStore } from "../blobs/local-blob-store";
+import type { BlobStore } from "../blobs/types";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
@@ -183,9 +185,11 @@ export function resolveTraceMaxRequests(explicit?: number): number {
 }
 
 export function createInMemoryStores(options: CreateStoreOptions = {}): StoreRegistry {
+  // The suspension store joins a user's pending suspensions to this request store (FIX-2770).
+  const request = createInMemoryRequestStore();
   return {
     session: createInMemorySessionStore(),
-    request: createInMemoryRequestStore(),
+    request,
     user: createInMemoryUserStore(),
     org: createInMemoryOrgStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
@@ -196,7 +200,7 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
       ...options.traceStore,
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
     }),
-    suspensions: createInMemorySuspensionStore(),
+    suspensions: createInMemorySuspensionStore({ requests: request }),
     leases: createInMemoryLeaseStore(),
     wakes: createInMemoryWakeStore()
   };
@@ -225,14 +229,16 @@ export function createFilesystemStores(
         "this warning."
     );
   }
+  // The suspension store joins a user's pending suspensions to this request store (FIX-2770).
+  const request = createFilesystemRequestStore({
+    rootDir: path.join(options.rootDir, "requests"),
+    onPersistError
+  });
   return {
     session: createFilesystemSessionStore({
       rootDir: path.join(options.rootDir, "sessions")
     }),
-    request: createFilesystemRequestStore({
-      rootDir: path.join(options.rootDir, "requests"),
-      onPersistError
-    }),
+    request,
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
@@ -251,7 +257,7 @@ export function createFilesystemStores(
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
       onPersistError
     }),
-    suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions")),
+    suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions"), { requests: request }),
     leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases")),
     wakes: createFilesystemWakeStore(path.join(options.rootDir, "wakes"))
   };
@@ -275,15 +281,22 @@ export function inMemoryStores(options: CreateStoreOptions = {}): StoreAdapter {
 
 /**
  * Filesystem store adapter for `createFlowState`. Backs the `primary`
- * capability slot with `.fsdev/data`-style on-disk persistence.
+ * capability slot with `.fsdev/data`-style on-disk persistence, and the
+ * `blobs` slot with attachment files under `<rootDir>/blobs`, so
+ * everything this store keeps sits under one folder.
  */
 export function filesystemStores(
   options: FilesystemStoreRegistryOptions
 ): StoreAdapter {
   let registry: StoreRegistry | undefined;
+  let blobs: BlobStore | undefined;
   return {
-    capabilities: ["primary"],
-    resolve() {
+    capabilities: ["primary", "blobs"],
+    resolve(slots) {
+      if (slots.includes("blobs")) {
+        blobs ??= createLocalBlobStore({ rootDir: path.join(options.rootDir, "blobs") });
+        return Promise.resolve({ blobs });
+      }
       registry ??= createFilesystemStores(options);
       return Promise.resolve(registry);
     }

@@ -23,7 +23,11 @@ export function resolveSettings(mode, env) {
   }
 
   // `dev` stays off port 80, which needs root on Linux; `serve` is the one meant for the standard port.
-  const port = Number(env.PORT ?? (mode === "serve" ? 80 : 8080));
+  const portText = env.PORT ?? (mode === "serve" ? "80" : "8080");
+  const port = Number(portText);
+  if (!/^\d+$/.test(portText) || port < 1 || port > 65535) {
+    return { error: `PORT must be an integer from 1 to 65535, got "${portText}".`, exitCode: 2 };
+  }
   const host = env.HOST ?? (mode === "serve" ? "0.0.0.0" : "127.0.0.1");
   const loopback = LOOPBACK.has(host);
 

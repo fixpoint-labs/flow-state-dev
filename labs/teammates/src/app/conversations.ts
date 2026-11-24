@@ -1,0 +1,135 @@
+/**
+ * A worker's one conversation, read and driven only through the packages.
+ * One follower per open conversation (`ConversationFollower`) reads its items
+ * on react's `useSessionFeed`, its turns on workforce's session turns view
+ * (running, stopped, retryable, and `historyStart`, where the worker's window
+ * began), and the history summary's mark through `useResource` by session id;
+ * React's `conversationLines` turns the items and turns into lines. Every
+ * screen on the conversation reads what it read (`useConversation`). Its
+ * writes go through workforce's client (`useConversationCalls`): open it,
+ * send a line (streamed into the follower's feed), stop it (`stopTurns`) and
+ * retry a failed turn (`retryTurn`); an approval is answered by react's
+ * `useApproval`, where its line is drawn.
+ */
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { UploadRequest } from "@flow-state-dev/client";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { conversationLines, useResource, useSessionFeed, useView, type ItemLine } from "@flow-state-dev/react";
+import { historySummaryResource, sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
+import { teammatesRenderers } from "../components/lines";
+import { answeringOf, windowMarkOf, windowReadOf, type ConversationView } from "../lib/conversation";
+import { fileReader } from "../lib/files";
+import { reuseById } from "../lib/stable";
+import { useAppClient } from "./provider";
+
+/** How many turns workforce's session turns view lists: a session's newest. */
+const TURNS_LISTED = 50;
+
+/** Follows conversation `sessionId` for every screen on it: render one per open conversation. Draws nothing. */
+export function ConversationFollower({ sessionId }: { sessionId: string }): null {
+  const { client, pollIntervalMs, conversations } = useAppClient();
+  const feed = useSessionFeed(sessionId, { client });
+  const turns = useView(sessionTurnsViewRef(), { sessionId }, { client, pollIntervalMs }).value;
+  const summary = useResource(historySummaryResource, { sessionId, client, pollIntervalMs }).value;
+  const stop = useSyncExternalStore(conversations.subscribe, () => conversations.stopOf(sessionId));
+  // Kept for the follower's life: a stopped line stays once its turn leaves the turns read.
+  const [stopped] = useState(() => new Set<string>());
+  // Unchanged lines keep their objects, so a streamed chunk redraws only the growing one.
+  const last = useRef<ItemLine[]>([]);
+  const items = feed?.items;
+  const ended = useMemo(() => (turns ?? []).filter((t) => t.status !== "in_progress").map((t) => t.id), [turns]);
+  // A stop ends once the turns show every turn it stopped ended. A full view (its newest fifty) that doesn't list
+  // one has left it out only when the turn started before the view's oldest; otherwise the view hasn't read it yet.
+  const listed = new Set((turns ?? []).map((t) => t.id));
+  const oldest = turns !== undefined && turns.length >= TURNS_LISTED ? Math.min(...turns.map((t) => t.startedAt)) : undefined;
+  const olderThanView = (id: string) => !listed.has(id) && oldest !== undefined && (stop?.startedAt?.get(id) ?? Infinity) < oldest;
+  const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id) || olderThanView(id));
+  const followed = useMemo(() => {
+    if (feed === undefined) return undefined;
+    // Before the history lands there is no view yet, but the connection is already news: a read that gave up is `stopped`.
+    if (items === undefined) return { view: undefined, connection: feed.state, mark: undefined, follow: feed.followResponse };
+    const read = turns ?? [];
+    for (const turn of read) if (turn.status === "aborted") stopped.add(turn.id);
+    // A stopped turn that left the turns read still ends in its stopped line.
+    const lineTurns = [...read, ...[...stopped].filter((id) => !listed.has(id)).map((id) => ({ id, status: "aborted" }))];
+    const lines = (last.current = reuseById(last.current, conversationLines(items, lineTurns, { renderers: teammatesRenderers })));
+    const inProgress = read.filter((t) => t.status === "in_progress").map((t) => t.id);
+    const since: number | undefined = items[0]?.ts;
+    const view: ConversationView = {
+      lines,
+      running: answeringOf(items, inProgress, ended),
+      stopping: stop !== undefined && !stopEnded,
+      backgroundRunning: feed.runs === null ? null : feed.runs.length,
+      ...(feed.hasEarlier ? { loadEarlier: feed.loadEarlier } : {}),
+      ...(since === undefined ? {} : { since }),
+    };
+    return { view, connection: feed.state, mark: windowMarkOf(items, lines, windowReadOf(read, summary)), follow: feed.followResponse };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, feed?.state, feed?.runs, feed?.hasEarlier, turns, ended, summary, stop, stopEnded]);
+  useEffect(() => {
+    if (stopEnded) conversations.setStop(sessionId, undefined, stop);
+  }, [stopEnded, stop, conversations, sessionId]);
+  useEffect(() => conversations.publish(sessionId, followed), [conversations, sessionId, followed]);
+  useEffect(() => () => conversations.publish(sessionId, undefined), [conversations, sessionId]);
+  return null;
+}
+
+/** What conversation `sessionId`'s follower read last: its view, connection and divider; `undefined` until it has. */
+export function useConversation(sessionId: string | undefined) {
+  const { conversations } = useAppClient();
+  return useSyncExternalStore(conversations.subscribe, () => (sessionId === undefined ? undefined : conversations.read(sessionId)));
+}
+
+/** A conversation's writes, through workforce's client, and a line's files. The same object while the provider holds. */
+export function useConversationCalls() {
+  const { client, workforce, conversations, connection } = useAppClient();
+  return useMemo(
+    () => ({
+      /** The worker's one conversation, by id: the same id every time. */
+      async open(worker: string): Promise<string> {
+        const session = await workforce.ensureWorkerSession({ worker });
+        conversations.flows.set(session.id, session.flowId ?? session.flowKind);
+        return session.id;
+      },
+      /** Send a line, with the files attached to it; with the conversation followed, its answer shows as it is written. */
+      async send(sessionId: string, text: string, attachments: readonly FileContent[] = []): Promise<void> {
+        const follow = conversations.read(sessionId)?.follow;
+        if (follow === undefined) {
+          await workforce.send(sessionId, text, { attachments: [...attachments] });
+          return;
+        }
+        const response = await workforce.send(sessionId, text, { stream: true, attachments: [...attachments] });
+        if (response.headers.get("content-type")?.includes("text/event-stream")) follow(response);
+      },
+      /**
+       * Stop the turns running at the press, and every line sent before it; a line sent after it runs on
+       * (workforce's `stopTurns`). Stopping shows from the press until each turn it stopped has ended.
+       * Rejects with why the server refused one.
+       */
+      async stop(sessionId: string): Promise<void> {
+        const reading = { ids: null };
+        conversations.setStop(sessionId, reading);
+        let ids: ReadonlySet<string>;
+        let startedAt: ReadonlyMap<string, number>;
+        try {
+          // Beside the stop, the running turns' starts, read with it: a stopped turn the turns view never lists is
+          // over once it started before the view's oldest turn. `stopTurns` takes its own snapshot of what was sent first.
+          const [stopped, running] = await Promise.all([workforce.stopTurns(sessionId), client.sessions.requests(sessionId, { status: "in_progress", limit: TURNS_LISTED })]);
+          ids = new Set(stopped);
+          startedAt = new Map(running.flatMap((r) => (r.startedAtMs === undefined ? [] : [[r.id, r.startedAtMs] as const])));
+        } catch (error) {
+          conversations.setStop(sessionId, undefined, reading);
+          throw error;
+        }
+        conversations.setStop(sessionId, ids.size === 0 ? undefined : { ids, startedAt }, reading);
+      },
+      /** Run a failed turn again, as a new request the engine links to `requestId`. */
+      retry: (sessionId: string, requestId: string): Promise<void> => workforce.retryTurn(sessionId, requestId),
+      /** Store a file the composer attached; resolves to its reference, which a line then carries. */
+      upload: (request: UploadRequest): Promise<FileContent> => client.upload(request),
+      /** The bytes of a file a line carries, for its thumbnail. */
+      readFile: fileReader(connection),
+    }),
+    [client, workforce, conversations, connection],
+  );
+}

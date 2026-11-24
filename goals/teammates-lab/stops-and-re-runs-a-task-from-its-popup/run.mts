@@ -17,11 +17,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
-import { createClient } from "@flow-state-dev/client";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
-import { parseNotice } from "@flow-state-dev/orchestration/tasks";
-import { createWorkforceClient, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
+import { createWorkforceClient, TASK_RESULT_DATA_TYPE, WORKER_ID_STATE_KEY, workerSessionsViewRef } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
@@ -39,7 +38,6 @@ const LAB = repoPath("labs", "teammates");
 const BOARD = "tasks";
 const CREATE_TASK = taskActionName("createTask", BOARD);
 const GET_TASK = taskActionName("getTask", BOARD);
-const LIST_TASKS = taskActionName("listTasks", BOARD);
 const UPDATE_TASK = taskActionName("updateTask", BOARD);
 /** Each of the scripted run's five steps: long enough to steer and cancel mid-run. */
 const STEP_MS = 6_000;
@@ -52,7 +50,7 @@ const CONTROLS: Record<string, Patch[]> = {
   "": [],
   "wrong-board": [
     {
-      file: "src/adapter.ts",
+      file: "src/app/tasks.ts",
       from: "inbox.board({ flowId: await flowOf(), sessionId, board: TASK_BOARD });",
       to: 'inbox.board({ flowId: await flowOf(), sessionId, board: "plan" });',
       why: 'the task\'s action row is bound to board "plan", not the conversation\'s "tasks"',
@@ -60,11 +58,18 @@ const CONTROLS: Record<string, Patch[]> = {
   ],
   "other-session": [
     {
-      file: "src/adapter.ts",
-      from: "return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
+      file: "src/app/tasks.ts",
+      from: 'import { useEffect, useMemo, useState } from "react";',
+      to: 'import { viewRef } from "@flow-state-dev/client";\nimport { useEffect, useMemo, useState } from "react";',
+      why: "the worker sessions view's ref, for the patch below",
+    },
+    {
+      file: "src/app/tasks.ts",
+      from: "return actions.refile(brief, rerunOverrides(task, brief.context, worker));",
       to:
-        `const other = (await workforce.listWorkerSessions(${JSON.stringify(fixture.filer)})).find((s) => !s.isDefault)!.session; ` +
-        "return inbox.board({ flowId: other.flowId ?? other.flowKind, sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
+        // FIX-2725: Lead's other conversation, from the roster flow's worker sessions view.
+        `const other = ((await client.view(viewRef("workforce-roster", "workerSessions"), { worker: ${JSON.stringify(fixture.filer)} })).value as Array<{ id: string; isDefault: boolean }>).find((s) => !s.isDefault)!; ` +
+        "return inbox.board({ flowId: await flowOf(), sessionId: other.id, board: TASK_BOARD }).refile(brief, rerunOverrides(task, brief.context, worker));",
       why: "Re-run is bound to a second conversation with Lead, not the one that filed the task",
     },
   ],
@@ -83,6 +88,14 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   symlinkSync(join(LAB, "node_modules"), join(root, "node_modules"));
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // The build config reads its build-inputs plugin, and the repository it records, from two folders up: the checkout's.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(
+    viteConfig,
+    readFileSync(viteConfig, "utf8")
+      .replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts/build-inputs.mjs")))
+      .replace('fileURLToPath(new URL("../..", import.meta.url))', JSON.stringify(REPO_ROOT)),
+  );
   for (const patch of patches) {
     const path = join(root, patch.file);
     const before = readFileSync(path, "utf8");
@@ -106,13 +119,15 @@ type Row = InboxTaskInput & { goal: string; title?: string; assignee?: string; a
 type WholeRow = { status?: string; goal?: string; title?: string; context?: string; assignee?: string; attempts?: number; error?: string; steers?: { message: string }[] };
 type Board = { flow: string; sessionId: string };
 
-/** A board's rows, as its list read answers: stores nothing, touches no row. */
+/** A board's rows, as its task-list view answers: stores nothing, touches no row. */
 async function rowsOf(fsd: Fsd, board: Board): Promise<Row[]> {
-  const listed = await fsd.flow(board.flow).read<{ ok: boolean; error?: string; tasks: Row[] }>(LIST_TASKS, {}, { sessionId: board.sessionId });
-  // A conversation nothing was ever filed on has no board yet: it holds no rows.
-  if (!listed.ok && listed.error?.startsWith("no_delegation_board")) return [];
-  if (!listed.ok) throw new Error(`listTasks refused: ${listed.error}`);
-  return listed.tasks;
+  try {
+    return (await fsd.view(taskListViewRef(board.flow, BOARD), {}, { sessionId: board.sessionId })).value as Row[];
+  } catch (error) {
+    // A conversation nothing was ever filed on has no board yet: it holds no rows.
+    if (error instanceof ClientHttpError && error.status === 422) return [];
+    throw error;
+  }
 }
 
 /** One board action on `board`, and its output. */
@@ -147,14 +162,14 @@ async function stepsOf(fsd: Fsd, runSession: string): Promise<number> {
 const inProgress = async (fsd: Fsd, sessionId: string) =>
   ((await fsd.sessions.requests(sessionId, { limit: 50 })) as Array<{ id: string; status: string }>).filter((r) => r.status === "in_progress");
 
-/** The row action's last outcome or refusal, once the press has ended. */
-async function pressed(page: Page): Promise<{ outcome?: string; refusal?: string }> {
+/** A press's last outcome or refusal, once it has ended: in the action row, or in the popup part `where` names. */
+async function pressed(page: Page, where = '[data-testid="task-action-row"]'): Promise<{ outcome?: string; refusal?: string }> {
   await page.waitForFunction(
-    () => {
-      const row = document.querySelector('[role="dialog"] [data-testid="task-action-row"]');
-      return row !== null && row.getAttribute("aria-busy") === "false" && row.querySelector('[data-testid="task-action-outcome"], [data-testid="task-action-refusal"]') !== null;
+    (at) => {
+      const row = document.querySelector(`[role="dialog"] ${at}`);
+      return row !== null && row.getAttribute("aria-busy") !== "true" && row.querySelector('[data-testid="task-action-outcome"], [data-testid="task-action-refusal"]') !== null;
     },
-    undefined,
+    where,
     { timeout: 90_000 },
   );
   const text = (id: string) => page.locator(`[role="dialog"] [data-testid="${id}"]`).textContent({ timeout: 1_000 }).catch(() => undefined);
@@ -213,7 +228,8 @@ await runGoal(async (failures, tell) => {
     // Opened in every run, so the boards read are the same with or without a control.
     const second = await fsd.flow(cos.flow).createSession({ title: "Another conversation", state: { [WORKER_ID_STATE_KEY]: fixture.filer } });
     const other: Board = { flow: cos.flow, sessionId: second.id };
-    if ((await workforce.listWorkerSessions(fixture.filer)).filter((s) => !s.isDefault).map((s) => s.session.id).join() !== second.id) {
+    // FIX-2725: read through the roster flow's worker sessions view, which reads `isDefault`.
+    if ((await fsd.view(workerSessionsViewRef(), { worker: fixture.filer })).value.filter((s) => !s.isDefault).map((s) => s.id).join() !== second.id) {
       throw new Error("setup: the second conversation with Lead isn't listed as its one other session");
     }
     const everyRow = async () => [...(await rowsOf(fsd, cos)).map((row) => ({ row, board: cos })), ...(await rowsOf(fsd, other)).map((row) => ({ row, board: other }))];
@@ -239,8 +255,8 @@ await runGoal(async (failures, tell) => {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     page.setDefaultTimeout(30_000);
     await page.goto(lab.origin);
-    await page.locator(`nav[aria-label="Workers"] button[data-worker="Lead"]`).click();
-    const panel = page.locator(`aside[aria-label="Lead's panel"]`);
+    await page.locator(`nav[aria-label="Workers"] button[data-worker="Chief of Staff"]`).click();
+    const panel = page.locator(`aside[aria-label="Chief of Staff's panel"]`);
     await panel.locator(`button[aria-label^="Coding task: ${fixture.task.title}, on Cursor"]`).click();
     await page.locator('[role="dialog"] [data-testid="task-action-row"]').waitFor();
 
@@ -248,7 +264,7 @@ await runGoal(async (failures, tell) => {
     const words = `Say it opens at nine sharp (${Date.now() % 100_000}).`;
     await page.locator('[role="dialog"] [data-testid="task-action-steer-input"]').fill(words);
     await page.locator('[role="dialog"] [data-testid="task-action-steer"]').click();
-    const steered = await pressed(page);
+    const steered = await pressed(page, '[aria-label="Steer"]');
     const steers = await until(
       async () => (await wholeRow(fsd, cos, taskId))?.steers ?? [],
       (list) => list.some((s) => s.message === words),
@@ -335,12 +351,13 @@ await runGoal(async (failures, tell) => {
         const done = await until(async () => (await rowsOf(fsd, board)).find((r) => r.id === rerun!.row.id), (r) => r?.status === "completed", 120_000, 2_000);
         if (!done.held) failures.push(`result — the re-run reads ${done.value?.status} after its review was accepted, not completed`);
         const notice = await until(
-          async () => (await itemsOf(fsd, cos.sessionId)).filter((item) => parseNotice(item as never)?.taskId === rerun!.row.id),
+          // The ending's line a client reads: the board's message saying it is the model's only.
+          async () => (await itemsOf(fsd, cos.sessionId)).filter((item) => item.type === "data" && (item as { dataType?: string }).dataType === TASK_RESULT_DATA_TYPE && (item as { value?: { taskId?: string } }).value?.taskId === rerun!.row.id),
           (found) => found.length > 0,
           90_000,
           2_000,
         );
-        if (!notice.held) failures.push(`result — Lead's conversation holds no notice of the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
+        if (!notice.held) failures.push(`result — Lead's conversation holds no result line for the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
       }
     }
 

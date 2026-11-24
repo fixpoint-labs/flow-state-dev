@@ -29,9 +29,9 @@ const quietFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    run: { inputSchema: note, block: work },
+    run: work,
     // Takes `{ message }` but declares no `userMessage`: not a door.
-    log: { inputSchema: message, block: echo },
+    log: echo,
   },
 });
 
@@ -41,10 +41,10 @@ const twoDoorFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    message: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
-    say: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+    message: { block: echo, userMessage: (i: { message: string }) => i.message },
+    say: { block: echo, userMessage: (i: { message: string }) => i.message },
     // `userMessage` but the wrong input: not a door, so not a third.
-    work: { inputSchema: note, block: work, userMessage: (i: { note: string }) => i.note },
+    work: { block: work, userMessage: (i: { note: string }) => i.note },
   },
 });
 
@@ -54,8 +54,8 @@ const deskFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    note: { inputSchema: note, block: work },
-    respond: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+    note: work,
+    respond: { block: echo, userMessage: (i: { message: string }) => i.message },
   },
 });
 
@@ -65,7 +65,7 @@ const chatFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    chat: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+    chat: { block: echo, userMessage: (i: { message: string }) => i.message },
   },
 });
 
@@ -154,7 +154,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
       kind: "agent",
       cardinality: "collection",
       configSchema: workerConfigSchema(),
-      actions: { respond: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message } },
+      actions: { respond: { block: echo, userMessage: (i: { message: string }) => i.message } },
     });
     const workers = mintWorkers([record("eng.lead")], { workerFlows: { agent: theirAgent } });
     const sent: { workers: { rules: boolean }[] }[] = [];

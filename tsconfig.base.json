@@ -37,13 +37,13 @@
       "@flow-state-dev/engine/resource-template": ["./packages/engine/src/resource-template-loader.ts"],
       "@flow-state-dev/client": ["./packages/client/src/index.ts"],
       "@flow-state-dev/react": ["./packages/react/src/index.ts"],
-      "@flow-state-dev/react/workforce": ["./packages/react/src/workforce/index.ts"],
+      "@flow-state-dev/react/voice": ["./packages/react/src/voice/index.ts"],
       "@flow-state-dev/react/internal": ["./packages/react/src/internal.ts"],
       "@flow-state-dev/testing": ["./packages/testing/src/index.ts"],
       "@flow-state-dev/mcp": ["./packages/mcp/src/index.ts"],
       "@flow-state-dev/scheduled": ["./packages/scheduled/src/index.ts"],
       "@flow-state-dev/scheduled/testing": ["./packages/scheduled/src/testing.ts"],
-      "@flow-state-dev/fsdev": ["./packages/cli/src/index.ts"],
+      "@flow-state-dev/fsdev": ["./packages/fsdev/src/index.ts"],
       "@flow-state-dev/patterns": ["./packages/patterns/src/index.ts"],
       "@flow-state-dev/orchestration": ["./packages/orchestration/src/index.ts"],
       "@flow-state-dev/orchestration/tasks": ["./packages/orchestration/src/tasks/index.ts"],
@@ -59,7 +59,6 @@
       "@flow-state-dev/devtool/react": ["./packages/devtool/src/react/index.ts"],
       "@flow-state-dev/store-sqlite": ["./packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["./packages/vercel/src/index.ts"],
-      "@flow-state-dev/vercel/schedules": ["./packages/vercel/src/schedules.ts"],
       "@flow-state-dev/voice-openai": ["./packages/voice-openai/src/index.ts"],
       "@thought-fabric/core": ["./packages/thought-fabric-core/src/index.ts"]
     }

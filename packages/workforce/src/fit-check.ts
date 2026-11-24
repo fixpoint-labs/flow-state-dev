@@ -21,12 +21,13 @@
  * failed call means. A cancelled request is not a failed call, so its error
  * goes on up.
  */
-import { choice, evaluator, generator, handler, sequencer } from "@flow-state-dev/core";
+import { choice, evaluator, generator, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, ChoiceAnswer, EvaluationInput, EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { callFailed as fitCallFailed, failedCallSchema } from "./model-call-failed";
 
 /** What a failed fit call leaves: the reason, as a value. */
-export const failedFitSchema = z.object({ failed: z.string() });
+export const failedFitSchema = failedCallSchema;
 
 /**
  * What an answered call leaves, as far as a caller reads it: the `worker`
@@ -62,19 +63,6 @@ export function fitOutcome(answer: unknown): FitOutcome {
 
 /** Whether the check's answer is its failure. */
 const isFailedFit = (answer: unknown) => failedFitSchema.safeParse(answer).success;
-
-/** Turn a failed call into a value the caller reads, for `.rescue([{ block }])`. */
-function fitCallFailed(name: string): BlockDefinition<z.ZodUnknown, typeof failedFitSchema> {
-  return handler({
-    name,
-    inputSchema: z.unknown(),
-    outputSchema: failedFitSchema,
-    execute: (error: unknown, ctx) => {
-      if (ctx.signal.aborted) throw error;
-      return { failed: error instanceof Error ? error.message : String(error) };
-    }
-  });
-}
 
 /** What one fit check is built from. */
 export interface FitCheckOptions<TInput> {

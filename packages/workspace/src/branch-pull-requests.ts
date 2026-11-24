@@ -28,11 +28,13 @@
 import {
   OBSERVED_PULL_REQUESTS,
   pullRequestRefFromUrl,
+  pullRequestRecordedOf,
   pullRequestWritesSettled,
   writePullRequests,
   type PullRequestCollection,
   type PullRequestRef,
 } from "@flow-state-dev/core/harness";
+import { HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
 import { run } from "./exec";
 import { addWorktreePullRequests, type WorktreeCollection } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
@@ -154,7 +156,7 @@ export async function recordBranchPullRequests(
 
   const branches = new Set<string>();
   try {
-    const head = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: options.cwd, timeoutMs: left() })).stdout.trim();
+    const head = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: options.cwd, timeoutMs: left(), pass: HOST_GIT_PASS })).stdout.trim();
     if (head !== "" && head !== "HEAD") branches.add(head);
   } catch (err) {
     return { status: "unavailable", reason: `the checkout's branch can't be read: ${reasonOf(err)}` };
@@ -169,7 +171,7 @@ export async function recordBranchPullRequests(
           gh,
           // `gh` fills `{owner}` and `{repo}` from the checkout's remote.
           ["api", `repos/{owner}/{repo}/pulls?head={owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
-          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" } },
+          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" }, pass: HOST_REMOTE_PASS, gitCredentials: true },
         );
         return { branch, listed: JSON.parse(stdout) as unknown };
       } catch (err) {
@@ -201,6 +203,7 @@ export async function recordBranchPullRequests(
     await writePullRequests(collection, found, {
       source: "branch",
       requestId: options.requestId === undefined ? (ctx.request?.identity.id ?? null) : options.requestId,
+      onRecorded: pullRequestRecordedOf(ctx.response),
     });
     if (options.worktree !== undefined) {
       const summary = (ref: PullRequestRef) => ({ url: ref.url, number: ref.number, state: ref.state ?? null, title: ref.title ?? null });
@@ -277,6 +280,7 @@ async function fetchPullRequest(options: ReadPullRequestOptions): Promise<Fetche
       cwd: options.cwd,
       timeoutMs: options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS,
       env: { GH_PROMPT_DISABLED: "1" },
+      pass: HOST_REMOTE_PASS, gitCredentials: true,
     });
     answer = JSON.parse(stdout) as typeof answer;
   } catch (err) {

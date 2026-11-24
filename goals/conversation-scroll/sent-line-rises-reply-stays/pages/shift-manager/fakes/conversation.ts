@@ -18,6 +18,7 @@ export function useWorkerConversation() {
     opened: first ? opened : open,
     read: { items: sessionId === null ? [] : conversation.lines.map(itemOf), truncated: false },
     failure: undefined,
+    stillRunning: null,
     reread: () => undefined,
     resolving: false,
     ensure: async () => {

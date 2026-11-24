@@ -5,7 +5,7 @@
  * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
- * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
+ * the Inbox view, with the helpers Inbox and Tasks use, so its numbers are
  * theirs. Each ask is drawn by Inbox's card and answered through Inbox's path,
  * so answering it in either place clears both.
  *
@@ -13,8 +13,7 @@
  * the Shift Coordinator is one rule, `shiftCoordinatorOf`. A line goes in through the
  * worker's door by the one send path, and shows *delivered* only once the
  * session holds it. What is drawn below it is what the session stores, read
- * back when the view opens and after each line, never on the snapshot's
- * refresh. Nothing is drawn in the worker's voice that its session doesn't hold.
+ * back when the view opens and after each line, then followed live. Nothing is drawn in the worker's voice that its session doesn't hold.
  *
  * **Drawn in design v2's form (v2:120-180).** A 720px feed under v2's header,
  * the summary as unboxed prose with its asks in one bordered list, each
@@ -23,7 +22,7 @@
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
@@ -33,34 +32,39 @@ import { TasksPanel } from "../components/TasksPanel";
 import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
-import { AsOf, ASKING_CLASS, Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { cn } from "../lib/utils";
+import { AsOf, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { readDelegates } from "../lib/delegates";
+import { delegatesViewRef } from "@flow-state-dev/workforce/browser";
+import { useView } from "@flow-state-dev/react";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
-import { useWorkforce } from "../lib/workforce";
-import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel, workerStates } from "../lib/shift";
+import { everyAsk, itemIdHolding, openBoardTasks, useInbox } from "../lib/inbox";
+import { workerOfHold } from "../lib/inbox-list";
 import { useLab } from "../lib/lab-data";
+import { useSessions, useWorkers } from "../lib/directory";
 import type { SessionSummary } from "@flow-state-dev/client";
-import type { Worker } from "../lib/reads";
+import type { Worker } from "../lib/workers";
 import { RouteLink } from "../components/RouteLink";
 import { startShiftCoordinatorWork, useShiftCoordinatorWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+/** No sessions, while the list is read. */
+const NO_SESSIONS: readonly SessionSummary[] = [];
+
 // FIX-1747.
 /** What Shift Manager calls the `shift-coordinator` worker. */
 const NAME = "Shift Coordinator";
 
-export function ShiftCoordinatorView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+export function ShiftCoordinatorView({ gaps }: { gaps: Gaps }) {
   const lead = (
     <>
-      <Header snapshot={snapshot} />
-      <ShiftSummary snapshot={snapshot} />
+      <Header />
+      <ShiftSummary />
     </>
   );
-  return <ShiftCoordinatorConversation snapshot={snapshot} gaps={gaps} lead={lead} />;
+  return <ShiftCoordinatorConversation gaps={gaps} lead={lead} />;
 }
 
 /**
@@ -69,22 +73,23 @@ export function ShiftCoordinatorView({ snapshot, gaps }: { snapshot: LoadedSnaps
  * a line from this page (v2:1424). When there is one Shift Coordinator, a gear at
  * the end opens that worker's settings, on any flow.
  */
-function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
+function Header() {
   const working = useShiftCoordinatorWorking();
+  const { inventory, workers } = useWorkers();
+  const inbox = useInbox().section;
   let status: string | undefined;
   let watching: string | null = null;
   let workerId: string | undefined;
-  if (snapshot.inventory.ok) {
-    const { workers } = snapshot.inventory.value;
+  if (inventory?.ok === true) {
     const shiftCoordinator = shiftCoordinatorOf(workers);
     workerId = shiftCoordinator.kind === "one" ? shiftCoordinator.worker.id : undefined;
-    status = workerId === undefined ? undefined : workerStates(snapshot).workers.get(workerId)?.status;
+    status = workerId === undefined ? undefined : workerStates(workers, inbox?.ok === true ? inbox.value : undefined).workers.get(workerId)?.status;
     watching = `watching ${plural(workers.length, "worker", "workers")}`;
   }
   return (
     <header className="flex items-center gap-3" data-testid="shift-coordinator-header">
       <span
-        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-[13px] font-semibold text-primary-foreground"
+        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-sm font-semibold text-primary-foreground"
         data-look="avatar"
         aria-hidden
       >
@@ -93,11 +98,11 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="min-w-0">
         <ScreenTitle scale="shift-coordinator">{NAME}</ScreenTitle>
         {working ? (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             working…
           </Meta>
         ) : watching === null ? null : (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             {status === undefined ? null : `${status} · `}
             <span data-testid="shift-coordinator-watching">{watching}</span>
           </Meta>
@@ -122,7 +127,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
 function NeedsYouTag() {
   return (
     <span
-      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground"
+      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground"
       data-look="needs-tag"
     >
       NEEDS YOU
@@ -136,19 +141,32 @@ function NeedsYouTag() {
  * (v2:135-136), with the asks as v2's one bordered list (v2:138-153). The
  * label says whose summary it is: Shift Manager's, not the worker's.
  */
-function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { refresh, asking } = useLab();
-  const retry = () => void refresh();
-  const { inbox, asks, running } = shiftSummary(snapshot);
+function ShiftSummary() {
+  // FIX-2774: what needs the user, the asks and the runs are the inbox view's; *refresh* reads it again.
+  const view = useInbox();
+  const retry = view.refresh;
+  if (view.section === undefined) {
+    return (
+      <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
+        <p className="text-sm text-muted-foreground" data-testid="shift-coordinator-summary-loading">
+          Reading what needs you…
+        </p>
+      </section>
+    );
+  }
+  const inbox = view.section;
+  const asks = inbox.ok ? everyAsk(inbox.value.items) : [];
+  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => row.status === "in_progress") : [];
+  const running = { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size };
   // What needs the user is what Inbox lists: one item per task held on a
   // question, a review or an approval, and per ask no task holds, each once.
-  const needsYou = inbox.ok ? inbox.value.length : 0;
+  const needsYou = inbox.ok ? inbox.value.items.length : 0;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
-      <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+      <p className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         SHIFT SUMMARY · FROM SHIFT MANAGER
       </p>
-      <div className={cn("text-base leading-[1.55]", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
+      <div className="text-base" data-look="summary-prose">
         {inbox.ok ? (
           <p data-testid="shift-coordinator-summary-asks">
             {needsYou === 0 ? (
@@ -162,30 +180,30 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
         ) : (
           <SectionFailure what="What needs you" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-asks-failure" />
         )}
-        {running.ok ? (
-          <p data-testid="shift-coordinator-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
-            {plural(running.value.runs, "run", "runs")} going across {plural(running.value.workstreams, "workstream", "workstreams")}.
+        {inbox.ok ? (
+          <p data-testid="shift-coordinator-summary-running" data-runs={running.runs} data-workstreams={running.workstreams}>
+            {plural(running.runs, "run", "runs")} going across {plural(running.workstreams, "workstream", "workstreams")}.
           </p>
         ) : (
-          <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
+          <SectionFailure what="What is running" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
         )}
       </div>
-      <AsOf readAt={snapshot.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />
-      {asks.ok && asks.value.length > 0 ? (
+      {view.readAt === undefined ? null : <AsOf readAt={view.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />}
+      {inbox.ok && asks.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="shift-coordinator-asks">
-          {asks.value.map((ask, i) => (
+          {asks.map((ask, i) => (
             <li
-              key={ask.item.suspensionId}
+              key={ask.id}
               className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
               data-testid="shift-coordinator-ask"
-              data-suspension-id={ask.item.suspensionId}
+              data-suspension-id={ask.id}
             >
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
-                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
+                <p className="min-w-0 font-mono text-xs font-medium text-muted-foreground" data-look="ask-meta">
+                  {workerLabel(workerOfHold(ask) ?? "unknown worker")} asks{" · "}
                   <RouteLink
-                    to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
+                    to={{ level: "inbox", item: itemIdHolding(inbox.value.items, ask.id) }}
                     className="text-info hover:text-foreground"
                     data-testid="shift-coordinator-ask-open"
                   >
@@ -193,7 +211,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                   </RouteLink>
                 </p>
               </div>
-              <AskCard ask={ask} />
+              <AskCard hold={ask} />
             </li>
           ))}
         </ol>
@@ -204,17 +222,28 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
 
 // BR-10 to BR-12.
 /** The conversation, or the named state in its place, under `lead`. */
-function ShiftCoordinatorConversation({ snapshot, gaps, lead }: { snapshot: LoadedSnapshot; gaps: Gaps; lead: ReactNode }) {
-  const { refresh } = useLab();
-  if (!snapshot.inventory.ok) {
+function ShiftCoordinatorConversation({ gaps, lead }: { gaps: Gaps; lead: ReactNode }) {
+  const { inventory, workers, refresh } = useWorkers();
+  const sessions = useSessions().list;
+  if (inventory === undefined || sessions === undefined) {
     return (
       <ConversationFrame testId="shift-coordinator">
         {lead}
-        <SectionFailure what="The shift coordinator" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="shift-coordinator-worker-failure" />
+        <p className="text-sm text-muted-foreground" data-testid="shift-coordinator-reading">
+          Reading your workers…
+        </p>
       </ConversationFrame>
     );
   }
-  const shiftCoordinator = shiftCoordinatorOf(snapshot.inventory.value.workers);
+  if (!inventory.ok) {
+    return (
+      <ConversationFrame testId="shift-coordinator">
+        {lead}
+        <SectionFailure what="The shift coordinator" failure={inventory.failure} onRetry={refresh} testId="shift-coordinator-worker-failure" />
+      </ConversationFrame>
+    );
+  }
+  const shiftCoordinator = shiftCoordinatorOf(workers);
   if (shiftCoordinator.kind === "none") {
     return (
       <ConversationFrame testId="shift-coordinator">
@@ -242,7 +271,7 @@ function ShiftCoordinatorConversation({ snapshot, gaps, lead }: { snapshot: Load
     );
   }
   return (
-    <Talk key={shiftCoordinator.worker.id} worker={shiftCoordinator.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} />
+    <Talk key={shiftCoordinator.worker.id} worker={shiftCoordinator.worker} sessions={sessions} gaps={gaps} lead={lead} />
   );
 }
 
@@ -268,7 +297,7 @@ function AskLine({ item }: { item: OutputItem }) {
   return (
     <RouteLink to={{ level: "inbox", item: null }} className="flex items-baseline gap-[9px] text-left">
       <NeedsYouTag />
-      <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
+      <span className="font-mono text-xs font-medium text-info" data-look="ask-meta">
         Waiting on you: answer it in Inbox
       </span>
     </RouteLink>
@@ -319,28 +348,23 @@ function Talk({
 
 /**
  * The lines the empty conversation offers, from the delegates the coordinator
- * answers for it (the DELEGATES panel's read), by their roster names. Before
- * there is a conversation there are no delegates to read, so the lines name
- * nobody; a read that fails does the same.
+ * holds (the delegates view the DELEGATES panel watches, one read for both),
+ * by their roster names. Before there is a conversation there are no
+ * delegates to read, so the lines name nobody; a read that fails does the same.
  */
 function useStarterLines(worker: Worker, sessions: readonly SessionSummary[]): string[] {
   const { client } = useLab();
-  const workforce = useWorkforce();
   const sessionId = useConversationSession(worker, sessions);
-  const [delegates, setDelegates] = useState<readonly StarterDelegate[]>([]);
-  useEffect(() => {
-    if (sessionId === null || worker.kind !== COORDINATOR_FLOW) return setDelegates([]);
-    let closed = false;
-    Promise.all([readDelegates(client, worker.kind, sessionId), workforce.roster()])
-      .then(([list, roster]) => {
-        const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
-        if (!closed) setDelegates(list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) })));
-      })
-      .catch(() => !closed && setDelegates([]));
-    return () => {
-      closed = true;
-    };
-  }, [client, workforce, worker.kind, sessionId]);
+  const rosterRead = useWorkers().roster;
+  const coordinator = sessionId !== null && worker.kind === COORDINATOR_FLOW;
+  const ref = useMemo(() => delegatesViewRef(COORDINATOR_FLOW), []);
+  const { value: list } = useView(ref, {}, { client, enabled: coordinator, ...(sessionId !== null ? { sessionId } : {}) });
+  const delegates = useMemo<readonly StarterDelegate[]>(() => {
+    if (!coordinator || list === undefined) return [];
+    const roster = rosterRead !== undefined && "entries" in rosterRead ? rosterRead.entries : [];
+    const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
+    return list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) }));
+  }, [coordinator, list, rosterRead]);
   return starterLines(delegates);
 }
 
@@ -348,19 +372,21 @@ function useStarterLines(worker: Worker, sessions: readonly SessionSummary[]): s
  * The right panel at Shift Coordinator: the delegates and tasks of a Shift Coordinator on the coordinator flow.
  * Its standing rules are on its settings page, behind the header's gear.
  */
-export function ShiftCoordinatorPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const found = snapshot.inventory.ok ? shiftCoordinatorOf(snapshot.inventory.value.workers) : undefined;
+export function ShiftCoordinatorPanel() {
+  const { inventory, workers } = useWorkers();
+  const sessions = useSessions().list;
+  const found = inventory?.ok === true ? shiftCoordinatorOf(workers) : undefined;
   const one = found?.kind === "one" ? found.worker : undefined;
   const shiftCoordinator = one?.kind === COORDINATOR_FLOW ? one : undefined;
-  const conversation = useConversationSession(shiftCoordinator, snapshot.sessions);
+  const conversation = useConversationSession(shiftCoordinator, sessions ?? NO_SESSIONS);
   return (
     <div className="p-3" data-testid="shift-coordinator-panel">
       {shiftCoordinator !== undefined ? (
         <>
-          <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <p className="px-1 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={shiftCoordinator.id} worker={shiftCoordinator} sessionId={conversation} />
-          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} readAt={snapshot.readAt} activeOnly />
+          <p className="px-1 pt-4 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">TASKS</p>
+          <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} activeOnly />
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-panel-empty">

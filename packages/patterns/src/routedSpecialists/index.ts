@@ -227,7 +227,7 @@ function buildDefaultController(config: {
               .join("\n")}`
           : "";
 
-      const iteration = ctx.sequencer!.state.iteration;
+      const iteration = ctx.sequencer?.state?.iteration ?? 0;
 
       return [
         "You are a controller coordinating specialist agents over a shared workspace.",
@@ -551,7 +551,7 @@ export function routedSpecialists<
     },
   });
 
-  // 6. EmitSnapshot: stable-key component snapshot for live rendering.
+  // 6. EmitSnapshot: stable-key data snapshot for live rendering.
   const emitSnapshot = handler({
     name: `${name}-snapshot`,
     inputSchema: z.any(),
@@ -560,7 +560,7 @@ export function routedSpecialists<
     execute: async (_input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
-      ctx.emit.component(
+      ctx.emit.data(
         "routedSpecialists",
         {
           state: workspaceState,
@@ -568,7 +568,7 @@ export function routedSpecialists<
           specialist: controlState.currentSpecialist ?? null,
           done: controlState.done,
         } as unknown as Record<string, unknown>,
-        { key: name }
+        { key: name, itemVisibility: { client: true, history: false } }
       );
     },
   });

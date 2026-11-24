@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today five places each carry their own live-read logic: React's internal coalescer and path rule, the workforce roster watch, Shift Manager's snapshot filter, and the teammates and claude-code-style lab adapters. Four carry a coalescer, five a path rule, three a retry. After: one live read in the client holds the filter, the merge, one read in flight and one queued, the retry and report-on-change. The same five callers sit on it and keep only what they read. FIX-2623's useView, FIX-2624's direct-read hooks and FIX-2625's keys build on it next."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .copy  { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:4 3; }
+    .user  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .core  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .next  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.1; fill:none; }
+    .lnx   { stroke:var(--accent); stroke-width:1.1; fill:none; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-a   { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="360" height="372" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · FIVE PLACES, EACH ITS OWN</text>
+    <rect class="copy" x="32" y="50" width="328" height="56" rx="5"/>
+    <text class="t-b" x="46" y="72">React: panels, useSession, useSubscription</text>
+    <text class="t-g" x="46" y="94">coalescer · path rule</text>
+    <rect class="copy" x="32" y="116" width="328" height="56" rx="5"/>
+    <text class="t-b" x="46" y="138">Workforce roster watch</text>
+    <text class="t-g" x="46" y="160">coalescer · path rule</text>
+    <rect class="copy" x="32" y="182" width="328" height="56" rx="5"/>
+    <text class="t-b" x="46" y="204">Shift Manager snapshot</text>
+    <text class="t-g" x="46" y="226">path rule · retry · a filter to dodge the merge</text>
+    <rect class="copy" x="32" y="248" width="328" height="56" rx="5"/>
+    <text class="t-b" x="46" y="270">Teammates lab adapter</text>
+    <text class="t-g" x="46" y="292">coalescer · path rule · retry</text>
+    <rect class="copy" x="32" y="314" width="328" height="56" rx="5"/>
+    <text class="t-b" x="46" y="336">claude-code-style lab adapter</text>
+    <text class="t-g" x="46" y="358">coalescer · path rule · retry</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="400" y="36">AFTER · ONE LIVE READ, IN THE CLIENT</text>
+    <rect class="user" x="400" y="50" width="100" height="44" rx="5"/>
+    <text class="t-s" x="410" y="70">React hooks</text>
+    <text class="t-s" x="410" y="85">and panels</text>
+    <rect class="user" x="506" y="50" width="100" height="44" rx="5"/>
+    <text class="t-s" x="516" y="70">roster</text>
+    <text class="t-s" x="516" y="85">watch</text>
+    <rect class="user" x="612" y="50" width="100" height="44" rx="5"/>
+    <text class="t-s" x="622" y="70">Shift</text>
+    <text class="t-s" x="622" y="85">Manager</text>
+    <rect class="user" x="718" y="50" width="100" height="44" rx="5"/>
+    <text class="t-s" x="728" y="70">teammates</text>
+    <text class="t-s" x="728" y="85">lab</text>
+    <rect class="user" x="824" y="50" width="100" height="44" rx="5"/>
+    <text class="t-s" x="834" y="70">claude-code-</text>
+    <text class="t-s" x="834" y="85">style lab</text>
+    <path class="ln" d="M450 94 V150 M556 94 V150 M662 94 V150 M768 94 V150 M874 94 V150"/>
+    <text class="t-s" x="400" y="118">each keeps only its read and what it shows</text>
+
+    <rect class="core" x="400" y="150" width="524" height="110" rx="6"/>
+    <text class="t-lbl" x="416" y="172">@flow-state-dev/client · client.live</text>
+    <text class="t-c" x="416" y="196">hear → filter (path rule) → merge → one in flight, one queued</text>
+    <text class="t-c" x="416" y="220">→ read → report only on change</text>
+    <text class="t-s" x="416" y="244">a failed read retries on its own, 1 s doubling to 30 s, and says it is stale</text>
+
+    <rect class="next" x="400" y="300" width="166" height="70" rx="5"/>
+    <text class="t-a" x="412" y="322">FIX-2623 · useView</text>
+    <text class="t-s" x="412" y="342">a view's watch sits on it</text>
+    <rect class="next" x="579" y="300" width="166" height="70" rx="5"/>
+    <text class="t-a" x="591" y="322">FIX-2624 · direct reads</text>
+    <text class="t-s" x="591" y="342">live by scope, no session</text>
+    <rect class="next" x="758" y="300" width="166" height="70" rx="5"/>
+    <text class="t-a" x="770" y="322">FIX-2625 · keys</text>
+    <text class="t-s" x="770" y="342">the merge unions them</text>
+    <path class="lnx" d="M483 300 V260 M662 300 V260 M841 300 V260"/>
+  </g>
+</svg>

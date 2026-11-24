@@ -162,7 +162,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "fail-lifecycle-flow",
-      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -213,7 +213,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "fail-cause-flow",
-      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -263,7 +263,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "fail-nocause-flow",
-      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -382,7 +382,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "id-conn-flow",
-      actions: { run: { inputSchema: z.object({ x: z.number() }), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -433,7 +433,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "par-flow",
-      actions: { run: { inputSchema: z.number(), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -496,7 +496,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
 
     const flow = defineFlow({
       kind: "work-flow",
-      actions: { run: { inputSchema: z.object({ x: z.number() }), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -535,7 +535,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     });
     const flow = defineFlow({
       kind: "trans-flow",
-      actions: { run: { inputSchema: z.object({ x: z.number() }), block: transientBlock } }
+      actions: { run: transientBlock }
     })();
 
     const stores = createInMemoryStores();
@@ -580,7 +580,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     });
     const flow = defineFlow({
       kind: "retained-flow",
-      actions: { run: { inputSchema: z.object({ x: z.number() }), block: normalBlock } }
+      actions: { run: normalBlock }
     })();
 
     const stores = createInMemoryStores();
@@ -634,7 +634,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       .step(innerB);
     const flow = defineFlow({
       kind: "wrap-flow",
-      actions: { run: { inputSchema: z.object({ x: z.number() }), block: wrapper } }
+      actions: { run: wrapper }
     })();
 
     const stores = createInMemoryStores();

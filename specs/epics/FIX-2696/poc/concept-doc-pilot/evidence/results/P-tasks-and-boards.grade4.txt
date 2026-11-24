@@ -1,0 +1,9 @@
+R1 0 Says page doesn't define app
+R2 1 Installable, adds flows, declares fillable slots
+R3 0.5 Misses HTTP call, streaming, typed state
+R4 0.5 Typed unit, but omits flow-building and kinds
+R5 0.5 Only (b) correct; (a) and (c) unanswered
+P2.1 1 Matches errored, others continue, compare cancelled, blocked
+P2.2 1 Not by itself; needs rerun drain and durable storage
+P2.3 0 Wrong mechanism; misses deps outputs keyed by task id
+SCORE 4.5 / 8

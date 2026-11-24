@@ -2,16 +2,33 @@
 /**
  * The list follows the roster: a teammate hired or fired somewhere else (another
  * tab, or a worker's turn) shows without a reload, and the page never reads the
- * roster again on its own for a hire or fire made here. The adapter's watch is
- * the one source.
+ * roster again on its own for a hire or fire made here. Workforce's roster
+ * watch is the one source.
  *
  * Red state produced: against the boot read plus a re-read after this tab's
  * own hire and fire, the hire made elsewhere never shows.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFixtureLab } from "./fake-lab";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { App } from "../src/components/App";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
+
+// Counts the page's roster watches and one-off roster reads, through workforce's own client.
+const roster = vi.hoisted(() => ({ watches: 0, reads: 0 }));
+vi.mock("@flow-state-dev/workforce/browser", async (original) => {
+  const real = await original<typeof import("@flow-state-dev/workforce/browser")>();
+  return {
+    ...real,
+    createWorkforceClient: (source: Parameters<typeof real.createWorkforceClient>[0]) => {
+      const client = real.createWorkforceClient(source);
+      return {
+        ...client,
+        watchRoster: (...args: Parameters<typeof client.watchRoster>) => (roster.watches++, client.watchRoster(...args)),
+        roster: () => (roster.reads++, client.roster()),
+      };
+    },
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -24,8 +41,8 @@ const listed = () =>
 
 describe("the worker list follows the roster", () => {
   it("shows a teammate hired elsewhere, and drops it when it is fired elsewhere", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    render(<App adapter={lab} />);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
     expect(listed()).not.toContain("scribe");
 
@@ -38,31 +55,38 @@ describe("the worker list follows the roster", () => {
   });
 
   it("watches the roster once, whatever this tab hires", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    let watches = 0;
-    const counted: typeof lab = {
-      ...lab,
-      watchWorkers: (onChange, onError) => {
-        watches += 1;
-        return lab.watchWorkers(onChange, onError);
-      },
-    };
-    render(<App adapter={counted} />);
+    const lab = scriptedServer({ speed: 0.05 });
+    roster.watches = 0;
+    roster.reads = 0;
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
-    await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
+    // This tab's own hire, from its form.
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Takes notes" } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
     await waitFor(() => expect(listed()).toContain("scribe"));
-    expect(watches).toBe(1);
+    expect(lab.rosterWrites.map((w) => w.action)).toEqual(["hire"]);
+    expect(roster).toEqual({ watches: 1, reads: 0 });
   });
 
   it("keeps following the roster when one teammate's conversation won't open, and opens it when picked", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = scriptedServer({ speed: 0.05 });
     let refuse = true;
-    const flaky: typeof lab = {
-      ...lab,
-      openConversation: (workerId) =>
-        workerId === "scribe" && refuse ? Promise.reject(new TypeError("fetch failed")) : lab.openConversation(workerId),
-    };
-    render(<App adapter={flaky} />);
+    // Opening scribe's conversation fails while `refuse` holds, as an unreachable server fails it.
+    const flaky = {
+      ...lab.client,
+      flow: (address: string) => {
+        const flow = lab.client.flow(address);
+        return {
+          ...flow,
+          createSession: (options?: Parameters<typeof flow.createSession>[0]) =>
+            Object.values(options?.state ?? {}).includes("scribe") && refuse ? Promise.reject(new TypeError("fetch failed")) : flow.createSession(options),
+        } as typeof flow;
+      },
+    } as typeof lab.client;
+    render(<ScriptedProvider server={lab} client={flaky}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
 
     // The hire's conversation fails to open: the roster still lands, and so does the next change.
@@ -80,10 +104,10 @@ describe("the worker list follows the roster", () => {
   });
 
   it("opens a teammate hired here with the cursor in its composer, once its row lands", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    render(<App adapter={lab} />);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Takes notes" } });

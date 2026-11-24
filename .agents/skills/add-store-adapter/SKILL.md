@@ -210,6 +210,12 @@ Answer from **how the store was constructed**, not from what the adapter is call
 
 `ContentScopeType = "session" | "user" | "org"` (not request-scoped). Content is addressed by the triple `(scopeType, scopeId, resourceKey)`, allowing adapters to store content independently of scope record metadata.
 
+#### SuspensionStore
+- `set`, `get`, `list`, `deleteForRequest`, `pruneTerminalBefore` — the durable-execution record store (see the SQLite and Postgres `suspension-store.ts`).
+- `listPendingForUser(query)` — **required** (FIX-2770 D3): one user's pending suspensions that wait on a person, the Inbox's read. It must be **one query that joins each suspension to its request** (an inner join, so a suspension whose request is missing drops) with every predicate inside it: the request's and the suspension's user, the request's `tenant_id` and `org_id` NULL-safe (`IS ?` / `IS NOT DISTINCT FROM`; the query always carries both keys, `undefined` meaning unbound), `flow_kind` in `query.flowKinds`, status `pending`, `expiresAt` absent or after `query.now`, and reason in `USER_SUSPENSION_REASONS`. Order by `(createdAt, requestId, suspensionId)` ascending (byte order on the ids; a suspension id is unique only within its request), read strictly after `query.after`, at most `query.limit`. Never list and filter in code.
+- Build each row with `projectUserSuspension` from `@flow-state-dev/core/types`, field by field. Never spread a record into it: `stepInput`, `resumeData` and `data` must not leave the server, and the conformance suite checks the keys at runtime.
+- Run `createPendingUserSuspensionsConformanceTests` from `@flow-state-dev/engine/testing`, passing the statements your executor runs so it can check the read is one statement joining `requests`.
+
 ### Step 6: Schema Design Principles
 
 Follow the SQLite adapter's hybrid approach:

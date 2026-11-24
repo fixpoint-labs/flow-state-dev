@@ -30,6 +30,24 @@ describe("where it listens by default", () => {
   });
 });
 
+describe("PORT", () => {
+  // A bad PORT used to reach listen() as NaN or 99999 and fail there, far from the cause.
+  it("accepts the ends of the valid range", () => {
+    assert.equal(resolveSettings("dev", { PORT: "1" }).port, 1);
+    assert.equal(resolveSettings("dev", { PORT: "65535" }).port, 65535);
+  });
+
+  for (const PORT of ["abc", "", "0", "65536", "99999", "-1", "80.5", "1e3", "0x50"]) {
+    it(`refuses PORT=${JSON.stringify(PORT)} with a message that names it`, () => {
+      const s = resolveSettings("dev", { PORT });
+      assert.equal(s.exitCode, 2);
+      assert.match(s.error, /PORT must be an integer from 1 to 65535/);
+      assert.ok(s.error.includes(JSON.stringify(PORT).slice(1, -1)));
+      assert.equal(s.port, undefined);
+    });
+  }
+});
+
 describe("the sign-in", () => {
   it("is required to serve", () => {
     assert.equal(resolveSettings("serve", { SUPER_APP_SECURE_COOKIE: "1" }).exitCode, 3);

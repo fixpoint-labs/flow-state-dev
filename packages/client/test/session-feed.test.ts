@@ -298,6 +298,18 @@ describe("sessionFeed", () => {
     expect(texts(feed)[0]).toBe("n0");
   });
 
+  it("says the history landed when an empty session's read settles, while the stream is still connecting", async () => {
+    let answer!: (response: Response) => void;
+    const h = host(() => new Promise<Response>((resolve) => (answer = resolve)));
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => answer !== undefined);
+    expect(feed.getSnapshot()).toMatchObject({ items: [], historyLoaded: false, state: "connecting" });
+    answer(json(snapshot([])));
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot()).toMatchObject({ items: [], historyLoaded: true, state: "connecting" });
+  });
+
   it("says nothing is earlier when the whole session fits in the first read", async () => {
     const h = host(() => json(snapshot([message("req_1", "m1", "only", 10)])));
     const feed = sessionFeed(h.client, "s1");

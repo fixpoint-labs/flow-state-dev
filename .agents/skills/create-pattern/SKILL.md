@@ -295,7 +295,7 @@ const plannerContext = config.instructions && !config.planner
 
 #### Task Progress Emission
 
-Patterns that decompose work into trackable tasks should use `taskBoard` as the dispatch primitive. The substrate emits `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) `ComponentItem`s automatically — the UI renders them via `<TaskPlan />`.
+Patterns that decompose work into trackable tasks should use `taskBoard` as the dispatch primitive. The substrate emits `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) data items (`ctx.emit.data`) automatically — the UI renders them via `<TaskPlan />`.
 
 ```typescript
 import { taskBoard } from "../task-board";

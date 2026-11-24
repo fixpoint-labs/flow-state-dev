@@ -15,6 +15,7 @@ import { z } from "zod";
 import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { sweepAsStale } from "./sweep-as-stale";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 
 type Observed = { finalizedAtMs: RequestRecord["finalizedAtMs"] | "no record" };
@@ -26,15 +27,12 @@ function makeFlow(
   return defineFlow({
     kind: "finalization-flow",
     actions: {
-      run: {
-        inputSchema: z.object({ value: z.number() }),
-        block: handler({
+      run: handler({
           name: "echo",
           inputSchema: z.object({ value: z.number() }),
           outputSchema: z.object({ value: z.number() }),
           execute: (input) => input
         })
-      }
     },
     request: {
       ...(heartbeatIntervalMs !== undefined ? { heartbeatIntervalMs } : {}),
@@ -136,15 +134,12 @@ describe("request finalization", () => {
     const flow = defineFlow({
       kind: "finalization-sidechain-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input
           })
-        }
       },
       request: {
         onFinished: sequencer({ name: "finished-seq" })
@@ -256,7 +251,7 @@ describe("request finalization", () => {
     expect(await stores.activeRequests.get("req_stamp_down")).toBeDefined();
 
     storeDown = false;
-    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    await sweepAsStale(stores);
 
     const after = await stores.request.get("req_stamp_down");
     expect(after?.status).toBe("completed");
@@ -271,7 +266,7 @@ describe("request finalization", () => {
     const stores = createInMemoryStores();
     const duringOnFinished: Observed[] = [];
     const flow = makeFlow(async ({ requestId }) => {
-      await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+      await sweepAsStale(stores);
       const record = await stores.request.get(requestId);
       duringOnFinished.push({
         finalizedAtMs: record === undefined ? "no record" : record.finalizedAtMs
@@ -312,7 +307,7 @@ describe("request finalization", () => {
     expect(await stores.activeRequests.get("req_flush_failed")).toBeDefined();
 
     inTail = false;
-    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    await sweepAsStale(stores);
     expect(typeof (await stores.request.get("req_flush_failed"))?.finalizedAtMs).toBe("number");
   });
 

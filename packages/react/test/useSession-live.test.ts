@@ -778,6 +778,23 @@ describe("useSession live", () => {
       expect(result.current.items[0]?.id).toBe("u1");
     });
 
+    // The files go with the send, beside the input, and the line the view
+    // shows at once holds them too, so they don't pop in when the server's
+    // copy arrives.
+    it("sends the files beside the input and shows them on the line at once", async () => {
+      const { result } = await mountLive();
+      const shot = { type: "file" as const, mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef", filename: "shot.png" };
+      flowMock.send.mockResolvedValue(new Response("", { headers: { "content-type": "text/event-stream" } }));
+      await act(async () => {
+        await result.current.sendAction("say", { text: "look" }, { userMessage: "look", attachments: [shot] });
+      });
+
+      const [, input, options] = flowMock.send.mock.calls.at(-1)!;
+      expect(input).toEqual({ text: "look" });
+      expect(options).toMatchObject({ attachments: [shot] });
+      expect((result.current.items[0] as { content: unknown[] }).content).toEqual([{ type: "output_text", text: "look" }, shot]);
+    });
+
     it("stays when another request's message arrives", async () => {
       const { result } = await mountLive();
       await send(result, "mine");
@@ -960,20 +977,20 @@ describe("useSession live", () => {
     describe("two finished copies of one keyed item", () => {
       function plan(step: number, ts: number, itemIndex: number): OutputItem {
         return {
-          id: "item_component_keyed:plan",
-          type: "component",
+          id: "item_data_keyed:plan",
+          type: "data",
           status: "completed",
           requestId: "req_mine",
           itemIndex,
           ts,
           provenance: { blockName: "b", blockInstanceId: "b_1", phase: "main" },
-          component: "plan-view",
-          data: { step },
+          dataType: "plan-view",
+          value: { step },
           key: "plan"
         } as unknown as OutputItem;
       }
       const steps = (items: readonly OutputItem[]) =>
-        items.map((shown) => (shown as unknown as { data: { step: number } }).data.step);
+        items.map((shown) => (shown as unknown as { value: { step: number } }).value.step);
 
       it("keeps the later copy when the session stream brings it before the view's own stream brings the earlier", async () => {
         const { result, own } = await mountAttached();

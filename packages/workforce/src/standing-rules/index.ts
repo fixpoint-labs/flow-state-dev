@@ -9,6 +9,7 @@ export {
   type StandingRules
 } from "./rules-list";
 export { STANDING_RULES_RESOURCE } from "./rules-record";
+export { isUserTurn } from "./user-turn";
 export { RULE_TOOLS, STANDING_RULES_ACTION, STANDING_RULES_LINE } from "./keys";
 export {
   standingRulesActionInputSchema,

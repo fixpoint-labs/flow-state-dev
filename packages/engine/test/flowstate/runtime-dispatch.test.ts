@@ -24,7 +24,7 @@
  *  - a colocated queue worker, with its dispatcher closing the loop the way a
  *    real adapter does.
  *
- * `worker-only` dispatches too, rather than refusing — see the reasoning on
+ * `process-only` dispatches too, rather than refusing — see the reasoning on
  * that test. The child runs on the worker instead of the queue, so it is not
  * durable; it IS tracked for the shutdown drain, because it is in-process work.
  * Those two properties are independent.
@@ -36,7 +36,7 @@ import { defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
 import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { DispatchOutcome, ModelResolver } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
-import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";
+import type { FlowStateRuntime, JobQueueAdapter } from "../../src/flowstate/types";
 import type { StoreAdapter } from "../../src/stores/store-adapter";
 
 const USER_ID = "u_dispatch";
@@ -127,7 +127,7 @@ function detachingFlow(
 
   return defineFlow({
     kind,
-    actions: { launch: { inputSchema: z.object({}), block: launcher } },
+    actions: { launch: launcher },
     internal: { actions: { core: { block: core } } },
     ...(options.concurrency !== undefined
       ? { request: { concurrency: options.concurrency } }
@@ -147,24 +147,24 @@ async function until(
   throw new Error(`timed out waiting for ${label}`);
 }
 
-/** A worker adapter in a given mode; nothing about the queue itself matters. */
-function stubWorker(mode: WorkerAdapter["mode"]): WorkerAdapter {
+/** A job queue adapter in a given mode; nothing about the queue itself matters. */
+function stubJobQueue(mode: JobQueueAdapter["mode"]): JobQueueAdapter {
   return {
     mode,
     createRunner: () => ({ dispatch: async () => ({ requestId: "req_queued" }) }),
-    startWorker: () => ({ close: async () => undefined })
+    startProcessing: () => ({ close: async () => undefined })
     // Deliberately partial: shutdown reads only the parts stubbed here.
-  } as unknown as WorkerAdapter;
+  } as unknown as JobQueueAdapter;
 }
 
 /**
- * A worker adapter whose queue nobody is draining.
+ * A job queue adapter whose queue nobody is draining.
  *
  * `finished` never settles, which is not a broken dispatcher — it is what BullMQ
  * reports (`subscriber.completed`) for a job sitting in a queue with no worker
  * consuming it. A normal operational state, and one shutdown must survive.
  */
-function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
+function stubJobQueueWithNoConsumer(mode: JobQueueAdapter["mode"]): JobQueueAdapter {
   return {
     mode,
     createRunner: () => ({
@@ -173,9 +173,9 @@ function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
         finished: new Promise<never>(() => {})
       })
     }),
-    startWorker: () => ({ close: async () => undefined })
+    startProcessing: () => ({ close: async () => undefined })
     // Deliberately partial, as above.
-  } as unknown as WorkerAdapter;
+  } as unknown as JobQueueAdapter;
 }
 
 /**
@@ -251,7 +251,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-dispatch", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -290,11 +290,11 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("colocated-worker-launch", observed);
 
-    // The runtime the worker adapter is handed — the object `startWorker` keeps
+    // The runtime the worker adapter is handed — the object `startProcessing` keeps
     // and runs every job against. `createFlowApiRouter` rebuilds `requestHost`
     // as a fresh literal, so anything the router stamped never reached here.
     let workerRuntime: FlowStateRuntime | undefined;
-    const worker = {
+    const jobQueue = {
       mode: "colocated",
       // A colocated queue, closed the whole way round: the dispatcher "enqueues"
       // and the worker in this same process picks the job up and runs it. A stub
@@ -307,7 +307,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
           actionName: string;
           input: unknown;
           userId: string;
-          sessionId?: string;
+          sessionId: string;
           source?: string;
         }) => {
           const target = runtime.registry.get(envelope.flowKind)!;
@@ -325,17 +325,17 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
           return { requestId: envelope.requestId, finished };
         }
       }),
-      startWorker: (runtime: FlowStateRuntime) => {
+      startProcessing: (runtime: FlowStateRuntime) => {
         workerRuntime = runtime;
         return { close: async () => undefined };
       }
-    } as unknown as WorkerAdapter;
+    } as unknown as JobQueueAdapter;
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
-      worker
+      jobQueue
     });
 
     // The documented colocated setup builds a router; the worker consumes the
@@ -373,25 +373,25 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     await state.dispose();
   });
 
-  it("dispatches a child from a worker-only process too", async () => {
+  it("dispatches a child from a process-only process too", async () => {
     const observed: Observed = { children: [] };
-    const flow = detachingFlow("worker-only-dispatch", observed);
+    const flow = detachingFlow("process-only-dispatch", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
-      worker: stubWorker("worker-only")
+      jobQueue: stubJobQueue("process-only")
     });
 
     const runtime = await state.getRuntime();
     await runLikeCli(runtime, flow, "s_parent");
 
     // This assertion is INVERTED from what it was. It used to pin the refusal —
-    // on the reasoning that a `worker-only` process has no dispatcher, so a host
+    // on the reasoning that a `process-only` process has no dispatcher, so a host
     // built for it runs dispatched work in-process instead of enqueuing it. That
     // remains true and it is still better than refusing: the colocated and
-    // worker-only queue topologies are documented as supported, and refusing
+    // process-only queue topologies are documented as supported, and refusing
     // dispatched work in one of them is not supporting it.
     //
     // The cost is real and named: the child runs on this worker rather than
@@ -410,7 +410,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-then-router", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -443,7 +443,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-drain", observed, { coreDelayMs: 60 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -460,7 +460,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
     // Without the drain, `fsdev run` disposed here: pooled stores closed while
     // the child was still writing, the child failed on a closed store, and its
-    // task row was stranded `in_progress` forever. Nothing in the parent's own
+    // task was stranded `in_progress` forever. Nothing in the parent's own
     // output said so.
     expect(observed.children).toHaveLength(1);
 
@@ -470,15 +470,15 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
   it("NEGATIVE: does not wait on an externally dispatched child, whose queue may have no consumer", async () => {
     const observed: Observed = { children: [] };
-    const flow = detachingFlow("runtime-dispatch-only", observed);
+    const flow = detachingFlow("runtime-enqueue-only", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       // Router-less but queue-routed: the start operation is wired (this runtime
       // CAN dispatch), and the child runs somewhere else.
-      worker: stubWorkerWithNoConsumer("dispatch-only")
+      jobQueue: stubJobQueueWithNoConsumer("enqueue-only")
     });
 
     const runtime = await state.getRuntime();
@@ -513,7 +513,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       });
 
       const state = createFlowState({
-        flows: { detaching: flow },
+        flows: [flow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: markerResolver("app-default"),
         // Short budget so the test measures the bound rather than the default.
@@ -569,7 +569,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
           coreNeverSettles: true
         });
         const state = createFlowState({
-          flows: { detaching: flow },
+          flows: [flow],
           stores: { default: { primary: inMemoryStores() } },
           modelResolver: markerResolver("app-default"),
           dispatchDrainTimeoutMs: budget
@@ -615,7 +615,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -636,7 +636,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-quiet", observed, { coreDelayMs: 30 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -678,7 +678,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       // Immediate shutdown: the ceiling wins, so nothing is waited for. The
@@ -751,7 +751,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
       const adapter = closingStores(inMemoryStores());
       const state = createFlowState({
-        flows: { detaching: flow },
+        flows: [flow],
         stores: { default: { primary: adapter } },
         modelResolver: markerResolver("app-default"),
         dispatchDrainTimeoutMs: 0
@@ -794,7 +794,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       // the shutdown bound unenforceable. Settling a child's row is not the
       // parent's job — the substrate recovers it. `detectInterruptedRequests`
       // marks an abandoned `in_progress` record `interrupted` on the next start,
-      // and a task row's lapsed lease makes it claimable again without ever
+      // and a task's lapsed lease makes it claimable again without ever
       // being terminalized here.
       //
       // Read through the raw registry, since the adapter is closed to callers.
@@ -811,7 +811,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("admission-closed", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -840,7 +840,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-config-inherit", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -882,7 +882,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -932,7 +932,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("router-first-drain", observed, { coreDelayMs: 60 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -977,7 +977,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("router-first", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -1022,7 +1022,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const adapter = inMemoryStores();
 
     const first = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } }
     });
     const runtime = await first.getRuntime();
@@ -1059,7 +1059,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
     // The later invocation. `getRouter()` is never called — that is the point.
     const second = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } }
     });
     await second.getRuntime();
@@ -1168,7 +1168,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     };
 
     const state = createFlowState({
-      flows: { detaching: detachingFlow("sweep-race", { children: [] }) },
+      flows: [detachingFlow("sweep-race", { children: [] })],
       stores: { default: { primary: adapter } }
     });
 
@@ -1211,7 +1211,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const perRequestRegistered: Promise<unknown>[] = [];
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       onBackgroundWork: (p) => {
@@ -1269,22 +1269,22 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("warn-throws", observed);
 
     const dispatched: string[] = [];
-    const worker = {
-      mode: "dispatch-only",
+    const jobQueue = {
+      mode: "enqueue-only",
       createRunner: () => ({
         dispatch: async (envelope: { requestId: string }) => {
           dispatched.push(envelope.requestId);
           return { requestId: envelope.requestId };
         }
       }),
-      startWorker: () => ({ close: async () => undefined })
-    } as unknown as WorkerAdapter;
+      startProcessing: () => ({ close: async () => undefined })
+    } as unknown as JobQueueAdapter;
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
-      worker
+      jobQueue
     });
 
     const runtime = await state.getRuntime();
@@ -1353,7 +1353,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     };
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } },
       dispatchDrainTimeoutMs: 50
     });

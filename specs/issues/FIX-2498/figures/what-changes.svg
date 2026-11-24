@@ -1,0 +1,65 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="One worker's system prompt, today and after. Today, top to bottom: identity and the work-it-out rule, the team's text, the worker's own text, its packages' text, and a skills list only when the app turned on the load tool. After: the same four in the same order, unchanged; then the skills list, on by default, with one new line telling the worker to load a skill that fits even partly, shown only when the worker holds a skill; then a new date block with today's date and the server's time zone, and any line an app's capability adds, such as the user's time zone. Either new block is turned off with the defaults key."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .same  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .off   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-n   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-a   { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .tag   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <rect class="same" x="24" y="42" width="420" height="40" rx="4"/>
+    <text class="t-h" x="38" y="67">Identity · work it out yourself first</text>
+    <rect class="same" x="24" y="88" width="420" height="34" rx="4"/>
+    <text class="t-h" x="38" y="110">Team's text</text>
+    <rect class="same" x="24" y="128" width="420" height="34" rx="4"/>
+    <text class="t-h" x="38" y="150">Worker's own text</text>
+    <rect class="same" x="24" y="168" width="420" height="34" rx="4"/>
+    <text class="t-h" x="38" y="190">Packages' text</text>
+    <rect class="off" x="24" y="218" width="420" height="50" rx="4"/>
+    <text class="t-h" x="38" y="240">Skills list</text>
+    <text class="t-s" x="38" y="257">only when the app turned the load tool on</text>
+    <text class="t-s" x="24" y="300">No date anywhere.</text>
+  </g>
+
+  <line class="rule" x1="470" y1="24" x2="470" y2="380"/>
+
+  <g id="after">
+    <text class="t-lbl" x="496" y="30">AFTER</text>
+    <rect class="same" x="496" y="42" width="420" height="40" rx="4"/>
+    <text class="t-h" x="510" y="67">Identity · work it out yourself first</text>
+    <rect class="same" x="496" y="88" width="420" height="34" rx="4"/>
+    <text class="t-h" x="510" y="110">Team's text</text>
+    <rect class="same" x="496" y="128" width="420" height="34" rx="4"/>
+    <text class="t-h" x="510" y="150">Worker's own text</text>
+    <rect class="same" x="496" y="168" width="420" height="34" rx="4"/>
+    <text class="t-h" x="510" y="190">Packages' text</text>
+    <rect class="new" x="496" y="218" width="420" height="62" rx="4"/>
+    <text class="tag" x="510" y="234">ON BY DEFAULT · defaults.skillsIndex</text>
+    <text class="t-n" x="510" y="252">Skills list, plus: load one that fits even partly</text>
+    <text class="t-s" x="510" y="269">only when the worker holds a skill</text>
+    <rect class="new" x="496" y="288" width="420" height="92" rx="4"/>
+    <text class="tag" x="510" y="304">NEW · defaults.date</text>
+    <text class="t-n" x="510" y="322">Date: Thursday, 12 Nov 2026 (UTC)</text>
+    <text class="t-s" x="510" y="339">the server's day, its time zone named</text>
+    <rect class="app" x="510" y="348" width="392" height="24" rx="3"/>
+    <text class="t-a" x="520" y="364">an app's line, e.g. the user's time zone, from its own capability</text>
+  </g>
+</svg>

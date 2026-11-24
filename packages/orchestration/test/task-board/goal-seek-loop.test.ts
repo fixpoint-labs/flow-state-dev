@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
+import { resolveItemVisibility, type RuntimeItem } from "@flow-state-dev/core/items";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 
@@ -21,7 +22,7 @@ import {
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "../../src/task-board/goal-seek-loop";
+import { GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE } from "../../src/task-board/goal-seek-loop";
 import { getOrCreateTaskCollection } from "../../src/tasks";
 import { openOwnHolds } from "../../src/tasks/collection/holds";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
@@ -77,11 +78,11 @@ function readTermination(items: unknown[]): Termination | undefined {
     .reverse()
     .find(
       (i) =>
-        (i as { type?: string; component?: string }).type === "component" &&
-        (i as { component?: string }).component ===
-          GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
-    ) as { data?: Termination } | undefined;
-  return item?.data;
+        (i as { type?: string; dataType?: string }).type === "data" &&
+        (i as { dataType?: string }).dataType ===
+          GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
+    ) as { value?: Termination } | undefined;
+  return item?.value;
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +430,7 @@ describe("goalSeekLoop - judge-scoped rescue", () => {
 // ---------------------------------------------------------------------------
 
 describe("goalSeekLoop - terminal item", () => {
-  it("emits a distinct component type that does not clobber task-board-meta", async () => {
+  it("emits a distinct data type that does not clobber task-board-meta", async () => {
     const board = makeBoard("distinct");
     const loop = goalSeekLoop({
       name: "distinct",
@@ -440,21 +441,19 @@ describe("goalSeekLoop - terminal item", () => {
     });
     const result = await testBlock(loop, { input: undefined });
     const boardMeta = result.items.filter(
-      (i) => (i as any).type === "component" && (i as any).component === "task-board-meta",
+      (i) => (i as any).type === "data" && (i as any).dataType === "task-board-meta",
     );
     const termination = result.items.filter(
       (i) =>
-        (i as any).type === "component" &&
-        (i as any).component === GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+        (i as any).type === "data" &&
+        (i as any).dataType === GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
     );
     // The board's own completed snapshot survives; the termination is additive.
     expect(boardMeta.length).toBeGreaterThan(0);
     expect(termination.length).toBe(1);
-    expect((termination[0] as any).component).not.toBe("task-board-meta");
-    // It's an internal observability signal and declares itself so. The
-    // declaration alone does not suppress it (structural items ignore
-    // `itemVisibility`); the chat registry's `false` entry does.
-    expect((termination[0] as any).itemVisibility).toEqual({
+    expect((termination[0] as any).dataType).not.toBe("task-board-meta");
+    // It's an internal observability signal: it reaches no client and no model.
+    expect(resolveItemVisibility(termination[0] as RuntimeItem)).toEqual({
       client: false,
       history: false,
     });

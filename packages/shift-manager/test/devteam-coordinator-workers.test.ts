@@ -145,6 +145,7 @@ describe("DevTeam's triage coordinator", () => {
         worker: "eng.em",
         description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
         takes: "tasks",
+        inputSchema: null,
       },
     ]);
   });
@@ -163,8 +164,8 @@ describe("DevTeam's triage coordinator", () => {
       items = await settledItems(lab, id);
     }
     expect([...new Set(asked)]).toEqual([EM_TURN]);
-    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+    expect(record.value).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The board of the EM session the routed task reached holds the coder's task only the EM files, and
     // its answer lands here under its name.
     const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);

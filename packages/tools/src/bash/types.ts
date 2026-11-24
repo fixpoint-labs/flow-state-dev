@@ -298,8 +298,11 @@ export type SandboxProvider =
        * request runs `moat exec` against the running container.
        *
        * Pair with a stable `runName` (otherwise each request generates a
-       * fresh UUID and never finds the existing run). Operators reclaim
-       * resources via `moat stop <runName>` or `moat clean`.
+       * fresh UUID and never finds the existing run). Under the bash
+       * blocks, a container no command has used for 30 minutes is stopped
+       * and destroyed; the next command starts a fresh one. A container
+       * left by a server that has since exited is reclaimed via
+       * `moat stop <runName>` or `moat clean`.
        */
       persist?: boolean;
     }

@@ -22,7 +22,7 @@ import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../../lib/workers.mts";
 import { startHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
@@ -36,7 +36,7 @@ const SCRIPTED = fileURLToPath(new URL("./scripted-app-server.mjs", import.meta.
 /** What the reader runs over, as the check last wrote it. */
 type Setup = { codexHome: string; scripted: boolean };
 
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 const coderWorkerId = ((em?.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);

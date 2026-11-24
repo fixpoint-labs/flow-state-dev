@@ -35,7 +35,7 @@ async function readOn(state: ReturnType<typeof createFlowState>) {
 
 describe("RequestHost.dispatchRunsHere", () => {
   it("is true on a host that dispatches in process", async () => {
-    const state = createFlowState({ flows: { [flow.id]: flow }, stores: { default: { primary: inMemoryStores() } } });
+    const state = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
     try {
       expect(await readOn(state)).toEqual({ runsHere: true });
     } finally {
@@ -45,7 +45,7 @@ describe("RequestHost.dispatchRunsHere", () => {
 
   it("is not on a host whose runner hands the work to another process", async () => {
     const state = createFlowState({
-      flows: { [flow.id]: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       // A queue's shape: it takes a serializable envelope, and runs nothing here.
       runner: { dispatch: async () => ({ accepted: Promise.resolve(), finished: new Promise(() => {}) }) } as never

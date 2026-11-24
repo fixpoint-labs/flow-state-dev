@@ -19,7 +19,8 @@
  * Legs:     GOAL_LEGS=a | GOAL_LEGS=b (default both)
  * Tag:      GOAL_VERDICT_TAG (default "FIX-1792 P4"), the string a verdict line's Commit cell must carry
  * Controls: GOAL_CONTROL=mailbox-left  the desk's old MAILBOX.md and one removed export planted in the
- *                                      tree: must FAIL at a:no-mailbox-file and b:after, and nothing else
+ *                                      tree: must FAIL at a:no-mailbox-file, a:loads (the kit refuses the
+ *                                      folder at start) and b:after, and nothing else
  */
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { spawnSync } from "node:child_process";
@@ -27,8 +28,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, goalTmpDir, repoPath, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, repoPath, runGoal } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const CHECK = repoPath("specs", "issues", "FIX-1792", "poc", "inventory", "check.mjs");
@@ -46,7 +46,8 @@ const RETIRED = [
 
 /** The assertions each control must redden, and only those (among the legs run). */
 const EXPECTED: Record<string, string[]> = {
-  "mailbox-left": ["a:no-mailbox-file", "b:after"],
+  // The kit refuses a folder it doesn't read, so the planted mailbox also stops the app's start.
+  "mailbox-left": ["a:no-mailbox-file", "a:loads", "b:after"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -54,7 +55,8 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 for (const leg of LEGS) if (leg !== "a" && leg !== "b") throw new Error(`unknown leg "${leg}" in GOAL_LEGS`);
 
 // ---- the tree: the coordinator and its delegates, read at run time ----------
-const { workers, errors: treeErrors } = await readWorkforce(TREE);
+// The kit's own reader; whether the whole tree loads is graded by the app's start (a:loads).
+const { workers } = await readTree(TREE);
 const coordinators = workers.filter((w) => w.declared.flow === "coordinator");
 const coordinator = coordinators[0];
 if (coordinators.length !== 1 || coordinator === undefined) {
@@ -140,88 +142,93 @@ await runGoal(async (failures) => {
         const w = workers.find((x) => x.id === id);
         return w !== undefined && !Object.hasOwn(w.declared, "flow");
       });
-      if (treeErrors.length > 0) fail("a:loads", `the tree did not load: ${treeErrors.map((e) => `${e.path}: ${String(e.error)}`).join(", ")}`);
       if (agents.length < 2 || agents.length !== delegates.length) {
         fail("a:loads", `${coordinator.id} names ${delegates.join(", ") || "no delegates"}; want two or more, every one an agent worker in the tree`);
       }
 
       const { startConvertedDesk, OWNER, REPLY_MARKER } = await import("./host.mts");
       const dbFile = join(goalTmpDir("every-coordinator-is-a-worker-file"), "desk.sqlite");
-      const app = await startConvertedDesk(TREE, dbFile);
-      const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-        const res = await createInProcessFetch(app.router)(`http://converted-desk.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
-            method,
-            headers: { "content-type": "application/json", accept: "text/event-stream" },
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          });
-        return { status: res.status, text: await res.text() };
-      };
-      /** Until no request is running, three reads in a row. Not graded. */
-      const settle = async (ms: number) => {
-        const runtime = await app.state.getRuntime();
-        const busy = async () => {
-          for (const session of await runtime.stores.session.list({ parentage: "all" })) {
-            const requests = await runtime.stores.request.list({ sessionId: session.id });
-            if (requests.some((r) => r.status === "in_progress")) return true;
-          }
-          return false;
+      // The app's start reads the whole tree through the kit, which refuses a file it can't load.
+      const app = await startConvertedDesk(TREE, dbFile).catch((error: unknown) => {
+        fail("a:loads", `the app did not start on the tree: ${error instanceof Error ? error.message : String(error)}`);
+        return undefined;
+      });
+      if (app !== undefined) {
+        const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
+          const res = await createInProcessFetch(app.router)(`http://converted-desk.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+              method,
+              headers: { "content-type": "application/json", accept: "text/event-stream" },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            });
+          return { status: res.status, text: await res.text() };
         };
-        const until = Date.now() + ms;
-        for (let calm = 0; calm < 3 && Date.now() < until; ) {
-          calm = (await busy()) ? 0 : calm + 1;
-          await new Promise((r) => setTimeout(r, 50));
-        }
-      };
+        /** Until no request is running, three reads in a row. Not graded. */
+        const settle = async (ms: number) => {
+          const runtime = await app.state.getRuntime();
+          const busy = async () => {
+            for (const session of await runtime.stores.session.list({ parentage: "all" })) {
+              const requests = await runtime.stores.request.list({ sessionId: session.id });
+              if (requests.some((r) => r.status === "in_progress")) return true;
+            }
+            return false;
+          };
+          const until = Date.now() + ms;
+          for (let calm = 0; calm < 3 && Date.now() < until; ) {
+            calm = (await busy()) ? 0 : calm + 1;
+            await new Promise((r) => setTimeout(r, 50));
+          }
+        };
 
-      try {
-        // The person opens a conversation with the coordinator, as a page does, and posts once.
-        const opened = await call("POST", ["coordinator", "sessions"], { userId: OWNER, state: { workerId: coordinator.id } });
-        if (opened.status !== 201) throw new Error(`the conversation was not opened: ${opened.status} ${opened.text.slice(0, 300)}`);
-        const conversation = (JSON.parse(opened.text) as { session: { id: string } }).session.id;
-        const token = `desk-token-${randomUUID().replace(/-/g, "").slice(0, 10)}`;
-        const posted = await call("POST", ["coordinator", "actions", "respond"], {
-          userId: OWNER,
-          sessionId: conversation,
-          input: { message: `${token} can someone look at the refund queue?` },
-        });
-        if (posted.status !== 200) throw new Error(`the post was refused: ${posted.status} ${posted.text.slice(0, 300)}`);
-        await settle(8_000);
-        // Give a wrongly woken worker time to answer twice, so its absence is not a race.
-        await new Promise((r) => setTimeout(r, 1_500));
-        await settle(8_000);
+        try {
+          // The person opens a conversation with the coordinator, as a page does, and posts once.
+          const opened = await call("POST", ["coordinator", "sessions"], { userId: OWNER, state: { workerId: coordinator.id } });
+          if (opened.status !== 201) throw new Error(`the conversation was not opened: ${opened.status} ${opened.text.slice(0, 300)}`);
+          const conversation = (JSON.parse(opened.text) as { session: { id: string } }).session.id;
+          const token = `desk-token-${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+          const posted = await call("POST", ["coordinator", "actions", "respond"], {
+            userId: OWNER,
+            sessionId: conversation,
+            input: { message: `${token} can someone look at the refund queue?` },
+          });
+          if (posted.status !== 200) throw new Error(`the post was refused: ${posted.status} ${posted.text.slice(0, 300)}`);
+          await settle(8_000);
+          // Give a wrongly woken worker time to answer twice, so its absence is not a race.
+          await new Promise((r) => setTimeout(r, 1_500));
+          await settle(8_000);
 
-        // a:answers — what the person reads in their conversation.
-        const state = await call("GET", ["sessions", conversation, "state"], undefined, "?include_items=true&item_types=message&limit=1000");
-        type Item = { role?: string; agentName?: string; transient?: boolean; content?: Array<{ text?: string }> };
-        const items = ((JSON.parse(state.text) as { items?: Item[] }).items ?? [])
-          .filter((i) => i.transient !== true)
-          .map((i) => ({ role: i.role ?? "", author: i.agentName, text: (i.content ?? []).map((c) => c.text ?? "").join("") }));
-        const postAt = items.map((m, i) => (m.role === "user" && m.author === undefined && m.text.includes(token) ? i : -1)).filter((i) => i >= 0);
-        if (postAt.length !== 1) {
-          fail("a:answers", `${conversation} shows the person's post ${postAt.length} times (want 1)`);
-        } else {
-          const after = items.slice(postAt[0]! + 1).filter((m) => m.author !== undefined);
-          let ok = true;
-          for (const id of agents) {
-            const by = after.filter((m) => m.author === id && m.text.includes(REPLY_MARKER));
-            if (by.length !== 1) {
+          // a:answers — what the person reads in their conversation.
+          const state = await call("GET", ["sessions", conversation, "state"], undefined, "?include_items=true&item_types=message&limit=1000");
+          type Item = { role?: string; agentName?: string; transient?: boolean; content?: Array<{ text?: string }> };
+          const items = ((JSON.parse(state.text) as { items?: Item[] }).items ?? [])
+            .filter((i) => i.transient !== true)
+            .map((i) => ({ role: i.role ?? "", author: i.agentName, text: (i.content ?? []).map((c) => c.text ?? "").join("") }));
+          const postAt = items.map((m, i) => (m.role === "user" && m.author === undefined && m.text.includes(token) ? i : -1)).filter((i) => i >= 0);
+          if (postAt.length !== 1) {
+            fail("a:answers", `${conversation} shows the person's post ${postAt.length} times (want 1)`);
+          } else {
+            const after = items.slice(postAt[0]! + 1).filter((m) => m.author !== undefined);
+            let ok = true;
+            for (const id of agents) {
+              const by = after.filter((m) => m.author === id && m.text.includes(REPLY_MARKER));
+              if (by.length !== 1) {
+                ok = false;
+                fail("a:answers", `${conversation} holds ${by.length} answer line(s) by ${id} to the post (want 1)`);
+              }
+            }
+            const strangers = [...new Set(after.filter((m) => !agents.includes(m.author!)).map((m) => m.author!))];
+            if (strangers.length > 0) {
               ok = false;
-              fail("a:answers", `${conversation} holds ${by.length} answer line(s) by ${id} to the post (want 1)`);
+              fail("a:answers", `${conversation} holds answer lines by ${strangers.join(", ")}, which are not ${coordinator.id}'s delegates`);
+            }
+            if (ok) {
+              evidence.push(
+                `a: ${coordinator.id} (team ${team}) on SQLite; one post (${token}) got one answer line each from ${agents.join(", ")} and none from anyone else`,
+              );
             }
           }
-          const strangers = [...new Set(after.filter((m) => !agents.includes(m.author!)).map((m) => m.author!))];
-          if (strangers.length > 0) {
-            ok = false;
-            fail("a:answers", `${conversation} holds answer lines by ${strangers.join(", ")}, which are not ${coordinator.id}'s delegates`);
-          }
-          if (ok) {
-            evidence.push(
-              `a: ${coordinator.id} (team ${team}) on SQLite; one post (${token}) got one answer line each from ${agents.join(", ")} and none from anyone else`,
-            );
-          }
+        } finally {
+          await app.state.dispose();
         }
-      } finally {
-        await app.state.dispose();
       }
     }
 

@@ -32,7 +32,7 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { taskActionName } from "@flow-state-dev/orchestration/inbox";
-import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/boards";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
@@ -355,7 +355,7 @@ async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; q
   return { taskId, question: openOwnHolds(held as never)[0]! as unknown as Record<string, any> };
 }
 
-/** The task's row as stored on the conversation's board, in the user's scope. */
+/** The task as stored on the conversation's board, in the user's scope. */
 async function storedTask(lab: Lab, taskId: string): Promise<Record<string, any> | undefined> {
   const rows = await lab.stored("user", "tasks/");
   return Object.entries(rows).find(([key]) => key.endsWith(`/${taskId}`))?.[1] as Record<string, any> | undefined;
@@ -381,6 +381,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(run.prompt).toContain(goal);
     expect(run.prompt).toContain("# Your instructions");
     expect(run.prompt).toContain("Answer in your last message");
+    // No check follows an answer run, so its brief asks for no report of checks.
+    expect(run.prompt).not.toContain("# Your report");
     expect(run.prompt).not.toContain(marker);
     // Read-only, and done anyway: an answer, no commit, judged once.
     expect((await storedTask(lab, taskId))?.output).toMatchObject({
@@ -597,7 +599,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(task.status).toBe("errored");
     expect(stub.runs.length).toBeGreaterThan(0);
     // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
-    for (const run of stub.runs) expect(run.prompt).toMatch(/\nTask task_\w+, phase implement, attempt \d/);
+    for (const run of stub.runs) expect(run.prompt).toMatch(/\nTask task_\w+, mode implement, attempt \d/);
     // The row's id is the board's, so the issue the filer named is rendered on its own:
     // without it the coder is told which row it holds and never which issue.
     for (const run of stub.runs) expect(run.prompt).toContain("\nIssue greeting.");
@@ -626,8 +628,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     const stub = readsMarker({
       duringRun: async (run) => {
         // A feature run commits; the conversation's run holds until the feature row is done.
-        // Only the implement phase's task line names a phase: the answer prompt writes `Task <id>, attempt <n>.` too.
-        if (/\nTask \S+, phase /.test(run.prompt)) {
+        // The implement mode's task line names its mode; the answer run's names `answer`.
+        if (/\nTask \S+, mode implement, /.test(run.prompt)) {
           writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
           commitAll(run.cwd, "feature run: add the greeting");
           return;

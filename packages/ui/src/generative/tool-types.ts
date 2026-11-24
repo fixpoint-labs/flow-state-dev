@@ -28,7 +28,7 @@ export interface GenerativeTool<TSchema extends ZodTypeAny> {
   schema: TSchema;
   /**
    * Tool factory. Returns a `handler` block that, when invoked by the LLM,
-   * emits a component item with the given data.
+   * emits a data item with the given value.
    */
   tool: (options?: GenerativeToolOptions<TSchema>) => BlockDefinition;
 }

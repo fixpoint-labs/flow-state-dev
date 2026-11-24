@@ -601,7 +601,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     await act(async () => {
       fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
     });
-    streamMock.items = [{ id: "a_partial", type: "component" }];
+    streamMock.items = [{ id: "a_partial", type: "data" }];
     await act(async () => {
       fireEvent.click(screen.getByText("row-stub"));
       await Promise.all(rowAnswers);
@@ -612,7 +612,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
       await Promise.all(rowAnswers);
     });
 
-    const complete = [{ id: "a_partial", type: "component" }, { id: "a_final", type: "block_trace" }];
+    const complete = [{ id: "a_partial", type: "data" }, { id: "a_final", type: "block_trace" }];
     requestsState.requests = [
       { id: "req_a", status: "completed", items: complete },
       { id: "req_b", status: "in_progress", items: [] },

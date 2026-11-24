@@ -21,7 +21,7 @@ import type {
   SessionStreamEvent
 } from "@flow-state-dev/core/items";
 import type { PushCapability } from "@flow-state-dev/contracts";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionInputSchema,
   SuspensionRecord,
@@ -67,9 +67,12 @@ export class ClientHttpError extends Error {
 export type ExecuteActionRequestBody = {
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /** The session the action runs in: required, as the server refuses a send with none (`session-required`). */
+  sessionId: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
+  /** The message's files, as references from an upload, beside the input. */
+  attachments?: FileContent[];
 };
 
 /**
@@ -103,6 +106,8 @@ export type FlowListEntry = {
   requireUser: boolean;
   actions: string[];
   actionSchemas?: Record<string, ActionInputSchema>;
+  /** What the flow is for, in a sentence, when its definition says. Display only. */
+  description?: string;
 };
 
 export type { ActionInputSchema, ActionFieldSchema, ActionFieldType } from "@flow-state-dev/core/types";
@@ -134,6 +139,13 @@ export type SessionSummary = {
   flowId?: string;
   userId: string;
   title?: string;
+  /**
+   * What the session's flow calls it (its `session.label`), computed from the
+   * state the session shows when the session is read. Absent when the flow
+   * declares none or names nothing. Display only: a title, when the session
+   * has one, reads first.
+   */
+  label?: string;
   description?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
@@ -240,6 +252,14 @@ export type SessionRequestSummary = {
    * Guard with `== null`.
    */
   historyStart?: { requestId: string };
+  // FIX-2853.
+  /**
+   * Whether the server runs this request again when the caller retries it:
+   * the retry route's own rule, the same answer a session's turns carry.
+   * Offer Retry on a failed turn only when it is `true`. Absent on servers
+   * that predate the field; read absent as not retryable.
+   */
+  retryable?: boolean;
   completedAtMs?: number;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
@@ -518,8 +538,11 @@ export type RequestSSECallbacks = {
    * legally end without ever emitting a terminal `onRequestStatus` (e.g. the
    * server closes after a pre-transition failure), so a caller that only
    * clears its "in flight" state from `onRequestStatus`/`onError` would
-   * otherwise get stuck. Only implemented by `createSSEClientFromResponse`
-   * today — a request's own `stream()` does not fire this.
+   * otherwise get stuck. Only implemented by `createSSEClientFromResponse`:
+   * a request's own `stream()` does not fire this. It resumes after its last
+   * event instead, and reports with `onError` if it gives up. A caller of
+   * `createSSEClientFromResponse` resumes the same way: `request(id).stream()`
+   * with `startingAfter` set to the last `sequence_number` it applied.
    */
   onClose?: () => void;
 };

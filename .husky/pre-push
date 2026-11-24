@@ -1,3 +1,11 @@
 pnpm lint
 node scripts/check-retired-terms.mjs
+# The names each pushed commit adds (FIX-2631): git passes each pushed ref on stdin, and each is
+# checked against its own merge base with main, not HEAD. A deletion is skipped; with no base
+# (a clone with no origin/main) the check is skipped here and CI runs it.
+while read -r _ sha _ _; do
+  [ "$sha" = 0000000000000000000000000000000000000000 ] && continue
+  base=$(git merge-base origin/main "$sha" 2>/dev/null) || { echo "check-retired-terms: no merge base with origin/main for $sha; the new-names check is skipped here, CI runs it"; continue; }
+  node scripts/check-retired-terms.mjs --added-since "$base" --head "$sha" || exit 1
+done
 node goals/vocabulary/one-word-per-thing/sweep.mjs

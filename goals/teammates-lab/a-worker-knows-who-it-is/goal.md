@@ -40,3 +40,4 @@ Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 | 2026-10-30 | 07753056 | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed or "ChatGPT"; leg 2 called `listDelegates` |
 | 2026-10-31 | 43f36196 + FIX-2364 | openai/gpt-6-luna | PASS 3/3 | Regression re-run on FIX-2364's default-layer rule, with the lab's boot now shared (`../lab.mts`) |
 | 2026-10-31 | 43f36196 + FIX-2364 | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed or "ChatGPT" |
+| 2026-11-17 | FIX-2629 closure branch | lab default | PASS | 3 of 3 after the fixture names the lead Chief of Staff, its name since `a5a7ab7e7c` |

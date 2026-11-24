@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 428" role="img" aria-label="FIX-2520, before and after, five rows. What the composer takes: images and PDFs, from FIX-824&#x27;s list; after, text, Markdown, CSV and code files too. A PDF to a generator goes as a file part where the provider reads PDFs, else as its extracted text. A PDF to Claude Code goes as a document block. A PDF to Codex or Cursor goes as its text, extracted on our side and stored beside the file. A text-like file goes as text headed by its name to every target, and one over 200 KB is refused."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="194" y="32">TODAY</text>
+    <text class="t-lbl" x="572" y="32">AFTER</text>
+  </g>
+  <g id="row-0">
+    <text class="t-lbl" x="24" y="76">WHAT THE</text>
+    <text class="t-lbl" x="24" y="89">COMPOSER TAKES</text>
+    <rect class="old" x="180" y="56" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="78">Images and PDFs, after FIX-2518</text>
+    <text class="t-s" x="194" y="96">FIX-824&#x27;s list</text>
+    <rect class="new" x="558" y="56" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="78">Plus text, Markdown, CSV, code</text>
+    <text class="t-s" x="572" y="96">the limits set&#x27;s list, widened</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="24" y="150">A PDF TO A</text>
+    <text class="t-lbl" x="24" y="163">GENERATOR</text>
+    <rect class="same" x="180" y="130" width="366" height="60" rx="5"/>
+    <text class="t-s" x="194" y="152">nothing</text>
+    <rect class="new" x="558" y="130" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="152">A file part, as the provider reads it</text>
+    <text class="t-s" x="572" y="170">else its extracted text, D1</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="24" y="224">A PDF TO</text>
+    <text class="t-lbl" x="24" y="237">CLAUDE CODE</text>
+    <rect class="same" x="180" y="204" width="366" height="60" rx="5"/>
+    <text class="t-s" x="194" y="226">nothing</text>
+    <rect class="new" x="558" y="204" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="226">A document block</text>
+    <text class="t-s" x="572" y="244">on the turn&#x27;s user message</text>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="24" y="298">A PDF TO</text>
+    <text class="t-lbl" x="24" y="311">CODEX OR CURSOR</text>
+    <rect class="same" x="180" y="278" width="366" height="60" rx="5"/>
+    <text class="t-s" x="194" y="300">nothing</text>
+    <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="300">Its text, extracted on our side, D1</text>
+    <text class="t-s" x="572" y="318">stored beside the file; no text layer, said so</text>
+  </g>
+  <g id="row-4">
+    <text class="t-lbl" x="24" y="372">A TEXT-LIKE</text>
+    <text class="t-lbl" x="24" y="385">FILE</text>
+    <rect class="same" x="180" y="352" width="366" height="60" rx="5"/>
+    <text class="t-s" x="194" y="374">nothing</text>
+    <rect class="new" x="558" y="352" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="374">Text, headed by its name</text>
+    <text class="t-s" x="572" y="392">every target; over 200 KB refused, D2</text>
+  </g>
+</svg>

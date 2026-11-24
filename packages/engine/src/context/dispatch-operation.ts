@@ -39,10 +39,10 @@
  * Fire-and-forget is exactly why the returned promise still waits for the host
  * to have **accepted** the dispatch. Nobody is holding the request's `finished`,
  * so without it a setup failure has nowhere to surface at all: the sender
- * reports success, and a task row waits out its lease with nothing anywhere
+ * reports success, and a task waits out its lease with nothing anywhere
  * saying why.
  *
- * It waits for that and nothing more, deliberately. A task row is protected by
+ * It waits for that and nothing more, deliberately. A task is protected by
  * its lease — a child that dies at any point leaves a lease nobody renews, and
  * the next drain recovers the row. Waiting for a later milestone would only
  * change which failures cost one lease of latency, at the price of coupling the
@@ -172,7 +172,7 @@ export type DispatchOperationInputs = {
    * exists, or a host that can be torn down will tear it down mid-flight. That is
    * exactly what happened under `fsdev run` — the CLI disposes the runtime the
    * moment the parent returns, closing pooled stores while an in-process child
-   * was still writing, and the child's task row was stranded `in_progress`
+   * was still writing, and the child's task was stranded `in_progress`
    * forever.
    *
    * A host that owns a process lifetime (`FlowState.dispose`) uses this to drain
@@ -277,7 +277,7 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
     // rather than "we intended to". It is deliberately the ONLY thing awaited,
     // and deliberately not a stronger milestone.
     //
-    // A task row is not what this protects. A dispatch leaves the row holding a
+    // A task is not what this protects. A dispatch leaves the row holding a
     // lease nobody renews, so a child that dies — in setup, mid-run, or with its
     // process — lets that lease lapse and the next drain recovers it. That is
     // the designed path for every way a child can die, and waiting for a later

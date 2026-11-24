@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../lib/workers.mts";
 import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
   labRoutes,
@@ -238,14 +238,13 @@ async function pageRows(routes: LabRoutes, sessionId: string, ref: string): Prom
   return items;
 }
 
-/** The worker each person's project coordinator runs as, and its flow, as the Lab's projects flow names them (`projectSetup`). */
+/** The worker each person's project coordinator runs as, and its flow, as the Lab's projects flow names them (its `projectSetup` view). */
 export async function projectCoordinatorOf(world: World): Promise<{ worker: string; flow: string } | { error: string }> {
   const owner = world.routes.owner;
-  const made = await owner.call("POST", `/${PROJECTS_FLOW}/sessions`, { userId: owner.user.userId });
-  if (made.status !== 201) return { error: `no ${PROJECTS_FLOW} session: ${made.status} ${JSON.stringify(made.body)}` };
-  const setup = await owner.act(PROJECTS_FLOW, String(made.body.session.id), "projectSetup", {});
-  const worker = (setup.output as { projectCoordinator?: unknown } | undefined)?.projectCoordinator;
-  if (setup.status !== "completed" || typeof worker !== "string") return { error: `the Lab names no project coordinator: ${setup.status} ${JSON.stringify(setup.output ?? setup.error)}` };
+  // The projects flow's `projectSetup` view, read with no session.
+  const setup = await owner.call("POST", `/${PROJECTS_FLOW}/views/projectSetup`, { userId: owner.user.userId, input: {} });
+  const worker = (setup.body?.output as { projectCoordinator?: unknown } | undefined)?.projectCoordinator;
+  if (setup.status !== 200 || typeof worker !== "string") return { error: `the Lab names no project coordinator: ${setup.status} ${JSON.stringify(setup.body)}` };
   const flow = (await treeWorkers(world)).find((w) => w.id === worker)?.declared.flow;
   if (typeof flow !== "string") return { error: `the tree declares no "${worker}" with a flow` };
   return { worker, flow };
@@ -360,7 +359,7 @@ export function textOf(item: StoredItem | undefined): string {
 
 /** The workers the tree beside the profile the Lab is served from now declares, each with its `WORKER.md` frontmatter. */
 export async function treeWorkers(world: World): Promise<Array<{ id: string; declared: Record<string, unknown> }>> {
-  return (await readDeclaredRoster(join(dirname(world.config), "workforce"))).workers;
+  return [...(await readTree(join(dirname(world.config), "workforce"))).workers];
 }
 
 /**

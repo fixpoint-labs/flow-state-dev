@@ -23,6 +23,7 @@ import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
 import type { FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -241,6 +242,7 @@ describe("resume route — allow enforcement & payload validation", () => {
       actionName: "go",
       userId: "u1",
       source: "http",
+      sessionId: "s1",
       status: "suspended",
       startedAtMs: 1,
       state: {},
@@ -443,6 +445,7 @@ describe("resume route — allow enforcement & payload validation", () => {
 /** Shared first-run helper: drive the flow to its first suspension. */
 function runActionFor(flow: FlowInstance, stores: StoreRegistry, provider: DurabilityProvider) {
   return runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

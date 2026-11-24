@@ -8,12 +8,45 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CHECK_OUTPUT_TAIL_CHARS,
+  checkCommandsFrom,
   checkoutCommandPassed,
   checkoutCommandProblem,
   parseCheckoutCommand,
   runCheckoutCommands,
+  setupCommandFrom,
   splitCheckoutCommand,
 } from "../src/index";
+
+describe("a setting's checks", () => {
+  it("are its `;`-separated commands, trimmed, blanks dropped", () => {
+    expect(checkCommandsFrom(" pnpm typecheck ;; pnpm --filter web test ", "APP_CHECKS")).toEqual(["pnpm typecheck", "pnpm --filter web test"]);
+  });
+
+  it("are none when the setting is unset or blank", () => {
+    expect(checkCommandsFrom(undefined, "APP_CHECKS")).toBeUndefined();
+    expect(checkCommandsFrom(" ; ", "APP_CHECKS")).toBeUndefined();
+  });
+
+  it("refuse a command that needs a shell, naming the setting", () => {
+    expect(() => checkCommandsFrom("pnpm build && pnpm test", "APP_CHECKS")).toThrow(/^APP_CHECKS: .*shell operator/);
+  });
+});
+
+describe("a setting's setup command", () => {
+  it("is its one command, split into words with quoted words kept together", () => {
+    expect(setupCommandFrom(` pnpm install --filter "@acme/web app" `, "APP_SETUP")).toEqual({ command: ["pnpm", "install", "--filter", "@acme/web app"] });
+  });
+
+  it("is none when the setting is unset or blank", () => {
+    expect(setupCommandFrom(undefined, "APP_SETUP")).toBeUndefined();
+    expect(setupCommandFrom("   ", "APP_SETUP")).toBeUndefined();
+  });
+
+  it("refuses a line that needs a shell, or an unclosed quote, naming the setting", () => {
+    expect(() => setupCommandFrom("pnpm install && pnpm build", "APP_SETUP")).toThrow(/^APP_SETUP: .*shell operator/);
+    expect(() => setupCommandFrom('pnpm install "unclosed', "APP_SETUP")).toThrow(/^APP_SETUP: /);
+  });
+});
 
 describe("what a command is", () => {
   it("splits words and keeps quoted words together", () => {

@@ -20,7 +20,7 @@ function itemOf<TDetail>(id: string, task: InboxTask | null, questions: readonly
 }
 
 /**
- * The Inbox list: one item per task row that holds the user, and one per
+ * The Inbox list: one item per task that holds the user, and one per
  * suspension a reader found that no row claims, oldest first.
  *
  * A task run's stop lists under its row, never on its own: one the row's hold

@@ -17,14 +17,20 @@ let repo: string;
 afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
 /** A two-file app in a fresh "repository", built into `app/dist`. */
-async function builtApp(options: { editDuringBuild?: boolean } = {}): Promise<{ dist: string; keys: string; config: string }> {
+async function builtApp(
+  options: { editDuringBuild?: boolean } = {},
+): Promise<{ dist: string; keys: string; config: string; theme: string }> {
   repo = mkdtempSync(join(tmpdir(), "build-inputs-"));
   const app = join(repo, "app");
   mkdirSync(join(app, "src"), { recursive: true });
   // The key lives in a second module, as the inventory pattern lives in reads.ts.
   const keys = join(app, "src/keys.ts");
   writeFileSync(keys, 'export const WORKERS = "inventory/workers/*";\n');
-  writeFileSync(join(app, "src/main.ts"), 'import { WORKERS } from "./keys";\ndocument.title = WORKERS;\n');
+  // A stylesheet the page's own stylesheet pulls in with `@import`, as the labs' themes are.
+  const theme = join(app, "src/theme.css");
+  writeFileSync(theme, ":root { --accent: blue; }\n");
+  writeFileSync(join(app, "src/style.css"), '@import "./theme.css";\nbody { color: var(--accent); }\n');
+  writeFileSync(join(app, "src/main.ts"), 'import "./style.css";\nimport { WORKERS } from "./keys";\ndocument.title = WORKERS;\n');
   writeFileSync(join(app, "index.html"), '<!doctype html><script type="module" src="/src/main.ts"></script>\n');
   // A config file of its own, so the record has one to vouch for.
   const config = join(app, "vite.config.mjs");
@@ -38,7 +44,7 @@ async function builtApp(options: { editDuringBuild?: boolean } = {}): Promise<{ 
     },
   };
   await build({ root: app, logLevel: "silent", configFile: config, plugins: [editor, recordBuildInputs({ repoRoot: repo })] });
-  return { dist, keys, config };
+  return { dist, keys, config, theme };
 }
 
 describe("a page build's record of its source", () => {
@@ -51,6 +57,12 @@ describe("a page build's record of its source", () => {
     const { dist, keys } = await builtApp();
     writeFileSync(keys, 'export const WORKERS = "inventory/renamed/*";\n');
     expect(staleBuildInputs(dist, repo)).toBe("app/src/keys.ts changed since it was built");
+  });
+
+  it("names a stylesheet pulled in by a CSS @import, which the bundle inlines without making it a module", async () => {
+    const { dist, theme } = await builtApp();
+    writeFileSync(theme, ":root { --accent: red; }\n");
+    expect(staleBuildInputs(dist, repo)).toBe("app/src/theme.css changed since it was built");
   });
 
   it("names a source file that is gone, and ignores one rewritten with the same contents", async () => {

@@ -1,12 +1,16 @@
 /**
  * The numbers and words Tasks and Inbox draw in design v2's form: a row's
  * TIME, which rows the Queued toggle hides, Tasks' summary line and the empty
- * Inbox's sentence. Every count comes from the same snapshot reads the other
- * screens use (`openTasks`, `workerStates`), so Tasks, Inbox and Roster agree.
+ * Inbox's sentence. The rows and the Inbox come from the inbox view the other
+ * screens read (`inbox.ts`), and who is on shift from `workerStates` over the
+ * same answer, so Tasks, Inbox and Roster agree.
  */
 import { columnFor } from "./columns";
-import { openTasks, workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
-import type { BoardTaskView } from "./reads";
+import { workerStates, shiftCounts } from "./shift";
+import { openBoardTasks, type InboxViewValue } from "./inbox";
+import type { BoardTaskView } from "./boards";
+import type { Section } from "./failure";
+import type { Worker } from "./workers";
 
 /**
  * Where a task's composer keeps its unsent line and *unconfirmed* warning. A
@@ -56,13 +60,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * Inbox items waiting on the user, who is on shift, and how many
  * streams (the conversations holding their boards) the rows in flight run in.
  */
-export function tasksSummary(snapshot: LoadedSnapshot): string {
-  const inFlight = openTasks(snapshot).filter((row) => !isQueued(row));
+export function summaryLine(inbox: Section<InboxViewValue>, workers: readonly Worker[]): string {
+  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => !isQueued(row)) : [];
   // An Inbox that didn't load says so: a count of 0 would read as all clear.
-  const waiting = snapshot.inbox.ok
-    ? `${snapshot.inbox.value.length} ${snapshot.inbox.value.length === 1 ? "needs" : "need"} you`
-    : "Inbox didn't load";
-  const counts = shiftCounts(workerStates(snapshot));
+  const waiting = inbox.ok ? `${inbox.value.items.length} ${inbox.value.items.length === 1 ? "needs" : "need"} you` : "Inbox didn't load";
+  const counts = shiftCounts(workerStates(workers, inbox.ok ? inbox.value : undefined));
   return [
     `${inFlight.length} in flight`,
     waiting,
@@ -84,7 +86,7 @@ export function runningSessions(rows: readonly BoardTaskView[]): number {
 }
 
 /** What Inbox says when nothing waits on the user (v2:1354): the sessions still running. */
-export function emptyInboxSentence(snapshot: LoadedSnapshot): string {
-  const running = runningSessions(openTasks(snapshot));
+export function nothingWaitingSentence(view: InboxViewValue): string {
+  const running = runningSessions(openBoardTasks(view));
   return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running.`;
 }

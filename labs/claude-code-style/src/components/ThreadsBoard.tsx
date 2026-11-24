@@ -1,9 +1,9 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
-import type { LabAdapter, LabTask } from "../adapter";
-import { COLUMNS, columnOf, type Column } from "../lib/columns";
-import { taskSignalTone } from "../lib/task-status";
-import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { useDismissed, usePins, type CodingBoardTask } from "../app";
+import { COLUMNS, columnOf, dismissalKey, type Column } from "../lib/columns";
+import { timeSignalOf, taskSignalTone } from "../lib/task-status";
+import { useMissing, useNow } from "../lib/use-watch";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -23,7 +23,6 @@ import { ThreadView } from "./ThreadView";
  * tasks open; the board stays in the pane behind it.
  */
 export function ThreadsBoard({
-  adapter,
   sessionId,
   tasks: listed,
   stale = false,
@@ -31,10 +30,9 @@ export function ThreadsBoard({
   onOpen,
   onMissing,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: LabTask[] | undefined;
+  tasks: CodingBoardTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   openId: string | undefined;
@@ -44,14 +42,16 @@ export function ThreadsBoard({
 }) {
   const tasks = listed ?? [];
   useMissing(listed, openId, onMissing);
-  const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
+  const pins = usePins() ?? [];
+  const dismissed = useDismissed() ?? [];
+  const isDismissed = (task: CodingBoardTask) => dismissed.includes(dismissalKey(task));
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
   const now = useNow(tasks.length > 0);
 
   const open = tasks.find((t) => t.id === openId);
   const groups = COLUMNS.map((column) => ({
     ...column,
-    rows: tasks.filter((t) => columnOf(t, pins.includes(t.id)) === column.id),
+    rows: tasks.filter((t) => columnOf(t, pins.includes(t.id), isDismissed(t)) === column.id),
   })).filter((group) => group.rows.length > 0);
 
   return (
@@ -97,20 +97,11 @@ export function ThreadsBoard({
                           <span className="min-w-0 flex-1">
                             <span className="flex items-baseline gap-2">
                               <span className="min-w-0 flex-1 truncate text-sm font-medium">{task.title}</span>
-                              {task.view !== undefined ? (
-                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                                  <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
-                                </span>
-                              ) : null}
+                              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                                <TaskTime {...timeSignalOf(task)} now={now} stale={stale} tone={taskSignalTone} />
+                              </span>
                             </span>
-                            <span
-                              className={cn(
-                                "mt-0.5 block truncate text-xs",
-                                task.status === "errored" ? "text-destructive" : "text-muted-foreground",
-                                task.steps && "font-mono",
-                              )}
-                            >
-                              {task.steps ? `${task.steps.done}/${task.steps.total} · ` : ""}
+                            <span className={cn("mt-0.5 block truncate text-xs", task.status === "errored" ? "text-destructive" : "text-muted-foreground")}>
                               {rowNote(task)}
                             </span>
                             <span className="mt-1 flex items-center gap-1.5">
@@ -131,10 +122,10 @@ export function ThreadsBoard({
       {open ? (
         <ThreadView
           key={open.id}
-          adapter={adapter}
           sessionId={sessionId}
           task={open}
           pinned={pins.includes(open.id)}
+          dismissed={isDismissed(open)}
           onClose={() => onOpen(undefined)}
         />
       ) : null}

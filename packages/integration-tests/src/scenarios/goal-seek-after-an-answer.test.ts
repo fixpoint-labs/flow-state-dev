@@ -18,7 +18,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import {
   openOwnHolds,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+  GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
 } from "@flow-state-dev/orchestration/internal";
 import {
   askMidway,
@@ -40,10 +40,10 @@ function readTermination(items: unknown[]): { reason?: string; iterations?: numb
     .reverse()
     .find(
       (i) =>
-        (i as { type?: string }).type === "component" &&
-        (i as { component?: string }).component === GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
-    ) as { data?: { reason?: string; iterations?: number } } | undefined;
-  return item?.data;
+        (i as { type?: string }).type === "data" &&
+        (i as { dataType?: string }).dataType === GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
+    ) as { value?: { reason?: string; iterations?: number } } | undefined;
+  return item?.value;
 }
 
 function buildFlow() {
@@ -96,7 +96,7 @@ function buildFlow() {
     kind: `${NAME}-flow`,
     actions: {
       plan: { inputSchema: z.unknown(), block: loop },
-      answer: { inputSchema: z.object({ message: z.string() }), block: answer },
+      answer,
     },
   } as never)();
   return { flow, seen };

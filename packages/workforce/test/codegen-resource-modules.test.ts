@@ -25,7 +25,7 @@ import {
   renderWorkforceCode,
   type DiscoveredResourceModule,
 } from "../src/codegen";
-import { readResourcesDirectory } from "../src/loader";
+import { readResourcesDirectory } from "../src/loader/readers";
 import { RESOURCE_SLOT_PATTERNS, walkResourcePlaces } from "../src/loader/resource-walk";
 
 const roots: string[] = [];

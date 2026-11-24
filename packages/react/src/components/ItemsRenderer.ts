@@ -1,283 +1,103 @@
 /**
- * Collection renderer for output item arrays.
+ * Collection renderer for a conversation: its lines, from the conversation
+ * model ({@link conversationLines}), drawn in order through the renderer
+ * registry.
  *
- * Items are rendered in the order provided — callers (useSession, etc.)
- * are responsible for sorting.
+ * Lines are rendered in the order provided — callers (useSession, etc.)
+ * are responsible for sorting the items they come from.
  */
 import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
-import type {
-  ToolOutputItem,
-  ComponentItem,
-  ContainerItem,
-  OutputItem,
-  ReasoningItem,
-  SuspensionItem,
-  SuspensionResumeItem
-} from "@flow-state-dev/core/items";
-import type { SuspensionStatus } from "@flow-state-dev/core/types";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
-import type { RendererRegistry } from "../registry/block-renderers";
+import { resolveRenderer } from "../registry/block-renderers";
+import { conversationLines, type ActivityItem, type ItemLine } from "./conversation-lines";
 import { ItemRenderer } from "./ItemRenderer";
 
 /**
- * What an agent does between the things it says: a tool call, or the thinking
- * that goes with one. A run of these renders as one unit.
- */
-export type ActivityItem = ToolOutputItem | ReasoningItem;
-
-/**
- * Props for rendering output item lists.
+ * Props for rendering a conversation: its lines, or its items.
  */
 export type ItemsRendererProps = {
-  items: OutputItem[];
   /**
-   * When true (default), component items that carry a stable `key` are
-   * deduplicated: only the latest snapshot per key is rendered, replacing
+   * The lines to draw, from {@link conversationLines}, computed where the
+   * items and turns change. Given these, `items` and the filters are ignored.
+   */
+  lines?: readonly ItemLine[];
+  /** The items to draw when no `lines` are given: read as `conversationLines(items)`, with no turns. */
+  items?: OutputItem[];
+  /**
+   * With `items`: when true (default), data items that carry a stable `key`
+   * are deduplicated: only the latest snapshot per key is rendered, replacing
    * earlier ones in-place. Set to false to render all snapshots.
    */
   deduplicateByKey?: boolean;
   /**
-   * When true, items with `history: false` visibility (sub-agent output) are
-   * rendered inline with the rest of the stream. Default: false — those
-   * items are filtered out of the default conversation view. The data still
-   * flows through `useSession().items`; use a custom renderer (e.g., a
-   * per-agent panel) to surface it explicitly.
+   * With `items`: when true, items with `history: false` visibility
+   * (sub-agent output) are rendered inline with the rest of the stream.
+   * Default: false — those items are filtered out of the default
+   * conversation view. The data still flows through `useSession().items`;
+   * use a custom renderer (e.g., a per-agent panel) to surface it explicitly.
    */
   showSubAgents?: boolean;
   /**
-   * When provided, consecutive `tool_output` and `reasoning` items that
-   * survive the dedup / sub-agent / container-owner filters are rendered
-   * through this component as a single group instead of individually via the
-   * registry: an agent's working, between the things it says.
-   *
-   * The component receives the full batch of items for that segment, in
-   * order. Singletons still flow through the group wrapper for visual
-   * consistency.
-   *
-   * Every other item (messages, components, …) continues to render through
-   * the renderer registry via `ItemRenderer` as normal, and ends a group.
+   * Draws a `steps` line (one turn's tool calls and the thinking between
+   * them) as one unit: it receives the line's items, in order, and the line
+   * itself (`ended` once its turn is over). Without it,
+   * each of a steps line's items renders through the registry on its own.
    */
-  toolGroupRenderer?: ComponentType<{ items: ActivityItem[]; live?: boolean }>;
+  toolGroupRenderer?: ComponentType<{ items: ActivityItem[]; live?: boolean; line: Extract<ItemLine, { kind: "steps" }> }>;
   /**
-   * The stream is still open after the last of these items. The renderer is
-   * then told, as `live`, which group is the trailing one: the agent's working
-   * that no message has yet ended.
+   * The stream is still open after the last of these lines. The steps
+   * renderer is then told, as `live`, which steps line is the trailing one:
+   * the agent's working that no message has yet ended.
    */
   live?: boolean;
 };
 
-/**
- * A segment of the render stream after filtering and optional tool-call
- * grouping. `item` segments pass through to the renderer registry; `group`
- * segments represent a run of consecutive tool_output and reasoning items
- * that a toolGroupRenderer should render as one unit.
- */
-export type ItemRenderSegment =
-  | { kind: "item"; item: OutputItem }
-  | { kind: "group"; items: ActivityItem[] };
-
-/**
- * Options for {@link buildItemRenderStream}. Mirrors the ItemsRenderer
- * public props but exposed separately so the filter + group logic is
- * unit-testable without a React tree.
- */
-export type BuildItemRenderStreamOptions = {
-  deduplicateByKey?: boolean;
-  showSubAgents?: boolean;
-  /**
-   * When true, consecutive tool_output and reasoning items in the filtered
-   * stream are collapsed into `group` segments. Any other item breaks the run.
-   */
-  groupToolCalls?: boolean;
-};
-
-/**
- * For component items with a stable `key`, keep only the latest snapshot per key.
- * Items without a key are always included.
- */
-function deduplicateComponentItems(items: OutputItem[]): OutputItem[] {
-  const latestIndex = new Map<string, number>();
-  items.forEach((item, i) => {
-    const k = (item as ComponentItem).key;
-    if (item.type === "component" && k !== undefined) {
-      // Scope deduplication to the request: same key in different requests
-      // are independent items (each request's plan is preserved).
-      latestIndex.set(`${item.requestId}:${k}`, i);
-    }
-  });
-  return items.filter((item, i) => {
-    const k = (item as ComponentItem).key;
-    if (item.type === "component" && k !== undefined) {
-      return latestIndex.get(`${item.requestId}:${k}`) === i;
-    }
-    return true;
-  });
+/** A stopped turn's line when the registry has no `stopped` renderer. */
+function renderStoppedFallback(): ReactNode {
+  return createElement("div", { "data-line": "stopped", style: { opacity: 0.7, fontSize: 13 } }, "Stopped");
 }
 
 /**
- * Builds a set of blockInstanceIds whose owning container has a registered
- * renderer. Items with `ownedBy` in this set are suppressed — the container
- * renderer is responsible for displaying them.
- */
-function buildSuppressedOwners(
-  items: OutputItem[],
-  containerRenderers: Record<string, unknown> | undefined
-): Set<string> | null {
-  if (containerRenderers === undefined) return null;
-
-  const suppressed = new Set<string>();
-  for (const item of items) {
-    if (item.type === "container") {
-      const container = item as ContainerItem;
-      const component = container.component;
-      if (component !== undefined) {
-        const renderer = containerRenderers[component];
-        if (renderer !== undefined && renderer !== false) {
-          suppressed.add(container.provenance.blockInstanceId);
-        }
-      }
-    }
-  }
-
-  return suppressed.size > 0 ? suppressed : null;
-}
-
-/**
- * Item types that a container renderer manages internally: plan state
- * snapshots and tool call outputs. These are suppressed from the main
- * stream when owned by a container with a registered renderer.
+ * Renders a conversation's lines in the order given.
  *
- * Primary output types (message, reasoning, status, error, etc.) always
- * render in the main stream even when owned by a container — they are
- * the user-facing response, not internal container state.
- */
-const CONTAINER_MANAGED_TYPES = new Set([
-  "component",
-  "tool_output",
-]);
-
-// Mirrors `@flow-state-dev/contracts/items/resolve-visibility` — inlined
-// because this package may only import types from core.
-const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
-const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
-
-/**
- * Pure helper: applies dedup / sub-agent / container-owner filters, then
- * optionally collapses consecutive tool_output and reasoning runs into
- * `group` segments. Returns the ordered render stream.
+ * Each line draws through the renderer registry: a message, an error, a
+ * suspension or a `data` item by its own slot, as `ItemRenderer` resolves it,
+ * with the line handed to a registered renderer beside the item (`line`), so
+ * it can read what the model decided (a failed line's `retryable`, an
+ * assistant line's `streaming`). A `steps` line draws through
+ * `toolGroupRenderer`, else item by item; a `stopped` line through the
+ * registry's `stopped` slot, else a plain "Stopped".
  *
- * Exposed so consumers can test filter + grouping behavior without a React
- * tree. ItemsRenderer uses this internally.
- */
-export function buildItemRenderStream(
-  items: OutputItem[],
-  renderers: RendererRegistry | undefined,
-  options: BuildItemRenderStreamOptions = {}
-): ItemRenderSegment[] {
-  const { deduplicateByKey = true, showSubAgents = false, groupToolCalls = false } = options;
-
-  const deduplicated = deduplicateByKey ? deduplicateComponentItems(items) : items;
-  const visibleByAgent = showSubAgents
-    ? deduplicated
-    : deduplicated.filter((item) => {
-        if (TRACE_TYPES.has(item.type)) return false;
-        if (!CONVERSATIONAL_TYPES.has(item.type)) return true;
-        return item.itemVisibility?.history !== false;
-      });
-
-  const suppressedOwners = buildSuppressedOwners(visibleByAgent, renderers?.container);
-
-  const filtered = visibleByAgent.filter((item) => {
-    if (suppressedOwners === null) return true;
-    const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
-    if (ownedBy === undefined || !suppressedOwners.has(ownedBy)) return true;
-    return !CONTAINER_MANAGED_TYPES.has(item.type);
-  });
-
-  if (!groupToolCalls) {
-    return filtered.map((item) => ({ kind: "item", item }));
-  }
-
-  const out: ItemRenderSegment[] = [];
-  let buf: ActivityItem[] = [];
-  const flush = () => {
-    if (buf.length === 0) return;
-    out.push({ kind: "group", items: buf });
-    buf = [];
-  };
-  for (const item of filtered) {
-    if (item.type === "tool_output" || item.type === "reasoning") {
-      buf.push(item as ActivityItem);
-    } else {
-      flush();
-      out.push({ kind: "item", item });
-    }
-  }
-  flush();
-  return out;
-}
-
-/**
- * Renders output items in the order provided.
- *
- * Does not re-sort — useSession already sorts by timestamp with
- * itemIndex as tiebreaker.
- *
- * Items owned by a container that has a registered renderer are suppressed —
- * the container renderer is responsible for displaying its owned items.
- *
- * When `toolGroupRenderer` is provided, consecutive `tool_output` and
- * `reasoning` items in the filtered stream render as a single group via the
- * supplied component rather than individually.
+ * Given `items` and no `lines`, it draws `conversationLines(items)`.
  */
 export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
   const { renderers } = useFlowContext();
 
-  const stream = buildItemRenderStream(props.items, renderers, {
-    deduplicateByKey,
-    showSubAgents,
-    groupToolCalls: toolGroupRenderer !== undefined,
-  });
+  const lines = props.lines ?? conversationLines(props.items ?? [], [], { renderers, deduplicateByKey, showSubAgents });
 
-  // Suspensions whose matching `suspension_resume` item has arrived, mapped to
-  // how they resolved. The inline ApprovalRenderer fallback can't see the full
-  // stream, so we derive this here (from the unfiltered items) and pass it down —
-  // presence lets the default card collapse to a receipt instead of offering a
-  // duplicate resume, and the `resolution` value gives the receipt its outcome.
-  // Match the resume item by its `type` literal rather than the core runtime
-  // predicate — this package imports only TYPES from core (see the inlined
-  // TRACE_TYPES / CONVERSATIONAL_TYPES sets above).
-  const resolvedSuspensions = new Map<string, SuspensionStatus>();
-  for (const it of props.items) {
-    if (it.type === "suspension_resume") {
-      const resume = it as SuspensionResumeItem;
-      resolvedSuspensions.set(resume.suspensionId, resume.resolution);
+  return lines.map((line, index) => {
+    switch (line.kind) {
+      case "steps": {
+        if (toolGroupRenderer === undefined) {
+          return createElement(Fragment, { key: line.id }, ...line.items.map((item) => createElement(ItemRenderer, { item, key: item.id })));
+        }
+        return createElement(
+          Fragment,
+          { key: `tool-group-${line.id}` },
+          createElement(toolGroupRenderer, { items: line.items, live: props.live === true && index === lines.length - 1, line })
+        );
+      }
+      case "stopped": {
+        const stopped = resolveRenderer(renderers, "stopped");
+        if (stopped === false) return null;
+        return createElement(Fragment, { key: line.id }, stopped === undefined ? renderStoppedFallback() : createElement(stopped, { line }));
+      }
+      case "suspension":
+        return createElement(ItemRenderer, { item: line.item, key: line.id, line, isResolved: line.resolution !== undefined, resolution: line.resolution });
+      default:
+        return createElement(ItemRenderer, { item: line.item, key: line.id, line });
     }
-  }
-
-  return stream.map((segment, index) => {
-    if (segment.kind === "group") {
-      const key = `tool-group-${segment.items[0]?.id ?? index}`;
-      return createElement(
-        Fragment,
-        { key },
-        createElement(toolGroupRenderer!, {
-          items: segment.items,
-          live: props.live === true && index === stream.length - 1,
-        })
-      );
-    }
-    const { item } = segment;
-    if (item.type === "suspension") {
-      const suspensionId = (item as SuspensionItem).suspensionId;
-      return createElement(ItemRenderer, {
-        item,
-        key: item.id,
-        isResolved: resolvedSuspensions.has(suspensionId),
-        resolution: resolvedSuspensions.get(suspensionId)
-      });
-    }
-    return createElement(ItemRenderer, { item, key: item.id });
   });
 }

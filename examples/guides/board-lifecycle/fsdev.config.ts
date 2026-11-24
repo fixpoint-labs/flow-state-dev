@@ -11,7 +11,7 @@ import { createFlowState } from "@flow-state-dev/engine";
 import boardLifecycleFlow from "./src/lifecycle-flow";
 
 export default createFlowState({
-  flows: { "board-lifecycle": boardLifecycleFlow },
+  flows: [boardLifecycleFlow],
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

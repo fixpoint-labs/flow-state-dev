@@ -7,7 +7,7 @@ main session, a coordinator, for three pieces of work. They see it start three t
 task in a session of its own, running side by side; answer the one that asks them a question,
 inside that thread; see it become ready for review; and resolve it. Then they ask for a code
 change and see it run through Claude Code in a worktree of the project's repository, judged
-against its goal, wait for their review, and resolve. All of it on the workforce package, a real model and a durable store, with
+against its goal, wait for their review, and merge it locally. All of it on the workforce package, a real model and a durable store, with
 nothing in the lab but configuration, React UI and small flows.
 
 **Input:** `fixtures/input.json`: a project name, the ask (three vendors, one thread each), your
@@ -36,18 +36,22 @@ worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
   under *Resolved*.
 - **6** you ask for a code change: a task to `desk.thread-coder` is filed; its card and row are
   tagged *Claude Code*; it waits on your review (answering a question first, in its thread, if
-  the run asks), under *Ready for review*, with the judge's line on its card and the model and
-  token count its row's `spend` carries (harness `claude-code`); *Resolve* completes
-  it with output `review: "accepted"` and moves it under *Resolved*. The run worked in a worktree
-  of the project's repository under the lab's data folder, whose branch, also in the repository,
-  holds the CHANGELOG line; the repository's checked-out branch and files and the lab's checkout
-  are untouched.
+  the run asks), under *Ready for review*, with the model and token count its row's `spend`
+  carries (harness `claude-code`) on its card, and the judge's verdict and confidence on the
+  review card in its view (FIX-2380). The repository has no GitHub remote, so the card's accept is
+  *Merge locally*, not *Resolve* (FIX-2543's accept offers the ways the review lists its work can
+  land; *Resolve* only when it lists none). *Merge locally* completes it with output
+  `review: "accepted"` and a `merge` landing, and moves it under *Resolved*. The run worked in a
+  worktree of the project's repository under the lab's data folder, whose branch, also in the
+  repository, holds the CHANGELOG line; until the merge the repository's checked-out branch and
+  files are untouched, and after it that branch has moved on to hold the line with nothing left
+  uncommitted. The lab's checkout is untouched.
 
 **Anti-game:** every signal reads the rendered page (`data-entry`, `data-task-id`,
 `data-column`, the header) or the board's own records (`listTasks_tasks`, `getTask_tasks`, the
-clone's git log). Nothing asserts on the adapter's return values, the fake in `test/`, or React
-state. The answer is typed in the thread's view and *Resolve* is clicked; neither goes through a
-package call from the script.
+clone's git log). Nothing asserts on the lab's hooks' return values or React
+state. The answer is typed in the thread's view, and *Resolve* and *Merge locally* are clicked;
+none goes through a package call from the script.
 
 **Retries:** up to `GOAL_ATTEMPTS` (3) fresh runs, only when the model gave nothing to grade: no
 thread filed, or no thread asked a question. Never under a control, and never after a signal

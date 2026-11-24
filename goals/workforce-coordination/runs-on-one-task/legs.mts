@@ -11,11 +11,11 @@ import { PEOPLE } from "../../workers/files-and-splits-down-the-chain/lab/people
 import { connect, quiet, type Acted, type Shipped } from "../../workers/files-and-splits-down-the-chain/scripted.mts";
 import { allTaskRows, type StoredTask } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { CAST, type Cast } from "./cast.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** The wait after things go quiet, before the store is read. */
 export const GRACE_MS = 6_000;
 const TERMINAL = new Set(["completed", "errored", "cancelled"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Every row on a plan ledger (`plan/<partition>/<id>`), with its partition. */
 export function planRows(file: string): Array<StoredTask & { session?: string; filedByTask?: string }> {

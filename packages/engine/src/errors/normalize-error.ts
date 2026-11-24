@@ -1,7 +1,7 @@
 /**
  * Normalizes unknown thrown values into a consistent FlowError shape.
  */
-import { toError } from "@flow-state-dev/core/helpers";
+import { stripAnsi, toError } from "@flow-state-dev/core/helpers";
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
 import { classifyProviderError } from "./classify-provider-error";
@@ -42,12 +42,18 @@ function inferRetryable(error: Error, code: string): boolean {
 
 /**
  * Converts any thrown value into FlowError while preserving useful metadata when present.
+ *
+ * The message is what a failed turn's reason shows a person, so terminal
+ * colour codes some throwers bake in (the AI SDK's AI Gateway errors, CLI
+ * output) are stripped here, once, for every surface. The original error,
+ * kept as `cause`, is left untouched.
  */
 export function normalizeError(
   error: unknown,
   options: NormalizeErrorOptions = {}
 ): FlowError {
   const normalized = toError(error, "Unknown execution error");
+  const message = stripAnsi(normalized.message);
 
   // Classify raw AI SDK provider errors into the typed taxonomy
   // (RateLimitError, TimeoutError, ...) before the generic path. Skipped when
@@ -60,14 +66,14 @@ export function normalizeError(
       scope: options.scope,
       details: options.details
     });
-    if (classified !== undefined) return classified;
+    if (classified !== undefined) return markWrapper(classified);
   }
 
   const code = options.code ?? inferCode(normalized);
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 
   if (normalized instanceof FlowError) {
-    return new FlowError(normalized.message, {
+    const renormalized = new FlowError(message, {
       code,
       retryable,
       blockName: options.blockName ?? normalized.blockName,
@@ -76,37 +82,78 @@ export function normalizeError(
       cause: normalized.cause,
       details: options.details ?? normalized.details
     });
+    // Re-normalizing a wrapper keeps it a wrapper; an author's FlowError never becomes one.
+    return isNormalizedWrapper(normalized) ? markWrapper(renormalized) : renormalized;
   }
 
-  return new FlowError(normalized.message, {
-    code,
-    retryable,
-    blockName: options.blockName,
-    blockInstanceId: options.blockInstanceId,
-    scope: options.scope,
-    cause: normalized,
-    details: options.details
-  });
+  return markWrapper(
+    new FlowError(message, {
+      code,
+      retryable,
+      blockName: options.blockName,
+      blockInstanceId: options.blockInstanceId,
+      scope: options.scope,
+      cause: normalized,
+      details: options.details
+    })
+  );
+}
+
+/**
+ * The FlowErrors that `normalizeError` built around a raw throw, each with the
+ * message it gave them. Kept out of band, so nothing on the error itself
+ * (fields, `details`, symbols) changes. Keyed by the wrapper object, so each
+ * error's entry is its own.
+ *
+ * An error counts as the engine's wrapper only while it still carries that
+ * message. One that was rebuilt without an entry here (see
+ * {@link copyWrapperMarker}), or whose message was changed in place or by a
+ * rebuild, says something its cause may not, so it is treated as an author's
+ * error and its cause is shown. That fails safe: more information, never less.
+ */
+const NORMALIZED_WRAPPERS = new WeakMap<FlowError, string>();
+
+function markWrapper(error: FlowError): FlowError {
+  NORMALIZED_WRAPPERS.set(error, error.message);
+  return error;
+}
+
+function isNormalizedWrapper(error: FlowError): boolean {
+  return NORMALIZED_WRAPPERS.get(error) === error.message;
+}
+
+/**
+ * Give `to` the entry `from` has, when `to` is a rebuild of the same failure
+ * (it keeps `from`'s cause). The message recorded is `from`'s, so a rebuild
+ * with a new message does not count as the engine's wrapper. The engine's
+ * normalized-error seam calls this on the error its interceptor returns.
+ */
+export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
+  const message = NORMALIZED_WRAPPERS.get(from);
+  if (message !== undefined && to !== from && to.cause === from.cause) {
+    NORMALIZED_WRAPPERS.set(to, message);
+  }
+  return to;
 }
 
 /**
  * The cause chain to serialize *below* a normalized error's own message.
  *
  * `normalizeError` wraps a non-`FlowError` throw as `FlowError.cause`, copying
- * its message onto the synthesized `FlowError` (see the branch above).
+ * its message (colour codes stripped) onto the synthesized `FlowError` (see
+ * the branch above).
  * Serializing that layer directly would emit a redundant `details.cause` that
  * just repeats the top-level message — and, when the thrown error had a real
  * cause, an extra wrapper level. Unwrapping the synthetic layer makes the
  * server's `block_trace` / terminal error details match the raw-throw seam
  * (`emit-tool-output`), which serializes the original error's `.cause` directly.
+ *
+ * Only a wrapper `normalizeError` built is unwrapped, found by its marker,
+ * never by comparing messages. An author's FlowError shows its cause as is.
  */
 export function displayCause(error: FlowError): unknown {
   const cause = error.cause;
-  if (
-    cause instanceof Error &&
-    !FlowError.isInstance(cause) &&
-    cause.message === error.message
-  ) {
+  if (cause instanceof Error && !FlowError.isInstance(cause) && isNormalizedWrapper(error)) {
     return (cause as Error & { cause?: unknown }).cause;
   }
   return cause;

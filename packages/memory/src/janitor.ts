@@ -126,6 +126,12 @@ export const janitorResource = defineResource({
   ref: 'janitor',
   scope: 'session',
   stateSchema: janitorStateSchema,
-  default: janitorStateSchema.parse({}),
+  default: {
+    lastRunTurn: 0,
+    totalRuns: 0,
+    lastCulledFactIds: [],
+    lastCulledEpisodeIds: [],
+    lastMarkedStaleEpisodeIds: [],
+  },
   writable: true,
 })

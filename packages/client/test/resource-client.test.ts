@@ -1,5 +1,6 @@
+// FIX-427.
 /**
- * Tests for the FIX-427 client methods: listCollectionResources,
+ * Tests for the collection-resource client methods: listCollectionResources,
  * getCollectionResourceState, getResourceManifest. URL construction, response
  * shape, and error pass-through.
  */

@@ -1,0 +1,9 @@
+R1 0 Says page doesn't define app
+R2 0.5 Right install mechanism, no general definition
+R3 0.5 Backend unit right; misses HTTP, actions, state
+R4 0 Says page doesn't define block
+R5 0.5 Only (a) right; (b) hedged, (c) wrong
+P3.1 1 Correct: private per-user copies
+P3.2 0 Says cannot edit; misses edit-makes-copy
+P3.3 1 Refused, names worker, own delegates only
+SCORE 3.5 / 8

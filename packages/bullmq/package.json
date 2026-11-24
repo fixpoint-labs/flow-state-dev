@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/bullmq",
-  "version": "0.3.2",
-  "description": "BullMQ host/runtime adapter for flow-state-dev — durable background jobs, native cron, and full-flow worker dispatch for long-lived hosts.",
+  "version": "0.4.0",
+  "description": "BullMQ host/runtime adapter for flow-state-dev — durable background jobs and full-flow job queue dispatch for long-lived hosts.",
   "keywords": [
     "ai",
     "agents",
@@ -12,8 +12,7 @@
     "bullmq",
     "redis",
     "background-jobs",
-    "cron",
-    "worker"
+    "job-queue"
   ],
   "homepage": "https://flow-state.dev",
   "repository": {
@@ -33,13 +32,9 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./worker": {
-      "types": "./dist/worker.d.ts",
-      "default": "./src/worker.ts"
-    },
-    "./schedules": {
-      "types": "./dist/schedules.d.ts",
-      "default": "./src/schedules.ts"
+    "./job-processor": {
+      "types": "./dist/job-processor.d.ts",
+      "default": "./src/job-processor.ts"
     }
   },
   "license": "MIT",
@@ -56,13 +51,9 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
-      "./worker": {
-        "types": "./dist/worker.d.ts",
-        "default": "./dist/worker.js"
-      },
-      "./schedules": {
-        "types": "./dist/schedules.d.ts",
-        "default": "./dist/schedules.js"
+      "./job-processor": {
+        "types": "./dist/job-processor.d.ts",
+        "default": "./dist/job-processor.js"
       }
     }
   },
@@ -76,17 +67,7 @@
     "bullmq": "^5.0.0",
     "ioredis": "^5.0.0"
   },
-  "peerDependencies": {
-    "@flow-state-dev/scheduled": "workspace:>=0.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@flow-state-dev/scheduled": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@flow-state-dev/scheduled": "workspace:*",
-    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.2.4"
   },

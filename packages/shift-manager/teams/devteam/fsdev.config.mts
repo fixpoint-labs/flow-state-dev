@@ -40,7 +40,7 @@
  *   which the host allows), so its runs are branches of it with the project's
  *   files in `project/` beside the checkout; Sandbox names none, so a run there
  *   works on the project's files alone. No folder is named for any of it.
- *   A run is done only when its project's checks pass (the project row's
+ *   A run is done only when its project's checks pass (the project entry's
  *   `checks`; none named runs nothing). `DEVTEAM_SETUP`, a command such as
  *   `pnpm install --frozen-lockfile`, runs in each fresh checkout first, so
  *   the checks find what they need; unset, nothing runs.
@@ -55,6 +55,14 @@
  *   most once a minute. Nothing is read until then. For Claude Code, a look
  *   reads who is signed in, and each window comes from a coding run, as
  *   Claude Code reports it.
+ *
+ * - **Routines.** Every conversation worker can follow a GitHub pull request
+ *   or run something on a clock when asked, and list, pause or delete what it
+ *   follows; Routines lists them. A pull request is polled (no public URL) with
+ *   `GITHUB_TOKEN`, or what `gh auth token` answers at start, for the Lab's
+ *   owner alone; with neither, a GitHub routine is refused, naming the
+ *   variable. The clock routines and the polls tick from two SQLite files
+ *   beside the store.
  *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the Shift
@@ -73,11 +81,11 @@ import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { operatorGitHubToken } from "@flow-state-dev/workforce";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -112,7 +120,7 @@ mkdirSync(dirname(STORE), { recursive: true });
 
 /**
  * Storefront's repository: a bare one beside the store, made once and kept, so
- * the project row a restart reads back still names a remote that exists.
+ * the project entry a restart reads back still names a remote that exists.
  */
 const storefrontRemote = createBareRemote("devteam-storefront", { at: join(dirname(STORE), "devteam-storefront.git") });
 
@@ -149,7 +157,7 @@ const DEFAULT_PROJECTS = [
 
 // Read off the tree: the EM, and the coder its doors file for, its first
 // delegate on the coder worker flow.
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readDevTeamTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");
@@ -206,7 +214,12 @@ const lab = await openLab({
       readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
-  readiness: harness.readiness,
+  harnessValues: harness.harnessValues,
+  // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
+  githubToken: operatorGitHubToken(),
+  // The GitHub logins whose reviews on a coder's pull request reach its run.
+  // Clock routines and GitHub's polls, each from its own file beside the store.
+  scheduleIndexes: { clock: join(dirname(STORE), "devteam-clock.sqlite"), poll: join(dirname(STORE), "devteam-poll.sqlite") },
 });
 
 export default lab.state;

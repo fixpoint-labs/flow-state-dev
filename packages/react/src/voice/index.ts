@@ -1,3 +1,10 @@
+/**
+ * `@flow-state-dev/react/voice`: the recorder, player and speech-recognition
+ * primitives, for an app that builds its own voice loop.
+ *
+ * `useVoice` drives all three and is what most apps want, so it stays on the
+ * package root; these are the parts underneath it.
+ */
 export {
   createAudioRecorder,
   type AudioRecorder,
@@ -18,9 +25,3 @@ export {
   type SpeechRecognitionCallbacks,
   type SpeechRecognitionHandle
 } from "./speech-recognition";
-
-export {
-  useVoice,
-  type UseVoiceOptions,
-  type VoiceState
-} from "./useVoice";

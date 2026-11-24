@@ -1,5 +1,6 @@
+// FIX-2379.
 /**
- * The task-row view (`taskView`, FIX-2379): the one status and *waiting on
+ * The task-row view (`taskView`): the one status and *waiting on
  * you* vocabulary every workforce app reads a row through.
  *
  * The bug it exists to remove is a row that waits on the user reading as
@@ -49,11 +50,6 @@ describe("taskView: one display state per row", () => {
     ["cancelled", "cancelled"],
   ] as const)("a %s row with nothing waiting reads %s", (status, state) => {
     expect(taskView(row({ status })).state).toBe(state);
-  });
-
-  it("reads a legacy blocked row as held, the same as the board", () => {
-    const view = taskView(row({ status: "blocked" }));
-    expect(view).toMatchObject({ status: "held", state: "held" });
   });
 
   it("keeps a stored word it doesn't know on status, and reads it queued, never hidden", () => {

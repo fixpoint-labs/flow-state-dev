@@ -55,7 +55,7 @@ access check passes the other two.
 | **Goal check** | The closure issue's ([FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368)), on one `main` commit after every other child merges. Its clean run is the wrap condition |
 | **Signal** | Leg a: B's browser shows both of A's changes within 1 s, the plain `ctx.org` state patch and the resource row. Leg b: the board updates within 1 s, with no read between notices. Leg c: the subscribe is refused, and no notice reaches that user. Leg d: B's session view shows A's reply within 1 s |
 | **Anti-game** | Assert on what each browser shows, not on calls to `publish`. Two real processes, not two clients of one |
-| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL its 1 s; B may still update at the hook's poll pace, which ER-5 keeps where the bus can't cross ([FIX-2368](../../issues/FIX-2368/DECISIONS.md#decided-not-asked)). Today's `main`: legs a and b must FAIL. The request and run publish cut out: leg d must FAIL |
+| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL its 1 s, and B never updates: the in-memory bus is single-process (FIX-2545) and keeps no timer ([FIX-2368](../../issues/FIX-2368/DECISIONS.md#decided-not-asked)). Today's `main`: legs a and b must FAIL. The request and run publish cut out: leg d must FAIL |
 
 ## What's in the box
 
@@ -151,7 +151,7 @@ publishers, then the apps' other polls. Every child blocks the closure issue; FI
 |---|---|
 | **Adds** | One stores slot, one bus contract with two adapters, a publish on request and session writes, one socket path in the Node host, one client call and one hook |
 | **Removes** | The 501 user-stream answer, the Teammates lab's and Shift Manager's fixed polls, FIX-1506's remount workaround, the session stream's read each second where the bus crosses processes |
-| **Leaves** | `useSession`'s same-session path beside the notice path; one invalidation path, two sources (see the seam). The session stream's timed read, as a slow fallback where the bus can't cross processes: the in-memory bus on two or more, and serverless ([D6](DECISIONS.md#d6)) |
+| **Leaves** | `useSession`'s same-session path beside the notice path; one invalidation path, two sources (see the seam). The session stream's timed read, as a slow fallback where the bus can't cross processes: serverless ([D6](DECISIONS.md#d6)) |
 
 **Net: up**, by one push channel. It is the one Goal 2 is missing, and every later realtime need
 is a publisher or a listener on it; FIX-1658's pushed wake for the lease backend is the likely

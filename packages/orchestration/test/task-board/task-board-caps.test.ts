@@ -68,7 +68,7 @@ function bareCtx(cap?: Record<string, unknown>) {
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
+    emit: { message: () => {}, data: () => {}, status: () => {} },
   } as never;
 }
 

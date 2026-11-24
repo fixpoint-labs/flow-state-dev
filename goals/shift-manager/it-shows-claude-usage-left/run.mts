@@ -11,6 +11,8 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages, labRoutes, openShiftManager, personPage, startShiftManager, type LabUser } from "../../lib/shift-manager.mts";
+import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
@@ -105,11 +107,11 @@ await runGoal(async () => {
   const failures: string[] = [];
   const notes: string[] = [];
 
-  /** The usage query, over the Lab's HTTP door, as `person`. */
+  /** The usage view, over the Lab's HTTP door, as `person`, with no session; a refresh is a Re-check first. */
   const query = async (person: LabUser, refresh: boolean): Promise<Row[]> => {
-    const done = await labRoutes(served.origin, person).act(PROJECTS_FLOW, `${PROJECTS_FLOW}-own-${person.userId}`, "harnessUsage", refresh ? { refresh: true } : {});
-    if (done.status !== "completed") throw new Error(`harnessUsage as ${person.userId} ended ${done.status}: ${done.error ?? ""}`);
-    return (done.output as { harnesses: Row[] }).harnesses;
+    const client = connect({ userId: person.userId, baseUrl: served.origin, bearerToken: person.bearer });
+    if (refresh) await recheckHarnessUsage(client);
+    return (await client.view(harnessUsageViewRef(), {})).value.harnesses as Row[];
   };
   const claudeRow = (rows: Row[]) => rows.find((row) => row.harness === "claude-code");
 

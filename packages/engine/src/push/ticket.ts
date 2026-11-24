@@ -12,6 +12,7 @@
  * claims; the signature is HMAC-SHA256 over the encoded payload.
  */
 import { createHmac } from "node:crypto";
+import { assertSecret } from "../transports/auth/assert-secret";
 import type { WireTopic } from "@flow-state-dev/core";
 import type { BusTopic } from "../bus/types";
 import { constantTimeStringEqual } from "../transports/auth/constant-time";
@@ -42,6 +43,7 @@ function sign(payload: string, secret: string): string {
 
 /** Sign `claims` with `secret`. */
 export function signPushTicket(claims: PushTicketClaims, secret: string): string {
+  assertSecret(secret, "signPushTicket");
   const payload = Buffer.from(JSON.stringify({ v: VERSION, ...claims }), "utf8").toString("base64url");
   return `${payload}.${sign(payload, secret)}`;
 }
@@ -57,6 +59,7 @@ export function verifyPushTicket(
   userId: string,
   now: number = Date.now()
 ): { ok: true; claims: PushTicketClaims } | { ok: false; reason: PushTicketRefusal } {
+  assertSecret(secret, "verifyPushTicket");
   if (typeof ticket !== "string") return { ok: false, reason: "malformed" };
   const dot = ticket.indexOf(".");
   if (dot <= 0 || dot !== ticket.lastIndexOf(".")) return { ok: false, reason: "malformed" };

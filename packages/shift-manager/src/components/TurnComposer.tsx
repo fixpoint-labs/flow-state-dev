@@ -5,7 +5,7 @@
  * {@link TurnSendStatus}.
  *
  * It only draws. Where the line goes, and whether it can go at all, is the
- * caller's; the send itself is {@link sendTurn}'s, the one send path. The
+ * caller's; the send itself is `useDeliverLine`'s (`lib/deliver.ts`), the one send path. The
  * composer shows *sending* until the worker's session holds the line. Then the
  * line leaves the draft, since the conversation now holds it, and the composer
  * says the worker is on it until the send resolves. It shows *delivered* only
@@ -18,6 +18,14 @@
  * *unconfirmed* warning are kept across a reload (`useDraft`), so `--dev`'s
  * reload on save neither loses a half-written line nor invites a second send.
  *
+ * **Files go with the line.** Every composer takes files by paste,
+ * the + button and a drop, through the registry's `useAttachments`: each is
+ * uploaded as it is added, shown above the text with its remove button, and
+ * sent beside the line as its reference. A file leaves the draft once its
+ * line is delivered; a line that fails, before or after the session held it,
+ * keeps its files, so sending it again sends them again. The draft's files live as long as the composer: a reload
+ * keeps the text, not the files.
+ *
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
  * sent with ⏎ (Enter). Most composers are a
  * 14px input over a mono footer that holds the send state and ⏎ (v2:305-309,
@@ -25,12 +33,44 @@
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { clearDraft, readDraft, saveDraft, useDraft } from "@flow-state-dev/react";
-import { TurnNotDelivered, type TurnStop } from "../lib/send";
+import { TurnNotDelivered } from "../lib/deliver";
+
+/** What a delivered line's turn stopped on: a user's ask Inbox lists, anything else, or nothing. */
+type TurnStop = "ask" | "wait" | null;
+import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader, type Attachments } from "./flow-state/attachments";
 
 /** Where a composer's unsent line is kept (`useDraft`), and beside it an *unconfirmed* send's warning. */
 const DRAFT = "shift-manager:draft";
 const UNCONFIRMED = "shift-manager:unconfirmed";
+
+/**
+ * Where a key's draft was moved (`legacyDraftKey`), for this page's life: a
+ * send pressed under the old key, still pending as a composer reopens on the
+ * new one, clears its line (or keeps its warning) where the line now is.
+ */
+const movedTo = new Map<string, string>();
+
+/** The key `key`'s draft lives under now, after any moves. */
+function draftKeyNow(key: string | undefined): string | undefined {
+  const seen = new Set<string>();
+  let at = key;
+  while (at !== undefined && movedTo.has(at) && !seen.has(at)) {
+    seen.add(at);
+    at = movedTo.get(at);
+  }
+  return at;
+}
+
+/** Composers open on each key, told when a send pressed in another composer has left their line. */
+const openOn = new Map<string, Set<(sent: string) => void>>();
+
+/** The line `sent` left the draft under `key`: clear what is stored, and each composer open on it that still shows it. */
+function lineLeft(key: string | undefined, sent: string): void {
+  clearDraft(DRAFT, key, sent);
+  if (key !== undefined) for (const heard of openOn.get(key) ?? []) heard(sent);
+}
 
 // BP-030.
 /**
@@ -42,6 +82,8 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
   if (from === undefined || to === undefined || from === to) return;
   const draft = readDraft(DRAFT, from);
   if (draft === "") return;
+  // A send pending under `from` settles against `to` from now on.
+  movedTo.set(from, to);
   if (readDraft(DRAFT, to) === "") {
     const warning = readDraft(UNCONFIRMED, from);
     saveDraft(DRAFT, to, draft);
@@ -54,12 +96,12 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
 }
 
 /** Where the last send stands. */
-export type TurnSendState =
+type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
   /** The session holds the line; the worker's turn on it hasn't ended. */
   | { kind: "held" }
-  /** `stopped`: what the worker's turn stopped on, as {@link sendTurn} says. */
+  /** `stopped`: what the worker's turn stopped on, as `useDeliverLine` says. */
   | { kind: "delivered"; stopped: TurnStop }
   | { kind: "refused"; reason: string }
   | { kind: "not-sent"; reason: string }
@@ -69,10 +111,10 @@ export type TurnSendState =
  * The send state one composer keeps: run a send, and land on *delivered* or
  * on why not. `initial` is where it starts, such as an *unconfirmed* line kept
  * across a reload. `run` resolves `true` once the line is delivered. A send may
- * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on,
+ * resolve `{ stopped }`, as `useDeliverLine` does, to say what the worker stopped on,
  * and may call the `held` it is handed once the session holds the line.
  */
-export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
+function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
   const [state, setState] = useState<TurnSendState>(initial);
   const mounted = useRef(true);
   // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
@@ -117,7 +159,7 @@ export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
 }
 
 /** What a send's state says, with Retry only for a line that never got there. */
-export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
+function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
   if (state.kind === "sending") return <>Sending…</>;
   if (state.kind === "held") return <>Sent. Waiting on the worker's reply…</>;
   if (state.kind === "delivered") {
@@ -147,9 +189,11 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
  * the footer and ⏎ at its end. It only draws: the draft, what Send does and
  * the state shown are the caller's. `lead` sits before the status in the
  * footer; `extra` sits beside
- * ⏎ (a task's also-post toggle).
+ * ⏎ (a task's also-post toggle). Given `attachments`, the draft's files sit
+ * above the text, + sits before ⏎, and a paste into the text or a drop on the
+ * composer adds files.
  */
-export function ComposerShell({
+function ComposerShell({
   testId,
   label,
   placeholder,
@@ -164,12 +208,15 @@ export function ComposerShell({
   lead,
   extra,
   scale = "default",
+  attachments,
 }: {
   testId: string;
   label: string;
   placeholder: string;
   draft: string;
   onDraft: (draft: string) => void;
+  /** The draft's files ({@link useAttachments}); without them the composer takes text only. */
+  attachments?: Attachments;
   disabled?: boolean;
   canSend: boolean;
   onSubmit: (event: FormEvent) => void;
@@ -188,11 +235,12 @@ export function ComposerShell({
       type="text"
       value={draft}
       onChange={(e) => onDraft(e.target.value)}
+      onPaste={attachments?.onPaste}
       disabled={disabled}
       placeholder={placeholder}
       aria-label={label}
-      className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
-        scale === "shift-coordinator" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+      className={`block w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
+        scale === "shift-coordinator" ? "p-4" : "px-3 py-[11px]"
       }`}
       data-testid={`${testId}-input`}
       data-look="composer-input"
@@ -203,6 +251,13 @@ export function ComposerShell({
       {status}
     </span>
   );
+  const strip = attachments === undefined ? null : (
+    <AttachmentStrip attachments={attachments} className={scale === "shift-coordinator" ? "px-4" : "px-3"} />
+  );
+  const attachButton =
+    attachments === undefined ? null : (
+      <AttachButton attachments={attachments} className={`shrink-0 rounded-none ${scale === "shift-coordinator" ? "m-2" : "size-6"}`} />
+    );
   const sendButton = (
     <button
       type="submit"
@@ -219,27 +274,39 @@ export function ComposerShell({
   );
 
   return (
-    <form onSubmit={onSubmit} className={scale === "shift-coordinator" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"} data-testid={testId}>
+    <form
+      onSubmit={onSubmit}
+      className={scale === "shift-coordinator" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"}
+      data-testid={testId}
+      data-dragging={attachments?.dragging === true ? "" : undefined}
+      {...attachments?.dropTarget}
+    >
       {scale === "shift-coordinator" ? (
         <>
-          <div className="flex items-center border-[1.5px] border-foreground bg-card" data-look="composer">
-            {input}
-            {extra}
-            {sendButton}
+          <div className="border-[1.5px] border-foreground bg-card" data-look="composer">
+            {strip}
+            <div className="flex items-center">
+              {attachButton}
+              {input}
+              {extra}
+              {sendButton}
+            </div>
           </div>
-          <div className="font-mono text-[11px] font-medium text-muted-foreground" data-look="composer-footer">
+          <div className="font-mono text-xs font-medium text-muted-foreground" data-look="composer-footer">
             {lead}
             {statusLine}
           </div>
         </>
       ) : (
         <div className="border border-foreground bg-card" data-look="composer">
+          {strip}
           {input}
           <div
-            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-[11px] font-medium text-muted-foreground"
+            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-xs font-medium text-muted-foreground"
             data-look="composer-footer"
           >
             <span className="flex min-w-0 flex-wrap items-center gap-3.5">
+              {attachButton}
               {lead}
               {statusLine}
             </span>
@@ -270,10 +337,16 @@ export function TurnComposer({
   seed,
   draftKey,
   legacyDraftKey,
+  uploader,
 }: {
   testId: string;
   label: string;
   placeholder: string;
+  /**
+   * Where the line's files are uploaded: the Lab's client. Without one, a
+   * file added is refused by name, and the line goes as text.
+   */
+  uploader?: AttachmentUploader | null;
   /**
    * What the line is written to (a conversation's worker, a task, an ask), so
    * the draft and an *unconfirmed* warning survive a reload. Without one the
@@ -289,10 +362,10 @@ export function TurnComposer({
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
   /**
-   * Send the line; resolves once it is delivered, with {@link sendTurn}'s `stopped` when it has it.
-   * Call `held` once the worker's session holds the line ({@link sendTurn}'s `onHeld`).
+   * Send the line and its files; resolves once it is delivered, with the delivery's `stopped` when it has it.
+   * Call `held` once the worker's session holds the line (the delivery's `onHeld`).
    */
-  send: (message: string, held: () => void) => Promise<void | { stopped: TurnStop }>;
+  send: (message: string, held: () => void, attachments: FileContent[]) => Promise<void | { stopped: TurnStop }>;
   /** The line has left the draft: the worker's session holds it, or it was delivered. */
   onHeld?: (message: string) => void;
   onDelivered?: (message: string) => void;
@@ -322,6 +395,11 @@ export function TurnComposer({
   // Kept beside the draft, so a reload doesn't offer to send twice a line that may have arrived.
   const [unconfirmed, setUnconfirmed] = useDraft(UNCONFIRMED, draftKey);
   const { state, run, reset } = useTurnSend(unconfirmed === "" ? undefined : { kind: "unconfirmed", reason: unconfirmed });
+  // FIX-2776.
+  // The draft's files: one draft's, dropped when the composer moves to another draft. A key that
+  // replaced `legacyDraftKey` is the same draft moved (a project's first line opening its session),
+  // so the files move with the text, as the text does.
+  const attachments = useAttachments({ client: uploader ?? null, sessionId: legacyDraftKey ?? draftKey ?? null });
   useEffect(() => {
     if (state.kind === "unconfirmed") setUnconfirmed(state.reason);
     // Cleared only once the next send has ended: a reload mid-send still warns.
@@ -337,6 +415,20 @@ export function TurnComposer({
     },
     [setDraftText],
   );
+  // A send pressed in another composer whose line moved here: once it leaves, this box lets it go too.
+  useEffect(() => {
+    if (draftKey === undefined) return;
+    const heard = (sent: string) => {
+      if (current.current === sent) setDraft("");
+    };
+    const open = openOn.get(draftKey) ?? new Set();
+    open.add(heard);
+    openOn.set(draftKey, open);
+    return () => {
+      open.delete(heard);
+      if (open.size === 0) openOn.delete(draftKey);
+    };
+  }, [draftKey, setDraft]);
 
   const sending = state.kind === "sending" || state.kind === "held";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
@@ -346,6 +438,9 @@ export function TurnComposer({
     if (blocked !== null || line.trim().length === 0 || sending) return;
     const submitted = line;
     const message = line.trim();
+    // The files in the draft as Send is pressed, and the refusal lines on screen then: what leaves with the line.
+    const fileIds = attachments.files.map((f) => f.id);
+    const shownRefusals = attachments.refusals;
     // The warning this line was sent under: a send that ends after the composer closed clears only that one.
     const warned = readDraft(UNCONFIRMED, draftKey);
     let left = false;
@@ -354,33 +449,42 @@ export function TurnComposer({
     const leave = () => {
       if (left) return;
       left = true;
-      // The composer may have closed and reopened meanwhile: the stored draft goes only if it is still this line.
-      clearDraft(DRAFT, draftKey, submitted);
+      // The composer may have closed and reopened meanwhile, on this key or the one the line moved to:
+      // the stored draft goes only if it is still this line.
+      lineLeft(draftKeyNow(draftKey), submitted);
       if (current.current === submitted) setDraft("");
       onHeld?.(message);
     };
     let delivered = false;
     const sent = await run(async (held) => {
+      // Each upload still in flight finishes first; a file the server refused stays on its chip, unsent.
+      // A line with no files goes at once, as it always did.
+      const files = fileIds.length === 0 ? [] : await attachments.settle();
       const result = await send(message, () => {
         held();
         leave();
-      });
+      }, files);
       delivered = true;
       return result;
     }, (failed) => {
       // It may have arrived, and the box that would say so is closed: keep the warning beside the
       // draft, unless the draft is no longer this line (a newer send, or a newer line, owns it).
-      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, draftKey, warned);
-      else if (readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
+      const now = draftKeyNow(draftKey);
+      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, now, warned);
+      else if (readDraft(DRAFT, now).trim() === submitted.trim()) saveDraft(UNCONFIRMED, now, failed.reason);
     });
     if (sent) {
       leave();
+      // Its files go once it is delivered, not when the session holds it: a line that fails after
+      // it left comes back with them. Any added since stay.
+      attachments.consume(fileIds, shownRefusals);
       onDelivered?.(message);
     } else if (delivered) {
       // Delivered after the composer closed: only what is stored is left to clear, the draft and
       // the warning it was sent under (a warning a newer send left is not that one).
-      clearDraft(DRAFT, draftKey, submitted);
-      clearDraft(UNCONFIRMED, draftKey, warned);
+      const now = draftKeyNow(draftKey);
+      lineLeft(now, submitted);
+      clearDraft(UNCONFIRMED, now, warned);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
       // A composer that has closed puts nothing back (its draft setter does nothing then).
@@ -427,6 +531,7 @@ export function TurnComposer({
       }
       extra={extra}
       scale={scale}
+      attachments={attachments}
     />
   );
 }

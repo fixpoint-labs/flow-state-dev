@@ -4,7 +4,7 @@
  * the part that names the task, and the judge's verdict reads as one line.
  */
 import { describe, expect, it } from "vitest";
-import type { ReviewDetail } from "../src/adapter";
+import type { ReviewDetail } from "../src/app";
 import { commitCount, judgeLine, shortBranch } from "../src/components/flow-state/review-hold";
 
 const BRANCH = "conductor/t0/ha62422c9f1e0b7d4c2a8e5f3b1d6a9c0e4f7b2d-h0163a0cb8e2d4f6a1c3b5d7e9f0a2c4e6b8d0f1a/t-7f3c2e1a9b--code";
@@ -50,8 +50,8 @@ describe("reviewStopOf", () => {
   // After a revise round the run stops for review again; the card must show that round, never
   // fall back to an older round's commits and verdict when the latest stop's data is unreadable.
   it("reads the latest review stop only", async () => {
-    const { reviewStopOf } = await import("../src/adapter");
-    const stop = (data: unknown) => ({ type: "suspension", kind: "review", data }) as Parameters<typeof reviewStopOf>[0][number];
+    const { reviewStopOf } = await import("../src/lib/review-stop");
+    const stop = (data: unknown) => ({ type: "suspension", kind: "review", data }) as unknown as Parameters<typeof reviewStopOf>[0][number];
     const earlier = stop({ branch: "t-1--code", commits: 1, subjects: ["first round"], judge: null });
     expect(reviewStopOf([earlier, stop({ question: "not a review's data" })])).toBeUndefined();
     expect(reviewStopOf([earlier, stop({ branch: "t-1--code", commits: 2, subjects: ["second", "first round"], judge: null })])?.commits).toBe(2);

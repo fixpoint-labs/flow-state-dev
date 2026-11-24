@@ -73,27 +73,10 @@ export function isSingleWildcard(pattern: string): boolean {
   return pattern.includes("*") && !pattern.includes("**");
 }
 
-// The static prefix of a pattern lives in `@flow-state-dev/contracts`, so
-// browser packages can value-import it; re-exported here with its siblings.
-export { getPatternPrefix } from "@flow-state-dev/contracts/helpers/pattern-prefix";
-
-/**
- * Strip the static pattern prefix from a full storage key, leaving the
- * "bare topic" — the identifying portion a collection author addresses items
- * by. Returns the full key unchanged when the prefix doesn't match (defensive
- * against caller mismatches).
- *
- * The inverse of {@link resolveCollectionKey} for wildcard patterns:
- * `extractBareTopic("positions/*", "positions/AAPL")` → `"AAPL"`.
- */
-export function extractBareTopic(pattern: string, fullKey: string): string {
-  const prefix = getPatternPrefix(pattern);
-  if (prefix.length === 0) return fullKey;
-  if (fullKey === prefix) return "";
-  const sep = prefix + "/";
-  if (fullKey.startsWith(sep)) return fullKey.slice(sep.length);
-  return fullKey;
-}
+// The static prefix of a pattern and the bare topic under it live in
+// `@flow-state-dev/contracts`, so browser packages can value-import them;
+// re-exported here with their siblings.
+export { extractBareTopic, getPatternPrefix } from "@flow-state-dev/contracts/helpers/pattern-prefix";
 
 /**
  * Check if a storage key matches a collection pattern.

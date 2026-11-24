@@ -57,7 +57,7 @@
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
- *   unread    the page's grouping ignores the rows (Vite swap of derive.ts).
+ *   unread    useProjects answers no projects (Vite swap of directory.tsx).
  *             Must fail at "PROJECTS equals the store's rows".
  *   gap-tabs  the project level as it was before projects (Vite swap of
  *             Project.tsx). Must fail at "a project's four tabs".
@@ -87,8 +87,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, readTree, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, devteamShiftCoordinatorModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -159,7 +158,7 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 
 /** The page control's module swap: which Shift Manager source, for which module under `controls/`. */
 function pageSwapFor(control: string): { target: string; with: string } | undefined {
-  if (control === "unread") return { target: join(SHIFT_MANAGER, "src", "lib", "derive.ts"), with: join(HERE, "controls", "unread.ts") };
+  if (control === "unread") return { target: join(SHIFT_MANAGER, "src", "lib", "directory.tsx"), with: join(HERE, "controls", "unread.ts") };
   if (control === "gap-tabs") {
     return { target: join(SHIFT_MANAGER, "src", "surfaces", "Project.tsx"), with: join(HERE, "controls", "gap-tabs.tsx") };
   }
@@ -371,7 +370,7 @@ type Entry = {
   updatedAt: string;
 };
 /**
- * The Lab's project setup, as its projects flow answers `projectSetup`; the
+ * The Lab's project setup, as its projects flow's `projectSetup` view answers it; the
  * workers the tree declares that can lead a workstream: on a lead flow
  * (`agent` or `em`), listing delegates; and of them the EM, the lead the boot
  * opens its workstreams under and the HTTP legs open theirs under.
@@ -380,7 +379,7 @@ type Setup = { projectCoordinator: string; coordinatorFlow: string; leads: strin
 
 /** The flow a standard worker runs on, as its file names it. */
 async function flowOf(worker: string): Promise<string> {
-  const roster = await readDeclaredRoster(TREE);
+  const roster = await readTree(TREE);
   const flow = roster.workers.find((w) => w.id === worker)?.declared.flow;
   if (typeof flow !== "string") throw new Error(`the tree declares no "${worker}" with a flow`);
   return flow;
@@ -392,7 +391,7 @@ async function flowOf(worker: string): Promise<string> {
  * boot finds it.
  */
 async function leadsOf(): Promise<{ leads: string[]; lead: string }> {
-  const roster = await readDeclaredRoster(TREE);
+  const roster = await readTree(TREE);
   const leads = roster.workers.filter(
     (w) => ["agent", "em"].includes(String(w.declared.flow)) && Array.isArray(w.declared.delegates) && w.declared.delegates.length > 0,
   );
@@ -403,11 +402,11 @@ async function leadsOf(): Promise<{ leads: string[]; lead: string }> {
 
 /** The Lab's project setup: the standard worker behind a project, as the Lab names it, and the tree's leads. */
 async function readSetup(owner: LabApi): Promise<Setup> {
-  const session = await owner.createSession(PROJECTS_FLOW);
-  const answered = await owner.act(PROJECTS_FLOW, session, "projectSetup", {});
-  const { projectCoordinator } = (answered.output ?? {}) as { projectCoordinator?: unknown };
-  if (answered.status !== "completed" || typeof projectCoordinator !== "string") {
-    throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.output ?? answered.error)}`);
+  // The projects flow's `projectSetup` view, read with no session.
+  const answered = await owner.call("POST", `/${PROJECTS_FLOW}/views/projectSetup`, { userId: owner.user.userId, input: {} });
+  const { projectCoordinator } = (answered.body?.output ?? {}) as { projectCoordinator?: unknown };
+  if (answered.status !== 200 || typeof projectCoordinator !== "string") {
+    throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.body)}`);
   }
   return { projectCoordinator, coordinatorFlow: await flowOf(projectCoordinator), ...(await leadsOf()) };
 }

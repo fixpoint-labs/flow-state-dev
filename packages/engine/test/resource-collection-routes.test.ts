@@ -94,6 +94,7 @@ function create(ctx: Ctx, topic: string, content?: string): Promise<Response> {
   return handleCreateCollectionResource(
     new Request("http://x/sessions/sess_1/resources/notes", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(content === undefined ? { topic } : { topic, content }),
     }),
     { kind: "create_collection_item", sessionId: ctx.sessionId, ref: "notes" },
@@ -113,6 +114,7 @@ function patchContent(ctx: Ctx, topic: string, content: string): Promise<Respons
   return handleUpdateResourceContent(
     new Request(`http://x/sessions/sess_1/resources/notes/${topic}/content`, {
       method: "PATCH",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ content }),
     }),
     { kind: "update_resource_content", sessionId: ctx.sessionId, ref: "notes", topic },
@@ -482,8 +484,9 @@ describe("delete collection item route — conflict before ContentStore is touch
 // Create route — the seeded row must clear the same bar as every other write
 // ---------------------------------------------------------------------------
 
+// FIX-1260, second path (BP-035).
 /**
- * FIX-1260, second path (BP-035). `handleCreateCollectionResource` is the only
+ * The create route's second path. `handleCreateCollectionResource` is the only
  * route in the engine that writes resource state, and it seeded its row from a
  * bare `safeParse` beside the guard the registry's write verbs go through. So a
  * schema the registry refuses could still be seeded over HTTP, and the row it

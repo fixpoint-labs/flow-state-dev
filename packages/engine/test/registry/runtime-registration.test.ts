@@ -29,6 +29,7 @@ import { z } from "zod";
 import { createFlowState, inMemoryStores } from "../../src";
 import { createFlowRegistry } from "../../src/registry/flow-registry";
 import { CrossFlowSchemaConflictError, FlowIdentityConflictError } from "../../src/registry/errors";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A collection kind, so copies of it can be minted under explicit ids. */
 const deskClerk = defineFlow({
@@ -37,7 +38,6 @@ const deskClerk = defineFlow({
   configSchema: z.object({ desk: z.string().default("front") }),
   actions: {
     answer: {
-      inputSchema: z.object({}).passthrough(),
       block: handler({
         name: "answer",
         inputSchema: z.object({}).passthrough(),
@@ -58,14 +58,11 @@ const deskClerk = defineFlow({
 const resident = defineFlow({
   kind: "resident",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 
@@ -81,7 +78,7 @@ function answerRequest(address: string): [Request, { params: { path: string[] } 
         // would return just as happily.
         accept: "text/event-stream",
       },
-      body: JSON.stringify({ userId: "u", input: {} }),
+      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u", input: {} }),
     }),
     { params: { path: [address, "actions", "answer"] } },
   ];
@@ -103,7 +100,7 @@ async function drain(stream: ReadableStream<Uint8Array> | null): Promise<string>
 describe("V1 · a flow registered after construction is served by the SAME router", () => {
   it("404s, then serves, then 404s again — one router object throughout", async () => {
     const flowstate = createFlowState({
-      flows: { resident },
+      flows: [resident],
       stores: { dev: { primary: inMemoryStores() } },
     });
 
@@ -138,7 +135,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
 
   it("meta.flowKeys tracks the registry, not the construction options", async () => {
     const flowstate = createFlowState({
-      flows: { resident },
+      flows: [resident],
       stores: { dev: { primary: inMemoryStores() } },
     });
 
@@ -183,14 +180,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-string",
       org: { stateSchema: z.object({ balance: z.string().default("") }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
 
@@ -198,14 +192,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-number",
       org: { stateSchema: z.object({ balance: z.number().default(0) }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
 
@@ -245,14 +236,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
         kind: "ledger",
         org: { stateSchema: stateSchema as never },
         actions: {
-          noop: {
-            inputSchema: z.object({}).passthrough(),
-            block: handler({
+          noop: handler({
               name: "noop",
               inputSchema: z.object({}).passthrough(),
               execute: () => undefined,
             }),
-          },
         },
       })();
 
@@ -280,14 +268,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-number",
       org: { stateSchema: balanceAsNumber },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     expect(() => registry.register(agreesWithLive)).toThrow(CrossFlowSchemaConflictError);
@@ -297,14 +282,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-string",
       org: { stateSchema: z.object({ balance: z.string().default("") }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     expect(() => registry.register(contradictsLive)).not.toThrow();

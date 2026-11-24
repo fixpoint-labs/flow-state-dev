@@ -19,7 +19,8 @@ vi.mock("@flow-state-dev/engine", async (importOriginal) => {
     ...actual,
     createFlowState: (options: { dispatchDrainTimeoutMs?: number }) => {
       built.options = options;
-      return {};
+      // The host copies old marks from the stores at start: none here.
+      return { getRuntime: async () => ({ stores: { user: { list: async () => [] } } }) };
     },
   };
 });

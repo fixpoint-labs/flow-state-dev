@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 683">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="60" y="30">WORKFORCE TERM</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="344" y="30">BUILT FROM</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="44" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="71">Worker</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="74" y="90">a resource, one owner</text>
+<rect fill="url(#hatch)" x="344" y="44" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="54.5" x2="892" y2="54.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="44" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="76">RESOURCE</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="92">CORE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="76">A resource in one user's scope that names its worker</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="93">flow, with its own instructions, skills and tools.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="74" x2="343" y2="74" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="112" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="139">Standard worker</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="74" y="158">WORKER.md</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="112" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="144">FILES</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="160">YOURS</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="144">Read from the installation's files, the same for</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="161">every user. Fork one to make a worker of your own.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="142" x2="343" y2="142" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="180" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="207">Roster</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="74" y="226">one user's workers</text>
+<rect fill="url(#hatch)" x="344" y="180" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="190.5" x2="892" y2="190.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="180" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="212">RESOURCE COLL.</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="228">CORE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="212">One user's workers, standard ones included. A</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="229">user's own workers come back after a restart.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="210" x2="343" y2="210" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="248" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="275">Coordinator</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="74" y="294">flow: coordinator</text>
+<rect fill="url(#hatch)" x="344" y="248" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="258.5" x2="892" y2="258.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="248" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="280">WORKER</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="296">WORKFORCE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="280">A worker on the coordinator flow. Its delegates,</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="297">from the same roster, are in its session.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="278" x2="343" y2="278" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="316" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="343">Project</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="74" y="362">a body of work</text>
+<rect fill="url(#hatch)" x="344" y="316" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="326.5" x2="892" y2="326.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="316" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="348">RESOURCE COLL.</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="364">CORE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="348">One row, in the user's scope when private or the</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="365">org's when shared: title, brief, owner.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="346" x2="343" y2="346" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="384" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="411">Workstream</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="74" y="430">one owner each</text>
+<rect fill="url(#hatch)" x="344" y="384" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="394.5" x2="892" y2="394.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="384" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="416">ENTRY + SESSION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="432">CORE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="416">An entry in a shared project that only its owner</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="433">writes, plus its lead's workstream session.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="414" x2="343" y2="414" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="60" y="452" width="236" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="74" y="479">Project coordinator</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="74" y="498">one per user per project</text>
+<rect fill="url(#hatch)" x="344" y="452" width="548" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="344" y1="462.5" x2="892" y2="462.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="344" y="452" width="548" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="484">WORKER SESSION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="358" y="500">WORKFORCE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="484">A coordinator's session, one per user per project.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="496" y="501">It hands work only to that user's own workstreams.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="296" y1="482" x2="343" y2="482" marker-end="url(#ah)"/>
+<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M60 270 H40 V74 H59" marker-end="url(#ah)"/><rect class="ground" fill="#f0ece1" x="26.8" y="169" width="26.4" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="40" y="180" text-anchor="middle">01</text>
+<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M60 482 H40 V288 H59" marker-end="url(#ah)"/><rect class="ground" fill="#f0ece1" x="26.8" y="373" width="26.4" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="40" y="384" text-anchor="middle">02</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="536" x2="920" y2="536"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="562">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="562">A coordinator is a worker: a resource in one user's scope that names the coordinator flow.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="587">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="587">A project coordinator is a coordinator's session, one per user per project.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="612">03</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="612">Workforce adds files and rules. Everything lands in a Core piece, in your files, or in a Workforce term above it;</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="629">the second label on the right says which.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="657" x2="54" y2="657" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="661">IS MADE OF</text>
+<rect fill="url(#hatch)" x="173" y="651" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="173" y="651" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="207" y="661">OUTLIVES THE REQUEST</text>
+</g>
+</svg>

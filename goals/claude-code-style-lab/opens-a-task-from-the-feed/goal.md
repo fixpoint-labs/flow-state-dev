@@ -30,7 +30,7 @@ harness-manager's scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`, a step every
     label matches that row's status, and its *Open task* opens `Work: <the row's title>`.
 
 **Anti-game:** every signal reads the rendered page and compares it with `listTasks`; nothing
-asserts on the adapter, the fake in `test/` or React state. The page is only clicked. Missing
+asserts on the lab's hooks or React state. The page is only clicked. Missing
 result lines, an empty board or no start line is CAN'T TELL (`tell.over`), not PASS.
 
 **Model:** leg 1 n/a (its server gets no model credential); leg 2 the lab's default, through the
@@ -42,7 +42,7 @@ AI Gateway.
 - `GOAL_CONTROL=no-feed-open`: the open the main thread hands its lines does nothing
   (`src/components/Thread.tsx`). Must FAIL opens-from-result, row-marked and opens-from-start-line.
 - `GOAL_CONTROL=frozen-dot`: a result line's dot reads the line's own status
-  (`src/components/Entry.tsx`). Must FAIL dot-is-live.
+  (`src/components/lines.tsx`). Must FAIL dot-is-live.
 - `GOAL_CONTROL=done-shut`: *Done* is not opened for the open task (`src/components/TasksPane.tsx`).
   Must FAIL row-marked.
 

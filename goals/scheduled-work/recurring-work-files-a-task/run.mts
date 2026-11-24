@@ -1,5 +1,5 @@
 /**
- * Goal check — Alice's recurring work arrives as an ordinary task on the board
+ * Goal check — Alice's clock routine arrives as an ordinary task on the board
  * she named, once per scheduled time across restarts and hosts, and she can see
  * every schedule's next run (FIX-2085). See goal.md.
  *
@@ -53,7 +53,7 @@ const SCRATCH = goalTmpDir("scheduled-work-recurring");
 const say = (s: string) => console.error(`[recurring-work] ${s}`);
 
 // ---- the control: today's dedupe, one process's memory ------------------------
-const SCHEDULED_TIME = "packages/scheduled/src/scheduledTime.ts";
+const SCHEDULED_TIME = "packages/engine/src/transports/scheduled/scheduledTime.ts";
 const CONTROLS: Record<string, { does: string; patches: ModulePatch[] }> = {
   "memory-dedupe": {
     does: "each process decides a duplicate from its own memory, as the per-process cache did, instead of the shared store",

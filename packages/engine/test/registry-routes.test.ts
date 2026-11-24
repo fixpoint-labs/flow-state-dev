@@ -10,6 +10,7 @@ import {
   createInMemoryStores
 } from "../src/host";
 import { parseFlowRoute } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function makeFlow(kind: string, id = kind): FlowInstance {
   return defineFlow({
@@ -48,25 +49,16 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
       }
     },
     session: {
-      client: {
-        derived: {
-          sessionInfo: () => ({ ready: true })
-        }
-      }
+      stateSchema: z.object({ sessionInfo: z.object({ ready: z.boolean() }).default({ ready: true }) }),
+      client: { expose: ["sessionInfo"] }
     },
     user: {
-      client: {
-        derived: {
-          userInfo: () => ({ active: true })
-        }
-      }
+      stateSchema: z.object({ userInfo: z.object({ active: z.boolean() }).default({ active: true }) }),
+      client: { expose: ["userInfo"] }
     },
     org: {
-      client: {
-        derived: {
-          orgInfo: () => ({ configured: true })
-        }
-      }
+      stateSchema: z.object({ orgInfo: z.object({ configured: z.boolean() }).default({ configured: true }) }),
+      client: { expose: ["orgInfo"] }
     }
   })({
     id
@@ -248,7 +240,8 @@ describe("createFlowApiRouter", () => {
     const missingUserResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/actions/run", {
         method: "POST",
-        body: JSON.stringify({
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: oneOffSessionId(),
           input: { value: "x" }
         })
       }),
@@ -259,6 +252,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/sess_1/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_1",
           input: { value: "ok" }
@@ -329,6 +323,7 @@ describe("createFlowApiRouter", () => {
     const createSessionResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/sessions", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_2"
         })
@@ -390,6 +385,7 @@ describe("createFlowApiRouter", () => {
     const response = await router.POST(
       new Request("http://localhost/api/flows/error-flow/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: "{invalid-json"
       }),
       {
@@ -416,6 +412,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/projected/sess_proj/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_proj",
           orgId: "proj_1",
@@ -493,9 +490,7 @@ describe("createFlowApiRouter", () => {
       isolateUserState: true,
       isolateOrgState: true,
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "isolated-state-route-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -505,23 +500,14 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       user: {
         stateSchema: z.object({ nickname: z.string().optional() }),
-        client: {
-          derived: {
-            userLabel: (ctx) => ({ nickname: ctx.state.nickname })
-          }
-        }
+        client: { expose: ["nickname"] }
       },
       org: {
         stateSchema: z.object({ title: z.string().optional() }),
-        client: {
-          derived: {
-            orgLabel: (ctx) => ({ title: ctx.state.title })
-          }
-        }
+        client: { expose: ["title"] }
       }
     })({ id: "isolated-state-route" });
 
@@ -535,6 +521,7 @@ describe("createFlowApiRouter", () => {
         // configures no resolver, so it runs under the development default.
         // The subject here is flow-ISOLATED user/org keying, which is
         // unchanged — only the organization's spelling moved.
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_iso_state",
           input: { value: "Ada" }
@@ -565,8 +552,8 @@ describe("createFlowApiRouter", () => {
     expect(body.state).toBeUndefined();
     expect(body.internalState).toBeUndefined();
     expect(body.clientData).toMatchObject({
-      user: { userLabel: { nickname: "Ada" } },
-      org: { orgLabel: { title: "Project Ada" } }
+      user: { nickname: "Ada" },
+      org: { title: "Project Ada" }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get(DEFAULT_ORG_ID)).toBeUndefined();
@@ -589,15 +576,12 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "declared-content-route",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "declared-content-route-run",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: async () => ({ ok: true })
           })
-        }
       },
       resources: { guide }
     })({ id: "declared-content-route" });
@@ -607,6 +591,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/declared-content-route/sess_declared/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_declared", input: {} })
       }),
       { params: { path: ["declared-content-route", "sess_declared", "actions", "run"] } }
@@ -637,9 +622,7 @@ describe("createFlowApiRouter", () => {
       kind: "isolated-resource-route",
       isolateUserState: true,
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "isolated-resource-route-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -649,7 +632,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         profile
@@ -662,6 +644,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/isolated-resource-route/sess_iso_resource/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_iso_resource",
           input: { value: "Ada" }
@@ -705,6 +688,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/pagination/sess_page/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_page",
           input: { value: "ok" }
@@ -754,9 +738,7 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "stateful-cd",
       actions: {
-        increment: {
-          inputSchema: z.object({ amount: z.number() }),
-          block: handler({
+        increment: handler({
             name: "incrementer",
             inputSchema: z.object({ amount: z.number() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -769,18 +751,10 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
-        client: {
-          derived: {
-            summary: (ctx) => ({
-              totalCount: (ctx.state as { count?: number }).count ?? 0,
-              label: `Count is ${(ctx.state as { count?: number }).count ?? 0}`
-            })
-          }
-        }
+        client: { expose: ["count"] }
       }
     })();
 
@@ -792,6 +766,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/stateful-cd/sess_cd/actions/increment", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_cd",
           input: { amount: 5 }
@@ -814,19 +789,14 @@ describe("createFlowApiRouter", () => {
 
     expect(stateBody.clientData).toBeDefined();
     expect(stateBody.clientData.session).toBeDefined();
-    expect(stateBody.clientData.session!.summary).toEqual({
-      totalCount: 5,
-      label: "Count is 5"
-    });
+    expect(stateBody.clientData.session!.count).toBe(5);
   });
 
-  it("computes client.expose and client.derived from session state", async () => {
+  it("computes client.expose from session state", async () => {
     const flow = defineFlow({
       kind: "stateful-client",
       actions: {
-        increment: {
-          inputSchema: z.object({ amount: z.number() }),
-          block: handler({
+        increment: handler({
             name: "stateful-client-incr",
             inputSchema: z.object({ amount: z.number() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -837,16 +807,10 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
-        client: {
-          expose: ["count"],
-          derived: {
-            label: (ctx) => `Count is ${(ctx.state as { count?: number }).count ?? 0}`
-          }
-        }
+        client: { expose: ["count"] }
       }
     })();
 
@@ -858,6 +822,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/stateful-client/sess_sc/actions/increment", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_sc", input: { amount: 7 } })
       }),
       { params: { path: ["stateful-client", "sess_sc", "actions", "increment"] } }
@@ -876,10 +841,7 @@ describe("createFlowApiRouter", () => {
     };
     expect(body.state).toBeUndefined();
     expect(body.internalState).toBeUndefined();
-    expect(body.clientData.session).toEqual({
-      count: 7,
-      label: "Count is 7"
-    });
+    expect(body.clientData.session).toEqual({ count: 7 });
   });
 
   it("returns resource clientData in session state response", async () => {
@@ -897,9 +859,7 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "res-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "res-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -908,7 +868,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         counter: counterResource
@@ -921,6 +880,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/res-flow/sess_res/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_res", input: { value: "ok" } })
       }),
       { params: { path: ["res-flow", "sess_res", "actions", "run"] } }
@@ -979,7 +939,8 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
-          body: JSON.stringify({ userId: "u1", input: { value: "test" } })
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { value: "test" } })
         }),
         { params: { path: ["org-flow", "actions", "run"] } }
       );
@@ -996,6 +957,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({
             userId: "u1",
             sessionId: "s1",
@@ -1101,6 +1063,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh/requests/req_wh/retry", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ inputOverride: { id: "attacker" } })
         }),
         { params: { path: ["wh-flow", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
@@ -1138,6 +1101,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh2/requests/req_wh2/continue", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: "{}"
         }),
         { params: { path: ["wh-flow", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
@@ -1177,6 +1141,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/requests/req_wh3/resume", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ suspensionId: "susp_x", action: "approve", data: { ok: true } })
         }),
         { params: { path: ["wh-flow", "requests", "req_wh3", "resume"] } }
@@ -1238,7 +1203,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request(
           "http://localhost/api/flows/sched-flow/sessions/sess_sched1/requests/req_sched1/continue",
-          { method: "POST", body: "{}" }
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
         ),
         { params: { path: ["sched-flow", "sessions", "sess_sched1", "requests", "req_sched1", "continue"] } }
       );
@@ -1276,7 +1241,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request(
           "http://localhost/api/flows/sched-flow2/sessions/sess_sched2/requests/req_sched2/continue",
-          { method: "POST", body: "{}" }
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
         ),
         { params: { path: ["sched-flow2", "sessions", "sess_sched2", "requests", "req_sched2", "continue"] } }
       );

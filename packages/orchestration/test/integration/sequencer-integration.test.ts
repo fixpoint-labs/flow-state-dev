@@ -2,8 +2,8 @@
  * Integration tests — exercise the sequencer-state backing through the
  * full BlockContext path via `testBlock`. Verifies:
  *   - `getOrCreateTaskCollection` works with a real `ctx.sequencer`.
- *   - Lifecycle mutations emit `task-change` component items via
- *     `ctx.emit.component`, keyed by `${collectionId}/${taskId}` for
+ *   - Lifecycle mutations emit `task-change` data items via
+ *     `ctx.emit.data`, keyed by `${collectionId}/${taskId}` for
  *     latest-wins replacement per task.
  *   - State-snapshot items at step boundaries carry the tasks map
  *     (FIX-401 keyed-update + checkpoint write contract).
@@ -123,30 +123,30 @@ describe("sequencer-state integration", () => {
 
     const result = await testBlock(block, { input: undefined });
 
-    type TaskChangeComponent = OutputItem & {
+    type TaskChangeData = OutputItem & {
       type: string;
-      component?: string;
-      data?: { collectionId?: string; kind?: string; taskId?: string };
+      dataType?: string;
+      value?: { collectionId?: string; kind?: string; taskId?: string };
       key?: string;
     };
     const taskChangeItems = result.items.filter(
       (item: OutputItem & { type?: string }) => {
-        const i = item as TaskChangeComponent;
-        return i.type === "component" && i.component === "task-change";
+        const i = item as TaskChangeData;
+        return i.type === "data" && i.dataType === "task-change";
       }
-    ) as TaskChangeComponent[];
+    ) as TaskChangeData[];
 
-    // FIX-491: keyed component emissions upsert in place, so the persisted
+    // FIX-491: keyed data emissions upsert in place, so the persisted
     // record contains exactly one task-change per (collection, task) — the
     // latest lifecycle snapshot, not one per transition. Live SSE consumers
     // still see every transition via the event log; only the durable record
     // is collapsed.
-    const kinds = taskChangeItems.map((i) => i.data?.kind);
+    const kinds = taskChangeItems.map((i) => i.value?.kind);
     expect(kinds).toEqual(["completed"]);
     for (const item of taskChangeItems) {
-      expect(item.data?.collectionId).toBe("plan");
-      expect(item.key).toBe(`plan/${item.data?.taskId}`);
-      expect(item.id).toBe(`item_component_keyed:plan/${item.data?.taskId}`);
+      expect(item.value?.collectionId).toBe("plan");
+      expect(item.key).toBe(`plan/${item.value?.taskId}`);
+      expect(item.id).toBe(`item_data_keyed:plan/${item.value?.taskId}`);
     }
   });
 

@@ -1,0 +1,3 @@
+P3.1 No. Each user has their own copy of each standard worker on their own roster; Alice's conversations and what her lead remembers are private to her.
+P3.2 She can edit it in the app: the edit makes her own copy of the standard worker under the same id, and a reset brings back the standard one. She can also fork it (a new worker of her own starting from the same settings) or hire a new worker. Only her roster changes: the repo file is never written and nothing restarts. Full marks need the edit-makes-her-copy answer; "she cannot edit it, she can fork or hire" is partly right (0.5).
+P3.3 The task is refused, and the refusal names the worker. A worker can hand work only to its own delegates.

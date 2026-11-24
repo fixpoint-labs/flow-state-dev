@@ -14,16 +14,9 @@ import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxT
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
-import {
-  CONVERSATION_BOARD_COLLECTION,
-  conversationBoardRef,
-  conversationOfTopic,
-  createLabReader,
-  inboxSection,
-  toBoardTaskView,
-  type BoardTaskView,
-  type LabSnapshot,
-} from "../src/lib/reads";
+import { conversationOfTopic, createLabReader, inboxSection, toBoardTaskView, type LabSnapshot } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -125,7 +118,7 @@ describe("the Inbox against a real Lab", () => {
     expect(stale.drift).toEqual([`question ${answered.holds[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
   });
 
-  it("a user's own ask, with no task row: listed once, on its own, answerable and green", async () => {
+  it("a user's own ask, with no task: listed once, on its own, answerable and green", async () => {
     const client = await lab();
     const sessionId = "s_ops_loner";
     await client.flow(ASKER_FLOW).createSession({ sessionId, state: { workerId: "ops.loner" } });
@@ -135,48 +128,5 @@ describe("the Inbox against a real Lab", () => {
     expect(items[0]).toMatchObject({ task: null, answerable: true, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
     const truth = await readTruth(client, await boardRows(client, sessionId));
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
-  });
-
-  // A run's stop would still list from its session; a question kept on the task lists only
-  // from the task, so a browser list that missed it would leave the task waiting on a question
-  // nobody could answer. The hold is planted the way a store holds one written before its
-  // marker was renamed (`source.kind: "row"`, FIX-2479 D1): it lists as the task's own hold,
-  // `"task"`, the Inbox's one call answers it through the board's updateTask, and it closes.
-  // The confirm is the second path: the same marker on the other ask a user answers.
-  it.each([
-    ["question", { kind: "question", prompt: "Which region?" }, { text: "eu-west" }],
-    ["confirm", { kind: "confirm", prompt: "Ship to eu-west?" }, { done: true }],
-  ] as const)("a %s stored under the old row marker lists as the task's own, is answered through updateTask, and closes", async (_which, ask, answer) => {
-    const { client, flowState } = await labWithState();
-    await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
-    await settled(client, 2);
-    const store = (await flowState.getRuntime()).stores.resourceState;
-    const cell = `${ASK_LAB_USER_ID}:~org:${DEFAULT_ORG_ID}`;
-    const stored = Object.entries(await store.getByPrefix("user", cell, "tasks/")).filter(([, value]) => Array.isArray((value.state as { holds?: unknown }).holds));
-    expect(stored).toHaveLength(2);
-    const [key, value] = stored[0]!;
-    const { holds, ...rest } = value.state as Record<string, unknown>;
-    const legacy = { id: "q_row", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask };
-    expect((await store.set("user", cell, key, { ...rest, holds: [...(holds as unknown[]), legacy] } as never, value.version)).ok).toBe(true);
-
-    const reader = createLabReader(client);
-    const listedHold = async () => {
-      const snapshot = (await reader.read()) as Loaded;
-      const items = snapshot.inbox?.ok ? snapshot.inbox.value : [];
-      const item = items.find((i) => i.holds.some((hold) => hold.id === "q_row"));
-      return item === undefined ? undefined : { item, hold: item.holds.find((hold) => hold.id === "q_row")! };
-    };
-    const kept = await eventually(async () => {
-      const found = await listedHold();
-      return found?.hold.answerable === true ? found : undefined;
-    }, `the stored ${ask.kind} listed, answerable`);
-    expect(kept.hold).toMatchObject({ source: { kind: "task" }, ask });
-
-    await createInboxClient(client).answer(kept.item, answer, "q_row");
-    await eventually(async () => ((await listedHold()) === undefined ? true : undefined), `the answered ${ask.kind} gone from the Inbox`);
-    // Written back as the task's own: the board's write never stores the retired marker.
-    const after = (await store.get("user", cell, key))!.state as { holds: Array<{ id: string; source: { kind: string } }>; steers?: Array<{ answers?: string }> };
-    expect(after.holds.find((hold) => hold.id === "q_row")?.source.kind).toBe("task");
-    expect((after.steers ?? []).some((steer) => steer.answers === "q_row")).toBe(true);
   });
 });

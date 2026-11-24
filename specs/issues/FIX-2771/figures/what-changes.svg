@@ -1,0 +1,72 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Teammates' people, context and talk, today and after. Today the roster list, the teammate panel, the context strip, the first-run lines and the message lines read through three files of the app's own read model, workers, setup and talk, 351 lines that carry 14 inventory findings, and the configuration is 608 lines against a 300-line cap. After, the same screens read workforce's roster view, its session views and a new message view over two log indexes, the harness kit's readiness view, and the lab's own context view from a small flow, each through the package hook that keeps a view current; the three files are deleted, the host is cut to fit, and the configuration is at most 300 lines."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .kit   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .cfg   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY</text>
+    <rect class="n-box" x="16" y="34" width="430" height="54" rx="5"/>
+    <text class="t-b" x="32" y="56">The screens</text>
+    <text class="t-s" x="32" y="74">roster list · teammate panel · context strip · first run · message lines</text>
+    <path class="arrow" d="M231 88 V106"/>
+    <rect class="gone" x="16" y="106" width="430" height="96" rx="5"/>
+    <text class="t-lbl c-gone" x="32" y="124">THE APP'S OWN READ MODEL</text>
+    <text class="t-b" x="32" y="144">workers · setup · talk</text>
+    <text class="t-s" x="32" y="162">351 lines: its own live reads, topics and row types</text>
+    <text class="t-s" x="32" y="180">14 inventory findings</text>
+    <path class="arrow" d="M231 202 V220"/>
+    <rect class="n-box" x="16" y="220" width="430" height="46" rx="5"/>
+    <text class="t-b" x="32" y="248">The server: roster, sessions, message log, readiness</text>
+    <rect class="cfg" x="16" y="290" width="430" height="84" rx="5"/>
+    <text class="t-lbl" x="32" y="310">CONFIGURATION · 608 LINES · CAP 300</text>
+    <text class="t-b" x="32" y="330">host 397 · fsdev.config 66 · prompts 145</text>
+    <text class="t-s" x="32" y="348">the host holds its own context flow and copies of package helpers</text>
+    <text class="t-s" x="32" y="364">1 inventory finding</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="494" y="24">AFTER</text>
+    <rect class="n-box" x="494" y="34" width="430" height="54" rx="5"/>
+    <text class="t-b" x="510" y="56">The same screens</text>
+    <text class="t-s" x="510" y="74">each reads a view through the package hook that keeps it current</text>
+    <path class="arrow" d="M709 88 V106"/>
+    <rect class="kit" x="494" y="106" width="210" height="96" rx="5"/>
+    <text class="t-lbl" x="508" y="124">KIT VIEWS, AS THEY ARE</text>
+    <text class="t-s" x="508" y="144">workforce's roster</text>
+    <text class="t-s" x="508" y="160">workforce's session views</text>
+    <text class="t-s" x="508" y="176">the harness kit's readiness</text>
+    <text class="t-s" x="508" y="192">the lab's context (a small flow)</text>
+    <rect class="new" x="714" y="106" width="210" height="96" rx="5"/>
+    <text class="t-lbl" x="728" y="124">ADDED TO WORKFORCE · D1</text>
+    <text class="t-b" x="728" y="146">The message view</text>
+    <text class="t-s" x="728" y="166">a worker's open messages</text>
+    <text class="t-s" x="728" y="182">and answers, by two indexes</text>
+    <path class="arrow" d="M709 202 V220"/>
+    <rect class="n-box" x="494" y="220" width="430" height="46" rx="5"/>
+    <text class="t-b" x="510" y="248">The server: the same records, read by the views</text>
+    <rect class="cfg" x="494" y="290" width="430" height="84" rx="5"/>
+    <text class="t-lbl" x="510" y="310">CONFIGURATION · AT MOST 300 LINES</text>
+    <text class="t-b" x="510" y="330">host about 89 · fsdev.config 66 · prompts 145</text>
+    <text class="t-s" x="510" y="348">context flow in flows/, package helpers imported, prose in the README</text>
+    <text class="t-s" x="510" y="364">0 inventory findings in this area</text>
+  </g>
+</svg>

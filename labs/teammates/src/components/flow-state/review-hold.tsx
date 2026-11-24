@@ -6,20 +6,26 @@ import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { resolveApprovalOutcome, useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
 import { MarkdownText } from "./message-response";
+import { RunChanges, type RunChangesFile, type RunChangesPatch } from "./run-changes";
 import { RunChecks, type RunCheck } from "./run-checks";
 
 /**
  * A review waiting on the user: **Accept** or **Ask for changes**. For a
- * coding run's review (harness-manager's `reviewChanges`) it shows the
- * commits the run made on its branch, the project's checks (`RunChecks`) and
- * the judge's verdict; for any other
+ * coding run's review (harness-manager's `reviewChanges`) it shows what was
+ * asked (the task's goal), the run's own summary, the commits the run made on
+ * its branch (this round's apart from earlier ones), its pull requests, the
+ * files it changed (`RunChanges`, each opening its patch through `loadPatch`
+ * when the app can read one), the project's checks (`RunChecks`) and the
+ * judge's verdict with its whole reason; for any other
  * review it shows the stop's prompt, which holds the work under review.
  *
  * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
  * words }` (harness-manager's `harnessReviewAnswerSchema`). When the review
  * offers ways to land the work (`lands`), Accept is two labelled actions
  * instead, **Open a PR** and **Merge locally**, each an accept naming its
- * `land`; a landing that failed shows its error with **Retry**. It spells none of
+ * `land`, carrying what is in the text box as its `words`: the note goes to
+ * the coding session if the landing fails. A landing that failed shows each
+ * try (`landAttempts`) and its error with **Retry**. It spells none of
  * harness-manager's stop fields: an app reads a coding run's review with
  * harness-manager's browser entry and passes the result as `review`.
  *
@@ -47,18 +53,57 @@ export interface ReviewDetail {
   lands?: ReviewLand[];
   /** The last landing that failed, when the review is asked again; `null` or absent otherwise. */
   landFailed?: { land: ReviewLand; message: string } | null;
+  /** Every try of that landing, oldest first; absent or empty when none failed. */
+  landAttempts?: Array<{ land: ReviewLand; message: string }>;
   /** The checks the run's phase ran (harness-manager's `commandCheck`), or `null`/absent when none ran. */
   checks?: RunCheck[] | null;
+  /** What was asked: the task's goal, in Markdown. `null` or absent when unknown. */
+  goal?: string | null;
+  /** The run's own summary of what it did and why (its final message), in Markdown. `null` or absent when it gave none. */
+  answer?: string | null;
+  /** Where the work is up for review: the task's pull requests. Absent reads as none. */
+  pullRequests?: Array<{ number: number; url: string }>;
+  /** This round's commits, when the branch had commits before it; `null` or absent when the round is the whole branch. */
+  round?: { commits: number; subjects: string[] } | null;
+  /** Each file the run changed and its lines; `null` or absent when they couldn't be read. */
+  files?: RunChangesFile[] | null;
+  /** How many files changed, listed or not. */
+  fileCount?: number | null;
+  /** Lines added across every file. */
+  added?: number | null;
+  /** Lines removed across every file. */
+  removed?: number | null;
 }
 
 /** A way an accept lands the work: push and open a pull request, or merge into your checkout. */
 export type ReviewLand = "pull-request" | "merge";
 
 /** The two answers a review takes; an accept may name how the work lands. */
-export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
+export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand; words?: string } | { verdict: "revise"; words: string };
 
 /** Each way to land, as its button says it. */
 export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a PR", merge: "Merge locally" };
+
+/**
+ * The ways to land, with a failed landing's way first: the retry. Each way once, in the review's order.
+ * Shared by the review card and any accept a host draws outside it, so the two never order them differently.
+ */
+export function orderedLands(lands: readonly ReviewLand[], failed: { land: ReviewLand } | null): ReviewLand[] {
+  return failed === null ? [...lands] : [failed.land, ...lands.filter((land) => land !== failed.land)];
+}
+
+/**
+ * Why the last landing failed, in the landing's own words, or nothing when none failed.
+ * The review card draws it, and a host can draw it beside an accept of its own.
+ */
+export function LandFailure({ failed }: { failed: { land: ReviewLand; message: string } | null }) {
+  if (failed === null) return null;
+  return (
+    <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">
+      {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
+    </p>
+  );
+}
 
 /** Where an accepted run's work went, as harness-manager's output records it. */
 export type LandedWork =
@@ -134,6 +179,13 @@ export function commitCount(review: ReviewDetail): string {
   return `${review.commits} commit${review.commits === 1 ? "" : "s"}`;
 }
 
+/** "1 commit this round, 2 earlier on the branch": a round on a branch that had commits before it. */
+export function roundCount(round: { commits: number }, commits: number | null): string {
+  const earlier = commits === null ? null : commits - round.commits;
+  const these = `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`;
+  return earlier === null || earlier <= 0 ? these : `${these}, ${earlier} earlier on the branch`;
+}
+
 /** "Judge: done, 0.91", or that no judge read the run. */
 export function judgeLine(review: ReviewDetail): string {
   if (review.judge === null) return "No judge read this run";
@@ -145,7 +197,7 @@ export function judgeLine(review: ReviewDetail): string {
  * flight the buttons are disabled, and a failure is shown under them with the
  * words kept. With `unanswerable` set (or no `answer`), the card shows the
  * review and that sentence, and offers no buttons. `children` sit between the
- * commits and the checks: an app's diff of the run goes there.
+ * changed files and the checks.
  */
 export function ReviewHold({
   prompt,
@@ -154,6 +206,7 @@ export function ReviewHold({
   unanswerable,
   resolved,
   holdId,
+  loadPatch,
   children,
 }: {
   /** The stop's prompt: what a review that isn't a coding run's shows. */
@@ -174,6 +227,8 @@ export function ReviewHold({
    * failure's message alone.
    */
   holdId?: string | null;
+  /** Reads one changed file's patch (harness-manager's `changes` view). Absent: the files list their lines and don't open. */
+  loadPatch?: (path: string) => Promise<RunChangesPatch>;
   children?: ReactNode;
 }) {
   const [words, setWords] = useState("");
@@ -205,11 +260,14 @@ export function ReviewHold({
     if (trimmed !== "") void send({ verdict: "revise", words: trimmed });
   };
 
-  const more = review ? (review.commits ?? review.subjects.length) - Math.min(review.subjects.length, SUBJECTS_SHOWN) : 0;
+  // A round on a branch with earlier commits lists its own; otherwise the branch's.
+  const round = review?.round ?? null;
+  const subjects = round?.subjects ?? review?.subjects ?? [];
+  const more = review ? (round?.commits ?? review.commits ?? subjects.length) - Math.min(subjects.length, SUBJECTS_SHOWN) : 0;
   const canAnswer = answer !== undefined && (unanswerable === undefined || unanswerable === null);
   const lands = review?.lands ?? [];
   // A failed landing's own way goes first, as the retry.
-  const ordered = failed === null ? lands : [failed.land, ...lands.filter((land) => land !== failed.land)];
+  const ordered = orderedLands(lands, failed);
   return (
     <section
       aria-label="Ready for review"
@@ -217,16 +275,33 @@ export function ReviewHold({
       className="my-1.5 min-w-0 rounded-lg border border-success bg-success/10 px-3 py-2 text-sm [overflow-wrap:anywhere]"
     >
       <div className="font-semibold">Ready for review</div>
-      {failed === null ? null : (
-        <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive">
-          {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
-        </p>
-      )}
+      <LandFailure failed={failed} />
+      {(review?.landAttempts?.length ?? 0) > 1 ? (
+        <ol data-land-attempts className="mt-1 list-decimal pl-4 text-xs text-muted-foreground">
+          {review!.landAttempts!.map((attempt, i) => (
+            <li key={i} title={attempt.message} className="line-clamp-2">
+              Try {i + 1}: {attempt.message}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {review ? (
         <>
-          <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1 text-xs">
+          {review.goal ? (
+            <div className="mt-1 text-xs" data-review-goal>
+              <span className="font-semibold">Asked</span>
+              <MarkdownText text={review.goal} className="text-muted-foreground" />
+            </div>
+          ) : null}
+          {review.answer ? (
+            <div className="mt-1 max-h-48 overflow-y-auto text-xs" data-review-answer>
+              <span className="font-semibold">The run's summary</span>
+              <MarkdownText text={review.answer} />
+            </div>
+          ) : null}
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-1 text-xs">
             <span className="shrink-0" data-review-commits>
-              {commitCount(review)}
+              {round === null ? commitCount(review) : roundCount(round, review.commits)}
             </span>
             {review.branch === null ? null : (
               <>
@@ -237,9 +312,9 @@ export function ReviewHold({
               </>
             )}
           </div>
-          {review.subjects.length > 0 ? (
+          {subjects.length > 0 ? (
             <ul className="mt-1 text-xs text-muted-foreground">
-              {review.subjects.slice(0, SUBJECTS_SHOWN).map((subject, i) => (
+              {subjects.slice(0, SUBJECTS_SHOWN).map((subject, i) => (
                 <li key={i} title={subject} className="flex min-w-0 gap-1 [overflow-wrap:normal]">
                   <span className="shrink-0">·</span>
                   <MarkdownText inline text={subject} className="min-w-0" />
@@ -248,14 +323,29 @@ export function ReviewHold({
               {more > 0 ? <li>· and {more} more</li> : null}
             </ul>
           ) : null}
+          {(review.pullRequests?.length ?? 0) > 0 ? (
+            <p className="mt-1 flex flex-wrap gap-x-2 text-xs" data-review-pull-requests>
+              {(review.pullRequests ?? []).map((pr) => (
+                <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="font-semibold underline">
+                  Pull request #{pr.number}
+                </a>
+              ))}
+            </p>
+          ) : null}
+          <RunChanges
+            files={review.files ?? null}
+            {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
+            {...(review.added != null ? { added: review.added } : {})}
+            {...(review.removed != null ? { removed: review.removed } : {})}
+            {...(loadPatch !== undefined ? { loadPatch } : {})}
+            className="mt-1.5 bg-background"
+          />
           {children}
           <RunChecks checks={review.checks ?? null} className="mt-1.5" />
           <div className="mt-1.5 text-xs" data-review-judge>
             <span className="font-semibold">{judgeLine(review)}</span>
             {review.judge && review.judge.reason !== "" ? (
-              <p title={review.judge.reason} className="mt-0.5 line-clamp-3 text-muted-foreground">
-                {review.judge.reason}
-              </p>
+              <p className="mt-0.5 whitespace-pre-line text-muted-foreground">{review.judge.reason}</p>
             ) : null}
           </div>
         </>
@@ -279,7 +369,7 @@ export function ReviewHold({
                 revise();
               }
             }}
-            placeholder="What should change? (for Ask for changes)"
+            placeholder={ordered.length === 0 ? "What should change? (for Ask for changes)" : "What should change, or a note if landing it fails"}
             className="w-full rounded-md border border-border bg-background p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <div className="flex flex-wrap gap-2">
@@ -299,7 +389,8 @@ export function ReviewHold({
                   type="button"
                   disabled={pending}
                   data-land={land}
-                  onClick={() => void send({ verdict: "accepted", land })}
+                  // The note goes with it, for the coding session if the landing fails.
+                  onClick={() => void send({ verdict: "accepted", land, ...(words.trim() !== "" ? { words: words.trim() } : {}) })}
                   className={
                     i === 0
                       ? "rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -369,10 +460,13 @@ export function ReviewSuspension({
   review,
   isResolved,
   resolution,
+  loadPatch,
 }: {
   item: SuspensionItem;
   /** A coding run's review, when the app read one from the stop. Absent: the stop's prompt. */
   review?: ReviewDetail | null;
+  /** Reads one changed file's patch; see {@link ReviewHold}. */
+  loadPatch?: (path: string) => Promise<RunChangesPatch>;
   isResolved?: boolean;
   /** How the stop ended, once resolved. */
   resolution?: SuspensionStatus;
@@ -390,6 +484,7 @@ export function ReviewSuspension({
       {...(item.message ? { prompt: item.message } : {})}
       {...(review ? { review } : {})}
       holdId={item.suspensionId}
+      {...(loadPatch !== undefined ? { loadPatch } : {})}
       {...(answer === undefined ? { unanswerable: NO_RESOLVER_UNANSWERABLE } : { answer })}
       resolved={isResolved === true ? "answered" : undefined}
     />

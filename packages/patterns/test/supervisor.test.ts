@@ -507,19 +507,19 @@ describe("supervisor per-task review", () => {
     // with the failed-review label.
     const taskChangeItems = result.items.filter(
       (item: any) =>
-        item.type === "component" && item.component === "task-change",
+        item.type === "data" && item.dataType === "task-change",
     );
     const t1Changes = taskChangeItems.filter(
-      (it: any) => it.data?.task?.id === "t1",
+      (it: any) => it.value?.task?.id === "t1",
     );
     const lastT1 = t1Changes[t1Changes.length - 1] as any;
-    expect(lastT1?.data?.task?.status).toBe("errored");
+    expect(lastT1?.value?.task?.status).toBe("errored");
     // Labels include 'failed-review' once labelFailedReviews fires.
     const t1Labeled = taskChangeItems.find(
       (it: any) =>
-        it.data?.task?.id === "t1" &&
-        Array.isArray(it.data.task?.labels) &&
-        it.data.task.labels.includes("failed-review"),
+        it.value?.task?.id === "t1" &&
+        Array.isArray(it.value.task?.labels) &&
+        it.value.task.labels.includes("failed-review"),
     );
     expect(t1Labeled).toBeDefined();
   });
@@ -616,13 +616,13 @@ describe("supervisor per-task review", () => {
 
     const taskChangeItems = result.items.filter(
       (item: any) =>
-        item.type === "component" && item.component === "task-change",
+        item.type === "data" && item.dataType === "task-change",
     );
     const labelled = taskChangeItems.find(
       (it: any) =>
-        it.data?.task?.id === "t1" &&
-        Array.isArray(it.data.task?.labels) &&
-        it.data.task.labels.includes("reviewer-error"),
+        it.value?.task?.id === "t1" &&
+        Array.isArray(it.value.task?.labels) &&
+        it.value.task.labels.includes("reviewer-error"),
     );
     expect(labelled).toBeDefined();
   });

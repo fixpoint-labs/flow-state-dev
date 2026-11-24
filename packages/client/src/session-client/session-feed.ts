@@ -56,6 +56,12 @@ export type SessionFeedSnapshot = {
    * `false` until the history read lands.
    */
   readonly hasEarlier: boolean;
+  /**
+   * The history read has landed: `items` is what the session holds, so an
+   * empty list is an empty session, not one still being read. `false` again
+   * while the feed starts over on a new session under the id.
+   */
+  readonly historyLoaded: boolean;
   /** The session's unfinished runs as the stream last named them; `null` until it has. */
   readonly runs: readonly SessionRun[] | null;
   /** How far `items` and `runs` can be trusted. See {@link SessionConnectionStatus}. */
@@ -111,7 +117,7 @@ export function sessionFeed(
   const byKey = new Map<string, OutputItem>();
   const listeners = new Set<(snapshot: SessionFeedSnapshot) => void>();
   const responses = new Set<() => void>();
-  let snapshot: SessionFeedSnapshot = Object.freeze({ items: [], hasEarlier: false, runs: null, state: "connecting", error: null });
+  let snapshot: SessionFeedSnapshot = Object.freeze({ items: [], hasEarlier: false, historyLoaded: false, runs: null, state: "connecting", error: null });
   let closed = false;
   let stopStream: (() => void) | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -163,7 +169,7 @@ export function sessionFeed(
     if (closed) return;
     historyWindow = history;
     for (const item of history.items ?? []) keep(item);
-    publish({ items: sortedItems(), hasEarlier: history.hasEarlier, error: null });
+    publish({ items: sortedItems(), hasEarlier: history.hasEarlier, historyLoaded: true, error: null });
     // A listener may close the feed on the history it just heard.
     if (closed) return;
 
@@ -187,7 +193,7 @@ export function sessionFeed(
     byKey.clear();
     historyWindow = undefined;
     failures = 0;
-    publish({ items: [], hasEarlier: false, runs: null, state: "connecting", error: null });
+    publish({ items: [], hasEarlier: false, historyLoaded: false, runs: null, state: "connecting", error: null });
     void start();
   };
   void start();

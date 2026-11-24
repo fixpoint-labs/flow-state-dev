@@ -42,6 +42,7 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     const response = await router.POST(
       new Request("http://localhost/api/flows/xfer/sess_xfer/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "u_xfer",
           input: { value: "hi" }
@@ -232,6 +233,7 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     const response = await router.POST(
       new Request("http://localhost/api/flows/noauth/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ input: { value: "x" } })
       }),
       { params: { path: ["noauth", "actions", "run"] } }
@@ -284,6 +286,7 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     const response = await router.POST(
       new Request("http://localhost/api/flows/org/sess_org/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_org", input: { value: "hi" } })
       }),
       { params: { path: ["org", "sess_org", "actions", "run"] } }
@@ -329,6 +332,7 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
       router.POST(
         new Request("http://localhost/api/flows/rej/sess_rej/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "u_rej", input: { value: "hi" } })
         }),
         { params: { path: ["rej", "sess_rej", "actions", "run"] } }

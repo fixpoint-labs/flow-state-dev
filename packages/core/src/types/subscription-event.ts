@@ -1,4 +1,4 @@
-// FIX-2534, epic FIX-2471 ER-6.
+// FIX-2534, epic FIX-2471 ER-6; FIX-2535.
 /**
  * The normalized subscription event: the one
  * shape an outside event takes before a service flow routes it to the
@@ -20,6 +20,20 @@
  * - `closes`: the last and narrowest of `threads` closed with this event (a PR
  *   merged or closed); the wider ones stay open. The subscriptions to that
  *   thread end, whether or not it reached them (ER-7 as amended).
+ * - `addressed`: the event asks the app's agent (it mentions, assigns or
+ *   requests review from a handle the app names). The provider's judgment
+ *   from the raw payload, set by its `normalize`; never model input.
+ * - `hop` and `chain`: where a published event stands in its publisher's
+ *   exchange: the message chain the publish paid its place in, and the hop
+ *   one before that place. Set together, and only by a publish; a webhook's
+ *   `normalize` and a poll never set them. A delivery of an event that
+ *   carries them lands in that chain at `hop + 1`, where a message sent in
+ *   the publish's place would; one with neither reads as hop 0 and no
+ *   chain, as before.
+ * - `owner`: the one user, in the one tenant, a published event may reach,
+ *   stamped by the host from the publisher's own identity. Routing nominates
+ *   only that user's subscriptions in that tenant. Never set by a webhook's
+ *   `normalize` or a poll, whose events reach every subscriber.
  */
 import { z } from "zod";
 
@@ -57,7 +71,15 @@ export const subscriptionEventSchema = z
     /** The provider's delivery id: provenance only, never a dedupe key. */
     deliveryId: z.string().min(1).optional(),
     /** The last and narrowest of `threads` closed with this event. */
-    closes: z.literal(true).optional()
+    closes: z.literal(true).optional(),
+    /** The event asks the app's agent: it mentions, assigns or requests review from one of the app's agent handles. */
+    addressed: z.literal(true).optional(),
+    /** One before the place the publish paid in `chain`: its deliveries land at `hop + 1`. With `chain`, only on a published event. */
+    hop: z.number().int().min(0).optional(),
+    /** The message chain the publish paid its place in. With `hop`, only on a published event. */
+    chain: z.string().min(1).optional(),
+    /** The one user (in its tenant, when it has one) a published event may reach. Stamped by the host, only on a published event. */
+    owner: z.object({ userId: z.string().min(1), tenantId: z.string().min(1).optional() }).strict().optional()
   })
   .strict();
 

@@ -27,7 +27,7 @@ async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<s
   ]);
   const keys: string[] = [];
   const state = createFlowState({
-    flows: { [instance!.id]: instance! },
+    flows: [instance!],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

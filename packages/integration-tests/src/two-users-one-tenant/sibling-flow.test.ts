@@ -32,7 +32,6 @@ const CLEARANCE = { "x-vault-clearance": "granted" };
 
 function writeAction(kind: string) {
   return {
-    inputSchema: noteSchema,
     userMessage: (input: { text: string }) => input.text,
     block: handler({
       name: `${kind}-write`,

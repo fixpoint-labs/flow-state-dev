@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/vercel",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Vercel deployment adapter for flow-state-dev.",
   "keywords": [
     "ai",
@@ -36,10 +36,6 @@
       "types": "./dist/pg.d.ts",
       "default": "./src/pg.ts"
     },
-    "./schedules": {
-      "types": "./dist/schedules.d.ts",
-      "default": "./src/schedules.ts"
-    },
     "./store": {
       "types": "./dist/store.d.ts",
       "default": "./src/store.ts"
@@ -66,10 +62,6 @@
       "./pg": {
         "types": "./dist/pg.d.ts",
         "default": "./dist/pg.js"
-      },
-      "./schedules": {
-        "types": "./dist/schedules.d.ts",
-        "default": "./dist/schedules.js"
       },
       "./store": {
         "types": "./dist/store.d.ts",

@@ -26,10 +26,7 @@ import { type RequestRecord } from "../src/host";
 const notes = defineFlow({
   kind: "notes",
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "run", inputSchema: z.object({}), execute: () => ({}) })
   }
 });
 

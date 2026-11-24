@@ -347,7 +347,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
   return handler({
     name,
     // Substrate-internal write-back; user-visible task lifecycle flows
-    // through the `task-change` ComponentItem `collection.complete` emits.
+    // through the `task-change` data item `collection.complete` emits.
     transient: true,
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
@@ -568,13 +568,13 @@ export function createRecordError(options: RecordErrorOptions) {
 /**
  * Settle a dispatched task's claim from the claim gate's check at its
  * request's end, with the recorders' write semantics:
- * `settle` is the fenced write (a completion or a failure), run under a write
+ * `settle` is the fenced write (a completion, a failure or a cancel), run under a write
  * token so a write that threw can be classified.
  *
  * - The write didn't throw: `undefined`.
  * - It threw and committed nothing: a completion fails the attempt instead,
  *   as the gate's rescue would; when that write throws too, its error comes
- *   back. A failure's own error comes back.
+ *   back. A failure's or a cancel's own error comes back.
  * - It threw having committed, or the board can't tell: the report is emitted
  *   on its saved entry (and the row released when it can't tell), and a
  *   {@link TaskBoardRecorderFailureError} comes back.
@@ -602,7 +602,8 @@ export async function settleAtRequestEnd(params: {
       attempt: params.settle,
     });
   } catch (err) {
-    if (params.recorder === "fail") return err instanceof Error ? err : new Error(messageOf(err));
+    // A failure's or a cancel's own error comes back: only a completion has a failure to fall back on.
+    if (params.recorder !== "complete") return err instanceof Error ? err : new Error(messageOf(err));
     // Nothing was saved: fail the attempt, the rescue's write.
     try {
       await advisoryFail(collection, claim.taskId, messageOf(err), { ifAllowed: true, claim });

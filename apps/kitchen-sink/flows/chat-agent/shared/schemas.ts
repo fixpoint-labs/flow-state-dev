@@ -24,13 +24,16 @@ export const modeSchema = z
   .enum(["ask", "build", "interview", "debate"])
   .default("ask");
 
+/** Resolved mode value. */
+export type Mode = z.infer<typeof modeSchema>;
+
 /** Per-request feature toggles (bias check + web tool gates). */
 export const featuresSchema = z.object({
   biasCheck: z.boolean().default(false),
   search: z.boolean().default(true),
   fetch: z.boolean().default(true),
   crawl: z.boolean().default(false),
-}).default({});
+});
 
 // ---------------------------------------------------------------------------
 // Thinking styles
@@ -87,9 +90,14 @@ export type ThinkingStyleInput = ThinkingStyle;
  */
 export function coalesceThinkingStyle(value: unknown): ThinkingStyle | null {
   if (value == null) return null;
-  const parsed = thinkingStyleSchema.safeParse(value);
-  return parsed.success ? parsed.data : "default";
+  return thinkingStyleSchema.safeParse(value).success
+    ? (value as ThinkingStyle)
+    : "default";
 }
+
+export const thinkingStyleSessionStateSchema = z.object({
+  thinkingStyle: thinkingStyleSchema.optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Flow-level input + state
@@ -100,7 +108,7 @@ export const inputSchema = z.object({
   message: z.string().min(1),
   mode: modeSchema,
   thinkingStyle: thinkingStyleInputSchema,
-  features: featuresSchema,
+  features: featuresSchema.default({}),
 });
 
 /** Session state owned by the chat turn. */
@@ -109,7 +117,7 @@ export const sessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
-  features: featuresSchema,
+  features: featuresSchema.default({}),
   /** The skills the router and the load tool activated (see `capabilities/features.ts`). */
   activeSkills: activeSkillsArraySchema,
 });

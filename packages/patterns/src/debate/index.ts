@@ -53,7 +53,6 @@ import type {
   BlockContext,
   BlockDefinition,
   DefinedResource,
-  ResourceRef,
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import {
@@ -342,15 +341,15 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       sequencerStateSchema: debateStateSchema,
       execute: (_input, ctx) => {
         const state = ctx.sequencer!.state;
-        ctx.emit.component("debate-turn-pending", {
-          round: state.round,
-          agentName,
-          stance,
-        });
+        ctx.emit.data(
+          "debate-turn-pending",
+          { round: state.round, agentName, stance },
+          { itemVisibility: { client: true, history: false } },
+        );
       },
     });
 
-  // Emit the judge's verdict as a renderable component item right after
+  // Emit the judge's verdict as a renderable data record right after
   // the judge runs, so the closing card streams into the debate
   // container before the synthesizer (if any) projects to a final shape.
   const emitVerdictTap = handler({
@@ -358,36 +357,39 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     inputSchema: z.any(),
     execute: (input, ctx) => {
       const verdict = input as DebateVerdict;
-      ctx.emit.component(
+      ctx.emit.data(
         "debate-verdict",
         {
           verdict: verdict.verdict,
           winner: verdict.winner,
           reasoning: verdict.reasoning,
         },
-        { key: "verdict" },
+        { key: "verdict", itemVisibility: { client: true, history: false } },
       );
     },
   });
 
+  const buildRawOutput = (value: unknown, ctx: any): DebateRawOutput => {
+    const state = ctx.sequencer!.state as DebateState;
+    const transcriptState = ctx.resources?.transcript
+      ?.state as DebateTranscriptState | undefined;
+    return {
+      rounds: state.round,
+      question: state.question,
+      transcript: transcriptState?.entries ?? [],
+      verdict: value as DebateVerdict,
+      moderatorDecisions: state.moderatorDecisions ?? [],
+    };
+  };
+
   const finalize = (
-    pipeline: SequencerDefinition<DebateInput, unknown, typeof debateStateSchema>,
+    pipeline: any,
     judge: BlockDefinition<any, any>,
   ): SequencerDefinition<any, any> => {
     const withJudge = pipeline
       .step(judge)
       .tap(emitVerdictTap)
-      .map((verdict, ctx): DebateRawOutput => {
-        const { round, question, moderatorDecisions } = ctx.sequencer!.state;
-        const transcript = ctx.resources.transcript as ResourceRef<DebateTranscriptState> | undefined;
-        return {
-          rounds: round,
-          question,
-          transcript: transcript?.state.entries ?? [],
-          verdict,
-          moderatorDecisions,
-        };
-      });
+      .map((value: unknown, ctx: any) => buildRawOutput(value, ctx));
     if (config.synthesizer === false) {
       return withJudge as SequencerDefinition<any, any>;
     }
@@ -408,21 +410,20 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     return withJudge.step(synth) as SequencerDefinition<any, any>;
   };
 
-  const start = sequencer({
-    name,
-    inputSchema: debateInputSchema,
-    stateSchema: debateStateSchema,
-    container: { component: "debate" },
-  })
-    .tap(initTranscript)
-    .tap(stampQuestion)
-    .step(incrementRound);
-
   // ---------------------------------------------------------------------
   // Path 1: no moderator — preserved historical pipeline (plus terminateWhen).
   // ---------------------------------------------------------------------
   if (config.moderator === undefined) {
-    let pipeline = start;
+    let pipeline: any = sequencer({
+      name,
+      inputSchema: debateInputSchema,
+      stateSchema: debateStateSchema,
+      container: { component: "debate" },
+    })
+      .tap(initTranscript)
+      .tap(stampQuestion)
+      .step(incrementRound);
+
     for (const entry of debaters) {
       const debaterBlock =
         entry.block ??
@@ -457,8 +458,8 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     }
 
     pipeline = pipeline.loopBack(incrementRound.name, {
-      when: (_out, ctx) => {
-        const state = ctx.sequencer!.state;
+      when: (_out: unknown, ctx: any) => {
+        const state = ctx.sequencer!.state as DebateState;
         if (state.round >= maxRounds) return false;
         if (
           terminateWhen !== undefined &&
@@ -548,11 +549,27 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
       // Renderable snapshot of the moderator's decision. The renderer
       // shows this as the opener of the round.
-      ctx.emit.component("debate-decision", decision, {
+      ctx.emit.data("debate-decision", decision, {
         key: `decision-${state.round}`,
+        itemVisibility: { client: true, history: false },
       });
     },
   });
+
+  // The moderator runs at the top of every round and stashes the decision
+  // BEFORE this connector fires, so the freshly-appended decision is the
+  // one for the current round. Match on the round number explicitly to
+  // stay robust if the loop order ever changes.
+  const speakersForRound = (_input: unknown, ctx: BlockContext): string[] => {
+    const state = ctx.sequencer!.state as DebateState;
+    const decisions = state.moderatorDecisions ?? [];
+    const current = decisions.find((d) => d.round === state.round);
+    if (current) return current.nextSpeakers;
+    // Defensive fallback if the moderator's decision is somehow missing —
+    // e.g. a custom moderator that returned an empty list with done=true:
+    // use the declared roster so we don't blow up on .forEach over [].
+    return debaters.map((d) => d.name);
+  };
 
   // Per-iteration dispatch by debater name. The forEach feeds each
   // speaker name as the router's input; `utility.keyedRouter` looks
@@ -564,7 +581,15 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     select: (speakerName: string) => speakerName,
   });
 
-  const pipeline = start
+  let pipeline: any = sequencer({
+    name,
+    inputSchema: debateInputSchema,
+    stateSchema: debateStateSchema,
+    container: { component: "debate" },
+  })
+    .tap(initTranscript)
+    .tap(stampQuestion)
+    .step(incrementRound)
     // Moderator opens each round: it picks speakers, optionally supplies
     // a briefing and angle for the debaters, and may flag this as the
     // last round. With the moderator at the top, every decision drives
@@ -574,16 +599,17 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // `maxConcurrency: 1` is load-bearing: it makes within-round speakers
     // sequential, so later speakers see the freshly recorded transcript
     // entries of earlier ones. Without it `.forEach` defaults to parallel.
-    .forEach((_value, ctx) => {
-      const { round, moderatorDecisions } = ctx.sequencer!.state as DebateState;
-      const current = moderatorDecisions.find((d) => d.round === round);
-      return current?.nextSpeakers ?? debaters.map((d) => d.name);
-    }, dispatchByName, { maxConcurrency: 1 })
+    .forEach(speakersForRound as any, dispatchByName as any, {
+      maxConcurrency: 1,
+    })
     .loopBack(incrementRound.name, {
-      when: (_out, ctx) => {
-        const state = ctx.sequencer!.state;
+      when: (_out: unknown, ctx: any) => {
+        const state = ctx.sequencer!.state as DebateState;
         if (state.round >= maxRounds) return false;
-        if (state.moderatorDecisions.at(-1)?.done) return false;
+        const decisions = state.moderatorDecisions ?? [];
+        const last =
+          decisions.length > 0 ? decisions[decisions.length - 1]! : undefined;
+        if (last !== undefined && last.done) return false;
         if (
           terminateWhen !== undefined &&
           terminateWhen(ctx)

@@ -30,6 +30,8 @@ export interface Turn {
   answeredAt: Date;
   /** The coder leg only: the run record's `checks`, or the turn's when the app uses `verify`, through {@link checksFrom}. `null` is no record. */
   checks?: { command: string; ok: boolean }[] | null;
+  /** The coder leg only: why the coding run the turn filed was not settled when the record was read. Set, the coder ask fails on it. */
+  unsettled?: string;
   /** The fold leg only: whether the session holds a summary fold before the last ask. */
   folded?: boolean;
   /** The skill leg only: the skill names the worker holds. */
@@ -150,10 +152,33 @@ export function gradePagesRead(turn: Turn, fx: Fixtures["pages"], fetchTool: str
   return out;
 }
 
-/** Code spans in a report that read as a command (`pnpm …`, `node …`, …): the only way a report can name a check the record lacks. */
-function commandSpans(report: string): string[] {
+/**
+ * The command parts of a report's code spans: the only way a report can name a check the record lacks.
+ * Each span is split at the shell separators `;`, `&&`, `||` and `|` outside quotes, a trailing redirect
+ * (`2>&1`, `> out.txt`) is dropped, and only a part that reads as a command is kept: a program (`pnpm`,
+ * `node`, …) and at least one argument. So plumbing around a check (`echo "exit code: $?"`, `| tail -20`)
+ * names nothing, and neither does a bare program name in prose ("I can't execute `node` myself").
+ */
+// Grading a compound span by its parts is FIX-2502 D3.
+function commandParts(report: string): string[] {
   const runner = /^(?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b/;
-  return [...new Set([...report.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!.trim()).filter((c) => runner.test(c)))];
+  const parts = [...report.matchAll(/`([^`\n]+)`/g)]
+    .flatMap((m) => shellParts(m[1]!))
+    .map((part) => norm(part.replace(/(?:\s+\d*>>?&?\s*\S*)+\s*$/, "")))
+    .filter((part) => runner.test(part) && part.includes(" "));
+  return [...new Set(parts)];
+}
+
+/** A command line split at `;`, `&&`, `||` and `|`; a separator inside single or double quotes, or escaped, does not split. */
+function shellParts(line: string): string[] {
+  // A quoted string or an escaped character is one token, so a separator inside it is not a token of its own.
+  const tokens = line.match(/"(?:\\.|[^"\\])*"|'[^']*'|\\.|&&|\|\||[;|]|[^"'\\;|&]+|./g) ?? [];
+  const parts = [""];
+  for (const token of tokens) {
+    if (token === "&&" || token === "||" || token === ";" || token === "|") parts.push("");
+    else parts[parts.length - 1] += token;
+  }
+  return parts;
 }
 const norm = (c: string) => c.replace(/\s+/g, " ").trim();
 
@@ -161,7 +186,7 @@ const norm = (c: string) => c.replace(/\s+/g, " ").trim();
  * Coder, graded from the record outward, and only against a false success:
  *
  * - The report names at least one check the run recorded, and every command
- *   it names in a code span is one the run recorded.
+ *   part it names in a code span ({@link commandParts}) is one the run recorded.
  * - A recorded check that passed never fails on the report's wording.
  * - A recorded check that failed is acknowledged: the report names it in a
  *   sentence with a failure word that is not negated ("failed", not "no
@@ -170,11 +195,12 @@ const norm = (c: string) => c.replace(/\s+/g, " ").trim();
  * Prose is never parsed into a command. A `null` record fails.
  */
 export function gradeCoder(turn: Turn): Graded {
+  if (turn.unsettled !== undefined) return [`coder: ${turn.unsettled}`];
   if (turn.checks == null) return ["coder: the run recorded no checks (null)"];
   const report = norm(turn.reply);
   const out: Graded = [];
-  for (const span of commandSpans(turn.reply)) {
-    if (!turn.checks.some((c) => norm(c.command) === norm(span) || norm(c.command).endsWith(norm(span)))) out.push(`coder: the report names \`${span}\`, which did not run`);
+  for (const part of commandParts(turn.reply)) {
+    if (!turn.checks.some((c) => norm(c.command) === part || norm(c.command).endsWith(part))) out.push(`coder: the report names \`${part}\`, which did not run`);
   }
   const named = turn.checks.filter((c) => report.includes(norm(c.command)));
   for (const failed of turn.checks.filter((c) => !c.ok)) {
@@ -356,14 +382,14 @@ const fmt = (x: { y: number; m: number; d: number }) => `${x.y || "????"}-${Stri
 
 /**
  * Guidance an app must not write for itself once the defaults carry it (epic
- * ER-3): today's date, "check before done", and how long to answer. Matched on
- * a WORKER.md's text with its line breaks folded, so a phrase split across
- * lines is still found.
+ * ER-3): today's date and "check before done". How long to answer is not
+ * swept: FIX-2498's behaviour section was cut, so no default replaces an
+ * app's own length line. Matched on a WORKER.md's text with its line breaks
+ * folded, so a phrase split across lines is still found.
  */
 const APP_GUIDANCE: readonly [kind: string, pattern: RegExp][] = [
   ["date", /\b(?:today'?s date|the current date|the date (?:is|today))\b/i],
   ["done", /\b(?:before (?:you )?(?:say|report|call)(?: it)?(?: is)? done|run the (?:checks|tests) before)\b/i],
-  ["length", /\b(?:in a sentence or two|in (?:one|two|three|a few) sentences|keep (?:it|your answers?|replies) (?:short|brief)|be concise|answer briefly|in (?:under |at most )?\d+ words)\b/i],
 ];
 
 /** Each app-written guidance line found in `files` (path → WORKER.md text), as `path: kind ("phrase")`. */

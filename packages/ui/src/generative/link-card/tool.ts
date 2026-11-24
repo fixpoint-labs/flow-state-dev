@@ -1,6 +1,6 @@
 /**
  * Link-card tool factory. Produces a `handler` block that emits a `link-card`
- * component item. Default keying is by URL so re-emissions of the same link
+ * data item. Default keying is by URL so re-emissions of the same link
  * collapse into a single card.
  */
 import { handler } from "@flow-state-dev/core";
@@ -23,7 +23,7 @@ export function emitLinkCardTool(
     description: DESCRIPTION,
     inputSchema: LinkCardSchema,
     execute: (input, ctx) => {
-      ctx.emit.component("link-card", input, { key: keyFrom(input) });
+      ctx.emit.data("link-card", input, { key: keyFrom(input) });
       return { rendered: true, kind: "link-card", url: input.url };
     },
   });

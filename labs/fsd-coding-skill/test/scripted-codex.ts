@@ -9,8 +9,8 @@ export function scriptedCodex(events?: CodexThreadEvent[], error?: Error) {
   };
   const thread = (): CodexThreadLike => ({
     id: null,
-    async runStreamed(prompt) {
-      rec.prompts.push(prompt);
+    async runStreamed(input) {
+      rec.prompts.push(typeof input === "string" ? input : input.map((part) => (part.type === "text" ? part.text : "")).join(""));
       if (error) throw error;
       return { events: (async function* () {
         yield* events ?? [

@@ -14,6 +14,7 @@
  * so a host can reference an env var that is populated after module load.
  */
 import { createHmac } from "node:crypto";
+import { assertSecret } from "./assert-secret";
 import { createHmacVerifier, type CreateHmacVerifierOptions } from "./createHmacVerifier";
 import { constantTimeStringEqual } from "./constant-time";
 
@@ -35,6 +36,7 @@ export interface CreateWebhookVerifierOptions extends Omit<CreateHmacVerifierOpt
  */
 export function createWebhookVerifier(options: CreateWebhookVerifierOptions): WebhookVerifier {
   const { header, secret, ...hmacOptions } = options;
+  if (typeof secret !== "function") assertSecret(secret, "createWebhookVerifier");
   let verifier: ReturnType<typeof createHmacVerifier> | undefined;
   return (rawBody, headers) => {
     if (verifier === undefined) {
@@ -98,12 +100,18 @@ export function slackWebhookVerifier(
   secret: string | (() => string),
   options: SlackWebhookVerifierOptions = {}
 ): WebhookVerifier {
+  if (typeof secret !== "function") assertSecret(secret, "slackWebhookVerifier");
   const toleranceSeconds = options.toleranceSeconds ?? 300;
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   // Resolve a getter secret once, matching createWebhookVerifier's memoization,
   // so a secrets-manager-backed getter isn't hit on every inbound webhook.
   let resolvedSecret: string | undefined;
   return (rawBody, headers) => {
+    if (resolvedSecret === undefined) {
+      const value = typeof secret === "function" ? secret() : secret;
+      assertSecret(value, "slackWebhookVerifier");
+      resolvedSecret = value;
+    }
     const signature = headers.get("x-slack-signature");
     const timestampHeader = headers.get("x-slack-request-timestamp");
     if (typeof signature !== "string" || signature.length === 0) return false;
@@ -123,9 +131,6 @@ export function slackWebhookVerifier(
     signedPayload.set(prefix, 0);
     signedPayload.set(rawBody, prefix.length);
 
-    if (resolvedSecret === undefined) {
-      resolvedSecret = typeof secret === "function" ? secret() : secret;
-    }
     const expected = `v0=${createHmac("sha256", resolvedSecret).update(signedPayload).digest("hex")}`;
     return constantTimeStringEqual(signature, expected);
   };

@@ -1,12 +1,15 @@
+// @vitest-environment happy-dom
 /**
  * A thread is followed, not re-read: the history once, then each new item
  * from the session stream. A pane open on a long session used to read every
  * item again every 1.5 seconds; one that hears the stream shows a reply as
  * soon as it is stored and costs the host one connection.
  */
+import { cleanup, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
-import { createWiredLab, type ThreadView, type Unsubscribe } from "../src/adapter";
+import { AppProvider, useApp, useThread, type ThreadView } from "../src/app";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -56,13 +59,16 @@ function host(history: unknown[]) {
       });
       return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
     }
-    if (url.includes("/requests")) return json({ requests: [] });
+    // The session turns view: no turn running.
+    if (url.includes("/views/sessionTurns")) return json({ output: [], topics: [] });
     return json({ session: { id: "s1", flowKind: "f", state: {} } });
   }) as ClientFetch;
   const item = (at: number, value: unknown) =>
     `event: session.item\ndata: ${JSON.stringify({ stream: "session", sessionId: "s1", at, type: "session.item", requestId: (value as { requestId: string }).requestId, item: value })}\n\n`;
+  const client = createClient({ userId: "u", baseUrl: "", fetcher });
   return {
-    client: createClient({ userId: "u", baseUrl: "", fetcher }),
+    client,
+    wrapper: ({ children }: { children: ReactNode }) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children),
     counts,
     push: (at: number, value: unknown) => send(item(at, value)),
     /** The frame the stream sends once it is open, naming the session's unfinished runs. */
@@ -76,21 +82,33 @@ const until = async (check: () => boolean) => {
   if (!check()) throw new Error("condition never held");
 };
 
-const stops: Unsubscribe[] = [];
-afterEach(() => stops.splice(0).forEach((stop) => stop()));
+afterEach(cleanup);
 
-describe("watchThread", () => {
+/** The thread of session `s1` as the screen reads it, each value it hands back in order, and the lab's calls. */
+function follow(h: ReturnType<typeof host>) {
+  const views: ThreadView[] = [];
+  const hook = renderHook(
+    () => {
+      const view = useThread("s1");
+      if (view !== undefined && views.at(-1) !== view) views.push(view);
+      return useApp();
+    },
+    { wrapper: h.wrapper },
+  );
+  return { views, lab: () => hook.result.current };
+}
+
+describe("a thread", () => {
   it("reads the history once and shows a new reply from the session stream", async () => {
     const h = host([message("u1", "user", "fix the build", 10)]);
-    const views: ThreadView[] = [];
-    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    const { views } = follow(h);
 
     await until(() => views.length > 0 && h.counts.stream === 1);
     expect(views.at(-1)!.running).toBe(false);
-    const before = views.at(-1)!.entries.length;
+    const before = views.at(-1)!.items.length;
 
     h.push(101, message("a1", "assistant", "On it.", 20));
-    await until(() => views.at(-1)!.entries.length > before);
+    await until(() => views.at(-1)!.items.length > before);
     // The reply came from the stream: the history was read once, and nothing re-read it.
     await new Promise((r) => setTimeout(r, 1_700));
     expect(h.counts.state).toBe(1);
@@ -101,42 +119,38 @@ describe("watchThread", () => {
     // The session stream sends an item once it is finished; without the send's own stream the
     // thread would sit on the question until the whole answer was done.
     const h = host([message("u1", "user", "fix the build", 10)]);
-    const lab = createWiredLab(h.client);
-    const views: ThreadView[] = [];
-    stops.push(lab.watchThread("s1", (view) => views.push(view)));
+    const { views, lab } = follow(h);
     await until(() => views.length > 0 && h.counts.stream === 1);
 
-    await lab.send("s1", "and the tests");
+    await lab().send("s1", "and the tests");
     const writing = { id: "a2", requestId: "req_a2", type: "message", role: "assistant", ts: 30, itemIndex: 0, status: "in_progress", content: [{ type: "output_text", text: "" }] };
     h.answer("item.added", { item: writing });
     h.answer("content.delta", { itemId: "a2", contentIndex: 0, delta: "Running the te" });
-    await until(() => JSON.stringify(views.at(-1)!.entries).includes("Running the te"));
+    await until(() => JSON.stringify(views.at(-1)!.items).includes("Running the te"));
   });
 
   it("offers Load earlier on a thread longer than its first read, and reaches its first line with it", async () => {
     // 260 lines: the thread opens on the newest 200, and the person's first ask is among the rest.
     const history = Array.from({ length: 260 }, (_, i) => message(`m${i}`, i % 2 === 0 ? "user" : "assistant", `line ${i}`, 10 + i));
     const h = host(history);
-    const views: ThreadView[] = [];
-    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    const { views } = follow(h);
     await until(() => views.length > 0 && h.counts.stream === 1);
     const opened = views.at(-1)!;
-    expect(opened.entries).toHaveLength(200);
+    expect(opened.items).toHaveLength(200);
     expect(opened.loadEarlier).toBeTypeOf("function");
 
     await opened.loadEarlier!();
-    await until(() => views.at(-1)!.entries.length === 260);
+    await until(() => views.at(-1)!.items.length === 260);
     const last = views.at(-1)!;
-    expect(last.entries[0]).toMatchObject({ kind: "user", text: "line 0" });
-    expect(new Set(last.entries.map((entry) => entry.id)).size).toBe(260);
+    expect(last.items[0]).toMatchObject({ role: "user", content: [{ text: "line 0" }] });
+    expect(new Set(last.items.map((item) => item.id)).size).toBe(260);
     // All of it is there: nothing more to load.
     expect(last.loadEarlier).toBeUndefined();
   });
 
   it("says the thread's feed is live once its stream is open, for the connection bar to read", async () => {
     const h = host([message("u1", "user", "fix the build", 10)]);
-    const views: ThreadView[] = [];
-    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    const { views } = follow(h);
     await until(() => views.length > 0 && h.counts.stream === 1);
     expect(views.at(-1)!.connection).not.toBe("live");
 

@@ -19,11 +19,12 @@ import { dirname, join, normalize } from "node:path";
 import ts from "typescript";
 
 const gitIn = (root, args) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "ignore"] });
-const lines = (out) => out.split("\n").filter(Boolean);
+/** A NUL-terminated git listing (`-z`): git quotes a non-ASCII or tab-bearing path in a line listing, never here. */
+const nulList = (out) => out.split("\0").filter(Boolean);
 /** `git grep -l -F`, which exits 1 when nothing matches. Each path comes back after `prefix` (`<ref>:`). */
 function grepFiles(root, refArgs, text, dirs, prefix) {
   try {
-    return lines(gitIn(root, ["grep", "-l", "-F", "-e", text, ...refArgs, "--", ...dirs])).map((f) => f.slice(prefix.length));
+    return nulList(gitIn(root, ["grep", "-l", "-z", "-F", "-e", text, ...refArgs, "--", ...dirs])).map((f) => f.slice(prefix.length));
   } catch (err) {
     if (err.status === 1) return [];
     throw err;
@@ -41,7 +42,7 @@ export const fsReader = (root) => {
   const read = (path) => { try { return readFileSync(join(root, path), "utf8"); } catch { return null; } };
   read.packageDirs = () => readdirSync(join(root, "packages"));
   read.list = (dir) => { try { return readdirSync(join(root, dir), { recursive: true }).map((f) => join(dir, f)); } catch { return []; } };
-  read.tracked = () => lines(gitIn(root, ["ls-files"]));
+  read.tracked = () => nulList(gitIn(root, ["ls-files", "-z"]));
   read.grep = (text, dirs) => grepFiles(root, [], text, dirs, "");
   return read;
 };
@@ -90,8 +91,9 @@ export const gitReader = (root, ref) => {
   const fetch = (scope) => {
     fetched.add(scope);
     let listing;
-    try { listing = lines(git(["ls-tree", "-r", ref, "--", scope])); } catch { return; }
-    const blobs = listing.map((l) => /^\d+ blob ([0-9a-f]+)\t(.*)$/.exec(l)).filter(Boolean);
+    // NUL-terminated (`-z`): a line listing quotes a non-ASCII or tab-bearing path, which then matches no lookup.
+    try { listing = git(["ls-tree", "-r", "-z", ref, "--", scope]).split("\0").filter(Boolean); } catch { return; }
+    const blobs = listing.map((l) => /^\d+ blob ([0-9a-f]+)\t(.*)$/s.exec(l)).filter(Boolean);
     if (!blobs.length) return;
     const out = execFileSync("git", ["cat-file", "--batch"], { cwd: root, input: blobs.map((b) => b[1]).join("\n") + "\n", maxBuffer: 1 << 30, stdio: ["pipe", "pipe", "ignore"] });
     let at = 0;
@@ -108,9 +110,9 @@ export const gitReader = (root, ref) => {
     if (!fetched.has(scope)) fetch(scope);
     return cache.get(path) ?? null;
   };
-  read.packageDirs = () => git(["ls-tree", "--name-only", `${ref}:packages`]).split("\n").filter(Boolean);
-  read.list = (dir) => { try { return git(["ls-tree", "-r", "--name-only", ref, "--", `${dir}/`]).split("\n").filter(Boolean); } catch { return []; } };
-  read.tracked = () => lines(gitIn(root, ["ls-tree", "-r", "--name-only", ref]));
+  read.packageDirs = () => git(["ls-tree", "-z", "--name-only", `${ref}:packages`]).split("\0").filter(Boolean);
+  read.list = (dir) => { try { return git(["ls-tree", "-r", "-z", "--name-only", ref, "--", `${dir}/`]).split("\0").filter(Boolean); } catch { return []; } };
+  read.tracked = () => nulList(gitIn(root, ["ls-tree", "-r", "-z", "--name-only", ref]));
   read.grep = (text, dirs) => grepFiles(root, [ref], text, dirs, `${ref}:`);
   return read;
 };

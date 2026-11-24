@@ -218,7 +218,7 @@ describe("activate", () => {
     const flow = defineFlow({
       kind: "rescued-activator",
       resources: { skills: defineSkillsCollection({ scope: "session" }) },
-      actions: { run: { inputSchema: z.object({ message: z.string() }), block: turn } },
+      actions: { run: turn },
     })();
     const result = await testFlow({
       flow,

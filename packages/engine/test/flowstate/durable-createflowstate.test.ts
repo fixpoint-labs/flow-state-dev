@@ -38,7 +38,7 @@ const approvalFlow = defineFlow({
 describe("createFlowState durable: true — end to end", () => {
   it("suspends a durable action and resumes it via the provider built from stores", async () => {
     const fs = createFlowState({
-      flows: { approvalFlow },
+      flows: [approvalFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: (() => undefined) as never,
       durable: true

@@ -1,22 +1,24 @@
 // @vitest-environment happy-dom
-/** Messages: both sides, newest first, grouped by exchange; a sent message is its own tool line. */
+/** Messages: both sides, newest first, grouped by exchange; a sent message is its own line in the conversation. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientHttpError } from "@flow-state-dev/client";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
-import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
-const readPages = vi.fn();
-vi.mock("@flow-state-dev/client", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/client")>()),
-  readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
-}));
-const lab = { client: { userId: "u_1", resources: {} }, refresh: vi.fn() };
+// FIX-2775: the log is read whole through react's `useResource`, by `listAll()` on the client's direct read.
+const readAll = vi.fn();
+const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn(), listAll: (...a: unknown[]) => readAll(...a), entry: vi.fn() }));
+// A subscription that hears nothing: each view reads once on open.
+const lab = { client: { userId: "u_1", resources: {}, resource, subscribe: () => ({ close: () => {} }) }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
-import { ToolLineGroup } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
+import { ToolGroup } from "../src/components/flow-state/tool";
+import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
+import type { DataItem } from "@flow-state-dev/core/items";
 
 const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
   text: "hello",
@@ -34,10 +36,13 @@ const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000,
 const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
-const snapshot = { sessions: [{ id: "workforce-roster-own-u_1", flowKind: "workforce-roster", parentSessionId: null }], readAt: 1 } as unknown as LoadedSnapshot;
+/** The log's entries as the direct read answers them. */
+const entries = (stored: WorkerMessageResourceState[]) =>
+  stored.map((r) => ({ topic: r.id, storageKey: `workforce/messages/${r.id}`, value: r, version: 1 }));
 
 beforeEach(() => {
-  readPages.mockReset();
+  readAll.mockReset();
+  resource.mockClear();
   window.history.replaceState(null, "", "/messages");
 });
 afterEach(() => cleanup());
@@ -50,7 +55,7 @@ describe("the message log, as exchanges", () => {
   });
 
   it("leaves out a row that isn't a message, rather than drawing half of one", () => {
-    expect(toMessages([{ clientData: ask }, { clientData: { id: "x" } }, {}]).map((r) => r.id)).toEqual(["msg_a"]);
+    expect(toMessages([ask, { id: "x" }, undefined]).map((r) => r.id)).toEqual(["msg_a"]);
   });
 
   it("shows a message by its first line", () => {
@@ -59,11 +64,13 @@ describe("the message log, as exchanges", () => {
 });
 
 describe("the Messages view", () => {
-  it("lists every message with both sides, read through the user's roster session, and opens either side's session", async () => {
-    readPages.mockResolvedValue([ask, answer, other].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+  it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
+    readAll.mockResolvedValue(entries([ask, answer, other]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
-    expect(readPages.mock.calls[0]![1]).toBe("workforce-roster-own-u_1");
+    expect(resource).toHaveBeenCalledWith(expect.objectContaining({ scope: "user", pattern: "workforce/messages/*" }), undefined);
+    // Every page, not the first: the log is read whole.
+    expect(readAll).toHaveBeenCalledTimes(1);
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
       "coordinator>researcher",
       "researcher>coordinator",
@@ -81,8 +88,8 @@ describe("the Messages view", () => {
   it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
     const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
     const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
-    readPages.mockResolvedValue([onItsWay, gaveUp].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue(entries([onItsWay, gaveUp]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
     expect(status("msg_d")).toBe("on its way");
@@ -94,8 +101,8 @@ describe("the Messages view", () => {
     const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
     const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
     const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
-    readPages.mockResolvedValue([waiting, onPerson, answered, late, ask].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue(entries([waiting, onPerson, answered, late, ask]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const replyState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-reply-state")?.textContent;
     expect(replyState("msg_f")).toBe("reply · waiting");
@@ -107,14 +114,20 @@ describe("the Messages view", () => {
   });
 
   it("says so when there are none", async () => {
-    readPages.mockResolvedValue([]);
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue([]);
+    render(<Messages />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
 
+  it("says this Lab keeps no log when no flow declares it", async () => {
+    readAll.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
+    render(<Messages />);
+    expect((await screen.findByTestId("messages-empty")).textContent).toContain("keeps no roster");
+  });
+
   it("says what the Lab answered when the log didn't load", async () => {
-    readPages.mockRejectedValue(new Error("store offline"));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockRejectedValue(new Error("store offline"));
+    render(<Messages />);
     await waitFor(() => expect(screen.getByTestId("messages-failure").textContent).toContain("store offline"));
   });
 
@@ -126,55 +139,74 @@ describe("the Messages view", () => {
 });
 
 describe("a message the worker sent, in its own conversation", () => {
-  const call = (id: string, args: unknown, output: unknown, status = "completed"): ToolOutputItem =>
-    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "sendMessage", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
-  const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { name: "discover", arguments: "{}" } } as unknown as ToolOutputItem;
+  // The send's own line, as workforce writes it (`workforce:sent`), tied to the call that wrote it by its key.
+  const sent = (id: string, value: Record<string, unknown>, callId = `tc_${id}`) =>
+    ({
+      id,
+      type: "data",
+      status: "completed",
+      requestId: "r",
+      dataType: "workforce:sent",
+      key: `r:root/step[0]/tool[sendMessage][${callId}]`,
+      value,
+      provenance: { blockName: "sendMessage", blockInstanceId: `r:root/step[0]/tool[sendMessage][${callId}]:0`, phase: "main" },
+    }) as unknown as DataItem;
+  // The call that wrote it: the model reads it as that line, never as a step.
+  const sendCall = (id: string, callId = `tc_${id}`) =>
+    ({ id, type: "tool_output", status: "completed", requestId: "r", toolCall: { callId, name: "sendMessage", arguments: "{}" }, output: {}, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } }) as unknown as ToolOutputItem;
+  const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { callId: "tc_0", name: "discover", arguments: "{}" }, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } } as unknown as ToolOutputItem;
+  const drawLines = (items: unknown[]) =>
+    render(
+      <FlowProvider renderers={shiftManagerRenderers}>
+        <ItemsRenderer lines={conversationLines(items as never, [], { renderers: shiftManagerRenderers })} toolGroupRenderer={ToolGroup} />
+      </FlowProvider>,
+    );
 
-  it("is its own line, To <recipient>: <text>, never folded into the run's tool count", () => {
-    render(<ToolLineGroup items={[other, call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" })]} />);
-    const line = screen.getByTestId("message-call");
-    expect(line.textContent).toContain("To coordinator: What is the codename?");
-    expect(screen.getByTestId("tool-group").textContent).toContain("Used discover");
-    act(() => fireEvent.click(screen.getByTestId("message-call-messages")));
+  const sentLines = () => [...document.querySelectorAll<HTMLElement>('[data-line="sent"]')];
+  const partOf = (line: HTMLElement, part: string) => line.querySelector(`[data-part="${part}"]`);
+
+  it("is its own line, Messaged <recipient>: <text>, drawn once, never folded into the run's tool count, with a link to Messages", () => {
+    drawLines([other, sendCall("t1", "tc_A"), sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a" }, "tc_A")]);
+    expect(sentLines().map((line) => line.textContent)).toEqual([expect.stringContaining("Messaged coordinator: What is the codename?")]);
+    expect(screen.getByTestId("tool-group").textContent).toContain("discover");
+    expect(screen.getByTestId("tool-group").textContent).not.toContain("sendMessage");
+    act(() => fireEvent.click(screen.getByTestId("messages-link")));
     expect(window.location.pathname).toBe("/messages");
   });
 
-  it("reads Asked <recipient> for a send that asks for a reply, with a waited answer under it, or that it comes as a message (FIX-2318)", () => {
-    render(
-      <ToolLineGroup
-        items={[
-          call("t1", { to: "coordinator", text: "What is the codename?", wait: true }, { status: "answered", sent: "msg_a", reply: "BLUE-HERON" }),
-          call("t2", { to: "helper-b", text: "Ready?", wait: true }, { status: "running", sent: "msg_b", recipient: "waiting_on_person" }),
-          call("t3", { to: "pm", text: "The plan?", replyRequested: true }, { sent: "msg_c" }),
-        ]}
-      />,
-    );
-    const [asked, running, later] = screen.getAllByTestId("message-call");
+  it("reads Asked <recipient> for a waited send, with its answer under it, or that it comes as a message; one that only asks for a reply is a message", () => {
+    drawLines([
+      sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a", wait: { status: "answered", reply: "BLUE-HERON" } }),
+      sent("d2", { to: "helper-b", text: "Ready?", messageId: "msg_b", wait: { status: "running", recipient: "waiting_on_person" } }),
+      sent("d3", { to: "pm", text: "The plan?", messageId: "msg_c", replyRequested: true }),
+    ]);
+    const [asked, running, later] = sentLines();
     expect(asked!.textContent).toContain("Asked coordinator: What is the codename?");
-    expect(within(asked!).getByTestId("message-call-answer").textContent).toBe("BLUE-HERON");
-    expect(within(running!).getByTestId("message-call-answer").textContent).toBe("No answer by the deadline: it waits on the user. The answer comes as a message.");
-    // Asked and went on: the answer is a message of its own, so nothing is drawn under the line.
-    expect(later!.textContent).toContain("Asked pm: The plan?");
-    expect(within(later!).queryByTestId("message-call-answer")).toBeNull();
+    expect(partOf(asked!, "answer")!.textContent).toBe("BLUE-HERON");
+    expect(partOf(running!, "answer")!.textContent).toBe("No answer by the deadline: it waits on the user. The answer comes as a message.");
+    // Asked for a reply and went on: the answer is a message of its own, so nothing is drawn under the line.
+    expect(later!.textContent).toContain("Messaged pm: The plan?");
+    expect(partOf(later!, "answer")).toBeNull();
   });
 
   it("says it wasn't sent, and why, when the send was refused", () => {
-    render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]} />);
-    expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
-    expect(screen.getByTestId("message-call-reason").textContent).toContain("task_sessions_only");
+    drawLines([sent("d1", { to: "eng.coder", text: "hi", refused: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]);
+    expect(sentLines()[0]!.textContent).toContain("Not sent to eng.coder: hi");
+    expect(partOf(sentLines()[0]!, "reason")!.textContent).toContain("task_sessions_only");
   });
 
-  it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
-    render(
-      <ToolLineGroup
-        items={[
-          call("t1", { to: { task: "task_42" }, text: "Done yet?" }, { sent: "msg_a" }),
-          call("t2", { to: { session: "s_other" }, text: "FYI" }, { ok: false, error: "no_session: no conversation" })
-        ]}
-      />
-    );
-    const [toTask, toSession] = screen.getAllByTestId("message-call");
-    expect(toTask!.textContent).toContain("To task task_42: Done yet?");
+  it("says why when a waited send's delivery failed", () => {
+    drawLines([sent("d2", { to: "coordinator", text: "Ping?", messageId: "msg_b", wait: { status: "failed", error: "not_delivered: the session is gone." } })]);
+    expect(partOf(sentLines()[0]!, "reason")!.textContent).toBe("not_delivered: the session is gone.");
+  });
+
+  it("names a task or a conversation it was sent to, not 'another worker'", () => {
+    drawLines([
+      sent("d1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_a" }),
+      sent("d2", { to: { session: "s_other" }, text: "FYI", refused: "no_session: no conversation" }),
+    ]);
+    const [toTask, toSession] = sentLines();
+    expect(toTask!.textContent).toContain("Messaged task task_42: Done yet?");
     expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");
   });
 });

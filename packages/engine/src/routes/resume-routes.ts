@@ -6,10 +6,11 @@ import type { Schema } from "@cfworker/json-schema";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
+import { namesSession } from "../context/record-session";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
-import { isPublicReentryAllowed } from "./public-reentry";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
@@ -17,6 +18,7 @@ import {
   jsonResponse,
   parseJsonBody,
   getString,
+  legacySessionlessResponse,
   SSE_HEADERS,
   unknownRequestResponse
 } from "./route-utils";
@@ -115,7 +117,7 @@ export async function handleResumeSuspension(
   // retry/continue routes (FIX-999) and runs before anything else can act on the
   // record, returning the same not-found shape as a missing record so a refused
   // request is indistinguishable from one that does not exist.
-  if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRequest, ctx.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
 
@@ -152,6 +154,10 @@ export async function handleResumeSuspension(
       error: `Request is "${originalRequest.status}", not "suspended"`
     });
   }
+
+  // A request recorded with no session is history: it is stopped, never
+  // resumed. Refused before its gate is touched, so the gate stays pending.
+  if (!namesSession(originalRequest)) return legacySessionlessResponse("resuming this request");
 
   const suspension = await provider.loadSuspension(route.requestId, suspensionId);
   // A wait gate is never resumed from here, whatever source the waiting turn
@@ -259,6 +265,9 @@ export async function handleResumeSuspension(
     });
   }
 
+  // Nobody reads the live stream past a 202 (the caller follows the
+  // request through its GET stream): close it so it fills no further.
+  handle.liveStream?.close();
   return jsonResponse(202, {
     requestId: route.requestId
   });

@@ -182,6 +182,12 @@ export interface WorktreeRecording {
   readonly owner: WorktreeOwner;
   /** What the name's slug is made from: a task's or session's title. */
   readonly label?: string;
+  /**
+   * The name, when the caller already named the worktree: a board run whose
+   * branch and folder carry its name, so the resource reads the same.
+   * Absent: {@link worktreeName} makes one from `label`.
+   */
+  readonly name?: string;
 }
 
 /**
@@ -213,7 +219,7 @@ export async function markWorktreeProvisioning(
   await recording.collection.upsert(
     key,
     { key, state: "provisioning", owner: recording.owner },
-    { name: worktreeName(key, recording.label, place) },
+    { name: recording.name ?? worktreeName(key, recording.label, place) },
   );
 }
 
@@ -250,7 +256,7 @@ export async function markWorktreeReady(
     repo: made.repo,
     baseCommit: made.fresh ? made.baseCommit : (prior?.baseCommit ?? made.baseCommit),
     owner: prior?.owner ?? recording.owner,
-    ...(prior?.name == null ? { name: worktreeName(key, recording.label, place) } : {}),
+    ...(prior?.name == null ? { name: recording.name ?? worktreeName(key, recording.label, place) } : {}),
   });
   // The host calls this under the place's lock, the one removal takes, so no
   // removal lands between this and the provisioning write.

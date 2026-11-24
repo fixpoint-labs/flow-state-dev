@@ -211,12 +211,14 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`,
-      isDone: async () => {
-        await duringVerdict.shift()?.();
-        return true;
+    mode: {
+      name: PHASE,
+      instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`,
+      doneWhen: {
+        check: async () => {
+          await duringVerdict.shift()?.();
+          return true;
+        },
       },
     },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
@@ -297,7 +299,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
       collectionId: BOARD_ID,
       collection: resolveResourceCollection(ctx, BOARD_ID)!,
     }),
-    runOf: () => ({ issue: ISSUE, phase: PHASE }),
+    runOf: () => ({ issue: ISSUE, mode: { name: PHASE } }),
   });
   // The coding flow's own door: a line in the run's session.
   const message = harnessSessionDoor({
@@ -320,7 +322,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "steer-host" } as never);
   const state = createFlowState({
-    flows: { "steer-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -524,7 +526,7 @@ describe("a steer reaches a coding run", () => {
   it("stops polling the row when the step ends while a poll is still reading it", async () => {
     const h = host({ script: ["finish-past-a-poll"], stopsOnAbort: true });
     try {
-      // Reads of the task's row, slowed while the step runs so the first poll
+      // Reads of the task, slowed while the step runs so the first poll
       // is mid-read when the step ends.
       const resourceState = (await h.runtime()).stores.resourceState;
       const get = resourceState.get.bind(resourceState);

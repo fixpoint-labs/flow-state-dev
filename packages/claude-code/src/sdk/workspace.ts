@@ -320,19 +320,18 @@ export function createClaudeCodeWorkspaceCapability(
     name: `${name}-hydrate`,
     description: "Lay the mounted collections into the run's workspace directory.",
     inputSchema: z.object({ prompt: z.string() }),
-    sequencerStateSchema: workspaceSequencerState,
     execute: async (input, ctx) => {
       // Resolved ONCE, here, and read from the chain's state everywhere else.
-      const root = physicalPath(await resolveRoot(ctx));
+      const root = physicalPath(await resolveRoot(ctx as WorkspaceContext));
       const projection = createProjection({
         place: createHostPlace(root),
-        mounts: discoverMounts(ctx, collections, exclude),
+        mounts: discoverMounts(ctx as WorkspaceContext, collections, exclude),
       });
       const workspaceId = `${runNamespace(ctx)}#${nextWorkspaceId++}`;
-      await ctx.sequencer!.patchState({
+      await (ctx as WorkspaceContext).sequencer!.patchState({
         workspaceId,
         root,
-      });
+      } as never);
       await projection.hydrate();
       // Registered only once hydrate has succeeded. `reconcile` is reached
       // through the agent's `onErrored` and through the tap after it, and this

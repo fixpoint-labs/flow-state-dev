@@ -6,8 +6,8 @@
  *
  * Takes plain data, so it renders whatever read supplied it: a run review's
  * stop data carries the files (harness-manager's `files`, `added`, `removed`),
- * and `loadPatch` is the app's call to the `changes` read for one file
- * (harness-manager's `harnessRunChangesRead`, or a session turn's `changes`).
+ * and `loadPatch` is the app's call to the `changes` view for one file
+ * (harness-manager's `harnessRunChangesView`, or a session turn's `changes`).
  * A patch is read when its file is opened, never before, and kept once read.
  *
  * Draws nothing for a run whose changes couldn't be read (`files: null`):

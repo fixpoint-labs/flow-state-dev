@@ -2,12 +2,14 @@
  * Catch-all route adapter for framework-owned `/api/flows/[...path]` endpoints.
  *
  * The router is the host: it builds an `InboundTransportHost`, mounts the
- * built-in `HttpTransportAdapter`, plus any additional adapters supplied
+ * built-in `HttpTransportAdapter` and scheduled endpoint, plus any additional adapters supplied
  * via the `adapters` option, and exposes the merged route table as the
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher. The public API
  * shape and behavior is unchanged for callers that don't pass `adapters`.
  */
+import { attachNetworkAuthState } from "./network-auth";
 import { attachPushState } from "../push/push-delivery";
+import { attachHostDiskState } from "../blobs/host-disk";
 import type {
   FlowStateSettings,
   ModelResolver,
@@ -20,6 +22,7 @@ import {
   assertMaxChildSessionListLimit,
   createRuntimeConfig,
   resolveStaleSweep,
+  type NoticeIdScopes,
   type RuntimeConfig
 } from "../runtime-config";
 import type { ErrorCaptureHandler } from "../errors/error-capture";
@@ -31,9 +34,11 @@ import {
   createHttpTransportAdapter,
   HTTP_TRANSPORT_SOURCE
 } from "../transports/http/createHttpTransportAdapter";
+import { createScheduledEndpointAdapter } from "../transports/scheduled/createScheduledEndpointAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import { drainRequestEnds } from "../execution/request-end-hooks";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
@@ -135,7 +140,7 @@ export type CreateFlowApiRouterOptions = {
   // FIX-438.
   /**
    * Additional inbound transport adapters mounted alongside the built-in
-   * HTTP adapter. Routes from every adapter merge into the returned
+   * HTTP adapter and scheduled endpoint. Routes from every adapter merge into the returned
    * `{ GET, POST, PATCH, DELETE }` dispatcher; path collisions throw a
    * `TransportRouteCollisionError` at construction time.
    */
@@ -280,6 +285,16 @@ export type CreateFlowApiRouterOptions = {
    * process rather than once per host.
    */
   arbiter?: ConcurrencyArbiter;
+
+  // FIX-2625 D2.
+  /**
+   * Which topic scopes' notices may name what changed. On by default; pass
+   * `{ org: false }` where even an org's change timing is sensitive: no org
+   * notice then reaches a browser with ids or a collection entry's key, and
+   * every org resource watcher reads whole on any entry's change. Read by
+   * every push edge of this router.
+   */
+  noticeIds?: NoticeIdScopes;
 
   /**
    * @internal — set by `createFlowState`, which has already resolved its
@@ -563,7 +578,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           logger: runtimeConfig.logger,
           // Lets the sweep resume an overdue wait with `wait_timed_out`
           // through this router's host (FIX-1816).
-          continueRequest: (opts) => handlers.host.continueRequest(opts),
+          continueRequest: continueWithoutReader((opts) => handlers.host.continueRequest(opts)),
           // A due wake's entry runs through this router's host, as a dispatched
           // internal request in its session, as its owner (FIX-2078 D1). Off
           // where the host offers no wakes, a store that can't read them included.
@@ -587,8 +602,11 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   const httpAdapter = createHttpTransportAdapter({
     handle: handlers.handle
   });
+  // FIX-2753: the scheduled endpoint is built in too, on every app, so a flow
+  // with `schedules` (registered now or later) needs no adapter line.
   const allAdapters: InboundTransportAdapter[] = [
     httpAdapter,
+    createScheduledEndpointAdapter(),
     ...(options.adapters ?? [])
   ];
   const allBindings: AdapterBindings[] = allAdapters.map((adapter) => ({
@@ -701,6 +719,12 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     // and gives custom transports an unambiguous path.
     const dedicated = await matchDedicated(req);
     if (dedicated !== null) return dedicated;
+    if (
+      ["POST", "PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase()) &&
+      req.headers.get("sec-fetch-site") === "cross-site"
+    ) {
+      return Response.json({ error: "Cross-site mutation refused" }, { status: 403 });
+    }
     return handlers.handle(req, { path: ctx.params.path });
   };
 
@@ -767,6 +791,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // Push delivery's state (FIX-2428), for a host that serves the socket to
   // turn on with `enablePushDelivery`.
   attachPushState(router, handlers.push);
+  // Whether its host keeps its disk (FIX-824), for a host adapter to declare.
+  attachHostDiskState(router, handlers.hostDisk);
+  attachNetworkAuthState(router, options.registry, options.resolvePrincipal);
   return router;
 }
 

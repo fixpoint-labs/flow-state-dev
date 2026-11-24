@@ -11,7 +11,6 @@
 
 import type { ResourceContext } from '@flow-state-dev/core'
 import { tokenOverlap } from '@flow-state-dev/core/helpers'
-import type { ResolvedMemoryConfigs } from './config'
 import type { ResolvedHygieneConfig } from '../janitor-blocks'
 import type { RankedMemoryItem } from '../provider'
 import type { WorkingMemoryState } from '../working-memory'
@@ -22,14 +21,6 @@ import type { SemanticMemoryState } from '../semantic-memory'
 import { allFacts } from '../semantic-memory-helpers'
 import { effectiveConfidence } from '../janitor'
 
-type RecallContext = {
-  resources?: {
-    workingMemory?: ResourceContext<WorkingMemoryState>
-    episodicMemory?: ResourceContext<EpisodicMemoryState>
-    semanticMemory?: ResourceContext<SemanticMemoryState>
-  }
-}
-
 /**
  * Unified cross-store recall.
  *
@@ -37,18 +28,26 @@ type RecallContext = {
  * Deduplication priority: semantic > working > episodic.
  * Returns ranked by relevance descending.
  */
-export function buildRecall(
-  { episodicConfig, semanticConfig }: ResolvedMemoryConfigs,
-  hygiene: false | ResolvedHygieneConfig,
+export function createRecall(
+  episodicConfig?: { scope: 'user' | 'org' },
+  semanticConfig?: { scope: 'user' | 'org' },
+  // FIX-411.
+  /**
+   * When `confidenceDecay` is set, the semantic ranking branch uses
+   * `effectiveConfidence` (decayed by elapsed days). When `false` or
+   * undefined, raw `fact.confidence` is used, with no decay.
+   */
+  decayConfig?: false | { halfLife: number },
 ) {
-  const decayConfig = hygiene && hygiene.confidenceDecay
-  return function recall(ctx: RecallContext, cue?: string): RankedMemoryItem[] {
+  return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
     const results: RankedMemoryItem[] = []
 
     // 1. Read semantic facts first (highest authority)
     if (semanticConfig) {
       try {
-        const semRef = ctx.resources?.semanticMemory
+        const semRef = semanticConfig.scope === 'user'
+          ? ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          : ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
 
         if (semRef) {
           const facts = allFacts(semRef)
@@ -83,7 +82,7 @@ export function buildRecall(
 
     // 2. Read working memory
     try {
-      const wmRef = ctx.resources?.workingMemory
+      const wmRef = ctx.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
       if (wmRef) {
         const entries = wmItems(wmRef)
         for (const entry of entries) {
@@ -112,7 +111,9 @@ export function buildRecall(
     // 3. Read episodic memory (if installed)
     if (episodicConfig) {
       try {
-        const epRef = ctx.resources?.episodicMemory
+        const epRef = episodicConfig.scope === 'user'
+          ? ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          : ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
 
         if (epRef) {
           const episodes = recent(epRef)
@@ -149,4 +150,24 @@ export function buildRecall(
     // Sort by relevance descending
     return results.sort((a, b) => b.relevance - a.relevance)
   }
+}
+
+/**
+ * Build the recall helper from resolved tier scopes and hygiene config.
+ *
+ * Derives the recall-ranking decay config from hygiene (effective-confidence
+ * decay applies only when `confidenceDecay` is on; otherwise recall falls
+ * through to raw `fact.confidence`) and wires it into `createRecall`. Shared
+ * by `createMemoryCapability` (for `fns.recall`) and `system()` (for
+ * `mem.recall`) so the decay derivation lives in one place.
+ */
+export function buildRecall(
+  episodicConfig: { scope: 'user' | 'org' } | undefined,
+  semanticConfig: { scope: 'user' | 'org' } | undefined,
+  hygiene: false | ResolvedHygieneConfig,
+) {
+  const decayConfig = hygiene && hygiene.confidenceDecay
+    ? { halfLife: hygiene.confidenceDecay.halfLife }
+    : false
+  return createRecall(episodicConfig, semanticConfig, decayConfig)
 }

@@ -32,7 +32,6 @@ const jobs = defineFlow({
   actions: {
     // Fails, so it can be retried.
     fail: {
-      inputSchema: noteSchema,
       userMessage: (input: { text: string }) => input.text,
       block: handler({
         name: "jobs-fail",
@@ -45,7 +44,6 @@ const jobs = defineFlow({
     },
     // Stays in progress until the test releases it, so it can be aborted.
     hold: {
-      inputSchema: noteSchema,
       userMessage: (input: { text: string }) => input.text,
       block: handler({
         name: "jobs-hold",

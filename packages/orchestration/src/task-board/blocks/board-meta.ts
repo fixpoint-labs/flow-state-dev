@@ -2,9 +2,9 @@
 /**
  * Board-level meta emission.
  *
- * The substrate's `task-change` component items carry per-task
+ * The substrate's `task-change` data items carry per-task
  * lifecycle state (added → claimed → completed/errored/...). This file
- * adds a complementary `task-board-meta` component item that carries
+ * adds a complementary `task-board-meta` data item that carries
  * the *aggregate* state of the board itself — "the drain is starting"
  * vs "the drain is finished" — plus a summary of task counts when the
  * board exits.
@@ -13,7 +13,7 @@
  *
  * - **Renderer pivot.** A future `<TaskPlan />` renderer subscribes to
  *   `task-board-meta` for board-level state (a header / status badge /
- *   completion summary) and to `task-change` for per-task rows.
+ *   completion summary) and to `task-change` for each task.
  *   Without the meta item the renderer would have to infer board state
  *   from task aggregates, which is fragile.
  *
@@ -24,8 +24,8 @@
  *   top of the substrate's baseline `active` / `completed`.
  *
  * Both emitting blocks are state-mutation-only sentinels — they
- * produce no novel output, just side-effect a component item via
- * `ctx.emit.component`. Wired with `.tap()`.
+ * produce no novel output, just side-effect a data item via
+ * `ctx.emit.data`. Wired with `.tap()`.
  *
  * ## Why dispatch needs a reason of its own
  *
@@ -65,14 +65,14 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef } from "../../tasks";
+import type { Task, TaskBoardMeta, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, waitsOnHold, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
 import { holdActorOf } from "../../tasks/collection/holds";
 
-/** Component-item type emitted by both board-meta blocks. */
-export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
+/** Data-item type emitted by both board-meta blocks. */
+export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 export interface BoardMetaOptions {
   name: string;
@@ -103,15 +103,15 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
   return handler({
     name,
     // Substrate-internal meta-emitter. The task-board-meta
-    // ComponentItem it emits IS the user-visible signal; the
+    // data item it emits IS the user-visible signal; the
     // auto-emitted block_output trace is redundant noise.
     transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      ctx.emit.component(
-        TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "active" },
-        { key: collectionId }
+      ctx.emit.data(
+        TASK_BOARD_META_DATA_TYPE,
+        { collectionId, status: "active" } satisfies TaskBoardMeta,
+        { key: collectionId, itemVisibility: { client: true, history: false } }
       );
     },
   });
@@ -246,7 +246,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
   return handler({
     name,
     // Substrate-internal meta-emitter. The task-board-meta
-    // ComponentItem it emits IS the user-visible signal; the
+    // data item it emits IS the user-visible signal; the
     // auto-emitted block_output trace is redundant noise.
     transient: true,
     inputSchema: z.unknown(),
@@ -309,10 +309,10 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
                   : allRemainingDispatched
                   ? "dispatched"
                   : "blocked-by-failures";
-      ctx.emit.component(
-        TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
-        { key: collectionId }
+      ctx.emit.data(
+        TASK_BOARD_META_DATA_TYPE,
+        { collectionId, status: "completed", terminationReason, counts, maxTotalRetries } satisfies TaskBoardMeta,
+        { key: collectionId, itemVisibility: { client: true, history: false } }
       );
     },
   });

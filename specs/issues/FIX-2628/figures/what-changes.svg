@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Two panels. Today: the lab's host wires workforce by hand with a circular callback and casts; five files sit in workforce/flows, among them the lab's own projects, pins and dismissals; a 1,642-line adapter watches, caches and assembles rows over sessions made only to read; and a session works in a workforce project. After: the host lists three kits, workforce, harnesses and the app's own; the app kit holds pins, dismissals, the repositories flow, two worker settings and a run source; src/lab.ts is a few hooks over the kit packages' views plus the app's thread renderer; and a session works in a repository the workspace host registered, with no workforce project."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .pkg   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-in  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="446" height="348" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="old" x="32" y="50" width="414" height="58" rx="5"/>
+    <text class="t-h" x="46" y="70">host.mts · 160 lines</text>
+    <text class="t-s" x="46" y="88">hand-wired workforce: a circular workerFlows callback,</text>
+    <text class="t-s" x="46" y="102">hireWorkforce, a flows map, three casts</text>
+    <rect class="old" x="32" y="116" width="414" height="58" rx="5"/>
+    <text class="t-h" x="46" y="136">workforce/flows/ · 5 files, 503 lines</text>
+    <text class="t-s" x="46" y="154">the coding flow, and the lab's own projects, pins,</text>
+    <text class="t-s" x="46" y="168">dismissals and user marks in workforce's folder</text>
+    <rect class="old" x="32" y="182" width="414" height="72" rx="5"/>
+    <text class="t-h" x="46" y="202">src/adapter.ts · 1,642 lines</text>
+    <text class="t-s" x="46" y="220">watch loops, caches and row assembly over sessions</text>
+    <text class="t-s" x="46" y="234">made only to read; 17 hand-written types;</text>
+    <text class="t-s" x="46" y="248">a 728-line fake of it for the tests</text>
+    <rect class="old" x="32" y="262" width="414" height="58" rx="5"/>
+    <text class="t-h" x="46" y="282">A session works in a workforce project</text>
+    <text class="t-s" x="46" y="300">9 project imports; the repository is a row's field;</text>
+    <text class="t-s" x="46" y="314">the run finds it through workforce's projectWorkspace()</text>
+    <text class="t-gone" x="32" y="348">ALL FOUR GO</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="16" width="446" height="348" rx="6"/>
+    <text class="t-lbl" x="494" y="38">AFTER</text>
+    <rect class="new" x="494" y="50" width="414" height="58" rx="5"/>
+    <text class="t-h" x="508" y="70">host: kits: [workforce, harnesses, claudeCodeStyle]</text>
+    <text class="t-s" x="508" y="88">one config object each; env parsing stays in</text>
+    <text class="t-s" x="508" y="102">fsdev.config.mts; no callback, no casts</text>
+    <rect class="new" x="494" y="116" width="414" height="58" rx="5"/>
+    <text class="t-h" x="508" y="136">The app kit: what only this app has</text>
+    <text class="t-s" x="508" y="154">pins, dismissals, the repositories flow, two worker</text>
+    <text class="t-s" x="508" y="168">settings, the run source; none of it in workforce/</text>
+    <rect class="new" x="494" y="182" width="414" height="72" rx="5"/>
+    <text class="t-h" x="508" y="202">src/lab.ts · a few hooks and the renderer</text>
+    <text class="t-s" x="508" y="220">useView over the kit packages' views, direct reads</text>
+    <text class="t-s" x="508" y="234">for pins; types from ViewOutput; tests on an</text>
+    <text class="t-s" x="508" y="248">in-process host, as the contract test is today</text>
+    <rect class="pkg" x="494" y="262" width="414" height="58" rx="5"/>
+    <text class="t-h" x="508" y="282">A session works in a registered repository</text>
+    <text class="t-s" x="508" y="300">the workspace host's one list (FIX-2593); the app's</text>
+    <text class="t-s" x="508" y="314">run source finds it from the session or its filer</text>
+    <text class="t-in" x="494" y="348">MEASURED BY THE INVENTORY · POC_EXPECT=gone</text>
+  </g>
+</svg>

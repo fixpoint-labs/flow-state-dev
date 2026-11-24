@@ -1,14 +1,15 @@
 /**
  * A host running the worker model on the real engine, for the worker-model
  * tests: two worker flows registered once each, the roster flow with the
- * hire, fork, edit and fire blocks, and an HTTP router whose caller is the
+ * hire, fork, edit, fire and reset blocks, and an HTTP router whose caller is the
  * verified user in an `x-user` header. Two hosts built over one store are two
  * processes of one app.
  *
  * `fixture-worker`'s door answers with what the turn ran as: the worker, its
  * instructions and settings as its flow parsed them, its skills, and which of
  * the two documents it reaches. Given `share:<key>`, it also writes a shared
- * entry through `writeShared`.
+ * entry through `writeShared`. Given `roster`, it also answers the session
+ * user's roster as the turn reads it (the list the identity line names from).
  */
 import {
   defineFlow,
@@ -88,8 +89,12 @@ export type TurnAnswer = {
   teamInstructions: string | null;
   tone: string;
   skills: string[];
+  /** Each skill's `SKILL.md`, in the order of `skills`. */
+  skillMds: string[];
   handbook: boolean;
   ledger: boolean;
+  /** Only when the message is `roster`: the turn's roster, by id, name and whether it is standard. */
+  roster?: { id: string; name: string | null; standard: boolean }[];
 };
 
 export type HostOptions = {
@@ -100,13 +105,15 @@ export type HostOptions = {
   skills?: InitialSkill[];
   /** The settings of `fixture-worker` a user may see on the roster. */
   showSettings?: string[];
+  /** `fixture-worker` declares no `tone`: a host older (or newer) than the rows it reads. */
+  withoutTone?: boolean;
 };
 
 export type Host = ReturnType<typeof bootHost>;
 
 const doorInput = z.object({ message: z.string() }).strict();
 
-function workerFlow(flow: string, installation: WorkerInstallation) {
+function workerFlow(flow: string, installation: WorkerInstallation, withoutTone = false) {
   const door = handler({
     name: `${flow}-run`,
     inputSchema: doorInput,
@@ -115,6 +122,12 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
     resources: { ...installation.resources, teamNotes },
     execute: async (input, ctx): Promise<TurnAnswer> => {
       const worker = await installation.resolveWorker(ctx, flow);
+      // "wait" holds the turn until it is stopped, for a test of a running turn.
+      if (input.message === "wait") {
+        await new Promise((resolve) => (ctx.signal.aborted ? resolve(undefined) : ctx.signal.addEventListener("abort", resolve, { once: true })));
+        throw new DOMException("The turn was stopped.", "AbortError");
+      }
+      if (input.message === "fail") throw new Error("The turn failed.");
       if (input.message.startsWith("share:")) {
         await writeShared(ctx as never, "teamNotes", input.message.slice("share:".length), { text: input.message });
       }
@@ -126,8 +139,18 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
         teamInstructions: (config.teamInstructions as string | undefined) ?? null,
         tone: String(config.tone),
         skills: ((config.workerSkills as InitialSkill[] | undefined) ?? []).map((s) => s.name),
+        skillMds: ((config.workerSkills as InitialSkill[] | undefined) ?? []).map((s) => s.skillMd),
         handbook: worker.reaches("handbook"),
-        ledger: worker.reaches("ledger")
+        ledger: worker.reaches("ledger"),
+        ...(input.message === "roster"
+          ? {
+              roster: (await installation.roster(ctx)).map((row) => ({
+                id: row.id,
+                name: row.name,
+                standard: row.standard
+              }))
+            }
+          : {})
       };
     }
   });
@@ -142,7 +165,9 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
   });
   return defineFlow({
     kind: flow,
-    configSchema: workerConfigSchema().extend({ tone: z.string().default("plain"), apiToken: z.string().optional() }),
+    configSchema: withoutTone
+      ? workerConfigSchema().extend({ apiToken: z.string().optional() })
+      : workerConfigSchema().extend({ tone: z.string().default("plain"), apiToken: z.string().optional() }),
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },
     actions: {
@@ -187,7 +212,7 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
     documents: { handbook, ledger },
     ...(options.skills !== undefined ? { skills: options.skills } : {})
   });
-  const fixture = workerFlow(FIXTURE, installation);
+  const fixture = workerFlow(FIXTURE, installation, options.withoutTone === true);
   const other = workerFlow(OTHER, installation);
   flows = {
     [FIXTURE]:
@@ -206,7 +231,8 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
     hire: { inputSchema: blocks.hire.inputSchema, block: blocks.hire },
     fork: { inputSchema: blocks.fork.inputSchema, block: blocks.fork },
     edit: { inputSchema: blocks.edit.inputSchema, block: blocks.edit },
-    fire: { inputSchema: blocks.fire.inputSchema, block: blocks.fire }
+    fire: { inputSchema: blocks.fire.inputSchema, block: blocks.fire },
+    reset: { inputSchema: blocks.reset.inputSchema, block: blocks.reset }
   });
 
   const instances = {
@@ -268,7 +294,7 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
   };
 
   /** Run a roster action as `userId`, in process, on their roster session. */
-  const rosterAction = async (userId: string, action: "hire" | "fork" | "edit" | "fire", input: unknown, orgId = ORG) => {
+  const rosterAction = async (userId: string, action: "hire" | "fork" | "edit" | "fire" | "reset", input: unknown, orgId = ORG) => {
     const result = await runAction({
       flow: instances.roster,
       actionName: action,

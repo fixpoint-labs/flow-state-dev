@@ -4,6 +4,7 @@ import type { MessageItem } from "@flow-state-dev/core/items";
 import { ModelBadge } from "@/components/flow-state/model-badge";
 import { Message } from "@/components/flow-state/message";
 import { cn } from "@/lib/utils";
+import { BASE_PATH } from "@/lib/base-path";
 
 export function ChatAgentMessage({ item }: { item: MessageItem }) {
   if (item.role !== "user" && item.role !== "assistant") return null;
@@ -30,7 +31,8 @@ export function ChatAgentMessage({ item }: { item: MessageItem }) {
           />
         </div>
       )}
-      <Message item={item} />
+      {/* A line's files are read from this app's server, under its base path. */}
+      <Message item={item} readBase={BASE_PATH} />
     </div>
   );
 }

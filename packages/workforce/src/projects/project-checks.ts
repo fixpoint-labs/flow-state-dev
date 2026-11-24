@@ -19,7 +19,7 @@
  * refuses that run on its own, before anything runs.
  *
  * @example
- *   const phase = commandCheck(codePhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 });
+ *   const mode = commandCheck(codeMode, { commands: projectChecks(), timeoutMs: 10 * 60_000 });
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runProjectOf } from "./run-project";

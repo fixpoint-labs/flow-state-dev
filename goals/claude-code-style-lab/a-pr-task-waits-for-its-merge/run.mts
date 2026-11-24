@@ -46,7 +46,7 @@ const FIRST_STEP = "Reading the worker's instructions, brief and conventions.";
 const prUrl = (n: number) => `https://github.com/acme/app/pull/${n}`;
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  "no-wait": [{ module: "labs/claude-code-style/workforce/flows/harness-thread.mts", from: "awaitPullRequests: true,", to: "awaitPullRequests: false," }],
+  "no-wait": [{ module: "packages/harness-manager/src/kit/coder-flow.ts", from: "awaitPullRequests: options.pullRequests !== false,", to: "awaitPullRequests: false," }],
   "ignore-pr-state": [
     {
       module: "packages/harness-manager/src/manager.ts",
@@ -142,7 +142,11 @@ await runGoal(async (failures, tell) => {
       const { status } = await sent.wait();
       return status;
     };
-    const hex = (id: string) => id.replace(/^task_/, "");
+    /**
+     * What the stub finds a task's run by: its branch and folder are named `<slug of the
+     * task's title>-<6 hex>` and carry no task id, so a pull request matches `/<slug>-`.
+     */
+    const runOf = (title: string) => `/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-`;
 
     browser = await launchChromium();
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
@@ -154,7 +158,7 @@ await runGoal(async (failures, tell) => {
 
     // ── a: the run opens PR 7 and finishes; the task waits on it.
     const t1 = await file(session, fixture.title, fixture.goal);
-    prs[7] = { match: hex(t1), state: "open" };
+    prs[7] = { match: runOf(fixture.title), state: "open" };
     setGh();
     const first = await waitOrSettle(session, t1);
     if (first === undefined) throw new Error(`setup: task ${t1} neither waited nor settled: ${JSON.stringify(await rowOf(session, t1))}`);
@@ -268,7 +272,7 @@ await runGoal(async (failures, tell) => {
 
     // ── d: a second task's PR closes unmerged; a line cancels it with the reason.
     const t2 = await file(session, fixture.closedTitle, fixture.closedGoal);
-    prs[8] = { match: hex(t2), state: "open" };
+    prs[8] = { match: runOf(fixture.closedTitle), state: "open" };
     setGh();
     const second = await waitOrSettle(session, t2);
     const t2Row = second?.value;

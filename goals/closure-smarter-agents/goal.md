@@ -34,9 +34,18 @@ draws a docs question.
   search that names the page reads nothing), and the reply states each fact.
 - **coder** graded from the record outward: each recorded check the report names must have the
   outcome the report gives it (the workspace's own pass rule), and at least one must be named. Only
-  a code span can name a check the record lacks, which fails; prose is never parsed into a command.
-  A `null` record fails. The record is the run
-  record's `checks` (labs, Shift Manager), or the harness session turn's (Kitchen Sink).
+  a command part in a code span can name a check the record lacks, which fails; prose is never parsed
+  into a command. A code span is split at `;`, `&&`, `||` and `|` outside quotes, and each part that
+  reads as a command (a program such as `pnpm` or `node` and at least one argument; a bare `node` is
+  prose) is graded alone, so a recorded check inside plumbing
+  (`node check.mjs; echo "exit code: $?"`, `pnpm test | tail -20`) passes and an unrecorded part
+  (`node check.mjs && pnpm lint`) fails. A `null` record fails. The record is the run
+  record's `checks` (labs, Shift Manager), read once the coding run the worker filed has settled
+  (every run record `succeeded` or `failed`; a worker can end its turn before the run writes one),
+  or the harness session turn's (Kitchen Sink). A run not settled within 20 minutes of the turn
+  fails as unsettled.
+  *Decided in build:* a command part, not the whole span (FIX-2502 D3): a true report that wrapped
+  its check in `echo` or a pipe failed under the whole-span rule.
 - **knowledge** at least 3 lookups, and a cited source is one a lookup returned.
 - **sizing** the sum, in 50 words or fewer (D2).
 - **skill** precondition: the worker holds the skill; then no slash in the ask, a `loadSkill` of
@@ -55,14 +64,16 @@ driver answers what an app stops to ask the person (a tool approval: yes; a revi
 changes: accepted), as the person at the page would; a question a run asks is left waiting.
 
 **Switches:** on the control and the cut run, the scripts write `skills: activateTool: true` into
-the asked worker's `WORKER.md` for the run (Kitchen Sink: each specialist the desk routes to), and
-set Teammates' `TEAMMATES_CHECKS`. At the wrap they set nothing. The fitting skill is a fixture
+the asked worker's `WORKER.md` for the run (Kitchen Sink: each specialist the desk routes to).
+At the wrap they set nothing. The fitting skill is a fixture
 (its marker is held out) and is planted on every pass. Everything planted is journaled and put
 back after the run, and by the next run if the machine killed this one (`closure.mts` →
-`planted`). A project's checks (the labs' and Shift Manager's project row, Kitchen Sink's
-`KITCHEN_SINK_HARNESS_CHECKS`) are the project's data, a fixture on every pass.
+`planted`). The checks a coding run passes (the Claude Code-style lab's `CLAUDE_CODE_STYLE_CHECKS`,
+Shift Manager's project row, Teammates' `TEAMMATES_CHECKS`, Kitchen Sink's
+`KITCHEN_SINK_HARNESS_CHECKS`) are the app's or the project's data, a fixture on every pass.
+The control's older Claude Code-style tree reads them off its project row instead.
 
-**Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date, "done" or length guidance of its own
+**Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date or "done" guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.
 
 **Model:** real. By default each app's own (through the AI Gateway), coder asks on Claude Code's
@@ -104,3 +115,7 @@ in at least one app where it runs.
 ## Verdict log
 | Date | Commit | Pass | Verdict | Notes |
 |------|--------|------|---------|-------|
+| 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | graders (model-free) | PASS | `heldSkills` now reads through the kit's reader; the apps' passes are model-backed and not run. "PASS — 42 grader cases (27 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, and a start that throws after serving · read: grader cases: 42; verdict rules: 32; model switch rules: 16" |
+| 2026-11-14 | fix-2541-goals-coder at c47a828ec | graders (model-free) | PASS | The coder grader reads a code span's command parts (FIX-2502 D3); the Teammates and Shift Manager coder repositories ignore `.fsdev/`, checked by a run's own repository check. The apps' passes are model-backed and not run. "PASS — 50 grader cases (31 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check · read: grader cases: 50; verdict rules: 32; model switch rules: 16" |
+| 2026-11-15 | fix-2541-goals-coder at 097f6b0d3 | graders (model-free) | PASS | A command part needs a program and an argument (a bare `node` is prose); the labs' and Shift Manager's coder asks read the run record once the filed run has settled, and fail as unsettled past 20 minutes. The apps' passes are model-backed and not run. "PASS — 54 grader cases (33 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check · read: grader cases: 54; verdict rules: 32; model switch rules: 16" |
+| 2026-11-15 | 33b218a92 (FIX-2502 branch) with this goal's code from 097f6b0d3, beside control 5a9ab85f7 with the same goal code | wrap, coder ask only, `GOAL_HAIKU=1` (Haiku) | coder: Claude Code-style 2/3 vs 2/3, Teammates 3/3 vs 3/3, Shift Manager 3/3 vs 3/3; Kitchen Sink not run | Kitchen Sink not run: the host is root, and Kitchen Sink's Claude Code mode refuses to run as root. The one failure on each side is the lab's `desk.main` filing the task with `createTask` and no assignee, so it stayed pending: "coder: the coding run did not settle within 1200s (no run was recorded)" (branch run 2, control run 1; the other lab runs assign `desk.coder`). No failure from a compound command, `.fsdev/`, a bare program name, or "no checks (null)". Branch: "FAIL — coder · run 2 · coder: the coding run did not settle within 1200s (no run was recorded)"; "PASS — teammates, wrap pass on this checkout, `33b218a92`, models anthropic/claude-haiku-5-5: coder 3/3"; "PASS — shift-manager, wrap pass on this checkout, `33b218a92`, models anthropic/claude-haiku-5-5: coder 3/3". Control: the same on `5a9ab85f7`, the lab failing run 1 |

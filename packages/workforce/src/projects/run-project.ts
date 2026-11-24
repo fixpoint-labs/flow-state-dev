@@ -17,7 +17,7 @@
  *    names in `input.project`, by visibility and id.
  *
  * Every step reads stored, server-written data: the session's
- * server-written fields, the held row's filing stamp, the workstream entry, the project row and the row the
+ * server-written fields, the held row's filing stamp, the workstream entry, the project entry and the row the
  * claim gate verified for this run. The owner is the request's resolved user,
  * checked against the project's members on every path (and, for a workstream,
  * against its owner first), never a field of the task or a hand-over's payload.
@@ -98,7 +98,7 @@ export async function runProjectOf(ctx: BlockContext): Promise<RunProject | RunS
     return otherProject(named, own) ?? fromProject(ctx, own);
   }
   // The project the held task was filed in (FIX-2161), kept on its row.
-  // The board's filing check (FIX-2333, `assertProjectFor`) asks the same
+  // The board's filing check (FIX-2333, FIX-2894: `inputLookup`'s `hasProject`) asks the same
   // order before a row exists: a change here belongs there too.
   const stamped = filedProjectOf(held);
   if (stamped !== undefined) {

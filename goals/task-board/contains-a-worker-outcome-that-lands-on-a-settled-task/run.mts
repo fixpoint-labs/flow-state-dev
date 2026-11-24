@@ -31,6 +31,7 @@ import {
   runGoal,
   stripIntentOverrides,
 } from "../../lib/index.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 interface Fixture {
   salt: string;
@@ -107,6 +108,7 @@ await runGoal(async (failures) => {
   const { stores, runtimeConfig } = durableStores();
 
   const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
@@ -126,20 +128,20 @@ await runGoal(async (failures) => {
   // something, so the return value cannot discriminate.
   type TaskChangeRow = {
     type?: string;
-    data?: {
+    value?: {
       collectionId?: string;
       task?: { id?: string; status?: string; output?: { receipt?: string }; error?: string };
     };
   };
   const changes = ((record?.items ?? []) as unknown as TaskChangeRow[]).filter(
-    (i) => i.type === "component" && i.data?.collectionId === COLLECTION_ID
+    (i) => i.type === "data" && i.value?.collectionId === COLLECTION_ID
   );
 
   const latest = new Map<string, { status?: string; receipt?: string; error?: string }>();
   for (const change of changes) {
-    // The board also emits a meta component on the same collection id; only
+    // The board also emits a meta record on the same collection id; only
     // the per-task lifecycle rows carry a `task`.
-    const task = change.data?.task;
+    const task = change.value?.task;
     if (task?.id === undefined) continue;
     latest.set(task.id, {
       status: task.status,

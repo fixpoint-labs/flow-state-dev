@@ -25,7 +25,7 @@ const flow = defineFlow({ kind: "probe", actions: { probe: { block: probe } } })
 
 async function probeWith(options: { durable: boolean; router: boolean; sweepIntervalMs?: number }) {
   const state = createFlowState({
-    flows: { probe: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     durable: options.durable,
     ...(options.sweepIntervalMs !== undefined ? { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } } : {})
@@ -83,6 +83,7 @@ describe("RequestHost.hasWaitSweeper", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/probe/s_1/actions/probe", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "u_1", input: {} })
         }),
         { params: { path: ["probe", "s_1", "actions", "probe"] } }
@@ -131,6 +132,7 @@ async function probeThrough(router: { POST: (r: Request, c: unknown) => Promise<
   const res = await router.POST(
     new Request("http://localhost/api/flows/probe/s_1/actions/probe", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "u_1", input: {} })
     }),
     { params: { path: ["probe", "s_1", "actions", "probe"] } }

@@ -89,6 +89,12 @@ actions: {
 - Action input validation runs before any block execution
 - `userMessage` is optional — omit it for system triggers or background tasks
 
+### Bare-block entries
+
+An entry that sets nothing beyond its block is the block itself: `actions: { chat, summarize }`. The same holds for `internal.actions`, `task.actions` and an instance's `actions` override. `defineFlow` turns each bare block into `{ block }` once, in `normalizeFlowConfig`, so every reader past it (the runtime, HTTP, MCP, the devtool) sees only the object form, and `NormalizedActions` gives the client the same input typing as `{ block }`. Webhook bindings and schedules have no bare form: each always carries `input` or `cron`.
+
+The same normalize step resolves an action's (and a read's) `description` to `action.description ?? block.description`, so MCP's tool text and its definition-time check read one value. An action's own description still wins; set one when a public MCP tool needs wording the block's doesn't have.
+
 ### When to override `inputSchema`
 
 `inputSchema` is optional because every block already carries its own. Override it when the action's public contract should diverge from the block's:
@@ -160,10 +166,10 @@ A block hook runs as its own block, on a top-level path beside the action's `roo
 
 When an action is invoked, the framework executes this sequence:
 
-1. Resolve flow instance by exact id (the route's first segment) and action
+1. Resolve flow instance by exact id (the route's first segment) and action. Every request names its session: a run with none is refused before anything is written (`400 session-required` over HTTP, `SessionRequiredError` from `runAction` and `host.dispatch`). An entry point with no conversation to name (a webhook binding with no `sessionId`, a `per-fire` schedule fire, an MCP call with no session directive) makes a one-off id with `oneOffSessionId()` before it dispatches
 2. Validate action input against `inputSchema`
 3. Admit ownership: a named `sessionId` / `requestId` must be owned by the resolved instance (`resolveRecordOwner`), else `FlowInstanceBindingMismatchError` before any write; a record with no owner recorded resolves to the singleton of its kind or, for a collection kind, `migration-required`
-4. Resolve or create session (ephemeral if no `sessionId`), stamping `flowId` (owner) and `flowKind` (definition) on new session and request records and on the active-request entry
+4. Resolve or create the named session, stamping `flowId` (owner) and `flowKind` (definition) on new session and request records and on the active-request entry
 5. Require user context (Phase 1 policy)
 6. Create request scope and state
 7. Emit user message item (if `userMessage` defined)
@@ -181,7 +187,7 @@ Retry, continue and resume re-enter the instance recorded as the request's owner
 
 Resources are **concrete persisted data**. They are declared once in the flow-level `resources` map — each resource's own `scope` decides where it persists. Scope configs carry state and a `client` block; they do not carry resources.
 
-A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, and `derived` computes named projections from `{ state, resources }`. Both land under `clientData.<scope>.<name>` on the client.
+A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, under `clientData.<scope>.<name>` on the client. A value computed for a screen is a view ([Views](#views)).
 
 ```ts
 defineFlow({
@@ -198,21 +204,15 @@ defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    client: {
-      expose: ["messageCount"],
-      derived: {
-        activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-      },
-    },
+    client: { expose: ["messageCount"] },
   },
 });
 ```
 
 **Key rules:**
 - Resources are flow-level and flat — `session.resources` / `user.resources` / `org.resources` are gone
-- State does not reach the client unless named in `expose` or `derived`
-- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
-- Each `derived` compute function receives only its own scope's state and resources
+- State does not reach the client unless named in `expose`, or read by a view
+- A scope's `client.derived` is removed: `defineFlow` refuses it, naming views
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
 
@@ -239,6 +239,43 @@ const flow = defineFlow({
 
 See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
+## Views
+
+A view is the one hook a screen uses to watch an answer the server computes ([FIX-2623](../../specs/issues/FIX-2623/SPEC.md); epic FIX-2618 O2). It is a block with a scope, declared with `defineView` and installed in a flow's `views`:
+
+```ts
+export const roster = defineView({
+  scope: "user",                 // "session", or "user" / "org" with no session
+  key: (row) => row.id,          // optional: the answer is a list, kept by key
+  block: rosterBlock,            // must declare an outputSchema: ViewOutput<typeof roster>
+});
+defineFlow({ kind: "workforce-roster", views: { roster } });
+```
+
+`defineView` (`packages/core/src/flow/defineView.ts`) refuses a block with no output schema (or `z.any()` / `z.unknown()`), so `ViewOutput<typeof view>` is never `unknown`. `defineFlow` refuses a `views` entry `defineView` didn't make.
+
+**How it runs.** Every view runs through the one view runner, `runView` (`packages/engine/src/execution/runView.ts`). It hands the run the read-only stores (below), so a view writes nothing and a write throws `read_only`. A user or org view runs with **no session**: the context's `noSession` mode loads, makes and stores none, installs no session resource, and puts a stand-in where `ctx.session` would be that throws `NoSessionError`; the run's request record and execution metadata name no session. A session view runs on a session that exists, under the action path's binding checks, and can't make one. **A view calls no model** (D2): the run's model resolver refuses, and a generator or an evaluator (which always holds a model, sometimes inline, called without the resolver) is refused before it starts, both with `ViewModelCallError`. A view's run ends like a request: its side chains drain and request-end hooks run.
+
+**What it read.** The engine records each scope state and resource a view's blocks reach, where it builds their context: the scope state getters and the one `ctx.resources` registry every block's context shares, so a child block, a sequencer step or a capability's block is recorded like the view's own block (`packages/engine/src/context/view-reads.ts`). The handle a block gets back is the same object recorded or not, so recording never changes the run's branch. Nothing about a view's dependencies is declared (D1). Every read path records through one surface, `createViewDependencies` (`view-reads.ts`), which holds the topic rules: a read is heard on its scope's topic, a session read whose reach (its storage key, or a collection's prefix, rows not yet created included) touches any lineage-shared storage by the longest-prefix ownership rule also on the owner's user topic, and another session's read on that session's topic. `views-dependency-matrix.test.ts` runs each read path against each scope with another writer, and guards that the execution context hands the raw recorder to nothing else. The other read paths are recorded or refused: a `contentTemplateRef` resolved into another scope records every scope searched (found or not, since creating the template later changes the answer); in a session view, `ctx.session`'s items, metadata, window and journal record the session; in a session or user view the request host's session reads record where each answers (FIX-2725 D1, `SessionReadObserver`), and in an org view they refuse with `NoSessionError`; and `livenessOf`, which no topic covers, refuses in every view with `UnrecordedReadError` (`422 view_unrecorded_read`). The answer carries the bare topic of each scope it read (`{ scope: "session", id }`, `{ scope: "user" }`, `{ scope: "org" }`), deduped and sorted, so an unchanged set compares equal. No topic is added.
+
+**Publishing.** Once any flow the host registers declares a view, every resource write publishes a change notice on its scope's topic, whichever flow writes it (`requestHost.hostHasViews`, wired from the registry). A view may read any resource, so a missed notice would leave its watcher stale; an extra one is allowed. A `sharedToLineage` session resource is one resource across a lineage, but a session notice reaches only the writer's session, so its write also publishes on the owner's user topic (every lineage member belongs to one user), from a run and from the resource routes alike, through one publish surface (`publishSessionResourceChange`, `bus/scope-changes.ts`). It decides sharing from the stored key's ownership, by the rule write routing uses (`sessionKeySharesLineage`), and takes the owner from the session record the writer loaded. A view that reads one records the user topic beside its session. No topic is added.
+
+**Reading the caller's sessions** (FIX-2725 D1). A session or user view reads the caller's own sessions through the request host: `sessions.list` (top-level sessions, filtered at the store by flow and by the readonly state fields the flow declares, the guard the HTTP list's `?state.` filter shares, `readonly-state-filter.ts`; newest first, at most 100 with `more`), `sessions.turns` (one session's requests, or up to 100 sessions', one store read each, bounded per session so a busy session never crowds out another, by status at the store and by action after the bounded read; at most 50 a session; status, times, source and error, never words) and `sessions.read` (a session's flow, lineage id and readonly state). A listed session carries the state the HTTP session list shows the caller, exposed and readonly fields (`client-visible-state.ts`, the rule `client-session.ts` shares), as display data; the list's `fields` filter and `sessions.read` stay readonly-only, the server-written fields a block may decide on (FIX-2754). The store wrapper tells the owner's user topic of whole-record session writes, not field deltas, and can't see which fields a flow exposes; so the execution context, beside a delta to an exposed field that lands, publishes that topic's `run` (`publishSessionOwnerRun`, `publish-writes.ts`), and the delta stays atomic. `sessions.list` also takes `ids`, read by id under the same filters and admission, heard as the list is. Every one applies the owner rule (same user, tenant and organization) and, in a view, the HTTP session list's per-row admission (`admitListedSession`, `instance-caller.ts`): a session owned by an instance with a resolver of its own answers only when that resolver, given this request, names its owner; a write session never. The view route builds the admission (`viewSessionAdmission`) and the run carries it. A refused session answers `undefined`, or nothing in a list, and its topic is never named. A `read`, `turns` or `history` that leaves a session it was asked for unanswered (a member of a `turns` batch included), refused or missing alike, is heard as `list` is, on the caller's own user topic, so a view that saw a session deleted wakes when it is made again. What each hears: `list` the caller's user topic's `run` (a session written whole, a request's status), however few rows it answers; `turns` the `request` kind on each session it answered, and its `state`, which its delete or recreate publishes (its requests outlive it in the store; `state` rather than `run`, which a busy turn's session field deltas and child sessions publish); a `read` its `state` (its flow and lineage change only by a delete or a recreate, both of which publish `state`; not `run`, which every turn starting or ending publishes, FIX-2773), and so its state too once a block reads it. None hears `items`. A board read through `getOrCreateTaskCollection` in a user view names the conversation it reads for (`readFor`) in the running session's place, so an empty board is heard on that conversation's board notices.
+
+**How it is reached.** `POST /api/flows/:flowKind/views/:viewName` for a user or org view, and `POST /api/flows/:flowKind/:sessionId/views/:viewName` for a session view, each with `{ input }`, answering `200 { output, topics, hears }` (`packages/engine/src/routes/view-routes.ts`). The caller is resolved on the `:flowKind` path through the flow's own resolver, as an action is, never from the body, query or headers. A view addressed at the wrong scope answers `400`; a model call or a reach for a session answers `422` (`view_model_call`, `view_no_session`); a write `409 read_only`.
+
+**Watching it.** A screen names a view with `viewRef<typeof view>(flow, name)` (`packages/client/src/view/view.ts`), a handle with the flow's address and the view's name and no block, typed by a type import. `client.view(ref, input, { sessionId? })` runs it once and resolves to `{ value, topics, keys? }`; a keyed view's answer carries its row keys in order. `useView(ref, input, options)` (`packages/react/src/hooks/useView.ts`) returns `{ value, stale }`. Both watch through `watchView` (`client/internal`), which is the client's live read with `topicsFromResult`: the answer names the topics, the live read listens to them, re-subscribes when they change and reads once after re-subscribing. It adds no loop. Watchers of the same view, session and input in one client share one live read and its answer (keyed per client in a `WeakMap`), a late watcher gets the current value at once, and the read stops with the last watcher. A keyed view's rows that didn't change keep their object identity across answers.
+
+**Read-only stores.** A view's run sees the session, its resources and its user under the action path's binding checks; what differs is the stores it is handed. Its own request record, traces and checkpoints go to an in-memory registry dropped when the run ends, the first seed of a user or org record a fresh session lacks lands there too, and every other write throws `FlowError` with code `read_only`. Dispatch is refused the same way. "Stores nothing" holds by construction, and a store method added later is refused until it is named as a read verb: a new store read method needs a line in `READ_VERBS` (`packages/engine/src/execution/runView.ts`) before a view can call it.
+
+**Answering for the rows that changed** (FIX-2625 D1). A notice may name the ids of what changed ([server-and-client.md](./server-and-client.md#change-notices)). When the notice that wakes a keyed view's watcher names ids and the watch holds a keyed answer, `watchView` passes it on the call (`client.view(ref, input, { changed })`, the body's `changed`), and every block of the run sees it as `ctx.view.changed`: the topic, the kind and the ids, never row keys, since only the view knows which rows an id touches. A view that does nothing with it answers whole, as before. One that narrows returns `ctx.view.partial(rows, { removed })`: the answer is flagged `partial`, its rows are placed by key over the rows held (a held key in place), the removed keys dropped, and its topics added to the held ones, never narrowing what the screen hears. A partial answer that brings a key the screen doesn't hold makes `watchView` read the view whole, since only a whole run says where a new row goes. A partial answer never reorders rows, so a view answers whole wherever a change could move one. In development and tests (`NODE_ENV`), the watch compares each placed partial answer with a whole run and, on a difference, logs the view's name and shows the whole run. The board's task-list view (`taskToolViews`) answers for a board notice's tasks and every row of their follow-up chains (each shows the chain's latest completed follow-up), and whole for a filtered list, an unknown task or another board. A collection's direct read (`useResource` at user or org scope) re-reads just the entries a notice names when it shows them all, and reads the collection otherwise.
+
+**What a watcher hears** (FIX-2625). Beside its topics, an answer says what it hears under each (`hears`, a `ViewHearing` per topic, from the recorder's `hears()`): a state read hears `state` on its scope's topic (a session's state too: a reply streaming in the session, its requests and its record's other writes move no state); a read of the session itself (its items, metadata, window, journal or record, or another session through the request host) hears every kind but `resource` and `board` on its topic; a resource read hears `resource` notices whose path falls at or under its storage root (its key, or a collection's static prefix). The live read applies them to every answer that carries them (`LiveResult.hears`), so `watchView`, and an app that hands `client.view`'s answer to `client.live` with `topicsFromResult`, reads again only on a notice one of them admits, by the one hearing rule (`hearsNotice`, in `@flow-state-dev/contracts`, with its path rule `mayHold`); a `resource` notice with no path and a `resync` always read, and an answer with no `hears` (a server from before it) reads on every notice under its topics. Topics stay bare scope topics, since a subscription narrowed to a resource matches a path exactly. A user-scope collection entry's notice names its collection's root, never its key, so the path rule runs on the user topic too. A task board read through its task collection is recorded by the collection itself (`recordBoardRead`, `core/internal`, the `BOARD_READ_SEAM` a view's run attaches) as heard on `board` notices, as its ledger's scope allows (`ViewDependencies.board`). Every board hears `board` notices on its ledger's scope topic narrowed to the board: each row added goes out there (`publishBoardInsert`, the engine reading the scope off the ledger handle it handed out), so a row filed from a session no answer named is still heard. On the user topic that notice names no task, since the topic spans the user's orgs. On a partitioned ledger the insert names its partition and the board read records the partition it read, so a view of one conversation's board skips a row filed in another's; a browser sees the partition only as an opaque key ([server-and-client.md](./server-and-client.md#change-notices), FIX-2750). A session ledger shared to its lineage has the running session's topic as its scope topic, which another lineage member's view never hears, so on a host with a view its row also goes out on the session owner's user topic narrowed to the board, naming no task, as a lineage-shared resource write publishes there; a view of such a ledger hears `board` on that topic too (FIX-2733). A session or user ledger is also heard on each entry's filer's session topic narrowed to the board, and its own resource read is not heard: the same place (`getOrCreateTaskCollection`) wires every write to the board notice naming its task (FIX-2625 D3; `orchestration/test/tasks/board-notice.test.ts` checks every write at the store). An org ledger hears no filer's session, which would name another member's session to a client: its ledger's own resource notices on the org topic carry a change to a row on screen. A ledger read any other way stays heard on its scope.
+
+**The live read.** `watchView` rides the client's live read, `client.live(topics, { read, hear, paths, onValue })`, which runs a read again on the notices under `topics` that `hear` and `paths` let through: one read in flight and at most one waiting, a value reported only when it changed, and a failed read tried again on its own (1 s doubling to 30 s, `onStale` meanwhile). Where push can miss a change it reads on a timer (3 s by default). The live read is the one loop every watch in the framework and its apps runs on (`packages/client/src/live/`); a second coalescer anywhere else fails the `fsd/one-coalescer` lint. `client.subscribe` stays the lower-level call it rides.
+
+**Reads are removed.** A flow's `reads` (FIX-2286), `ReadConfig`, `runRead`, the read route and `client.flow(kind).read` are gone; views replace them, as they replaced a scope's `client.derived` ([Resources and Client Data](./resources-and-client-data.md#client-data)). `defineFlow` refuses a `reads` key, naming views. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+
 ## Flow Discovery
 
 Convention: `src/flows/**/flow.ts`
@@ -257,6 +294,8 @@ Server routes follow a canonical pattern:
 ```
 POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
+POST /api/flows/:flowKind/views/:viewName
+POST /api/flows/:flowKind/:sessionId/views/:viewName
 GET  /api/flows/:flowKind/requests/:requestId/stream
 ```
 

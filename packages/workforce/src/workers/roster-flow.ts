@@ -1,17 +1,23 @@
 // FIX-2085.
 /**
- * The roster flow: a flow that runs no worker, through which a client reads a
- * user's roster. It declares the two worker collections, so a session of it
- * reads the user's own workers and the standard ones over the collection-state
- * routes, and it adds no endpoint. It declares the projects at both scopes and
- * the workstream entries too, so the same session reads the projects its user
- * may, private ones included, and a project's entries by its prefix. It
+ * The roster flow: a flow that runs no worker, which answers a user's roster
+ * and changes it. Its `roster` view joins the user's own workers and the
+ * standard ones at user scope, with no session (`roster-view.ts`), and its
+ * `workerUsage` view reads what each of them spent (`worker-usage.ts`), and its
+ * `workstreamReport` view a workstream entry's report; its roster
+ * actions (hire, fork, edit, fire, reset) run in a session of it, and it adds
+ * no endpoint. It declares the projects at both scopes and
+ * the workstream entries too, so a client reads the projects its user may,
+ * private ones included, and a project's entries by its prefix, by scope with
+ * no session. It
  * declares the organization's worker inventory (`inventory/workers/*`), so the
  * same session reads who the organization's workers are without a coordinator
  * session to read it through. It declares the user's worker message log
  * (`workforce/messages/*`), so an app shows who messaged whom. And it keeps the
- * user's schedules (`workforce/schedules/*`): its `schedules` fires
- * each one, and its schedule actions list and write them.
+ * user's routines: their schedules (`workforce/schedules/*`), which its
+ * `schedules` fires, and their subscriptions (`workforce/subscriptions/*`);
+ * its routine actions list and write both, and each request first seeds the
+ * app's declared routines (`seed`), and cleans up the ones config dropped.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
@@ -19,13 +25,20 @@
  * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import type { ActionConfig, SchedulesConfig } from "@flow-state-dev/core/types";
-import { defineWorkerInventoryCollection } from "../inventory/collections";
+import type { ViewDefinition } from "@flow-state-dev/core";
+import type { ActionEntry, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
+import { ROUTINES_VIEW } from "../routines/keys";
 import { workerMessagesResources } from "../messages/message-log";
-import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
-import type { ScheduledWork } from "../schedules/scheduled-work";
+import { defineWorkerMessagesView } from "../messages/worker-messages-view";
+import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW } from "./keys";
+import { defineWorkstreamReportView } from "../projects/workstream-report-view";
+import { INBOX_VIEW, ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_MESSAGES_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { defineSessionTurnsView, defineWorkerSessionsView } from "./session-views";
+import { defineRosterView } from "./roster-view";
+import { defineInboxView } from "./inbox-view";
+import { INVENTORY_RESOURCE, inventoryWorkerEntries } from "../inventory/inventory-resource";
+import { defineWorkerUsageView } from "./worker-usage";
 
 /**
  * Define the roster flow over `installation`. Register what it returns.
@@ -33,25 +46,43 @@ import { ROSTER_FLOW } from "./keys";
  * @param installation The installation whose worker collections it declares.
  * @param actions Actions to mount on it, such as the hire, fork, edit and fire
  *   blocks (`createWorkerHireBlocks`). Omitted, it reads and writes nothing.
- * @param scheduled Recurring work (`defineScheduledWork`): the schedule
- *   collection and the resolver its fires go through. Omitted, it keeps no
- *   schedules.
+ * @param routines The routine collections, the resolver clock fires go
+ *   through (`defineScheduledWork`), the declared routines' seed, run as each
+ *   request starts, and the `routines` view. Omitted, it keeps no routines.
  */
 export function defineWorkerRosterFlow(
   installation: WorkerInstallation,
-  actions: Record<string, ActionConfig> = {},
-  scheduled?: Pick<ScheduledWork, "resources" | "schedules">
+  actions: Record<string, ActionEntry> = {},
+  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any>; view?: ViewDefinition }
 ) {
   return defineFlow({
     kind: ROSTER_FLOW,
     resources: {
       ...installation.resources,
-      ...PROJECT_ROW_RESOURCES,
+      ...PROJECT_ENTRY_RESOURCES,
       ...workerMessagesResources,
-      inventoryWorkers: defineWorkerInventoryCollection(),
-      ...(scheduled?.resources ?? {})
+      [INVENTORY_RESOURCE]: inventoryWorkerEntries,
+      ...((routines?.resources ?? {}) as Record<string, never>)
     },
-    ...(scheduled === undefined ? {} : { schedules: scheduled.schedules as SchedulesConfig }),
-    actions
+    ...(routines === undefined ? {} : { schedules: routines.schedules }),
+    ...(routines?.seed === undefined ? {} : { request: { onStarted: routines.seed } }),
+    actions,
+    // FIX-2623: the roster, answered at user scope with no session. FIX-2624:
+    // and what each of the user's workers spent, the same way.
+    views: {
+      [ROSTER_VIEW]: defineRosterView(installation),
+      [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // FIX-2725: a user's sessions with a worker, and one session's turns.
+      [WORKER_SESSIONS_VIEW]: defineWorkerSessionsView(installation),
+      [SESSION_TURNS_VIEW]: defineSessionTurnsView(),
+      // FIX-2771: a worker's open messages, and the answers to the ones on screen.
+      [WORKER_MESSAGES_VIEW]: defineWorkerMessagesView(),
+      // FIX-2774: what waits on the user across their sessions, and every board row.
+      [INBOX_VIEW]: defineInboxView(installation),
+      // FIX-2624: a workstream entry's report, which a direct read doesn't serve (it is content).
+      [WORKSTREAM_REPORT_VIEW]: defineWorkstreamReportView(),
+      // FIX-2624: the user's routines, the app's declared ones joined in.
+      ...(routines?.view === undefined ? {} : { [ROUTINES_VIEW]: routines.view })
+    }
   });
 }
