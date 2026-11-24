@@ -121,6 +121,9 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * value for them rides on its `roster()` row. Every other setting stays on
  * the server. Omitted, none shows.
  *
+ * `retiredSettings` names settings the flow no longer takes: a stored worker
+ * that set one reads without it, and a hire or an edit naming one is refused.
+ *
  * Whether the flow's tasks need a project, and what else they take, is the
  * flow's own: its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  */
@@ -131,6 +134,7 @@ export type WorkerFlowEntry =
       standardOnly?: boolean;
       roles?: readonly WorkerRole[];
       showSettings?: readonly string[];
+      retiredSettings?: readonly string[];
     }
   | WorkerFlowBuilder;
 
@@ -140,6 +144,7 @@ export type ResolvedWorkerFlow = {
   standardOnly: boolean;
   roles: readonly WorkerRole[];
   showSettings: readonly string[];
+  retiredSettings: readonly string[];
 };
 
 /**
@@ -168,12 +173,13 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [] }
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [], retiredSettings: [] }
         : {
             flow: entry.flow,
             standardOnly: entry.standardOnly === true,
             roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [],
-            showSettings: [...(entry.showSettings ?? [])]
+            showSettings: [...(entry.showSettings ?? [])],
+            retiredSettings: [...(entry.retiredSettings ?? [])]
           };
   }
   return resolved;

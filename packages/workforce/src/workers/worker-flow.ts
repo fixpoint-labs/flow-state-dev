@@ -39,6 +39,8 @@ export interface WorkerFlowBuilder {
   readonly roles: readonly WorkerRole[] | undefined;
   /** The flow's settings a user may see on the roster; empty when it names none. */
   readonly showSettings: readonly string[];
+  /** Settings the flow no longer takes: a stored worker that set one reads without it, and a hire or an edit naming one is refused. */
+  readonly retiredSettings: readonly string[];
 }
 
 /**
@@ -51,14 +53,16 @@ export interface WorkerFlowBuilder {
  *   `manager` (runs its delegation board on `dispatch`, from
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
  *   role's piece on a flow that doesn't declare it. `showSettings` names the
- *   flow's settings a user may see on the roster. Whether its tasks need a
+ *   flow's settings a user may see on the roster. `retiredSettings` names
+ *   settings it no longer takes: a stored worker that set one reads without
+ *   it, and a hire or an edit naming one is refused. Whether its tasks need a
  *   project is its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[]; retiredSettings?: readonly string[] } = {}
 ): WorkerFlowBuilder {
   // FIX-2894; BP-030: a removed option is refused by name, never ignored.
   if (Object.hasOwn(options, "needsProject")) throw needsProjectRemoved("workerFlow(...)");
@@ -67,7 +71,8 @@ export function workerFlow(
     build,
     standardOnly: options.standardOnly === true,
     roles: options.roles === undefined ? undefined : [...options.roles],
-    showSettings: [...(options.showSettings ?? [])]
+    showSettings: [...(options.showSettings ?? [])],
+    retiredSettings: [...(options.retiredSettings ?? [])]
   };
 }
 
