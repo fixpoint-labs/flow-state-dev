@@ -39,6 +39,8 @@ Written by `docs-writer` (sonnet), 4577 words. Scenario: A support desk: `mem` i
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the support flow now registers a `draftReply` generator with `uses: [mem.capability]` instead of `actions: {}`, so the installed memory is used. The `hygiene` snippet stays as it was: it lists the default values as a typed `HygieneConfig`, a reference listing rather than a block. The changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4699 words. Page sha256 af0f21cc95aa.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/reference/memory.md`: the link to the Memory concept page (not in the page plan) points at the Memory catalog page, with that link text. `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 42b9dd717e09, and the 51 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Final fact check of the page as it closed, sha256 12e7d630757c: 1 untrue, fixed 
 - `isStale` and `computeSourceSignature` are exported. (Digest section, regeneration paragraph) Untrue: Neither name is exported from `@flow-state-dev/memory`. The package index exports them under verb-first aliases: `digestIsStale` and `computeDigestSourceSignature`. The bare names exist only as `mem.digest.helpers.isStale` and `mem.digest.helpers.computeSourceSignature` on a `system()` result, and as unexported symbols in `digest-helpers.ts`. A reader who imports `{ isStale }` or `{ computeSourceSignature }` from the package gets nothing. (/home/user/flow-state-dev/docs/contributing/docs-revamp/pages/reference/memory.md:177 (code: /home/user/flow-state-dev/packages/memory/src/index.ts:178-181; /home/user/flow-state-dev/packages/memory/src/memory-system.ts:529-532))
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+Cutover, 2026-11-24: the link to the Memory concept page (not in the page plan) points at the Memory catalog page, with that link text. No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

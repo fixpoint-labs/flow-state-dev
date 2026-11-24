@@ -51,8 +51,8 @@ land on one concept page; one changeset may touch three.
 | Page | Op | Changesets | What a reader can now do |
 |---|---|---|---|
 
-- Ops are create / update / remove / merge-into. Check `apps/docs/sidebars.ts` and
-  `sidebarsGuides.ts` for where a new page belongs.
+- Ops are create / update / remove / merge-into. Check `apps/docs/sidebars.ts` (one sidebar per
+  section: Start, Concepts, Catalog, Build, Reference) for where a new page belongs.
 - Every changeset appears in the plan, either against pages or under **No docs change** with a
   one-line reason (a bug fix whose documented behavior was already right, a patch below the docs'
   level of detail).
@@ -62,12 +62,12 @@ land on one concept page; one changeset may touch three.
   **Upgrading** page, not on the affected page. The plan always has three rows for it: create
   `reference/upgrading/<date>` (today's date, the branch's); remove the previous release's
   Upgrading page; and repoint the sidebar entry, every inbound link and the client redirects in
-  `apps/docs/docusaurus.config.ts` so each earlier `reference/upgrading/<date>` address lands on
+  `apps/docs/redirects.mjs` (its `UPGRADING` constant, and the removed page's address added to
+  `EARLIER_UPGRADING`) so each earlier `reference/upgrading/<date>` address lands on
   the new page (the build fails on a broken link). Every changeset a caller must act on is listed against the create row. The page's
   shape and what earns a row are
   [`release-docs.md`](../../../docs/contributing/release-docs.md#the-upgrading-page) → "The
-  Upgrading page". Before the docs cutover the site has no Reference section: skip all three rows and
-  say so in the PR.
+  Upgrading page".
 
 ## 4. Write
 
@@ -81,10 +81,8 @@ and the public surface. Never the spec narrative, never a changeset's issue ids.
 3. A writer report that **the code contradicts the brief** is a finding for the PR body. Don't fix
    code here.
 
-Package READMEs are in scope: their API sections go through the same pair.
-Until the docs cutover, a package README also has a cut copy at
-`docs/contributing/docs-revamp/readmes/<dir>.md`: an edit to the long one lands in both, or CI's
-`check-cut-readmes.mjs` fails the PR.
+Package READMEs are in scope and go through the same pair. Each keeps its short shape: an install
+line, one example under 20 lines, and a link to its section of the API reference.
 
 ## 5. Read it as a set
 

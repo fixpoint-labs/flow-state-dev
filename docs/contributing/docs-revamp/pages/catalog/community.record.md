@@ -40,6 +40,8 @@ Written by `docs-writer` (sonnet), 302 words. Scenario: none
 
 - After the loop (review): the placeholder package and its `board` factory are named as placeholders before the install block, closing the pass 4 finding (the type-check passes with only `@acme/flow-state-board` stubbed as a `KitFactory`; `kits`→`kitz` and `workforce({ agent: 42 })` each fail, so the check reaches the framework types). At the owner's request the page carries the Experimental caution for kits. 330 words. Page sha256 d3ff42ca9526.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/catalog/community.md`: the link to Write a kit (B-04, not written) points at Kits and slots, with that link text. `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 a6de2ebab843, and the 1 Reference row(s) pass 6 moved.
@@ -47,6 +49,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 a6d
 No untrue claim found.
 
 - Re-run after the review edit: no claim about behaviour changed; the caution states product status. No untrue claim remains open.
+
+Cutover, 2026-11-24: the link to Write a kit (B-04, not written) points at Kits and slots, with that link text. No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

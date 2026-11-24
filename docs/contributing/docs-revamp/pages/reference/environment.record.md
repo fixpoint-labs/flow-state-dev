@@ -41,6 +41,8 @@ Written by `docs-writer` (sonnet), 2694 words. Scenario: A `research` flow that 
 
 - After the loop (review): the R-27 depth pass moved the harness base pass list here. Checked against packages/core/src/helpers/harness-env.ts:26-40: all 13 names true. 1410 words. Page sha256 78e1c49448d2.
 
+- After the release edit (the `GITHUB_REVIEWERS` row in Other keys): `node scripts/check-docs-page.mjs` passed, exit 0. 1468 words. Page sha256 85d88301f7a2.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 219fe8ab537e, and the 21 Reference row(s) pass 6 moved.
@@ -59,6 +61,8 @@ Final fact check of the page as it closed, sha256 36988536c53f: 3 untrue, fixed 
 - A coding harness "hands it only the names on a pass-list, not the server's whole environment" Untrue: By default no pass-list applies. With `env` unset, the Claude Code run (and the Codex and Cursor runs, per their env-pass docs) gets the server's entire process.env. The pass-list takes effect only when you set `env: harnessEnv({ pass: CLAUDE_CODE_PASS })` (or `CODEX_PASS` / `CURSOR_PASS`). The harness names in the table are what those exported lists add to the base list. (docs/contributing/docs-revamp/pages/reference/environment.md:134 (code: packages/claude-code/src/sdk/agent.ts:358-362, packages/codex/src/env-pass.ts:5-8))
 
 - Re-run after the review edit: a code reader checked the moved lines against the code; no untrue claim remains open.
+
+- Re-run after the release edit: the writer checked the new `GITHUB_REVIEWERS` row against the code itself, not through a separate code-reader pass: read once by `githubTrustedReviewers()` when it is called, comma-separated, a bot as `name[bot]`, the list's default until first saved, a saved list winning even when empty (packages/workforce/src/service-flows/github/trusted-reviewers.ts:70-73,155-176; reviewers-document.ts:1-10). No untrue claim open.
 
 ## 6 · Depth pass
 

@@ -15,7 +15,9 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT = fileURLToPath(new URL("./check-docs-page.mjs", import.meta.url));
-const PAGES = "docs/contributing/docs-revamp/pages";
+// Site pages, and the contributor folder their records and fact sheets live in.
+const PAGES = "apps/docs/docs";
+const RECORDS = "docs/contributing/docs-revamp/pages";
 const SITEMAP = "specs/epics/FIX-2696/SITEMAP";
 
 /** Write `files` (path → text) under `root`. */
@@ -89,7 +91,8 @@ Tables: binding fields · verification. Lookups: What is returned? · Who calls?
 
 describe("check-docs-page", () => {
   let root;
-  const at = (name) => join(PAGES, name);
+  // A page's path on the site; a record's or fact sheet's in the contributor folder.
+  const at = (name) => join(/\.(record|facts)\.md$/.test(name) ? RECORDS : PAGES, name);
   before(() => {
     root = mkdtempSync(join(tmpdir(), "docs-page-"));
     const clean = page("State and scopes", "A session holds what one conversation keeps.");
@@ -189,7 +192,7 @@ describe("check-docs-page", () => {
   });
 
   it("fails a page with no record, unless the run is pass 4's check of a named page", () => {
-    fails("no-record.md", /no record: no-record\.record\.md/);
+    fails("no-record.md", /no record: docs\/contributing\/docs-revamp\/pages\/no-record\.record\.md/);
     const { status, out } = check(root, at("no-record.md"));
     assert.equal(status, 0, out);
   });
@@ -245,9 +248,9 @@ describe("check-docs-page", () => {
       });
       const { status, out } = check(orphanRoot);
       assert.equal(status, 1, out);
-      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.record\.md: its page gone\.md does not exist/);
-      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.facts\.md: its page gone\.md does not exist/);
-      assert.match(out, /ok {3}docs\/contributing\/docs-revamp\/pages\/a\.md/);
+      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.record\.md: its page apps\/docs\/docs\/gone\.md does not exist/);
+      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.facts\.md: its page apps\/docs\/docs\/gone\.md does not exist/);
+      assert.match(out, /ok {3}apps\/docs\/docs\/a\.md/);
     } finally {
       rmSync(orphanRoot, { recursive: true, force: true });
     }
@@ -290,7 +293,7 @@ describe("check-docs-page", () => {
   it("checks every page under the default root, skipping records and fact sheets", () => {
     const { status, out } = check(root);
     assert.equal(status, 1, out);
-    assert.match(out, /ok {3}docs\/contributing\/docs-revamp\/pages\/clean\.md/);
+    assert.match(out, /ok {3}apps\/docs\/docs\/clean\.md/);
     assert.doesNotMatch(out, /clean\.(record|facts)\.md/);
   });
 
@@ -341,10 +344,10 @@ describe("check-docs-page", () => {
     it("checks a page whose record changed, once, and a new page with no record", () => {
       const res = change({ [at("a.record.md")]: record("C-07", { 9: null }), [at("new.md")]: page("New", "Fine.") });
       assert.equal(res.status, 1, res.out);
-      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.md[\s\S]*no pass 9/);
-      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/new\.md[\s\S]*no record/);
-      assert.doesNotMatch(res.out, /pages\/b\.md/);
-      assert.equal(res.out.match(/pages\/a\.md/g).length, 1, "a page and its record are one page");
+      assert.match(res.out, /FAIL apps\/docs\/docs\/a\.md[\s\S]*no pass 9/);
+      assert.match(res.out, /FAIL apps\/docs\/docs\/new\.md[\s\S]*no record/);
+      assert.doesNotMatch(res.out, /docs\/b\.md/);
+      assert.equal(res.out.match(/apps\/docs\/docs\/a\.md/g).length, 1, "a page and its record are one page");
       change({ [at("a.record.md")]: record("C-07"), [at("new.md")]: null });
     });
 
@@ -363,7 +366,7 @@ describe("check-docs-page", () => {
     it("fails a change that deletes a record and leaves its page", () => {
       const res = change({ [at("a.record.md")]: null });
       assert.equal(res.status, 1, res.out);
-      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.md[\s\S]*no record/);
+      assert.match(res.out, /FAIL apps\/docs\/docs\/a\.md[\s\S]*no record/);
       change({ [at("a.record.md")]: record("C-07") });
     });
 
@@ -371,14 +374,14 @@ describe("check-docs-page", () => {
       // Same content, so git pairs the delete and the add as a rename.
       const res = change({ [at("a.record.md")]: null, [at("n.md")]: page("N", "Fine."), [at("n.record.md")]: record("C-07") });
       assert.equal(res.status, 1, res.out);
-      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.md[\s\S]*no record/);
+      assert.match(res.out, /FAIL apps\/docs\/docs\/a\.md[\s\S]*no record/);
       change({ [at("a.record.md")]: record("C-07"), [at("n.md")]: null, [at("n.record.md")]: null });
     });
 
     it("fails a change that deletes a page and leaves its record", () => {
       const res = change({ [at("a.md")]: null });
       assert.equal(res.status, 1, res.out);
-      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.record\.md: its page a\.md does not exist/);
+      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.record\.md: its page apps\/docs\/docs\/a\.md does not exist/);
       change({ [at("a.md")]: page("A", "Fine.") });
     });
 
@@ -404,11 +407,33 @@ describe("check-docs-page", () => {
       }
     });
 
+    // The cutover moves each page from beside its record into the site: the move rewrites link
+    // paths and nothing else, so its passes still hold. A word changed on the way is an edit.
+    it("passes a page moved into the site with only its link targets changed, and fails one edited on the way", () => {
+      const draft = (link) => page("M", `See [blocks](${link}).`);
+      change({ [`${RECORDS}/m.md`]: draft("./blocks.md"), [at("m.record.md")]: record("C-07") });
+      let res = change({ [`${RECORDS}/m.md`]: null, [at("m.md")]: draft("../concepts/blocks.md") });
+      assert.equal(res.status, 0, res.out);
+      assert.match(res.out, /ok {3}apps\/docs\/docs\/m\.md/);
+      change({ [at("m.md")]: null, [`${RECORDS}/m.md`]: draft("./blocks.md") });
+      res = change({ [`${RECORDS}/m.md`]: null, [at("m.md")]: page("M", "See [the blocks page](../concepts/blocks.md).") });
+      assert.equal(res.status, 1, res.out);
+      assert.match(res.out, /the page changed and pass 4 did not/);
+      change({ [at("m.md")]: null, [at("m.record.md")]: null });
+    });
+
+    it("keeps no record for a release's Upgrading page", () => {
+      const res = change({ [at("reference/upgrading/2026-11-24.md")]: page("Upgrading", "| A | B |", "reference") });
+      assert.equal(res.status, 0, res.out);
+      assert.match(res.out, /ok {3}apps\/docs\/docs\/reference\/upgrading\/2026-11-24\.md/);
+      change({ [at("reference/upgrading/2026-11-24.md")]: null });
+    });
+
     it("checks every page when the change edits the sitemap", () => {
       const res = change({ [`${SITEMAP}/concepts.md`]: `${SITEMAP_CONCEPTS}\n` });
       assert.equal(res.status, 0, res.out);
-      assert.match(res.out, /ok {3}docs\/contributing\/docs-revamp\/pages\/a\.md/);
-      assert.match(res.out, /ok {3}docs\/contributing\/docs-revamp\/pages\/b\.md/);
+      assert.match(res.out, /ok {3}apps\/docs\/docs\/a\.md/);
+      assert.match(res.out, /ok {3}apps\/docs\/docs\/b\.md/);
     });
   });
 });

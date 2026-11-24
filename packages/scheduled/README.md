@@ -1,236 +1,29 @@
 # @flow-state-dev/scheduled
 
-Scheduled-actions transport adapter for `@flow-state-dev/engine`.
-
-Mounts a single dispatch endpoint per flow:
-
-```
-POST /api/flows/:kind/schedules/:scheduleId/dispatch
-GET  /api/flows/:kind/schedules
-```
-
-The framework owns the dispatch contract, validation, two-phase auth, and
-provenance. The host runs the scheduler (Vercel Cron, Cloud Scheduler,
-EventBridge, GitHub Actions, `node-cron`).
-
-## Install
+Keep schedules a flow adds at run time: schedule collections, the resolver over them, and the schedule-index contract a store implements. Static schedules need nothing from here; the engine mounts the dispatch endpoint on every app.
 
 ```bash
 pnpm add @flow-state-dev/scheduled
 ```
 
-## Mount the adapter
-
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
-
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  adapters: [createScheduledTransportAdapter()]
-});
-```
-
-## One firing per scheduled time
-
-Each schedule fires each scheduled time at most once, across retries,
-restarts and hosts that share a store. The dispatch body carries the
-scheduled time the fire is for, or nothing:
-
-```json
-{ "nominalFireTime": "2026-06-01T09:00:00Z" }
-```
-
-- A carried time counts against the scheduled time within five seconds of
-  it. One that is no scheduled time of the cron answers `400
-  not_a_scheduled_time`; one not due yet answers `400 not_yet_due`.
-- No time counts against the latest scheduled time already due, or the one due
-  within five seconds.
-- A carried time more than one period behind the latest due one answers
-  `200 { status: "duplicate", reason: "stale" }` and logs a warning: a
-  scheduler body with a fixed time sends no body instead.
-- A cron must be exactly five fields; a sixth would be seconds.
-- A time that already fired, or an earlier one, answers
-  `200 { status: "duplicate" }` and runs nothing, whatever the schedule's cron
-  is now.
-- A fire that isn't admitted (an overlap skip, a concurrency refusal, a
-  `503`) leaves its time unfired for a retry.
-
-The record is one row per schedule in the host's resource-state store, so
-the guarantee holds across processes on SQLite and Postgres, and within one
-process on the memory and filesystem stores. A body `idempotencyKey` answers
-`400 idempotency_key_removed`, and `idempotencyWindowMs` or
-`idempotencyOptions` on the adapter throws.
-
-## Static schedules
-
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { createBearerSecretPrincipalResolver, createFlowApiRouter } from "@flow-state-dev/engine";
 
 export const billing = defineFlow({
   kind: "billing",
   authentication: {
     resolvePrincipal: createBearerSecretPrincipalResolver({
       secret: process.env.FSDEV_SCHEDULER_SECRET!,
-      principal: { userId: "system" }
+      principal: { userId: "system" },
     }),
-    requireUser: true
+    requireUser: true,
   },
-  schedules: {
-    static: {
-      "monthly-invoices": {
-        cron: "0 0 1 * *",
-        block: generateMonthlyInvoices
-      }
-    }
-  }
+  schedules: { static: { "monthly-invoices": { cron: "0 0 1 * *", block: generateMonthlyInvoices } } },
 });
+
+// The schedule routes are the router's own: no adapter to pass.
+const router = createFlowApiRouter({ registry, stores });
 ```
 
-A static schedule carries its handler `block` inline (the shared action core),
-not a name pointing into `flow.actions`. Same model the webhook transport
-uses. `defineScheduleBinding` (exported from `@flow-state-dev/core`)
-is the optional typed constructor. A scheduled handler has no HTTP or MCP caller
-surface; declare a block in both `schedules.static` and `flow.actions` (same
-reference) to expose it both ways.
-
-## Dynamic schedules (per-user reminders, agent-created follow-ups)
-
-A persisted schedule can't hold a block, so it stores a `kind`
-discriminator string instead. The resolver maps `kind → block` through a
-required `blocks` map.
-
-```ts
-import {
-  createResourceCollectionScheduleResolver,
-  defineScheduleCollection
-} from "@flow-state-dev/scheduled";
-
-// User-scoped, with the stored schedule's schema: `cron`, `kind` (a handler
-// discriminator, not a flow-action name), and optional `input`, `timezone`,
-// `onOverlap`, `description`, `enabled`. `create` records the organization
-// the creating run belongs to on each row.
-const userSchedules = defineScheduleCollection({ pattern: "schedules/*" });
-
-defineFlow({
-  kind: "reminders",
-  resources: { schedules: userSchedules },
-  schedules: {
-    resolve: createResourceCollectionScheduleResolver({
-      collection: userSchedules,
-      blocks: { sendDigest, sendReminder }   // persisted `kind` → block
-    })
-  }
-});
-```
-
-The default id is `<orgId>/<userId>/<collectionKey>`.
-`formatScheduleId(orgId, userId, key)` builds one and `defaultParseScheduleId`
-reads one back, keeping a key that contains `/` whole. Encode the whole id as
-one path segment: `encodeURIComponent(formatScheduleId(orgId, userId, key))`.
-Override with `parseId` for richer compositions. A row whose `kind` isn't in
-the `blocks` map resolves to `null` (404).
-
-The helper reads the row from that user's data in the organization the id
-names, derived with the engine's `resolveUserStorageKey`, and resolves to
-`null` when the id names no organization or the row names a different one. On
-an owner-pinned instance (registered with an owner `pin`), the dispatch route
-passes the pin as `ctx.ownerPin`, and an id naming another organization than
-the pin's, or another user on a user-owned pin, resolves to `null` too. A
-hand-written resolver that reads user-scoped storage derives its key the same
-way:
-
-```ts
-const parsed = defaultParseScheduleId(scheduleId); // { orgId, userId, collectionKey }, or null
-if (parsed === null) return null;
-const scopeId = resolveUserStorageKey(parsed.userId, parsed.orgId, { id: ctx.flowKind, isolateUserState: false });
-const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${parsed.collectionKey}`);
-if (row?.state.orgId !== parsed.orgId) return null;
-```
-
-`isolateUserState: false` is right for a schedule collection declared without
-`flowIsolation: true`, which is the default.
-
-**Durable dynamic schedules don't recover across crashes.** A dynamic
-schedule's action core is produced by the resolver at dispatch time and carried
-on the dispatch envelope, never persisted (a block can't be serialized). So a
-durable dynamic schedule mid-run when the process crashes has no persisted
-coordinate to re-resolve its handler from, and the run is dropped. Static
-schedules recover normally — their handler is reachable from a stable
-coordinate. Make a durable scheduled action static if it must survive a crash.
-
-## Source and metadata
-
-Every scheduled-driven request carries `source: "scheduled"` and a namespaced
-`metadata.schedule`:
-
-- `metadata.schedule.scheduleId` — the dispatch URL id
-- `metadata.schedule.origin` — `"static"` or `"dynamic"`
-- `metadata.schedule.cron`, `metadata.schedule.dispatchedAt`,
-  `metadata.schedule.timezone`
-- `metadata.schedule.nominalFireTime` — the scheduled time the fire counted
-  against, as an ISO string
-
-The dispatched request's `action` field is the handler block's name (provenance
-only — a scheduled handler is never reachable through the action endpoint).
-
-## Without the engine: `@flow-state-dev/scheduled/collection`
-
-A package that defines flows but must not load the engine imports the
-schedule collection, its resolver, `formatScheduleId` and `parseNextFireAt`
-from `@flow-state-dev/scheduled/collection`. The resolver reads a user's row
-through `ScheduleResolutionContext.userStorageKey`, which the dispatch
-endpoint supplies.
-
-## Schedule index
-
-`ScheduleIndex` is an opt-in adapter interface that lets a polling cron tick find due dynamic schedules in one query, instead of scanning every user's schedule collection. Store packages implement it (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`); custom backends implement the three-method interface directly. Rows are identified by the schedule's storage cell and key, so one schedule is always one row.
-
-The contract is at-most-once: `claimDue` atomically advances rows before returning them, so a dispatch that fails after advance is dropped, not retried. The index only finds due rows; the dispatch endpoint decides whether a time fires, once per scheduled time on every path.
-
-### `defineScheduleCollection`
-
-`defineScheduleCollection({ pattern, index })` wraps `defineResourceCollection` with the schedule state schema and mirrors every create/update/delete into the supplied index using lifecycle hooks. Omit `index` and the collection still works — no mirroring, no hooks.
-
-```ts
-import { defineScheduleCollection } from "@flow-state-dev/scheduled";
-import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
-
-const index = createSQLiteScheduleIndex(db);
-
-export const schedules = defineScheduleCollection({
-  pattern: "schedules/*",
-  index
-});
-```
-
-Rows with `enabled: false` are removed from the index, so toggling a schedule off stops it firing without deleting the underlying record.
-
-### Conformance suite
-
-`@flow-state-dev/scheduled/testing` exports `createScheduleIndexConformanceTests` for new `ScheduleIndex` implementations:
-
-```ts
-import { describe } from "vitest";
-import { createScheduleIndexConformanceTests } from "@flow-state-dev/scheduled/testing";
-
-createScheduleIndexConformanceTests("my-backend", {
-  createIndex: () => /* fresh empty index */,
-  cleanup: (idx) => /* tear down */
-});
-```
-
-Covers upsert idempotence, one row per storage cell, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
-
-See [the schedule index reference](https://flow-state.dev/docs/server/schedule-index) for the full interface and contract.
-
-## See also
-
-- [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — full reference guide
-- [Schedule index reference](https://flow-state.dev/docs/server/schedule-index) — schedule index reference
-- [Vercel Cron guide](https://flow-state.dev/guides/scheduled-vercel-cron)
-- [Cloud Scheduler guide](https://flow-state.dev/guides/scheduled-cloud-scheduler)
-- [EventBridge guide](https://flow-state.dev/guides/scheduled-eventbridge)
-- [Dynamic schedules guide](https://flow-state.dev/guides/scheduled-dynamic)
+Reference: [the `scheduled` section of the Flow State API reference](https://flow-state.dev/docs/reference/api/scheduled).

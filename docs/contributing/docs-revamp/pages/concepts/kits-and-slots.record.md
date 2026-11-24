@@ -54,6 +54,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - After PR review (Greptile): the first example names the repository as `const repo = process.cwd()`, used in `localRepositories` and `source`, since `localWorkspaceHost` matches a listed repository only by absolute path and refuses a bare `"."` as `invalid-remote`. 878 words. Page sha256 b9b37c661eaa.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/concepts/kits-and-slots.md`: the Next link to Write a kit (B-04, not written) is dropped; the page is the one its replacement would point at. `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
@@ -67,6 +69,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 603
 - Re-run after the reconcile edit: checked against `harness-manager/src/kit/harnesses-kit.ts:52,117-146`, `workforce/src/kit/workforce-kit.ts:136-185`, `claude-code/src/sdk/kit.ts:72-78`, `codex/src/harness.ts:32`, `engine/src/flowstate/kits.ts:66,74-84,172-189` and `core/src/kit/define-kit.ts:59,170`. No untrue claim remains open.
 
 - Re-run after the review edit: checked against `packages/workspace/src/local-host.ts:681,1427-1431`. No untrue claim remains open.
+
+Cutover, 2026-11-24: the Next link to Write a kit (B-04, not written) is dropped; the page is the one its replacement would point at. No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

@@ -1,194 +1,24 @@
 # @flow-state-dev/node
 
-A host adapter for running a flow-state-dev app as a long-lived Node process. A
-host adapter is the small piece of glue between your `createFlowState` config and
-a particular runtime — `@flow-state-dev/vercel` is the serverless one; this is the
-plain-Node one. `serve(flowState)` stands up an HTTP server in a single call.
-
-It does the parts you'd otherwise hand-write: translating Node's `http` requests
-to the Web `Request`/`Response` the flow router speaks, streaming SSE through
-unbuffered, answering health checks, and shutting down cleanly on `SIGTERM`.
-
-Use it to self-host on Railway, Render, Fly, a VPS, or anywhere a Node process
-runs. It is also the foundation for Node-runtime serverless: the same app `serve()`
-runs long-lived is exported as a portable Hono app you can wrap for Bun
-or Deno (see [Portable app for serverless](#portable-app-for-serverless)). For
-Vercel + Next.js, reach for `@flow-state-dev/vercel` instead.
-
-Under the hood `serve()` runs on [`@hono/node-server`](https://github.com/honojs/node-server)
-rather than a hand-rolled `node:http` bridge; the public API is unchanged.
-
-## Installation
+Serve a Flow State app from a long-lived Node process in one call: HTTP, SSE, health checks and clean shutdown.
 
 ```bash
 pnpm add @flow-state-dev/node
 ```
 
-## `serve(flowState)`
-
 ```ts
-import { createFlowState } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { flows } from "./flows.js";
 
 const flowState = createFlowState({
   flows,
-  stores: { default: { primary: /* your store adapter */ } },
+  stores: { default: { primary: inMemoryStores() } }, // or a durable store
 });
 
-// Binds process.env.PORT (then 3000) on 0.0.0.0, mounts the API under
-// /api/flows, and serves /healthz. Resolves once the server is listening.
-await serve(flowState);
+// Loopback, so a flow without a principal resolver can run locally.
+// A network host refuses that app. Mounts /api/flows and serves /healthz.
+await serve(flowState, { host: "127.0.0.1" });
 ```
 
-`serve` resolves as soon as the port is bound — not when stores finish opening —
-so a platform health check passes during a cold start. `/healthz` returns `503`
-until the router's stores are ready, then `200`.
-
-`SIGTERM`/`SIGINT` trigger a graceful shutdown: the server stops accepting
-connections, drains in-flight requests (force-closing after the grace window),
-then disposes the router and the `FlowState`.
-
-## Push
-
-`serve()` serves push: the WebSocket a client's `fsd.subscribe` (and React's
-`useSubscription`) hears change notices on, at `<basePath>/users/:userId/stream`.
-`GET /capabilities` reports `push: { transport: "websocket" }`, so a client on
-this host hears a change as soon as it is saved instead of on its timer.
-`push: false` turns it off. `createServerApp` alone serves no socket and reports
-`push: null`.
-
-Several processes behind one address need one signing key, so a connection
-that lands on any of them is accepted:
-
-```ts
-await serve(flowState, { pushSecret: process.env.FSD_PUSH_SECRET });
-```
-
-`serve()` reads `FSD_PUSH_SECRET` itself when `pushSecret` is not given, and
-otherwise uses a random key for the process. A notice reaches every process only
-when the change bus crosses processes: the `bus` slot of the stores profile you
-hand `createFlowState` must hold a bus that hands a change made in one process to
-the others (see the engine README's *Change bus* section). The default
-in-memory bus is for an app served by one process: clients stop their timers
-while their socket is up, and a change another process writes reaches an open
-page only at its next read.
-
-## Serving a built `FlowApiRouter` directly
-
-If you already hold a router (for example from `createFlowApiRouter`, or to manage
-store lifecycle yourself), pass it instead of a `FlowState`. It is treated as
-ready immediately, and `close()` disposes the router but leaves your stores alone.
-
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/engine";
-import { serve } from "@flow-state-dev/node";
-
-const router = createFlowApiRouter({ registry, stores, runtimeConfig });
-const handle = await serve(router, { port: 8080 });
-// ... later
-await handle.close();
-```
-
-## Portable app for serverless
-
-`createServerApp(flowState)` returns the portable Hono app that `serve()` wraps —
-the `/healthz` endpoint plus the flow router, as a Web Fetch handler. The same app
-runs long-lived here or on a serverless target, so you don't re-plumb the request
-bridge per platform.
-
-```ts
-import { createServerApp } from "@flow-state-dev/node/app";
-
-const { app } = createServerApp(flowState);
-// app.fetch is a Web Fetch handler: (Request) => Promise<Response>
-//   Bun  → export default app
-//   Deno → Deno.serve(app.fetch)
-```
-
-See [Host adapters](https://flow-state.dev/docs/server/host-adapters) for guidance
-on choosing between these.
-
-## Network-bind authentication guard
-
-`assertNetworkBindIsAuthenticated(app, { host, allowUnauthenticated? })` refuses a
-network bind when any served flow runs on the framework default (unauthenticated)
-principal resolver — exposing it on a network interface would leave it open to
-anyone who can reach the port. It throws for a non-loopback `host` unless
-`allowUnauthenticated` is `true`. Loopback hosts pass unconditionally.
-`isLoopbackHost(host)` is the loopback predicate it uses.
-
-The guard pairs with the engine's route-level authorization: a flow that
-satisfies it has its whole `/api/flows` surface protected — session, state,
-resource, and request-control routes included — not just its action routes.
-
-```ts
-import { serve, assertNetworkBindIsAuthenticated } from "@flow-state-dev/node";
-import flowstate from "./fsdev.config";
-
-const host = process.env.HOST ?? "0.0.0.0";
-
-// Await the guard before serving — it rejects for a network host with an
-// unauthenticated flow, so serving must not proceed until it resolves.
-await assertNetworkBindIsAuthenticated(flowstate, { host });
-await serve(flowstate, { host });
-```
-
-`fsdev serve` runs this before it binds. Call it yourself from a hand-written
-entrypoint that adds custom middleware, so a network deploy fails closed the same
-way. It resolves the runtime (`getRuntime()`) to inspect each flow's
-authentication, so on a non-loopback host store initialization happens before the
-port binds — a deliberate fail-fast if the app is misconfigured at boot.
-
-## Health checks and PaaS deployment
-
-Point your platform's health check at `healthPath` (default `/healthz`). Pair
-this package with a long-lived host that attaches Postgres (and Redis, if you run
-durable background work). See the deployment guides for the full topology:
-
-- [Deploying to Railway](https://flow-state.dev/guides/deploying-to-railway)
-- [Deploying with Docker](https://flow-state.dev/guides/deploying-with-docker)
-
-## API reference
-
-### `ServeOptions`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `port` | `process.env.PORT` then `3000` | Port to bind. |
-| `host` | `"0.0.0.0"` | Host to bind. Keep `0.0.0.0` on a PaaS. |
-| `basePath` | `"/api/flows"` | Where the flow API is mounted. A custom value replaces `/api/flows`, so the API answers at `<basePath>/…`. Clients pass the same value as `apiPath` (`createClient({ apiPath })`, `<FlowProvider apiPath>`). |
-| `healthPath` | `"/healthz"` | Health endpoint. `200` once ready, `503` before. |
-| `staticDir` | — | Directory served for non-API routes, with `index.html` SPA fallback. |
-| `devtoolConfig` | — | DevTool connection config (`{ userId?, bearerToken? }`) injected into the served `index.html` as `window.__FSD_DEVTOOL_CONFIG__`. **Dev-only, loopback-only:** it can carry a bearer token, so `serve()` ignores it (with a warning) on a non-loopback `host`, and the injected document is served `Cache-Control: no-store`. Set by `fsdev dev`; omit for production. |
-| `pageMeta` | — | A `Record<string, string>` of `<meta name content>` tags written into every HTML page served from `staticDir`, on any host. Not for secrets. |
-| `pageScript` | — | An inline script written into every HTML page served from `staticDir`, after the `pageMeta` tags so it can read them, on any host. A `</` in it is escaped. Not for secrets. |
-| `pageHandler` | — | A Connect-style `(req, res, next)` handler tried before `staticDir`'s SPA fallback for non-API GET requests, for a dev server's middleware. A real file in `staticDir` and a dedicated adapter route are served ahead of it. Calling `next()` passes the request on; `next(err)` returns a 500. |
-| `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
-| `disposeOnClose` | `true` | Whether `close()` disposes the `FlowState` after draining. Set `false` when several servers share one runtime, and dispose it yourself once they have all closed. |
-| `push` | `true` | Serve the change-notice WebSocket at `<basePath>/users/:userId/stream` (see [Push](#push)). `false` reports `push: null` and answers the mint 404, also over a router another host serves push for. |
-| `pushSecret` | `process.env.FSD_PUSH_SECRET`, then a random key | `string \| (() => string)`. The key push tickets are signed with. Give every process behind one address the same one. |
-
-### `createPageHtmlTransform(options)`
-
-Returns the function `serve()` applies to each HTML page it serves: the
-`pageMeta` tags, the `pageScript`, then the `devtoolConfig` script on a
-loopback `host`. A `pageHandler` that renders its own `index.html` calls it
-with the same `{ host, devtoolConfig, pageMeta, pageScript }` so its page gets
-what `staticDir` pages get.
-Returns `undefined` when there is nothing to write.
-
-```ts
-import { createPageHtmlTransform } from "@flow-state-dev/node";
-
-const transform = createPageHtmlTransform({ host: "127.0.0.1", pageMeta: { "app-scheme": "dark" } });
-const html = transform ? transform(indexHtml) : indexHtml;
-```
-
-### `ServeHandle`
-
-| Member | Description |
-| --- | --- |
-| `server` | The underlying `node:http` server. |
-| `port` | The bound port (useful when binding port `0`). |
-| `close()` | Stop accepting connections, drain, then dispose the router and `FlowState`. Idempotent. |
+Reference: [the `node` section of the Flow State API reference](https://flow-state.dev/docs/reference/api/node).

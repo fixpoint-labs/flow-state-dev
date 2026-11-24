@@ -42,6 +42,8 @@ Written by `docs-writer` (sonnet), 626 words. Scenario: The Workforce roster sid
 
 - Post-loop edit: line 93 rewritten without the banned words. Re-ran check-docs-page.mjs on the page: ok, 648 words.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/concepts/views.md`: the figure description's "for the ask" reads "for the request" twice (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 06daef5b77dc, and the 6 Reference row(s) pass 6 moved.
@@ -49,6 +51,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 06d
 - The flow example `defineFlow({ kind: "roster", views: { roster } })()` is a complete flow declaration. Untrue: `actions` is a required field of a flow definition (`actions: TActions;`, not optional, and `defineFlow` infers `TActions extends Record<string, ActionEntry>` from it). A definition with only `kind` and `views` does not match `FlowDefinition`, so the example fails to typecheck. It needs an `actions` map, even if only `actions: {}`. Real flows that install views also pass `actions`, e.g. `defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } })`. (/home/user/flow-state-dev/packages/core/src/types/flow.ts:592 (page: /home/user/flow-state-dev/docs/contributing/docs-revamp/pages/concepts/views.md:48-51))
 
 - Post-loop edit: no new claim; `edited: true` is facts' own field for an edited standard worker.
+
+Cutover, 2026-11-24: the figure description's "for the ask" reads "for the request" twice (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

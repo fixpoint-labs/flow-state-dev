@@ -54,7 +54,7 @@ export const REFUSAL_MARKER = "retired-name-refusal";
 
 // A lab or an example is read like a package (FIX-2354).
 const CODE = /^(packages|apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
-const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
+const PUBLISHED = /^(apps\/docs\/docs\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);
@@ -921,17 +921,8 @@ export const ENTRIES = [
 // 2. The exemptions
 // ---------------------------------------------------------------------------------------------
 
-/** A person who isn't the signed-in user stays (BR-5), pinned by file and phrase. */
-export const PERSON_PINS = [
-  // A support desk's example worker: a human on the support team, not the customer writing in.
-  { path: "apps/docs/docs/workforce/coordinators.md", phrase: /\bhow to reach a person\b/g },
-  // A triage worker's example: it escalates to a human, not back to the user who asked.
-  { path: "apps/docs/docs/workforce/overview.md", phrase: /\bor to a person\b/g },
-  { path: "apps/docs/docs/workforce/workers-on-disk.md", phrase: /\bhands off to a person\b/g },
-];
-
 /** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure, and the revamp's Projects page with its sheets. */
-const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
+const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
 
 /**
  * Every place a retired word is kept on purpose. Each names the retirements it keeps and why.
@@ -998,38 +989,35 @@ const EXEMPTIONS = [
   },
   {
     // The Harness runs and Workforce reference pages quote names and messages the code still spells with ask.
-    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
     line: /\brun\.askMarkerPath\b|Asks are read from worker sessions|it wasn't set at hire to change its own/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2699: Reference pages quoting the harness manager's `run.askMarkerPath` field and two workforce error messages verbatim; the pages must name what the code returns",
   },
   {
     // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
-    path: /^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/messaging\.record\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/messaging\.record\.md$/,
     line: /"Asked <id>"/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
   },
   {
     // The UI components reference quotes the registry's own button and header text.
-    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/ui-components(?:\.facts)?\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/ui-components(?:\.facts)?\.md$/,
     line: /Ask for changes|"Asking ada…", "Asked ada"/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
   },
   {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
-    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$|^apps\/docs\/docs\/(?:start\/figures\/what-just-started|catalog\/starters\/figures\/what-it-installs|catalog\/workforce\/figures\/messaging-two-ways)\.svg$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],
     why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
-    // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
-    // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
-    // changeset's Docs: line, and deletes this in the same PR.
-    path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
-    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
-    why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+    path: /^apps\/docs\/docs\/reference\/upgrading\/\d{4}-\d{2}-\d{2}\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions", "human-reasons"],
+    why: "a release's Upgrading page: it names each removed export and retired reason beside what replaces it (docs/contributing/release-docs.md, The Upgrading page)",
   },
   {
     path: /^\.changeset\/one-conversation-model\.md$/,
@@ -1080,7 +1068,7 @@ const EXEMPTIONS = [
     why: "WR-7: a goal's dated verdict row, or a line saying the tool was removed: history",
   },
   {
-    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/)/,
+    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/|catalog\/starters\/shift-manager\.md$|reference\/glossary\.md$)/,
     line: /Shift Manager|AskCard|Inbox|approval|question|suspended|\bAsks?\b \|/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "Shift Manager's Ask: an approval or question to a person",
@@ -1130,7 +1118,7 @@ const EXEMPTIONS = [
   },
   {
     // The Task board reference names the midway question helper as orchestration exports it.
-    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
     line: /\baskMidway\b/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
@@ -1186,7 +1174,7 @@ const EXEMPTIONS = [
     why: "WR-5: a claimed request record passed to the run that holds it, mid-work (D3)",
   },
   {
-    path: /^apps\/docs\/docs\/glossary\.md$/,
+    path: /^apps\/docs\/docs\/(?:reference\/)?glossary\.md$/,
     line: /^\| \*\*Hand-off\*\* \| orchestration \| A session that was doing the work passes it to another session, mid-work\./,
     rules: ["handoff-prose"],
     why: "D3: the glossary row that defines hand-off as mid-work only",
@@ -1453,9 +1441,9 @@ const EXEMPTIONS = [
   {
     id: "codex-thread-option",
     terms: ["thread"],
-    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/harnesses\/codex\./.test(path),
     strip: /`thread`/g,
-    why: "the Codex block's own `thread` option, named in code font on the revamp's Codex page",
+    why: "the Codex block's own `thread` option, named in code font on the Codex page",
   },
   {
     id: "claude-code-threads",
@@ -1468,7 +1456,7 @@ const EXEMPTIONS = [
     id: "claude-code-style-worker-ids",
     terms: ["thread"],
     where: (path) =>
-      /^docs\/contributing\/docs-revamp\/pages\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
+      /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
     strip: /\bdesk\.thread(?:-coder(?:-[a-z]+)?)?\b|`thread-coder(?:-[a-z]+)?`/g,
     why: "the Claude Code-style lab's worker ids (`desk.thread`, `desk.thread-coder`), quoted as the lab ships them; the lab names its threads mode after Claude Code's",
   },
@@ -1484,9 +1472,18 @@ const EXEMPTIONS = [
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
+    id: "routines-page-thread-field",
+    terms: ["thread"],
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/routines\./.test(path),
+    strip: /"thread"(?=:)|\bthread:(?= ")/g,
+    why: "an event routine's own `thread` field, the key of the outside service's pull request or topic it follows, in the Routines page's examples",
+  },
+  {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md" || path === ".changeset/fix-2614-routines.md",
+    // The pages it covered were rewritten at the docs cutover; the release note is what is left.
+    releaseNote: true,
+    where: (path) => path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
@@ -1494,8 +1491,8 @@ const EXEMPTIONS = [
   {
     id: "old-page-redirect",
     terms: ["mailbox"],
-    where: (path) => path === "apps/docs/docusaurus.config.ts",
-    strip: /(?<=from: ")\/docs\/workforce\/mailboxes(?=")/g,
+    where: (path) => path === "apps/docs/redirects.mjs",
+    strip: /(?<=")\/docs\/workforce\/mailboxes(?=":)/g,
     why: "a redirect from a removed page's address, so an old link still lands",
   },
   {
@@ -1504,13 +1501,6 @@ const EXEMPTIONS = [
     where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
     strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
     why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
-  },
-  {
-    id: "person-any-human",
-    terms: ["person"],
-    where: (path) => PERSON_PINS.some((pin) => pin.path === path),
-    strip: (path, line) => PERSON_PINS.filter((pin) => pin.path === path).reduce((out, pin) => out.replace(pin.phrase, " "), line),
-    why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)",
   },
 
   // ---- side-chain ----
@@ -1540,18 +1530,6 @@ const EXEMPTIONS = [
     rules: ["collection-row"],
     path: /(?:^|\/)(?:components|surfaces)\//,
     why: "a UI list module under components/ or surfaces/: a rendered row is a row (owner, 2026-11-06; FIX-2479, a path rule)",
-  },
-  {
-    id: "released-quotes",
-    rules: ["collection-row"],
-    pages: /^(?:apps\/docs\/(?:docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md)$/,
-    // The owner-private refusal, the owner-writes refusal, and the first line of the startup overlap error.
-    quotes: [
-      /A row of an owner-private collection is readable only by the user it belongs to\./g,
-      /A row of an owner-writes collection is written only by the user it belongs to\./g,
-      /Collection pattern "[^"]*" can reach the rows of owner-(?:private|writes) collection/g,
-    ],
-    why: "FIX-2479 D4: a published page may quote a released message until /release-docs rewrites it, and deletes this in the same PR",
   },
 ];
 
