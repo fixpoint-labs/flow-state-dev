@@ -25,7 +25,7 @@ export const showOrder = handler({
   inputSchema: z.object({ orderId: z.string() }),
   execute: async (input, ctx) => {
     ctx.emit.status("Looking up the order");
-    const order = await findOrder(input.orderId);
+    const order = await findOrder(input.orderId, ctx.session.identity);
     if (!order) return { shown: false };
     ctx.emit.data("order-card", { orderId: input.orderId, status: order.status }, { key: input.orderId });
     return { shown: true };
@@ -59,7 +59,7 @@ export const lookUpOrder = handler({
   description: "Look up where an order is. Use it when the customer gives an order id.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.string(),
-  execute: async (input) => (await findOrder(input.orderId))?.status ?? "No order with that id.",
+  execute: async (input, ctx) => (await findOrder(input.orderId, ctx.session.identity))?.status ?? "No order with that id.",
 });
 ```
 

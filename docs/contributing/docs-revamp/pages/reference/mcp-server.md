@@ -66,8 +66,9 @@ export const lookUpOrder = handler({
   name: "look-up-order",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string(), totalCents: z.number() }),
-  execute: async ({ orderId }) => {
-    const order = await findOrder(orderId);
+  execute: async ({ orderId }, ctx) => {
+    const order = await findOrder(orderId, ctx.session.identity);
+    if (!order) throw new Error(`No order ${orderId}.`);
     return { status: order.status, totalCents: order.totalCents };
   },
 });

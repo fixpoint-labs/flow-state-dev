@@ -38,6 +38,8 @@ Written by `docs-writer` (sonnet), 2343 words. Scenario: The support desk: a `su
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `lookUpOrder` returns the status and total of a `findOrder` stand-in instead of a made-up status, and `exportTickets` returns the path a `writeOpenTicketsCsv` stand-in wrote instead of a hard-coded one. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 2415 words. Page sha256 da04e167fdb2.
 
+- After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 2415 words. Page sha256 cc8dc84a1917.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c50b0b52bf2b, and the 30 Reference row(s) pass 6 moved.
@@ -50,6 +52,8 @@ Final fact check of the page as it closed, sha256 691fca98047b: 1 untrue, fixed 
 - A resolver that returns no organization is refused the same way (the sentence follows: a flow with no resolver and no defaultUserId answers tools/list with 401 and `Action request requires non-empty userId`). Untrue: The status is the same (401, JSON-RPC -32001, with the WWW-Authenticate header), but the message is not. A configured resolver that returns no usable orgId gets `Request requires a verified organization: authentication.resolvePrincipal returned no usable orgId. Return a nonempty, well-formed orgId from the resolver.` The same refusal applies when it returns the reserved development org id. `Action request requires non-empty userId` is only for a missing userId. (/home/user/flow-state-dev/packages/engine/src/transports/host/createInboundTransportHost.ts:260-274 (vs 331-336); page line 177)
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+- Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

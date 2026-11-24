@@ -35,6 +35,8 @@ Written by `docs-writer` (sonnet), 658 words. Scenario: The support desk's `orde
 
 - After the owner's read: the page no longer presents capabilities as a generator feature. Any block kind lists one in `uses` and gets its resources and `fns` helpers; context and tools throw on a non-generator, so the handler lists `orders.with({ context: false, tools: false })`. Step 4 adds `fns` (`lastOrderId`, `clearLastOrder` at `ctx.cap.orders`), new step 6 has the handler `refundLastOrder` call them, and the factory keeps the fixed name `orders`. docs-editor (REVISE, 2 findings: an anticipated objection about the name and a bare "This" in step 7) closed, and "last mentioned" corrected to "last looked up". Every changed example type-checks; `ctx.cap.orders.lastOrderID()` and a `orders:${scope}` name each fail. 780 words. Page sha256 0ed527f8445e.
 
+- After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 787 words. Page sha256 7e5885653a04.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c25ca765b6eb, and the 7 Reference row(s) pass 6 moved.
@@ -42,6 +44,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 c25
 - Reference row 2: Row 2: context slot forms each land as their own system message, after the prompt, before the user message. Untrue: This holds only for string entries (and function entries returning strings) in the array form. An object-form context does not get its own message. Its keys render as XML tags inside the one combined prompt+context system message, and capability contributions to the same key aggregate inside the same tag. The slot order is prompt, context, history, user, so context sits before history as well as before the user message. (/home/user/flow-state-dev/docs/architecture/blocks.md:205-262 (233 'one combined system message'; 262 'String entries in an array slot still emit as their own additional system messages ... after the combined prompt+tagged-context message'); /home/user/flow-state-dev/packages/core/src/blocks/generator.ts:2926-2964) The row is recorded corrected.
 
 - Re-run after the owner's read: checked against `packages/core/src/capability/merge.ts:559-579` (ran: a handler with the context preset on throws), `packages/core/src/blocks/internal/build-block.ts:293-312`, `packages/core/src/capability/types.ts:296-297`, the five block builders' `uses` options, and a `testBlock` run of `refundLastOrder` (facts 48-57). No untrue claim remains open.
+
+- Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

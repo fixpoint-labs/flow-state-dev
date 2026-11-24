@@ -366,8 +366,8 @@ export const orderView = defineProjectedResourceCollection({
   scope: "user",
   stateSchema: z.object({ status: z.string() }),
   async read({ key, ctx }) {
-    const order = await findOrder(key);
-    if (!order || order.userId !== ctx.userId || order.orgId !== ctx.orgId) return null;
+    const order = await findOrder(key, { userId: ctx.userId, orgId: ctx.orgId });
+    if (!order) return null;
     return { status: order.status };
   },
   async search({ query, ctx }) {

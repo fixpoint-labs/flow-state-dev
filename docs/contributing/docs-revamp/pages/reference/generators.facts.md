@@ -300,3 +300,9 @@ These sit on a neighbouring Reference page that already states them, so the gene
 ## Claim left off the page (revise round 2)
 
 The opening no longer says every model call in a flow goes through a generator. The repair coercion call (G-8 step 4) is a model call made inside a generator run, not a generator, and harness integrations call models themselves; no test pins the absolute claim.
+
+## Order lookup scoped to the caller
+
+- **A handler's `ctx.session.identity` carries the resolved `userId` and `orgId`.** `BlockContext.session` is a `SessionScopeHandle` (`packages/core/src/types/block.ts:353`), whose `identity` is a `ScopeIdentity` (`packages/core/src/types/scope.ts:298`) with optional `userId` and `orgId` (`packages/core/src/types/scope.ts:9-13`). The engine fills both from the loaded session record (`packages/engine/src/context/createExecutionContext.ts:3313-3320`) and refuses a request whose `userId` is not that record's (`packages/engine/src/context/createExecutionContext.ts:1056-1058`), so the value is the caller's, never input. **[test]** `packages/integration-tests/src/two-users-one-tenant/cross-flow-admission.test.ts:61-62` reads both off `ctx.session.identity` in a handler. **[page: code only]**
+- **A tool block runs with the generator's context**, scoped per call (`packages/core/src/blocks/internal/tool-executor.ts:74-78`, `:163-177`), so `ctx.session.identity` in a tool's `execute` is the same caller's. **[page: code only]**
+- **Stand-in `findOrder(orderId, caller)`** from `src/lib/orders.ts`, `caller` being `{ userId?, orgId? }`; it returns `undefined` for an order the caller does not own, which the example's not-found branch handles. **[names only]**

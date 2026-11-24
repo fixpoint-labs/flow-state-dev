@@ -12,7 +12,7 @@ A capability packages them under one name. Any block lists it in `uses`, whether
 
 ## Step 1: Write the tool
 
-A tool is a block the model calls. This one looks an order up and records which order it saw in a resource, written in step 3. `findOrder` is a stand-in in `src/lib/orders.ts`.
+A tool is a block the model calls. This one looks an order up and records which order it saw in a resource, written in step 3. `findOrder` is a stand-in in `src/lib/orders.ts` that returns only the caller's own orders.
 
 ```ts title="src/flows/support/tools/look-up-order.ts"
 import { handler } from "@flow-state-dev/core";
@@ -26,7 +26,8 @@ export const lookUpOrder = handler({
   outputSchema: z.object({ status: z.string() }),
   resources: { orderLog },
   execute: async (input, ctx) => {
-    const order = await findOrder(input.orderId);
+    const order = await findOrder(input.orderId, ctx.session.identity);
+    if (!order) return { status: "not found" };
     await ctx.resources.orderLog.patchState({ lastOrderId: input.orderId });
     return { status: order.status };
   },
@@ -146,7 +147,7 @@ export const refundLastOrder = handler({
   execute: async (_input, ctx) => {
     const orderId = ctx.cap.orders.lastOrderId();
     if (orderId === null) return null;
-    const { refundCents } = await refundOrder(orderId);
+    const { refundCents } = await refundOrder(orderId, ctx.session.identity);
     await ctx.cap.orders.clearLastOrder();
     return { orderId, refundCents };
   },
@@ -176,7 +177,8 @@ export function createOrdersCapability(options: { scope: "session" | "user" }) {
     outputSchema: z.object({ status: z.string() }),
     resources: { orderLog },
     execute: async (input, ctx) => {
-      const order = await findOrder(input.orderId);
+      const order = await findOrder(input.orderId, ctx.session.identity);
+      if (!order) return { status: "not found" };
       await ctx.resources.orderLog.patchState({ lastOrderId: input.orderId });
       return { status: order.status };
     },

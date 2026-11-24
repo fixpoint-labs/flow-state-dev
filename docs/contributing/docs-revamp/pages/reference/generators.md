@@ -20,8 +20,8 @@ export const lookUpOrder = handler({
   description: "Look up where an order is. Use it when the customer gives an order id.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.string(),
-  execute: async (input) => {
-    const order = await findOrder(input.orderId);
+  execute: async (input, ctx) => {
+    const order = await findOrder(input.orderId, ctx.session.identity);
     return order ? `Order ${input.orderId}: ${order.status}` : `No order ${input.orderId}.`;
   },
 });
@@ -37,8 +37,8 @@ export const issueRefund = handler({
   description: "Refund an order. Use it when the customer asks for money back.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ reply: z.string(), refundCents: z.number() }),
-  execute: async (input) => {
-    const { refundCents } = await refundOrder(input.orderId);
+  execute: async (input, ctx) => {
+    const { refundCents } = await refundOrder(input.orderId, ctx.session.identity);
     return { reply: `Refund issued for order ${input.orderId}.`, refundCents };
   },
 });
