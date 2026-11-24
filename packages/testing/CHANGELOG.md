@@ -1,5 +1,147 @@
 # @flow-state-dev/testing
 
+## 0.4.0
+
+### Minor Changes
+
+- e505adf: Structured content is one item kind, `data`, emitted with `ctx.emit.data(dataType, value, { key? })` (FIX-2738). The `component` item kind is removed, with no alias: a "component" is now a `dataType` with a renderer registered for it.
+
+  **Breaking.**
+
+  - **core / engine:** `ctx.emit.component` is removed. `ctx.emit.data(dataType, value, options?)` emits `{ type: "data", dataType, value, key? }`. Options are `key` (keyed snapshot: id `item_data_keyed:<key>`, one entry per request and key, `value` replaced), `itemVisibility`, `agentName` and `transient` (default `false`, persisted). Migrate `ctx.emit.component(name, data, opts)` to `ctx.emit.data(name, data, opts)`.
+  - **contracts / core:** `ComponentItem` is removed from the `OutputItem` union; `DataItem` replaces it. With no `itemVisibility` a data item reaches the client and never model history (`{ client: true, history: false }`); `itemVisibility` overrides both. With `history: true`, a turn's history replays it as one assistant line, `[dataType] <value as JSON>`. A reader filters `item.type === "data"` and `item.dataType`, and reads `item.value` (not `item.data`).
+  - **react:** `RendererRegistry.data` holds item renderers, keyed by `dataType`. A data item with no renderer there renders nothing, never the JSON fallback, so it stays invisible in the UI and readable by code. `renderers.component` no longer draws items: it holds only the renderers a `suspension` item names with `render.component`. Move `renderers={{ component: { x: X } }}` to `renderers={{ data: { x: X } }}`; `X` receives `{ item: DataItem }`. Keyed data items dedup per request and key, and a container renderer manages the data items it owns. `useContainerItems` reads a container's `state` from its latest data item whose `dataType` is the container's `component`; `componentsByKey` is renamed `dataByKey`, with no alias.
+  - **testing:** `testItems(items).components()` is removed; use `testItems(items).data(dataType?)`.
+  - **orchestration:** `task-change`, `task-board-meta`, `task-board-recorder-failure` and `goal-seek-loop-termination` are data items. The constants are renamed, with no alias: `TASK_CHANGE_DATA_TYPE`, `TASK_BOARD_META_DATA_TYPE`, `TASK_BOARD_RECORDER_FAILURE_DATA_TYPE`, `GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE`. The recorder-failure and termination records reach no client.
+  - **workforce:** `coordinator-route` and `workforce:received` are data items; `RECEIVED_MESSAGE_COMPONENT` is renamed `RECEIVED_MESSAGE_DATA_TYPE`, with no alias. An app renderer for either moves to `renderers.data` and reads `item.value`.
+  - **patterns:** debate's `debate-turn`, `debate-turn-pending`, `debate-decision` and `debate-verdict`, event actors' `rb-entry`, routed specialists' `routedSpecialists` snapshot and the response auditor's `audit-annotation` are data items. An app renderer for one moves to `renderers.data` and reads `item.value`.
+  - **ui registry:** the generative `link-card` and `info-card` tools emit data items, and their renderers register under `renderers.data`.
+  - **devtool / shift-manager:** draw data items; the devtool's component item view is gone.
+
+  **Stored sessions.** A request stored before this can hold `component` items. The request store reads each one back as a data item (`component` → `dataType`, `data` → `value`, same status and key), in a record and in a replayed or resumed stream, so every reader sees data items. A keyed item's id reads back as `item_data_keyed:<key>`, so a resumed request's next snapshot of that key replaces it. This applies on every entry that runs flows (`createFlowState`, `createFlowApiRouter`, `runAction`, `fsdev run`, `dev` and `chat`); host code reading a store directly, past those entries, sees the stored shape. Nothing is rewritten in the store.
+
+  Docs: apps/docs/docs/streaming/emitting-items.md (one item kind for structured content: `ctx.emit.data`, `value`, keyed snapshots, default visibility, drawing through `renderers.data`; remove every `ctx.emit.component` section), apps/docs/docs/streaming/overview.md and apps/docs/docs/configuration/blocks.md (emitter tables), apps/docs/docs/client/react.md, apps/docs/docs/api/react.md and packages/react/README.md (`renderers.data`, `renderers.component` for suspensions only, `useContainerItems` `dataByKey`), packages/core/README.md (emitters), apps/docs/docs/orchestration/task-board.md, apps/docs/docs/orchestration/task-substrate.md, apps/docs/docs/sequencers/wait-for-condition.md and packages/orchestration/README.md (task records are data items, renamed constants), apps/docs/docs/patterns/plan-and-execute.md, apps/docs/docs/patterns/response-auditor.md, apps/docs/docs/patterns/event-actors.md and packages/patterns/README.md (pattern records are data items, renderers go under `data`), apps/docs/docs/ui/flow-aware-components.md and packages/ui/README.md (generative cards and the chat registry use the `data` slot), apps/docs/docs/workforce/coordinators.md, packages/workforce/README.md and packages/shift-manager/README.md (routing records and received messages are data items, renamed constant), apps/docs/docs/api/testing.md, apps/docs/docs/testing/testing-flows.md, apps/docs/docs/testing/overview.md and packages/testing/README.md (`testItems().data()`, `components()` removed).
+
+- 78daf33: `testBlock` takes a `signal` (FIX-2458).
+
+  - **testing:** `testBlock(block, { input, signal })` runs the block under your `AbortSignal` as `ctx.signal`. Abort it to stop the run the way a host does, with a deadline or a user's stop, and check what the block does with it. `createTestContext({ signal })` takes it too. Without `signal`, the block runs as before, under a signal that never fires.
+
+  Docs: packages/testing/README.md (`signal` in `testBlock`'s options, with a short example that stops a run mid-way and reads the error)
+
+- 3ef3979: **Breaking:** package scaffolding leaves the roots, and names another package declares are re-exported, not copied (FIX-2449). No deprecated aliases.
+
+  - **react:** `reactPackageMarker`, `coreItemImportProof`, `CoreItemImportProof` and `CoreTypeImportProof` are removed. `RosterWorker` is no longer exported from `@flow-state-dev/react/workforce`; workforce's type of that name is unchanged. `FlowCardinality` is now core's type, re-exported, with the same two values.
+  - **testing:** `testingPackageMarker` is removed.
+  - **vercel:** `FlowApiRouter` is now engine's type, re-exported; its shape is unchanged.
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+- 5ce9228: The run `run.answer` and `run.resume` return now carries the action's `output`, and, when it failed after the answer, its `error` as a `FlowError` with the same `code` and `message` a first `testFlow` run's error has. Both are read from the request's status route, as a client reads them (FIX-2460).
+
+  Docs: packages/testing/README.md (in the _Testing a step that waits for a person_ example, after `await run.answer({ action: "approve" })`, add `expect(after.output).toEqual({ refunded: 5 })`; one line that a run which fails after the answer comes back `failed` with `after.error`), apps/docs/docs/testing/testing-flows.md (the same `after.output` line in its _Testing a step that waits for a person_ section), apps/docs/docs/api/testing.md (`output` and `error` on the result of `answer` and `resume`)
+
+- 7a2bb7e: **Breaking:** the `@flow-state-dev/testing` root now holds what testing an app needs; benchmarking moves to `@flow-state-dev/testing/benchmark`, and `testBlock` covers sequencers and routers (FIX-2460).
+
+  - `runBenchmark`, `comparePatterns`, `baselineSubject`, `defineBenchmark`, `buildBenchmarkReport`, `renderScorecard`, `estimateCostUsd` and their types (`RunBenchmarkConfig`, `ComparePatternsConfig`, `SubjectCategoryStat`, `BenchmarkRanking`, `BenchmarkReport`, `BenchmarkRunResult`, `BenchmarkDefinition`, `BuildBenchmarkReportMeta`) are exported from `@flow-state-dev/testing/benchmark` only. So is the benchmark contract that was on `@flow-state-dev/core`: `BenchmarkTask`, `BenchmarkCategory`, `BenchmarkSubject`, `BenchmarkAdapter`, `BenchmarkAdapterOptions`, `BenchmarkRegistry`. There are no aliases: an old import fails to compile with "has no exported member"; change it to `from "@flow-state-dev/testing/benchmark"`. `fsdev benchmark` runs as before.
+  - `testSequencer` and `testRouter` are removed, with `TestSequencerResult` and `TestRouterResult`. Call `testBlock` instead: a sequencer's result carries `steps`, `sideChainResults` and `loopIterations`, typed when the block is a `SequencerDefinition`, and a router's carries `selectedRoute`, which is now absent (not `"unknown"`) when no route was chosen.
+  - `findImportsFromEntry`, `findNodeBuiltinsFromEntry` and `FindNodeBuiltinsOptions` are no longer published.
+
+  Docs: packages/testing/README.md (the benchmark section imports from `@flow-state-dev/testing/benchmark`; list the public subpaths `testing/benchmark` and `testing/conformance`; `testBlock` replaces `testSequencer` and `testRouter`, with `steps`, `sideChainResults`, `loopIterations` and `selectedRoute` on its result; drop the scanners; name the root helpers the README leaves out today: `runForTest(block, input, ctx)`, which runs one block against a context you built, `createReplayingRef` and its `ReplayingRef` type, an `updateState` double that replays an updater as a lost compare-and-set round does, so a test can show a state helper is replay-safe, the eval scorers `jsonPath` and `custom`, and `buildReport`, which builds an eval report from case results), apps/docs/docs/api/testing.md (same `testBlock` change; drop `testSequencer`, `testRouter`, their result types and the benchmark names from the root's list), apps/docs/docs/testing/overview.md and apps/docs/docs/testing/flow-integration-tests.md (`testBlock` for a sequencer or a router), packages/integration-tests/README.md (its opening names `testRouter`; say `testBlock`), apps/docs/docs/testing/benchmarks.md, apps/docs/docs/api/benchmarks.md and apps/docs/guides/choosing-patterns-with-benchmarks.md (import the harness and `BenchmarkTask` from `@flow-state-dev/testing/benchmark`, the registry from `@flow-state-dev/patterns/benchmark`), apps/docs/docs/api/package-roots.md (testing's row: the root is for testing an app and evals; its public subpaths are `testing/benchmark` and `testing/conformance`)
+
+- 298aae0: `testFlow` tests a step that waits for a person: it runs durably by default, so a `ctx.suspendForUser` or `ctx.suspend` stops the run with status `suspended` and the stop on `run.suspension`, and `run.answer({ action, data? })` and `run.resume(...)` continue it through the engine's own answer and resume routes, returning the run that followed (FIX-2460).
+
+  - `testFlow` takes `durable` (default `true`). With `durable: false`, a step that stops for a person fails the run, as it did before.
+  - The result carries `suspension`, the stop the run waits on, and `answer` / `resume`, which take `{ action, data?, suspensionId?, headers? }`. `suspensionId` defaults to the run's one pending stop. `headers` reach a flow's own `authentication.resolvePrincipal`.
+  - A refusal a screen would get (an action the stop doesn't allow, a second answer, data that fails the stop's schema, a stop that isn't there) throws a `StopRefusedError` carrying the route's `status` and message.
+  - The run that followed carries its status and the items emitted after the stop.
+  - `vi.useFakeTimers()` stalls an answer: the route waits on real timers.
+
+  Docs: packages/testing/README.md (a _Testing a step that waits for a person_ example: `testFlow` returns `suspended` with `run.suspension` matching `{ kind: "approval", message: "Refund 5?" }`, `await run.answer({ action: "approve" })` returns `completed`, a second answer throws `StopRefusedError` with status 409; `run.resume` for a developer's own `ctx.suspend`; the `durable` option; headers for a flow's own sign-in; the fake-timers note), apps/docs/docs/testing/testing-flows.md (the same _Testing a step that waits for a person_ section), apps/docs/docs/api/testing.md (`durable`, `suspension`, `answer`, `resume`, `TestFlowAnswer`, `StopRefusedError`), apps/docs/guides/human-in-the-loop.md (one line pointing to the testing section)
+
+### Patch Changes
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [e238e18]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [42980e4]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [18adad9]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+- Updated dependencies [ee91375]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes
