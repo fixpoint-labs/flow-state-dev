@@ -107,6 +107,10 @@ export const conversationBoardStateShape = {
   [TASK_NOTICES_STATE]: z.array(z.string()).default([])
 } as const;
 
+export const conversationBoardStateSchema = z.object(conversationBoardStateShape);
+
+type NoticeContext = BlockContext<Record<string, unknown>, z.infer<typeof conversationBoardStateSchema>>;
+
 /** {@link conversationBoardStateShape}'s fields, for the flow's `session.serverOwned`: only the board writes them. */
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE];
 
@@ -201,12 +205,11 @@ const passLine: ConcurrencyKey = (ctx) =>
 export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const satisfies ConcurrencyConfig;
 
 /** Write a notice's dedupe key: `true` the first time. */
-function noteSeen(ctx: BlockContext, key: string) {
+function noteSeen(ctx: NoticeContext, key: string) {
   return withOutcome(
-    (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-      ctx.session.atomicState(mutator as never),
-    (state: Readonly<Record<string, unknown>>) => {
-      const seen = state[TASK_NOTICES_STATE] as string[];
+    (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+    (state) => {
+      const seen = state[TASK_NOTICES_STATE];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
@@ -272,7 +275,7 @@ async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise
  * write: a copy that takes the notice over after it finds the key seen and
  * says nothing (at most once).
  */
-async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+async function acknowledgeOnce(ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
   const first = await noteSeen(ctx, noticeKey(notice));
   await ref.patchMetadata(row.id, clearNotice(notice));
   return first === true;
@@ -289,7 +292,7 @@ async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: T
  * a final failure: the notice stays taken by the running request, and the
  * queued copy takes it over once that request ends.
  */
-export async function settleTakenNotice(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+export async function settleTakenNotice(ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
   await beforeAcknowledge(ctx, notice);
   return acknowledgeOnce(ctx, ref, row, notice);
 }
@@ -376,11 +379,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    * nothing. Anything else, and any
    * ending with no routing layer, lands as a line now.
    */
-  const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
+  const settleConversationResult = async (ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
-    if (acted.includes(key)) {
+    if (ctx.session.state[TASK_NOTICES_STATE].includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       return { act: "none" };
     }
@@ -429,7 +431,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     name: "conversation-task-settled",
     inputSchema: taskNoticeSchema,
     outputSchema: settledSchema,
-    sessionStateSchema: z.object(conversationBoardStateShape),
+    sessionStateSchema: conversationBoardStateSchema,
     requestStateSchema: taskEndingReadsStateSchema.merge(messageTurnStateSchema),
     resources: { ...taskChainResources, ...subscriptionResources },
     execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
@@ -471,7 +473,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     name: "conversation-routed-acknowledged",
     inputSchema: settledSchema,
     outputSchema: z.object({}),
-    sessionStateSchema: z.object(conversationBoardStateShape),
+    sessionStateSchema: conversationBoardStateSchema,
     execute: async (settled: Settled, ctx) => {
       const notice = settled.notice as TaskNotice;
       const ref = await ownConversationLedger(ctx);

@@ -34,7 +34,7 @@ import type {
 } from "@flow-state-dev/core/internal";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { routedFromStateSchema } from "./routed-from";
+import { workerSessionStateSchema } from "./session-state";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
@@ -47,7 +47,6 @@ import {
 } from "../hire";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
-import { taskChainSchema } from "../conversation-board/chain";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -57,7 +56,6 @@ import {
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
-  ROUTED_FROM_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
@@ -239,21 +237,7 @@ export class WorkerTurnRefusedError extends Error {
 }
 
 /** The session-state fields every worker flow declares: readonly birth fields, and the server-owned routed-from. */
-export type WorkerSessionStateShape = {
-  readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
-  readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [ROUTED_FROM_STATE_KEY]: z.ZodOptional<z.ZodString>;
-  readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_WORKER_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
-  readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [WORK_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodString>;
-};
+export type WorkerSessionStateShape = typeof workerSessionStateSchema.shape;
 
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation extends WorkerGrants {
@@ -555,23 +539,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [WORKER_USAGE_RESOURCE]: workerUsageCollection
   } as WorkerInstallation["resources"];
 
-  const sessionStateShape = {
-    [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
-    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
-    // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
-    [ROUTED_FROM_STATE_KEY]: routedFromStateSchema,
-    [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
-    [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    // Written only by the work-project action (FIX-2161): server-owned, and changeable.
-    [WORK_PROJECT_STATE_KEY]: z.string().min(1).optional()
-  } as const;
+  const sessionStateShape = { ...workerSessionStateSchema.shape };
 
   /** Every resource a worker may be granted: the documents and the references. */
   const documents: DeclaredResources = Object.freeze({ ...(options.documents ?? {}), ...(options.references ?? {}) });
