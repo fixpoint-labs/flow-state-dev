@@ -108,7 +108,7 @@ export interface CoderFlowOptions {
   judge?: boolean;
   /** The commands a run that changed files must pass in its worktree, and how long they may take together. */
   checks?: { readonly commands: readonly string[]; readonly timeoutMs?: number };
-  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. */
+  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. A mode's own `project` overrides the last two for its runs. */
   project?: boolean;
   /** How long a run's harness may send nothing before the run is stopped and fails. Default 20 minutes. */
   idleTimeoutMs?: number;
@@ -285,7 +285,7 @@ export function codingModes(options: Pick<CoderFlowOptions, "checks" | "project"
   const resolved = resolveCoderModes(options, DEFAULT_MODE, CODER_FLOW);
   return {
     defaultMode: resolved.defaultMode,
-    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, options) }])),
+    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, { ...options, project: mode.project ?? options.project }) }])),
   };
 }
 
@@ -374,7 +374,8 @@ export function coderWorkerFlow(
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
           ...(options.approveTools === true ? { approveTools: true } : {}),
-          ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
+          // A mode may work in its task's project when the kit doesn't, or not when it does.
+          ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
         // The claim gate shares a task's child session between tasks, so a harness that authors
         // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.

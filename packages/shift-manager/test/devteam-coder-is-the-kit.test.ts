@@ -37,11 +37,12 @@ import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { connect } from "../src/lib/connection";
 import { readyHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+import { BASE_REF, createBareRemote, createScratchRepo } from "../teams/devteam/scratch-repo.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const OWNER = LAB_USERS.owner;
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+const SANDBOX = { visibility: "shared", id: "sandbox" } as const;
 const ANSWER = "The badge is in header.tsx.";
 
 let opened: Lab | undefined;
@@ -201,4 +202,27 @@ describe("Shift Manager's coder is the harness kit's coder flow", () => {
     const entries = (await client.view(harnessReadinessViewRef("harnesses"), {})).value;
     expect(entries.map((entry) => entry.harness)).toEqual(["stub", "codex"]);
   }, 180_000);
+
+  it("on a fixed repository, still answers a question in its project, as the fork's answer manager did", async () => {
+    // The answer mode works in the `answers` host, which reads the task's project whatever the Lab's
+    // workspace is; only a project with no repository can answer on a Lab with one fixed repository.
+    const stub = harnessStub({ finalMessage: ANSWER });
+    const dirs = createScratchRepo("coder-is-the-kit-fixed");
+    opened = await openLab({
+      modelResolver: filing({ "what is in the sandbox?": { toolName: "createTask", args: { goal: "What is in the sandbox?", assignee: "eng.coder", input: { project: SANDBOX } } } }),
+      stores: inMemoryStores(),
+      harnesses: [readyHarness(stub.slot)],
+      runTimeoutMs: 30_000,
+      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      coderWorkerId: "eng.coder",
+      inventory: true,
+      withoutJudge: true,
+      projects: [{ id: SANDBOX.id, title: "Sandbox" }],
+    });
+    const question = await fileAndSettle(opened, "what is in the sandbox?");
+    expect(question.status, JSON.stringify(question.lastError ?? question.error ?? null)).toBe("completed");
+    expect(question.output?.answer).toBe(ANSWER);
+    expect(stub.runs).toHaveLength(1);
+    expect(await runSegmentsOf(opened, question.id)).toEqual(["answer"]);
+  }, 120_000);
 });

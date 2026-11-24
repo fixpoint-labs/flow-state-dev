@@ -161,6 +161,16 @@ describe("an app that registers its modes", () => {
     for (const config of managerConfigs) expect(config.uses).toBeDefined();
   });
 
+  it("lets one mode work in its task's project when the kit's `project` is off, and the other not", async () => {
+    // The Lab on one fixed repository: its answer host reads the task's project, its implement checkout doesn't.
+    const answerInProject = { ...shiftManager, modes: { ...shiftManager.modes, answer: { ...shiftManager.modes.answer, project: true } } };
+    expect(await start(answerInProject)).toBe("started");
+    const byName = Object.fromEntries(managerConfigs.map((config) => [config.name as string, config]));
+    expect(byName["coder-codex-answer"]!.uses).toBeDefined();
+    expect(byName["coder-codex-answer-reviewed"]!.uses).toBeDefined();
+    expect(byName["coder-codex-implement"]!.uses).toBeUndefined();
+  });
+
   it("keeps each mode's requires for the filing check", () => {
     const { modes } = resolveCoderModes(shiftManager, kitMode, "coder");
     expect(modes.implement!.requires).toEqual(["issue"]);

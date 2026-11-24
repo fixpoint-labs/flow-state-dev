@@ -1042,8 +1042,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     modes: {
       // In the kit's workspace: the project's checkout on a branch, or the fixed repository's.
       [implement.name]: { instructions: implement.instructions, doneWhen: implement.doneWhen, requires: ["issue"] as const },
-      // In the `answers` host, which works in the task's project and keeps nothing a feature run would.
-      [answer.name]: { instructions: answer.instructions, doneWhen: answer.doneWhen, workspace: answerHost },
+      // In the `answers` host, which works in the task's project and keeps nothing a feature run would: on a
+      // fixed repository too, so the answer mode works in its project whatever the kit's `project` is.
+      [answer.name]: { instructions: answer.instructions, doneWhen: answer.doneWhen, workspace: answerHost, project: true },
     },
     defaultMode: answer.name,
     // The Lab's own part of every coder: the document it reads, the documents it reads them from, and its inspect read.
