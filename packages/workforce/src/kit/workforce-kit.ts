@@ -21,9 +21,10 @@
  *   a builder handed the installation; the kit serves what it returns beside
  *   its worker flows. Workforce ships none of its own.
  *
- * The kit adds two capabilities of workforce's own to those flows, over its
- * installation: consulting another conversation (`consultSessions`) and the
- * routine tools. Each is offered only to a worker whose file picks it.
+ * The kit adds three capabilities of workforce's own to those flows, over its
+ * installation: consulting another conversation (`consultSessions`), the
+ * routine tools, and hiring onto the user's roster on their approval
+ * (`hireWorkers`). Each is offered only to a worker whose file picks it.
  */
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -44,6 +45,7 @@ import { splitResourceModules } from "../split-resource-modules";
 import { createRoutinesCapability, type RoutinesOptions } from "../routines/routines";
 import { githubServiceFlow, type GitHubServiceFlowOptions } from "../service-flows/github/service-flow";
 import { internalServiceFlow, type InternalServiceFlow, type InternalServiceFlowOptions } from "../service-flows/internal-events/service-flow";
+import { hireWorkersCapability, type HireWorkersOptions } from "../workers/hire-tool";
 import { createWorkerInstallation, type WorkerInstallation } from "../workers/installation";
 import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
@@ -85,6 +87,8 @@ export interface WorkforceConfig {
   consult?: ConsultSessionsOptions;
   /** Routines: the schedule index, the providers an event routine follows, polling, the app's declared ones. */
   routines?: RoutinesOptions;
+  /** Hiring from a conversation (`hireWorker`): the models a hire may run on and the tools it gets by default. Omitted: the agent's model, no tools. */
+  hire?: HireWorkersOptions;
   /** GitHub's service flow, which delivers GitHub's events to the conversations that follow them. Omitted: none. */
   github?: Omit<GitHubServiceFlowOptions, "installation">;
   /**
@@ -139,6 +143,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     coordinator: object<WorkforceCoordinatorOptions>().optional(),
     consult: object<ConsultSessionsOptions>().optional(),
     routines: object<RoutinesOptions>().optional(),
+    hire: object<HireWorkersOptions>().optional(),
     github: object<Omit<GitHubServiceFlowOptions, "installation">>().optional(),
     internalEvents: object<Omit<InternalServiceFlowOptions, "installation">>().optional(),
     generated: generatedSchema.optional(),
@@ -220,13 +225,17 @@ function installWorkforce(
   }
   // The `resources/` folders' TypeScript modules: capabilities for the flows, resources for the grants.
   const modules = splitResourceModules(generated.resourceModules ?? {});
-  /** What every flow this kit builds adds: the slot's capabilities and workforce's own two. */
+  /** What every flow this kit builds adds: the slot's capabilities and workforce's own three. */
   const added = (installation: WorkerInstallation): CapabilityRef[] =>
     [
       ...slots.uses,
       ...modules.capabilities,
       consultSessionsCapability(installation, config.consult ?? {}),
       createRoutinesCapability(installation),
+      hireWorkersCapability(installation, {
+        ...(typeof config.agent?.model === "string" ? { models: [config.agent.model] } : {}),
+        ...config.hire,
+      }),
     ] as CapabilityRef[];
 
   const builtIn: Record<string, WorkerFlowEntry> = {};

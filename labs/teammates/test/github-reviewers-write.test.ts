@@ -222,6 +222,7 @@ describe("the trusted GitHub reviewers on the lab's host", () => {
       "createTask",
       "deleteRoutine",
       "getTask",
+      "hireWorker",
       "listDelegates",
       "listRoutines",
       "listTasks",
