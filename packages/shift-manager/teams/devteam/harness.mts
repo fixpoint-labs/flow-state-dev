@@ -257,7 +257,7 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
  *
  * @param agent The block a run runs, from the feeds its manager hands it.
  * @param id What a worker's `harness:` names it by. Default `stub`.
- * @param label What a person sees. Default the id.
+ * @param label The name a user sees. Default the id.
  */
 export function readyHarness(agent: (feeds: HarnessFeeds) => HarnessBlock, id = "stub", label?: string): Harness {
   return { id, ...(label === undefined ? {} : { label }), agent: agent as Harness["agent"], readiness: async () => ({ ready: true }), pass: [] };
