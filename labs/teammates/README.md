@@ -5,9 +5,10 @@ is one half of the evidence that the same package pieces make familiar apps: an 
 configuration, React UI and a few small flows, and anything else it needs is a gap filed against the
 package.
 
-Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
-registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
-theme so it reads as the app it copies.
+It draws in the Flow State design's two themes, Paper (light) and Night (near-black, warm), from
+one set of tokens in `src/lib/theme.css`, mapped onto the registry's `tokens` item so the installed
+components read them too. A switch in the sidebar picks the theme and keeps the pick; with none, the
+page follows the system's light or dark setting. Yellow marks only the user needing to act.
 
 - **Left:** the teammates, Lead, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
@@ -348,9 +349,13 @@ when the server says they changed, and on a host whose push can miss a change, s
 store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
 short one.
 
-`color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
-each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
-hire here, gets its initial on a palette color picked from its id.
+`icon:` names one of eleven bot faces, `pip`, `tally`, `bolt`, `dot`, `hex`, `sprocket`, `visor`,
+`dome`, `pod`, `telly` or `chip`, and
+`color:` one of the team palette, `coral`, `amber`, `mint`, `teal`, `iris`, `orchid`, `rose` or
+`slate`, each three `--team-*` tokens in the theme (an older `blue`, `green` or `violet` reads as
+`iris`, `mint` or `orchid`). A teammate whose file sets neither line, such as one you hire here, gets
+a face and a color picked from its id. The bot shows what the teammate is doing: running, needs you,
+queued, done or idle.
 
 Not wired yet:
 
