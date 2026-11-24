@@ -35,6 +35,7 @@ import {
   jsonResponse,
   parseJsonBody,
   SSE_HEADERS,
+  traceRequestAllowed,
   unknownRequestStreamResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -103,7 +104,7 @@ export async function handleRequestStream(
   }
 
   const url = new URL(request.url);
-  const includeTrace = url.searchParams.get("include") === "trace";
+  const includeTrace = url.searchParams.get("include") === "trace" && traceRequestAllowed();
 
   // Per-flow heartbeat override wins over the host-level default.
   const flowHeartbeatMs = flow.request?.sseHeartbeatMs;

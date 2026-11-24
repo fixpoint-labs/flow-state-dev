@@ -1,6 +1,6 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
-import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
+import { AtSignIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { HARNESS_DOT as DOT, HARNESS_STATUS_WORDS as STATE_WORDS, harnessName, harnessState, harnessWarning, withHarness } from "../lib/harness";
 import { cn } from "../lib/utils";
@@ -127,6 +127,18 @@ export function Composer({
     if (!canSend || busy) return;
     void submit((typed, files) => onSend(withHarness(typed, picked, defaultHarness), files));
   };
+  // *Mention* starts a teammate's name where the cursor is: the teammate reads "@writer" as words, like the rest of the line.
+  const mention = () => {
+    const at = box.current?.selectionStart ?? text.length;
+    const before = text.slice(0, at);
+    const insert = before === "" || /\s$/.test(before) ? "@" : " @";
+    setText(before + insert + text.slice(at));
+    const end = at + insert.length;
+    requestAnimationFrame(() => {
+      box.current?.focus();
+      box.current?.setSelectionRange(end, end);
+    });
+  };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     send();
@@ -150,8 +162,8 @@ export function Composer({
           {...attachments.dropTarget}
           data-dragging={attachments.dragging ? "true" : undefined}
           className={cn(
-            "rounded-xl border border-border-strong bg-surface shadow-[0_8px_28px_-12px_rgb(0_0_0/0.7)] focus-within:border-ring",
-            attachments.dragging && "border-ring bg-accent/40",
+            "rounded-xl border border-border-strong bg-card shadow-(--shadow-card) focus-within:border-ring",
+            attachments.dragging && "border-ring bg-(--bluebg)",
           )}
         >
           <AttachmentStrip attachments={attachments} className="px-3 pt-3 empty:hidden" />
@@ -174,19 +186,30 @@ export function Composer({
           <div className="flex items-center gap-1 px-2 pb-2">
             <AttachButton
               attachments={attachments}
-              className="size-8 rounded-sm text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              className="size-8 rounded-md text-text-2 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
             />
+            <button
+              type="button"
+              onClick={mention}
+              title="Name a teammate in your line"
+              className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-text-2 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <AtSignIcon aria-hidden className="size-3.5" />
+              Mention
+            </button>
             {harnesses !== undefined && harnesses.length > 0 ? (
               <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} workerName={workerName} replyModel={replyModel} />
             ) : null}
             <span aria-hidden className="flex-1" />
-            <span className="mr-2 hidden font-mono text-xs text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
+            <span className="mr-2 hidden font-mono text-xs text-text-3 sm:inline">
+              <kbd className="rounded-sm border border-border px-1 font-mono">⏎</kbd> send
+            </span>
             {running || stopping ? (
               <button
                 type="button"
                 onClick={onStop}
                 disabled={stopping}
-                className="h-8 rounded-sm border border-border-strong px-3 text-xs font-semibold text-destructive hover:bg-surface-raised disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-ring"
+                className="h-8 rounded-md border border-border-strong px-3 text-xs font-semibold text-destructive hover:bg-accent disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {stopping ? "Stopping…" : "Stop"}
               </button>
@@ -196,14 +219,14 @@ export function Composer({
               aria-label={busy ? "Sending…" : "Send"}
               title={busy ? "Sending…" : "Send"}
               disabled={!canSend || busy}
-              className="grid size-8 place-items-center rounded-sm bg-brand text-brand-foreground hover:brightness-110 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="h-8 rounded-md bg-primary px-3.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              <ArrowUpIcon className="size-4" aria-hidden />
+              Send
             </button>
           </div>
         </div>
         {warning === undefined ? null : (
-          <p role="status" data-testid="harness-warning" className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-warning-text">
+          <p role="status" data-testid="harness-warning" className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-danger">
             <span>
               {warning.label} can't run coding tasks here{warning.why === null ? "" : `: ${warning.why}`}.
             </span>
@@ -217,7 +240,7 @@ export function Composer({
                     key={row.harness}
                     type="button"
                     onClick={() => choose(row.harness)}
-                    className="rounded-sm border border-warning-line bg-warning-soft px-2 py-0.5 font-medium text-warning-text hover:brightness-125 focus-visible:outline-2 focus-visible:outline-ring"
+                    className="rounded-md border border-border-strong px-2 py-0.5 font-medium text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     {row.label}
                   </button>
@@ -327,7 +350,7 @@ function HarnessPicker({
         aria-label={`Code with ${name}, ${STATE_WORDS[state]}`}
         title={`Coding tasks start on this harness. ${replies}`}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-8 items-center gap-1.5 rounded-sm px-2 text-xs text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-text-2 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
       >
         {/* The task cards' terminal mark: this picks where coding tasks start. */}
         <TerminalIcon aria-hidden className="size-3.5 text-text-3" />
@@ -337,8 +360,8 @@ function HarnessPicker({
         <ChevronDownIcon aria-hidden className="size-3.5" />
       </button>
       {open ? (
-        <div ref={menu} role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
-          <div aria-hidden className="px-2 pt-1 pb-1.5 text-xs font-medium tracking-wide text-text-3 uppercase">
+        <div ref={menu} role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-lg border border-border bg-card p-1 shadow-(--shadow-card)">
+          <div aria-hidden className="px-2 pt-1 pb-1.5 font-mono text-xs font-medium tracking-[0.08em] text-text-3 uppercase">
             Start coding tasks on
           </div>
           {rows.map((r) => {
@@ -356,8 +379,8 @@ function HarnessPicker({
                   button.current?.focus();
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-ring",
-                  r.harness === current && "bg-surface-raised",
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+                  r.harness === current && "bg-(--bluebg)",
                 )}
               >
                 <span aria-hidden className={cn("size-1.5 rounded-full", DOT[s])} />
