@@ -6,7 +6,8 @@
  * Each old page goes to the page its topic moved to, as the page plan's sources say; one whose
  * topic was cut goes to the closest page in its section. Addresses are paths on the site, without
  * a trailing slash; a target that is a section's index page keeps its trailing slash, as
- * Docusaurus serves it. The build fails if a target is not a page the site serves.
+ * Docusaurus serves it. The build fails if a site target is not a page the site serves. A
+ * contributor guide that left the site goes to its file in the repository.
  */
 
 /** The current Upgrading page. Every earlier `reference/upgrading/<date>` address goes here. */
@@ -32,7 +33,7 @@ const OLD_ADDRESSES = {
   "/docs/advanced/error-handling": "/docs/concepts/when-something-fails",
   "/docs/advanced/flow-isolation": "/docs/reference/flows",
   "/docs/advanced/generator-and-router-suspend-resume": "/docs/build/human-in-the-loop",
-  "/docs/advanced/generator-context": "/docs/concepts/generators-and-tools",
+  "/docs/advanced/generator-context": "/docs/reference/generators",
   "/docs/advanced/generator-prompts-markdown": "/docs/build/prompts-in-markdown",
   "/docs/advanced/idempotency": "/docs/concepts/pausing-resuming-and-surviving-a-crash",
   "/docs/advanced/inbound-transports": "/docs/reference/webhooks",
@@ -166,7 +167,7 @@ const OLD_ADDRESSES = {
   "/docs/server/webhooks": "/docs/reference/webhooks",
 
   // shift-manager/ (from-a-checkout moved to contributor docs)
-  "/docs/shift-manager/from-a-checkout": "/docs/catalog/starters/shift-manager",
+  "/docs/shift-manager/from-a-checkout": "https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/contributing/shift-manager-from-a-checkout.md",
   "/docs/shift-manager/overview": "/docs/catalog/starters/shift-manager",
   "/docs/shift-manager/settings": "/docs/catalog/starters/shift-manager",
 
@@ -188,8 +189,8 @@ const OLD_ADDRESSES = {
 
   // testing/ (the two contributor pages moved to contributor docs)
   "/docs/testing/benchmarks": "/docs/build/benchmark-patterns",
-  "/docs/testing/end-to-end-tests": "/docs/concepts/testing",
-  "/docs/testing/flow-integration-tests": "/docs/concepts/testing",
+  "/docs/testing/end-to-end-tests": "https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/contributing/end-to-end-tests.md",
+  "/docs/testing/flow-integration-tests": "https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/contributing/flow-integration-tests.md",
   "/docs/testing/overview": "/docs/concepts/testing",
   "/docs/testing/testing-flows": "/docs/concepts/testing",
 
@@ -268,7 +269,7 @@ const OLD_ADDRESSES = {
   "/guides/webhooks-github": "/docs/build/webhooks/github",
   "/guides/webhooks-slack-events": "/docs/build/webhooks/slack",
   "/guides/webhooks-stripe": "/docs/build/webhooks/stripe",
-  "/guides/writing-ui-stories": "/docs/catalog/ui/",
+  "/guides/writing-ui-stories": "https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/contributing/writing-ui-stories.md",
 };
 
 /** The list `@docusaurus/plugin-client-redirects` takes. */
