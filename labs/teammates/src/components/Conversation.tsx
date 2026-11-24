@@ -276,7 +276,7 @@ export function Conversation({
         open={panel === "edit"}
         onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
         title={`Edit ${displayName(worker)}`}
-        description={`${displayName(worker)}'s name, instructions, model and default coding harness. Changes apply from its next turn.`}
+        description={`${displayName(worker)}'s name, instructions, look, model and default coding harness. Changes apply from its next turn.`}
       >
         <EditForm
           name={displayName(worker)}

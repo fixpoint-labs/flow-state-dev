@@ -349,7 +349,8 @@ when the server says they changed, and on a host whose push can miss a change, s
 store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
 short one.
 
-`icon:` names one of six bot faces, `pip`, `tally`, `bolt`, `dot`, `hex` or `sprocket`, and
+`icon:` names one of eleven bot faces, `pip`, `tally`, `bolt`, `dot`, `hex`, `sprocket`, `visor`,
+`dome`, `pod`, `telly` or `chip`, and
 `color:` one of the team palette, `coral`, `amber`, `mint`, `teal`, `iris`, `orchid`, `rose` or
 `slate`, each three `--team-*` tokens in the theme (an older `blue`, `green` or `violet` reads as
 `iris`, `mint` or `orchid`). A teammate whose file sets neither line, such as one you hire here, gets

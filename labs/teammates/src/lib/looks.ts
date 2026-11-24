@@ -12,7 +12,7 @@
  */
 
 /** The bot faces, each its own head on the 64×64 grid (`components/Avatar.tsx`). */
-export const BOT_FACES = ["pip", "tally", "bolt", "dot", "hex", "sprocket"] as const;
+export const BOT_FACES = ["pip", "tally", "bolt", "dot", "hex", "sprocket", "visor", "dome", "pod", "telly", "chip"] as const;
 export type BotFace = (typeof BOT_FACES)[number];
 
 /**

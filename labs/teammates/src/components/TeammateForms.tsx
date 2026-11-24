@@ -144,7 +144,7 @@ function LookFields({ who, face, color, onChange }: { who: string; face: BotFace
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-xs font-medium text-text-2">Look</legend>
-      <div role="radiogroup" aria-label={`Face for ${who}`} className="flex flex-wrap gap-1.5">
+      <div role="radiogroup" aria-label={`Face for ${who}`} className="flex flex-wrap gap-1">
         {BOT_FACES.map((f) => (
           <button key={f} type="button" role="radio" aria-checked={f === face} aria-label={f} title={f} onClick={() => onChange({ icon: f })} className={cn(CHOICE, f === face ? "ring-2 ring-foreground" : "ring-1 ring-border hover:ring-border-strong")}>
             <Avatar look={{ face: f, color }} />

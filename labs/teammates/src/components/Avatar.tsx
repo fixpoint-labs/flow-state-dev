@@ -10,9 +10,9 @@
  *   filled with the teammate's dark tint and animated by its state (the
  *   `hb-*` keyframes in `styles.css`, which stop under reduced motion).
  *
- * The faces (Pip, Tally, Bolt, Dot, Hex, Sprocket) share one layout: an
- * antenna at the top, the head, then the shoulders, so the animations move
- * the same parts on every face.
+ * The eleven faces (Pip, Tally, Bolt, Dot, Hex, Sprocket, Visor, Dome, Pod,
+ * Telly, Chip) share one layout: an antenna at the top, the head, then the
+ * shoulders, so the animations move the same parts on every face.
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { BotFace, BotStatus, Look } from "../lib/looks";
@@ -115,6 +115,83 @@ const FACES: Record<BotFace, FaceParts> = {
     ),
     eyeY: 28,
     eyeX: [27, 37],
+  },
+  visor: {
+    head: <rect x="14" y="15" width="36" height="28" rx="8" />,
+    eyes: <rect x="19" y="24.5" width="26" height="7" rx="3.5" />,
+    antenna: (
+      <>
+        <path d="M32 15V8" />
+        <path d="M29.5 5.5l2.5-2.5 2.5 2.5-2.5 2.5z" data-tip />
+      </>
+    ),
+    eyeY: 28,
+    eyeX: [25, 39],
+  },
+  dome: {
+    head: <path d="M14 43V31a18 18 0 0 1 36 0v12z" />,
+    eyes: ROUND_EYES(30, [25, 39]),
+    antenna: (
+      <>
+        <path d="M32 13V7" />
+        <circle cx="32" cy="5" r="2" data-tip />
+      </>
+    ),
+    eyeY: 30,
+    eyeX: [25, 39],
+  },
+  pod: {
+    head: (
+      <>
+        <rect x="13" y="17" width="38" height="24" rx="12" />
+        <circle cx="10" cy="29" r="2.5" />
+        <circle cx="54" cy="29" r="2.5" />
+      </>
+    ),
+    eyes: [<ellipse key="l" cx="25" cy="28" rx="2.5" ry="4" />, <ellipse key="r" cx="39" cy="28" rx="2.5" ry="4" />],
+    antenna: (
+      <>
+        <path d="M32 17c-3-1.5 3-3 0-4.5s3-3 0-4.5" />
+        <circle cx="32" cy="5.5" r="2" data-tip />
+      </>
+    ),
+    eyeY: 28,
+    eyeX: [25, 39],
+  },
+  telly: {
+    head: (
+      <>
+        <rect x="12" y="15" width="40" height="29" rx="5" />
+        <rect x="17" y="20" width="30" height="20" rx="3" />
+      </>
+    ),
+    eyes: ROUND_EYES(28.5, [26, 38], 3),
+    antenna: (
+      <>
+        <path d="M30 15l-6-9M34 15l6-9" />
+        <circle cx="24" cy="6" r="1.8" data-tip />
+        <circle cx="40" cy="6" r="1.8" data-tip />
+      </>
+    ),
+    eyeY: 28.5,
+    eyeX: [26, 38],
+  },
+  chip: {
+    head: (
+      <>
+        <rect x="17" y="15" width="30" height="28" rx="3" />
+        <path d="M17 21h-4M17 29h-4M17 37h-4M47 21h4M47 29h4M47 37h4" />
+      </>
+    ),
+    eyes: [<path key="l" d="M25 24.5l3.5 3.5-3.5 3.5-3.5-3.5z" />, <path key="r" d="M39 24.5l3.5 3.5-3.5 3.5-3.5-3.5z" />],
+    antenna: (
+      <>
+        <path d="M32 15V9" />
+        <path d="M28.5 9h7L32 4z" data-tip />
+      </>
+    ),
+    eyeY: 28,
+    eyeX: [25, 39],
   },
 };
 
