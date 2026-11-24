@@ -75,6 +75,16 @@ describe("a thread card's accept", () => {
     expect(within(card()).queryByRole("button", { name: "Merge locally" })).toBeNull();
   });
 
+  // FIX-2920: a run on a branch with a pull request already open was offered "Open a PR"; its accept goes onto that one.
+  it("offers the pull request already open from the branch, not a new one", async () => {
+    const run = stubRun({ ...REVIEW, openPullRequest: { number: 5661, url: "https://github.com/acme/widgets/pull/5661" } });
+    renderCard(codingTask(), run);
+    const push = await waitFor(() => within(card()).getByRole("button", { name: "Push to PR #5661" }));
+    expect(within(card()).queryByRole("button", { name: "Open a PR" })).toBeNull();
+    fireEvent.click(push);
+    await waitFor(() => expect(run.accepted()).toEqual(["pull-request"]));
+  });
+
   it("is a plain Resolve when the review lists no landing, sending no land", async () => {
     const run = stubRun({ ...REVIEW, lands: [] });
     renderCard(codingTask(), run);

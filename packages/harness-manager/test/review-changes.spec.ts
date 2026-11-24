@@ -414,6 +414,8 @@ describe("a coding run that made changes waits for a person's review", () => {
         goal: "the feature",
         answer: "done",
         pullRequests: [],
+        // Nothing open from the branch, so a `pull-request` accept opens one.
+        openPullRequest: null,
         round: null,
         files: [{ path: "change-1.txt", added: 1, removed: 0 }],
         fileCount: 1,
@@ -1362,8 +1364,14 @@ process.stdout.write(out);
       await h.start();
       const asked = await h.until(h.waiting, "the review");
 
-      expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.lands).toEqual(["pull-request", "merge"]);
-      expect(h.review(asked)!.ask.prompt).not.toContain("already open");
+      const detail = reviewDetail((await h.stop(h.review(asked)!))?.data);
+      expect(detail?.lands).toEqual(["pull-request", "merge"]);
+      // FIX-2920: the review names that pull request as where a `pull-request` accept puts the work, so no card
+      // invites the person to open a second one. Without it, the card's button read "Open pull request" beside a #42 link.
+      expect(detail?.openPullRequest).toEqual({ number: 42, url: PR_URL });
+      expect(detail?.pullRequests).toEqual([{ number: 42, url: PR_URL }]);
+      expect(h.review(asked)!.ask.prompt).toContain(`Pull request #42 is already open from`);
+      expect(h.review(asked)!.ask.prompt).toContain("no second pull request is opened");
       expect((await h.statuses()).some((line) => line.includes("#42") && line.includes("didn't open it"))).toBe(true);
       const cwd = h.seen[0]!.cwd;
       const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");

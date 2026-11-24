@@ -3,7 +3,9 @@
  * the judge's verdict on top, then what changed, each check, what is worth
  * knowing beyond the change, the files and the original request; and, at the
  * popup's foot, one compose box with **Request changes**, **Merge locally**
- * and **Open pull request** (its menu accepts without landing).
+ * and **Open pull request** (its menu accepts without landing). A branch
+ * with a pull request already open from it offers **Push to PR #N** and a
+ * **View PR #N** link instead: its work goes there, never onto a second one.
  *
  * What changed, the run's own checks and its notes come from the run's
  * report, read with harness-manager's `runReport`; an answer without the
@@ -19,7 +21,7 @@ import { RUN_REPORT_HEADINGS, runReport, type ReviewDetail, type RunReport, type
 import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
-import { LandFailure, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
+import { LandFailure, landLabel, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
 import { RunChanges } from "./flow-state/run-changes";
 import { runCheckPassed } from "./flow-state/run-checks";
 
@@ -454,15 +456,19 @@ export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewD
   );
 }
 
-/** Each way to land, as the footer's buttons say it. */
-const LAND_BUTTON: Record<ReviewLand, string> = { "pull-request": "Open pull request", merge: "Merge locally" };
+/** Each way to land, as the footer's buttons say it; onto a pull request already open, the registry's "Push to PR #N". */
+const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullRequest"> | undefined): string =>
+  land === "pull-request" && review?.openPullRequest == null ? "Open pull request" : landLabel(land, review?.openPullRequest);
 
 /** What the primary button does, in a line under the buttons. Exported for its test. */
-export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch">, open: number): string {
+export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest">, open: number): string {
   const branch = review.branch === null ? "the run's branch" : shortBranch(review.branch);
+  const onto = review.openPullRequest ?? null;
   const said =
     land === "pull-request"
-      ? `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`
+      ? onto !== null
+        ? `Pushes ${branch} to PR #${onto.number}, already open from it; no second PR is opened.`
+        : `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`
       : land === "merge"
         ? `Merges ${branch} into your checkout.`
         : "Completes the task; the branch stays as it is.";
@@ -544,7 +550,8 @@ export function ReviewFooter({
   const primary = ordered[0] ?? null;
   const others = ordered.slice(1);
   const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;
-  const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${LAND_BUTTON[land]}` : LAND_BUTTON[land]);
+  const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${landButton(land, review)}` : landButton(land, review));
+  const onto = review?.openPullRequest ?? null;
   // A disabled secondary keeps its border, so it still reads as a button; only its words dim.
   const secondary = "h-9 rounded-md border border-border-strong px-3.5 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:text-text-3 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-ring";
   return (
@@ -626,6 +633,15 @@ export function ReviewFooter({
       </div>
       <p className="text-xs leading-relaxed text-text-3" data-land-hint>
         {landHint(primary, review ?? { branch: null }, open)}
+        {onto === null ? null : (
+          <>
+            {" "}
+            <a href={onto.url} target="_blank" rel="noreferrer" data-open-pull-request className="inline-flex items-center gap-0.5 font-medium text-brand underline-offset-2 hover:underline">
+              View PR #{onto.number}
+              <ArrowUpRightIcon aria-hidden className="size-3" />
+            </a>
+          </>
+        )}
       </p>
       {error === null ? null : (
         <p role="alert" className="text-xs text-destructive">

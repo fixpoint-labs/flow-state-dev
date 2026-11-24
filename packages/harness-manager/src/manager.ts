@@ -1593,6 +1593,18 @@ function onPullRequestLine(open: ExistingPullRequest): string {
   return `The work goes onto pull request #${open.number}, already open from ${open.branch}: ${open.url}. No second pull request is opened.`;
 }
 
+/** An open pull request as the review card links it, or `null` when there is none or its link isn't a pull request's. */
+function openPullRequestOf(open: ExistingPullRequest | null): ReviewPullRequest | null {
+  const ref = open === null ? null : pullRequestRefFromUrl(open.url);
+  return ref === null ? null : { number: ref.number, url: ref.url };
+}
+
+// FIX-2920.
+/** The review's line for a pull request open from the branch that no accept on this task landed on yet. */
+function openPullRequestLine(open: ExistingPullRequest): string {
+  return `Pull request #${open.number} is already open from ${open.branch}: ${open.url}. An accept that lands as a pull request puts the work on it; no second pull request is opened.`;
+}
+
 /** The most characters a pull request's title keeps. */
 const PULL_REQUEST_TITLE_CHARS = 72;
 
@@ -4173,14 +4185,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       let onPullRequest = probed.open;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
       // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
-      // reads them, and the one open from its branch; each once. Read once, as the ways are.
+      // reads them, and the one open from its branch, whoever opened it (FIX-2920); each once. Read once, as the ways are.
       // Only shown on the card: a failed read shows none rather than failing the review.
       const readPullRequests = async (): Promise<ReviewPullRequest[]> => {
         const recorded = await readRunRecord(ctx, state.topic!)
           .then((record) => taskPullRequests(ctx, record?.requestIds ?? [ctx.request.identity.id]))
           .catch(() => []);
         // Each read as a pull request's web link and kept in its normalized form, so a card links only to one.
-        const links = [...recorded.map((pr) => pr.url), onPullRequest?.url ?? null].flatMap((url) => {
+        const links = [...recorded.map((pr) => pr.url), (onPullRequest ?? probed.notOurs)?.url ?? null].flatMap((url) => {
           const ref = url === null ? null : pullRequestRefFromUrl(url);
           return ref === null ? [] : [{ number: ref.number, url: ref.url }];
         });
@@ -4219,7 +4231,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             title: failed === null ? "Review the run's changes" : "The accepted changes didn't land",
             prompt:
               (failed === null ? "" : `${landFailedLine(failed, lands.length > 1)}\n\n`) +
-              (onPullRequest === null ? "" : `${onPullRequestLine(onPullRequest)}\n\n`) +
+              (onPullRequest !== null
+                ? `${onPullRequestLine(onPullRequest)}\n\n`
+                : probed.notOurs !== null
+                  ? `${openPullRequestLine(probed.notOurs)}\n\n`
+                  : "") +
               reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null, {
                 goal: state.goal ?? null,
                 answer: decision.output.answer,
@@ -4246,6 +4262,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               goal: state.goal ?? null,
               answer: decision.output.answer,
               pullRequests,
+              // The pull request a `pull-request` accept puts the work on, rather than opening one (FIX-2920).
+              openPullRequest: openPullRequestOf(onPullRequest ?? probed.notOurs),
               round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
