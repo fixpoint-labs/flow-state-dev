@@ -207,21 +207,22 @@ export function codingDrainBudgetMs(
 
 // FIX-2877 D2; BP-031. Interim: FIX-2878's run settings retire it.
 /**
- * Who takes a coding task a model files from outside any coding run: the
- * coding worker on the roster whose `harness:` is `defaultHarness`, else one
- * whose file names no harness (which runs on the default). Read from the
- * roster as it stands, never from anything the model wrote. With
- * neither, the filing is refused, saying why.
+ * Who takes a coding task a model files from outside any coding run: among
+ * the filer's own delegates, the coding worker whose `harness:` is
+ * `defaultHarness`, else one whose file names no harness (which runs on the
+ * default). Read from the roster as it stands, never from anything the model
+ * wrote. With neither among its delegates, the filing is refused, saying why.
  */
 function defaultCoderAssignee(defaultHarness: string): NoPickAssignee {
-  return async (ctx, installation) => {
-    const coders = (await readRosterEntries(ctx, installation)).filter((entry) => entry.flow === CODER_FLOW);
+  return async (ctx, installation, delegates) => {
+    // Only the filer's own delegates: a coder elsewhere on the roster is one this conversation can't hand a task to.
+    const coders = (await readRosterEntries(ctx, installation)).filter((entry) => entry.flow === CODER_FLOW && delegates.has(entry.id));
     const harnessOf = (entry: (typeof coders)[number]) => (typeof entry.settings.harness === "string" ? entry.settings.harness : undefined);
     const worker = coders.find((entry) => harnessOf(entry) === defaultHarness) ?? coders.find((entry) => harnessOf(entry) === undefined);
     if (worker === undefined) {
       throw new TaskWriteRefusedError(
         "no_default_coder",
-        `a coding task runs on this app's default coder, "${defaultHarness}", and no coding worker on the roster runs it. Nothing was filed.`,
+        `a coding task runs on this app's default coder, "${defaultHarness}", and no coding worker this conversation hands tasks to runs it. Nothing was filed.`,
       );
     }
     return worker.id;

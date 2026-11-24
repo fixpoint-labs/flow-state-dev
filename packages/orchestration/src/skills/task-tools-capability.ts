@@ -438,6 +438,14 @@ export function checkAssignee(
   return unknownAssigneeError(assignee, roster);
 }
 
+// FIX-2877; BP-030.
+/**
+ * What `createTask` records for an assignee that passed its check. An older
+ * build recorded `null` there, and no server-assignee decision after it: a
+ * replay of such a call keeps the assignee it named.
+ */
+const ASSIGNEE_CHECKED = { ok: true as const, checked: true as const };
+
 // FIX-2076.
 /**
  * A wrapping ref's own refusal as the soft error the tools answer:
@@ -1372,43 +1380,56 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // pre-flight, so running it first costs nothing.
     // The roster this call read, kept for the server-assignee decision below: one read per call.
     let read: AssigneeRoster | undefined;
-    const bad =
+    // A pass is recorded as `ASSIGNEE_CHECKED`; an older build recorded `null`,
+    // and decided no server assignee, so its replay keeps the named one (BP-030).
+    const checked =
       assignee === undefined
         ? undefined
-        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, (read = await rosterFor(roster, ctx))) ?? null);
-    if (bad) return bad;
+        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, (read = await rosterFor(roster, ctx))) ?? ASSIGNEE_CHECKED);
+    if (checked !== undefined && checked !== null && "error" in checked) return checked;
+    // A replay of a call an older build checked keeps the assignee it named (BP-030).
+    let legacyReplay = checked === null;
+    // A model's task with no assignee is filed only where something will take
+    // it (FIX-2735): decided once per call, since the roster can change
+    // between a call and its replay. An action is a person's or an app's
+    // move, made beside the board it fills, which names the owner later.
+    if (assignee === undefined && !claimless) {
+      // Recorded as `{ owner }`; an older build recorded the owner bare, and decided no server assignee.
+      const recorded = await decideOnce(ctx, memoize, "unassigned", async () => ({
+        owner: ownerForUnassigned(await rosterFor(roster, ctx), input.held === true) ?? null,
+      }));
+      const current = recorded !== null && typeof recorded === "object" && "owner" in recorded;
+      if (!current) legacyReplay = true;
+      const owner = (current ? recorded.owner : recorded) as ReturnType<typeof ownerForUnassigned> | null;
+      // A replay of a call an older build filed carries no such decision
+      // (BP-030): its row is on the board, so `fileReady` answers it rather
+      // than this refusal telling the model nothing was filed.
+      const filed = owner != null && "error" in owner && memoize ? await recordedFiling(ctx) : undefined;
+      if (owner != null && "error" in owner && (filed === undefined || collection.get(filed) === undefined)) return owner;
+      if (owner != null && !("error" in owner)) assignee = owner.assignee;
+    }
     // A model's task goes to the worker the board decides for it, when it
-    // decides one (FIX-2877 D2): before the same-work check below, so that
-    // check reads the row's worker. Decided once per call, so a replay files
-    // where the first call did. An action is a caller's own pick.
-    if (assignee !== undefined && followUp === undefined && !claimless) {
-      const named = assignee;
+    // decides one (FIX-2877 D2): the one decision point, once the worker is
+    // known by any path (named, or the roster's one worker), and before the
+    // same-work check below, so that check reads the row's worker. Decided
+    // once per call, so a replay files where the first call did. An action is
+    // a caller's own pick.
+    const target = assignee ?? (read ?? (await rosterFor(roster, ctx)))?.soleAssignee?.();
+    if (target !== undefined && followUp === undefined && !claimless && !legacyReplay) {
       const decided = await decideOnce(ctx, memoize, "server-assignee", async () => {
         const source = read ?? (await rosterFor(roster, ctx));
         try {
-          return { assignee: source?.assigneeFor === undefined ? named : await source.assigneeFor(named) };
+          const chosen = source?.assigneeFor === undefined ? target : await source.assigneeFor(target);
+          // The board's choice is held to the same roster as the model's: a worker it can't hand the task to is refused.
+          return chosen === target || source === undefined || source.has(chosen) ? { assignee: chosen } : unknownAssigneeError(chosen, source);
         } catch (err) {
           if (err instanceof TaskWriteRefusedError) return refusedError(err);
           throw err;
         }
       });
       if ("error" in decided) return decided;
-      assignee = decided.assignee;
-    }
-    // A model's task with no assignee is filed only where something will take
-    // it (FIX-2735): decided once per call, since the roster can change
-    // between a call and its replay. An action is a person's or an app's
-    // move, made beside the board it fills, which names the owner later.
-    if (assignee === undefined && !claimless) {
-      const owner = await decideOnce(ctx, memoize, "unassigned", async () =>
-        ownerForUnassigned(await rosterFor(roster, ctx), input.held === true) ?? null,
-      );
-      // A replay of a call an older build filed carries no such decision
-      // (BP-030): its row is on the board, so `fileReady` answers it rather
-      // than this refusal telling the model nothing was filed.
-      const filed = owner !== null && "error" in owner && memoize ? await recordedFiling(ctx) : undefined;
-      if (owner !== null && "error" in owner && (filed === undefined || collection.get(filed) === undefined)) return owner;
-      if (owner !== null && !("error" in owner)) assignee = owner.assignee;
+      // An unassigned row the roster's one worker takes stays unassigned unless the board moved it.
+      if (assignee !== undefined || decided.assignee !== target) assignee = decided.assignee;
     }
     // One piece of work, one task (FIX-2350): the same goal for the same
     // worker while a task for it is open is a second start, from a call sent

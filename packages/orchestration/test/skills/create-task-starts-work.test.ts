@@ -139,6 +139,91 @@ describe("createTask replayed after the team changed (BR-15)", () => {
     expect(collection.list()).toHaveLength(1);
   });
 
+  it("a call an older build checked keeps the assignee it named on the replay, never moved by the board's assigneeFor (BP-030)", async () => {
+    const collection = await board();
+    let died = false;
+    const dying = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
+      createTask: async (...args: unknown[]) => {
+        if (!died) {
+          died = true;
+          throw new Error("the process died before the add");
+        }
+        return (collection.createTask as (...a: unknown[]) => Promise<unknown>)(...args);
+      }
+    }) as TaskCollectionRef;
+    const t = team(["eng.a", "eng.b"]);
+    const memo = new Map<string, unknown>();
+    const input = { goal: "Draft the release note", assignee: "eng.a" };
+    // The older build: no assigneeFor, so nothing moves the task.
+    await expect(run(createTool(dying, t.roster), input, turnCtx(memo))).rejects.toThrow("the process died before the add");
+    // What that build left: its assignee check recorded as `null`, and no server-assignee decision.
+    for (const key of [...memo.keys()]) {
+      if (key.startsWith("fsd.decide.assignee:")) memo.set(key, null);
+      if (key.startsWith("fsd.decide.server-assignee:")) memo.delete(key);
+    }
+    // After the upgrade, the board moves a new call's task to eng.b.
+    const upgraded: AssigneeRoster = { ...t.roster, assigneeFor: async () => "eng.b" };
+    const replay = await run(createTool(dying, upgraded), input, turnCtx(memo));
+    expect(replay).toMatchObject({ ok: true, taskId: expect.any(String) });
+    expect(collection.list().map((task) => task.assignee)).toEqual(["eng.a"]);
+    // A new call on the upgraded build is moved.
+    const fresh = await run(createTool(collection, upgraded), { goal: "Another note", assignee: "eng.a" }, turnCtx(memo, "c9"));
+    expect(collection.get(fresh.taskId!)?.assignee).toBe("eng.b");
+  });
+
+  it("asks the board's assigneeFor about the worker a task with no assignee goes to, so the roster's one worker gets no way round it", async () => {
+    const collection = await board();
+    const asked: string[] = [];
+    // The roster's one task-taking worker is eng.a; the board sends its tasks to eng.b.
+    const roster: AssigneeRoster = {
+      has: (name) => name === "eng.a" || name === "eng.b",
+      describe: () => "eng.a, eng.b",
+      soleAssignee: () => "eng.a",
+      assigneeFor: async (name) => {
+        asked.push(name);
+        return "eng.b";
+      }
+    };
+    const out = await run(createTool(collection, roster), { goal: "Draft it" }, turnCtx(new Map(), "c6"));
+    expect(out).toMatchObject({ ok: true });
+    expect(asked).toEqual(["eng.a"]);
+    expect(collection.get(out.taskId!)?.assignee).toBe("eng.b");
+  });
+
+  it("a call with no assignee an older build decided keeps the roster's one worker on the replay (BP-030)", async () => {
+    const collection = await board();
+    let died = false;
+    const dying = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
+      createTask: async (...args: unknown[]) => {
+        if (!died) {
+          died = true;
+          throw new Error("the process died before the add");
+        }
+        return (collection.createTask as (...a: unknown[]) => Promise<unknown>)(...args);
+      }
+    }) as TaskCollectionRef;
+    const sole: AssigneeRoster = { has: (name) => name === "eng.a" || name === "eng.b", describe: () => "eng.a, eng.b", soleAssignee: () => "eng.a" };
+    const memo = new Map<string, unknown>();
+    await expect(run(createTool(dying, sole), { goal: "Draft it" }, turnCtx(memo))).rejects.toThrow("the process died before the add");
+    // What the older build left: the owner bare, and no server-assignee decision.
+    for (const key of [...memo.keys()]) {
+      if (key.startsWith("fsd.decide.unassigned:")) memo.set(key, { assignee: "eng.a" });
+      if (key.startsWith("fsd.decide.server-assignee:")) memo.delete(key);
+    }
+    const replay = await run(createTool(dying, { ...sole, assigneeFor: async () => "eng.b" }), { goal: "Draft it" }, turnCtx(memo));
+    expect(replay).toMatchObject({ ok: true });
+    expect(collection.list().map((task) => task.assignee)).toEqual(["eng.a"]);
+  });
+
+  it("refuses a board's assigneeFor answer that isn't on the roster, filing nothing", async () => {
+    const collection = await board();
+    const t = team(["eng.a"]);
+    const outside: AssigneeRoster = { ...t.roster, assigneeFor: async () => "eng.elsewhere" };
+    const out = await run(createTool(collection, outside), { goal: "Draft it", assignee: "eng.a" }, turnCtx(new Map(), "c8"));
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "eng\.elsewhere"/) });
+    expect(collection.list()).toEqual([]);
+  });
+
   it("keeps the call that filed a row out of a caller's reach: metadata naming another call is not written", async () => {
     const collection = await board();
     const t = team(["eng.a"]);

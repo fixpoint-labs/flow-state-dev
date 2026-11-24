@@ -28,14 +28,20 @@ import type { WorkerRole } from "../worker-roles";
 /**
  * Who takes a task a model files for one of a flow's workers from outside
  * that flow's work: the worker id the server writes as its assignee, in place
- * of the one the model named. Resolves to `undefined` to keep the model's.
- * Throws `TaskWriteRefusedError` to refuse the filing, saying why.
+ * of the one the model named, chosen from `delegates`, the filer's own
+ * task-taking delegates (worker id to flow). Resolves to `undefined` to keep
+ * the model's. Throws `TaskWriteRefusedError` to refuse the filing, saying why.
+ * An answer outside `delegates` is refused.
  *
  * "Outside" is a filing from a session that doesn't run on the flow and wasn't
  * opened by a task one filed. A user's own move on the board (an action,
  * such as a re-file onto a worker they chose) is never rewritten.
  */
-export type NoPickAssignee = (ctx: BlockContext, installation: WorkerInstallation) => Promise<string | undefined>;
+export type NoPickAssignee = (
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  delegates: ReadonlyMap<string, string>
+) => Promise<string | undefined>;
 
 const BUILDER = Symbol.for("flow-state-dev/workforce/worker-flow");
 

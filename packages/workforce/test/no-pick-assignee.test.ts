@@ -43,8 +43,8 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
       const tasks = await host.rows("alice");
       expect(tasks.map((task) => [task.goal, task.assignee, task.status])).toEqual([["Write the notes", "eng.writer", "completed"]]);
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
-      // Decided on the filer's own turn, from its server-written session.
-      expect(asked).toEqual(["pm"]);
+      // Decided on the filer's own turn, from its server-written session: asked early by the task tools and again at the store, idempotent.
+      expect([...new Set(asked)]).toEqual(["pm"]);
     } finally {
       await host.dispose();
     }
@@ -105,6 +105,67 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
         ok: false,
         error: "no_default_coder: no coding worker runs the default. Nothing was filed."
       });
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("is handed the filer's own delegates, and an answer outside them is refused, never filed", async () => {
+    const seen: string[][] = [];
+    // pm hands tasks to eng.tasker and eng.writer; eng.helper is on the roster but not one of them.
+    const noPickAssignee: NoPickAssignee = async (_ctx, _installation, delegates) => {
+      seen.push([...delegates.keys()].sort());
+      return "eng.helper";
+    };
+    const host = bootBoardHost({ judgment: filing("eng.tasker"), registration: { tasker: { noPickAssignee } } });
+    try {
+      const conv = await ask(host, "pm");
+      expect(await host.rows("alice")).toEqual([]);
+      expect(seen[0]).toEqual(["eng.tasker", "eng.writer"]);
+      const items = (await host.requestsOf(conv)).flatMap((request) => (request as { items?: Array<{ type: string; output?: { ok?: boolean; error?: string } }> }).items ?? []);
+      expect(items.filter((item) => item.type === "tool_output").map((item) => item.output?.error)).toContainEqual(
+        expect.stringMatching(/^unknown_assignee: .*"eng\.helper", which is not one of this conversation's delegates/)
+      );
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("is stored on a model's edit too: a held task moved with updateTask onto another worker runs on the flow's choice once released", async () => {
+    // The model's edit names eng.tasker; the flow's choice is eng.writer.
+    const update = { id: "", assignee: "eng.tasker" };
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "u1", toolName: "updateTask", args: update }] }, { text: "Moved it." }, { text: "It's done." }]
+    });
+    const host = bootBoardHost({ judgment, registration: { tasker: { noPickAssignee: async () => "eng.writer" } } });
+    try {
+      const conv = await host.conversation("alice", "pm");
+      // The user's own held filing, on eng.writer.
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: "Write the notes", assignee: "eng.writer", held: true });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      update.id = (filed.output as { taskId: string }).taskId;
+      const turn = await host.act("alice", conv, "respond", { message: "give it to the tasker" });
+      expect(turn.error, messageOf(turn.error)).toBeUndefined();
+      await host.settled();
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["eng.writer"]);
+      const released = await host.act("alice", conv, "updateTask_tasks", { id: update.id, status: "pending" });
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await host.settled();
+      expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("keeps a user's own edit: the board's updateTask action moves the task where they say", async () => {
+    const host = bootBoardHost({ registration: { tasker: { noPickAssignee: async () => "eng.writer" } } });
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: "Write the notes", assignee: "eng.writer", held: true });
+      const id = (filed.output as { taskId: string }).taskId;
+      const moved = await host.act("alice", conv, "updateTask_tasks", { id, assignee: "eng.tasker" });
+      expect(moved.error, messageOf(moved.error)).toBeUndefined();
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["eng.tasker"]);
     } finally {
       await host.dispose();
     }

@@ -221,7 +221,7 @@ export interface ConversationBoardOptions {
    * model's assignee stands. Never read for an action: a user's own move on
    * the board is their pick.
    */
-  noPickAssignee?: (flowKind: string, ctx: BlockContext) => Promise<string | undefined>;
+  noPickAssignee?: (flowKind: string, ctx: BlockContext, delegates: ReadonlyMap<string, string>) => Promise<string | undefined>;
   /**
    * The app's session fields (the installation's `sessionFields`): each
    * hand-over carries the filer's values down to the session it opens, beside
@@ -972,10 +972,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   const serverAssignee = async (ctx: BlockContext, assignee: string): Promise<string> => {
     if (options.noPickAssignee === undefined) return assignee;
-    const flow = (await reach(ctx)).available.get(assignee);
+    const { available } = await reach(ctx);
+    const flow = available.get(assignee);
     if (flow === undefined || flow === options.flowKind) return assignee;
     if (((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_FLOW_STATE_KEY] === flow) return assignee;
-    return (await options.noPickAssignee(flow, ctx)) ?? assignee;
+    const chosen = (await options.noPickAssignee(flow, ctx, available)) ?? assignee;
+    // Only a delegate this session hands tasks to: a worker outside them would never be dispatched.
+    if (!available.has(chosen)) {
+      throw new TaskWriteRefusedError(
+        "unknown_assignee",
+        `the task would go to "${chosen}", which is not one of this conversation's delegates. Nothing was filed.`
+      );
+    }
+    return chosen;
   };
 
   /** The roster the task tools and actions check an assignee against: the delegates. */
@@ -1338,13 +1347,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     // FIX-2877 D2.
     /**
-     * A batch a model files goes to the server's assignee for each row
-     * (`serverAssignee`). A single filing has it already: the task tools ask
-     * before their same-work check. A follow-up stays with its root's worker.
+     * The one choke point for a model's assignee: on a model's turn, every
+     * write that sets or changes one (a filing, a batch, an edit, a reassign,
+     * the conversation's one delegate filling a row with none) stores the
+     * server's assignee for it (`serverAssignee`), which refuses a worker
+     * outside this session's delegates. Idempotent: the server's assignee maps
+     * to itself, so a filing the task tools already asked about (they ask
+     * before their same-work check) is unchanged. An action keeps the
+     * caller's pick.
      */
+    const storedAssignee = async (assignee: string): Promise<string> => (byTurn ? serverAssignee(ctx, assignee) : assignee);
+    /** `init` with its stored assignee; a follow-up stays with its root's worker. */
     const withServerAssignee = async <T extends TaskInit>(init: T): Promise<T> => {
-      if (!byTurn || init.assignee === undefined || init.followUpOf !== undefined) return init;
-      const assignee = await serverAssignee(ctx, init.assignee);
+      if (init.assignee === undefined || init.followUpOf !== undefined) return init;
+      const assignee = await storedAssignee(init.assignee);
       return assignee === init.assignee ? init : { ...init, assignee };
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
@@ -1378,8 +1394,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned.
+        // none or several it waits on the board until it is assigned. A
+        // follow-up takes its root's worker.
         assignee = soleTaskDelegate(await options.delegates(ctx));
+        if (assignee !== undefined && init.followUpOf === undefined) assignee = await storedAssignee(assignee);
       }
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
@@ -1425,8 +1443,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...asked } = filing;
-      // The task tools asked for its server assignee before their same-work check.
-      const init = heldAsTurnSays(ctx, asked);
+      const init = heldAsTurnSays(ctx, await withServerAssignee(asked));
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
@@ -1560,8 +1577,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // the write. An assignee is a delegate, never the worker itself;
       // metadata keeps its server-written keys. An edit that leaves a row
       // startable starts the board.
-      async patchSettings(id, patch) {
-        if (self !== undefined && patch.assignee === self) throw filedApart(id);
+      async patchSettings(id, asked) {
+        if (self !== undefined && asked.assignee === self) throw filedApart(id);
+        // A model's edit that moves the task stores the server's assignee for it.
+        const patch = asked.assignee === undefined || asked.assignee === null ? asked : { ...asked, assignee: await storedAssignee(asked.assignee) };
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
         const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
@@ -1582,6 +1601,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A caller never writes the session a target resolved to.
         const unresolved: Array<TaskInit & { id: string }> = [];
         for (const { targetSessionId: _resolved, ...init } of inits) {
+          // The same decision `checkNewTask` asks for a single filing, which a batch skips; idempotent, since a moved assignee maps to itself.
           unresolved.push({ ...heldAsTurnSays(ctx, await withServerAssignee(init)), id: init.id ?? newTaskId() });
         }
         const ordered = dependencyOrder(unresolved);
@@ -1604,8 +1624,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!));
         return added;
       },
-      async setAssignee(id, assignee) {
-        if (self !== undefined && assignee === self) throw filedApart(id);
+      async setAssignee(id, asked) {
+        if (self !== undefined && asked === self) throw filedApart(id);
+        // A model's reassign stores the server's assignee for it.
+        const assignee = await storedAssignee(asked);
         await assertReassignable(id, assignee);
         await owePass(ctx);
         const outcome = await ref.setAssignee(id, assignee);

@@ -31,10 +31,10 @@ afterEach(async () => {
 
 const worker = (name: string, extra: string) => `---\nname: ${name}\ndescription: ${name}.\n${extra}---\nYou are ${name}.`;
 
-function team(coders: Record<string, string>): string {
+function team(coders: Record<string, string>, delegates?: readonly string[]): string {
   const dir = mkdtempSync(join(tmpdir(), "fsd-default-coder-"));
   dirs.push(dir);
-  const files: Record<string, string> = { "teams/core/workers/lead/WORKER.md": worker("Lead", "delegates: all\n") };
+  const files: Record<string, string> = { "teams/core/workers/lead/WORKER.md": worker("Lead", delegates === undefined ? "delegates: all\n" : `delegates:\n${delegates.map((d) => `  - ${d}\n`).join("")}`) };
   for (const [id, extra] of Object.entries(coders)) files[`teams/core/workers/${id}/WORKER.md`] = worker(id, `flow: coder\n${extra}`);
   for (const [file, body] of Object.entries(files)) {
     mkdirSync(join(dir, file, ".."), { recursive: true });
@@ -48,18 +48,18 @@ const workspace = localWorkspaceHost({ root: join(tmpdir(), "fsd-default-coder-r
 const THREE = { codex: "harness: codex\n", cursor: "harness: cursor\n", claude: "harness: claude-code\n" };
 
 /** Boot an app whose Lead files one held coding task for `named` on its turn. */
-async function boot(options: { defaultHarness?: string; named: string; coders?: Record<string, string> }) {
+async function boot(options: { defaultHarness?: string; named: string | undefined; coders?: Record<string, string>; delegates?: readonly string[] }) {
   const answer = mockGenerator({
     name: "agent-answer",
     script: [
-      { toolCalls: [{ toolCallId: "c1", toolName: "createTask", args: { goal: "Add a line to the README", assignee: options.named, held: true } }] },
+      { toolCalls: [{ toolCallId: "c1", toolName: "createTask", args: { goal: "Add a line to the README", ...(options.named === undefined ? {} : { assignee: options.named }), held: true } }] },
       { text: "Started it." },
     ],
   });
   const state = createFlowState({
     kits: [
       harnesses({ workspace, ...(options.defaultHarness === undefined ? {} : { defaultHarness: options.defaultHarness }) }),
-      workforce({ directory: team(options.coders ?? THREE) }),
+      workforce({ directory: team(options.coders ?? THREE, options.delegates) }),
     ],
     fill: { [harnesses.slots.harnesses]: [harness("codex", "Codex"), harness("cursor", "Cursor"), harness("claude-code", "Claude Code")] },
     stores: { default: { primary: inMemoryStores() } },
@@ -126,8 +126,33 @@ describe("a coding task a model files from a user's conversation", () => {
     expect(await app.tasks()).toEqual([]);
     expect(outputs).toContainEqual({
       ok: false,
-      error: `no_default_coder: a coding task runs on this app's default coder, "codex", and no coding worker on the roster runs it. Nothing was filed.`,
+      error: `no_default_coder: a coding task runs on this app's default coder, "codex", and no coding worker this conversation hands tasks to runs it. Nothing was filed.`,
     });
+  });
+
+  it("never goes to a coder outside the conversation's own delegates: refused when none of them runs the default", async () => {
+    // The roster has a Codex coder, but Lead hands tasks only to the Cursor one.
+    const app = await boot({ defaultHarness: "codex", named: "core.cursor", delegates: ["core.cursor"] });
+    const outputs = await app.ask("Add a line to the README.");
+    expect(await app.tasks()).toEqual([]);
+    expect(outputs).toContainEqual({
+      ok: false,
+      error: `no_default_coder: a coding task runs on this app's default coder, "codex", and no coding worker this conversation hands tasks to runs it. Nothing was filed.`,
+    });
+  });
+
+  it("decides a task with no assignee too: the conversation's one coding delegate, not on the default, is refused rather than filed", async () => {
+    const app = await boot({ defaultHarness: "codex", named: undefined, delegates: ["core.cursor"] });
+    const outputs = await app.ask("Add a line to the README.");
+    expect(await app.tasks()).toEqual([]);
+    expect(JSON.stringify(outputs)).toContain("no_default_coder");
+  });
+
+  it("moves a task with no assignee from the conversation's one coding delegate onto the default, when the default is a delegate too", async () => {
+    // Lead's one task-taking delegate is the Codex coder: a task naming nobody lands there and stays.
+    const app = await boot({ defaultHarness: "codex", named: undefined, delegates: ["core.codex"] });
+    await app.ask("Add a line to the README.");
+    expect(await app.tasks()).toEqual([["Add a line to the README", "core.codex"]]);
   });
 
   it("keeps the worker a user names on the board", async () => {
