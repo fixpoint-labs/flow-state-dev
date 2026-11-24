@@ -23,7 +23,7 @@ import type { z } from "zod";
 import { defineCapability } from "@flow-state-dev/core";
 import { resourceSearchTools, readResourceContentTool } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef, ResourceRegistry } from "@flow-state-dev/core/types";
 import {
   conceptCollection,
   conceptIdFromPath,
@@ -87,44 +87,44 @@ export function createKnowledgeBaseCapability() {
     name: "knowledgeBase" as const,
     resources: { concepts: collection },
     fns: (ctx) => {
-      const ref = () => ctx.resources.concepts as ResourceCollectionRef<ConceptState>;
+      const resources = ctx.resources as ResourceRegistry<{ concepts: ResourceCollectionRef<ConceptState> }>;
       return {
         /** All concept IDs (bundle paths), sorted. */
         listConcepts: async (): Promise<string[]> => {
-          const c = ref();
-          const prefix = getPatternPrefix(c.pattern);
-          return (await c.list()).map((r) => conceptIdFromPath(r.path, prefix)).sort();
+          const { concepts } = resources;
+          const prefix = getPatternPrefix(concepts.pattern);
+          return (await concepts.list()).map((r) => conceptIdFromPath(r.path, prefix)).sort();
         },
         /** One concept's frontmatter state and body, or `null` if absent. */
         readConcept: async (id: string): Promise<{ state: ConceptState; body: string } | null> => {
-          const r = await ref().getOptional(id);
+          const r = await resources.concepts.getOptional(id);
           if (!r) return null;
           return { state: r.state, body: (await r.readContent()) ?? "" };
         },
         /** Add a typed link edge between two concepts (default `references`). Both endpoints must exist. */
         relate: async (from: string, to: string, type: string = DEFAULT_EDGE_TYPE): Promise<void> => {
-          const r = await ref().get(from);
+          const r = await resources.concepts.get(from);
           if (r.edges === undefined) {
             throw new Error("knowledgeBase: concept collection has no edge slot");
           }
-          await ref().get(to); // throws if the target doesn't exist — no dangling edges
+          await resources.concepts.get(to); // throws if the target doesn't exist — no dangling edges
           await r.edges.add({ from, to, type });
         },
         /** Create a NEW concept (frontmatter state + body). Rejects if the id already exists. */
         createConcept: async (id: string, state: z.input<typeof conceptStateSchema>, body: string): Promise<void> => {
           assertSafeConceptId(id);
-          const c = ref();
-          if (await c.getOptional(id)) {
+          const { concepts } = resources;
+          if (await concepts.getOptional(id)) {
             throw new Error(`knowledgeBase: concept "${id}" already exists; use updateConcept`);
           }
-          const r = await c.create(id, state);
+          const r = await concepts.create(id, state);
           try {
             await r.writeContent(body);
           } catch (err) {
             // Roll back the state row so a retry isn't blocked by "already exists". If the
             // rollback ALSO fails (e.g. the same store outage), keep the original write error
             // as the thrown cause — masking it with the delete error would hide the real fault.
-            await c.delete(id).catch(() => {});
+            await concepts.delete(id).catch(() => {});
             throw err;
           }
         },
@@ -133,7 +133,7 @@ export function createKnowledgeBaseCapability() {
           id: string,
           patch: { state?: Partial<ConceptState>; body?: string },
         ): Promise<void> => {
-          const r = await ref().getOptional(id);
+          const r = await resources.concepts.getOptional(id);
           if (!r) throw new Error(`knowledgeBase: concept "${id}" not found`);
           if (patch.state !== undefined) {
             // Validate the MERGED state before persisting — patchState/setState would otherwise
@@ -144,12 +144,12 @@ export function createKnowledgeBaseCapability() {
         },
         /** Delete one concept. No-op if missing. Dangling inbound edges from other concepts are tolerated. */
         deleteConcept: async (id: string): Promise<void> => {
-          await ref().delete(id);
+          await resources.concepts.delete(id);
         },
         /** Mount an external OKF bundle into the collection. */
-        importBundle: (dir: string) => importOkf(dir, ref()),
+        importBundle: (dir: string) => importOkf(dir, resources.concepts),
         /** Export the collection as a portable OKF bundle. */
-        exportBundle: (dir: string) => exportOkf(ref(), dir),
+        exportBundle: (dir: string) => exportOkf(resources.concepts, dir),
       };
     },
     presets: {

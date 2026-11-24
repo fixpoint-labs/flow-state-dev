@@ -6,7 +6,6 @@
  */
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 export const FLOW_ID = "notes-app";
 
@@ -55,9 +54,6 @@ const save = handler({
   },
 });
 
-const markersOf = async (ref: ResourceCollectionRef<z.infer<typeof markerRow>>): Promise<string[]> =>
-  (await ref.list()).map((row) => row.state.marker);
-
 const read = handler({
   name: "read",
   inputSchema: z.object({}),
@@ -67,8 +63,8 @@ const read = handler({
   execute: async (_input, ctx) => {
     await ctx.resources.seen.create("run", {
       state: ctx.user.state.marker,
-      shared: await markersOf(ctx.resources.notes),
-      isolated: await markersOf(ctx.resources.scratch),
+      shared: (await ctx.resources.notes.list()).map((row) => row.state.marker),
+      isolated: (await ctx.resources.scratch.list()).map((row) => row.state.marker),
     });
     return { ok: true };
   },
