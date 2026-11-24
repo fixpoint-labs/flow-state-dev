@@ -206,6 +206,10 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 
 ## Taken over from FIX-2877
 
+Two items moved here from FIX-2877. Each is a must-do of its own.
+
+### The no-pick filing on the default coder (FIX-2877 D2)
+
 **Must do.** FIX-2877's D2 moves here (owner's call, 2026-11-24, on [#5633](https://github.com/fixpoint-labs/flow-state-dev/pull/5633)). This issue builds it in its own terms.
 
 **What D2 wanted.** Text a model reads (a README's `Coding harness: Cursor`, a message naming a coder) can't change which harness a no-pick coding filing runs on.
@@ -226,6 +230,21 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 **Filled once per call, and safe to replay (BP-030).** A call's filled settings are decided once and recorded with the call, so a replay stores the settings the first attempt filled. A call recorded before the change is read as it was stored. Its unmarked settings count as absent, as *Decided, not asked* says.
 
 **The check that proves it.** A model that names a non-default coder, or reads text naming one, still runs on the filled default harness. That is the **No-pick** signal. Its `server-assignee` control is redefined: the control adds back a server rewrite of the no-pick filing's worker, so the filing no longer lands on the worker the model named, and No-pick fails. FIX-2883's closure also checks No-pick with a control of its own, the filler skipped: the filing then runs on the worker's own harness, and No-pick fails.
+
+### The mode a task runs
+
+- **The coder flow chooses a task's mode from a server-written field, never from `input`**
+  (owner decision on [#5630](https://github.com/fixpoint-labs/flow-state-dev/pull/5630)'s
+  security review, keeping the interim). FIX-2877's kit sends a task carrying `harnessFeature`
+  in its model-written `input` to the `implement` mode (`modeOfTask` in
+  `packages/harness-manager/src/kit/coder-modes.ts`), as Shift Manager's own coder did on
+  `main`. A test there pins this on purpose. This issue replaces it: the mode a run takes is the
+  checked mode this issue's filing check writes (or a `sealed` field), read on every route
+  (the work entry, a steer, the door). **Must-do:** flip FIX-2877's pinning test in
+  `packages/harness-manager/test/coder-modes.spec.ts`, so that a task whose `harnessFeature` is
+  only on `input`, with no server-written mode, runs the app's `defaultMode`, not `implement`.
+  A stored row's marker still runs as implement only through the legacy read above, which
+  writes the frozen mode at its first claim.
 
 ## Considered and dropped
 
