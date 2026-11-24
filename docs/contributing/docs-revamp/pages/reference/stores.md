@@ -384,6 +384,23 @@ Which store each `fsdev` command opens, and `--store`, are in [CLI](./cli.md).
 
 Traces are kept in memory by default (and by the Postgres adapter). The in-memory, filesystem and SQLite factories take a `traceStore` option: `createInMemoryStores({ traceStore: { maxRequests, maxBytesPerRequest } })`, `filesystemStores({ traceStore: { maxRequests } })`, `sqliteStores({ traceStore: { maxRequests } })`. The event record, retention and what a failed write does are in [Items and the stream](./items.md).
 
+## Moving data between stores
+
+No command copies records from one adapter to another. A script reads one store through its calls and writes the other, as in [Move data between stores](../build/move-data-between-stores.md). These are the limits of that route.
+
+| Topic | Behaviour |
+| --- | --- |
+| Paused runs | A run waiting at a stop for an answer is not on the new store. Answer or discard every stop before a move. |
+| Attachment bytes | Held outside the store, in the folder the `blobs` slot uses (`.fsdev/blobs/<profile>/` by default). A move does not carry them. |
+| Traces, leases and dynamic schedules | Not carried. The new store starts with no leases. Recreate schedules there, as in [Schedules](./schedules.md). |
+| The in-memory store | Keeps data for one process only, so a move script in another process cannot read it. |
+| Records with no `flowId` or `orgId` | Carry no attribution and arrive as stored. They need the same attribution they needed on the old store. |
+| Write modes | `"absent"` writes only when the key is missing. `resourceState.set` honours it and `content.set` overwrites, so a rerun leaves records alone and overwrites content. |
+| `session.list` | Returns top-level sessions by default. `parentage: "all"` includes child sessions. |
+| User records | A user in two organizations has two records, so a user is keyed by record, not by user id. |
+| Schema creation | The Postgres adapter creates its tables when it opens. |
+| Tenant sessions | A tenant session record's `id` is `<tenantId>:<sessionId>`, and its requests carry the bare session id and the `tenantId`. |
+
 ## Next
 
 - [Persistence](../concepts/persistence.md): what a store is for and how a request reaches it.

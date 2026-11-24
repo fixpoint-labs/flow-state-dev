@@ -159,6 +159,8 @@ A single resource's state is checked against `stateSchema` on every read. If any
 
 Content is not versioned: a later write replaces an earlier one.
 
+State and content are stored separately, and a resource can have content with no state. Copying a store copies each: a deleted resource reads as never written afterwards, and a copied resource restarts at version 1.
+
 ## Scopes and sharing
 
 | Scope | Whose | Stored in |
@@ -187,6 +189,8 @@ Every handle, for a single resource or a collection entry, carries three fixed s
 | `path` | The within-scope storage key | `refundPolicy`, `ticketNotes/n-1` |
 | `scope` | `"session"`, `"user"` or `"org"` | `session` |
 | `uri` | `${scope}/${path}` | `session/ticketNotes/n-1` |
+
+Resource state and content are stored under the id of their scope: the session's id for `session`, the lineage's id for `sharedToLineage` resources, and the user and org scope ids for `user` and `org`: the record's id, plus the flow's id when the resource is flow-isolated. A copy that visits a scope id finds the resources under it and no others.
 
 `uri` is an identifier string, not an RFC 3986 URI: do not pass it to `new URL()`. A collection key is normalized when it is resolved: backslashes become `/`, leading and trailing slashes are dropped, repeated slashes collapse, and `..`, null bytes and control characters are refused. A single resource's `path` is its `ref` unchanged. A `ref` on a collection is never read, because a collection is identified by its `pattern`.
 
@@ -801,6 +805,25 @@ A sequencer collects its steps' declarations, a router its routes', and `defineF
 | `"lazy"` | Nothing up front. `get` reads one entry and caches it. `list()` and `count()` read the whole prefix in one unbounded scan. `maxInstances` and eviction see only loaded entries, so lazy requires `eviction: "none"`. |
 
 Declaring a single resource with `prefetchMode: "lazy"` on the flow throws, because a flow-level declaration has no block to trigger the load. Declare it on the block. The DevTool's block trace shows, per block, which resource keys came from the store and which from cache.
+
+### Load modes
+
+The DevTool labels each load with the mode that triggered it.
+
+| Mode | Triggered by |
+|---|---|
+| Flow eager | A resource declared on the flow, when the request starts |
+| Action eager | A resource declared under the action that runs, when the action starts |
+| Block eager | A lazy single resource, or an eager one not yet loaded, when the block that declares it starts |
+| Lazy | A read inside a block that needs the data |
+
+Eager is the default for a collection. A lazy collection loads on the first read that needs the data: `get`, `getOptional`, `list` and `count` each record a Lazy load. `findBy` loads through `list`. `create`, `getOrCreate`, `upsert` and `delete` also load the key first but record no load. Nothing loads before one of these runs.
+
+A request loads only the resources of the flow, the action it runs and the blocks that run. Another action's resources are not loaded.
+
+A projected collection reads through its `read` hook on every access. It is never loaded from the store and has no load records.
+
+A store fetch is a round trip to the store. A cache hit is a read served from memory the request already loaded, so it carries no time. Repeated identical cache hits collapse into one record with a count. The record fields are on [Items](./items.md#resource-load-records).
 
 ## Next
 

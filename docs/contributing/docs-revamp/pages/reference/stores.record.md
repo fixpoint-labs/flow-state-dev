@@ -52,6 +52,8 @@ Written by `docs-writer` (sonnet), 6276 words. Scenario: A support desk (flow su
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the support-desk flow's `loadTicket` action now reads the session's readonly `ticketId` and loads the ticket with a `findTicket` stand-in, so the key has a use in the flow. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 5359 words. Page sha256 8d2a97d43ce6.
 
+- After the Reference rows moved from B-31 landed (and the fact-check corrections below): check-docs-page and brand lint pass; no TypeScript example changed. 5597 words. Page sha256 f4f45ce4bd3a.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 7da32861275d, and the 28 Reference row(s) pass 6 moved.
@@ -64,6 +66,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 7da
 - Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+- Re-run on the rows moved from B-31: every added or changed line checked against packages/ by a read-only code reader. Untrue or imprecise claims corrected on the page before commit: the in-memory store row says a script in another process can't read it (`packages/engine/src/stores/index.ts:125-129`). No untrue claim remains open.
 
 ## 6 · Depth pass
 
