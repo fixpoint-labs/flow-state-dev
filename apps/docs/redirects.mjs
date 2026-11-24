@@ -10,13 +10,13 @@
  */
 
 /** The current Upgrading page. Every earlier `reference/upgrading/<date>` address goes here. */
-export const UPGRADING = "/docs/reference/upgrading/2026-11-24";
+const UPGRADING = "/docs/reference/upgrading/2026-11-24";
 
 /** Earlier Upgrading pages, removed when a later release wrote its own. */
-export const EARLIER_UPGRADING = [];
+const EARLIER_UPGRADING = [];
 
 /** Old address → new address. */
-export const OLD_ADDRESSES = {
+const OLD_ADDRESSES = {
   // Docs root and the old introduction
   "/docs/intro": "/docs/start/what-flow-state-is",
   "/docs/glossary": "/docs/reference/glossary",
