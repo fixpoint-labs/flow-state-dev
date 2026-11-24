@@ -22,7 +22,8 @@ import { RunChecks, type RunCheck } from "./run-checks";
  * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
  * words }` (harness-manager's `harnessReviewAnswerSchema`). When the review
  * offers ways to land the work (`lands`), Accept is two labelled actions
- * instead, **Open a PR** and **Merge locally**, each an accept naming its
+ * instead, **Open a PR** (**Push to PR #N** when one is already open from
+ * the branch, `openPullRequest`) and **Merge locally**, each an accept naming its
  * `land`, carrying what is in the text box as its `words`: the note goes to
  * the coding session if the landing fails. A landing that failed shows each
  * try (`landAttempts`) and its error with **Retry**. It spells none of
@@ -63,6 +64,8 @@ export interface ReviewDetail {
   answer?: string | null;
   /** Where the work is up for review: the task's pull requests. Absent reads as none. */
   pullRequests?: Array<{ number: number; url: string }>;
+  /** The pull request already open from the branch, which a `pull-request` accept puts the work on instead of opening one; `null` or absent when none is. */
+  openPullRequest?: { number: number; url: string } | null;
   /** This round's commits, when the branch had commits before it; `null` or absent when the round is the whole branch. */
   round?: { commits: number; subjects: string[] } | null;
   /** Each file the run changed and its lines; `null` or absent when they couldn't be read. */
@@ -83,6 +86,14 @@ export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand; words?: str
 
 /** Each way to land, as its button says it. */
 export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a PR", merge: "Merge locally" };
+
+/**
+ * A way to land as its button says it: `pull-request` onto a pull request already open from
+ * the branch pushes to it, so it never reads as opening one. Shared, as {@link orderedLands} is.
+ */
+export function landLabel(land: ReviewLand, open: { number: number } | null | undefined): string {
+  return land === "pull-request" && open != null ? `Push to PR #${open.number}` : LAND_LABEL[land];
+}
 
 /**
  * The ways to land, with a failed landing's way first: the retry. Each way once, in the review's order.
@@ -397,7 +408,7 @@ export function ReviewHold({
                       : "rounded-md border border-border px-3 py-1 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   }
                 >
-                  {failed?.land === land ? `Retry: ${LAND_LABEL[land]}` : `Accept: ${LAND_LABEL[land]}`}
+                  {failed?.land === land ? `Retry: ${landLabel(land, review?.openPullRequest)}` : `Accept: ${landLabel(land, review?.openPullRequest)}`}
                 </button>
               ))
             )}

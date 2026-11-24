@@ -172,7 +172,7 @@ export function ThreadView({
               <div className="mt-2 flex justify-end gap-1.5">
                 {column === "review" ? (
                   <>
-                    <AcceptButtons lands={accept.lands} failed={accept.failed} disabled={held || !accept.ready} busy={accept.waiting} onAccept={accept.accept} />
+                    <AcceptButtons lands={accept.lands} failed={accept.failed} openPullRequest={accept.openPullRequest} disabled={held || !accept.ready} busy={accept.waiting} onAccept={accept.accept} />
                     <button type="button" disabled={!words || held || !accept.ready} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
                       Request changes
                     </button>

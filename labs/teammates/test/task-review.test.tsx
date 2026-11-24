@@ -145,6 +145,21 @@ describe("the review's foot", () => {
     expect(answer).toHaveBeenCalledWith({ verdict: "revise", words: "Open it in a browser." });
   });
 
+  // FIX-2920: a run that opened its own pull request (#5661) was still offered "Open pull request", beside a header
+  // linking #5661. Its land goes onto that pull request, so the footer says so and links it, and never offers a second.
+  it("offers the pull request already open from the branch, not a new one, and lands onto it", async () => {
+    const answer = vi.fn(async () => {});
+    const pr = { number: 5661, url: "https://github.com/acme/widgets/pull/5661" };
+    render(<Footer detail={review({ pullRequests: [pr], openPullRequest: pr })} answer={answer} />);
+    const foot = screen.getByRole("region", { name: "Your review" });
+    expect(within(foot).queryByRole("button", { name: /Open pull request/ })).toBeNull();
+    expect(within(foot).getByRole("link", { name: "View PR #5661" }).getAttribute("href")).toBe(pr.url);
+    expect(foot.querySelector("[data-land-hint]")?.textContent).not.toContain("Opens a PR");
+    fireEvent.click(within(foot).getByRole("button", { name: "Push to PR #5661" }));
+    await screen.findByRole("status");
+    expect(answer).toHaveBeenLastCalledWith({ verdict: "accepted", land: "pull-request" });
+  });
+
   it("says what the primary button does, and what is still open", () => {
     expect(landHint("pull-request", { branch: "a/b" }, 1)).toBe("Opens a PR from …/b, with the goal, commits, checks and the judge's verdict as its description. 1 check is still open.");
     expect(landHint(null, { branch: null }, 0)).toBe("Completes the task; the branch stays as it is.");
