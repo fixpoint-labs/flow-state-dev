@@ -206,23 +206,26 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 
 ## Taken over from FIX-2877
 
-**Must do.** FIX-2877's D2 moves here (owner's call, 2026-11-24, on [#5633](https://github.com/fixpoint-labs/flow-state-dev/pull/5633)). A coding task filed with no pick from outside any coding run runs on the kit's `defaultHarness`, whatever worker or text the model names. The decision is made once, at FIX-2894's filing check, which is the single gate: this issue's filler writes the default run settings there, on the no-pick path.
+**Must do.** FIX-2877's D2 moves here (owner's call, 2026-11-24, on [#5633](https://github.com/fixpoint-labs/flow-state-dev/pull/5633)). This issue builds it in its own terms.
 
-FIX-2877 shipped no server-side rewrite. Its attempt on #5633 gated the assignee at each board write, and reviewers kept finding paths around it. Each path below must reach the filing check, or be shown not to file a coding task. The goal check covers each one with a red state:
+**What D2 wanted.** Text a model reads (a README's `Coding harness: Cursor`, a message naming a coder) can't change which harness a no-pick coding filing runs on.
 
-- `createTask` naming any coder, a non-delegate included;
-- a batch (`createTasks`): every row decided and validated before any row is written, so a refused row files nothing;
-- `updateTask` / `patchSettings` moving a held or pending task onto another coder, then releasing it;
+**How this issue gets it.** The filler, not an assignee rewrite. At FIX-2894's filing check, on the no-pick path, the filler writes the default run settings with the marker: `defaultHarness`, that harness's default model and the plan setting it implies. It writes them on whatever worker the model named, and the model's assignee is honoured, as this spec already says (*Considered and dropped*: keeping FIX-2877's server-written no-pick assignee). Every filing passes through that one check.
+
+**Paths to cover.** FIX-2877 shipped no server-side rewrite. Its attempt on #5633 tried to gate the assignee at each board write, and review found the filing paths below one at a time. Each one must reach the filing check and have its run settings filled, or be shown not to file a coding task. The goal check names each one:
+
+- `createTask`, naming any coder;
+- a batch (`createTasks`), every row filled before any row is written;
+- `updateTask` / `patchSettings`, moving a held or pending task onto another coder and then releasing it;
 - `setAssignee`;
 - the sole-delegate fill: a task naming no assignee, filled with the conversation's one delegate (`ownerForUnassigned`, and the board's own fill at the write);
 - `withTarget`: a workstream target filling in its lead;
-- a routed task, from a judgment turn and from a routing policy. Its placement (target session), brief and task id must be derived after the decision, never for the worker before it;
+- a routed task, from a judgment turn and from a routing policy;
 - a judged filing: the coordinator's judgment turn's own `createTask`.
 
-Two invariants hold on every path:
+**Filled once per call, and safe to replay (BP-030).** A call's filled settings are decided once and recorded with the call, so a replay stores the settings the first attempt filled. A call recorded before the change is read as it was stored. Its unmarked settings count as absent, as *Decided, not asked* says.
 
-- **Decided once per call, and replay-safe.** A replay stores the coder the same-work check read. A call recorded before the change keeps the worker it named (BP-030).
-- **Validated on the decided worker.** It must be one of the filer's delegates, and pass the self, workstream and project checks.
+**The check that proves it.** A model that names a non-default coder, or reads text naming one, still runs on the filled default harness. That is the **No-pick** signal. Its `server-assignee` control is redefined: the control adds back a server rewrite of the no-pick filing's worker, so the filing no longer lands on the worker the model named, and No-pick fails. FIX-2883's closure also checks No-pick with a control of its own, the filler skipped: the filing then runs on the worker's own harness, and No-pick fails.
 
 ## Considered and dropped
 
