@@ -105,6 +105,7 @@ import {
   noticeDueAt,
   filerResolver,
   resendNowPatch,
+  toolCallOf,
 } from "@flow-state-dev/orchestration/internal";
 import { taskToolActions, currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
@@ -971,21 +972,21 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * same-work check, so that check reads the worker the row will have.
    */
   const serverAssignee = async (ctx: BlockContext, assignee: string): Promise<string> => {
-    if (options.noPickAssignee === undefined) return assignee;
     const { available } = await reach(ctx);
-    const flow = available.get(assignee);
-    if (flow === undefined || flow === options.flowKind) return assignee;
+    // A model's assignee is one of this session's delegates, on every path: none relies on its caller to check.
+    if (!available.has(assignee)) throw notADelegate(assignee);
+    if (options.noPickAssignee === undefined) return assignee;
+    const flow = available.get(assignee)!;
+    if (flow === options.flowKind) return assignee;
     if (((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_FLOW_STATE_KEY] === flow) return assignee;
     const chosen = (await options.noPickAssignee(flow, ctx, available)) ?? assignee;
     // Only a delegate this session hands tasks to: a worker outside them would never be dispatched.
-    if (!available.has(chosen)) {
-      throw new TaskWriteRefusedError(
-        "unknown_assignee",
-        `the task would go to "${chosen}", which is not one of this conversation's delegates. Nothing was filed.`
-      );
-    }
+    if (!available.has(chosen)) throw notADelegate(chosen);
     return chosen;
   };
+  /** The refusal for a model's assignee that isn't one of this session's delegates. */
+  const notADelegate = (assignee: string) =>
+    new TaskWriteRefusedError("unknown_assignee", `the task would go to "${assignee}", which is not one of this conversation's delegates. Nothing was written.`);
 
   /** The roster the task tools and actions check an assignee against: the delegates. */
   const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx), (assignee) => serverAssignee(ctx, assignee));
@@ -1356,11 +1357,29 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * before their same-work check) is unchanged. An action keeps the
      * caller's pick.
      */
-    const storedAssignee = async (assignee: string): Promise<string> => (byTurn ? serverAssignee(ctx, assignee) : assignee);
+    // Decided once per call: under the key the task tools record their own
+    // decision with, so a replay stores the worker the same-work check read.
+    // `slot` tells apart the writes one call makes (a batch's rows, an edit).
+    const storedAssignee = async (assignee: string, slot = ""): Promise<string> => {
+      if (!byTurn) return assignee;
+      const call = toolCallOf(ctx);
+      if (call === undefined || ctx.runOnce === undefined) return serverAssignee(ctx, assignee);
+      const recorded = (await ctx.runOnce(`fsd.decide.server-assignee:${call.logicalId}${slot}`, async () => {
+        try {
+          return { assignee: await serverAssignee(ctx, assignee) };
+        } catch (err) {
+          if (err instanceof TaskWriteRefusedError) return { ok: false as const, error: `${err.code}: ${err.message}` };
+          throw err;
+        }
+      })) as { assignee: string } | { ok: false; error: string };
+      if ("assignee" in recorded) return recorded.assignee;
+      const [code, ...message] = recorded.error.split(": ");
+      throw new TaskWriteRefusedError(code!, message.join(": "));
+    };
     /** `init` with its stored assignee; a follow-up stays with its root's worker. */
-    const withServerAssignee = async <T extends TaskInit>(init: T): Promise<T> => {
+    const withServerAssignee = async <T extends TaskInit>(init: T, slot = ""): Promise<T> => {
       if (init.assignee === undefined || init.followUpOf !== undefined) return init;
-      const assignee = await storedAssignee(init.assignee);
+      const assignee = await storedAssignee(init.assignee, slot);
       return assignee === init.assignee ? init : { ...init, assignee };
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
@@ -1389,7 +1408,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (owner !== undefined) await refuseIfParentCancelled(ctx, owner, conversationLedgerAt);
     };
     /** Add one checked row under its chain reservation. */
-    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
+    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, slot = ""): Promise<Task> => {
       const { id, markAdded } = reserved;
       let assignee = init.assignee;
       if (assignee === undefined) {
@@ -1397,7 +1416,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // none or several it waits on the board until it is assigned. A
         // follow-up takes its root's worker.
         assignee = soleTaskDelegate(await options.delegates(ctx));
-        if (assignee !== undefined && init.followUpOf === undefined) assignee = await storedAssignee(assignee);
+        if (assignee !== undefined && init.followUpOf === undefined) assignee = await storedAssignee(assignee, slot);
       }
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
@@ -1579,8 +1598,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // startable starts the board.
       async patchSettings(id, asked) {
         if (self !== undefined && asked.assignee === self) throw filedApart(id);
-        // A model's edit that moves the task stores the server's assignee for it.
-        const patch = asked.assignee === undefined || asked.assignee === null ? asked : { ...asked, assignee: await storedAssignee(asked.assignee) };
+        // A model's edit that moves the task stores the server's assignee for it,
+        // checked then as a reassign is: never the worker itself, and the row's workstream rule.
+        const moved = asked.assignee === undefined || asked.assignee === null ? undefined : await storedAssignee(asked.assignee, `:edit[${id}]`);
+        if (moved !== undefined) {
+          if (self !== undefined && moved === self) throw filedApart(id);
+          await assertReassignable(id, moved);
+        }
+        const patch = moved === undefined ? asked : { ...asked, assignee: moved };
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
         const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
@@ -1600,9 +1625,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertIdsFree(inits, (id) => ref.get(id));
         // A caller never writes the session a target resolved to.
         const unresolved: Array<TaskInit & { id: string }> = [];
-        for (const { targetSessionId: _resolved, ...init } of inits) {
+        for (const [i, { targetSessionId: _resolved, ...init }] of inits.entries()) {
           // The same decision `checkNewTask` asks for a single filing, which a batch skips; idempotent, since a moved assignee maps to itself.
-          unresolved.push({ ...heldAsTurnSays(ctx, await withServerAssignee(init)), id: init.id ?? newTaskId() });
+          unresolved.push({ ...heldAsTurnSays(ctx, await withServerAssignee(init, `:batch[${i}]`)), id: init.id ?? newTaskId() });
         }
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
@@ -1621,13 +1646,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
         const added: Task[] = [];
-        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!));
+        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!, `:batch[${i}]`));
         return added;
       },
       async setAssignee(id, asked) {
         if (self !== undefined && asked === self) throw filedApart(id);
-        // A model's reassign stores the server's assignee for it.
-        const assignee = await storedAssignee(asked);
+        // A model's reassign stores the server's assignee for it, then checks it as any reassign.
+        const assignee = await storedAssignee(asked, `:assign[${id}]`);
+        if (self !== undefined && assignee === self) throw filedApart(id);
         await assertReassignable(id, assignee);
         await owePass(ctx);
         const outcome = await ref.setAssignee(id, assignee);
