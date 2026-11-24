@@ -4183,6 +4183,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
       let onPullRequest = probed.open;
+      // The pull request the review names for a person's `pull-request` accept (FIX-2920): it goes only
+      // there, so it never opens a second one the card didn't offer; one closed since is dropped, and asked again.
+      let named = probed.notOurs;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
       // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
       // reads them, and the one open from its branch, whoever opened it (FIX-2920); each once. Read once, as the ways are.
@@ -4233,8 +4236,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               (failed === null ? "" : `${landFailedLine(failed, lands.length > 1)}\n\n`) +
               (onPullRequest !== null
                 ? `${onPullRequestLine(onPullRequest)}\n\n`
-                : probed.notOurs !== null
-                  ? `${openPullRequestLine(probed.notOurs)}\n\n`
+                : named !== null
+                  ? `${openPullRequestLine(named)}\n\n`
                   : "") +
               reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null, {
                 goal: state.goal ?? null,
@@ -4263,7 +4266,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               answer: decision.output.answer,
               pullRequests,
               // The pull request a `pull-request` accept puts the work on, rather than opening one (FIX-2920).
-              openPullRequest: openPullRequestOf(onPullRequest ?? probed.notOurs),
+              openPullRequest: openPullRequestOf(onPullRequest ?? named),
               round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
@@ -4290,9 +4293,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The landing onto an open pull request nobody was asked about goes
           // only there: it never opens one, should that pull request be gone.
           const unasked = !askedPerson;
+          const onNamed = !unasked && answer.land === "pull-request" && named !== null;
           // Once per round, so a resume that runs this again doesn't push or merge twice.
-          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked);
+          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked || onNamed);
           if ("error" in outcome) {
+            // The pull request the review named closed since: asked again without it, so an accept may open one.
+            if (onNamed && outcome.reason === "pull-request-gone") named = null;
             // Closed or merged since it was found: the person is offered every way, as without one.
             if (unasked && outcome.reason === "pull-request-gone") {
               onPullRequest = null;

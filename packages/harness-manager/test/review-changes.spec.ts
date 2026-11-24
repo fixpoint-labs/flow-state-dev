@@ -1389,6 +1389,33 @@ process.stdout.write(out);
     }
   }, 60_000);
 
+  // FIX-2920 (review): the review named #42 and its accept read "Push to PR #42". Closed before the person accepted,
+  // the accept would have opened #43 instead, which the button never said. It pushes only to #42, and asks again.
+  it("a person's accept onto the pull request the review named opens none when it closed since, and asks again with every way", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    const calls = ghCalls().length;
+    try {
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.openPullRequest).toEqual({ number: 42, url: PR_URL });
+
+      // Closed before the accept's landing looks.
+      writeFileSync(listsLeft, "0");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(asked)!.id, "the review asked again");
+
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landFailed?.land).toBe("pull-request");
+      expect(detail?.openPullRequest).toBeNull();
+      expect(detail?.lands).toEqual(["pull-request", "merge"]);
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+      // Not handed to the coding session: there is nothing for it to fix.
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
   it("opens nothing when that pull request closed before the push, and asks the person with every way to land", async () => {
     const h = host({ script: ["commits"], remote: true });
     const calls = ghCalls().length;
