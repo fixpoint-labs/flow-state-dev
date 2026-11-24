@@ -8,7 +8,7 @@
  * since the current request started, and is gone the moment the task stops running. The
  * call in flight is read from the run session's items, the plan from
  * harness-manager's recorded work view, the note from the board row, and the
- * request start from its status.
+ * request start from its stream.
  */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";

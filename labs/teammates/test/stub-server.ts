@@ -30,7 +30,7 @@ export interface StubData {
   board?: Record<string, CodingBoardTask[]>;
   /** Each session's stored items, by session id. */
   items?: Record<string, unknown[]>;
-  /** Request start times as returned by the request status route. */
+  /** Request start times as replayed in their request-created events. */
   requestStarts?: Record<string, number>;
   /** Each run's recorded plan, by request id, as the recorded work view answers it. */
   plan?: Record<string, { title: string; status: string | null }[]>;
@@ -151,6 +151,11 @@ export function stubServer(data: StubData = {}) {
       const sessionId = path.split("/").at(-2)!;
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
+          const startedAt = data.requestStarts?.[sessionId];
+          if (path.includes("/requests/") && startedAt !== undefined) {
+            const event = { stream: "request", type: "request.created", requestId: sessionId, sequence_number: 1, status: "in_progress", ts: startedAt };
+            controller.enqueue(new TextEncoder().encode(`event: request.created\ndata: ${JSON.stringify(event)}\n\n`));
+          }
           streams.set(sessionId, (frame) => {
             // A stream the screen already closed takes nothing more.
             try {
@@ -194,7 +199,7 @@ export function stubServer(data: StubData = {}) {
     }
     // A request's status with its stored result, as a board action reads its answer.
     const result = /\/requests\/([^/]+)\/status$/.exec(path);
-    if (result !== null) return json({ status: "completed", startedAtMs: data.requestStarts?.[result[1]!], result: { hasOutput: true, output: outputs.get(result[1]!) ?? { ok: true } } });
+    if (result !== null) return json({ status: "completed", result: { hasOutput: true, output: outputs.get(result[1]!) ?? { ok: true } } });
     if (path.startsWith("/api/flows/sessions/")) return json({ session: { id: path.split("/").at(-1), flowKind: "agent", updatedAt: 1, state: {} } });
     return json({});
   }) as ClientFetch;
