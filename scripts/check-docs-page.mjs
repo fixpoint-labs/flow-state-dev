@@ -69,7 +69,7 @@ const SITEMAP = "specs/epics/FIX-2696/SITEMAP";
 // Pages a release docs pass writes, not the page loop, carry no record: the release's Upgrading
 // page, and pages a pass added after the cutover. Records go to drafts only once the last draft
 // lands (FIX-2916), and this list goes with them.
-const NO_RECORD = /^(reference\/upgrading\/|build\/send-files-with-a-message\.md$|catalog\/workforce\/routines\.md$)/;
+const NO_RECORD = /^(reference\/upgrading\/|build\/send-files-with-a-message\.md$|build\/webhooks\/github-reviews\.md$|catalog\/workforce\/routines\.md$)/;
 
 const BUDGET = { start: 800, concept: 1500, catalog: 1500, tutorial: 2500, recipe: 800 };
 const BANNED = [

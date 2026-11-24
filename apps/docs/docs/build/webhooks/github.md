@@ -200,3 +200,6 @@ A failed delivery tells you what to fix:
 
 The [webhook receivers reference](../../reference/webhooks.md) covers every response
 code.
+
+To have a coding run hear the reviews on a pull request it opened, see
+[Hear GitHub reviews in a coding run](./github-reviews.md).

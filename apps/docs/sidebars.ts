@@ -188,6 +188,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "build/webhooks/stripe",
         "build/webhooks/github",
+        "build/webhooks/github-reviews",
         "build/webhooks/slack",
         "build/schedules/vercel-cron",
         "build/schedules/at-run-time",

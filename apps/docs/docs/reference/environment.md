@@ -70,8 +70,9 @@ The errors for a missing key or package are on [Models](./models.md).
 | `FIRECRAWL_API_KEY` | the `fetch` and `crawl` tools, Firecrawl provider | none |
 | `JINA_API_KEY` | the `fetch` tool, Jina provider | none |
 | `GITHUB_TOKEN` | `operatorGitHubToken()` in `@flow-state-dev/workforce` | the token `gh auth token` prints; none if `gh` has none |
+| `GITHUB_REVIEWERS` | `githubTrustedReviewers()` in `@flow-state-dev/workforce`, once, when it is called. Comma-separated GitHub logins, a bot as `name[bot]`. It is the trusted reviewers list until the list is first saved; after that the saved list wins, an empty one included. | none: no one is heard until the list is saved |
 
-Which provider a tool picks, and the error for a named provider with no key, are on [Tools](./tools.md). `GITHUB_TOKEN` is on [Workforce](./workforce.md). `OpenAIVoiceProvider` reads `OPENAI_API_KEY` when `apiKey` is omitted; see [Voice](./voice.md).
+Which provider a tool picks, and the error for a named provider with no key, are on [Tools](./tools.md). `GITHUB_TOKEN` is on [Workforce](./workforce.md). `GITHUB_REVIEWERS` is on [Hear GitHub reviews in a coding run](../build/webhooks/github-reviews.md). `OpenAIVoiceProvider` reads `OPENAI_API_KEY` when `apiKey` is omitted; see [Voice](./voice.md).
 
 ## Model overrides
 

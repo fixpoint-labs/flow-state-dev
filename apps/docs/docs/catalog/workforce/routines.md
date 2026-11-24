@@ -43,7 +43,7 @@ export default createFlowState({
 });
 ```
 
-`githubTokenFor` returns the signed-in user's own GitHub token from your app's store, and `routineIndex` is a SQLite or Postgres schedule index. Each lives in `src/lib/`. The tick that fires schedules reads `routineIndex` ([Schedules](../../reference/schedules.md#the-schedule-index)). Without an index, clock routines fire only when an outside cron calls the dispatch endpoint. `github` serves GitHub's webhook; [Receive GitHub webhooks](../../build/webhooks/github.md) sets it up.
+`githubTokenFor` returns the signed-in user's own GitHub token from your app's store, and `routineIndex` is a SQLite or Postgres schedule index. Each lives in `src/lib/`. The tick that fires schedules reads `routineIndex` ([Schedules](../../reference/schedules.md#the-schedule-index)). Without an index, clock routines fire only when an outside cron calls the dispatch endpoint. `github` serves GitHub's webhook; [Hear GitHub reviews in a coding run](../../build/webhooks/github-reviews.md) sets it up.
 
 ## Use it
 
