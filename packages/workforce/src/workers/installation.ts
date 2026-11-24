@@ -85,7 +85,7 @@ import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from ".
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
-import { noteTaskInputSource, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
 import { declarationOfFlow } from "../task-input/declaration";
 import { conversationTaskDoorOf } from "../worker-task-entry";
 
@@ -486,9 +486,34 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     boundAgent ??= defineAgentWorkerFlow({ installation });
     return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
+  // FIX-2894.
+  /**
+   * What a task's input is checked against, for this installation: each
+   * flow's declaration, and a worker's flow and declared configuration (its
+   * row's settings, or its file's front matter), read now. Registered, so a
+   * raw ledger handle in one of its sessions checks what it files.
+   */
+  const taskInputSource: TaskInputSource = {
+    declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
+    workerOf: async (ctx, id) => {
+      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInput").getOptional(id))?.state);
+      if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row) };
+      if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
+      return undefined;
+    }
+  };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
-  const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
-    (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
+  const workerFlows = (): Record<string, ResolvedWorkerFlow> => {
+    if (resolvedFlows === undefined) {
+      resolvedFlows = resolveWorkerFlows(workerFlowsOption());
+      // Each flow's `work` door names this installation, so its claim finds what its tasks take (FIX-2894).
+      for (const { flow } of Object.values(resolvedFlows)) {
+        const door = conversationTaskDoorOf(flow);
+        if (door !== undefined) registerTaskDoor(door, taskInputSource);
+      }
+    }
+    return resolvedFlows;
+  };
 
   // The settings a user sees on a worker's roster row: the ones its flow's
   // registration names, read when a row is, since the flows are read lazily.
@@ -1013,23 +1038,6 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return typeof taskId === "string" ? `${worker} · ${taskId}` : worker;
   };
 
-  // FIX-2894.
-  /**
-   * What a task's input is checked against, for this installation: each
-   * flow's declaration, and a worker's flow and declared configuration (its
-   * row's settings, or its file's front matter), read now. Registered, so a
-   * raw ledger handle in one of its sessions checks what it files.
-   */
-  const taskInputSource: TaskInputSource = {
-    declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
-    workerOf: async (ctx, id) => {
-      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInput").getOptional(id))?.state);
-      if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row) };
-      if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
-      return undefined;
-    },
-    hasTaskDoor: (binding) => Object.values(workerFlows()).some((entry) => conversationTaskDoorOf(entry.flow) === binding)
-  };
   const installation: WorkerInstallation = {
     resources,
     documents,

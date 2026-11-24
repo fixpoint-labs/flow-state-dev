@@ -281,7 +281,7 @@ await runGoal(async (failures) => {
   // real engine and board, graded on the stored row and what the worker block
   // received: the workforce suite for this issue, run here once.
   if (legs.has("scripted")) {
-    const run = spawnSync("pnpm", ["exec", "vitest", "run", "test/task-input.test.ts", "test/task-input-race.test.ts"], {
+    const run = spawnSync("pnpm", ["exec", "vitest", "run", "test/task-input.test.ts", "test/task-input-race.test.ts", "test/task-input-sources.test.ts"], {
       cwd: join(REPO_ROOT, "packages/workforce"),
       encoding: "utf8"
     });

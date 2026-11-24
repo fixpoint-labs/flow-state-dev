@@ -681,6 +681,18 @@ mechanisms:
     status: canonical
     doc: packages/workforce/README.md
 
+  - id: task-input
+    job: What a worker flow's tasks take, declared on its `work` entry (`taskInput(schema, { serverOwned, fill, refuse, check, stored, project })`). Every write that files a task for one of its workers, or moves one onto it, is checked against it before anything is written, server-owned fields dropped and filled by the flow; the claim parses the stored task again; `listDelegates` shows it as JSON Schema. A flow that declares none takes any object.
+    package: "@flow-state-dev/workforce"
+    anchor: taskInput
+    file: packages/workforce/src/task-input/declaration.ts
+    builtOn: [session-board, task]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "task is the row and its lifecycle; task-input is the contract a row's input is checked against, per assignee's flow" }
+      - { id: session-board, relation: distinct-jobs, note: "session-board runs the checks on its writes; the declaration lives on the worker flow, and the raw ledger handles run the same check" }
+    status: canonical
+    doc: specs/issues/FIX-2894/SPEC.md
+
   - id: coordinator
     job: A coordinator flow that routes a request to the worker who should take it, and keeps the routed history.
     package: "@flow-state-dev/workforce"

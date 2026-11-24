@@ -15,10 +15,13 @@
  *   matches; a move onto a declared flow, an assign, or an edit of a row
  *   stamped for another declaration, is a filing for that flow (D2).
  * - **Where a worker's flow and declaration come from**: a
- *   {@link TaskInputSource}, which every installation registers
- *   ({@link registerTaskInputSource}). A raw handle finds the one its
- *   session's request ran on (noted when it resolved its worker or claimed
- *   its task); with none it can tell, it refuses a write it can't check.
+ *   {@link TaskInputSource}, one per installation, keyed by the objects that
+ *   name it and nothing else: the installation, and each of its flows' `work`
+ *   doors ({@link registerTaskDoor}), in weak maps, so a dropped installation
+ *   is never kept. The claim finds its source by its own door; a raw handle,
+ *   by the source its session's request was noted with (when it resolved its
+ *   worker or claimed its task). A handle with no source noted refuses a
+ *   write it can't check, `input_unchecked`.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { TaskWriteRefusedError, type Task, type TaskCollectionRef, type TaskInit, type TaskSettingsPatch, type TaskWriteOutcome } from "@flow-state-dev/orchestration/tasks";
@@ -47,8 +50,10 @@ export interface InputLookup {
  */
 export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, assignee: string, sent: unknown, flowOverride?: string): Promise<CheckedInput | undefined> {
   const flow = flowOverride ?? (await lookup.flowOf(assignee));
-  const declaration = flow === undefined ? undefined : lookup.declarationOf(flow);
-  if (flow === undefined || declaration === undefined) return undefined;
+  // A worker whose flow can't be read now is no open flow: what it takes is unknown, so nothing is filed.
+  if (flow === undefined) throw unresolved(assignee);
+  const declaration = lookup.declarationOf(flow);
+  if (declaration === undefined) return undefined;
   return checkFiling({
     ctx,
     declaration,
@@ -62,8 +67,16 @@ export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, as
   });
 }
 
+/** The refusal for a write that names a worker whose flow can't be read now. */
+function unresolved(assignee: string): TaskWriteRefusedError {
+  return new TaskWriteRefusedError(
+    "input_unchecked",
+    `"${assignee}" isn't a worker this task can be checked against now, so what its tasks take can't be read. Nothing was filed.`
+  );
+}
+
 /** `init` with its checked input and stamp, or as given on a flow that declares nothing. */
-export function withChecked<T extends TaskInit>(init: T, checked: CheckedInput | undefined): T {
+function withChecked<T extends TaskInit>(init: T, checked: CheckedInput | undefined): T {
   if (checked === undefined) return init;
   return { ...init, input: checked.input, metadata: { ...(init.metadata ?? {}), [FILLED_FOR]: checked.filledFor } };
 }
@@ -111,11 +124,15 @@ async function decidedPatch(lookup: InputLookup, ctx: BlockContext, task: Task, 
   const ifRevision = task.revision ?? 0;
   const assignee = patch.assignee ?? task.assignee;
   const flow = assignee === undefined ? undefined : await lookup.flowOf(assignee);
+  // A worker whose flow can't be read now (removed, fired) is no open flow: the edit can't be checked, so it is refused.
+  if (assignee !== undefined && flow === undefined) throw unresolved(assignee);
   const declaration = flow === undefined ? undefined : lookup.declarationOf(flow);
   if (assignee === undefined || flow === undefined || declaration === undefined) {
     // An unassigned task, or one on a flow that declares nothing: unchecked, as
-    // before. A task moved off a declared flow keeps no stamp, so a move back is a filing.
-    const unstamp = filledForOf(task) !== undefined && patch.assignee !== undefined && patch.assignee !== task.assignee;
+    // before, and nothing it carries counts (spec, "updateTask"): an unchecked
+    // write clears the stamp, so the next move onto a declared flow, or its
+    // claim, fills the server-owned values again.
+    const unstamp = filledForOf(task) !== undefined;
     return { ...patch, ...(unstamp ? { metadata: { ...(patch.metadata ?? {}), [FILLED_FOR]: null } } : {}), ifRevision };
   }
   // An edit within the flow the task was filled for keeps its server-owned
@@ -158,18 +175,24 @@ export interface TaskInputSource {
   declarationOf(flow: string): TaskInputDeclaration | undefined;
   /** The flow and declared configuration of a worker on the session user's roster. */
   workerOf(ctx: BlockContext, id: string): Promise<{ readonly flow: string; readonly config: Readonly<Record<string, unknown>> } | undefined>;
-  /** Whether `binding` is the `from` of one of this installation's flows' `work` entries. */
-  hasTaskDoor(binding: object): boolean;
 }
 
-const sources = new Set<TaskInputSource>();
 const bySession = new WeakMap<object, TaskInputSource>();
 const byInstallation = new WeakMap<object, TaskInputSource>();
+/** A door two installations registered: it names neither, so a lookup by it binds nothing. */
+const SHARED = Symbol("shared task door");
+const byDoor = new WeakMap<object, TaskInputSource | typeof SHARED>();
 
-/** Register an installation's source, so a raw handle can find it, and the installation's board reads it. */
+/** Register an installation's source, for the installation's own board to read. */
 export function registerTaskInputSource(source: TaskInputSource, installation: object): void {
-  sources.add(source);
   byInstallation.set(installation, source);
+}
+
+/** Register `door`, the `from` of one of an installation's flows' `work` entries, as that installation's. */
+export function registerTaskDoor(door: object, source: TaskInputSource): void {
+  const known = byDoor.get(door);
+  // One prebuilt flow given to two installations shares its door: it can't say which one runs here.
+  byDoor.set(door, known === undefined || known === source ? source : SHARED);
 }
 
 /** The source `installation` registered. */
@@ -182,36 +205,26 @@ export function noteTaskInputSource(session: object, source: TaskInputSource): v
   bySession.set(session, source);
 }
 
-/** The source whose flow's `work` entry has `binding` as its `from`, noted on the session; none when no installation has it. */
-export function noteSourceOfDoor(session: object, binding: object): TaskInputSource | undefined {
-  const noted = bySession.get(session);
-  if (noted !== undefined && hasDoor(noted, binding)) return noted;
-  // The newest first: an installation another one replaced is the least likely to run here.
-  for (const source of [...sources].reverse()) {
-    if (hasDoor(source, binding)) {
-      bySession.set(session, source);
-      return source;
-    }
-  }
-  return undefined;
+/** The source `door` was registered with, noted on the session; none for a door no installation registered. */
+export function noteSourceOfDoor(session: object, door: object): TaskInputSource | undefined {
+  const source = byDoor.get(door);
+  if (source === undefined || source === SHARED) return undefined;
+  bySession.set(session, source);
+  return source;
 }
 
-/** Whether `source` has `binding`; an installation whose flows can't be read (one its hire refused) has none. */
-function hasDoor(source: TaskInputSource, binding: object): boolean {
-  try {
-    return source.hasTaskDoor(binding);
-  } catch {
-    return false;
-  }
+/** The source the running request's session was noted with; none when it was noted with none. */
+export function sourceOfSession(session: object): TaskInputSource | undefined {
+  return bySession.get(session);
 }
 
-/** The source the running request's session runs on, as noted; else the only one registered. */
+/** The source the running request's session runs on, as noted. */
 function sourceFor(ctx: BlockContext): TaskInputSource | undefined {
-  return bySession.get(ctx.session as object) ?? (sources.size === 1 ? [...sources][0] : undefined);
+  return sourceOfSession(ctx.session as object);
 }
 
 /** A lookup over `source`, bound to `ctx`, with the project rule the raw handles read. */
-export function sourceLookup(ctx: BlockContext, source: TaskInputSource, project: { has: (input: TaskInputRecord) => Promise<boolean>; refusal: (assignee: string) => string }): InputLookup {
+function sourceLookup(ctx: BlockContext, source: TaskInputSource, project: { has: (input: TaskInputRecord) => Promise<boolean>; refusal: (assignee: string) => string }): InputLookup {
   return {
     flowOf: async (assignee) => (await source.workerOf(ctx, assignee))?.flow,
     declarationOf: (flow) => source.declarationOf(flow),
@@ -264,18 +277,14 @@ export function checkedLedger(
       return ref.createTasks(checked);
     },
     patchMetadata: (id, patch) => ref.patchMetadata(id, unstamped({ metadata: patch }).metadata ?? {}),
-    patchSettings: (id, given) => {
+    patchSettings: async (id, given) => {
       const patch = unstamped(given);
       return patch.input === undefined && patch.assignee === undefined
         ? ref.patchSettings(id, patch)
         : checkedPatch(lookup(), ctx, ref, id, patch, (i, p) => ref.patchSettings(i, p));
     },
-    setAssignee: async (id, assignee) => {
-      const task = ref.get(id);
-      const flow = await lookup().flowOf(assignee);
-      // A move that files the task for a declared flow is the checked edit; any other is as before.
-      if (task === undefined || flow === undefined || lookup().declarationOf(flow) === undefined) return ref.setAssignee(id, assignee);
-      return checkedPatch(lookup(), ctx, ref, id, { assignee }, (i, p) => ref.patchSettings(i, p));
-    }
+    // Every move of a task on the board is the checked edit, onto an open flow too: its stamp is cleared there.
+    setAssignee: async (id, assignee) =>
+      ref.get(id) === undefined ? ref.setAssignee(id, assignee) : checkedPatch(lookup(), ctx, ref, id, { assignee }, (i, p) => ref.patchSettings(i, p))
   };
 }

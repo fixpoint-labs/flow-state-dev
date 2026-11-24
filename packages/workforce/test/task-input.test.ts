@@ -128,8 +128,8 @@ function rawFlow(installation: WorkerInstallation) {
       const filed = await filingConversationBoard(ctx as never);
       for (const write of raw.writes.splice(0)) {
         try {
-          await (write as unknown as (tasks: unknown) => Promise<unknown>)(filed!.tasks);
-          raw.outcomes.push("ok");
+          const said = await (write as unknown as (tasks: unknown) => Promise<unknown>)(filed!.tasks);
+          raw.outcomes.push(typeof said === "string" ? said : "ok");
         } catch (error) {
           raw.outcomes.push(error instanceof TaskWriteRefusedError ? `${error.code}: ${error.message}` : String(error));
         }
@@ -464,6 +464,53 @@ describe("the raw handle a task session is handed", () => {
     const forged = (await tasksOf(host)).find((stored) => stored.goal === "forged");
     expect(forged?.metadata?.[FILLED_FOR]).toBeUndefined();
     expect((await tasksOf(host)).some((stored) => stored.goal === "raw")).toBe(false);
+  });
+});
+
+describe("a stamp nothing checked is never trusted", () => {
+  // Codex P1: a worker that stops resolving made an input edit take the open
+  // path with the stamp kept, so a filer's server-owned value was trusted at claim.
+  it("refuses an input edit while its worker can't be resolved, and the claim runs on the filler's values", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const filed = await file(host, id, { assignee: "ops.triager", goal: "g", input: { ticket: "ENG-5" }, held: true });
+    expect((await host.act("jane", id, "removeDelegate", { worker: "ops.triager" }, "filer")).error).toBeUndefined();
+    const edited = await update(host, id, { id: filed.taskId, input: { ticket: "ENG-5", requestedBy: "u_admin", audit: { by: "u_admin" } } });
+    expect(edited).toMatchObject({ ok: false, error: expect.stringMatching(/^input_unchecked: /) });
+    expect((await host.act("jane", id, "addDelegate", { worker: "ops.triager" }, "filer")).error).toBeUndefined();
+    expect(await update(host, id, { id: filed.taskId, status: "pending" })).toMatchObject({ ok: true });
+    await host.settled();
+    expect(seen).toEqual([{ flow: "triage", taskId: filed.taskId, input: { ticket: "ENG-5", severity: "low", requestedBy: "u_jane", audit: { by: "filing" } } }]);
+    expect((await host.row("jane", partition, filed.taskId!))?.input).toMatchObject({ requestedBy: "u_jane" });
+  });
+
+  // Codex P1: a move onto an open flow skipped the check, so it kept the stamp,
+  // and an unchecked edit there was trusted after the move back.
+  it("clears the stamp on a move to an open flow, so declared → open → declared fills again", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const target = await file(host, id, { assignee: "ops.triager", goal: "g", input: { ticket: "ENG-6" }, held: true });
+    raw.writes.push(
+      ((tasks: any) => tasks.setAssignee(target.taskId, "ops.helper")) as never,
+      (async (tasks: any) => `stamp ${JSON.stringify(tasks.get(target.taskId)?.metadata?.[FILLED_FOR] ?? null)}`) as never,
+      ((tasks: any) => tasks.patchSettings(target.taskId, { input: { ticket: "ENG-6", requestedBy: "u_admin", audit: { by: "u_admin" } } })) as never,
+      ((tasks: any) => tasks.setAssignee(target.taskId, "ops.triager")) as never
+    );
+    // The raw writer checks a stamp in between, through the stored task.
+    await file(host, id, { assignee: "ops.raw", goal: "move it through the raw handle", input: {} });
+    await host.settled();
+    expect(raw.outcomes).toEqual(["ok", "stamp null", "ok", "ok"]);
+    const moved = await host.row("jane", partition, target.taskId!);
+    expect(moved).toMatchObject({ assignee: "ops.triager", input: { ticket: "ENG-6", severity: "low", requestedBy: "u_jane", audit: { by: "filing" } } });
+    expect(moved?.metadata?.[FILLED_FOR]).toEqual({ flow: "triage", declaration: triage.fingerprint });
+  });
+
+  it("clears the stamp when a task moves to an open flow through the tool's board too", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const filed = await file(host, id, { assignee: "ops.triager", goal: "g", input: { ticket: "ENG-7" }, held: true });
+    expect(await update(host, id, { id: filed.taskId, assignee: "ops.helper" })).toMatchObject({ ok: true });
+    expect((await host.row("jane", partition, filed.taskId!))?.metadata?.[FILLED_FOR]).toBeNull();
   });
 });
 

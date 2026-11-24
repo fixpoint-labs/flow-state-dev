@@ -1623,10 +1623,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (self !== undefined && assignee === self) throw filedApart(id);
         await assertReassignable(id, assignee);
         await owePass(ctx);
-        // A move onto a flow that declares its input is the checked edit (FIX-2894 D2); any other is as before.
-        const flow = (await reach(ctx)).available.get(assignee);
-        const declared = flow !== undefined && options.taskInputOf?.(flow) !== undefined;
-        const outcome = declared && ref.get(id) !== undefined ? await checkedEdit(id, { assignee }) : await ref.setAssignee(id, assignee);
+        // Every move of a task on the board is the checked edit (FIX-2894 D2), onto an open flow too, where its stamp is cleared.
+        const outcome = ref.get(id) !== undefined ? await checkedEdit(id, { assignee }) : await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;

@@ -204,7 +204,7 @@ function notRunnable(flow: string, what: string): TaskWriteRefusedError {
 }
 
 /** One zod issue, in the refusal's words: where, and what was expected. */
-export function issueText(issue: ZodIssue | undefined): string {
+function issueText(issue: ZodIssue | undefined): string {
   if (issue === undefined) return "invalid";
   const at = issue.path.length === 0 ? "" : `at "${issue.path.join(".")}", `;
   switch (issue.code) {
