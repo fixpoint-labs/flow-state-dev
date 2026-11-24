@@ -40,6 +40,8 @@ Written by `docs-writer` (sonnet), 2343 words. Scenario: The support desk: a `su
 
 - After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 2415 words. Page sha256 cc8dc84a1917.
 
+- After the owner's decision (an agent principal may see its organization's orders): the page says `lookUpOrder` runs as the resolver's `support-agent` principal of `acme` and that `findOrder` returns any order in that organization, where a customer sees only their own. Stand-in contract, not framework behaviour. 2448 words. Page sha256 95f2d78cb117.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c50b0b52bf2b, and the 30 Reference row(s) pass 6 moved.

@@ -57,6 +57,8 @@ export const supportFlow = defineFlow({
 
 `lookUpOrder` and `exportTickets` are blocks, the unit of work an action runs, each in its own file beside the flow.
 
+`lookUpOrder` runs as the resolver's principal, the `support-agent` of `acme`. `findOrder` returns any order in that agent's organization: an agent principal may see its organization's orders, where a customer sees only their own.
+
 ```ts title="src/flows/support/blocks/look-up-order.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
