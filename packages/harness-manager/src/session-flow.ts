@@ -123,7 +123,6 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessBlock,
-  HarnessCallbackContext,
   HarnessResolver,
   HarnessRunHandle,
   HarnessRunInput,
@@ -163,11 +162,10 @@ import {
   MAX_APPROVAL_STEPS,
   grantMatches,
   heldToolCallOf,
-  heldToolCallSchema,
   heldToolDecision,
   toolApprovalOutcome,
   toolApprovalStop,
-  toolGrantSchema,
+  toolApprovalStateSchema,
   type HarnessToolApprovalHook,
   type HeldToolCall,
 } from "./tool-approval";
@@ -318,6 +316,8 @@ export const harnessSessionStateSchema = z.object({
 
 /** A harness session's state, as a page reads it from `clientData.session`. */
 export type HarnessSessionState = z.infer<typeof harnessSessionStateSchema>;
+
+type SessionContext = BlockContext<Record<string, unknown>, HarnessSessionState>;
 
 /** Who a session belongs to, as the framework names it. Never read from the request body. */
 export interface HarnessSessionPlace {
@@ -555,15 +555,10 @@ export interface HarnessSessionVerifyContext {
 /** How many turn records a session keeps. A notice reads only the latest. */
 const KEPT_TURNS = 20;
 
-/** The turn's record key: the framework's request id, never anything the caller sent. */
-function requestOf(ctx: HarnessCallbackContext): string {
-  return ctx.request.identity.id;
-}
-
 /** The session's place: its flow kind, tenant, id and issue, as the framework and its create named them. */
-function placeOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace {
+function placeOf(kind: string, ctx: Pick<SessionContext, "session">): HarnessSessionPlace {
   const identity = ctx.session.identity;
-  const issue = (ctx.session.state as HarnessSessionState | undefined)?.issue;
+  const issue = ctx.session.state.issue;
   return {
     flowKind: kind,
     sessionId: identity.id,
@@ -577,29 +572,13 @@ function placeOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace
  * attached to. The owner's place takes this session's flow kind and tenant,
  * never the caller's word, so a session of another tenant is never found.
  */
-function workPlaceOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace {
+function workPlaceOf(kind: string, ctx: Pick<SessionContext, "session">): HarnessSessionPlace {
   const own = placeOf(kind, ctx);
-  const owner = harnessSessionAttachedTo((ctx.session.state as HarnessSessionState).start);
+  const owner = harnessSessionAttachedTo(ctx.session.state.start);
   return owner === null ? own : { ...own, sessionId: owner };
 }
 
-const BLANK_TURN: HarnessTurnRecord = {
-  asked: null,
-  confirmed: null,
-  failure: null,
-  stopped: null,
-  error: null,
-  at: null,
-  steered: null,
-  setup: null,
-  base: null,
-  head: null,
-  checks: null,
-  spend: null,
-  endedAt: null,
-  waitsOnApproval: null,
-  timedOut: null,
-};
+const BLANK_TURN = harnessTurnRecordSchema.parse({});
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
 function withTurn(
@@ -607,7 +586,7 @@ function withTurn(
   requestId: string,
   change: (turn: HarnessTurnRecord) => HarnessTurnRecord,
 ): HarnessSessionState {
-  const turns = { ...(state.turns ?? {}) };
+  const turns = { ...state.turns };
   turns[requestId] = change(turns[requestId] ?? { ...BLANK_TURN, at: Date.now() });
   const kept = Object.entries(turns)
     .sort(([, a], [, b]) => (b.at ?? 0) - (a.at ?? 0))
@@ -627,14 +606,6 @@ export const HARNESS_SESSION_FAILED_OUTCOME = "The harness reported the run as f
 function failureWordsOf(handle: HarnessRunHandle): string {
   const words = (handle as { failureMessage?: unknown }).failureMessage;
   return typeof words === "string" && words.trim() !== "" ? words : HARNESS_SESSION_FAILED_OUTCOME;
-}
-
-/** Change the session's state atomically. */
-async function changeState(
-  ctx: HarnessCallbackContext,
-  change: (state: HarnessSessionState) => HarnessSessionState,
-): Promise<void> {
-  await ctx.session.atomicState((state) => change(state as HarnessSessionState));
 }
 
 /** How long a session's title may be before it is cut. */
@@ -706,17 +677,17 @@ export function harnessSessionFeeds(
     onUsage: async (report, ctx) => {
       await recordHarnessUsage(ctx, report);
     },
-    model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
-    cwd: async (ctx) => {
-      const state = ctx.session.state as HarnessSessionState;
-      const requestId = requestOf(ctx);
+    model: (ctx: SessionContext) => ctx.session.state.model ?? defaultModel,
+    cwd: async (ctx: SessionContext) => {
+      const state = ctx.session.state;
+      const requestId = ctx.request.identity.id;
       const owner = harnessSessionAttachedTo(state.start);
       // Where this turn's changes start: the first time the turn reaches its checkout.
       const recordTurnBase = async (path: string): Promise<void> => {
-        if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base != null) return;
+        if (ctx.session.state.turns?.[requestId]?.base != null) return;
         const base = await headCommit(path);
         if (base === null) return;
-        await changeState(ctx, (current) =>
+        await ctx.session.atomicState((current) =>
           withTurn(current, requestId, (turn) => (turn.base == null ? { ...turn, base } : turn)),
         );
       };
@@ -738,7 +709,7 @@ export function harnessSessionFeeds(
         const branch = await checkedOutBranch(path);
         if (!attachedHeads.has(requestId)) attachedHeads.set(requestId, branch);
         if (state.workspace == null || state.workspace.worktree !== worktree) {
-          await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
+          await ctx.session.atomicState((current) => ({ ...current, workspace: { worktree } }));
         }
         await recordTurnBase(path);
         return path;
@@ -750,8 +721,9 @@ export function harnessSessionFeeds(
       if (inUse !== undefined && !inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
       const worktrees = worktreesOf(ctx);
       const title = ctx.session.metadata.title;
-      const recordSetup = (setup: HarnessTurnRecord["setup"]) =>
-        changeState(ctx, (current) => withTurn(current, requestId, (turn) => ({ ...turn, setup })));
+      const recordSetup = async (setup: HarnessTurnRecord["setup"]) => {
+        await ctx.session.atomicState((current) => withTurn(current, requestId, (turn) => ({ ...turn, setup })));
+      };
       const provisioned = await workspace.provision(placeOf(kind, ctx), {
         onSetup: () => recordSetup({ state: "running", tail: null }),
         ...(state.start !== undefined ? { start: state.start } : {}),
@@ -775,18 +747,18 @@ export function harnessSessionFeeds(
       // written; any other hand-back changes nothing.
       const worktree = made.worktree ?? state.workspace?.worktree ?? null;
       if (state.workspace == null || state.workspace.worktree !== worktree) {
-        await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
+        await ctx.session.atomicState((current) => ({ ...current, workspace: { worktree } }));
       }
       await recordTurnBase(made.path);
       return made.path;
     },
-    worktree: (ctx) => workspace.locate(workPlaceOf(kind, ctx)),
-    resume: async (ctx) => {
-      const requestId = requestOf(ctx);
+    worktree: (ctx: SessionContext) => workspace.locate(workPlaceOf(kind, ctx)),
+    resume: async (ctx: SessionContext) => {
+      const requestId = ctx.request.identity.id;
       return (
         (await withOutcome(
           (mutator: (state: HarnessSessionState) => HarnessSessionState) =>
-            ctx.session.atomicState((state) => mutator(state as HarnessSessionState)),
+            ctx.session.atomicState(mutator),
           (state) => {
             const asked = state.binding?.confirmed ?? null;
             return { state: withTurn(state, requestId, (turn) => ({ ...turn, asked })), result: asked };
@@ -794,9 +766,9 @@ export function harnessSessionFeeds(
         )) ?? null
       );
     },
-    onSession: async (id, ctx) => {
-      const requestId = requestOf(ctx);
-      await changeState(ctx, (state) => ({
+    onSession: async (id, ctx: SessionContext) => {
+      const requestId = ctx.request.identity.id;
+      await ctx.session.atomicState((state) => ({
         ...withTurn(state, requestId, (turn) => ({ ...turn, confirmed: id })),
         binding: { confirmed: id },
       }));
@@ -846,7 +818,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     ...sessionFeeds,
     onEvent: (ctx) => deadlines.heard(ctx),
     cwd: (ctx) => {
-      const requestId = requestOf(ctx);
+      const requestId = ctx.request.identity.id;
       const known = turnCwds.get(requestId);
       if (known !== undefined) return known;
       const made = Promise.resolve(sessionFeeds.cwd(ctx));
@@ -863,10 +835,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // Core's steer action, allowed beside a running turn: it runs no harness, it
   // hands the running one a line. Recorded on the turn that took it.
   const steer = steering.action({
-    onTaken: (ctx, turnRequestId, text) =>
-      changeState(ctx, (state) =>
+    onTaken: async (ctx: SessionContext, turnRequestId, text) => {
+      await ctx.session.atomicState((state) =>
         withTurn(state, turnRequestId, (record) => ({ ...record, steered: [...(record.steered ?? []), text] })),
-      ),
+      );
+    },
   });
   // A failure is recorded on the turn, classified by the harness, so the page
   // can tell a refused conversation from any other error and from a stop. The
@@ -876,12 +849,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // the harness's error as its cause. One stopped for silence fails with the
   // silence's own words and no cause: the harness's error is an abort's, and
   // a turn that went silent failed, it wasn't stopped by anyone.
-  const recordTurnFailure = async (error: Error, ctx: BlockContext): Promise<never> => {
+  const recordTurnFailure = async (error: Error, ctx: SessionContext): Promise<never> => {
     const requestId = ctx.request.identity.id;
     const fired = deadlines.takeFired(requestId);
     const timedOut = fired !== undefined;
     const ended = fired === undefined ? error : fired.kind === "idle" ? new Error(fired.message) : new Error(fired.message, { cause: error });
-    await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+    await ctx.session.atomicState((state) =>
       withTurn(state, requestId, (record) => ({
         ...record,
         failure: harnessFailureKind(error),
@@ -893,11 +866,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     );
     // A stopped or failed turn still records where its changes end. Never in
     // place of the harness's error: a head that can't be written is left unset.
-    await writeTurnHead(ctx as unknown as HarnessCallbackContext).catch(() => undefined);
+    await writeTurnHead(ctx).catch(() => undefined);
     throw ended;
   };
   const recordFailure = handler({
     name: "record-turn-failure",
+    sessionStateSchema: harnessSessionStateSchema,
     execute: async (error: Error, ctx): Promise<unknown> => recordTurnFailure(error, ctx),
   });
   // A harness can also report a run it saw end in failure as a result, not a
@@ -906,12 +880,13 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // the next turn still continues the same conversation.
   const recordFailedOutcome = handler({
     name: "record-failed-outcome",
+    sessionStateSchema: harnessSessionStateSchema,
     execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       // A harness that answered past its deadline rather than failing ended on its own.
       deadlines.takeFired(requestId);
       if (handle.outcome !== "failed") return;
-      await changeState(ctx, (state) =>
+      await ctx.session.atomicState((state) =>
         withTurn(state, requestId, (record) => ({
           ...record,
           failure: null,
@@ -944,12 +919,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // `gh` is a note, never a failed turn.
   const branchPullRequests = handler({
     name: "branch-pull-requests",
+    sessionStateSchema: harnessSessionStateSchema,
     resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
     execute: async (_input: unknown, ctx): Promise<void> => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const requestId = requestOf(harnessCtx);
-      const state = harnessCtx.session.state as HarnessSessionState;
-      const place = workPlaceOf(options.kind, harnessCtx);
+      const requestId = ctx.request.identity.id;
+      const state = ctx.session.state;
+      const place = workPlaceOf(options.kind, ctx);
       // Everything below runs while the turn still holds the worktree, the
       // pull-request check included, so the next turn there (the owner's or an
       // attached session's) can't move the checkout or open a pull request
@@ -963,7 +938,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           const ended = await checkedOutBranch(options.workspace.locate(place));
           if (ended !== started) {
             const error = `${HARNESS_SESSION_ATTACHED_BRANCH_CHANGED} It started on ${started ?? "a detached HEAD"} and ended on ${ended ?? "a detached HEAD"}.`;
-            await changeState(harnessCtx, (current) => withTurn(current, requestId, (record) => ({ ...record, error })));
+            await ctx.session.atomicState((current) => withTurn(current, requestId, (record) => ({ ...record, error })));
             ctx.emit.status(error, { transient: false });
           }
         }
@@ -973,7 +948,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         const worktrees = worktreesOf(ctx);
         if (inUse.has(requestId) && worktrees !== undefined && options.workspace.recordCheckout !== undefined) {
           try {
-            await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
+            await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
           } catch (error) {
             ctx.emit.status(`The worktree's resource was not updated: ${error instanceof Error ? error.message : String(error)}`, {
               transient: false,
@@ -988,7 +963,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         const turnRecord = state.turns?.[requestId];
         if (turnRecord === undefined) return;
         // The branch the row last read, else the host's name for it.
-        const key = (harnessCtx.session.state as HarnessSessionState).workspace?.worktree ?? null;
+        const key = ctx.session.state.workspace?.worktree ?? null;
         const row = key !== null && worktrees !== undefined ? await worktrees.getOptional(key) : undefined;
         const branch = row?.state.branch ?? options.workspace.branch(place);
         if (branch === null) return;
@@ -1029,19 +1004,20 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // (`recordFailure`): a page refreshes on the turn's terminal status, which
   // the engine emits before `request.onFinished` runs. A checkout git can't
   // read leaves it unset, and the read then ends at the checkout's HEAD.
-  async function writeTurnHead(ctx: HarnessCallbackContext): Promise<void> {
-    const requestId = requestOf(ctx);
+  async function writeTurnHead(ctx: SessionContext): Promise<void> {
+    const requestId = ctx.request.identity.id;
     // A turn that never reached a git checkout has no base, so nothing for an end to bound.
-    if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) return;
+    if (ctx.session.state.turns?.[requestId]?.base == null) return;
     const cwd = options.workspace.locate(workPlaceOf(options.kind, ctx));
     if (!existsSync(cwd)) return;
     const head = await headCommit(cwd);
     if (head === null) return;
-    await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
+    await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, head })));
   }
   const recordTurnHead = handler({
     name: "record-turn-head",
-    execute: async (_input: unknown, ctx): Promise<void> => writeTurnHead(ctx as unknown as HarnessCallbackContext),
+    sessionStateSchema: harnessSessionStateSchema,
+    execute: async (_input: unknown, ctx): Promise<void> => writeTurnHead(ctx),
   });
   // When the harness step returns: what the turn spent, on its record. The
   // harness reported its run into the request before its block returned, so
@@ -1052,10 +1028,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // failed turn.
   const turnSpend = handler({
     name: "turn-spend",
+    sessionStateSchema: harnessSessionStateSchema,
     execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       try {
-        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
+        await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
       } catch (error) {
         ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
       }
@@ -1068,16 +1045,16 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // end. Every other turn ended its record inside the turn.
   const endUnendedTurn = handler({
     name: "end-unended-turn",
+    sessionStateSchema: harnessSessionStateSchema,
     execute: async (_input: unknown, ctx): Promise<void> => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const requestId = requestOf(harnessCtx);
-      const record = (harnessCtx.session.state as HarnessSessionState).turns?.[requestId];
+      const requestId = ctx.request.identity.id;
+      const record = ctx.session.state.turns?.[requestId];
       // Only a turn that can wait on an approval reaches its end unended this way.
       if (!approveTools || record === undefined || record.endedAt != null) return;
-      await changeState(harnessCtx, (state) =>
+      await ctx.session.atomicState((state) =>
         withTurn(state, requestId, (turn) => ({ ...turn, stopped: true, waitsOnApproval: null, ...turnEndOf(ctx, requestId) })),
       );
-      await writeTurnHead(harnessCtx).catch(() => undefined);
+      await writeTurnHead(ctx).catch(() => undefined);
     },
   });
   const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() }).tap(endUnendedTurn).tap(branchPullRequests);
@@ -1086,13 +1063,13 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // never lands in the session's log.
   const changes = handler({
     name: "turn-changes",
+    sessionStateSchema: harnessSessionStateSchema,
     inputSchema: harnessTurnChangesInputSchema,
     outputSchema: runChangesSchema,
     execute: async (input, ctx) => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const record = (harnessCtx.session.state as HarnessSessionState).turns?.[input.turn];
+      const record = ctx.session.state.turns?.[input.turn];
       if (record === undefined) throw new Error(`This session keeps no turn "${input.turn}".`);
-      const cwd = options.workspace.locate(workPlaceOf(options.kind, harnessCtx));
+      const cwd = options.workspace.locate(workPlaceOf(options.kind, ctx));
       // A turn that never reached a git checkout has no base: an unverified, empty answer.
       // `== null`: a turn recorded before these fields has neither, and reads unverified (BP-030).
       const base = record.base ?? null;
@@ -1109,27 +1086,27 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // record. Reported, not a failure: a red check leaves the turn as it ended.
   const verifyTurn = handler({
     name: "verify-turn",
+    sessionStateSchema: harnessSessionStateSchema,
     execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
       const verify = options.verify;
       if (verify === undefined || handle.outcome !== "finished" || ctx.signal.aborted) return;
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const place = workPlaceOf(options.kind, harnessCtx);
+      const place = workPlaceOf(options.kind, ctx);
       const cwd = options.workspace.locate(place);
       if (!existsSync(cwd)) return;
       const checks = await runCommandChecks(verify, cwd, { place, cwd }, ctx.signal);
       if (checks.length === 0) return;
       const requestId = ctx.request.identity.id;
-      await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
+      await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
     },
   });
   // The session's worktree, removed through the host's one removal path. A
   // turn holds the session while it runs, so this is refused then (`reject`).
   const removeWorktree = handler({
     name: "remove-worktree",
+    sessionStateSchema: harnessSessionStateSchema,
     inputSchema: z.object({ deleteBranch: z.boolean().default(false), force: z.boolean().default(false) }),
     execute: async (input, ctx): Promise<{ removed: true; branchDeleted: boolean }> => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const state = harnessCtx.session.state as HarnessSessionState;
+      const state = ctx.session.state;
       // An attached session never owns its worktree; only the owner removes it.
       if (harnessSessionAttachedTo(state.start) !== null) {
         throw new Error(HARNESS_SESSION_REMOVE_NOT_OWNER);
@@ -1138,7 +1115,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         throw new Error(HARNESS_SESSION_REMOVE_UNSUPPORTED);
       }
       const worktrees = worktreesOf(ctx);
-      const { branchDeleted } = await options.workspace.remove(placeOf(options.kind, harnessCtx), {
+      const { branchDeleted } = await options.workspace.remove(placeOf(options.kind, ctx), {
         deleteBranch: input.deleteBranch,
         force: input.force,
         ...(worktrees !== undefined ? { worktrees } : {}),
@@ -1160,23 +1137,23 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       ? undefined
       : handler({
           name: "turn-brief",
+          sessionStateSchema: harnessSessionStateSchema,
           inputSchema: z.object({ prompt: z.string().min(1) }),
           execute: async (input, ctx): Promise<{ prompt: string }> => {
-            const harnessCtx = ctx as unknown as HarnessCallbackContext;
-            const state = harnessCtx.session.state as HarnessSessionState;
+            const state = ctx.session.state;
             let prompt = input.prompt;
             const specDue = specOptions !== undefined && state.issue !== undefined && state.binding?.confirmed == null;
             const checksRead = typeof checksInBrief?.commands === "function";
             // The turn's own directory, set up first on a fresh session and the same one the harness
             // gets. Asked for once, and only when the spec or a resolver reads it: a fixed list needs none.
-            const turnCwd = specDue || checksRead ? await feeds.cwd(harnessCtx) : "";
+            const turnCwd = specDue || checksRead ? await feeds.cwd(ctx) : "";
             if (specOptions !== undefined && state.issue !== undefined && specDue) {
               prompt = `${await readIssueSpecSection(turnCwd, state.issue, specOptions)}\n\n## The request\n\n${prompt}`;
             }
             if (checksInBrief !== undefined) {
               const commands =
                 typeof checksInBrief.commands === "function"
-                  ? await checksInBrief.commands({ place: workPlaceOf(options.kind, harnessCtx), cwd: turnCwd })
+                  ? await checksInBrief.commands({ place: workPlaceOf(options.kind, ctx), cwd: turnCwd })
                   : checksInBrief.commands;
               const section = commandChecksBriefSection(commands, false);
               if (section !== undefined) prompt = `${prompt}\n\n${section}`;
@@ -1303,17 +1280,7 @@ type TurnDeadlines = RunStops;
  * the user's answers left, and how many answers resumed it. A turn is one
  * request, so its grants end with it.
  */
-const turnApprovalsSchema = z.object({
-  approvals: z
-    .object({
-      pending: heldToolCallSchema.nullable().default(null),
-      grants: z.array(toolGrantSchema).default([]),
-      steps: z.number().int().default(0),
-    })
-    .nullable()
-    .default(null),
-});
-type TurnApprovals = NonNullable<z.infer<typeof turnApprovalsSchema>["approvals"]>;
+const turnApprovalsSchema = z.object({ approvals: toolApprovalStateSchema.nullable().default(null) });
 
 /** What a harness step stopped for an approval hands on, in place of a handle. */
 const STOPPED_FOR_APPROVAL = "harness-session:stopped-for-approval";
@@ -1330,12 +1297,6 @@ export const HARNESS_SESSION_APPROVALS_NEED_DURABLE =
  */
 export const HARNESS_SESSION_TURN_WAITS_ON_APPROVAL =
   "Another turn of this session is waiting for an answer about a tool call. Answer or stop that turn, then send this one.";
-
-/** The turn's approvals, as its sequencer state holds them. */
-function turnApprovalsOf(ctx: { sequencer?: { state?: unknown } | undefined }): TurnApprovals {
-  const state = ctx.sequencer?.state as z.infer<typeof turnApprovalsSchema> | undefined;
-  return state?.approvals ?? { pending: null, grants: [], steps: 0 };
-}
 
 /**
  * The approval wait for one session flow kind: the feed, and the turn that
@@ -1363,7 +1324,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
     ask: ((request, ctx) => {
       const requestId = ctx.request.identity.id;
       const call = heldToolCallOf(request, workspace.locate(workPlaceOf(kind, ctx)));
-      const { grants } = turnApprovalsOf(ctx);
+      const grants = (ctx.sequencer?.state as z.infer<typeof turnApprovalsSchema> | undefined)?.approvals?.grants ?? [];
       const spent = spentGrants.get(requestId) ?? new Set<number>();
       const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
       if (granted >= 0) {
@@ -1405,7 +1366,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
     }: {
       agent: HarnessBlock;
       titleFromPrompt: ReturnType<typeof handler>;
-      recordTurnFailure: (error: Error, ctx: BlockContext) => Promise<never>;
+      recordTurnFailure: (error: Error, ctx: SessionContext) => Promise<never>;
       /** The turn's brief (the issue spec, the checks), run once ahead of the harness step (never on a loop back). */
       brief?: ReturnType<ReturnType<typeof handler>["rescue"]>;
       /** The person's files onto the run's input, once ahead of the harness step: a loop back continues a conversation that has them. */
@@ -1427,10 +1388,10 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // one back, and it would run in the checkout and conversation that turn resumes.
       const oneTurnAtATime = handler({
         name: `${kind}-one-turn-at-a-time`,
+        sessionStateSchema: harnessSessionStateSchema,
         execute: async (_input: unknown, ctx) => {
           const requestId = ctx.request.identity.id;
-          const turns = (ctx.session.state as HarnessSessionState).turns ?? {};
-          const waiting = Object.entries(turns).some(
+          const waiting = Object.entries(ctx.session.state.turns ?? {}).some(
             ([id, turn]) => id !== requestId && turn.waitsOnApproval === true && turn.endedAt == null,
           );
           if (waiting) throw new Error(HARNESS_SESSION_TURN_WAITS_ON_APPROVAL);
@@ -1459,6 +1420,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           {
             block: handler({
               name: `${kind}-stopped-for-approval`,
+              sessionStateSchema: harnessSessionStateSchema,
               inputSchema: z.unknown(),
               outputSchema: z.unknown(),
               execute: async (error: unknown, ctx) => {
@@ -1477,6 +1439,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // on that state before the step that waits starts.
       const heldCallStep = handler({
         name: `${kind}-tool-held`,
+        sessionStateSchema: harnessSessionStateSchema,
         inputSchema: z.unknown(),
         outputSchema: z.unknown(),
         sequencerStateSchema: turnApprovalsSchema,
@@ -1486,12 +1449,12 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           const spent = spentGrants.get(requestId);
           heldCalls.delete(requestId);
           spentGrants.delete(requestId);
-          const approvals = turnApprovalsOf(ctx);
+          const approvals = ctx.sequencer?.state.approvals ?? toolApprovalStateSchema.parse({});
           const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
           if (held === undefined && grants.length === approvals.grants.length) return value;
           if (held !== undefined) {
             // On the turn's record, so a turn sent while this one waits is refused.
-            await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+            await ctx.session.atomicState((state) =>
               withTurn(state, requestId, (record) => ({ ...record, waitsOnApproval: true })),
             );
           }
@@ -1504,13 +1467,14 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // confirmed. A cancel ends the turn.
       const approvalStep = handler({
         name: `${kind}-tool-approval`,
+        sessionStateSchema: harnessSessionStateSchema,
         inputSchema: z.unknown(),
         outputSchema: z.unknown(),
         sequencerStateSchema: turnApprovalsSchema,
         execute: async (value: unknown, ctx) => {
-          const approvals = turnApprovalsOf(ctx);
+          const approvals = ctx.sequencer?.state.approvals;
+          if (approvals?.pending == null) return value;
           const call = approvals.pending;
-          if (call === null) return value;
           const steps = approvals.steps + 1;
           if (steps > MAX_APPROVAL_STEPS) {
             // The turn fails on its record, as a harness failure does.
@@ -1522,8 +1486,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
               ctx,
             );
           }
-          const confirmed = (ctx.session.state as HarnessSessionState).binding?.confirmed ?? null;
-          if (confirmed === null) {
+          if (ctx.session.state.binding?.confirmed == null) {
             // The turn fails on its record, as a harness failure does.
             return recordTurnFailure(
               new Error(
@@ -1535,7 +1498,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           }
           const asked = await ctx.suspendForUser(toolApprovalStop(call));
           // Answered (or cancelled), the turn holds the session's turn slot again.
-          await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+          await ctx.session.atomicState((state) =>
             withTurn(state, ctx.request.identity.id, (record) => ({ ...record, waitsOnApproval: null })),
           );
           if (asked.cancelled) {

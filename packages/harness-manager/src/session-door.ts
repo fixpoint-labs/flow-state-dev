@@ -161,6 +161,11 @@ const talkStateSchema = z.object({
   lockPath: z.string().nullable().default(null),
   leaseToken: z.string().nullable().default(null),
 });
+type TalkState = z.infer<typeof talkStateSchema>;
+// The host-supplied harness receives a generic context inside the talk sequencer.
+function talkStateOf(ctx: Pick<BlockContext, "sequencer">): TalkState | undefined {
+  return ctx.sequencer?.state as TalkState | undefined;
+}
 
 // FIX-2160.
 /**
@@ -187,18 +192,16 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
-  const stateOf = (ctx: { sequencer?: { state?: unknown } }) => (ctx.sequencer?.state ?? {}) as z.infer<typeof talkStateSchema>;
-  const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
-    const state = stateOf(ctx);
-    if (state.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
+  const releaseTalkLease = (state: TalkState | undefined) => {
+    if (state?.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
   };
 
   // The talk's harness, fed from this turn's own state: the checkout the
   // finished run worked in and the session it confirmed. Outside any
   // attempt, so it records no session of its own.
   const talkHarness: HarnessBlock = options.harness({
-    cwd: (ctx) => stateOf(ctx).cwd ?? "",
-    resume: (ctx) => stateOf(ctx).resume,
+    cwd: (ctx) => talkStateOf(ctx)?.cwd ?? "",
+    resume: (ctx) => talkStateOf(ctx)?.resume ?? null,
     onSession: () => undefined,
     // A talk is one turn the person waits on: a line while it runs is its own talk.
     onSteerable: () => undefined,
@@ -214,7 +217,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: talkPromptSchema,
     sequencerStateSchema: talkStateSchema,
     uses,
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       const board = await options.board(ctx);
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
@@ -245,9 +248,9 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: harnessTalkOutputSchema,
     sequencerStateSchema: talkStateSchema,
     execute: async (value, ctx) => {
-      releaseTalkLease(ctx);
+      releaseTalkLease(ctx.sequencer?.state);
       const handle = value as { finalMessage?: string | null };
-      return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx).taskId ?? "" };
+      return { reply: handle.finalMessage ?? null, taskId: ctx.sequencer?.state.taskId ?? "" };
     },
   });
 
@@ -263,7 +266,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
           outputSchema: z.unknown(),
           sequencerStateSchema: talkStateSchema,
           execute: (error: unknown, ctx) => {
-            releaseTalkLease(ctx);
+            releaseTalkLease(ctx.sequencer?.state);
             throw error;
           },
         }),
