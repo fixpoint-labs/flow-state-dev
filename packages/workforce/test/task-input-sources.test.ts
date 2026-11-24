@@ -168,6 +168,21 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
     expect(() => installation.workerFlows()).toThrow('workerTaskEntry "shared-work" is used by two flows ("alpha", "beta"): give each flow its own entry.');
   });
 
+  // Codex P2: the record `workerFlows()` returns could take a flow after its one-time door scan ran.
+  it("returns a record of worker flows nothing can add to after its door scan", async () => {
+    const { harness } = await fresh();
+    const host = harness.bootBoardHost();
+    try {
+      const flows = host.installation.workerFlows() as Record<string, unknown>;
+      expect(() => {
+        flows.late = flows.tasker;
+      }).toThrow(TypeError);
+      expect(Object.keys(host.installation.workerFlows())).not.toContain("late");
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("keeps nothing it can be asked to list: every lookup is keyed, and an unknown door resolves none", async () => {
     const { ledger } = await fresh();
     // Weak maps only: a dropped installation, and its flows' doors, are not kept by the registry.

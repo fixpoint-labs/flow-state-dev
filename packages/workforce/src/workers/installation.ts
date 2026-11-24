@@ -525,6 +525,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         flowOfDoor.set(door, name);
       }
       for (const [door, name] of flowOfDoor) registerTaskDoor(door, taskInputSource, name);
+      // Frozen, so no flow joins the record after the scan above: a door is checked once, and names one flow.
+      Object.freeze(resolvedFlows);
     }
     return resolvedFlows;
   };
