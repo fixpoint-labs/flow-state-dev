@@ -11,7 +11,7 @@ unbuffered, answering health checks, and shutting down cleanly on `SIGTERM`.
 
 Use it to self-host on Railway, Render, Fly, a VPS, or anywhere a Node process
 runs. It is also the foundation for Node-runtime serverless: the same app `serve()`
-runs long-lived is exported as a portable Hono app you can wrap for AWS Lambda, Bun,
+runs long-lived is exported as a portable Hono app you can wrap for Bun
 or Deno (see [Portable app for serverless](#portable-app-for-serverless)). For
 Vercel + Next.js, reach for `@flow-state-dev/vercel` instead.
 
@@ -106,17 +106,8 @@ const { app } = createServerApp(flowState);
 //   Deno → Deno.serve(app.fetch)
 ```
 
-For AWS Lambda, the `./aws-lambda` subpath wires the app to Lambda's response
-streaming (so SSE works), deployed behind a Function URL in `RESPONSE_STREAM` mode:
-
-```ts title="handler.ts"
-import { createLambdaHandler } from "@flow-state-dev/node/aws-lambda";
-export const handler = createLambdaHandler(flowState);
-```
-
 See [Host adapters](https://flow-state.dev/docs/server/host-adapters) for guidance
-on choosing between these, and [Deploying to AWS Lambda](https://flow-state.dev/guides/deploying-to-aws-lambda)
-for a worked example.
+on choosing between these.
 
 ## Network-bind authentication guard
 

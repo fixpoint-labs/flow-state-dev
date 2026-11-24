@@ -8,7 +8,7 @@ sidebar_label: Host adapters
 
 Your `createFlowState` config describes the engine — flows, models, stores. It says nothing about how HTTP requests reach it. Hosting is the web-server face of that engine. A host adapter is the glue: it takes incoming requests, hands them to the flow router, and streams responses back.
 
-The router itself is portable. It speaks Web standard `Request` and `Response`, so the same app runs long-lived on a Node process, on AWS Lambda, on Bun, or on Deno. What changes per platform is the thin wrapper around it. This page covers which wrapper to reach for.
+The router itself is portable. It speaks Web standard `Request` and `Response`, so the same app runs long-lived on a Node process, on Bun, or on Deno. What changes per platform is the thin wrapper around it. This page covers which wrapper to reach for.
 
 ---
 
@@ -18,10 +18,9 @@ The router itself is portable. It speaks Web standard `Request` and `Response`, 
 | --- | --- | --- | --- |
 | `serve()` | `@flow-state-dev/node` | Long-lived Node process | Self-hosting on Railway, Render, Fly, a VPS, or Docker. Also what `fsdev dev` and `fsdev serve` use. |
 | `createServerApp()` | `@flow-state-dev/node/app` | Any (Web Fetch) | You want the portable app to wrap for a serverless target yourself. |
-| `createLambdaHandler()` | `@flow-state-dev/node/aws-lambda` | AWS Lambda | Deploying to Lambda with response streaming. |
 | `createVercelHandler()` | `@flow-state-dev/vercel` | Vercel + Next.js | Your app is on Next.js and you deploy to Vercel. |
 
-The first three are the same app underneath. `serve()` runs the portable app long-lived; `createLambdaHandler()` runs it on Lambda. `@flow-state-dev/vercel` is a separate adapter shaped around Next.js App Router.
+The first two are the same app underneath: `serve()` runs the portable app long-lived. `@flow-state-dev/vercel` is a separate adapter shaped around Next.js App Router.
 
 ---
 
@@ -37,7 +36,6 @@ const { app } = createServerApp(flowstate);
 
 // `app.fetch` is a Web Fetch handler — hand it to any host:
 //   @hono/node-server  → serve({ fetch: app.fetch })   (this is what serve() does)
-//   AWS Lambda         → see createLambdaHandler
 //   Bun                → export default app
 //   Deno               → Deno.serve(app.fetch)
 ```
@@ -92,7 +90,7 @@ Walk it in this order:
 
 1. **On Next.js, deploying to Vercel?** Use `@flow-state-dev/vercel`. It handles Vercel's SSE shaping for you.
 2. **Running a long-lived process** (Railway, Render, Fly, Docker, a VPS)? Use `serve()`. One call gives you health checks, static serving, and graceful shutdown.
-3. **Deploying to a Node-runtime serverless platform** other than Vercel? Use the portable app — `createLambdaHandler()` for AWS Lambda, or wrap `app.fetch` yourself for Bun or Deno.
+3. **Deploying to a Node-runtime serverless platform** other than Vercel? Use the portable app, and wrap `app.fetch` yourself for Bun or Deno.
 
 Edge runtimes (Cloudflare Workers, Vercel Edge) are not supported: the engine relies on Node primitives. "Serverless" here means a Node runtime.
 
@@ -112,13 +110,12 @@ const { app } = createServerApp(flowstate);
 export default app;
 ```
 
-For Bun and Deno that is the whole adapter. For platforms with an event-shaped entry (like Lambda), use the matching Hono adapter — that is exactly what `createLambdaHandler()` does with `hono/aws-lambda`.
+For Bun and Deno that is the whole adapter.
 
 ---
 
 ## See also
 
 - [Deployment overview](/guides/deployment) — SSE and persistence per platform
-- [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) — a worked Lambda example
 - [Engine setup](/docs/server/setup) — configuring the router
 - [CLI API](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal

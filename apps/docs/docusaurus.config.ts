@@ -127,6 +127,7 @@ const config: Config = {
       // when Workforce became its own top-level section. The Claude Code
       // `--remote` page was removed; its address points at the SDK agent.
       // The Cloud Scheduler and EventBridge guides were removed (no code backed them).
+      // The AWS Lambda guide was removed; its address points at the deployment overview.
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
@@ -173,6 +174,10 @@ const config: Config = {
           {
             from: "/guides/scheduled-eventbridge",
             to: "/docs/server/scheduled",
+          },
+          {
+            from: "/guides/deploying-to-aws-lambda",
+            to: "/guides/deployment",
           },
         ],
       },

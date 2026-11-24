@@ -43,7 +43,6 @@ const sidebars: SidebarsConfig = {
       items: [
         "deployment",
         "deploying-to-vercel",
-        "deploying-to-aws-lambda",
         "deploying-to-railway",
         "deploying-with-docker",
       ],
