@@ -123,13 +123,13 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     boardCollectionId: DOTTED_BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: (run: { branch: string }) => {
+    mode: {
+      name: PHASE,
+      instructions: (run: { branch: string }) => {
         branches.push(run.branch);
         return "go";
       },
-      isDone: () => true,
+      doneWhen: { check: () => true },
     },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,

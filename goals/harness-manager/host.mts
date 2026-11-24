@@ -35,7 +35,7 @@ import {
   RUNS,
   runTopic,
   type HarnessFeeds,
-  type PhaseSpec,
+  type ModeSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
@@ -58,7 +58,7 @@ export interface HarnessGoalFlowOptions {
   workspace: WorkspaceConfig;
   maxAttempts?: number;
   runTimeoutMs?: number;
-  phase: PhaseSpec;
+  mode: ModeSpec;
   /** `claudeCodeAgent`'s options, minus the feeds the manager's slot supplies and the two this host fixes. */
   agent?: Omit<
     Parameters<typeof claudeCodeAgent>[0],
@@ -107,13 +107,13 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     workspace: callerWorkspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
-    phase: callerPhase,
+    mode: callerMode,
     agent,
     slot,
   } = options;
 
   const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
-  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+  const mode: ModeSpec = Object.freeze({ ...callerMode });
 
   assertPositiveInt("runTimeoutMs", runTimeoutMs);
   assertPositiveInt("maxAttempts", maxAttempts);
@@ -130,7 +130,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo, process.cwd());
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
   assertCheckoutRootUsable(workspace.root, "workspace.root");
-  assertSafeSegment("phase", phase.phase);
+  assertSafeSegment("mode", mode.name);
 
   const boardId = joinIdentity("harness-goal", assertSafeSegment("epic", epic));
   const collectionId = joinIdentity("harness-goal-tasks", assertSafeSegment("epic", epic));
@@ -145,7 +145,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     boardCollectionId: collectionId,
     boardCollection: tasks,
     tenant: undefined,
-    phase,
+    mode,
     workspace,
     runTimeoutMs,
     // The feeds are spread, so a feed the manager adds (onUsage was the last)

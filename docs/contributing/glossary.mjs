@@ -768,6 +768,21 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "Mode",
+    means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. Not a stage of a task on a board.",
+    decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea",
+    // Code and goals only: the published pages and READMEs that still name the old type are rewritten at
+    // release (`/release-docs`), and a changeset names the old names to say what replaced them.
+    retires: [
+      {
+        id: "phase-spec",
+        check: "sweep",
+        files: new RegExp(`${CODE.source}|^goals\\/.*\\.(mts|ts)$`),
+        pattern: /\b(PhaseSpec|PhaseDoneVerdict|PhaseRunContext|codingPhase)\b/,
+      },
+    ],
+  },
+  {
     term: "Starter",
     means: "An app on FSD that ships as a template to start your own from: the Claude Code-style app and Teammates. Its screen reads and writes the server through `src/app/`, one file per job, whose `index.ts` exports `AppProvider` and `useApp`; its root component is `src/components/App.tsx`.",
     decision: "Owner, 2026-11-17 (FIX-2755): the labs ship as app starters; the module is `src/app/` and its hook `useApp`, not `data`",

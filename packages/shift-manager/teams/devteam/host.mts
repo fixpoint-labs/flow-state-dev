@@ -1010,9 +1010,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // rather than the engine's 30 s default, which would cancel it.
   const dispatchDrainTimeoutMs = harnessDrainBudgetMs({
     runTimeoutMs,
-    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs: coderPhase.doneTimeoutMs }).ownership.waitMs,
+    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs: coderPhase.doneWhen.timeoutMs }).ownership.waitMs,
     judge: options.withoutJudge !== true,
-    doneTimeoutMs: coderPhase.doneTimeoutMs,
+    doneTimeoutMs: coderPhase.doneWhen.timeoutMs,
   });
   // Every harness a coder runs on is handed the Lab's MCP tools, and what a
   // files run starts on, kept so its done-condition asks for a change.

@@ -93,7 +93,7 @@ export interface HarnessStubOptions {
    * The handle's `outcome` word.
    *
    * Note what this does **not** do on its own: the manager reads `status` for
-   * success and then asks the phase's done-condition, so the outcome word is
+   * success and then asks the mode's done check, so the outcome word is
    * recorded rather than decisive.
    */
   outcome?: HarnessRunOutcome | null;

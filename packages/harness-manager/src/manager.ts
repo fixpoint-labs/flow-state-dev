@@ -128,6 +128,7 @@ import {
   placeStatusSchema,
   openRunRecord,
   readConfirmedSession,
+  readModeRunRecord,
   readRunRecord,
   runRecordCollection,
   runTopic,
@@ -213,8 +214,8 @@ import {
 } from "./workspace";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
-/** What a phase's prompt builder and done-condition are handed. */
-export interface PhaseRunContext {
+/** What a mode's instructions and done check are handed. */
+export interface ModeRunContext {
   /**
    * The board's discriminator — see `RunLocation.epic`. A fixed board's id, or
    * for a board read from the claim, its ledger id and partition digest
@@ -222,7 +223,8 @@ export interface PhaseRunContext {
    */
   epic: string;
   issue: string;
-  phase: string;
+  /** The segment the run is keyed by: its mode's name, or the older one it was found under ({@link ModeSpec.formerName}). */
+  mode: string;
   /**
    * The tracker issue the task names (`ENG-142`), or `null` when it names
    * none. On a fixed board it is {@link issue}. On a board read from the
@@ -236,12 +238,12 @@ export interface PhaseRunContext {
   workspacePath: string;
   branch: string;
   /**
-   * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
-   * conductor.
+   * Whatever this mode's own {@link ModeDone.validate} returned, for THIS
+   * manager.
    *
-   * `unknown` because only the phase that produced it knows its shape — the
-   * manager carries it and never reads it. Absent when the phase has no
-   * `validate`, or when one is invoked outside `conductorFlow`.
+   * `unknown` because only the mode that produced it knows its shape — the
+   * manager carries it and never reads it. Absent when the mode has no
+   * `validate`.
    */
   validated?: unknown;
   /**
@@ -251,7 +253,7 @@ export interface PhaseRunContext {
    * nothing.
    */
   feedback?: string;
-  /** The block context, so a builder can read its phase's collections. */
+  /** The block context, so a builder can read its mode's collections. */
   ctx: BlockContext;
 }
 
@@ -264,15 +266,15 @@ export interface AnsweredQuestion {
 }
 
 /**
- * What a prompt builder gets on top of {@link PhaseRunContext}: the task it was
+ * What a prompt builder gets on top of {@link ModeRunContext}: the task it was
  * claimed for, and the two things the ask adds.
  *
- * Separate from `PhaseRunContext` rather than optional fields on it. The
+ * Separate from `ModeRunContext` rather than optional fields on it. The
  * done-condition needs none of them, and a field that is sometimes absent is the
  * silent-partial shape this lab exists to remove — a builder cannot tell "no
  * answers" from "nobody read them" if the same `undefined` means both.
  */
-export interface PromptRunContext extends PhaseRunContext {
+export interface PromptRunContext extends ModeRunContext {
   /**
    * The task this attempt was claimed for, as the board packed it: its `goal`,
    * and its `title`, `context`, `input`, `deps` and `priorWork` when the row has
@@ -280,7 +282,7 @@ export interface PromptRunContext extends PhaseRunContext {
    *
    * The same on every attempt, so a retry or the attempt after a person's
    * message starts from the same work. Build the prompt from this rather than
-   * from {@link PhaseRunContext.issue}, which is only the row's identity.
+   * from {@link ModeRunContext.issue}, which is only the row's identity.
    * `metadata` is left out: it is the board's bookkeeping, not the brief.
    *
    * A `Pick` of the board's worker-input schema, so its fields keep the
@@ -304,17 +306,17 @@ export interface PromptRunContext extends PhaseRunContext {
 }
 
 /**
- * What a done-condition gets on top of {@link PhaseRunContext}: the one thing
+ * What a done-condition gets on top of {@link ModeRunContext}: the one thing
  * the run's own report adds.
  *
- * Separate from `PhaseRunContext` for the same reason {@link PromptRunContext}
+ * Separate from `ModeRunContext` for the same reason {@link PromptRunContext}
  * is — a prompt builder has no use for it, and the two sides carry facts about
  * different attempts. `feedback` describes the attempt BEFORE this one and is
  * prompt-side only; `stopReport` describes THIS one and is completion-side
  * only. A single field meaning "this attempt" in one place and "the last one"
  * in another lies by position.
  */
-export interface CompletionRunContext extends PhaseRunContext {
+export interface CompletionRunContext extends ModeRunContext {
   /**
    * How the run said it stopped, as it said it — the run's own three-way word
    * (`finished` / `stopped-at-limit` / `failed`), reached only on a clean
@@ -370,39 +372,38 @@ export interface CompletionRunContext extends PhaseRunContext {
 }
 
 /**
- * What a phase's `isDone` may answer instead of a boolean: whether the job is
+ * What a mode's done check may answer instead of a boolean: whether the job is
  * done, why not, and the checks it ran (`commandCheck`).
  *
  * `reason` is added to the not-done message, which the board hands the next
  * attempt as its `feedback`. `checks` goes on the run record whatever the
  * verdict, and on the review's `data` when the run is done.
  */
-export interface PhaseDoneVerdict {
+export interface ModeDoneVerdict {
   done: boolean;
   /** Why it isn't done, in words the next attempt can act on. Read only when `done` is false. */
   reason?: string;
-  /** The checks the phase ran, in order. */
+  /** The checks the mode ran, in order. */
   checks?: CommandCheckResult[];
 }
 
-/** Everything that makes one phase a phase. Three values, passed in. */
-export interface PhaseSpec {
-  /** The phase segment of the run record's topic. */
-  phase: string;
-  /** Rebuilt on every wake from current state, never computed when the row was filed. */
-  buildPrompt(run: PromptRunContext): string | Promise<string>;
+/**
+ * When a mode's run counts as done: the server-side check, how long it may
+ * take, and what it needs from the workspace, checked at construction.
+ */
+export interface ModeDone {
   /**
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
    *
    * **The carry-forward field is prompt-time only: `feedback` is absent here,
    * deliberately and always.** It describes the attempt BEFORE this one, which
-   * is what a prompt needs and what a done-condition has no use for — the
+   * is what a prompt needs and what a done check has no use for — the
    * question is whether the job is done now, not how the last attempt went. It
    * is also not reachable at this point: it arrives on the worker's input, and
-   * the verdict handler is handed the run's own result instead. A phase whose
-   * done-condition genuinely needs it wants it put on the manager's state
-   * first; do that when such a phase exists rather than plumbing a field
+   * the verdict handler is handed the run's own result instead. A mode whose
+   * done check genuinely needs it wants it put on the manager's state
+   * first; do that when such a mode exists rather than plumbing a field
    * nothing reads.
    *
    * **What it DOES get is {@link CompletionRunContext.stopReport}: how this
@@ -410,45 +411,68 @@ export interface PhaseSpec {
    * predicate, and a run that exhausted its turn or spend budget is where they
    * most reliably diverge — it commits the half it managed and reports
    * `stopped-at-limit`. A check that answers from the branch alone closes that
-   * row as done, silently. Reading the field is the phase's call, and
+   * row as done, silently. Reading the field is the mode's call, and
    * declining to is a real choice with a real cost; the framework imposes
-   * nothing, because only the phase knows what finishing means for it.
+   * nothing, because only the mode knows what finishing means for it.
    */
-  isDone(run: CompletionRunContext): boolean | PhaseDoneVerdict | Promise<boolean | PhaseDoneVerdict>;
+  check(run: CompletionRunContext): boolean | ModeDoneVerdict | Promise<boolean | ModeDoneVerdict>;
   /**
-   * How long {@link isDone} may take, in milliseconds; a minute
+   * How long {@link check} may take, in milliseconds; a minute
    * (`NETWORK_CALL_TIMEOUT_MS`) when unset. `commandCheck` sets it to cover its
    * commands. Pass the same number to `harnessDrainBudgetMs({ doneTimeoutMs })`,
    * or a shutdown can stop a check before it ends.
    */
-  doneTimeoutMs?: number;
+  timeoutMs?: number;
   /**
-   * What this phase needs from the workspace, checked before anything is
-   * claimed. Throws to refuse; absent means the phase needs nothing.
+   * What this mode needs from the workspace, checked before anything is
+   * claimed. Throws to refuse; absent means the mode needs nothing.
    *
-   * **A phase's own preconditions are configuration, and configuration is
+   * **A mode's own preconditions are configuration, and configuration is
    * refused at startup.** The other guards at that door — the repository, the
    * base ref, the numbers — protect a *task* from paying for a shell typo: the
    * row is claimed, the attempt is charged, and the failure is permanent, so
-   * every retry spends itself on it. A precondition belonging to the phase has
-   * exactly that shape and could not use that door, because only the phase knows
+   * every retry spends itself on it. A precondition belonging to the mode has
+   * exactly that shape and could not use that door, because only the mode knows
    * what it needs and only the flow holds the workspace.
    *
-   * The implement phase's completion probe reads the source repository's
+   * The implement mode's completion probe reads the source repository's
    * `origin`; a checkout whose GitHub remote is called something else fails it
    * AFTER the paid agent run, once per retry. That is the case this exists for,
    * and it is why the hook takes the workspace rather than being a boolean.
    *
-   * **Whatever it returns is handed back to this phase's own `isDone` as
-   * {@link PhaseRunContext.validated}, once per conductor.** That is the only
-   * way a phase can carry something it learned at construction into a run:
-   * closing over it does not work, because one `PhaseSpec` can be given to two
-   * conductors and `conductorFlow`'s snapshot copies function references rather
-   * than what they close over. Three separate defects came out of a phase that
-   * tried — a pin shared between conductors, a pin retained by a construction
-   * that then failed, and a comparison written to paper over both.
+   * **Whatever it returns is handed back to this mode's own `check` and
+   * `instructions` as {@link ModeRunContext.validated}, once per manager.**
+   * That is the only way a mode can carry something it learned at
+   * construction into a run: closing over it does not work, because one
+   * `ModeSpec` can be given to two managers and the manager's snapshot copies
+   * function references rather than what they close over. Three separate
+   * defects came out of a mode that tried — a pin shared between managers, a
+   * pin retained by a construction that then failed, and a comparison written
+   * to paper over both.
    */
   validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
+}
+
+/**
+ * One mode: a name for how a coding run is told what to do and when it counts
+ * as done. A manager runs one.
+ */
+export interface ModeSpec {
+  /** The mode's name: the last segment of its runs' keys (`<epic>/<issue>/<name>`), their branches and checkouts. */
+  name: string;
+  // BP-030.
+  /**
+   * The segment this mode's runs were stored under before it took {@link name},
+   * when that differs. A run whose key under {@link name} is absent is looked
+   * up under this one, and a run found there finishes there: its branch,
+   * checkout, retries and session keep that segment. Nothing is copied or
+   * moved. Absent: there is no older key to read.
+   */
+  formerName?: string;
+  /** The run's prompt, rebuilt on every wake from current state, never computed when the row was filed. */
+  instructions(run: PromptRunContext): string | Promise<string>;
+  /** When the run counts as done. */
+  doneWhen: ModeDone;
 }
 
 /**
@@ -684,7 +708,8 @@ export interface ManagerOptions {
    * board's collection identity. Every request must resolve to it.
    */
   tenant: string | undefined;
-  phase: PhaseSpec;
+  /** How each run is told what to do, when it counts as done, and the segment its key ends in. */
+  mode: ModeSpec;
   /**
    * Where each run's files come from, and where it works.
    *
@@ -774,14 +799,14 @@ export interface ManagerOptions {
    */
   stopsOnAbort?: boolean;
   /**
-   * Capabilities installed on the blocks whose contexts a phase sees — the same
+   * Capabilities installed on the blocks whose contexts a mode sees — the same
    * `uses` slot any other block takes.
    *
-   * **This replaces a bespoke `PhaseSpec.readable` record**, which was a second
-   * way to say what the framework already says. A phase that reads its own
+   * **This replaces a bespoke `readable` record on the mode**, which was a second
+   * way to say what the framework already says. A mode that reads its own
    * collections ships them as a capability and the host puts it here; the
-   * manager spreads it onto the blocks a phase's hooks run inside (the prompt
-   * builder's and the done-condition's), so `ctx.resources` resolves for them
+   * manager spreads it onto the blocks a mode's hooks run inside (the
+   * instructions' and the done check's), so `ctx.resources` resolves for them
    * exactly as it does anywhere else.
    *
    * The reserved-accessor guard is unchanged in effect and re-aimed at this:
@@ -1106,7 +1131,7 @@ const managerStateSchema = z.object({
   /** The board segment of the run's identity (`runBoardSegment`). */
   epic: z.string().nullable().default(null),
   issue: z.string().nullable().default(null),
-  /** The tracker issue the task names (`PhaseRunContext.trackerIssue`); `null` for none. */
+  /** The tracker issue the task names (`ModeRunContext.trackerIssue`); `null` for none. */
   trackerIssue: z.string().nullable().default(null),
   phase: z.string().nullable().default(null),
   topic: z.string().nullable().default(null),
@@ -1989,7 +2014,7 @@ function branchIssue(claimBoard: boolean, trackerIssue: string | null | undefine
 
 // FIX-2086.
 /**
- * Build the manager: one dispatched worker for one phase.
+ * Build the manager: one dispatched worker for one mode.
  *
  * A steer on the task is in the attempt's first prompt, and one that arrives
  * while a step runs is the next step of the same request.
@@ -2007,7 +2032,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     issueSpec,
     approveTools = false,
     tenant,
-    phase: callerPhase,
+    mode: callerMode,
     workspace,
     runTimeoutMs,
     harnessLabel,
@@ -2045,13 +2070,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // cannot disagree.
   if (boardCollectionId !== undefined) assertDerivedIdentity("boardCollectionId", boardCollectionId);
 
-  // **A phase is caller-owned validated configuration, so it is snapshotted.**
+  // **A mode is caller-owned validated configuration, so it is snapshotted.**
   // Held by reference, a host could swap `implement` for `review` after this
   // returns and leave the implement prompt and completion check attached to
-  // rows both runtime guards now accept. Shallow, which is all the shape needs.
-  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+  // rows both runtime guards now accept. Two levels, which is all the shape needs.
+  const mode: ModeSpec = Object.freeze({ ...callerMode, doneWhen: Object.freeze({ ...callerMode.doneWhen }) });
 
-  // **The phase's own preconditions, at the manager's door.**
+  // **The mode's own preconditions, at the manager's door.**
   //
   // This used to live in one host's flow builder, which meant a host
   // constructing this manager directly — the documented way — silently skipped
@@ -2060,34 +2085,34 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // retry, until the budget is gone. A preflight only one caller runs is not a
   // preflight.
   //
-  // **Captured, not left on the phase.** What `validate` learns belongs to THIS
-  // manager; a phase that stored it on itself would hand it to the next one.
-  const validated = phase.validate?.(workspace);
+  // **Captured, not left on the mode.** What `validate` learns belongs to THIS
+  // manager; a mode that stored it on itself would hand it to the next one.
+  const validated = mode.doneWhen.validate?.(workspace);
 
-  // The phase this manager actually runs: this construction's `validated` bound
+  // The mode this manager actually runs: this construction's `validated` bound
   // into every run context, by a closure that belongs to it and nothing else.
-  // Two managers from one `PhaseSpec` get two wrappers, so neither can reach the
-  // other's value — the property the phase cannot give itself, since the
+  // Two managers from one `ModeSpec` get two wrappers, so neither can reach the
+  // other's value — the property the mode cannot give itself, since the
   // snapshot above copies function references and not what they close over.
   //
   // Gated on the VALUE rather than on `validate` being defined, and the two are
   // equivalent: binding `undefined` produces a context whose `validated` is
-  // `undefined`, which is what an unwrapped phase already receives. So a
+  // `undefined`, which is what an unwrapped mode already receives. So a
   // `validate` that only refuses costs no allocation per run.
   //
   // **Both hooks, because the type promises both.** `validated` lives on
-  // `PhaseRunContext`, which `PromptRunContext` extends — so a prompt builder is
-  // told it receives the value. Binding it into `isDone` alone made the type a
-  // lie for the other half: a phase whose prompt depends on what `validate`
-  // found would read `undefined` and build the wrong prompt, silently, after a
-  // construction that succeeded.
-  const runPhase: PhaseSpec =
+  // `ModeRunContext`, which `PromptRunContext` extends — so the instructions are
+  // told they receive the value. Binding it into the done check alone made the
+  // type a lie for the other half: a mode whose prompt depends on what
+  // `validate` found would read `undefined` and build the wrong prompt,
+  // silently, after a construction that succeeded.
+  const runMode: ModeSpec =
     validated === undefined
-      ? phase
+      ? mode
       : Object.freeze({
-          ...phase,
-          isDone: (run: CompletionRunContext) => phase.isDone({ ...run, validated }),
-          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+          ...mode,
+          instructions: (run: PromptRunContext) => mode.instructions({ ...run, validated }),
+          doneWhen: Object.freeze({ ...mode.doneWhen, check: (run: CompletionRunContext) => mode.doneWhen.check({ ...run, validated }) }),
         });
 
   // **One provisioning path.** A fixed repository is a host whose source is
@@ -2115,7 +2140,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const { ownership } = resolveOwnership({
     runTimeoutMs: idleTimeoutMs,
     provisionTimeoutMs: host.provisionTimeoutMs,
-    doneTimeoutMs: runPhase.doneTimeoutMs,
+    doneTimeoutMs: runMode.doneWhen.timeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -2644,10 +2669,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // keeps two rows with one payload out of one tree, as the derived id
       // does on a fixed board.
       const payload = taskPayload(input, claim === null);
-      const phaseName = payload?.phase ?? phase.phase;
+      // A legacy feature payload's own `phase` names the segment its run is keyed by.
+      const segment = payload?.phase ?? mode.name;
       const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
       if (payload !== undefined) {
-        assertFeatureRowIdentity(input.taskId, payload.issue, phaseName, phase.phase, claim === null);
+        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode, claim === null);
       }
       // The issue the task is for, when it names one. On a board read from
       // the claim it also leads the branch (see `branchFor`), checked as an
@@ -2728,11 +2754,39 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Building them from one object is what stops a discriminator reaching one
       // and missing another, which would leave the report partitioned and the
       // overwrite on disk.
-      const topic = runTopic(epic, issue, phaseName);
+      //
+      // BP-030: a run of this mode stored under its former name before the
+      // rename is found there, and finishes there: the segment it was found
+      // under keys its branch, checkout and every later write. Nothing is
+      // copied to the new key.
+      // A payload naming the mode's own name reads it with its fallback; one
+      // naming its former name (a row filed before the rename) is read, and
+      // finishes, under that segment, as its derived id and branch already are.
+      //
+      // **The key is folded as the checkout and the task id are**, so `DEFAULT`
+      // and `default`, which are one task, one checkout and one branch, are one
+      // run record too. And the former key is read for this task only: a
+      // record there of another row (another payload of the same issue) is not
+      // this run, and is never adopted.
+      const keyed = assertSafeSegment("mode", segment);
+      const found = await readModeRunRecord(
+        ctx,
+        epic,
+        issue,
+        sameSegment(segment, mode.name)
+          ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
+          : { name: keyed },
+        input.taskId,
+        // BP-030: before the key folded, the payload's own spelling was the key.
+        segment,
+      );
+      const phaseName = found.segment;
+      const topic = found.topic;
 
       await ctx.sequencer!.patchState({
         issue,
         trackerIssue,
+        // The state key keeps its name: a run held across a deploy reads it (BP-030).
         phase: phaseName,
         topic,
         taskId: input.taskId,
@@ -2744,7 +2798,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the prompt before anything is provisioned. A run already provisioned
       // keeps the repository its record names (see `pinnedAnswer`). With a
       // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
-      const recorded = await readRunRecord(ctx, topic);
+      const recorded = found.record;
       try {
         assertPlaceAndHeld(recorded);
       } catch (corrupt) {
@@ -2981,7 +3035,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         epic: state.epic!,
         issue: state.issue!,
         trackerIssue: state.trackerIssue ?? null,
-        phase: state.phase!,
+        mode: state.phase!,
         attempt: input.attempts,
         workspacePath: state.workspacePath!,
         branch: state.branch!,
@@ -3015,9 +3069,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // account for would make the advertised number wrong in the other
       // direction, which is the defect being fixed, inverted.
       const prompt = await withDeadline(
-        async () => runPhase.buildPrompt(run),
+        async () => runMode.instructions(run),
         NETWORK_CALL_TIMEOUT_MS,
-        `the ${state.phase} phase's prompt builder`,
+        `the ${state.phase} mode's instructions`,
       );
 
       // **Ownership first, then provisioning.** Validating the worktree and
@@ -3329,7 +3383,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // fixed path makes a run that quietly did nothing look exactly like a run
       // that asked.
       const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
-      // Why the phase's check said not done, when it said (`PhaseDoneVerdict.reason`).
+      // Why the phase's check said not done, when it said (`ModeDoneVerdict.reason`).
       let notDoneReason: string | undefined;
 
       // ── Arm 1: the verdict did NOT fail AND this run asked ──────────────────
@@ -3359,7 +3413,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // under them. The wait for it counts against the same bound, so the
         // drain budget stays true; a wait that outlives it means this attempt
         // was displaced, and it fails rather than check another's tree.
-        const doneBoundMs = runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
+        const doneBoundMs = runMode.doneWhen.timeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
         const doneStarted = Date.now();
         const doneLease = await acquireCheckout(
           state.workspacePath!,
@@ -3393,11 +3447,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // kills its running command and starts none after it.
         const stopCheck = new AbortController();
         const checking = Promise.resolve().then(() =>
-          runPhase.isDone({
+          runMode.doneWhen.check({
             epic: state.epic!,
             issue: state.issue!,
             trackerIssue: state.trackerIssue ?? null,
-            phase: state.phase!,
+            mode: state.phase!,
             attempt: identity.attempt,
             workspacePath: state.workspacePath!,
             branch: state.branch!,
@@ -3415,12 +3469,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             ctx,
           }),
         );
-        let doneAnswer: Awaited<ReturnType<PhaseSpec["isDone"]>>;
+        let doneAnswer: Awaited<ReturnType<ModeDone["check"]>>;
         try {
           doneAnswer = await withDeadline(
             () => checking,
             Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
-            `the ${state.phase} phase's completion check`,
+            `the ${state.phase} mode's completion check`,
           );
         } catch (error) {
           stopCheck.abort();
@@ -4866,7 +4920,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 }
 
 /**
- * A feature row's identity checks: the row's phase is the manager's, and, on a
+ * A feature row's identity checks: the row's segment is the manager's mode, by
+ * its name or its former name (a row filed before the rename), and, on a
  * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
  * with no payload (a task a conversation filed) has neither to check. A row on
  * a board read from the claim is keyed by its own task id, so it has no
@@ -4876,9 +4931,10 @@ function assertFeatureRowIdentity(
   taskId: string,
   issue: string,
   phaseName: string,
-  configuredPhase: string,
+  mode: Pick<ModeSpec, "name" | "formerName">,
   fixedBoard: boolean,
 ): void {
+  const configuredPhase = mode.name;
   // **A manager runs exactly one phase, and it must be the one on the row.**
   // Without this the caller's phase names the checkout, the branch and the
   // run record while the CONFIGURED phase supplies the prompt and the
@@ -4898,7 +4954,8 @@ function assertFeatureRowIdentity(
   // different and refused, after `wake` had claimed the row and charged it.
   // Once per wake, until a valid task's budget was gone, for a mismatch its
   // own identity says does not exist.
-  if (!sameSegment(phaseName, configuredPhase)) {
+  // BP-030: a row filed under the mode's former name is the same mode.
+  if (!sameSegment(phaseName, configuredPhase) && !(mode.formerName !== undefined && sameSegment(phaseName, mode.formerName))) {
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +

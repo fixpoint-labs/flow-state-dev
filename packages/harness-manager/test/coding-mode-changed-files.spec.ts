@@ -6,22 +6,22 @@
  * branch back is checked too.
  *
  * Graded with fixed commands on a real worktree, cut the way the workspace
- * host cuts one, as the manager calls the phase.
+ * host cuts one, as the manager calls the mode.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "../src";
-import { codingPhase } from "../src/kit/coder-flow";
+import type { CompletionRunContext, ModeDoneVerdict, PromptRunContext } from "../src";
+import { codingMode } from "../src/kit/coder-flow";
 
 vi.mock("@flow-state-dev/workforce", async (original) => ({
   ...(await original<typeof import("@flow-state-dev/workforce")>()),
   workerConfigOf: () => ({}),
 }));
 
-const codePhase = (commands: string[]) => codingPhase({ checks: { commands } });
+const codeMode = (commands: string[]) => codingMode({ checks: { commands } });
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" });
 
@@ -56,41 +56,41 @@ function finished(base: string, change: "none" | "rollback" | { state: string; c
 
 const BRANCH = "fsd/run-1";
 
-const verdictOf = (answer: boolean | PhaseDoneVerdict) => (typeof answer === "boolean" ? { done: answer } : answer);
+const verdictOf = (answer: boolean | ModeDoneVerdict) => (typeof answer === "boolean" ? { done: answer } : answer);
 
-describe("the coding phase's checks on a changed run", () => {
-  const phase = codePhase(["node check.mjs"]);
+describe("the coding mode's checks on a changed run", () => {
+  const mode = codeMode(["node check.mjs"]);
 
   it("is not done while a check is red, and says which command and why", async () => {
-    const verdict = verdictOf(await phase.isDone(finished("ok", { state: "broken", commit: true })));
+    const verdict = verdictOf(await mode.doneWhen.check(finished("ok", { state: "broken", commit: true })));
     expect(verdict.done).toBe(false);
     expect(verdict.reason).toContain("node check.mjs");
     expect(verdict.reason).toContain("CHECK-MARKER: broken");
     // A change left uncommitted is still a change.
-    expect(verdictOf(await phase.isDone(finished("ok", { state: "broken", commit: false }))).done).toBe(false);
+    expect(verdictOf(await mode.doneWhen.check(finished("ok", { state: "broken", commit: false }))).done).toBe(false);
   });
 
   it("skips them on a run that changed nothing, so a question on a red branch still ends", async () => {
-    expect(verdictOf(await phase.isDone(finished("broken"))).done).toBe(true);
+    expect(verdictOf(await mode.doneWhen.check(finished("broken"))).done).toBe(true);
     // The same red branch with a change on it is checked: the skip is the run's, not the branch's.
-    expect(verdictOf(await phase.isDone(finished("broken", { state: "still-broken", commit: true }))).done).toBe(false);
+    expect(verdictOf(await mode.doneWhen.check(finished("broken", { state: "still-broken", commit: true }))).done).toBe(false);
   });
 
   it("checks a run that moved its branch back, and one with no recorded base", async () => {
     // Clean, and no commits past the base, but its files are the older, red ones.
-    expect(verdictOf(await phase.isDone(finished("ok", "rollback"))).done).toBe(false);
+    expect(verdictOf(await mode.doneWhen.check(finished("ok", "rollback"))).done).toBe(false);
     // With nothing to compare against, the run counts as changed.
-    expect(verdictOf(await phase.isDone({ ...finished("broken"), baseCommit: null })).done).toBe(false);
+    expect(verdictOf(await mode.doneWhen.check({ ...finished("broken"), baseCommit: null })).done).toBe(false);
   });
 
   it("is done when they pass, and when the project names none", async () => {
-    expect(verdictOf(await phase.isDone(finished("broken", { state: "ok", commit: true }))).done).toBe(true);
-    expect(verdictOf(await codePhase([]).isDone(finished("ok", { state: "broken", commit: true }))).done).toBe(true);
+    expect(verdictOf(await mode.doneWhen.check(finished("broken", { state: "ok", commit: true }))).done).toBe(true);
+    expect(verdictOf(await codeMode([]).doneWhen.check(finished("ok", { state: "broken", commit: true }))).done).toBe(true);
   });
 
   it("puts why the last attempt stopped in the next brief", async () => {
     const run = { task: { goal: "Fix the build." }, answers: [], feedback: "`node check.mjs` exited 3." } as unknown as PromptRunContext;
-    expect(await phase.buildPrompt(run)).toContain("# Why the last attempt stopped\n\n`node check.mjs` exited 3.");
-    expect(await phase.buildPrompt({ ...run, feedback: undefined } as PromptRunContext)).not.toContain("Why the last attempt stopped");
+    expect(await mode.instructions(run)).toContain("# Why the last attempt stopped\n\n`node check.mjs` exited 3.");
+    expect(await mode.instructions({ ...run, feedback: undefined } as PromptRunContext)).not.toContain("Why the last attempt stopped");
   });
 });
