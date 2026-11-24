@@ -12,7 +12,7 @@ import { postgresStores } from "@flow-state-dev/store-postgres";
 import supportDesk from "./flows/support-desk";
 
 const flowstate = createFlowState({
-  flows: { supportDesk },
+  flows: [supportDesk],
   stores: {
     default: {
       primary: postgresStores({ connectionString: process.env.DATABASE_URL!, max: 20 }),

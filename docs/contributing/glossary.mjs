@@ -54,7 +54,7 @@ export const REFUSAL_MARKER = "retired-name-refusal";
 
 // A lab or an example is read like a package (FIX-2354).
 const CODE = /^(packages|apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
-const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
+const PUBLISHED = /^(apps\/docs\/docs\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);

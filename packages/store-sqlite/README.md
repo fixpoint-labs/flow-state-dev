@@ -12,7 +12,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import supportDesk from "./flows/support-desk";
 
 const flowstate = createFlowState({
-  flows: { supportDesk },
+  flows: [supportDesk],
   stores: {
     default: { primary: sqliteStores({ filename: "./data/flowstate.db" }) },
   },

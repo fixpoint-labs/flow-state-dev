@@ -11,7 +11,7 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow";
 
 export const flowstate = createFlowState({
-  flows: { myFlow },
+  flows: [myFlow],
   models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });

@@ -8,12 +8,12 @@ pnpm add @flow-state-dev/bullmq bullmq ioredis
 
 ```ts
 import { createFlowState } from "@flow-state-dev/engine";
-import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { bullmqJobQueue } from "@flow-state-dev/bullmq";
 
 export const flowstate = createFlowState({
-  flows: { billing },
+  flows: [billing],
   stores: { /* a backend the web process and the workers both reach */ },
-  worker: bullmqWorker({ connection: process.env.REDIS_URL! }),
+  jobQueue: bullmqJobQueue({ connection: process.env.REDIS_URL! }),
 });
 
 process.on("SIGTERM", () => flowstate.dispose());
