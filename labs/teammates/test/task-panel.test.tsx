@@ -20,6 +20,7 @@ import { Conversation } from "../src/components/Conversation";
 import { attemptStartedAt, timeSignalOf } from "../src/lib/task";
 import { codingTask, hold, POPUP_READ, standInFollower, stubServer, TestProvider } from "./stub-server";
 import { TaskCard } from "../src/components/TaskCard";
+import { taskPresentation } from "../src/lib/task-presentation";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
 import { filed, linesOf } from "./lines";
@@ -74,7 +75,7 @@ describe("a teammate's tasks in its panel", () => {
     expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
     // The tiles are the tabs: the only way to choose which tasks show. Done counts completed and cancelled alike.
     expect(within(panel).getByRole("tablist", { name: "Task status" })).toBeTruthy();
-    expect(tiles(panel)).toEqual([["2Running", "true"], ["1Idle", "false"], ["2Failed", "false"], ["8Done", "false"]]);
+    expect(tiles(panel)).toEqual([["Running2", "true"], ["Idle1", "false"], ["Failed2", "false"], ["Done8", "false"]]);
   });
 
   it("puts a task waiting on you first among the running ones", async () => {
@@ -104,7 +105,7 @@ describe("a teammate's tasks in its panel", () => {
   it("keeps a task waiting on you in Running even while its pull request is open: the next move is yours", async () => {
     const panel = await renderPanel([task("both", { pullRequests: [7], asks: [hold("review", "Review the work")] }, { startedAt: NOW - MIN })]);
     expect(rows(within(panel).getByRole("list", { name: "Running" }))).toEqual(["Asked researcher to task both"]);
-    expect(tiles(panel).map(([t]) => t)).toEqual(["1Running", "0Idle", "0Failed", "0Done"]);
+    expect(tiles(panel).map(([t]) => t)).toEqual(["Running1", "Idle0", "Failed0", "Done0"]);
   });
 
   it("lists the failed ones newest first under their tile, each with its reason's first line", async () => {
@@ -180,11 +181,11 @@ describe("a busy panel stays short", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Clear failed (7)" }));
     expect(within(panel).queryByRole("list", { name: "Failed" })).toBeNull();
     expect(within(panel).getByText("No failed tasks.")).toBeTruthy();
-    expect(tab(panel, "Failed").textContent).toBe("0Failed");
+    expect(tab(panel, "Failed").textContent).toBe("Failed0");
     // Not deleted: the task is still the board's, so the heading's total keeps it.
     expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
     // Clear was a dead end; now a cleared failure is under Done, still saying it failed and why.
-    expect(tab(panel, "Done").textContent).toBe("7Done");
+    expect(tab(panel, "Done").textContent).toBe("Done7");
     fireEvent.click(tab(panel, "Done"));
     const done = within(panel).getByRole("list", { name: "Done" });
     expect(rows(done)[0]).toBe("Asked researcher to task f0");
@@ -197,7 +198,7 @@ describe("a busy panel stays short", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Clear failed (7)" }));
     cleanup();
     panel = await renderPanel(BUSY);
-    expect(tab(panel, "Failed").textContent).toBe("0Failed");
+    expect(tab(panel, "Failed").textContent).toBe("Failed0");
     cleanup();
     // f0 was retried and failed again: it ended at a new time, so it shows.
     const refailed = BUSY.map((t) => (t.id === "f0" ? task("f0", { status: "errored" }, { completedAt: NOW }) : t));
@@ -231,17 +232,20 @@ describe("a task's line in the conversation", () => {
 
   it("uses its panel row's word and colour", () => {
     const byId = (id: string) => TASKS.find((t) => t.id === id)!;
+    // The highlighter only for the task that waits on you; blue running, red failed, a dashed ring for an open PR.
     const cases: [CodingBoardTask, string, string][] = [
-      [byId("r-asks"), "waiting on you", "text-attention"],
+      [byId("r-asks"), "waiting on you", "bg-attention"],
       [byId("f-new"), "failed", "text-destructive"],
-      [byId("r-old"), "running", "text-muted-foreground"],
-      [byId("i-pr"), "PR open", "text-muted-foreground"],
+      [byId("r-old"), "running", "text-brand"],
+      [byId("i-pr"), "PR open", "border-dashed"],
     ];
-    for (const [t, text, tone] of cases) {
+    for (const [t, text, pill] of cases) {
       const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} onOpen={() => {}} />);
       const word = document.querySelector("[data-task-status]")!;
       expect(word.textContent).toBe(text);
-      expect(word.className).toContain(tone);
+      expect(document.querySelector("[data-task-pill]")!.className).toContain(pill);
+      // The same pill as the task's own reader, which the panel's card draws too.
+      expect(document.querySelector("[data-task-pill]")!.className).toContain(taskPresentation(t).pill);
       // An idle task doesn't count up as if it were working.
       if (t.id === "i-pr") expect(document.querySelector("[data-task-since]")).toBeNull();
       unmount();

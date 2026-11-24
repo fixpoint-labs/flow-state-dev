@@ -1,18 +1,18 @@
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
+import { ChevronRightIcon, MoonIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SunIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { ItemLine } from "@flow-state-dev/react";
 import { useConversation, useTasks } from "../app";
-import type { Look } from "../lib/looks";
+import type { Look, TeammateColor } from "../lib/looks";
 import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
 import { useStable } from "../lib/stable";
 import { displayName } from "../lib/roster";
-import { freshEndings, needsOf, statusOf, useActivity } from "../lib/status";
-import { activeCoding } from "../lib/task";
+import { freshEndings, needsOf, PLAIN, statusOf, useActivity, type Status } from "../lib/status";
 import { useTalk } from "../lib/talk";
 import { useSeen } from "../lib/unread";
 import { useNow, useStale } from "../lib/use-watch";
 import { SIDEBAR_WIDTH } from "../lib/sidebar";
+import { useTheme } from "../lib/theme";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
@@ -23,14 +23,16 @@ import { drawsLine } from "./lines";
 export const unreadable = (lines: readonly ItemLine[]) => lines.filter((line) => line.kind !== "user" && drawsLine(line)).length;
 
 /**
- * The left pane: one row per teammate, never a list of sessions. Each row is
- * the teammate's icon on its color, its name, what it is doing, a dot while it answers, and how many
- * new lines its conversation has since you last looked. At the foot, hire
- * a teammate of your own. A teammate's tasks are in its panel, on the right.
+ * The left pane: the lab's mark and the theme switch, then the team, one
+ * entry per teammate, never a list of sessions. Each is the teammate's bot on
+ * its color, drawn in its state, its name and role, what it is doing, and how
+ * many new lines its conversation has since you last looked; the selected one
+ * sits on a raised card. At the foot, hire a teammate of your own. A
+ * teammate's tasks are in its panel, on the right.
  *
  * A teammate that needs you (an approval it waits on, or a task of its that
  * waits on you) says so first on its line, with a badge in the attention
- * colour; it keeps its place in the list. The tab's title counts the
+ * colour, a yellow *you* pill; it keeps its place in the list. The tab's title counts the
  * teammates with something for you, and *Notify me*, in the foot, adds a
  * desktop notification while the tab is in the background.
  *
@@ -96,6 +98,33 @@ export function WorkersList({
   // Something waits on you while notifications are off: point at the switch, so the next one isn't missed.
   const waiting = Object.values(current).some((a) => a.alerts.some((alert) => !alert.key.startsWith("ended:")));
   const nudge = waiting && !notify.on && supported();
+  const team = teamOf(workers);
+  const [teamOpen, setTeamOpen] = useState(true);
+  const theme = useTheme();
+  const list = (
+    <ul aria-label={team.name} className="flex flex-col gap-0.5">
+      {workers.map((w) => (
+        <li key={w.id}>
+          <WorkerItem
+            worker={w}
+            nameOf={nameOf}
+            look={lookOf(w.id)}
+            isCoding={isCoding}
+            sessionId={sessions[w.id]}
+            selected={w.id === selected}
+            seen={seen[w.id]}
+            onSelect={() => {
+              onSelect(w.id);
+              if (overlay) onClose?.();
+            }}
+            onSeen={(count) => markSeen(w.id, count)}
+            onReport={report}
+            compact={collapsed}
+          />
+        </li>
+      ))}
+    </ul>
+  );
   return (
     // The cell keeps the grid's column whatever the sidebar does: an overlay lies over the conversation from here.
     <div className="relative min-h-0">
@@ -108,12 +137,8 @@ export function WorkersList({
         <div className={cn("flex items-center gap-2.5 pt-4 pb-3", collapsed ? "justify-center px-2" : "px-4")}>
           {collapsed ? null : (
             <>
-              <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-foreground text-background">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="8" r="3" />
-                  <circle cx="16" cy="9" r="2.5" />
-                  <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M14.5 14.2c3 .1 5.5 1.9 5.5 4.8" />
-                </svg>
+              <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-base leading-none font-bold text-background">
+                T
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-foreground">Teammates</span>
@@ -123,6 +148,17 @@ export function WorkersList({
                   </span>
                 ) : null}
               </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={theme.theme === "night"}
+                aria-label="Night theme"
+                title={theme.theme === "night" ? "Switch to Paper" : "Switch to Night"}
+                onClick={theme.toggle}
+                className={ICON_BUTTON}
+              >
+                {theme.theme === "night" ? <MoonIcon aria-hidden className="size-4" /> : <SunIcon aria-hidden className="size-4" />}
+              </button>
             </>
           )}
           {onToggle === undefined ? null : (
@@ -132,49 +168,44 @@ export function WorkersList({
               aria-label={collapsed ? "Open sidebar" : "Collapse sidebar"}
               title={collapsed ? "Open sidebar" : "Collapse sidebar"}
               onClick={onToggle}
-              className="flex size-7 shrink-0 items-center justify-center rounded-sm text-text-3 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              className={ICON_BUTTON}
             >
               {collapsed ? <PanelLeftOpenIcon aria-hidden className="size-4" /> : <PanelLeftCloseIcon aria-hidden className="size-4" />}
             </button>
           )}
         </div>
-        {collapsed ? null : (
-          <div className="flex items-center justify-between px-4 pt-2 pb-1.5">
-            <span className="text-xs font-medium tracking-wider text-text-3 uppercase">Team · {workers.length}</span>
-            <button
-              type="button"
-              aria-label="Hire a teammate"
-              title="Hire a teammate"
-              onClick={() => setHiring(true)}
-              className="flex size-6 items-center justify-center rounded-sm text-text-3 hover:bg-accent hover:text-foreground"
-            >
-              <PlusIcon />
-            </button>
-          </div>
-        )}
         <div className={cn("flex-1 overflow-y-auto pb-4", collapsed ? "px-1.5 pt-1" : "px-2")}>
-          <ul className="flex flex-col gap-0.5">
-            {workers.map((w) => (
-              <li key={w.id}>
-                <WorkerItem
-                  worker={w}
-                  nameOf={nameOf}
-                  look={lookOf(w.id)}
-                  isCoding={isCoding}
-                  sessionId={sessions[w.id]}
-                  selected={w.id === selected}
-                  seen={seen[w.id]}
-                  onSelect={() => {
-                    onSelect(w.id);
-                    if (overlay) onClose?.();
-                  }}
-                  onSeen={(count) => markSeen(w.id, count)}
-                  onReport={report}
-                  compact={collapsed}
-                />
-              </li>
-            ))}
-          </ul>
+          {collapsed ? null : (
+            <>
+              <div className="px-2 pt-2 pb-1.5 font-mono text-xs font-medium tracking-[0.08em] text-text-3 uppercase">Teams</div>
+              <div className="flex items-center gap-1.5 pr-1 pl-1" data-team={team.name}>
+                <button
+                  type="button"
+                  aria-expanded={teamOpen}
+                  onClick={() => setTeamOpen((open) => !open)}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <ChevronRightIcon aria-hidden className={cn("size-3.5 shrink-0 text-text-3 transition-transform", teamOpen && "rotate-90")} />
+                  <span aria-hidden className="size-2.5 shrink-0 rounded-[3px]" style={{ background: `var(--team-${team.color}-mark)` }} />
+                  <span className="truncate font-semibold text-foreground">{team.name}</span>
+                  <span className="font-mono text-xs text-text-3 tabular-nums">{workers.length}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Hire into ${team.name}`}
+                  title={`Hire into ${team.name}`}
+                  onClick={() => setHiring(true)}
+                  className={cn(ICON_BUTTON, "size-6")}
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            </>
+          )}
+          {/* One list in both widths, so each teammate's entry keeps its place; folded, they stay mounted and the tab's title and the notifications keep counting. */}
+          <div hidden={!collapsed && !teamOpen} className={collapsed ? undefined : "pt-1"}>
+            {list}
+          </div>
         </div>
         <div className={cn("flex flex-col gap-3 border-t border-border py-3 text-xs text-text-2", collapsed ? "items-center px-2" : "px-4")}>
           <button
@@ -183,7 +214,7 @@ export function WorkersList({
             aria-label={collapsed ? "Hire a teammate" : undefined}
             title={collapsed ? "Hire a teammate" : undefined}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-sm border border-border-strong text-sm font-medium text-foreground hover:bg-accent",
+              "flex items-center justify-center gap-2 rounded-md border border-border-strong bg-card text-sm font-medium text-foreground shadow-(--shadow-card) hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
               collapsed ? "size-9" : "w-full px-3 py-2",
             )}
           >
@@ -207,7 +238,7 @@ export function WorkersList({
           {/* The rail keeps only the hire button: the notify switch and its notes wait until it opens. */}
           {collapsed ? null : (
             <>
-              <div className={cn("flex flex-col gap-1.5", nudge && "-mx-2 rounded-sm border border-warning-line bg-warning-soft px-2 py-1.5")} data-notify-nudge={nudge ? "" : undefined}>
+              <div className="flex flex-col gap-1.5" data-notify-nudge={nudge ? "" : undefined}>
                 <label className="flex items-center justify-between gap-2">
                   <span>Notify me when tasks finish</span>
                   <button
@@ -217,23 +248,45 @@ export function WorkersList({
                     disabled={!supported()}
                     onClick={() => void notify.toggle()}
                     className={cn(
-                      "relative h-4 w-7 shrink-0 rounded-full border transition-colors disabled:opacity-50",
-                      notify.on ? "border-brand bg-brand" : "border-border-strong bg-surface-raised",
+                      "relative h-[18px] w-8 shrink-0 rounded-full border transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                      notify.on ? "border-brand bg-brand" : "border-border-strong bg-accent",
                     )}
                   >
-                    <span aria-hidden className={cn("absolute top-1/2 size-3 -translate-y-1/2 rounded-full transition-all", notify.on ? "left-[13px] bg-brand-foreground" : "left-px bg-text-2")} />
+                    <span aria-hidden className={cn("absolute top-1/2 size-3 -translate-y-1/2 rounded-full transition-all", notify.on ? "left-[15px] bg-brand-foreground" : "left-0.5 bg-text-3")} />
                   </button>
                 </label>
-                {nudge ? <span className="text-warning-text">Something is waiting on you. Turn this on to hear about the next one.</span> : null}
+                {nudge ? (
+                  <span className="flex items-baseline gap-1.5 text-text-2">
+                    <YouPill />
+                    <span>Something is waiting on you. Turn this on to hear about the next one.</span>
+                  </span>
+                ) : null}
               </div>
               {notify.blocked === undefined ? null : <span data-notify-blocked>{notify.blocked}</span>}
-              <span className="text-text-3">One conversation per teammate</span>
             </>
           )}
         </div>
       </nav>
     </div>
   );
+}
+
+/** A quiet square button in the sidebar's chrome. */
+const ICON_BUTTON =
+  "flex size-7 shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring";
+
+/**
+ * The team the list draws: its name from the roster (a file's team), and its
+ * color, the palette's neutral. Every teammate is drawn under it, those you
+ * hired included; a roster of several teams is drawn as one for now.
+ */
+function teamOf(workers: readonly RosterEntry[]): { name: string; color: TeammateColor } {
+  return { name: workers.find((w) => w.teamName !== null)?.teamName ?? "Team", color: "slate" };
+}
+
+/** The highlighter's small *you* pill: the user needs to act. */
+export function YouPill({ className }: { className?: string }) {
+  return <span className={cn("inline-flex shrink-0 items-center rounded-full bg-attention px-1.5 font-mono text-xs leading-4 font-semibold text-attention-foreground", className)}>you</span>;
 }
 
 function PlusIcon() {
@@ -292,7 +345,6 @@ function WorkerItem({
   // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
   const attention = useStable(teammateAttention(displayName(worker), loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
   useEffect(() => onReport(worker.id, attention), [onReport, worker.id, attention]);
-  const working = activity?.running === true || activeCoding(tasks, isCoding).length > 0;
   return (
     <button
       type="button"
@@ -302,16 +354,24 @@ function WorkerItem({
       title={compact ? `${displayName(worker)} · ${status.text}` : undefined}
       onClick={onSelect}
       className={cn(
-        "relative flex w-full items-center rounded-md hover:bg-accent",
+        "relative flex w-full items-center rounded-lg border border-transparent focus-visible:outline-2 focus-visible:outline-ring",
         compact ? "justify-center py-1.5" : "gap-3 px-2 py-2 text-left",
-        selected && "bg-selected ring-1 ring-border ring-inset",
+        selected ? "border-border bg-card shadow-(--shadow-card)" : "hover:bg-accent",
       )}
     >
-      <Avatar look={look} presence={working ? "working" : "idle"} />
+      <Avatar look={look} state={status.state} />
       <span className={compact ? "sr-only" : "min-w-0 flex-1"}>
-        <span className={cn("block truncate text-sm font-medium text-foreground", unread > 0 && "font-semibold")}>{displayName(worker)}</span>
-        <span className={cn("block truncate text-xs", status.tone === "text-muted-foreground" ? "text-text-3" : status.tone, stale && STALE_CLASS)} data-status>
-          {status.text}
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className={cn("max-w-full shrink-0 truncate text-sm font-medium text-foreground", unread > 0 && "font-semibold")}>{displayName(worker)}</span>
+          <span className="min-w-0 truncate text-xs font-medium tracking-[0.06em] text-text-3 uppercase" data-role>
+            {roleWord(worker)}
+          </span>
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs">
+          {status.needsYou ? <YouPill /> : null}
+          <span className={cn("truncate", statusClass(status), stale && STALE_CLASS)} data-status>
+            {status.text}
+          </span>
         </span>
       </span>
       <span className={cn(compact ? "absolute top-0.5 right-0.5" : "flex flex-col items-end gap-1", stale && STALE_CLASS)}>
@@ -320,6 +380,20 @@ function WorkerItem({
       </span>
     </button>
   );
+}
+
+/** The short role under a name: the worker's id, its last part in words (`lead-writer` reads "lead writer"). */
+const roleWord = (worker: RosterEntry) => worker.id.slice(worker.id.lastIndexOf(".") + 1).replace(/[-_]+/g, " ");
+
+/**
+ * A status line's colour: live work in blue, a line that needs you in the
+ * body's grey beside its *you* pill (the highlighter is the pill, never the
+ * words), a task's own tone where it has one (red for failed), else quiet.
+ */
+export function statusClass(status: Status): string {
+  if (status.needsYou) return "text-text-2";
+  if (status.state === "running") return "text-brand";
+  return status.tone === PLAIN ? "text-text-3" : status.tone;
 }
 
 /**
@@ -331,21 +405,20 @@ export function AttentionBadges({ needsYou, unread, compact = false }: { needsYo
   const ring = compact && "ring-2 ring-sidebar";
   return (
     <>
+      {/* The full entry's *you* pill sits on its status line; the rail has no line, so it gets a highlighter dot. */}
       {needsYou ? (
-        <span
-          aria-label="needs you"
-          data-needs-you
-          className={cn("flex items-center justify-center rounded-full bg-attention font-mono text-xs font-bold text-attention-foreground", compact ? "size-4 leading-none" : "size-5", ring)}
-        >
-          !
-        </span>
+        compact ? (
+          <span aria-label="needs you" data-needs-you className={cn("block size-3 rounded-full bg-attention", ring)} />
+        ) : (
+          <span aria-label="needs you" data-needs-you className="sr-only" />
+        )
       ) : null}
       {unread > 0 && !(compact && needsYou) ? (
         <span
           aria-label={`${unread} unread`}
           className={cn(
             "flex items-center justify-center rounded-full bg-brand font-mono text-xs font-semibold text-brand-foreground",
-            compact ? "h-4 min-w-4 px-1 leading-none" : "h-5 min-w-5 px-1.5",
+            compact ? "h-4 min-w-4 px-1 leading-none" : "h-[18px] min-w-[18px] px-1.5",
             ring,
           )}
         >

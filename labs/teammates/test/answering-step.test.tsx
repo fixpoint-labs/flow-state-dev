@@ -35,7 +35,7 @@ describe("the answering line's step", () => {
   });
 
   it("says a call parked on you waits on you, in the attention tone, and keeps unknown tool names private", () => {
-    expect(answeringStep(steps(parked("read", "r1", "readProjectSource")))).toEqual({ text: "waiting on you", tone: "text-attention", needsYou: true });
+    expect(answeringStep(steps(parked("read", "r1", "readProjectSource")))).toEqual({ text: "waiting on you", tone: "text-attention", needsYou: true, state: "needs" });
     expect(said(steps(call("x", "r1", "private-token", {}, "in_progress")))).toBe("using a tool");
   });
 
