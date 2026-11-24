@@ -563,10 +563,12 @@ export function snapshotItemsOf(
   if (items === undefined) return [];
   // Visibility drops client-hidden rows unless `itemTypes` names one and
   // trace observability is on: naming a type is the caller's request, not a grant.
+  // Asked at most once per call: `traceRequestAllowed` warns when it refuses.
+  let hiddenAllowed: boolean | undefined;
   return collapseToCanonicalLog(items).filter((item) => {
     if (itemTypes === undefined) return resolveItemVisibility(item).client;
     if (!itemTypes.has(item.type)) return false;
-    return resolveItemVisibility(item).client || traceRequestAllowed();
+    return resolveItemVisibility(item).client || (hiddenAllowed ??= traceRequestAllowed());
   }) as OutputItem[];
 }
 
