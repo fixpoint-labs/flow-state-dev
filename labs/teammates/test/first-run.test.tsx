@@ -47,18 +47,24 @@ describe("the first run's lines", () => {
 });
 
 describe("the context strip", () => {
-  it("shows the folder the server read and the harness chips with their remedy; the model and default harness are the teammate's", async () => {
+  it("shows the folder the server read, the teammate's model and default harness, and the harness list with its remedy behind one control", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
     // The folder reads by its last two segments; the whole path is in its tooltip.
     await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("Working folder work / launch-site"));
     expect(within(strip).getByTestId("context-folder").title).toContain("Working folder: /work/launch-site");
-    // A teammate's model and default harness are its own settings (Edit teammate), so the lab-wide strip shows neither.
-    expect(within(strip).queryByTestId("context-model")).toBeNull();
-    expect(within(strip).queryByTestId("context-harness")).toBeNull();
-    const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
+    // The settings line names the teammate's model and default harness, with no "Model" or "Default" label on screen.
+    await waitFor(() => expect(within(strip).getByTestId("context-model")).toBeTruthy());
+    expect(within(strip).getByTestId("context-harness")).toBeTruthy();
+    expect(within(strip).getByTestId("context-model").querySelector(":not(.sr-only)")?.textContent).not.toMatch(/model/i);
+    // Each harness's state is one control away: N of M harnesses.
+    const control = within(strip).getByTestId("context-harnesses");
+    await waitFor(() => expect(control.textContent).toMatch(/^\d of \d harnesses/));
+    expect(screen.queryByRole("group", { name: "Coding harnesses" })).toBeNull();
+    fireEvent.click(control);
+    const chips = await screen.findByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
-    // A harness that can't run shows How to fix, not its error, until asked: then what to do. Not "Sign in": the control only shows the remedy.
+    // A harness that can't run shows How to fix, not its error, until asked: then what to do.
     const codex = chips.querySelector<HTMLElement>('[data-harness="codex"]')!;
     const howToFix = within(codex).getByRole("button", { name: "How to fix" });
     const remedy = () => screen.queryByRole("dialog", { name: "How to fix Codex" });
@@ -72,6 +78,7 @@ describe("the context strip", () => {
   // The remedy must never be stuck open: whichever way the user dismisses it, it closes and focus goes back to How to fix.
   it("closes the How to fix remedy with How to fix again, Escape, or a click outside, and gives focus back to How to fix", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
+    fireEvent.click(await screen.findByTestId("context-harnesses"));
     const chips = await screen.findByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"] button')).not.toBeNull());
     const howToFix = within(chips.querySelector<HTMLElement>('[data-harness="codex"]')!).getByRole("button", { name: "How to fix" });
@@ -116,6 +123,30 @@ describe("the context strip", () => {
     render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const warning = await screen.findByTestId("harness-warning");
     expect(warning.textContent).toContain("Set CURSOR_API_KEY");
+  });
+
+  it("marks the teammate's default harness when it can't run here, and its Sign in opens the harness list with the remedy", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const unready = (ready: boolean) =>
+      editedReads(lab, (view, value) =>
+        view === "readiness" && !ready
+          ? (value as { harness: string }[]).map((chip) => (chip.harness === "cursor" ? { ...chip, ready: false, reason: "Cursor has no key", remedy: "Set CURSOR_API_KEY" } : chip))
+          : value,
+      );
+    render(<ScriptedProvider server={lab} client={unready(false)}><App /></ScriptedProvider>);
+    const harness = await screen.findByTestId("context-harness");
+    const signIn = await within(harness).findByRole("button", { name: "Sign in →" });
+    expect(harness.textContent).toContain("can't run here");
+    fireEvent.click(signIn);
+    const chips = await screen.findByRole("group", { name: "Coding harnesses" });
+    expect(chips.querySelector('[data-harness="cursor"]')?.textContent).toContain("Set CURSOR_API_KEY");
+    cleanup();
+    // Ready, it is just its name: no mark and no Sign in.
+    render(<ScriptedProvider server={lab} client={unready(true)}><App /></ScriptedProvider>);
+    const fine = await screen.findByTestId("context-harness");
+    await waitFor(() => expect(screen.getByTestId("context-harnesses").textContent).toMatch(/of/));
+    expect(within(fine).queryByRole("button", { name: "Sign in →" })).toBeNull();
+    expect(fine.textContent).not.toContain("can't run here");
   });
 
   it("says in the folder's tooltip what each coding worktree runs before and after its run", async () => {
