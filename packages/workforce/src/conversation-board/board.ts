@@ -213,6 +213,15 @@ export interface ConversationBoardOptions {
    * anything is reserved or written. Omitted, no flow needs one.
    */
   needsProject?: (flowKind: string) => boolean;
+  // FIX-2877 D2.
+  /**
+   * The worker the server writes as the assignee of a task a model's turn
+   * files for a worker on `flowKind`, from outside that flow's work, in place
+   * of the one the model named; `undefined` keeps the model's. Omitted, every
+   * model's assignee stands. Never read for an action: a user's own move on
+   * the board is their pick.
+   */
+  noPickAssignee?: (flowKind: string, ctx: BlockContext) => Promise<string | undefined>;
   /**
    * The app's session fields (the installation's `sessionFields`): each
    * hand-over carries the filer's values down to the session it opens, beside
@@ -1213,7 +1222,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * caller write reaches a notice marker or a split marker. A write that ends
    * a split task cancels its open pieces, down the chain.
    */
-  const guarded = (ctx: BlockContext, ref: TaskCollectionRef, partition: string): TaskCollectionRef => {
+  const guarded = (ctx: BlockContext, ref: TaskCollectionRef, partition: string, byTurn: boolean): TaskCollectionRef => {
     // The worker itself is no delegate: its step is a plan row (`withSteps`,
     // which takes such a filing before it reaches here), never a child session
     // of itself (FIX-2076).
@@ -1303,6 +1312,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
       );
     };
+    // FIX-2877 D2; BP-031.
+    /**
+     * A model's filing for a worker whose flow decides its no-pick assignee,
+     * made from outside that flow's work, goes to the worker the flow names,
+     * whatever the model wrote. Outside is a session that doesn't run on the
+     * flow and wasn't opened by a task a session on it filed: both read from
+     * server-written state. A follow-up stays with its root's worker.
+     */
+    const withServerAssignee = async <T extends TaskInit>(init: T): Promise<T> => {
+      if (!byTurn || options.noPickAssignee === undefined || init.assignee === undefined || init.followUpOf !== undefined) return init;
+      const flow = (await reach(ctx)).available.get(init.assignee);
+      if (flow === undefined || flow === options.flowKind) return init;
+      if (((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_FLOW_STATE_KEY] === flow) return init;
+      const assignee = await options.noPickAssignee(flow, ctx);
+      return assignee === undefined ? init : { ...init, assignee };
+    };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
@@ -1381,7 +1406,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...asked } = filing;
-      const init = heldAsTurnSays(ctx, asked);
+      const init = heldAsTurnSays(ctx, await withServerAssignee(asked));
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
@@ -1535,7 +1560,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertUniqueIds(inits);
         assertIdsFree(inits, (id) => ref.get(id));
         // A caller never writes the session a target resolved to.
-        const unresolved = inits.map(({ targetSessionId: _resolved, ...init }) => ({ ...heldAsTurnSays(ctx, init), id: init.id ?? newTaskId() }));
+        const unresolved: Array<TaskInit & { id: string }> = [];
+        for (const { targetSessionId: _resolved, ...init } of inits) {
+          unresolved.push({ ...heldAsTurnSays(ctx, await withServerAssignee(init)), id: init.id ?? newTaskId() });
+        }
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
         for (const init of ordered) checkFiling(init, filedWith);
@@ -1851,7 +1879,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // delegates takes a task now, so an action answers `no_delegation_board`.
     // A turn of a worker that works steps files them whatever its delegates.
     if (!(await (routesSelf ? turnFiles(ctx) : files(ctx)))) return undefined;
-    const board = guarded(ctx, ref, partition);
+    // Only the model's own turn has its assignee decided by the server: an action is a user's move.
+    const board = guarded(ctx, ref, partition, routesSelf);
     const self = verifiedWorkerOf(ctx.session);
     const plan = planning.wired() && self !== undefined ? await planLedgerAt(ctx, partition) : undefined;
     return plan === undefined || self === undefined ? board : withSteps(ctx, board, plan, partition, self, routesSelf);

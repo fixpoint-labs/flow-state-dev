@@ -177,6 +177,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     chainLimit: () => taskChainLimitOf(options.installation),
     // A coding flow's task is refused when it is filed with no project (FIX-2333).
     needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
+    // A model's task for a worker whose flow names who takes it from outside its work goes there (FIX-2877 D2).
+    noPickAssignee: async (flow, ctx) => options.installation.workerFlows()[flow]?.noPickAssignee?.(ctx, options.installation),
     // The app's session fields go down every hand-over with the filing project.
     sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.

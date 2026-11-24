@@ -85,8 +85,9 @@ export async function openTeammates(options: TeammatesOptions) {
       workforce({
         directory: tree,
         agent: {
-          settings: { icon: z.string().optional(), color: z.string().optional(), harness: z.string().optional() },
-          showSettings: ["icon", "color", "model", "harness"],
+          settings: { icon: z.string().optional(), color: z.string().optional() },
+          showSettings: ["icon", "color", "model"],
+          retiredSettings: ["harness"],
           model: options.model,
           catalog: { ...projectSourceTools(workspace), search: search(), fetch: fetch() },
           uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), reviewers.capability],

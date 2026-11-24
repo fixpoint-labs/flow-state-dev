@@ -14,7 +14,8 @@
  * - {@link harnessReadinessView}, the user-scope view a screen draws chips
  *   from, read with no session, with Re-check as `{ refresh: true }`;
  * - {@link harnessReadinessCapability}, a context entry a host adds to its
- *   coordinator's `uses`, so work is filed only on a ready harness;
+ *   coordinator's `uses`, so work is filed only on a ready harness, with the
+ *   app's default coder named under the rows;
  * - `refusal(harness)`, a coding flow's gate before a task starts.
  *
  * ## Rules
@@ -277,6 +278,16 @@ export const READINESS_GUIDANCE =
   "say it isn't set up and what to run, and offer a ready one. One marked ? didn't answer its check: say so, and offer a ready one. " +
   "If the user says they have just set a harness up, start the task: starting it checks that harness again.";
 
+// FIX-2877.
+/**
+ * The line under the rows naming the app's default coder, by its label: the
+ * coder a coding task filed from a conversation runs on, whichever coding
+ * worker it names, so the coordinator can say which one took it.
+ */
+export function defaultCoderLine(label: string): string {
+  return `${label} is this app's default coder: a coding task you start here runs on ${label}, whichever coding worker you name. Say so when you start one.`;
+}
+
 /**
  * The readiness rows in a generator's context, for a host's coordinator:
  * `uses: [harnessReadinessCapability(readiness)]`. Reads the kept rows, so a
@@ -284,14 +295,23 @@ export const READINESS_GUIDANCE =
  * when something checks again: a Re-check, or a task start through `refusal`
  * on a harness not marked ready, which the guidance tells the coordinator to
  * try when the user says they have just signed in.
+ *
+ * @param defaultHarness The app's default coder, by harness id: named under
+ *   the rows ({@link defaultCoderLine}), by its row's label. Omitted, or a
+ *   harness with no row, names none.
  */
-export function harnessReadinessCapability(readiness: HarnessReadinessRead) {
+export function harnessReadinessCapability(readiness: HarnessReadinessRead, defaultHarness?: string) {
   return defineCapability({
     name: "harness-manager:readiness",
     presets: {
       context: {
         context: [
-          async () => ({ harnessReadiness: `${formatHarnessReadiness(await readiness.read())}\n\n${READINESS_GUIDANCE}` }),
+          async () => {
+            const rows = await readiness.read();
+            const label = rows.find((row) => row.harness === defaultHarness)?.label;
+            const named = label === undefined ? "" : `\n\n${defaultCoderLine(label)}`;
+            return { harnessReadiness: `${formatHarnessReadiness(rows)}${named}\n\n${READINESS_GUIDANCE}` };
+          },
         ],
       },
       default: ["context"],

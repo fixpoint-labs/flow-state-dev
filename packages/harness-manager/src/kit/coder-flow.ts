@@ -27,10 +27,18 @@
  *
  * A line typed in a task's session talks to that run's coding session (the
  * door), and a delivered message wakes it the same way.
+ *
+ * **The default coder.** With a `defaultHarness`, a coding task a model files
+ * from outside any coding run (a user's conversation, or a session that no
+ * coding run opened) goes to the coding worker whose `harness:` is the
+ * default, else one that names none, whatever worker the model named
+ * ({@link defaultCoderAssignee}). Text naming a coder is not a pick: a user
+ * picks one by assigning the task on the board.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -48,8 +56,10 @@ import {
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
+  type NoPickAssignee,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
+import { readRosterEntries } from "@flow-state-dev/workforce/internal";
 import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { codingBrief } from "../coding-brief";
@@ -193,6 +203,29 @@ export function codingDrainBudgetMs(
     judge: options.judge !== false,
     doneTimeoutMs,
   });
+}
+
+// FIX-2877 D2; BP-031. Interim: FIX-2878's run settings retire it.
+/**
+ * Who takes a coding task a model files from outside any coding run: the
+ * coding worker on the roster whose `harness:` is `defaultHarness`, else one
+ * whose file names no harness (which runs on the default). Read from the
+ * roster as it stands, never from anything the model wrote. With
+ * neither, the filing is refused, saying why.
+ */
+export function defaultCoderAssignee(defaultHarness: string): NoPickAssignee {
+  return async (ctx, installation) => {
+    const coders = (await readRosterEntries(ctx, installation)).filter((entry) => entry.flow === CODER_FLOW);
+    const harnessOf = (entry: (typeof coders)[number]) => (typeof entry.settings.harness === "string" ? entry.settings.harness : undefined);
+    const worker = coders.find((entry) => harnessOf(entry) === defaultHarness) ?? coders.find((entry) => harnessOf(entry) === undefined);
+    if (worker === undefined) {
+      throw new TaskWriteRefusedError(
+        "no_default_coder",
+        `a coding task runs on this app's default coder, "${defaultHarness}", and no coding worker on the roster runs it. Nothing was filed.`,
+      );
+    }
+    return worker.id;
+  };
 }
 
 /**
@@ -342,6 +375,11 @@ export function coderWorkerFlow(
       } as never);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
-    { roles: ["contributor"], showSettings: ["harness"], needsProject: options.project === true },
+    {
+      roles: ["contributor"],
+      showSettings: ["harness"],
+      needsProject: options.project === true,
+      ...(options.defaultHarness === undefined ? {} : { noPickAssignee: defaultCoderAssignee(options.defaultHarness) }),
+    },
   );
 }

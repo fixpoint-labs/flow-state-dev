@@ -2,15 +2,16 @@
 /**
  * A coding task asked for on a harness that can't run here fails minutes later,
  * after the teammate has filed it. So the composer says so before you send, and
- * offers the harnesses that can: picking one names it on the line you send, which
- * is how the teammate learns it. Each case fails if the warning stops showing for a
+ * offers the harnesses that can. The line you send goes as typed: the server
+ * puts a coding task on the lab's default, so a `Coding harness:` line would
+ * only be text a model reads. Each case fails if the warning stops showing for a
  * harness that can't run, shows for one that can (or whose check got no answer),
- * or if a pick stops reaching the line that is sent.
+ * or if the composer adds anything to the line that is sent.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Composer } from "../src/components/Composer";
-import { harnessWarning, withHarness } from "../src/lib/harness";
+import { harnessWarning } from "../src/lib/harness";
 import type { HarnessReadinessChipRow } from "../src/components/flow-state/harness-readiness";
 
 afterEach(cleanup);
@@ -40,22 +41,6 @@ describe("harnessWarning", () => {
   });
 });
 
-describe("withHarness", () => {
-  it("names a picked harness on the line, even when the pick equals the default", () => {
-    expect(withHarness("fix it", "claude-code", "cursor")).toBe("fix it\n\nCoding harness: Claude Code");
-    // A pick that matched the default (or that the default moved to match) is still a pick: dropping it sent the task to Lead's fallback.
-    expect(withHarness("fix it", "cursor", "cursor")).toBe("fix it\n\nCoding harness: Cursor");
-    expect(withHarness("fix it", "codex", "codex")).toBe("fix it\n\nCoding harness: Codex");
-  });
-
-  it("names the lab's default only when Lead would otherwise fall back to a different harness", () => {
-    // The picker shows the lab's default; with no line Lead assigns Cursor, so a Codex default must be said.
-    expect(withHarness("fix it", undefined, "codex")).toBe("fix it\n\nCoding harness: Codex");
-    expect(withHarness("fix it", undefined, "cursor")).toBe("fix it");
-    expect(withHarness("fix it", undefined, undefined)).toBe("fix it");
-  });
-});
-
 describe("the composer", () => {
   const open = (onSend = vi.fn(async () => {})) => {
     render(
@@ -75,7 +60,7 @@ describe("the composer", () => {
     expect(screen.getByRole("menu", { name: "Start coding tasks on" })).toBeTruthy();
   });
 
-  it("warns before send when the default harness can't run, and a pick from the warning reaches the sent line", async () => {
+  it("warns before send when the default harness can't run, and sends the line as typed, a pick or not", async () => {
     const onSend = open();
     const warning = screen.getByTestId("harness-warning");
     expect(warning.textContent).toContain("Cursor can't run coding tasks here: Set CURSOR_API_KEY");
@@ -83,7 +68,7 @@ describe("the composer", () => {
     expect(screen.queryByTestId("harness-warning")).toBeNull();
     fireEvent.change(screen.getByLabelText("Message Lead"), { target: { value: "add day dividers" } });
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Send" })));
-    expect(onSend).toHaveBeenCalledWith("add day dividers\n\nCoding harness: Claude Code", []);
+    expect(onSend).toHaveBeenCalledWith("add day dividers", []);
   });
 
   it("works from the keyboard: opening focuses the current choice, arrows move, Esc closes back to the trigger", () => {

@@ -2,7 +2,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
 import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { HARNESS_DOT as DOT, HARNESS_STATUS_WORDS as STATE_WORDS, harnessName, harnessState, harnessWarning, withHarness } from "../lib/harness";
+import { HARNESS_DOT as DOT, HARNESS_STATUS_WORDS as STATE_WORDS, harnessName, harnessState, harnessWarning } from "../lib/harness";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
@@ -37,12 +37,14 @@ import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
  * the parent drops them: a box that closes and reopens (a switch away and
  * back) must not add them again.
  *
- * The toolbar under the text picks the harness a coding task you ask for runs
- * on: the lab's default until you pick another, which then rides on each line
- * as one `Coding harness: …` line (`withHarness`) while the conversation is
- * open. When that harness can't run here, a warning under the box says why
- * before you send and offers the harnesses that can; nothing is blocked, since
- * most lines ask for no coding at all.
+ * The toolbar under the text shows the harness coding tasks run on: the lab's
+ * default, which the server writes on every coding task filed from a
+ * conversation. A line goes as typed. A pick in the toolbar changes only what
+ * it shows until the conversation carries a pick of its own; to run a
+ * task on another harness, assign it on the board. When that harness can't run
+ * here, a warning under the box says why before you send and offers the
+ * harnesses that can; nothing is blocked, since most lines ask for no coding
+ * at all.
  */
 export function Composer({
   sessionId,
@@ -125,7 +127,7 @@ export function Composer({
   }, [seed]);
   const send = () => {
     if (!canSend || busy) return;
-    void submit((typed, files) => onSend(withHarness(typed, picked, defaultHarness), files));
+    void submit((typed, files) => onSend(typed, files));
   };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();

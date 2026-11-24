@@ -385,9 +385,15 @@ function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[
   return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
-/** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
-function declaredOf(row: WorkerResourceState): Record<string, unknown> {
+// BP-030.
+/**
+ * The settings a row hands its flow: its own settings, keyed as a `WORKER.md`
+ * frontmatter. A setting its flow retired is left out, so a worker stored
+ * before it was retired still runs.
+ */
+function declaredOf(row: WorkerResourceState, retired: readonly string[]): Record<string, unknown> {
   const declared: Record<string, unknown> = { ...row.settings, flow: row.flow };
+  for (const key of retired) delete declared[key];
   delete declared.description;
   return declared;
 }
@@ -470,7 +476,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standardOnly: entry.standardOnly,
         ...(entry.roles === undefined ? {} : { roles: entry.roles }),
         showSettings: entry.showSettings,
-        needsProject: entry.needsProject
+        needsProject: entry.needsProject,
+        ...(entry.noPickAssignee === undefined ? {} : { noPickAssignee: entry.noPickAssignee }),
+        retiredSettings: entry.retiredSettings
       };
       built.set(entry, flow);
     }
@@ -590,7 +598,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       ok: true,
       manifest: {
         id,
-        declared: declaredOf(row),
+        declared: declaredOf(row, Object.hasOwn(workerFlows(), row.flow) ? workerFlows()[row.flow]!.retiredSettings : []),
         body: row.instructions ?? "",
         skills: row.skills.map((name) => skillOf(name)!),
         ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),

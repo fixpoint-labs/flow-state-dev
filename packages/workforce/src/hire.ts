@@ -72,7 +72,7 @@ import {
 import { heldPackageProblems, resolveHeldPackages } from "./worker-packages";
 import { recordWorkerDescription } from "./worker-description";
 import { CONTRACT_KEYS, undeclaredSettings, workerFlowProblems } from "./worker-flow-contract";
-import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
+import { isWorkerFlowBuilder, type NoPickAssignee, type WorkerFlowBuilder } from "./workers/worker-flow";
 import { builtInRolesOf, type WorkerRole } from "./worker-roles";
 
 /**
@@ -125,6 +125,11 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * run does: a board refuses a task for one of its workers that is filed with
  * no project to work in, before any row or run exists (`no_project`), so the
  * app can ask for a project first. Omitted, a task files without one.
+ *
+ * `noPickAssignee` decides who takes a task a model files for one of its
+ * workers from outside its work (`NoPickAssignee`). `retiredSettings` names
+ * settings the flow no longer takes: a stored worker that set one reads
+ * without it, and a hire or an edit naming one is refused.
  */
 export type WorkerFlowEntry =
   | AnyFlowType
@@ -134,6 +139,8 @@ export type WorkerFlowEntry =
       roles?: readonly WorkerRole[];
       showSettings?: readonly string[];
       needsProject?: boolean;
+      noPickAssignee?: NoPickAssignee;
+      retiredSettings?: readonly string[];
     }
   | WorkerFlowBuilder;
 
@@ -144,6 +151,8 @@ export type ResolvedWorkerFlow = {
   roles: readonly WorkerRole[];
   showSettings: readonly string[];
   needsProject: boolean;
+  noPickAssignee: NoPickAssignee | undefined;
+  retiredSettings: readonly string[];
 };
 
 /**
@@ -170,13 +179,15 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [], needsProject: false }
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [], needsProject: false, noPickAssignee: undefined, retiredSettings: [] }
         : {
             flow: entry.flow,
             standardOnly: entry.standardOnly === true,
             roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [],
             showSettings: [...(entry.showSettings ?? [])],
-            needsProject: entry.needsProject === true
+            needsProject: entry.needsProject === true,
+            noPickAssignee: entry.noPickAssignee,
+            retiredSettings: [...(entry.retiredSettings ?? [])]
           };
   }
   return resolved;

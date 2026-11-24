@@ -40,7 +40,7 @@ const pillTone = (status: Status) =>
 const pillDot = (status: Status) => (status.needsYou ? "bg-warning" : status.tone === PLAIN && status.text.startsWith("Idle") ? "bg-presence-idle" : status.tone !== PLAIN ? "bg-current" : "bg-success");
 
 /** The ids of the messages the worker's sent lines sent. */
-/** A teammate's own string setting (`model`, `harness`), or `undefined` when it follows the lab's. */
+/** A teammate's own string setting (`model`), or `undefined` when it follows the lab's. */
 const settingOf = (worker: RosterEntry, key: string): string | undefined => {
   const value = worker.settings[key];
   return typeof value === "string" ? value : undefined;
@@ -229,12 +229,12 @@ export function Conversation({
         open={panel === "edit"}
         onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
         title={`Edit ${displayName(worker)}`}
-        description={`${displayName(worker)}'s name, instructions, model and default coding harness. Changes apply from its next turn.`}
+        description={`${displayName(worker)}'s name, instructions and model. Changes apply from its next turn.`}
       >
         <EditForm
           name={displayName(worker)}
-          choices={{ models: context?.models, harnesses }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness }}
+          choices={{ models: context?.models }}
+          current={{ model: settingOf(worker, "model") ?? context?.model }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
@@ -348,8 +348,8 @@ export function Conversation({
         onPrefilled={onPrefilled}
         uploader={calls}
         harnesses={harnesses}
-        // The teammate's own default coding harness and model when it has them set (in Edit teammate), else the lab's.
-        defaultHarness={settingOf(worker, "harness") ?? context?.harness}
+        // The lab's default coder, which the server writes on every coding task; the teammate's own model when it has one set (in Edit teammate), else the lab's.
+        defaultHarness={context?.harness}
         replyModel={settingOf(worker, "model") ?? context?.model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.

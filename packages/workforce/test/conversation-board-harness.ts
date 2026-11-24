@@ -43,6 +43,7 @@ import { workerSessionsViewRef } from "../src/workers/session-views-ref";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
+import type { NoPickAssignee } from "../src/workers/worker-flow";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 
 export const ORG = "acme";
@@ -232,6 +233,13 @@ export type BoardHostOptions = {
    * before each step (FIX-2086's steers).
    */
   agentModel?: GeneratorModel;
+  /** More of the `tasker` and `coordinator` flows' registrations: who takes a model's task for one of their workers (FIX-2877 D2). */
+  registration?: {
+    tasker?: { noPickAssignee?: NoPickAssignee };
+    coordinator?: { noPickAssignee?: NoPickAssignee };
+    /** The `agent` flow's shown and retired settings. */
+    agent?: { showSettings?: readonly string[]; retiredSettings?: readonly string[] };
+  };
   /** More worker flows, built on the installation, registered beside the four, keyed by `kind`. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
@@ -333,10 +341,10 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     ...(options.coordinatorRoutines === true ? { routines: true } : {})
   });
   flows = {
-    tasker: { flow: tasker, roles: ["contributor"] },
+    tasker: { flow: tasker, roles: ["contributor"], ...(options.registration?.tasker ?? {}) },
     helper: { flow: helper, roles: ["contributor"] },
-    agent,
-    coordinator,
+    agent: options.registration?.agent === undefined ? agent : { flow: agent, ...options.registration.agent },
+    coordinator: options.registration?.coordinator === undefined ? coordinator : { flow: coordinator, ...options.registration.coordinator },
     ...(options.flows?.(installation) ?? {})
   };
 
