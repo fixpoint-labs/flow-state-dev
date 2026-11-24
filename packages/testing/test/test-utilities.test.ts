@@ -109,7 +109,7 @@ describe("testing utilities", () => {
       resources: { ledger },
       execute: async (input: { note: string }, ctx) => {
         // Throws unless ctx.resources.ledger was registered from declaredResources.
-        await ctx.resources.ledger.setState({ entries: [input.note] } as never);
+        await ctx.resources.ledger.setState({ entries: [input.note] });
         return { ok: true };
       }
     });

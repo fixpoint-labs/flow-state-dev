@@ -1,5 +1,5 @@
-import { DEFAULT_ORG_ID, type DeclaredResources } from "@flow-state-dev/core";
-import type { FlowInstance, StateRef } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID, defineResource, type DeclaredResources } from "@flow-state-dev/core";
+import type { FlowInstance, ResourceScope, StateRef } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
@@ -79,26 +79,11 @@ export type TestContextRuntime = {
   getItems: () => OutputItem[];
 };
 
-function nowMs(): number {
-  return Date.now();
-}
-
-function buildFlatResourceMap(
-  resources: Record<string, unknown> | undefined,
-  scope: "session" | "user" | "org"
-): Record<string, { stateSchema: z.ZodTypeAny; writable: true; scope: "session" | "user" | "org" }> {
-  if (resources === undefined) {
-    return {};
-  }
-
+function buildFlatResourceMap(resources: Record<string, unknown> | undefined, scope: ResourceScope): DeclaredResources {
   return Object.fromEntries(
-    Object.keys(resources).map((name) => [
+    Object.keys(resources ?? {}).map((name) => [
       name,
-      {
-        stateSchema: z.record(z.string(), z.unknown()),
-        writable: true,
-        scope
-      }
+      defineResource({ scope, stateSchema: z.record(z.string(), z.unknown()), writable: true })
     ])
   );
 }
@@ -106,12 +91,13 @@ function buildFlatResourceMap(
 /** Build a stand-alone flow with the resources declared or seeded by the test. */
 export function createTestFlow(options: CreateTestContextOptions): FlowInstance {
   // Test seeds override the block's resource definitions so fixtures can supply their own values.
-  const resources: Record<string, unknown> = {
+  const resources = {
     ...options.declaredResources,
     ...buildFlatResourceMap(options.session?.resources, "session"),
     ...buildFlatResourceMap(options.user?.resources, "user"),
     ...buildFlatResourceMap(options.org?.resources, "org")
   };
+  const resourceKeys = new Set(Object.keys(resources));
 
   return {
     id: "testing-flow",
@@ -122,11 +108,12 @@ export function createTestFlow(options: CreateTestContextOptions): FlowInstance 
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
-    resources: Object.keys(resources).length > 0 ? resources : undefined,
+    resources: resourceKeys.size > 0 ? resources : undefined,
+    flowLevelResourceKeys: resourceKeys,
     session: {},
     user: {},
     org: options.org?.resources === undefined ? undefined : {}
-  } as unknown as FlowInstance;
+  };
 }
 
 async function seedStores(options: {
@@ -145,7 +132,7 @@ async function seedStores(options: {
     org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
-  const now = nowMs();
+  const now = Date.now();
 
   // Resource state lives in the ResourceStateStore (FIX-689), keyed per-resource
   // and separate from the scope record. Seed it there so the execution context

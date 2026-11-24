@@ -148,10 +148,10 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     error: result.error ?? null,
     items,
     state: {
-      request: asRecord(runtime.ctx.request.state),
-      session: asRecord(runtime.ctx.session.state),
-      user: asRecord(runtime.ctx.user.state),
-      org: asRecord(runtime.ctx.org?.state),
+      request: runtime.ctx.request.state,
+      session: runtime.ctx.session.state,
+      user: runtime.ctx.user.state,
+      org: runtime.ctx.org?.state ?? {},
       sequencer:
         options.sequencer === undefined
           ? asRecord(runtime.ctx.sequencer?.state)
@@ -161,7 +161,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     // The registry the run actually wrote through, not a copy — a test asserting
     // on written rows reads them here instead of hand-rolling a context and
     // dispatching `execute` directly, which would skip `executeBlock` above.
-    resources: (runtime.ctx.resources ?? {}) as Record<string, unknown>,
+    resources: runtime.ctx.resources,
     meta: {
       durationMs: Date.now() - startedAt,
       blockName: block.name,
