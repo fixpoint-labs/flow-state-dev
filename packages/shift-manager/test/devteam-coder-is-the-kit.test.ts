@@ -119,7 +119,7 @@ async function fileAndSettle(lab: Lab, message: string): Promise<Record<string, 
     const tasks = ((await act(lab, "coordinator", sessionId, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>;
     return ["completed", "errored", "cancelled", "failed"].includes(tasks[0]?.status) ? tasks[0] : undefined;
   }, "the task to settle", 30_000);
-  return (Object.values(await lab.stored("user", "tasks/")) as Array<Record<string, any>>).find((row) => row.id === listed.id)!;
+  return (Object.values(await lab.stored("user", "tasks/")) as Array<Record<string, any>>).find((task) => task.id === listed.id)!;
 }
 
 /** The mode segments a task's runs are stored under: the last segment of each run record key for its task. */
@@ -198,7 +198,7 @@ describe("Shift Manager's coder is the harness kit's coder flow", () => {
     // And the readiness view lists exactly the harnesses the coder runs.
     served = await serveLab(lab.state);
     const client = connect({ userId: OWNER.userId, baseUrl: served.baseUrl, bearerToken: OWNER.bearer });
-    const rows = (await client.view(harnessReadinessViewRef("harnesses"), {})).value;
-    expect(rows.map((row) => row.harness)).toEqual(["stub", "codex"]);
+    const entries = (await client.view(harnessReadinessViewRef("harnesses"), {})).value;
+    expect(entries.map((entry) => entry.harness)).toEqual(["stub", "codex"]);
   }, 180_000);
 });
