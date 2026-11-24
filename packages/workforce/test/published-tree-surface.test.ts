@@ -439,14 +439,6 @@ const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
   // ("A level is one of four places: …") and as folder rows in its "who
   // reaches / holds" tables, neither of which the extraction reads as a path.
   {
-    shape: "org/workers/<worker>/references/<name>.md",
-    why: "published by the reach-table row '| `org/workers/<worker>/references/` | That org worker |'",
-  },
-  {
-    shape: "teams/<team>/workers/<worker>/references/<name>.md",
-    why: "published by the reach-table row '| `teams/<team>/workers/<worker>/references/` | That worker |'",
-  },
-  {
     shape: "org/skills/<skill>/SKILL.md",
     why: "published by the skills-table row '| `org/skills/` | Every worker |'",
   },

@@ -16,4 +16,6 @@ const research = parallelTasks({
 });
 ```
 
+Its input is `{ goal: string }`, which `parallelTasksInputSchema` describes.
+
 Reference: [the `patterns` section of the Flow State API reference](https://flow-state.dev/docs/reference/api/patterns).

@@ -1472,6 +1472,13 @@ const EXEMPTIONS = [
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
+    id: "routines-page-thread-field",
+    terms: ["thread"],
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/routines\./.test(path),
+    strip: /"thread"(?=:)|\bthread:(?= ")/g,
+    why: "an event routine's own `thread` field, the key of the outside service's pull request or topic it follows, in the Routines page's examples",
+  },
+  {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
     // The pages it covered were rewritten at the docs cutover; the release note is what is left.

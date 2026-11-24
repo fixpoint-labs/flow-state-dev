@@ -91,6 +91,7 @@ const sidebars: SidebarsConfig = {
             "catalog/workforce/coordinators",
             "catalog/workforce/delegating-work",
             "catalog/workforce/messaging",
+            "catalog/workforce/routines",
             "catalog/workforce/standing-rules",
             "catalog/workforce/projects",
             "catalog/workforce/the-workforce-folder",
@@ -212,6 +213,7 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Work with data",
       items: [
+        "build/send-files-with-a-message",
         "build/search-a-collection",
         "build/link-records",
         "build/react-to-a-change",
