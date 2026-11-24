@@ -23,17 +23,16 @@
  */
 
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import {
   pushActiveSkill,
   readActiveSkills,
   type ActiveSkillEntry,
 } from "./active-skill-state";
 
-/** Field name used when a binding stores dynamic activations in block state. */
-export const BLOCK_STATE_FIELD = "activeSkills";
-
 /** Explicit persisted/request scopes an `activeState` field can live at. */
-export type ExplicitActivationScope = "request" | "session" | "user" | "org";
+export const explicitActivationScopeSchema = z.enum(["request", "session", "user", "org"]);
+export type ExplicitActivationScope = z.infer<typeof explicitActivationScopeSchema>;
 
 /**
  * Where a binding's dynamic activations live.
@@ -43,16 +42,6 @@ export type ExplicitActivationScope = "request" | "session" | "user" | "org";
 export type ActivationLocation =
   | { kind: "block" }
   | { kind: "explicit"; scope: ExplicitActivationScope; field: string };
-
-function scopeHandle(ctx: BlockContext, scope: ExplicitActivationScope) {
-  switch (scope) {
-    case "request":
-    case "session":
-    case "user":
-    case "org":
-      return ctx[scope];
-  }
-}
 
 /**
  * Read the dynamic activations for a binding, from the reader's point of view
@@ -65,9 +54,9 @@ export function readActivations(
   location: ActivationLocation,
 ): ActiveSkillEntry[] {
   if (location.kind === "block") {
-    return readActiveSkills(ctx.self?.state, BLOCK_STATE_FIELD);
+    return readActiveSkills(ctx.self?.state);
   }
-  return readActiveSkills(scopeHandle(ctx, location.scope)?.state, location.field);
+  return readActiveSkills(ctx[location.scope]?.state, location.field);
 }
 
 // FIX-914.
@@ -84,53 +73,21 @@ export async function appendActivation(
   location: ActivationLocation,
   entry: ActiveSkillEntry,
 ): Promise<void> {
-  if (location.kind === "block") {
-    const parent = ctx.parent;
-    if (!parent?.atomicState) {
+  const handle = location.kind === "block" ? ctx.parent : ctx[location.scope];
+  if (!handle?.atomicState) {
+    if (location.kind === "block") {
       throw new Error(
         "Skill activation has nowhere to write: the host generator declares no block " +
           "state. Add `stateSchema: z.object({ activeSkills: activeSkillsArraySchema })` " +
           "to the generator, or configure an explicit `activeState` on the skills binding.",
       );
     }
-    await parent.atomicState((current) => ({
-      [BLOCK_STATE_FIELD]: pushActiveSkill(
-        readActiveSkills(current, BLOCK_STATE_FIELD),
-        entry,
-      ),
-    }));
-    return;
-  }
-
-  const handle = scopeHandle(ctx, location.scope);
-  if (!handle?.atomicState) {
     throw new Error(
       `Skill activation cannot write to ${location.scope} state — scope unavailable`,
     );
   }
-  const field = location.field;
+  const field = location.kind === "block" ? "activeSkills" : location.field;
   await handle.atomicState((current) => ({
     [field]: pushActiveSkill(readActiveSkills(current, field), entry),
   }));
-}
-
-/**
- * Replace (not append) the dynamic activations at a location. This is the
- * up-front matcher's per-turn semantics: a matcher writes the whole set it
- * resolved for this turn, overwriting the previous turn's. Only meaningful for
- * an explicit location — an upstream matcher runs before the generator, so it
- * cannot reach a downstream generator's block state.
- */
-export async function replaceActivations(
-  ctx: BlockContext,
-  location: Extract<ActivationLocation, { kind: "explicit" }>,
-  entries: ActiveSkillEntry[],
-): Promise<void> {
-  const handle = scopeHandle(ctx, location.scope);
-  if (!handle?.patchState) {
-    throw new Error(
-      `Skill activation cannot write to ${location.scope} state — scope unavailable`,
-    );
-  }
-  await handle.patchState({ [location.field]: entries });
 }

@@ -367,7 +367,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     uses: [board.capability],
     sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
-      const ref = await resolveBoardRef(ctx, boardCapName);
+      const ref = await ctx.cap[boardCapName].tasks();
       const rows = ref.list();
       const on = rows.map((row) => holdActorOf(row));
       const waitingOnWho = on.includes("user") ? "user" : on.includes("system") ? "system" : null;
@@ -414,7 +414,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     uses: [board.capability],
     sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
-      const ref = await resolveBoardRef(ctx, boardCapName);
+      const ref = await ctx.cap[boardCapName].tasks();
       const projection = projectCollection(ref);
       await ctx.sequencer!.patchState({ goalSeekLoopDrainResult: projection });
     },
@@ -435,7 +435,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
           inputSchema: z.unknown(),
           uses: [board.capability],
           execute: async (drainResult, ctx) => {
-            const collection = await resolveBoardRef(ctx, boardCapName);
+            const collection = await ctx.cap[boardCapName].tasks();
             return judge({ collection, drainResult }, ctx);
           },
         })
@@ -637,17 +637,6 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
-
-/** Resolve the board's `TaskCollectionRef` through its own accessor. */
-async function resolveBoardRef(
-  ctx: BlockContext,
-  boardCapName: string,
-): Promise<TaskCollectionRef> {
-  const cap = (ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>)[
-    boardCapName
-  ];
-  return cap.tasks();
-}
 
 /** Build the settled-board projection `finalize`/omitted-`finalize` return. */
 function projectCollection(ref: TaskCollectionRef): {

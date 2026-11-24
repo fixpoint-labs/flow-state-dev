@@ -19,10 +19,9 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext, SkillState } from "@flow-state-dev/core/types";
-import { activeSkillsArraySchema } from "./active-skill-state";
+import { activeSkillStateSchema } from "./active-skill-state";
 import {
   appendActivation,
-  BLOCK_STATE_FIELD,
   type ActivationLocation,
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
@@ -112,8 +111,8 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
       whereTheNamesAre(opts.catalogInContext !== false),
     inputSchema,
     outputSchema,
-    parentStateSchema: z.object({ [BLOCK_STATE_FIELD]: activeSkillsArraySchema }),
-    execute: async (input, ctx: BlockContext) => {
+    parentStateSchema: activeSkillStateSchema,
+    execute: async (input, ctx) => {
       validateSkillName(input.name);
 
       const collection = resolveSkillsCollection(ctx, collectionKey);
