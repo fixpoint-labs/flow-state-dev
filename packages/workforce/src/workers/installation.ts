@@ -86,7 +86,7 @@ import { routineResourcesOf, type RoutineResources } from "../routines/routine-r
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
 import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
-import { conversationTaskDoorOf } from "../worker-task-entry";
+import { conversationTaskDoorOf, taskEntryNameOf } from "../worker-task-entry";
 import { declarationOfFlow } from "../task-input/declaration";
 
 export { verifiedWorkerOf } from "./verified-worker";
@@ -508,10 +508,23 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       resolvedFlows = resolveWorkerFlows(workerFlowsOption());
       // Each flow's `work` door names this installation and the flow, so a claim behind it knows the flow it
       // runs on (FIX-2894). A hire that is refused gives them up (`hireWorkforce`).
+      // A door names exactly one flow, which the claim's authority check reads: one `workerTaskEntry(...)`
+      // reused by two flows is refused, by name.
+      const flowOfDoor = new Map<object, string>();
       for (const [name, { flow }] of Object.entries(resolvedFlows)) {
         const door = conversationTaskDoorOf(flow);
-        if (door !== undefined) registerTaskDoor(door, taskInputSource, name);
+        if (door === undefined) continue;
+        const first = flowOfDoor.get(door);
+        if (first !== undefined) {
+          resolvedFlows = undefined;
+          const entry = taskEntryNameOf(door);
+          throw new Error(
+            `workerTaskEntry${entry === undefined ? "" : ` "${entry}"`} is used by two flows ("${first}", "${name}"): give each flow its own entry.`
+          );
+        }
+        flowOfDoor.set(door, name);
       }
+      for (const [door, name] of flowOfDoor) registerTaskDoor(door, taskInputSource, name);
     }
     return resolvedFlows;
   };

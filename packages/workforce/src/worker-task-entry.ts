@@ -52,6 +52,21 @@ export function markTaskInput<T extends object>(binding: T, declaration: unknown
   return binding;
 }
 
+/** The mark on a `work` entry's `from` holding the entry's name, for a refusal to name it. */
+const TASK_ENTRY_NAME = Symbol.for("@flow-state-dev/workforce/task-entry-name");
+
+/** Mark `binding` with the name its `workerTaskEntry` was given. Returns it. */
+export function markTaskEntryName<T extends object>(binding: T, name: string): T {
+  Object.defineProperty(binding, TASK_ENTRY_NAME, { value: name });
+  return binding;
+}
+
+/** The name the `workerTaskEntry` behind `door` was given, when it was marked with one. */
+export function taskEntryNameOf(door: object): string | undefined {
+  const name = (door as Record<symbol, unknown>)[TASK_ENTRY_NAME];
+  return typeof name === "string" ? name : undefined;
+}
+
 /** The `from` of a worker flow's `work` entry, when it takes a conversation's tasks. */
 export function conversationTaskDoorOf(flow: unknown): object | undefined {
   if (!takesConversationTasks(flow)) return undefined;

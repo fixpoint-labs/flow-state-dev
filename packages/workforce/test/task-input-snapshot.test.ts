@@ -12,7 +12,7 @@ import { z } from "zod";
 import { taskInputSchema } from "../src/task-input/declaration";
 import { checkFiledInput, type InputLookup } from "../src/task-input/checked-ledger";
 import { assertClaimAuthority, checkFiling, claimInput, FILLED_FOR } from "../src/task-input/filing-check";
-import { handoverFlowReader } from "../src/conversation-board/handover-flow";
+import { handedFlowOrRefuse, handoverFlowReader } from "../src/conversation-board/handover-flow";
 
 const ctx = {} as BlockContext;
 
@@ -90,7 +90,7 @@ describe("at claim, the running entry is the authority", () => {
     const open = taskInputSchema(z.record(z.string(), z.unknown()));
     const nulled = { assignee: "ops.x", input: null, metadata: {} };
     await expect(
-      claimInput({ ctx, declaration: open, runningFlow: "triage", task: nulled, worker: { id: "ops.x", flow: "triage", config: {} } })
+      claimInput({ ctx, declaration: open, runningFlow: "triage", recordedFlow: "triage", task: nulled, worker: { id: "ops.x", flow: "triage", config: {} } })
     ).rejects.toMatchObject({ code: "input_refused", message: expect.stringContaining("the input is not an object") });
   });
 
@@ -113,7 +113,25 @@ describe("the claim's authority, for every work entry", () => {
   });
 });
 
+describe("a task session with no recorded flow", () => {
+  const task = { assignee: "ops.x" };
+  const worker = { id: "ops.x", flow: "agent", config: {} };
+  // Codex P2: a missing `taskFlow` was read as compatible.
+  it("fails the claim, unless the session is a workstream's", () => {
+    expect(() => assertClaimAuthority({ runningFlow: "agent", task, worker })).toThrow("names no flow it was handed over for");
+    // A workstream's session is born by its opener, bound by the engine to the flow it runs on.
+    expect(assertClaimAuthority({ runningFlow: "agent", workstream: true, task, worker })).toMatchObject({ flow: "agent" });
+  });
+});
+
 describe("a hand-over's flow", () => {
+  it("refuses the hand-over by name when no flow resolves, so no session is born without one", () => {
+    expect(() => handedFlowOrRefuse({ flow: undefined, unavailable: "it was fired" }, "t1", "ops.x")).toThrow(
+      'Task "t1" wasn\'t handed to "ops.x": it was fired.'
+    );
+    expect(handedFlowOrRefuse({ flow: "agent", unavailable: undefined }, "t1", "ops.x")).toBe("agent");
+  });
+
   // Codex: dispatch read the flow it sends to and the flow the session is born naming in two reads.
   it("is read once per hand-over: the flow dispatched to and the flow recorded can't disagree when the roster moves between them", async () => {
     let reads = 0;

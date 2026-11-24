@@ -138,6 +138,36 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
     }
   });
 
+  // Codex P2: one `workerTaskEntry(...)` reused by two flows of one installation left its door naming the second
+  // flow only, so claims to the first failed authority. A door names exactly one flow, so the reuse is refused.
+  it("refuses one work entry reused by two flows of an installation, by name", async () => {
+    vi.resetModules();
+    const { defineFlow, handler } = await import("@flow-state-dev/core");
+    const { z } = await import("zod");
+    const { workerTaskEntry } = await import("../src/conversation-board/task-entry");
+    const { createWorkerInstallation } = await import("../src/workers/installation");
+    const { workerConfigSchema } = await import("../src/worker-config");
+    const { messageReceivedEntry } = await import("../src/messages/message-received-entry");
+    const { workerMessagesResources } = await import("../src/messages/message-log");
+    const turn = handler({ name: "shared-turn", inputSchema: z.object({ message: z.string() }), execute: () => "done" });
+    const shared = workerTaskEntry({ name: "shared-work", turn });
+    let installation: ReturnType<typeof createWorkerInstallation>;
+    const flowNamed = (flowName: string) =>
+      defineFlow({
+        kind: flowName,
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        resources: { ...installation.resources, ...workerMessagesResources },
+        actions: { respond: { inputSchema: z.object({ message: z.string() }), block: turn, userMessage: (i: { message: string }) => i.message } },
+        internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flowName, hears: "task-sessions" }) } },
+        task: { actions: { work: shared } }
+      } as never);
+    let flows: Record<string, unknown> = {};
+    installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+    flows = { alpha: { flow: flowNamed("alpha"), roles: ["contributor"] }, beta: { flow: flowNamed("beta"), roles: ["contributor"] } };
+    expect(() => installation.workerFlows()).toThrow('workerTaskEntry "shared-work" is used by two flows ("alpha", "beta"): give each flow its own entry.');
+  });
+
   it("keeps nothing it can be asked to list: every lookup is keyed, and an unknown door resolves none", async () => {
     const { ledger } = await fresh();
     // Weak maps only: a dropped installation, and its flows' doors, are not kept by the registry.

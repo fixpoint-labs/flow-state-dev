@@ -127,6 +127,16 @@ It comes down to what a model does with a field it reads: it writes it.
   change a filer's field (FIX-2878 writes the default mode) and returns the input to store.
 - **The hooks are handed** the request's context, the assignee, and the assignee's worker (id
   and config, read per call). FIX-2878's lock needs the config; its D3 flips without it.
+- **At claim, the running entry is the authority** (implementation PR, review rounds). For every
+  `work` entry, whether it declares an input schema or not, the flow the hand-over recorded on
+  the session (`taskFlow`) and the worker, read once for the claim, must both name the flow whose
+  entry is running, or the attempt fails, `Nothing ran.` A session that records no `taskFlow`
+  fails too, except a workstream's (its readonly, birth-set `workstream`): its opener writes no
+  `taskFlow`, and the engine binds the session to the flow it runs on. A hand-over that resolves
+  no flow is refused by name, so every session it opens records one. BP-030: a delegate session
+  born before this change without `taskFlow` exists only where that hand-over resolved no flow
+  (its worker wasn't reachable then); its next claim fails with the named refusal, which is
+  accepted.
 - **The claim parses only the schema,** after `stored`, and hands the worker block the parsed
   input. A failure fails the attempt by name with `Nothing ran.`, and the block never runs.
   `check` and the project requirement run only at filing; FIX-2878's claim checks are its own.

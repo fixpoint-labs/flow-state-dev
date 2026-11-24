@@ -58,7 +58,7 @@ import {
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
 import { routedFromStateSchema } from "../workers/routed-from";
 import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
 import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
@@ -68,7 +68,7 @@ import { noteRoutedSession, routedSessionResources } from "./routed-session";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
-import { markConversationTaskDoor, markTaskInput } from "../worker-task-entry";
+import { markConversationTaskDoor, markTaskEntryName, markTaskInput } from "../worker-task-entry";
 import { isTaskInputSchema, notObjectMessage, unstableMessage, type TaskInputSchema, type TaskInputRecord } from "../task-input/declaration";
 import { assertClaimAuthority, claimInput } from "../task-input/filing-check";
 import { checkedLedger, flowOfDoor, noteSourceOfDoor } from "../task-input/checked-ledger";
@@ -342,6 +342,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     endRules: conversationEndRules
   }));
   if (declaration !== undefined) markTaskInput(from, declaration);
+  markTaskEntryName(from, name);
 
   // FIX-2894.
   /**
@@ -373,12 +374,14 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     if (source === undefined || runningFlow === undefined) {
       throw new Error(`input_refused: the flow this entry runs task "${task.taskId}" for can't be read, so its worker can't be checked. Nothing ran.`);
     }
-    const recorded = ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_FLOW_STATE_KEY];
+    const sessionState = (ctx.session.state ?? {}) as Record<string, unknown>;
+    const recorded = sessionState[TASK_FLOW_STATE_KEY];
     const assignee = stored.assignee ?? "";
     const read = assignee === "" ? undefined : await source.workerOf(ctx, assignee);
     const facts = {
       runningFlow,
       ...(typeof recorded === "string" ? { recordedFlow: recorded } : {}),
+      workstream: typeof sessionState[WORKSTREAM_STATE_KEY] === "string",
       task: stored,
       worker: read === undefined ? undefined : { id: assignee, flow: read.flow, config: read.config }
     };

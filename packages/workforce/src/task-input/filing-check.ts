@@ -155,7 +155,7 @@ export async function checkFiling(run: FilingCheck): Promise<CheckedInput> {
 }
 
 /** The facts every claim is held to, declared flow or not. */
-export type ClaimAuthority = Pick<ClaimInput, "runningFlow" | "recordedFlow" | "worker"> & { readonly task: Pick<Task, "assignee"> };
+export type ClaimAuthority = Pick<ClaimInput, "runningFlow" | "recordedFlow" | "worker" | "workstream"> & { readonly task: Pick<Task, "assignee"> };
 
 /**
  * **At claim, the running entry is the authority**, for every `work` entry,
@@ -168,6 +168,11 @@ export type ClaimAuthority = Pick<ClaimInput, "runningFlow" | "recordedFlow" | "
  */
 export function assertClaimAuthority(run: ClaimAuthority): CheckedWorker {
   const { runningFlow: flow, task, worker } = run;
+  // Every hand-over records the flow it hands to; only a workstream's session, born by its opener and bound by
+  // the engine to the flow it runs on, records none.
+  if (run.recordedFlow === undefined && run.workstream !== true) {
+    throw notRunnable(flow, "its session names no flow it was handed over for");
+  }
   if (run.recordedFlow !== undefined && run.recordedFlow !== flow) {
     throw notRunnable(flow, `the task was handed over for flow "${run.recordedFlow}", and this is flow "${flow}"'s entry`);
   }
@@ -193,8 +198,10 @@ export interface ClaimInput {
   readonly declaration: TaskInputSchema;
   /** The flow whose `work` entry is executing: the one fact a roster move mid-flight can't change. */
   readonly runningFlow: string;
-  /** The flow the hand-over recorded for this task session (`taskFlow`), when it recorded one. */
+  /** The flow the hand-over recorded for this task session (`taskFlow`). Missing fails the claim, except in a workstream's session. */
   readonly recordedFlow?: string;
+  /** Whether the session is a workstream's (its readonly, birth-set `workstream`): born by its opener, which records no `taskFlow`. */
+  readonly workstream?: boolean;
   /** The task as stored. */
   readonly task: Pick<Task, "input" | "metadata" | "assignee">;
   /** The task's worker, read once for this claim; `undefined` when it can't be read now. */

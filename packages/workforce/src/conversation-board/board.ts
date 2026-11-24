@@ -177,7 +177,7 @@ import { verifiedWorkerOf } from "../workers/verified-worker";
 import type { TaskInputSchema, TaskInputRecord } from "../task-input/declaration";
 import { FILLED_FOR, type CheckedInput } from "../task-input/filing-check";
 import { checkedPatch, checkFiledInput, withRootWorker, type InputLookup } from "../task-input/checked-ledger";
-import { handoverFlowReader } from "./handover-flow";
+import { handedFlowOrRefuse, handoverFlowReader } from "./handover-flow";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -1169,12 +1169,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // task fails and the conversation hears it.
     // One read of the delegates per hand-over gives both the flow dispatched to and the flow the session opened
     // is born naming (`state` below), so the two can't disagree (FIX-2894).
-    flowKind: async (task, ctx) => {
-      const { flow, unavailable } = await handedFlowOf(ctx, task.taskId, task.assignee);
-      if (flow !== undefined) return flow;
-      const why = unavailable ?? "it isn't one of this session's delegates";
-      throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
-    },
+    flowKind: async (task, ctx) => handedFlowOrRefuse(await handedFlowOf(ctx, task.taskId, task.assignee), task.taskId, task.assignee),
     // The task session is born naming its worker, the task, the session
     // that filed it and the flow that session runs on, its own flow, and its
     // place in the chain (the board its task is on, and the chain's top),
@@ -1187,7 +1182,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // session, by id, is never created.
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
-      const { flow } = await handedFlowOf(ctx, task.taskId, task.assignee);
+      // Always written: a hand-over that resolves no flow is refused by name, so no session is born without `taskFlow`.
+      const flow = handedFlowOrRefuse(await handedFlowOf(ctx, task.taskId, task.assignee), task.taskId, task.assignee);
       // The delegate's ongoing session for the conversation works no one
       // task (FIX-2080): born naming its worker, the worker, conversation and
       // flow that filed into it, and no task or task-chain place. It counts
@@ -1201,7 +1197,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           [FILING_FLOW_STATE_KEY]: options.flowKind,
           ...filingWorkerOf(ctx.session.state),
           ...carriedHopState(ctx.session.state),
-          ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+          [TASK_FLOW_STATE_KEY]: flow,
           ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
         };
       }
@@ -1221,7 +1217,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // message from the task counts on in the exchange of the turn that
         // filed it. Never the task chain's.
         ...carriedHopState(ctx.session.state),
-        ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+        [TASK_FLOW_STATE_KEY]: flow,
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
         ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project }),
         ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)

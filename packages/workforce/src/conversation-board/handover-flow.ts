@@ -18,6 +18,15 @@ export interface HandedFlow {
 }
 
 /**
+ * The flow a hand-over gives `taskId` to, or the hand-over refused by name:
+ * no session is born without the flow it was handed to.
+ */
+export function handedFlowOrRefuse(handed: HandedFlow, taskId: string, assignee: string): string {
+  if (handed.flow !== undefined) return handed.flow;
+  throw new Error(`Task "${taskId}" wasn't handed to "${assignee}": ${handed.unavailable ?? "it isn't one of this session's delegates"}.`);
+}
+
+/**
  * A reader of the flow each hand-over gives a task to, over `reach`.
  *
  * @param reach The running session's delegates, read now.
