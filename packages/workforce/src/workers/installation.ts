@@ -509,7 +509,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return undefined;
     }
   };
-  /** The settings `flow` retired, which a stored row is read without (BP-030). */
+  // BP-030.
+  /** The settings `flow` retired, which a stored row is read without. */
   const retiredOf = (flow: string): readonly string[] => (Object.hasOwn(workerFlows(), flow) ? workerFlows()[flow]!.retiredSettings : []);
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
   const workerFlows = (): Record<string, ResolvedWorkerFlow> => {

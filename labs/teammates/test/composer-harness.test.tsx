@@ -2,9 +2,9 @@
 /**
  * A coding task asked for on a harness that can't run here fails minutes later,
  * after the teammate has filed it. So the composer says so before you send, and
- * offers the harnesses that can. The line you send goes as typed: the server
- * puts a coding task on the lab's default, so a `Coding harness:` line would
- * only be text a model reads. Each case fails if the warning stops showing for a
+ * offers the harnesses that can. The line you send goes as typed: the lab's
+ * default is in Lead's own context, so the composer adds no `Coding harness:`
+ * line. Each case fails if the warning stops showing for a
  * harness that can't run, shows for one that can (or whose check got no answer),
  * or if the composer adds anything to the line that is sent.
  */

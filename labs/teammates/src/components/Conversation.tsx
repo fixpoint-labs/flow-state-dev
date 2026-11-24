@@ -348,7 +348,7 @@ export function Conversation({
         onPrefilled={onPrefilled}
         uploader={calls}
         harnesses={harnesses}
-        // The lab's default coder, which the server writes on every coding task; the teammate's own model when it has one set (in Edit teammate), else the lab's.
+        // The lab's default coder, where Lead starts coding work; the teammate's own model when it has one set (in Edit teammate), else the lab's.
         defaultHarness={context?.harness}
         replyModel={settingOf(worker, "model") ?? context?.model}
         onSend={(text, attachments) => {

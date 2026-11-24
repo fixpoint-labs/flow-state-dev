@@ -204,6 +204,26 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   *phase*: "phase" stays free for a future board idea (plan, implement, review as stages of a
   task). The entries land in the implementation PR, with the code that coins them.
 
+## Taken over from FIX-2877
+
+**Must do.** FIX-2877's D2 moves here (owner's call, 2026-11-24, on [#5633](https://github.com/fixpoint-labs/flow-state-dev/pull/5633)). A coding task filed with no pick from outside any coding run runs on the kit's `defaultHarness`, whatever worker or text the model names. The decision is made once, at FIX-2894's filing check, which is the single gate: this issue's filler writes the default run settings there, on the no-pick path.
+
+FIX-2877 shipped no server-side rewrite. Its attempt on #5633 gated the assignee at each board write, and reviewers kept finding paths around it. Each path below must reach the filing check, or be shown not to file a coding task. The goal check covers each one with a red state:
+
+- `createTask` naming any coder, a non-delegate included;
+- a batch (`createTasks`): every row decided and validated before any row is written, so a refused row files nothing;
+- `updateTask` / `patchSettings` moving a held or pending task onto another coder, then releasing it;
+- `setAssignee`;
+- the sole-delegate fill: a task naming no assignee, filled with the conversation's one delegate (`ownerForUnassigned`, and the board's own fill at the write);
+- `withTarget`: a workstream target filling in its lead;
+- a routed task, from a judgment turn and from a routing policy. Its placement (target session), brief and task id must be derived after the decision, never for the worker before it;
+- a judged filing: the coordinator's judgment turn's own `createTask`.
+
+Two invariants hold on every path:
+
+- **Decided once per call, and replay-safe.** A replay stores the coder the same-work check read. A call recorded before the change keeps the worker it named (BP-030).
+- **Validated on the decided worker.** It must be one of the filer's delegates, and pass the self, workstream and project checks.
+
 ## Considered and dropped
 
 | Option | Why it lost |

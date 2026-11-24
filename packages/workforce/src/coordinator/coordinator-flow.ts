@@ -548,16 +548,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     request: DeliveryRequest,
     filing?: TaskInit
   ): Promise<{ routed: RoutedDelegate; taskId?: string }> => {
-    const picked = bare(request.delegate);
-    // Decide the worker first, then derive its placement and brief from it (FIX-2877 D2).
-    let named = picked;
-    try {
-      const decided = await sessionBoard.routedAssignee(ctx, picked.worker, `:routed[${request.messageRequestId}:${request.round}:${picked.worker}]`);
-      if (decided !== picked.worker) named = { ...picked, worker: decided };
-    } catch (error) {
-      if (!(error instanceof TaskWriteRefusedError)) throw error;
-      return { routed: { ...picked, outcome: "failed", reason: error.message } };
-    }
+    const named = bare(request.delegate);
     const now = Date.now();
     // The judgment turn's tool call: the same on its replay. A policy's filing has none.
     const call = filing === undefined ? undefined : logicalBlockIdOf(ctx);

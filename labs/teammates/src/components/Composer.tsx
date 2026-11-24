@@ -37,11 +37,11 @@ import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
  * the parent drops them: a box that closes and reopens (a switch away and
  * back) must not add them again.
  *
- * The toolbar under the text shows the harness coding tasks run on: the lab's
- * default, which the server writes on every coding task filed from a
- * conversation. A line goes as typed. A pick in the toolbar changes only what
- * it shows until the conversation carries a pick of its own; to run a
- * task on another harness, assign it on the board. When that harness can't run
+ * The toolbar under the text shows the harness coding tasks start on: the
+ * lab's default, which Lead starts coding work on unless you name another.
+ * A line goes as typed. A pick in the toolbar changes only what it shows
+ * until the conversation carries a pick of its own; to run a task on another
+ * harness, say which, or assign it on the board. When that harness can't run
  * here, a warning under the box says why before you send and offers the
  * harnesses that can; nothing is blocked, since most lines ask for no coding
  * at all.

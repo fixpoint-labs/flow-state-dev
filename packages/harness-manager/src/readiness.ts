@@ -280,12 +280,11 @@ export const READINESS_GUIDANCE =
 
 // FIX-2877.
 /**
- * The line under the rows naming the app's default coder, by its label: the
- * coder a coding task filed from a conversation runs on, whichever coding
- * worker it names, so the coordinator can say which one took it.
+ * The line under the rows naming the app's default coder, by its label, so
+ * the coordinator starts coding work there unless the user names another.
  */
 function defaultCoderLine(label: string): string {
-  return `${label} is this app's default coder: a coding task you start here runs on ${label}, whichever coding worker you name. Say so when you start one.`;
+  return `${label} is this app's default coder: start coding work on the coding worker that runs on ${label}, unless the user names another.`;
 }
 
 /**
