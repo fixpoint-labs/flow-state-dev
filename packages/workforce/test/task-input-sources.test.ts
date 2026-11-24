@@ -87,6 +87,33 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
     }
   });
 
+  // Codex P1: with a shared door, a claim whose request already resolved its
+  // worker (pinned by installation, server-side) still bound nothing, so a stale
+  // task's server-owned values couldn't be filled again.
+  it("binds a shared door to the installation the session's request was already pinned to, and to nothing unpinned", async () => {
+    const { ledger, entry, harness } = await fresh();
+    const a = harness.bootBoardHost();
+    const b = harness.bootBoardHost();
+    try {
+      const door = entry.conversationTaskDoorOf(a.installation.workerFlows().tasker!.flow)!;
+      const sourceA = ledger.taskInputSourceOf(a.installation)!;
+      const sourceB = ledger.taskInputSourceOf(b.installation)!;
+      ledger.registerTaskDoor(door, sourceB);
+      // What `resolveWorker` notes on the session: its own installation.
+      const pinned = {};
+      ledger.noteTaskInputSource(pinned, sourceA);
+      expect(ledger.noteSourceOfDoor(pinned, door)).toBe(sourceA);
+      expect(ledger.noteSourceOfDoor({}, door)).toBeUndefined();
+      // Pinned to an installation that never registered the door: still nothing.
+      const elsewhere = {};
+      ledger.noteTaskInputSource(elsewhere, { declarationOf: () => undefined, workerOf: async () => undefined });
+      expect(ledger.noteSourceOfDoor(elsewhere, door)).toBeUndefined();
+    } finally {
+      await a.dispose();
+      await b.dispose();
+    }
+  });
+
   // A refused hire used to register its flows' doors as they resolved, so a
   // second installation given a live one's prebuilt flow made that door shared,
   // and the live installation's raw handles failed closed.

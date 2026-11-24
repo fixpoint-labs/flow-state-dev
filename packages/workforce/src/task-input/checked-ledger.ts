@@ -179,9 +179,8 @@ export interface TaskInputSource {
 
 const bySession = new WeakMap<object, TaskInputSource>();
 const byInstallation = new WeakMap<object, TaskInputSource>();
-/** A door two installations registered: it names neither, so a lookup by it binds nothing. */
-const SHARED = Symbol("shared task door");
-const byDoor = new WeakMap<object, TaskInputSource | typeof SHARED>();
+/** Each door's installations: one names it; two or more (a prebuilt flow given to both) name none on their own. */
+const byDoor = new WeakMap<object, Set<TaskInputSource>>();
 
 /** Register an installation's source, for the installation's own board to read. */
 export function registerTaskInputSource(source: TaskInputSource, installation: object): void {
@@ -191,8 +190,8 @@ export function registerTaskInputSource(source: TaskInputSource, installation: o
 /** Register `door`, the `from` of one of an installation's flows' `work` entries, as that installation's. */
 export function registerTaskDoor(door: object, source: TaskInputSource): void {
   const known = byDoor.get(door);
-  // One prebuilt flow given to two installations shares its door: it can't say which one runs here.
-  byDoor.set(door, known === undefined || known === source ? source : SHARED);
+  if (known === undefined) byDoor.set(door, new Set([source]));
+  else known.add(source);
 }
 
 /** The source `installation` registered. */
@@ -205,12 +204,19 @@ export function noteTaskInputSource(session: object, source: TaskInputSource): v
   bySession.set(session, source);
 }
 
-/** The source `door` was registered with, noted on the session; none for a door no installation registered. */
+/** The installation `door` names, noted on the session: its one registrant, or, for a shared door, the one the session is already pinned to; else none. */
 export function noteSourceOfDoor(session: object, door: object): TaskInputSource | undefined {
-  const source = byDoor.get(door);
-  if (source === undefined || source === SHARED) return undefined;
-  bySession.set(session, source);
-  return source;
+  const sources = byDoor.get(door);
+  if (sources === undefined) return undefined;
+  if (sources.size === 1) {
+    const [source] = sources;
+    bySession.set(session, source!);
+    return source;
+  }
+  // A door two installations share names neither: only the one this request's `resolveWorker`
+  // already noted, server-side and by installation, and only if it registered this door.
+  const pinned = bySession.get(session);
+  return pinned !== undefined && sources.has(pinned) ? pinned : undefined;
 }
 
 /** The source the running request's session was noted with; none when it was noted with none. */

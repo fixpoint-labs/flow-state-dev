@@ -38,13 +38,14 @@ import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { resolveWorkerFlows } from "../src/hire";
 import { FILLED_FOR } from "../src/task-input/filing-check";
+import { changeDelegates } from "../src/delegates/delegate-list";
 import { boardWorkers, bootBoardHost } from "./conversation-board-harness";
 
 type Host = ReturnType<typeof bootBoardHost>;
 type Output = { ok: boolean; taskId?: string; error?: string };
 
 /** What a test makes the triage flow's hooks do. */
-const behaviour: { check?: "rewrite" | "nested" | "date" } = {};
+const behaviour: { check?: "rewrite" | "nested" | "date" | "swap" } = {};
 /** Each run of a declared flow's block: the task and the input it was handed. */
 const seen: Array<{ flow: string; taskId: string; input: unknown }> = [];
 /** What the raw-handle worker's writes came to. */
@@ -69,7 +70,7 @@ const triage = taskInput(triageSchema, {
   refuse: (sent) => {
     if ("ticketId" in sent) throw new TaskWriteRefusedError("old_key", "ticketId is no longer accepted; send ticket instead. Nothing was filed.");
   },
-  check: (input, { assignee, worker }) => {
+  check: async (input, { assignee, worker, ctx }) => {
     if (input.severity === "high" && worker.config.onCall !== true) {
       throw new TaskWriteRefusedError("not_on_call", `"${assignee}" isn't on call, so it takes no high-severity task. Nothing was filed.`);
     }
@@ -79,6 +80,12 @@ const triage = taskInput(triageSchema, {
       return input;
     }
     if (behaviour.check === "date") return { ...input, meta: { seenAt: new Date(0) } };
+    if (behaviour.check === "swap") {
+      // The conversation's only delegate changes while the filing is checked: ops.triager out, ops.intern in.
+      behaviour.check = undefined;
+      await changeDelegates(ctx.session as never, { delegates: ["ops.triager"] }, { remove: { worker: "ops.triager" } });
+      await changeDelegates(ctx.session as never, { delegates: [] }, { add: { worker: "ops.intern" } });
+    }
     return input;
   },
   stored: (stored) => {
@@ -511,6 +518,20 @@ describe("a stamp nothing checked is never trusted", () => {
     const filed = await file(host, id, { assignee: "ops.triager", goal: "g", input: { ticket: "ENG-7" }, held: true });
     expect(await update(host, id, { id: filed.taskId, assignee: "ops.helper" })).toMatchObject({ ok: true });
     expect((await host.row("jane", partition, filed.taskId!))?.metadata?.[FILLED_FOR]).toBeNull();
+  });
+});
+
+describe("an unassigned filing's worker", () => {
+  // Codex P1: the default worker was read once for the check and again for the
+  // store, so a roster change between them stored B with A's checked values.
+  it("is read once: the task is stored for the worker it was checked for, never another", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host, "jane.solo");
+    behaviour.check = "swap";
+    // High severity passes only for an on-call worker: ops.triager is, ops.intern isn't.
+    const filed = await file(host, id, { goal: "g", input: { ticket: "ENG-8", severity: "high" }, held: true });
+    expect(filed).toMatchObject({ ok: true });
+    expect(await host.row("jane", partition, filed.taskId!)).toMatchObject({ assignee: "ops.triager", input: { severity: "high" } });
   });
 });
 

@@ -1348,10 +1348,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * conversation's only task-taking delegate), before anything is reserved
      * or written.
      */
-    const checkedFor = async (init: TaskInit): Promise<CheckedInput | undefined> => {
+    const checkedFor = async <T extends TaskInit>(init: T): Promise<{ init: T; checked: CheckedInput | undefined }> => {
       const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
       const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
-      return checkInitInput(ctx, ref, init, root?.assignee ?? init.assignee ?? (await soleDelegate()));
+      // The worker the task goes to is read once: the one it is checked for is the one it is stored for,
+      // whatever the conversation's delegates become while the flow's hooks run.
+      const assignee = root?.assignee ?? init.assignee ?? (await soleDelegate());
+      const pinned = root === undefined && init.assignee === undefined && assignee !== undefined ? { ...init, assignee } : init;
+      return { init: pinned, checked: await checkInitInput(ctx, ref, pinned, assignee) };
     };
     // FIX-2894.
     /** An edit of a row's settings: its input and worker through the filing check, on one revision of the row. */
@@ -1447,8 +1451,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // conversation is a routed task: its layer attaches the message.
       // One at a time: a batch on such a turn files plain tasks.
       if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return writeTaskLine(ctx, await options.routes.file(ctx, init));
-      const targeted = await withTarget(init);
-      const checked = await checkedFor(targeted);
+      const { init: targeted, checked } = await checkedFor(await withTarget(init));
       await refuseUnderCancelledTask();
       return writeTaskLine(ctx, await fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true), checked));
     };
@@ -1601,10 +1604,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
-        for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
+        const targeted: Array<TaskInit & { id: string }> = [];
+        for (const init of ordered) targeted.push({ ...(await withTarget(init)), id: init.id });
         // Every row's input is checked before the first add: one that doesn't fit files none of them.
         const checked = new Map<string, CheckedInput | undefined>();
-        for (const init of batch) checked.set(init.id, await checkedFor(init));
+        for (const init of targeted) {
+          const done = await checkedFor(init);
+          batch.push(done.init);
+          checked.set(init.id, done.checked);
+        }
         // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
         // A backing with no `refresh` must serve `get` committed across requests.
         const filed = new Set(batch.map((init) => init.id));
