@@ -14,6 +14,7 @@ import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -72,6 +73,7 @@ describe("durable completion cleans its own artifacts", () => {
     })();
 
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -115,6 +117,7 @@ describe("durable completion cleans its own artifacts", () => {
     })();
 
     await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

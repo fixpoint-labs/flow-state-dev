@@ -260,8 +260,8 @@ describe("check-docs-page", () => {
       const res = spawnSync(process.execPath, [SCRIPT, "--sitemap"], { encoding: "utf8" });
       assert.equal(res.status, 0, res.stdout + res.stderr);
       assert.deepEqual(res.stdout.trim().split("\n"), [
-        "152 entries: 50 kept, 3 piloted, 1 drafted",
-        "kept: B-08 B-09 B-10 B-11 B-12 B-13 B-14 B-15 B-19 B-20 B-21 B-22 B-23 B-24 B-28 B-29 B-30 B-33 B-34 B-35 B-36 B-37 B-38 C-11 K-09 K-20 K-21 K-22 K-23 K-24 K-25 K-26 K-27 K-28 K-29 K-30 K-31 K-32 K-33 K-34 K-35 K-36 K-37 K-38 K-39 K-40 K-41 K-43 R-18 R-39",
+        "152 entries: 49 kept, 3 piloted, 1 drafted",
+        "kept: B-08 B-09 B-10 B-12 B-13 B-14 B-15 B-19 B-20 B-21 B-22 B-23 B-24 B-28 B-29 B-30 B-33 B-34 B-35 B-36 B-37 B-38 C-11 K-09 K-20 K-21 K-22 K-23 K-24 K-25 K-26 K-27 K-28 K-29 K-30 K-31 K-32 K-33 K-34 K-35 K-36 K-37 K-38 K-39 K-40 K-41 K-43 R-18 R-39",
         "piloted: C-21 C-22 S-1",
         "drafted: C-02",
       ]);

@@ -28,7 +28,7 @@ Skipping needs no ceremony. Say "no changeset needed" in the PR description if a
 
 This is enforced by `.changeset/config.json`, which sets `privatePackages: { version: false }`. Every `private: true` package is skipped: the `pnpm changeset` picker will not offer it, and `pnpm version-packages` will not bump it or write it a `CHANGELOG.md`. Adding a fourth lab needs no config change.
 
-Do not hand-write a fragment naming a private package. Changesets rejects a fragment that mixes a skipped package with a publishable one, and it fails the whole run, not just that fragment — `pnpm changeset status` was broken repo-wide for exactly this reason (FIX-870).
+Do not hand-write a fragment naming a private package. Changesets rejects a fragment that mixes a skipped package with a publishable one, and it fails the whole run, not just that fragment — `pnpm changeset status` was broken repo-wide for exactly this reason (FIX-870). `scripts/validate-publish-set.mjs --changesets` reads every pending fragment with Changesets' own parser in CI's Export check job, and fails a PR whose fragment doesn't parse, or names a private package or a name no workspace package has.
 
 ## Writing a changeset
 

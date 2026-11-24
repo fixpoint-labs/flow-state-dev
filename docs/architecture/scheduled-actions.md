@@ -56,6 +56,7 @@ type ScheduleConfig = ActionCore & {
   principal?: ResolvedPrincipal;
   timezone?: string;
   onOverlap?: "skip" | "allow";
+  session?: "per-fire" | "per-schedule";
   description?: string;
   enabled?: boolean;
 };
@@ -87,6 +88,7 @@ resolver returned.
 - Static `input` matches the binding's effective input schema.
   Dynamic input is validated at dispatch.
 - `onOverlap` is `"skip"` or `"allow"`. `"queue"` is reserved.
+- `session` is `"per-fire"` or `"per-schedule"`.
 - `principal.userId` is a non-empty string when the field is set.
 
 Registration failures throw from `createFlowInstance`. Dispatch
@@ -208,6 +210,8 @@ const envelope: InboundRequestEnvelope = {
     }
   },
   resolvedActionCore: origin === "dynamic" ? schedule : undefined,
+  // per-schedule only; absent for per-fire
+  sessionId: scheduleSessionId({ orgId, userId, flowId: flow.id, scheduleId }),
   responseEmitter: null,
 };
 ```
@@ -220,6 +224,57 @@ resolve through `resolveActionCore` via
 A durable dynamic run mid-crash cannot re-resolve its handler, so
 the run is dropped. If a durable scheduled action must survive a
 crash, make it static.
+
+## Where a fire runs
+
+`session` on a schedule says where its fires run. `"per-fire"`, the
+default, makes each fire a one-off run in a session of its own: the
+endpoint makes its `ephemeral_` id with `oneOffSessionId()` after the
+overlap check, so the request record names it from its first write.
+`"per-schedule"` runs every fire in
+one session whose id the endpoint derives after the overlap check
+(step 8), so a skipped fire never touches it: `fsd-schedule.` then
+the base64url of `[orgId, userId, flowId, scheduleId]`, from the
+effective principal, the registered instance and the URL id
+(`transports/scheduled/schedule-session-id.ts`). The first fire
+creates the session through the ordinary action path, and the flow's
+`session.retention` caps its history after each completed fire.
+
+`createResourceCollectionScheduleResolver({ session })` sets the option
+on every row it resolves; a row never carries it, so a stored schedule
+can't pick its session.
+
+The id is colon-free on purpose. A session's storage key is
+`${tenant}:${sessionId}` with the tenant from a header, so a
+colon-joined id could be split across the header and the body and
+pre-claimed. The prefix is reserved beside the write session's
+`fsd-write.`, by its own check (`isScheduleSessionId`, bare or after
+`:`), at five points:
+
+- the inbound host's `refuseReservedAddress` admits it only from
+  `source === "scheduled"`, ahead of the resource-send pass;
+- the session create route and the action route refuse it;
+- the request host refuses a dispatch target `{ id }` or `{ id, state }`
+  naming it (or a write session) before any session is born;
+- retry, continue and resume refuse a request in it
+  (`isRequestPublicReentryAllowed`), and request listings mark it
+  `retryable: false`: a re-run would skip the overlap check, and the
+  next fire catches up instead.
+- a fire in it never parks: `ctx.suspend()` refuses there before any
+  gate is written, and the fire's request host has no `waits`, so a
+  wait answers `wait_unavailable` before it starts its work. A parked
+  fire leaves the active registry, so the next fire may already run
+  there, and whatever continued the parked one (an answer, a stop, a
+  waited-on child ending, the sweep's re-drive) would run it beside
+  that fire. A schedule whose fires stop or wait keeps `"per-fire"`.
+
+Unlike a write session, its owner still lists and reads it: the
+listing, the read routes and change notices don't hide it.
+
+Only the scheduled dispatch runs in it, so a child dispatched from a
+fire can't reply into it with `{ from: true }`: the inbound host
+refuses that delivery, since its source is not `scheduled`. A schedule
+that needs a reply loop keeps `"per-fire"`.
 
 ## Listing
 

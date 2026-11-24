@@ -34,6 +34,7 @@ import {
   createInMemoryStores
 } from "../../src/host";
 import type { StoreRegistry } from "../../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A registry that declares itself shared, as a real Postgres-backed one does. */
 function withSharedRegistry(stores: StoreRegistry): StoreRegistry {
@@ -246,7 +247,7 @@ describe("request-host seam on the shipped router path", () => {
     expect(child?.parentSessionId).toBe("s_dispatch");
   });
 
-  it("an OMITTED sessionId still gets the seam — the ephemeral session is a real session", async () => {
+  it("a one-off session gets the seam: it is a real session", async () => {
     const seen: Seen = {};
     const registry = createFlowRegistry();
     registry.register(probeFlow("shipped-ephemeral", seen, []));
@@ -256,11 +257,10 @@ describe("request-host seam on the shipped router path", () => {
       stores: withSharedRegistry(createInMemoryStores())
     });
 
-    // No `sessionId` in the body. Execution generates and PERSISTS one, so the
-    // request has a valid `ctx.session` and real lineage to authorise by.
-    // Gating the seam on `options.sessionId` withheld it from exactly these
-    // requests, and `requireRequestHost` threw inside an otherwise normal call.
-    await post(router, "shipped-ephemeral", undefined);
+    // A one-off session, as a one-shot send names: born on the run's first
+    // write, so the request has a valid `ctx.session` and real lineage to
+    // authorise by, and the seam is there like any session's.
+    await post(router, "shipped-ephemeral", oneOffSessionId());
 
     expect(seen.error).toBeUndefined();
     expect(seen.hasHost).toBe(true);

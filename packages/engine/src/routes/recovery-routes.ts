@@ -15,13 +15,15 @@ import {
   callerReachesRequest,
   jsonResponse,
   JsonMediaTypeError,
+  legacySessionlessResponse,
   parseJsonBody,
   SSE_HEADERS,
   unknownRequestResponse
 } from "./route-utils";
+import { namesSession } from "../context/record-session";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
-import { isPublicReentryAllowed } from "./public-reentry";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
@@ -112,9 +114,13 @@ export async function handleRetryRequest(
   // refused rather than admitted. Webhook stays refused for the original reason
   // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
-  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, not the generic failure below.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("retrying this request");
 
   // Parse optional input override
   let inputOverride: unknown;
@@ -211,7 +217,7 @@ export async function handleContinueRequest(
 
   // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
   // source that is not caller-facing as not found.
-  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
 
@@ -227,6 +233,10 @@ export async function handleContinueRequest(
       error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
     });
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, ahead of the session comparison its missing session would fail.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("continuing this request");
 
   // The route is session-scoped; continuing mutates an existing record's
   // lifecycle, so the path's sessionId must match the record's — otherwise the

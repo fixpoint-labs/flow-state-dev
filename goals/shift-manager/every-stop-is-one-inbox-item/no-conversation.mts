@@ -1,6 +1,6 @@
 /**
  * Leg `nc` (FIX-2774 Open, the recommended answer): a worker's run started with no
- * conversation, by the server (`runAction`, `source: "system"`, no session), stops for an
+ * conversation, by the server (`runAction`, `source: "system"`, in a one-off session), stops for an
  * approval. The Inbox lists the ask once, from no named worker, with its reply box blocked,
  * and answering it there resumes the run.
  *
@@ -15,7 +15,7 @@
  *   nc:no-reply          the item's reply box is blocked, saying there is no conversation to reply into
  *   nc:answer-resumes    Approve answers it, and the run goes on to complete
  *
- * Its control, `GOAL_CONTROL=session-only`, drops every ask with no session in the view: it
+ * Its control, `GOAL_CONTROL=session-only`, drops every ask with no conversation in the view: it
  * must fail `nc:listed`.
  */
 import { rmSync } from "node:fs";
@@ -25,6 +25,7 @@ import { Window } from "happy-dom";
 import React, { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { isOneOffSessionId, oneOffSessionId } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
@@ -102,31 +103,34 @@ export async function legNoConversation(scratch: string, fail: Fail, note: (line
   try {
     const runtime = await on.state.getRuntime();
     const asker = Object.values(on.flows).find((flow) => flow.kind === ASKER);
-    // The run: by the server, with no conversation behind it.
-    const ran = runAction({ flow: asker, actionName: "respond", input: { message: "the weekly report" }, userId: USER, orgId: ORG, source: "system", stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never) as Promise<{ requestId?: string; status?: string; error?: unknown }>;
+    // The run: by the server, in a one-off session, with no conversation behind it.
+    const ran = runAction({ flow: asker, actionName: "respond", input: { message: "the weekly report" }, userId: USER, orgId: ORG, sessionId: oneOffSessionId(), source: "system", stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never) as Promise<{ requestId?: string; status?: string; error?: unknown }>;
     const requests = async () => (await runtime.stores.request.list({ orderBy: "none", limit: 100 } as never)) as Array<{ id: string; status: string; flowKind: string; sessionId?: string }>;
     const stopped = (await until(requests, (all) => all.some((r) => r.flowKind === ASKER && r.status === "suspended"), 15_000)).find((r) => r.flowKind === ASKER);
-    if (stopped?.status !== "suspended" || stopped.sessionId !== undefined) {
+    if (stopped?.status !== "suspended" || stopped.sessionId === undefined || !isOneOffSessionId(stopped.sessionId)) {
       fail("nc:listed", `setup: the run with no conversation never stopped: ${JSON.stringify(stopped)}; ${JSON.stringify(await Promise.race([ran, sleep(10).then(() => "running")]))}`);
       return;
     }
 
     // Shift Manager's Inbox, drawn on the item's route: the item's id is the stop's own (it has no task).
-    const { LabProvider } = await import("../../../packages/shift-manager/src/lib/lab-data.tsx");
+    const { LabProvider, useLab } = await import("../../../packages/shift-manager/src/lib/lab-data.tsx");
     const { useGate } = await import("../../../packages/shift-manager/src/lib/gate.ts");
     const { Inbox } = await import("../../../packages/shift-manager/src/surfaces/Inbox.tsx");
     const { GAPS } = await import("../../../packages/shift-manager/src/gaps.ts");
     const container = happy.document.createElement("div");
     happy.document.body.appendChild(container);
     const { useInbox } = await import("../../../packages/shift-manager/src/lib/inbox.ts");
+    const { SessionFeedsProvider } = await import("../../../packages/shift-manager/src/lib/session-feeds.tsx");
     // The Inbox on its first item's route, as a click on the item opens it.
     function Page() {
-      // The shell draws the Inbox once the gate lets Shift Manager in, as the page does (`App.tsx`).
+      // The shell draws the Inbox once the gate lets Shift Manager in, as the page does (`App.tsx`),
+      // under the page's session feeds, as the app's shell draws every screen.
       const inside = useGate().gate.state === "in";
       const inbox = useInbox(inside);
+      const { client } = useLab();
       if (!inside) return null;
       const itemId = inbox.section?.ok === true ? (inbox.section.value.items[0]?.id ?? null) : null;
-      return createElement(Inbox, { itemId, gaps: GAPS });
+      return createElement(SessionFeedsProvider, { client, children: createElement(Inbox, { itemId, gaps: GAPS }) });
     }
     root = createRoot(container as unknown as Element);
     root.render(createElement(LabProvider, { connection: { userId: USER, bearerToken: TOKEN, baseUrl: on.base }, children: createElement(Page) }));

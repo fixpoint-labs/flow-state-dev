@@ -16,6 +16,7 @@ This page lists the fields, what a bad config fails on, and the rules for choosi
 
 | Question | Answer |
 | --- | --- |
+| Which runtimes does it run on? | Node 22 or newer. Edge runtimes (Cloudflare Workers, Vercel Edge) are not supported. |
 | Which fields are required? | None. The options object itself is required: `createFlowState({})` is valid. |
 | How is a store profile chosen? | `FSD_ENV` if set and non-empty, else `defaultProfile`, else the first declared profile. `NODE_ENV` never chooses. See [How the profile is chosen](#how-the-profile-is-chosen). |
 | What happens with no `stores`? | The app runs in memory and loses every session and request on restart. |
@@ -276,7 +277,7 @@ export const approveRefund = handler({
   inputSchema: z.object({ orderId: z.string(), amount: z.number() }),
   execute: async (input, ctx) => {
     if (input.amount > ctx.settings.refunds.autoApproveUpTo) return { refunded: false };
-    await refundOrder(input.orderId);
+    await refundOrder(input.orderId, ctx.session.identity);
     return { refunded: true };
   },
 });

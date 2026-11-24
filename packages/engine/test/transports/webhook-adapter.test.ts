@@ -104,8 +104,11 @@ createInboundTransportConformanceTests({
     }),
   helpers: {
     buildEnvelope: async (adapter, host) => {
-      // Patch the mock host's registry to surface a webhook flow. The binding
-      // omits sessionId so no session upsert is needed against the mock store.
+      // Patch the mock host's registry to surface a webhook flow, and give it
+      // stores: every delivery's session is ensured before dispatch, the
+      // one-off session the route makes for this binding (which names none)
+      // included.
+      (host as unknown as { stores: unknown }).stores = createInMemoryStores();
       (host as unknown as { registry: unknown }).registry = {
         get: (k: string) => (k === stripeFlow.kind ? stripeFlow : undefined),
         list: () => [stripeFlow]

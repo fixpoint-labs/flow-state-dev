@@ -29,6 +29,7 @@ import { z } from "zod";
 import { createFlowState, inMemoryStores } from "../../src";
 import { createFlowRegistry } from "../../src/registry/flow-registry";
 import { CrossFlowSchemaConflictError, FlowIdentityConflictError } from "../../src/registry/errors";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A collection kind, so copies of it can be minted under explicit ids. */
 const deskClerk = defineFlow({
@@ -77,7 +78,7 @@ function answerRequest(address: string): [Request, { params: { path: string[] } 
         // would return just as happily.
         accept: "text/event-stream",
       },
-      body: JSON.stringify({ userId: "u", input: {} }),
+      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u", input: {} }),
     }),
     { params: { path: [address, "actions", "answer"] } },
   ];

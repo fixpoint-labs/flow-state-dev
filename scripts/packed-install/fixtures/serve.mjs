@@ -9,6 +9,7 @@
  * else exits 1 with the step that failed.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { z } from "zod";
@@ -61,7 +62,7 @@ try {
   const res = await fetch(`${base}/api/flows/packed-install/actions/ping`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: "packed-install-user", input: { text: "hello" } }),
+    body: JSON.stringify({ userId: "packed-install-user", sessionId: oneOffSessionId(), input: { text: "hello" } }),
   });
   const body = await res.text();
   if (!res.ok) fail("action", `status ${res.status}: ${body.slice(0, 300)}`);

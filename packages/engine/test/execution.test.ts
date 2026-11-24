@@ -28,6 +28,7 @@ import { isRetryableError } from "../src/execution/retry";
 import {
   NOOP_INTERNAL_EXECUTION_SEAMS
 } from "../src/execution/internal/seams";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A bare model function as a `ModelResolver`; these tests never resolve an id. */
 function stubResolver(resolve: (modelId: string) => GeneratorModel): ModelResolver {
@@ -3181,6 +3182,7 @@ describe("rescue boundary in nested sequencer", () => {
 
     const stores = createInMemoryStores();
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

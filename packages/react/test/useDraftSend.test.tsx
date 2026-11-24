@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import type { FileContent } from "@flow-state-dev/core/items";
+import { createClient } from "@flow-state-dev/client";
 
 import { useDraftSend } from "../src";
 
@@ -76,6 +77,26 @@ describe("useDraftSend", () => {
     expect(localStorage.getItem(`${NS}:s1`)).toBe("see file");
     // The file stays in the box, so a Retry sends it again.
     expect(attachments.consume).not.toHaveBeenCalled();
+  });
+
+  it("gives Send back with the text kept when the server never answers the send", async () => {
+    vi.useFakeTimers();
+    try {
+      // A dropped connection: the request goes out and nothing ever comes back.
+      const client = createClient({ userId: "u", fetcher: () => new Promise<Response>(() => {}) });
+      const { result } = renderHook(() => useDraftSend(NS, "s1"));
+      act(() => result.current.setText("hello"));
+
+      act(() => void result.current.submit((line) => client.flow("demo").send("chat", { line }, { sessionId: "s1" })));
+      expect(result.current.sending).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+
+      expect(result.current.sending).toBe(false);
+      expect(result.current.text).toBe("hello");
+      expect(result.current.failure).toBe("The server didn't answer the send within 30 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends nothing from an empty box", async () => {

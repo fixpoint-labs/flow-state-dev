@@ -355,6 +355,42 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Schedule session",
+    means: "The one session every fire of a `per-schedule` schedule runs in. The scheduled dispatch derives its id from the org and user the fire runs as, the flow instance and the schedule id, under the reserved prefix `fsd-schedule.` (colon-free, beside the write session's `fsd-write.`): only the scheduled dispatch creates it or runs in it, and its owner lists and reads it. The flow's `session.retention` caps its history.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "Schedule session option",
+    means: "Where a schedule's fires run: `session: \"per-fire\"` (the default, a one-off run per fire) or `session: \"per-schedule\"` (one schedule session), on a schedule or on `createResourceCollectionScheduleResolver`. A preset, never an id; not the flow's `session` config, which declares the flow's session state and retention.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "oneOffSessionId",
+    means: "The one maker of a one-off session id (`oneOffSessionId()`, from `@flow-state-dev/core/helpers`): a fresh `ephemeral_…` id for a run that is a session of its own. A one-shot send passes it; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it for a run with no session. The prefix is display-only: the navigator folds those sessions under \"One-off runs\" (`isOneOffSessionId`).",
+    decision: "FIX-2907 D3",
+    retires: [],
+  },
+  {
+    term: "session-required",
+    means: "The HTTP action route's refusal of a send that names no session: `400 { error: \"session-required\" }`, before the flow is looked up, the caller resolved or anything written. Every request names its session; the server never makes one up for a caller that could have named it.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "SessionRequiredError",
+    means: "What `runAction`, `createExecutionContext` and `host.dispatch` throw for a run with no session id (code `session-required`), before anything is registered or written. Exported from `@flow-state-dev/engine/host`.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "legacy-sessionless-request",
+    means: "The refusal of running again a request recorded before every request named its session (`LegacySessionlessRequestError`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake or a queued job. Such a record is still read and stopped; a stop settles a parked one `aborted` without running it.",
+    decision: "FIX-2907",
+    retires: [],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",
@@ -997,16 +1033,19 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/one-conversation-model\.md$/,
+    releaseNote: true,
     rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
     why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
   },
   {
     path: /^\.changeset\/(retired-names-(contracts|react)|no-compat-engine)\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's",
   },
@@ -1310,6 +1349,7 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/no-compat-[\w-]+\.md$/,
+    releaseNote: true,
     rules: ["question-hold-names", "task-tool-names", "handoff-symbol-in-docs", "message-budget"],
     why: "FIX-2454: the release notes that list what was removed, by its old name, so a consumer can find the uses to delete",
   },
@@ -1649,25 +1689,39 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Every exemption its author flagged `releaseNote: true`, of any check: the path names pending
+ * changesets and nothing else. The guard holds each to that against the tracked tree.
+ */
+export const RELEASE_NOTE_EXEMPTIONS = EXEMPTIONS.filter((e) => e.releaseNote === true);
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
 /**
  * A sweep-shaped exemption that keeps a bare retirement keeps it for the guard too, so one
  * exemption gives both checks one answer (D2): in the files it names, on the lines it keeps,
- * the guard strips the retired name.
+ * the guard strips the retired name. Exported so the guard's control builds its plants the
+ * same way the glossary's own exemptions are built.
+ * @param {{ path: RegExp, rules: string[], why: string, line?: RegExp, releaseNote?: boolean }} e
+ * @param {string} id
  */
-const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) => {
-  const terms = e.rules.filter((id) => BARE.has(id));
+export function sharedGuardExemption(e, id) {
+  const terms = e.rules.filter((rule) => BARE.has(rule));
   const res = GUARD_TERMS.filter((t) => terms.includes(t.id)).map((t) => t.re);
   return {
-    id: `shared-${i}-${terms.join("+")}`,
+    id,
     terms,
     why: e.why,
+    releaseNote: e.releaseNote === true,
     where: (path) => e.path.test(path),
     strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
   };
-});
+}
+
+const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) =>
+  sharedGuardExemption(e, `shared-${i}-${e.rules.filter((id) => BARE.has(id)).join("+")}`),
+);
 export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
 export const TREE_EXEMPTIONS = byCheck("tree");

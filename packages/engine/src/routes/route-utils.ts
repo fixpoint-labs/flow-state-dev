@@ -2,6 +2,7 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
+import { LegacySessionlessRequestError } from "../context/record-session";
 import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
   extractBareTopic,
@@ -151,6 +152,16 @@ export function sessionCreateRefusedResponse(error: SessionCreateRefusedError): 
  */
 export function unknownRequestResponse(requestId: string): Response {
   return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
+ * What a route that would run a request again answers for one recorded with
+ * no session (before every request named its session): refused by name, and
+ * the record is left as it is. See `context/record-session.ts`.
+ */
+export function legacySessionlessResponse(seam: string): Response {
+  const refused = new LegacySessionlessRequestError(seam);
+  return jsonResponse(409, { error: refused.reason, message: refused.message });
 }
 
 /**

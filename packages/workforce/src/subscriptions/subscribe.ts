@@ -35,6 +35,7 @@ import type { RoutineMaker } from "../routines/listed-routine";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import {
+  botsHandedOn,
   indexKeyOf,
   indexSlotOf,
   listedScreenSchema,
@@ -173,6 +174,14 @@ export interface SubscribeWrite {
   // FIX-2784; FIX-2535 D3.
   /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
   readonly hearsClose?: true;
+  // FIX-2873.
+  /**
+   * The custom screen any bot sender is handed on to, past the sender screen, which then decides:
+   * a host's follow whose own screen admits bots (`githubTrustedReviewers().follow`). The input must
+   * list that custom screen, or the write is refused. Never a model's input: `SubscribeInput` has no
+   * such field, and a later write that doesn't list the screen drops it.
+   */
+  readonly botsScreenedBy?: string;
   /**
    * The task it is made for, when the session's own state names none (a coding run in a session
    * that works many tasks): that task's failure or cancel ends it. Wins over the session's.
@@ -217,8 +226,28 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
   // request it follows lands on the same subscription): its close stays heard and, when the write names no
   // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
   const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
+  // FIX-2873: a rewrite of a follow keeps the screens the host installed (`hostScreens`, such as the
+  // trusted reviewers' list screen) and takes the new write's; an earlier rewrite's own screens drop. It
+  // never takes outsiders the follow didn't. So a session can narrow what its follow hears, never widen
+  // it past the host's screens.
+  const hostScreens = keepsFollow ? (current.hostScreens ?? current.screens) : [];
+  const keptScreens = keepsFollow ? [...hostScreens, ...asked.screens.filter((listed) => !hostScreens.some((had) => JSON.stringify(had) === JSON.stringify(listed)))] : asked.screens;
+  // Its bots stay handed on to its screen only while the write still lists that screen.
+  // Pinned by test/subscriptions-bot-admission.test.ts (a rewrite without the screen, a stale index entry, a restored row).
+  const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: keptScreens }) : undefined;
+  const { outsiders: _asked, ...narrowed } = asked;
   const wanted = keepsFollow
-    ? { ...asked, hearsClose: true as const, ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}) }
+    ? {
+        ...narrowed,
+        screens: keptScreens,
+        ...(asked.outsiders === true && current.outsiders === true ? { outsiders: true as const } : {}),
+        hearsClose: true as const,
+        ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}),
+        ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots }),
+        // A follow stays as current or as legacy as it was: only the server's follow write marks one.
+        ...(current.followRev === 2 ? { followRev: 2 as const } : {}),
+        hostScreens
+      }
     : asked;
   if (life === "fresh") return wanted;
   if (life === "resume") {
@@ -264,6 +293,8 @@ export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
   screens: row.screens,
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
+  ...(row.botsScreenedBy === undefined ? {} : { botsScreenedBy: row.botsScreenedBy }),
+  ...(row.followRev === undefined ? {} : { followRev: row.followRev }),
   ...(row.self === undefined ? {} : { self: row.self }),
   ...(row.unmatched === true ? { unmatched: true as const } : {}),
   ...(row.hearsClose === true ? { hearsClose: true as const } : {}),
@@ -400,6 +431,9 @@ async function writeSubscription(
   if ("refused" in hears) return hears;
   const settings = subscriptionInputRefusal(providers, input);
   if (settings !== undefined) return { refused: settings };
+  if (write.botsScreenedBy !== undefined && botsHandedOn({ botsScreenedBy: write.botsScreenedBy, screens: input.screens ?? [] }) === undefined) {
+    return { refused: `no_screen: bots are handed on to "${write.botsScreenedBy}", which this subscription doesn't list.` };
+  }
   const thread = input.thread.trim();
   const provider = providers.find((p) => p.provider === input.provider)!;
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
@@ -427,6 +461,7 @@ async function writeSubscription(
     ...(input.kinds === undefined ? {} : { kinds: input.kinds }),
     screens: input.screens ?? [],
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
+    ...(write.botsScreenedBy === undefined ? {} : { botsScreenedBy: write.botsScreenedBy }),
     ...(self === undefined ? {} : { self }),
     ...(input.unmatched === true ? { unmatched: true as const } : {}),
     ...(input.everyMinutes === undefined ? {} : { everyMinutes: input.everyMinutes }),
@@ -435,7 +470,7 @@ async function writeSubscription(
     flow: flowKind ?? "",
     worker: hears.worker,
     ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
-    ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
+    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const, hostScreens: input.screens ?? [] } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.

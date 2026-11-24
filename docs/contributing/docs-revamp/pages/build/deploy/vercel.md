@@ -6,7 +6,7 @@ description: "How to deploy a flow-state-dev Next.js application to Vercel."
 
 # Deploy to Vercel
 
-How to deploy a flow-state-dev Next.js application to Vercel. The `@flow-state-dev/vercel` package mounts the API on a Next.js route and keeps streamed responses from being buffered. Vercel functions lose their disk between invocations, so the recipe also moves your data to Postgres.
+The `@flow-state-dev/vercel` package mounts the API on a Next.js route and keeps streamed responses from being buffered. Vercel functions lose their disk between invocations, so the recipe also moves your data to Postgres.
 
 If you haven't set up a Next.js project with the framework yet, start with [Add to an existing app](../../start/add-to-an-existing-app.md).
 
@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 
 Write the three config lines as literal `export const` declarations. Re-exports such as `export { runtime } from "..."` don't work, because Next.js reads them at build time. `dynamic` stops Next.js caching the stream routes. `maxDuration` is the longest a function may run, in seconds. Your Vercel plan's limit wins if it is lower.
 
-Those lines are one part of what keeps a long reply streaming. While a stream is open, the engine sends a `: ping` comment every 15 seconds, and the adapter's headers (below) stop Vercel's proxy holding the stream back.
+While a stream is open, the engine sends a `: ping` comment every 15 seconds, and the adapter's headers (below) stop Vercel's proxy holding the stream back.
 
 A `[...path]` catch-all needs at least one segment, so the bare `/api/flows` listing endpoint needs its own route. `createVercelBareHandler` takes a function that returns the router:
 
@@ -82,7 +82,32 @@ export const flowstate = createFlowState({
 
 Options are in the [runtime reference](../../reference/runtime.md).
 
-## 4. Set environment variables
+## 4. Require a credential
+
+The handlers refuse every request with a 500 while a flow takes its `userId` from the request body. Give the flow a `resolvePrincipal` that checks a credential. A shared secret is enough to start:
+
+```ts title="flows/my-flow/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { chatPipeline } from "./blocks/chat-pipeline";
+
+const myFlow = defineFlow({
+  kind: "my-flow",
+  authentication: {
+    resolvePrincipal: createBearerSecretPrincipalResolver({
+      secret: process.env.FLOW_API_SECRET ?? "",
+      principal: { userId: "smoke-test", orgId: "my-org" },
+    }),
+  },
+  actions: { chat: { block: chatPipeline } },
+});
+
+export default myFlow();
+```
+
+Runs and session reads need the secret; `/healthz`, the flow list and `/api/flows/capabilities` answer without it. An empty secret throws when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
+
+## 5. Set environment variables
 
 In your Vercel project, open Settings, Environment Variables, and add:
 
@@ -90,11 +115,12 @@ In your Vercel project, open Settings, Environment Variables, and add:
 AI_GATEWAY_API_KEY=...
 FSD_DB_URL=postgresql://...
 FSD_ENV=prod
+FLOW_API_SECRET=...
 ```
 
-Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). Make `FSD_DB_URL` available to builds as well as at runtime: the migration in step 5 reads it during the build. See the [environment reference](../../reference/environment.md).
+Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Make `FLOW_API_SECRET` a long random value. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). Make `FSD_DB_URL` available to builds as well as at runtime: the migration in step 6 reads it during the build. See the [environment reference](../../reference/environment.md).
 
-## 5. Create the schema at build time
+## 6. Create the schema at build time
 
 `vercelPostgresStores()` skips schema setup. Create the tables in the build, so cold starts don't pay for it.
 
@@ -130,21 +156,23 @@ Run it with `tsx`. Plain `node` can't load the package.
 
 Without a database URL the script exits cleanly, so previews with no database build normally. With one, a failed migration fails the build.
 
-## 6. Deploy
+## 7. Deploy
 
 Run `vercel --prod`, or push to the repository Vercel is connected to. In a monorepo, set the project's Root Directory to your app's folder.
 
-## 7. Verify
+## 8. Verify
 
 ```bash
 curl https://your-app.vercel.app/api/flows
 
 curl -X POST https://your-app.vercel.app/api/flows/my-flow/actions/chat \
+  -H "Authorization: Bearer $FLOW_API_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"userId": "test", "input": {"message": "Hello"}}'
+  -d '{"input": {"message": "Hello"}}'
 
 # Use the requestId from the response above
-curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream
+curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream \
+  -H "Authorization: Bearer $FLOW_API_SECRET"
 ```
 
 ## Limits

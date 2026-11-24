@@ -28,7 +28,8 @@ export interface DispatchEnvelope {
   actionName: string;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /** The session the run lands in: always set by the host, which refuses an envelope with none. */
+  sessionId: string;
   // FIX-1442.
   /**
    * The organization the run belongs to. Required: a runner

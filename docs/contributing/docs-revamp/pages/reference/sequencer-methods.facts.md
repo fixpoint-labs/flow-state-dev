@@ -354,3 +354,8 @@ The checkpoint row is about `durable` and belongs on the durability pages; carry
 - Dropped: `onCompleted` not running on a `connectOutput` copy (unconfirmed as intended, section 10); `mapModelOutput` (belongs with tools and generators); `ctx.wasRescued` and `.asTool()` (other pages); the `parallel` last-writer-wins claim (`cn:26-56`, unverified); `durable` checkpoint row (durability page).
 - Words are over what a concept page would carry because a reference has no budget; tables hold at six rows or fewer, by grouping methods.
 - No figure: the sitemap entry briefs none.
+
+## Order lookup scoped to the caller
+
+- **A handler's `ctx.session.identity` carries the resolved `userId` and `orgId`.** `BlockContext.session` is a `SessionScopeHandle` (`packages/core/src/types/block.ts:353`), whose `identity` is a `ScopeIdentity` (`packages/core/src/types/scope.ts:298`) with optional `userId` and `orgId` (`packages/core/src/types/scope.ts:9-13`). The engine fills both from the loaded session record (`packages/engine/src/context/createExecutionContext.ts:3313-3320`) and refuses a request whose `userId` is not that record's (`packages/engine/src/context/createExecutionContext.ts:1056-1058`), so the value is the caller's, never input. **[test]** `packages/integration-tests/src/two-users-one-tenant/cross-flow-admission.test.ts:61-62` reads both off `ctx.session.identity` in a handler. **[page: code only]**
+- **Stand-in `findOrder(orderId, caller)`** from `src/lib/orders.ts`, `caller` being `{ userId?, orgId? }`; it returns `undefined` for an order the caller does not own, which the example's not-found branch handles. **[names only]**

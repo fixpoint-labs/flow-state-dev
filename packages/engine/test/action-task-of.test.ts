@@ -14,6 +14,7 @@ import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const input = z.object({ message: z.string(), taskId: z.string().optional() });
 type Input = z.infer<typeof input>;
@@ -205,6 +206,7 @@ describe("ActionCore.taskOf", () => {
       leases: stores.leases
     });
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: resumable,
       actionName: "respond",

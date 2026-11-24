@@ -60,8 +60,8 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 const workspace = localWorkspaceHost({
   root: "./runs",
   remotes: { allow: [] },
-  localRepositories: ["."],
-  source: () => ({ kind: "repo", repo: "." }),
+  localRepositories: [process.cwd()],
+  source: () => ({ kind: "repo", repo: process.cwd() }),
 });
 
 export default createFlowState({

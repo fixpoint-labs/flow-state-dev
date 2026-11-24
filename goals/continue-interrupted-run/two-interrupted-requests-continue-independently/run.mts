@@ -31,6 +31,7 @@ import {
   type FlowRegistry,
   type Stores,
 } from "../../lib/index.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 // No generator/model intents declared by these flows (see goal.md's Model
 // field); clear pinned overrides so createModelResolver doesn't throw.
@@ -78,6 +79,7 @@ async function runToInterrupted(
   runtimeConfig: unknown,
 ): Promise<{ requestId: string; failures: string[] }> {
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",

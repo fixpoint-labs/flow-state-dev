@@ -265,7 +265,7 @@ The three framework-internal callers that depend on items in listings are alread
 
 ### Skipping runtime schema init
 
-Schema init runs ~30 idempotent DDL statements plus a Postgres advisory-lock acquisition every time `createPostgresStores` is called. On serverless platforms (Vercel, Lambda) that's once per cold start, adding noticeable latency to the first request after a function spins up.
+Schema init runs ~30 idempotent DDL statements plus a Postgres advisory-lock acquisition every time `createPostgresStores` is called. On serverless platforms such as Vercel that's once per cold start, adding noticeable latency to the first request after a function spins up.
 
 To skip it at runtime, run migrations as a separate deploy step and pass `skipSchemaInit: true`:
 

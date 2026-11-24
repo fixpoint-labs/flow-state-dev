@@ -13,6 +13,7 @@
  * Prints `human-approval: ok`, or `human-approval: FAIL at <step>: …`.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { z } from "zod";
@@ -72,7 +73,7 @@ try {
   const res = await fetch(`${base}/api/flows/goal-human-approval/actions/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: "goal-user", input: {} }),
+    body: JSON.stringify({ userId: "goal-user", sessionId: oneOffSessionId(), input: {} }),
   });
   if (!res.ok) throw new Error(`action ${res.status}: ${(await res.text()).slice(0, 300)}`);
   for (let i = 0; i < 100 && !seen; i += 1) await new Promise((r) => setTimeout(r, 50));

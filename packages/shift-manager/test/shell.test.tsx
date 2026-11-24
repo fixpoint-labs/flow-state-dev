@@ -238,9 +238,10 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
+    // The page's origin before the worker's ask: that ask goes through the page's fetch, and only a same-origin read passes.
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await workerAction(client, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     beforeRender?.();
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const item = await screen.findByTestId("inbox-item");
@@ -416,10 +417,10 @@ describe("Jump to a declared document (BR-10)", () => {
   it("finds the Lab's document by name and opens it read-only, with the file's body", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     // A worker session, before the page boots, makes a flow that serves the document listable.
     await workerAction(client, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
 
     await screen.findByTestId("jump-tip");
@@ -445,11 +446,11 @@ describe("Shift Coordinator (FIX-1722)", () => {
   async function openShiftCoordinator(path: string, options: Parameters<typeof openAskLab>[0] = {}, asks = 0) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
+    setURL(`${lab.baseUrl}${path}`);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     for (let i = 0; i < asks; i += 1) {
       await workerAction(client, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
     }
-    setURL(`${lab.baseUrl}${path}`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     await screen.findByTestId("shift-coordinator");
     return { lab, client };
@@ -683,6 +684,7 @@ describe("Shift Coordinator (FIX-1722)", () => {
   it("takes no line until the conversation has been read, and Retry keeps it shut until a read succeeds", async () => {
     const lab = await serveLab((await openAskLab({ shiftCoordinator: true })).flowState);
     served.push(lab);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await workerAction(client, "ops.shift-coordinator", "respond", { message: "earlier" }, SHIFT_COORDINATOR_CONVERSATION);
     let release!: () => void;
@@ -698,7 +700,6 @@ describe("Shift Coordinator (FIX-1722)", () => {
       }
       return real(i, init);
     });
-    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     // The address is worked out before the read starts; the composer stays shut throughout.
@@ -763,6 +764,7 @@ describe("Shift Coordinator (FIX-1722)", () => {
   it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     // A worker session, so there are asks to read.
     await workerAction(connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
@@ -774,7 +776,6 @@ describe("Shift Coordinator (FIX-1722)", () => {
       }
       return real(i, init);
     });
-    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const asks = await screen.findByTestId("shift-coordinator-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);

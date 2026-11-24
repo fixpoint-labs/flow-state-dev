@@ -52,6 +52,10 @@ Written by `docs-writer` (sonnet), 7608 words. Scenario: The support desk: a `su
 
 - After the loop (review): the R-27 depth pass added that `codingDrainBudgetMs` computes a coding run's drain budget to the `dispatchDrainTimeoutMs` row. Checked against packages/engine/src/flowstate/createFlowState.ts:151, 669-700 and packages/harness-manager/src/kit/coder-flow.ts:177-191: true. 3698 words. Page sha256 43ed16ac0360.
 
+- After the Reference rows moved from B-07 landed (and the fact-check corrections below): check-docs-page and brand lint pass; no TypeScript example changed. 3717 words. Page sha256 91fc8e709dbe.
+
+- After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 3717 words. Page sha256 2c5c9bca41ac.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c4d4f35afcc0, and the 29 Reference row(s) pass 6 moved.
@@ -77,6 +81,10 @@ Final fact check of the page as it closed, sha256 6726a59441ed: 7 untrue, fixed 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 - Re-run after the review edit: a code reader checked the moved lines against the code; no untrue claim remains open.
+
+- Re-run on the rows moved from B-07: every added or changed line checked against packages/ by a read-only code reader. Untrue or imprecise claims corrected on the page before commit: none; Node 22 (`packages/engine/package.json:101`). No untrue claim remains open.
+
+- Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

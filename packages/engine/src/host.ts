@@ -193,6 +193,7 @@ export {
   type QueueWaitStep,
   resolveInProcessPrincipal,
   type RunnerHandle,
+  SessionRequiredError,
   type SlackWebhookVerifierOptions,
   type StreamBridge,
   type StreamBridgeEvent,
@@ -227,6 +228,7 @@ export {
 export { type OwnedRecord, ownsRecord } from "./context/record-owner";
 export { type InstancePinCaller, pinRejectsCaller } from "./context/instance-pin";
 export { isOrgAttributed, UnattributedOrgError } from "./context/org-attribution";
+export { LEGACY_SESSIONLESS_REQUEST, LegacySessionlessRequestError } from "./context/record-session";
 export {
   type DurabilityProvider,
   type Lease,

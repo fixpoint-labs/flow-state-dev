@@ -11,7 +11,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { isValidOrgId } from "@flow-state-dev/core";
-import { OrgRequiredError } from "../transports/errors";
+import { OrgRequiredError, SessionRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
@@ -105,7 +105,7 @@ import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { ownTaskOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
-import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
+import { requestEndRegistryOf } from "./request-end-hooks";
 import { holdInterruptedEnding } from "./request-spend-ledger";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
@@ -1166,6 +1166,13 @@ async function runActionAttempt<
   if (!isValidOrgId(options.orgId)) {
     throw new OrgRequiredError(options.flow.kind, "runAction");
   }
+  // Every run names its session (the convergence point every writer passes
+  // through): refused here, before anything is registered or written, for a
+  // caller the required type does not reach. The engine never makes one up;
+  // an entry point with no conversation makes a one-off id before it gets here.
+  if (typeof options.sessionId !== "string" || options.sessionId.length === 0) {
+    throw new SessionRequiredError(options.flow.kind, "runAction");
+  }
 
   // Always set by `runActionInternal`.
   const requestId = options.requestId as string;
@@ -1282,23 +1289,18 @@ async function runActionAttempt<
   // heartbeat under its id, no auto-resume target moved, no adoption. The
   // create-race winner is re-checked in `createExecutionContext`, which is the
   // only place a record this run did not load can appear.
-  const sessionKey =
-    options.sessionId !== undefined
-      ? resolveSessionStorageKey(options.sessionId, options.tenantId)
-      : undefined;
+  const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
   const [admittedSession, admittedRequest] = await Promise.all([
-    sessionKey !== undefined ? options.stores.session.get(sessionKey) : undefined,
+    options.stores.session.get(sessionKey),
     options.stores.request.get(requestId)
   ]);
   // Another user's session, then another flow instance's: a session id is an
   // address, and the caller learns nothing of a session that is not theirs.
-  if (options.sessionId !== undefined) {
-    assertSessionAdmitted(options.flow, admittedSession, {
-      sessionId: options.sessionId,
-      userId: options.userId,
-      tenantId: options.tenantId
-    });
-  }
+  assertSessionAdmitted(options.flow, admittedSession, {
+    sessionId: options.sessionId,
+    userId: options.userId,
+    tenantId: options.tenantId
+  });
   // A session this run would bring into existence, on a flow that checks its
   // creates: refused here, at the door, with nothing registered or written.
   // Two layers on purpose, so neither can be optimized away: this refuses
@@ -1308,7 +1310,7 @@ async function runActionAttempt<
   if (admittedSession === undefined && options.flow.session?.createCheck !== undefined) {
     await checkSessionCreate(options.stores, {
       flow: options.flow,
-      sessionId: options.sessionId ?? "",
+      sessionId: options.sessionId,
       principal: {
         userId: options.userId,
         orgId: options.orgId,
@@ -1524,108 +1526,106 @@ async function runActionAttempt<
   };
 
   // --- Update session's latestRequestId for auto-resume discovery ---
-  if (options.sessionId !== undefined && sessionKey !== undefined) {
-    try {
-      // Tenant-namespaced key (FIX-682) so this lands on the same record the
-      // execution context reads/writes; a bare key would miss a tenant session.
-      // Re-read rather than reusing the admission load above: the incarnation
-      // guard below compares against the record as it is NOW, after this run
-      // has registered, which is the moment a replacement session becomes
-      // visible.
-      const session = await options.stores.session.get(sessionKey);
+  try {
+    // Tenant-namespaced key (FIX-682) so this lands on the same record the
+    // execution context reads/writes; a bare key would miss a tenant session.
+    // Re-read rather than reusing the admission load above: the incarnation
+    // guard below compares against the record as it is NOW, after this run
+    // has registered, which is the moment a replacement session becomes
+    // visible.
+    const session = await options.stores.session.get(sessionKey);
 
-      // INCARNATION GUARD for a delivery into an existing session, and it sits
-      // here for the reason the tenant guard below makes plain.
-      //
-      // The seam's checks — owner, tenant, org, flow boundary — all read the
-      // recipient's record BEFORE this dispatch. Acceptance and execution are
-      // not the same moment: a delivery can be accepted, sit behind a held
-      // concurrency key, and run later, in a plain single-process deployment. A
-      // recipient session deleted and recreated under the same id in that
-      // window gets a NEW lineage, and nothing downstream re-checks —
-      // `createExecutionContext` validates user, tenant and org bindings and
-      // not parentage. The seam's approval would then execute against a
-      // *replacement* session.
-      //
-      // Placed immediately after the load and before the write, beside the
-      // tenant-binding guard, because the two are the same shape for the same
-      // reason: both compare a property of the just-loaded session against the
-      // request before letting that `latestRequestId` write land. It cannot be
-      // moved earlier: the acceptance-time writes — the `activeRequests` entry
-      // and the `in_progress` stub — happen while the original session is still
-      // alive, so a check placed before them would pass and prove nothing.
-      // Those two are therefore RECONCILED here rather than prevented.
-      //
-      // What this does and does not promise: a mismatch visible here drops the
-      // delivery and reconciles the acceptance-time writes. A recreate landing
-      // AFTER this check is narrower and is not promised against — closing that
-      // needs a predicate CAS the scope store does not have.
-      const stamp = readDispatchStamp(options.source, options.metadata);
-      if (stamp?.recipientLineageId !== undefined) {
-        const actualLineage = resolveLineageId({ id: sessionKey, lineageId: session?.lineageId });
-        if (session === undefined || actualLineage !== stamp.recipientLineageId) {
-          logRuntimeEvent(
-            logger,
-            "warn",
-            "[flow-state] dropping a delivery: the recipient session was replaced between " +
-              "the dispatch and this run",
-            { requestId, sessionId: options.sessionId, flowKind: options.flow.kind }
-          );
-          stopHeartbeatTimer();
-          await reconcileDroppedDelivery(options.stores, requestId);
-          throw new Error(
-            `Delivery "${requestId}" was dropped: session "${options.sessionId}" was deleted ` +
-              "and recreated between the dispatch and this run"
-          );
-        }
-      }
-
-      // Tenant-, user- and organization-binding guards (FIX-682 / FIX-1511):
-      // this write runs before createExecutionContext's binding checks, so
-      // without them a no-tenant caller passing `sessionId = "${tenant}:${id}"`
-      // — or a different user on the same session, or its owner acting for
-      // another organization — would overwrite latestRequestId (an
-      // auto-resume hijack) even though the run then fails.
-      //
-      // An entry declared `autoResume: false` never stamps it either: it is a
-      // control sent beside a running request, which a reattaching client must
-      // still find.
-      //
-      // A delivery into an EXISTING session does not stamp `latestRequestId` at
-      // all. That field serves auto-resume discovery — a client attaching to a
-      // session finds the newest request and attaches its stream — and a
-      // delivery is not caller-addressed, so no client is waiting to resume it;
-      // the recipient's own conversation should not have its auto-resume target
-      // replaced by an inbound dispatch. A derived child is its own session and
-      // keeps the write.
-      //
-      // And only to the session admission read and admitted, owned by this
-      // flow instance: one deleted and created again under the id since, by
-      // anyone and under any flow, is another session, and its pointer is not
-      // this request's to move. A session that arrived after admission found
-      // none is judged here as admission would have judged it.
-      if (
-        action.autoResume !== false &&
-        stamp?.recipientLineageId === undefined &&
-        session !== undefined &&
-        (admittedSession === undefined || isSameSession(admittedSession, session)) &&
-        ownsRecord(options.flow, session) &&
-        tenantMatches(session.tenantId, options.tenantId) &&
-        session.userId === options.userId &&
-        isValidOrgId(session.orgId) &&
-        session.orgId === options.orgId
-      ) {
-        await options.stores.session.set(
-          sessionKey,
-          { ...session, latestRequestId: requestId, updatedAt: Date.now() },
-          "any"
+    // INCARNATION GUARD for a delivery into an existing session, and it sits
+    // here for the reason the tenant guard below makes plain.
+    //
+    // The seam's checks — owner, tenant, org, flow boundary — all read the
+    // recipient's record BEFORE this dispatch. Acceptance and execution are
+    // not the same moment: a delivery can be accepted, sit behind a held
+    // concurrency key, and run later, in a plain single-process deployment. A
+    // recipient session deleted and recreated under the same id in that
+    // window gets a NEW lineage, and nothing downstream re-checks —
+    // `createExecutionContext` validates user, tenant and org bindings and
+    // not parentage. The seam's approval would then execute against a
+    // *replacement* session.
+    //
+    // Placed immediately after the load and before the write, beside the
+    // tenant-binding guard, because the two are the same shape for the same
+    // reason: both compare a property of the just-loaded session against the
+    // request before letting that `latestRequestId` write land. It cannot be
+    // moved earlier: the acceptance-time writes — the `activeRequests` entry
+    // and the `in_progress` stub — happen while the original session is still
+    // alive, so a check placed before them would pass and prove nothing.
+    // Those two are therefore RECONCILED here rather than prevented.
+    //
+    // What this does and does not promise: a mismatch visible here drops the
+    // delivery and reconciles the acceptance-time writes. A recreate landing
+    // AFTER this check is narrower and is not promised against — closing that
+    // needs a predicate CAS the scope store does not have.
+    const stamp = readDispatchStamp(options.source, options.metadata);
+    if (stamp?.recipientLineageId !== undefined) {
+      const actualLineage = resolveLineageId({ id: sessionKey, lineageId: session?.lineageId });
+      if (session === undefined || actualLineage !== stamp.recipientLineageId) {
+        logRuntimeEvent(
+          logger,
+          "warn",
+          "[flow-state] dropping a delivery: the recipient session was replaced between " +
+            "the dispatch and this run",
+          { requestId, sessionId: options.sessionId, flowKind: options.flow.kind }
+        );
+        stopHeartbeatTimer();
+        await reconcileDroppedDelivery(options.stores, requestId);
+        throw new Error(
+          `Delivery "${requestId}" was dropped: session "${options.sessionId}" was deleted ` +
+            "and recreated between the dispatch and this run"
         );
       }
-    } catch (setupError) {
-      // Pre-controller window — see `stopHeartbeatTimer`.
-      stopHeartbeatTimer();
-      throw setupError;
     }
+
+    // Tenant-, user- and organization-binding guards (FIX-682 / FIX-1511):
+    // this write runs before createExecutionContext's binding checks, so
+    // without them a no-tenant caller passing `sessionId = "${tenant}:${id}"`
+    // — or a different user on the same session, or its owner acting for
+    // another organization — would overwrite latestRequestId (an
+    // auto-resume hijack) even though the run then fails.
+    //
+    // An entry declared `autoResume: false` never stamps it either: it is a
+    // control sent beside a running request, which a reattaching client must
+    // still find.
+    //
+    // A delivery into an EXISTING session does not stamp `latestRequestId` at
+    // all. That field serves auto-resume discovery — a client attaching to a
+    // session finds the newest request and attaches its stream — and a
+    // delivery is not caller-addressed, so no client is waiting to resume it;
+    // the recipient's own conversation should not have its auto-resume target
+    // replaced by an inbound dispatch. A derived child is its own session and
+    // keeps the write.
+    //
+    // And only to the session admission read and admitted, owned by this
+    // flow instance: one deleted and created again under the id since, by
+    // anyone and under any flow, is another session, and its pointer is not
+    // this request's to move. A session that arrived after admission found
+    // none is judged here as admission would have judged it.
+    if (
+      action.autoResume !== false &&
+      stamp?.recipientLineageId === undefined &&
+      session !== undefined &&
+      (admittedSession === undefined || isSameSession(admittedSession, session)) &&
+      ownsRecord(options.flow, session) &&
+      tenantMatches(session.tenantId, options.tenantId) &&
+      session.userId === options.userId &&
+      isValidOrgId(session.orgId) &&
+      session.orgId === options.orgId
+    ) {
+      await options.stores.session.set(
+        sessionKey,
+        { ...session, latestRequestId: requestId, updatedAt: Date.now() },
+        "any"
+      );
+    }
+  } catch (setupError) {
+    // Pre-controller window — see `stopHeartbeatTimer`.
+    stopHeartbeatTimer();
+    throw setupError;
   }
 
   // --- Incremental item persistence + sequencer checkpoint durability ---
@@ -2387,13 +2387,10 @@ async function runActionAttempt<
     // request's registry as a block's `onRequestEnded` would add it. Before
     // the startup observers, so what they spend is handed on too, and a
     // failed startup ends through it below. Its writes record what the
-    // request spent, so an explicit abort doesn't stop them; every other
-    // hook's writes still stop on one.
+    // request spent, so an explicit abort doesn't stop them
+    // (`writesOutliveAbort`); a hook added without it still stops on one.
     const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
-    if (sessionEndHook !== undefined) {
-      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
-      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
-    }
+    if (sessionEndHook !== undefined) onRequestEnded(ctx, sessionEndHook, { writesOutliveAbort: true });
 
     await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
@@ -2936,7 +2933,7 @@ async function runActionAttempt<
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
 
       // Retention eviction: remove old request records if session exceeds limits
-      if (options.sessionId !== undefined && resolvedRetention !== undefined) {
+      if (resolvedRetention !== undefined) {
         try {
           await applyRetentionPolicy(
             options.stores,

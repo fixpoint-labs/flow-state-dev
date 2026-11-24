@@ -24,6 +24,7 @@ import {
   createInMemoryStores
 } from "@flow-state-dev/engine/host";
 import { z } from "zod";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const out = (r: unknown) => console.log("__GOAL__" + JSON.stringify(r));
 
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
 
   // 1. dispatch — the real model should call publish_document, which suspends.
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",

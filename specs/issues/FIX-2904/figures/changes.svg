@@ -1,0 +1,110 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="Six worktrees, two ways to decide which to remove. Ancestry alone removes a merge-commit merge, keeps a squash merge it should remove, and removes a worker that has just started, which it should keep. The proposed rule removes the merge-commit merge and the squash merge, and keeps the new worker, the merged branch with more commits on top, the one with uncommitted changes, and the one a run is working in."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.3; }
+    .keep  { fill:var(--surface); stroke:var(--rule); stroke-width:1.3; stroke-dasharray:5 4; }
+    .col   { fill:var(--accent-soft); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-keep{ fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="12" width="908" height="44" rx="6"/>
+    <text class="t-lbl" x="32" y="30">THE WORKTREE</text>
+    <text class="t-h" x="32" y="48">What state it is in</text>
+    <text class="t-lbl" x="372" y="30">THE OBVIOUS RULE, NOT TAKEN</text>
+    <text class="t-h" x="372" y="48">Reachable from main</text>
+    <text class="t-lbl" x="664" y="30">THIS SPEC</text>
+    <text class="t-h" x="664" y="48">Merged, proven, and nothing past it</text>
+  </g>
+
+  <g id="column-this-spec">
+    <rect class="col" x="648" y="62" width="276" height="350" rx="6" opacity="0.35"/>
+  </g>
+
+  <g id="row-merge-commit">
+    <text class="t-b" x="32" y="92">Merged by a merge commit</text>
+    <text class="t-s" x="32" y="109">the repository's usual way</text>
+    <rect class="ok" x="356" y="76" width="272" height="42" rx="5"/>
+    <text class="t-ok" x="370" y="94">Removed</text>
+    <text class="t-s" x="370" y="110">right</text>
+    <rect class="ok" x="660" y="76" width="252" height="42" rx="5"/>
+    <text class="t-ok" x="674" y="94">Removed</text>
+    <text class="t-s" x="674" y="110">a merge commit holds its tip</text>
+    <line class="row" x1="16" y1="128" x2="924" y2="128"/>
+  </g>
+
+  <g id="row-squash">
+    <text class="t-b" x="32" y="152">Merged by squash or rebase</text>
+    <text class="t-s" x="32" y="169">the branch's commits never reach main</text>
+    <rect class="bad" x="356" y="136" width="272" height="42" rx="5"/>
+    <text class="t-bad" x="370" y="154">Kept, forever</text>
+    <text class="t-s" x="370" y="170">disk never comes back</text>
+    <rect class="ok" x="660" y="136" width="252" height="42" rx="5"/>
+    <text class="t-ok" x="674" y="154">Removed</text>
+    <text class="t-s" x="674" y="170">GitHub says merged; nothing past it</text>
+    <line class="row" x1="16" y1="188" x2="924" y2="188"/>
+  </g>
+
+  <g id="row-fresh">
+    <text class="t-b" x="32" y="212">A worker has just started</text>
+    <text class="t-s" x="32" y="229">branch at the base, no commits yet</text>
+    <rect class="bad" x="356" y="196" width="272" height="42" rx="5"/>
+    <text class="t-bad" x="370" y="214">Removed</text>
+    <text class="t-s" x="370" y="230">takes a worker's start from under it</text>
+    <rect class="keep" x="660" y="196" width="252" height="42" rx="5"/>
+    <text class="t-keep" x="674" y="214">Kept</text>
+    <text class="t-s" x="674" y="230">nothing says its work merged</text>
+    <line class="row" x1="16" y1="248" x2="924" y2="248"/>
+  </g>
+
+  <g id="row-more">
+    <text class="t-b" x="32" y="272">Merged, then more commits on top</text>
+    <text class="t-s" x="32" y="289">the worker kept going</text>
+    <rect class="keep" x="356" y="256" width="272" height="42" rx="5"/>
+    <text class="t-keep" x="370" y="274">Kept</text>
+    <text class="t-s" x="370" y="290">the new tip is not reachable</text>
+    <rect class="keep" x="660" y="256" width="252" height="42" rx="5"/>
+    <text class="t-keep" x="674" y="274">Kept</text>
+    <text class="t-s" x="674" y="290">commits past the merged head</text>
+    <line class="row" x1="16" y1="308" x2="924" y2="308"/>
+  </g>
+
+  <g id="row-dirty">
+    <text class="t-b" x="32" y="332">Merged, with uncommitted changes</text>
+    <text class="t-s" x="32" y="349">files that exist nowhere else</text>
+    <rect class="keep" x="356" y="316" width="272" height="42" rx="5"/>
+    <text class="t-keep" x="370" y="334">Refused by remove</text>
+    <text class="t-s" x="370" y="350">as today</text>
+    <rect class="keep" x="660" y="316" width="252" height="42" rx="5"/>
+    <text class="t-keep" x="674" y="334">Kept, and named</text>
+    <text class="t-s" x="674" y="350">the output says why</text>
+    <line class="row" x1="16" y1="368" x2="924" y2="368"/>
+  </g>
+
+  <g id="row-busy">
+    <text class="t-b" x="32" y="392">A run is working in it, or it is being made</text>
+    <text class="t-s" x="32" y="409">the worker is there right now</text>
+    <rect class="keep" x="356" y="376" width="272" height="36" rx="5"/>
+    <text class="t-keep" x="370" y="399">Refused by remove, as today</text>
+    <rect class="keep" x="660" y="376" width="252" height="36" rx="5"/>
+    <text class="t-keep" x="674" y="399">Kept, and named</text>
+  </g>
+</svg>

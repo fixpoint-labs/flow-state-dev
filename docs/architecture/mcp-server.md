@@ -170,7 +170,8 @@ JSON-RPC error body with code `-32001`.
 
 - **Stateless by default; opt-in per-action session derivation.** No
   `Mcp-Session-Id` is issued. By default every `tools/call` runs in a fresh
-  ephemeral flow session under `host.dispatch`. An action MAY opt in to a
+  one-off flow session, whose id the adapter makes with `oneOffSessionId()`
+  before `host.dispatch`, so the request record names it from its first write. An action MAY opt in to a
   stable flow session via `ActionMcpConfig.session` (`packages/core`): a
   string template mints a fresh id (`"conv_*"`), or `{ fromInput: field }`
   reads a caller-supplied id, so related calls group into one flow session.

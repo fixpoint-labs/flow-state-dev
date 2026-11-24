@@ -223,6 +223,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test scripts/check-cut-readmes.test.mjs
 
+      # One fragment that changeset version can't parse, or that names a private or
+      # unknown package, fails it for the whole release. Here because it reads the
+      # fragments with Changesets' own parser, which needs the install.
+      - name: Pending changesets parse and name published packages only
+        if: ${{ !cancelled() }}
+        run: node scripts/validate-publish-set.mjs --changesets
+
       # The retired-term guard lives here because it reads names with the
       # TypeScript parser (FIX-2631 D2), so it needs the install, and its
       # added-names reach is the same per-file ratchet against the same base.
@@ -463,7 +470,8 @@ jobs:
 
       # `private` is the only field `changeset publish` filters on, and an npm
       # name is given away permanently, so the packages we hold back are checked
-      # on every PR and push rather than at release time.
+      # on every PR and push rather than at release time. Its --changesets half
+      # needs the install, so it runs in the Export check job.
       - name: Packages held out of the publish set
         run: node scripts/validate-publish-set.mjs
 

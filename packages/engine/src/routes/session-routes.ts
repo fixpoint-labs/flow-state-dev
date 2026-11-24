@@ -2,6 +2,7 @@
  * Session CRUD route handlers: create, get, list, delete.
  */
 import { isWriteSessionId, ReservedSessionIdError } from "../resources/default-write-flow";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../transports/scheduled/schedule-session-id";
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -50,7 +51,7 @@ import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
 import { sessionBlobOwner } from "../blobs/attachments";
 import { latestRequestStatus } from "./session-request-status";
-import { isPublicReentryAllowed } from "./public-reentry";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -424,6 +425,11 @@ export async function handleCreateSession(
   if (isWriteSessionId(sessionId)) {
     return jsonResponse(400, { error: "reserved-session-id", message: new ReservedSessionIdError(sessionId).message });
   }
+  // FIX-2886: a schedule session is the scheduled dispatch's to create; one a
+  // client made first would refuse every fire of the schedule.
+  if (isScheduleSessionId(sessionId)) {
+    return jsonResponse(400, { error: "reserved-session-id", message: new ScheduleSessionIdError(sessionId).message });
+  }
   const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
 
   // Pre-apply the session state schema's defaults (`z.string().default("...")`,
@@ -654,7 +660,7 @@ export async function handleListSessionRequests(
     requests: requests.map((record) => ({
       ...withListedResult(record, includeResultOutput),
       // FIX-2853: the retry route's own rule, as a session's turns carry it.
-      retryable: isPublicReentryAllowed(record.source, ctx.publicReentrySources)
+      retryable: isRequestPublicReentryAllowed(record, ctx.publicReentrySources)
     }))
   });
 }

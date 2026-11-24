@@ -75,7 +75,7 @@ A skill whose stored `SKILL.md` sets `disable-model-invocation: true`, or a `con
 
 ## Folder rules
 
-`readSkillsDirectory(root, { include?, exclude?, ignore? })` returns `{ skills, errors }`. A skill is `{ name, skillMd, files? }`, and `files` are `{ path, content }`. It reads only the direct children of `root`, as `<root>/<skill>/SKILL.md`.
+`readSkillsDirectory(root, { include?, exclude?, ignore? })` returns `{ skills, errors }`. It is async and Node-only. A skill is `{ name, skillMd, files? }`, and `files` are `{ path, content }`. It reads only the direct children of `root`, as `<root>/<skill>/SKILL.md`.
 
 | Case | Result |
 | --- | --- |
@@ -125,11 +125,11 @@ A skill folder is read when your code calls `readSkillsDirectory`. In a running 
 | | |
 | --- | --- |
 | Owner | Whoever holds the collection's scope: the org by default, one user at `scope: "user"`, one session at `"session"`. An edit to a copy is that holder's own. |
-| Visible to | Everyone in that scope. A client can read, create, update and delete entries. Its snapshot carries `description`, `disableModelInvocation` and, when present, `allowedTools`, `contextMode`, `keywords` and `seededAt`. |
+| Visible to | Everyone in that scope. On a [store that persists](../concepts/persistence.md) copies survive a restart. A client can read, create, update and delete entries. Its snapshot carries `description`, `disableModelInvocation` and, when present, `allowedTools`, `contextMode`, `keywords` and `seededAt`. |
 | Stored | One key per file: `skills/<name>/SKILL.md` and `skills/<name>/<path>`, with `skills` the `prefix`. With `partitionBy`, `skills/<partition>/<name>/...`. |
 | How many | One set per scope holder, per partition, and per flow copy under `flowIsolation`. No cap unless `maxInstances` is set. |
 
-Seeding writes the bundled skills into a collection on its first use, once per collection per process: the first render of a binding, the first call of the load tool or `runSkill`, the activator's seed step, or the first read by the `discover` tool's skills source. It never puts back a skill a holder deleted and never removes a file the source dropped. It leaves an edited copy alone, with one exception: a skill already seeded is written again from the source when its stored `contextMode` is set and is not `inline`, or when the source `SKILL.md` declares a `context` that differs from the stored `contextMode`. A later change to the folder on disk does not reach a collection that already holds the skill.
+Seeding writes the bundled skills into a collection on its first use, once per collection per process: the first render of a binding, the first call of the load tool or `runSkill`, the activator's seed step, or the first read by the `discover` tool's skills source. It never puts back a skill a holder deleted and never removes a file the source dropped. A skill added to the source is copied the next time seeding runs. It leaves an edited copy alone, with one exception: a skill already seeded is written again from the source when its stored `contextMode` is set and is not `inline`, or when the source `SKILL.md` declares a `context` that differs from the stored `contextMode`. A later change to the folder on disk does not reach a collection that already holds the skill.
 
 | Call | Does |
 | --- | --- |
@@ -149,14 +149,14 @@ Seeding writes the bundled skills into a collection on its first use, once per c
 | `scope` | `"org" \| "user" \| "session"` or a resource scope | `"org"` | Where the collection lives. |
 | `collectionConfig` | `{ maxInstances?, prefix?, flowIsolation? }` | none | `maxInstances` caps manifests and files together. `prefix` is the key prefix and the mount path `${SKILL_DIR}` resolves under. `flowIsolation: true` gives each registered copy of the flow its own skill set; it is refused at `scope: "session"`. |
 | `partitionBy` | `(ctx) => string \| undefined` | none | One skill set per partition. Return a non-empty string from data only the server writes. `undefined` means that run reads no skills and its writes throw. `""` or a non-string throws. |
-| `itemVisibility` | visibility or list | none | Limits the capability to blocks with a matching `itemVisibility`. |
+| `itemVisibility` | visibility or list | none | Attaches the skills only to generators whose `itemVisibility` matches. A generator with none set counts as `{ client: true, history: true }`, so that value keeps the skills off a generator marked `{ client: true, history: false }`, such as the `supervisor` pattern's default reviewer. |
 
 A preset is a named switch on the library, set in the same `.with()` call as the binding options. `.with()` takes presets and binding keys in one object; any other key throws.
 
 | Preset | Default | What it does |
 | --- | --- | --- |
-| `dynamicActivation` | off | Installs the `loadSkill` tool. |
-| `catalogContext` | on | Adds a `- name: description` listing of loadable skills to the prompt. Has an effect only with `dynamicActivation`. |
+| `dynamicActivation` | off | Installs the `loadSkill` tool. A turn where the model loads a skill costs one extra model call. |
+| `catalogContext` | on | Adds a `- name: description` listing of loadable skills to every prompt. `catalogContext: false` removes it. Has an effect only with `dynamicActivation`. |
 
 ### Binding options
 
@@ -201,11 +201,11 @@ Skills render before every tool-loop step, so a skill the load tool writes appea
 
 The `tools`, `context` (renders matched skill bodies; no skill appears without it) and `runSkill` (the `runSkill` tool, with a listing of every enabled skill) presets are on by default. Drop one with `.with({ runSkill: false })`. `.with()` and `.presets()` each replace the overrides the other set. Matches are written to a session state field `activeSkills`, which every generator in the session reads. The capability does not clear it between turns; an activator in front of the generator replaces it each turn.
 
-`runSkill` takes `{ name, input? }`. It refuses a name that fails the naming rules, `Unknown skill "<name>". Available: ...` and a skill with `disable-model-invocation: true`.
+A generator with its own `tools:` list gets only those, so it does not receive `runSkill`; `loadSkill` from the library is always delivered. `runSkill` takes `{ name, input? }`. It refuses a name that fails the naming rules, `Unknown skill "<name>". Available: ...` and a skill with `disable-model-invocation: true`.
 
 ## Activator options
 
-`createSkillActivator(options?)` returns a block that passes its input through unchanged and reads `input.message`. Add it with `.tap()` before the generator.
+`createSkillActivator(options?)` returns a block that passes its input through unchanged and reads `input.message`, which must be a string. Add it with `.tap()` before the generator.
 
 | Option | Type | Default | What it does |
 | --- | --- | --- | --- |

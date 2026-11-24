@@ -69,7 +69,7 @@ import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { readSettledTurns } from "./settled-turns";
-import { isPublicReentryAllowed } from "../routes/public-reentry";
+import { isRequestPublicReentryAllowed } from "../routes/public-reentry";
 import type { SessionReadObserver } from "./view-reads";
 
 /** The most turns `history` reads from the store, whatever its limit asks. */
@@ -279,7 +279,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {}),
     ...(request.historyStart != null ? { historyStart: { requestId: request.historyStart.requestId } } : {}),
     // The retry route's own rule, with the same host sources (FIX-2848 D3).
-    retryable: isPublicReentryAllowed(request.source, inputs.publicReentrySources)
+    retryable: isRequestPublicReentryAllowed(request, inputs.publicReentrySources)
   });
 
   async function turns(target: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;
