@@ -1099,7 +1099,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // and the history summary (FIX-2500), unless the app brought its own.
   const appSummary = bringsHistorySummary(workerCapabilityCatalog);
   const defaultLayer = workerDefaultLayer({
-    configOf: (ctx) => turnConfig(ctx),
+    configOf: turnConfig,
     loaderOn: activateToolOn,
     skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog }),
     modelOf: (ctx) => turnConfig(ctx).model,
@@ -1311,8 +1311,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // behind for a write that never committed. `undefined` means the mutator
       // never completed, which is the same answer as nothing added.
       const added = await withOutcome(
-        (mutator) => ctx.session.atomicState(mutator),
-        (current: typeof ctx.session.state) => {
+        ctx.session.atomicState,
+        (current) => {
           let entries = current[ACTIVE_SKILLS_STATE.field];
           const before = entries.length;
           for (const name of names) {

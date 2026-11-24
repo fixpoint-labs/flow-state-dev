@@ -410,7 +410,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     installation,
     flowKind: COORDINATOR_FLOW,
     // A project's coordinator starts with its user's open workstreams there.
-    seed: (ctx) => workstreamDelegateSeed(ctx),
+    seed: workstreamDelegateSeed,
     // Read at the turn, so a change applies to the next forward.
     inferredWork: (ctx) => (workerConfigOf(ctx) as unknown as Partial<CoordinatorConfig>).inferredWork ?? "observe",
     // The judgment turn hands a message on with `createTask` and the routing
@@ -469,7 +469,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * `routedEnded` reads it: an empty one is no answer, and holds no round.
    */
   const roundTasksOf = async (ctx: RoutingContext): Promise<RoundTasks> => {
-    const open = roundsIn(ctx.session.state);
+    const open = ctx.session.state[ROUNDS_STATE];
     const ref = open.length === 0 ? undefined : await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     const byRound = new Map<string, Task[]>();
     for (const row of ref?.list() ?? []) {
@@ -561,7 +561,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const planned = roundDeadline(roundsIn(ctx.session.state), request.messageRequestId, request.round, now, deadlineMs).deadlineAt;
     if (planned !== undefined) await oweRoundDeadline(ctx, planned);
     const timed = await withOutcome(
-      (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+      ctx.session.atomicState,
       (state) => {
         const rounds = roundsIn(state);
         const deadline = roundDeadline(rounds, request.messageRequestId, request.round, now, deadlineMs);
@@ -719,7 +719,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // added their deliveries.
     if (post.round < config.rounds) {
       const begun = await withOutcome(
-        (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+        ctx.session.atomicState,
         (state) => {
           const result = beginRound(roundsIn(state), post.messageRequestId, post.round);
           return { state: result.opened ? { [ROUNDS_STATE]: result.rounds } : {}, result: result.opened };
@@ -1266,7 +1266,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const tried = new Set<string>();
     for (;;) {
       const claimed = await withOutcome(
-        (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+        ctx.session.atomicState,
         (state) => {
           const next = turnOrder(list, state[ROUND_ROBIN_STATE]).find((record) => !tried.has(delegateKey(record)));
           if (next === undefined) return { state: {}, result: null };
@@ -1431,7 +1431,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const now = Date.now();
     const rows = await roundTasksOf(ctx);
     const swept = await withOutcome(
-      (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+      ctx.session.atomicState,
       (state) => {
         const result = closeOverdue(roundsIn(state), rows, now);
         const due = result.rounds.flatMap((open) => (open.deadlineAt === undefined ? [] : [open.deadlineAt]));
@@ -1508,7 +1508,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       if (!open.some(isThisRound) && !anyOverdue(open, now)) return {};
       const rows = await roundTasksOf(ctx);
       const closed = await withOutcome(
-        (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+        ctx.session.atomicState,
         (state) => {
           const rounds = roundsIn(state);
           const ended = rounds.some(isThisRound)
@@ -1622,7 +1622,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const rows = await roundTasksOf(ctx);
       type Ended = { kept: boolean; again?: true; closed: ClosedRound[] };
       const outcome = await withOutcome(
-        (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+        ctx.session.atomicState,
         (state): { state: Partial<CoordinatorSessionState>; result: Ended } => {
           const rounds = roundsIn(state);
           const hold = state[HOLD_STATE];

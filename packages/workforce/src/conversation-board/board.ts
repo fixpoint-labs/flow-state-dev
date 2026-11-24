@@ -953,18 +953,8 @@ const passStateSchema = z.object({
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
   const heldAsTurnSays = <T extends TaskInit>(ctx: BlockContext, init: T): T => heldAs(options.holdsFiling, ctx, init);
-  // FIX-2081.
-  /**
-   * Who a filing in the running session can name, read now: its delegates
-   * that take a task (under `delegates: all`, the roster as it stands), in a
-   * task session as in a conversation. Server-side only: the
-   * delegate list is server-written state, never input. Not memoized across
-   * calls, so a hire or a removal counts on the next one (D2).
-   */
-  const reach = (ctx: BlockContext): Promise<TaskDelegates> => options.delegates(ctx);
-
   /** The roster the task tools and actions check an assignee against: the delegates. */
-  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx));
+  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
 
   // FIX-1802 D1.
   /**
@@ -972,7 +962,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * of its delegates takes a task, read from its list as it stands. A worker
    * that works steps files them whatever its delegates (`turnFiles`).
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
+  const files = async (ctx: BlockContext): Promise<boolean> => (await options.delegates(ctx)).available.size > 0;
 
   // FIX-2894; FIX-2333.
   /**
@@ -1000,7 +990,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // the session's own, on this flow. A record whose flow isn't the one the session's delegates have is moving
     // under the check: it resolves to nothing, so the write is refused rather than checked against two answers.
     worker: async (assignee) => {
-      const delegateFlow = assignee === self ? options.flowKind : (await reach(ctx)).available.get(assignee);
+      const delegateFlow = assignee === self ? options.flowKind : (await options.delegates(ctx)).available.get(assignee);
       if (delegateFlow === undefined) return undefined;
       const record = await options.workerOf?.(ctx, assignee);
       if (record !== undefined && record.flow !== delegateFlow) return undefined;
@@ -1132,7 +1122,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // session, keyed by the task alone: a reassign would then re-enter a session
   // named for the first worker, and run as it. Keying by the worker too keeps
   // one session to one task and one worker, which is the rule's own reason.
-  const handedFlowOf = handoverFlowReader(reach);
+  const handedFlowOf = handoverFlowReader((ctx) => options.delegates(ctx));
   const address: DispatchAddress = {
     type: "task",
     // Every row, a routed task's included, goes to `work`.
@@ -1324,7 +1314,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // A follow-up runs where its root ran, and the ledger writes the root's
       // workstream on it (FIX-2111): there is no target to choose or resolve.
       if (init.followUpOf !== undefined) return init;
-      const { records } = await reach(ctx);
+      const { records } = await options.delegates(ctx);
       // The assignee the row will have: the one named, or the one the board
       // gives a row with none (the conversation's only task-taking delegate).
       const assignee = init.assignee ?? (await soleDelegate());
@@ -1388,7 +1378,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const assertReassignable = async (id: string, assignee: string): Promise<void> => {
       const row = ref.get(id);
       if (row === undefined || row.assignee === assignee) return;
-      const { records } = await reach(ctx);
+      const { records } = await options.delegates(ctx);
       assertTargetFits(records, assignee, row.target, "reassigned");
     };
     // FIX-2129.
@@ -1500,7 +1490,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const goOnAfterAnswer = async (id: string): Promise<void> => {
       const after = ref.get(id);
       if (after?.turnOwed === true && after.assignee !== undefined) {
-        await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
+        await startOwedSteerTurn(ctx, after, (await options.delegates(ctx)).available.get(after.assignee));
       }
       if (hasStartable(ref, id)) await triggerPass(ctx);
     };
@@ -1551,7 +1541,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
                 // Kept, but no turn runs it: say so, so the sender isn't told it is under way. Only this path has a
                 // sender to tell: an answer's turn (`goOnAfterAnswer`) has none, and a line in the task's own session
                 // (`./steer`) is in the session the turn starts in.
-                if (!(await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee)))) {
+                if (!(await startOwedSteerTurn(ctx, after, (await options.delegates(ctx)).available.get(after.assignee)))) {
                   return { outcome: "recorded" as const, note: STEER_TURN_NOT_STARTED };
                 }
               }
@@ -2111,7 +2101,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           const routing = routes !== undefined && routes.routing(ctx) && filing ? routes.description : undefined;
           // A delegate whose flow declares what its tasks take (FIX-2894): the filer reads it before filing.
           const takers = filing
-            ? [...(await reach(ctx)).available].filter(([, flow]) => options.taskInputOf?.(flow) !== undefined).map(([worker]) => worker)
+            ? [...(await options.delegates(ctx)).available].filter(([, flow]) => options.taskInputOf?.(flow) !== undefined).map(([worker]) => worker)
             : [];
           const declared = takers.length === 0 ? undefined : declaredInputLine(takers);
           const own = filingProjectAddressOf(ctx.session.state);

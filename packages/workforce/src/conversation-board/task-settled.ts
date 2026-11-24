@@ -207,7 +207,7 @@ export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const sati
 /** Write a notice's dedupe key: `true` the first time. */
 function noteSeen(ctx: NoticeContext, key: string) {
   return withOutcome(
-    (mutator: Parameters<typeof ctx.session.atomicState>[0]) => ctx.session.atomicState(mutator),
+    ctx.session.atomicState,
     (state) => {
       const seen = state[TASK_NOTICES_STATE];
       if (seen.includes(key)) return { state: {}, result: false };
@@ -514,6 +514,6 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     // One turn of a task at a time in its session (FIX-2113): while another
     // request here waits on a step of its own plan, the notice stays owed,
     // and that request sends it once it answers.
-    defer: (ctx) => anotherTurnWaitsOnItsPlan(ctx)
+    defer: anotherTurnWaitsOnItsPlan
   });
 }
