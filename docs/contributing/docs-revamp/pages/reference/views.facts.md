@@ -65,7 +65,7 @@ Signature: `defineView(config: ViewConfig<TBlock, TScope>): ViewDefinition<TBloc
 | `user` | At the caller's user scope, with no session. | No | no session id | `vt:30-35`, `vr:121-126` |
 | `org` | At the caller's org scope, with no session. | No | no session id | `vt:30-35`, `vr:121-126` |
 
-- "The caller's user and org come from the verified principal." `vt:31-33`. The route resolves the caller through the flow's own resolver, never from the body, query or headers. `vr:17-19`, `vr:81-93`. (Test setup: a verified header pair names user and org, `er:21-27`.)
+- "The caller's user and org are the principal the flow's resolver returns." `vt:31-33`. The route calls `ctx.host.resolvePrincipal` with the parsed body in the envelope, `vr:81-93`; with neither the flow's `authentication.resolvePrincipal` nor a host-level `resolvePrincipal` on `createFlowState` (`packages/engine/src/flowstate/types.ts:285-289`), the default resolver reads `body.userId` (`packages/engine/src/transports/auth/defaultBodyUserIdPrincipalResolver.ts:31-43`). Precedence: the flow's own resolver over the host fallback (`packages/engine/src/transports/auth/pickPrincipalResolver.ts:21-28`). (Test setup: a verified header pair names user and org, `er:21-27`.)
 - A user or org view answers a user who never had a session, without making one, and never calls the session store. Alice has no session; she reads the org note Bob wrote and the session store is untouched (`calls` is `[]`, the session list is unchanged). `ev:237-262` (`expect(calls).toEqual([])` at `:260`). Goal signal `a:no-session` says the same for the roster. `goal:12`.
 - A user view answers each user their own rows: with Alice's and Bob's pins in one flow, each gets only their own. `ev:264-278`.
 - A second organization reads none of the first org's user or org rows: the same user id in another org gets `{ labels: [] }`; a second user in the other org gets `{ texts: [] }` from the org view. `er:173-182`.
@@ -166,7 +166,7 @@ Failure map (`vr:234-264`):
 | 500 | `view_failed` | Any other error; `message` is the error's message. | `vr:262-263` |
 
 - `FlowError` code → status: `validation_error` 400, `read_only` 409, retryable 503, else 422. A `FlowError` with no `code` answers `view_failed`. `vr:258-260`.
-- Caller resolution: the principal comes from the flow's own resolver (`pickPrincipalResolver` through `host.resolvePrincipal`), as an action and a read do; never the body, query or headers. A session view is fenced as the session's action route is. `vr:17-23`, `vr:81-101`.
+- Caller resolution: the principal comes from the flow's own resolver (`pickPrincipalResolver` through `host.resolvePrincipal`), as an action and a read do. With no flow resolver set, the default reads `body.userId`. A session view is fenced as the session's action route is. `vr:17-23`, `vr:81-101`.
 - The `changed` hint: a call may carry `changed: { topic, kind, ids }` in its body. It is honoured only when `topic` is a wire topic, `kind` is one of `items`, `request`, `run`, `state`, `resource`, `board`, `suspension`, `resync`, and `ids` is 1 to 100 strings (`NOTICE_MAX_IDS = 100`). Anything else is no change and the view runs whole. It decides only which rows the view reads again, never who may read them. `vr:216-231`; `packages/contracts/src/types/push-delivery.ts:57`; test `epa:178-191` (no ids, non-string ids, empty ids, 101 ids, unknown topic all run whole).
 - A view with no `key` is never handed a change. `rv:419-424`. An action's blocks get no view context. `epa:193-197`.
 

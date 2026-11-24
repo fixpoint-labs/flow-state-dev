@@ -26,8 +26,8 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 const workspace = localWorkspaceHost({
   root: ".fsdev/runs",
   remotes: { allow: [] },
-  localRepositories: ["."],
-  source: () => ({ kind: "repo", repo: "." }),
+  localRepositories: [process.cwd()],
+  source: () => ({ kind: "repo", repo: process.cwd() }),
 });
 
 export const app = createFlowState({
@@ -167,8 +167,8 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 const workspace = localWorkspaceHost({
   root: ".fsdev/runs",
   remotes: { allow: [] },
-  localRepositories: ["."],
-  source: () => ({ kind: "repo", repo: "." }),
+  localRepositories: [process.cwd()],
+  source: () => ({ kind: "repo", repo: process.cwd() }),
 });
 
 export const app = createFlowState({
