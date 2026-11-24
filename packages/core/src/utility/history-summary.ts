@@ -24,6 +24,7 @@ import { z } from "zod";
 import { defineCapability } from "../capability";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
+import type { ResourceRef } from "../types/resource";
 import type { BlockContext, BlockDefinition } from "../types/block";
 import type { HistoryTurn, LLMMessage } from "../types/scope";
 import { MAX_READING_CHARS } from "./consult-session-history";
@@ -149,12 +150,10 @@ export function historySummary(options: HistorySummaryOptions) {
   const name = options.name ?? HISTORY_SUMMARY_NAME;
   const resource = name === HISTORY_SUMMARY_NAME ? historySummaryResource : historySummaryResourceNamed(name);
   const resources = { [name]: resource };
-  const stateOf = (ctx: BlockContext): HistorySummaryState =>
-    ({ ...HISTORY_SUMMARY_DEFAULT, ...((ctx.resources as any)[name]?.state ?? {}) }) as HistorySummaryState;
+  const summaryRef = (ctx: BlockContext) => ctx.resources[name] as ResourceRef<HistorySummaryState>;
+  // A CAS retry can hand the updater a stored row from an older schema.
   const update = (ctx: BlockContext, updater: (state: HistorySummaryState) => HistorySummaryState) =>
-    (ctx.resources as any)[name].updateState((state: HistorySummaryState) =>
-      updater({ ...HISTORY_SUMMARY_DEFAULT, ...state })
-    ) as Promise<void>;
+    summaryRef(ctx).updateState((state) => updater({ ...HISTORY_SUMMARY_DEFAULT, ...state }));
 
   const capability = defineCapability({
     name,
@@ -162,9 +161,9 @@ export function historySummary(options: HistorySummaryOptions) {
     presets: {
       default: ["context", "history"],
       context: {
-        context: (_input: unknown, ctx: any) => {
-          const state = stateOf(ctx);
-          const window = ctx.session?.window;
+        context: (_input, ctx) => {
+          const state = summaryRef(ctx).state;
+          const window = ctx.session.window;
           if (window?.startRequestId !== undefined && state.attempts === 0) {
             throw new Error(
               `historySummary "${name}": turns have left the history window and no fold has run. ` +
@@ -176,8 +175,8 @@ export function historySummary(options: HistorySummaryOptions) {
       },
       // The summary stands for every turn up to its mark.
       history: {
-        history: (ctx: BlockContext) => {
-          const through = stateOf(ctx).throughRequestId;
+        history: (ctx) => {
+          const through = summaryRef(ctx).state.throughRequestId;
           return through === null ? {} : { afterRequestId: through };
         },
       },
@@ -191,7 +190,7 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (_input, ctx): Promise<FoldPlan | null> => {
       const window = ctx.session.window;
       if (window === undefined) return null;
-      const state = stateOf(ctx);
+      const state = summaryRef(ctx).state;
       const quarter = Math.max(1, Math.floor(window.turns / 4));
 
       // Turns that left open earlier: fold the ones that have settled since.

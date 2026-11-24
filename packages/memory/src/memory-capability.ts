@@ -262,11 +262,7 @@ export function buildMemoryCapability(
   const connectToolBlock = relationsEnabled ? createConnectTool() : undefined
 
   // Build the recall helper (ranking decay derived from hygiene).
-  const recallFn = buildRecall(
-    episodicConfig ? { scope: episodicConfig.scope } : undefined,
-    semanticConfig ? { scope: semanticConfig.scope } : undefined,
-    hygiene,
-  )
+  const recallFn = buildRecall(resolved, hygiene)
 
   // Compose the unified memory capability
   const capUses: CapabilityRef[] = [wmCapability]
