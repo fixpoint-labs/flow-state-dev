@@ -54,7 +54,7 @@ const incrementMessageCount = handler({
   inputSchema: z.string(),
   sessionStateSchema,
   execute: async (_input, ctx) => {
-    await ctx.session.patchState({ messageCount: ctx.session.state.messageCount + 1 });
+    await ctx.session.incState({ messageCount: 1 });
   },
 });
 
