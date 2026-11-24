@@ -32,7 +32,8 @@
  * run's session and commits one file so the row settles; or `claude-code`, a
  * real coding agent. That is the coder a worker naming no harness runs on: a
  * coder hired with `settings: { harness: "cursor" }` (or `codex`, or
- * `claude-code`) runs its tasks on that one instead (`workerHarnesses`).
+ * `claude-code`) runs its tasks on that one instead. All four are the harness
+ * kit's one list, which its readiness view reports.
  *
  * - **Each project's own code.** The coder runs on a workspace host whose
  *   source is the project of the workstream a task was filed from: Storefront
@@ -82,12 +83,12 @@ import { readCodexUsage } from "@flow-state-dev/codex";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import type { AskFeature } from "./ask.mts";
-import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
+import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { operatorGitHubToken } from "@flow-state-dev/workforce";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
-import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
 
@@ -184,10 +185,10 @@ const harness = await startHarness("stub");
 
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
-  harness: harness.slot,
-  harnessName: harness.name,
-  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
-  harnesses: workerHarnesses(),
+  // Every harness a coder runs on, the one readiness lists; a coder hired with
+  // `settings: { harness: "cursor" }` runs on Cursor, any other on the default.
+  harnesses: harness.harnesses,
+  defaultHarness: harness.name,
   runTimeoutMs: harness.runTimeoutMs,
   coderHarness: harness.label,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
@@ -214,7 +215,6 @@ const lab = await openLab({
       readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
-  harnessValues: harness.harnessValues,
   // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
   githubToken: operatorGitHubToken(),
   // The GitHub logins whose reviews on a coder's pull request reach its run.

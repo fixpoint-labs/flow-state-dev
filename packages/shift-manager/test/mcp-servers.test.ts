@@ -23,7 +23,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpServers } from "@flow-state-dev/workforce";
-import { commitScriptedWork, type HarnessFeeds } from "../teams/devteam/harness.mts";
+import { commitScriptedWork, readyHarness, type HarnessFeeds } from "../teams/devteam/harness.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 
@@ -133,12 +133,12 @@ afterEach(async () => {
 const servers = (): ProjectMcpServers => ({ linear: { url: mcp.url, seedEnv: "FSD_TEST_LINEAR_SEED" } });
 
 /** A Lab offering `linear` (unless told otherwise), with `notes` naming it and `plain` naming none. */
-async function open(options: Partial<OpenLabOptions> & { slot?: OpenLabOptions["harness"] } = {}) {
+async function open(options: Partial<OpenLabOptions> & { slot?: Parameters<typeof readyHarness>[0] } = {}) {
   const runs: Relayed[] = [];
   const lines: string[] = [];
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: options.slot ?? (recordingHarness(runs) as OpenLabOptions["harness"]),
+    harnesses: [readyHarness(options.slot ?? (recordingHarness(runs) as Parameters<typeof readyHarness>[0]))],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "sm-mcp-runs-")), remotes: { allow: [] } },
     coderWorkerId: CODER,

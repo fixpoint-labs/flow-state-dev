@@ -43,6 +43,7 @@ import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["no-project-list"] as const;
@@ -188,7 +189,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     modelResolver: liveResolver(),
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "names-the-project-")), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

@@ -139,9 +139,10 @@ export function modeOfTask(input: unknown, resolved: ResolvedModes): string {
  * for a malformed marker, which no run is keyed by.
  */
 export function runModeOfTask(input: unknown, resolved: ResolvedModes): { readonly name: string; readonly formerName?: string } | undefined {
-  const spec = resolved.modes[modeOfTask(input, resolved)]!.spec;
-  if (!namesHarnessFeature(input)) return spec;
+  const { name, formerName } = resolved.modes[modeOfTask(input, resolved)]!.spec;
+  const keyed = formerName === undefined ? { name } : { name, formerName };
+  if (!namesHarnessFeature(input)) return keyed;
   const feature = harnessFeatureOf(input);
   if (feature === undefined) return undefined;
-  return feature.phase === undefined ? spec : { name: feature.phase };
+  return feature.phase === undefined ? keyed : { name: feature.phase };
 }

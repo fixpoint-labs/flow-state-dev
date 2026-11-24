@@ -54,6 +54,7 @@ import {
 } from "../../lib/index.mts";
 import { openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = goalTmpDir("roles-checked-at-hire");
@@ -309,7 +310,7 @@ await runGoal(async (failures, tell) => {
   try {
     const lab = await openLab({
       stores: inMemoryStores(),
-      harness: harnessStub().slot,
+      harnesses: [readyHarness(harnessStub().slot)],
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",

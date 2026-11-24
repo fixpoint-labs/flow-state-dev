@@ -21,6 +21,7 @@ import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const SHIFT_COORDINATOR = "shift-coordinator";
 const CODER = "eng.coder";
@@ -92,7 +93,7 @@ describe("a message a coordinator routes to the coder", () => {
     opened = await openLab({
       modelResolver: models,
       stores: inMemoryStores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       runTimeoutMs: 30_000,
       workspace: { root: mkdtempSync(join(tmpdir(), "devteam-routed-to-coder-")), remotes: { allow: ["file"] } },
       coderWorkerId: CODER,

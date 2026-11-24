@@ -24,7 +24,7 @@ import {
   type ModulePatch,
 } from "../../lib/index.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
-import { errorReporterHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { errorReporterHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type LabErrorReporter } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
@@ -321,7 +321,7 @@ async function open(options: {
   mkdirSync(join(SCRATCH, "runs"), { recursive: true });
   const lab = await openLab({
     stores: options.store === "memory" ? inMemoryStores() : sqliteStores({ filename: options.store }),
-    harness: harnessStub({ duringRun: plantedCoderRun, statusOf: plantedCoderStatus, outcomeOf: (run) => (plantedCoderStatus(run) === "errored" ? "failed" : "finished"), finalMessage: "Done.", mcpUses: [projectWorkspaceCapability] }).slot,
+    harnesses: [readyHarness(harnessStub({ duringRun: plantedCoderRun, statusOf: plantedCoderStatus, outcomeOf: (run) => (plantedCoderStatus(run) === "errored" ? "failed" : "finished"), finalMessage: "Done.", mcpUses: [projectWorkspaceCapability] }).slot)],
     runTimeoutMs: 60_000,
     workspace: { root: join(SCRATCH, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

@@ -12,6 +12,7 @@ import { afterEach, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab } from "../teams/devteam/host.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const saved = process.env.TMPDIR;
 let scratch: string | undefined;
@@ -28,7 +29,7 @@ it("removes the copy of the tree it wrote when the Lab is disposed", async () =>
   const copies = () => readdirSync(scratch!).filter((entry) => entry.startsWith("devforce-lab-tree-"));
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root: workspace, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     // A control that changes the coders' description: the tree is copied.
@@ -48,7 +49,7 @@ it("opens with a worker's only own skill taken away, its emptied skills folder g
   // The coder's own folder holds one skill: taking it away empties `skills/`, which the kit would refuse.
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root: workspace, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     mutateSkills: (workerId: string, skills: readonly { name: string }[]) =>

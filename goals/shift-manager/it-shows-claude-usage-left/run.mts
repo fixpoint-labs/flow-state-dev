@@ -14,7 +14,7 @@ import { buildShiftManagerPages, labRoutes, openShiftManager, personPage, startS
 import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { CONTROL_NAMES, CONTROLS, FAULTS, sdkSeam, type Control } from "./controls.mts";
 

@@ -219,9 +219,10 @@ describe("which mode a task runs", () => {
 
   it("finds a feature task's run under its own phase, and a malformed one's nowhere", () => {
     expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly)).toEqual({ name: "code" });
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toMatchObject({ name: "default", formerName: "code" });
+    // Only the key a run is found by: its name, and the one it was stored under before.
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toEqual({ name: "default", formerName: "code" });
     expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered)).toBeUndefined();
-    expect(runModeOfTask({}, registered)).toMatchObject({ name: "answer" });
+    expect(runModeOfTask({}, registered)).toEqual({ name: "answer" });
   });
 });
 
