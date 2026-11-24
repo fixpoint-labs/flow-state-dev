@@ -25,7 +25,7 @@
  *     .step(debater[N-1]).tap(record[N-1])
  *     .loopBack(incrementRound, { when: round < maxRounds && !terminateWhen })
  *     .step(judge)
- *     .map(buildRawOutput)
+ *     .map(...)                                       ← assemble raw output
  *     [.step(synthesizer)]
  *
  * Pipeline (with moderator):
@@ -34,10 +34,10 @@
  *     .tap(stampQuestion)
  *     .step(incrementRound)                          ← loopBack target
  *     .step(moderator).tap(stashModeratorDecision)   // opens the round
- *     .forEach(speakersForRound, dispatchByName, { maxConcurrency: 1 })
+ *     .forEach(decision => decision.nextSpeakers, dispatchByName, { maxConcurrency: 1 })
  *     .loopBack(incrementRound, { when: round < maxRounds && !last.done && !terminateWhen })
  *     .step(judge)
- *     .map(buildRawOutput)
+ *     .map(...)                                       ← assemble raw output
  *     [.step(synthesizer)]
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
@@ -63,7 +63,6 @@ import {
   type DebateInput,
   type DebateModeratorOutput,
   type DebateRawOutput,
-  type DebateState,
   type DebateTranscriptState,
   type DebateVerdict,
 } from "./schemas";
@@ -385,7 +384,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           question,
           transcript: transcript?.state.entries ?? [],
           verdict,
-          moderatorDecisions,
+          moderatorDecisions: moderatorDecisions ?? [],
         };
       });
     if (config.synthesizer === false) {
@@ -543,7 +542,8 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         done: out.done,
       };
       await ctx.sequencer!.patchState({
-        moderatorDecisions: [...state.moderatorDecisions, decision],
+        // A restored checkpoint can explicitly carry null over the schema default.
+        moderatorDecisions: [...(state.moderatorDecisions ?? []), decision],
       });
 
       // Renderable snapshot of the moderator's decision. The renderer
@@ -575,16 +575,16 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // `maxConcurrency: 1` is load-bearing: it makes within-round speakers
     // sequential, so later speakers see the freshly recorded transcript
     // entries of earlier ones. Without it `.forEach` defaults to parallel.
-    .forEach((_value, ctx) => {
-      const { round, moderatorDecisions } = ctx.sequencer!.state as DebateState;
-      const current = moderatorDecisions.find((d) => d.round === round);
-      return current?.nextSpeakers ?? debaters.map((d) => d.name);
-    }, dispatchByName, { maxConcurrency: 1 })
+    .forEach(
+      (decision: DebateModeratorOutput) => decision.nextSpeakers ?? debaters.map((d) => d.name),
+      dispatchByName,
+      { maxConcurrency: 1 },
+    )
     .loopBack(incrementRound.name, {
       when: (_out, ctx) => {
         const state = ctx.sequencer!.state;
         if (state.round >= maxRounds) return false;
-        if (state.moderatorDecisions.at(-1)?.done) return false;
+        if (state.moderatorDecisions?.at(-1)?.done) return false;
         if (
           terminateWhen !== undefined &&
           terminateWhen(ctx)

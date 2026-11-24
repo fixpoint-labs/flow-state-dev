@@ -32,10 +32,7 @@
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import {
-  getOrCreateTaskCollection,
-  type TaskWorkerInput,
-} from "@flow-state-dev/orchestration/tasks";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { reviewerVerdictSchema, type ReviewerInput, type SupervisorState } from "../schemas";
 
 /** Patch a single `reviewMetadata[taskId]` slot on the supervisor sequencer's
@@ -85,15 +82,17 @@ export function buildReviewedWorker(
 
   const stashTaskId = handler({
     name: `${name}-${workerKey}-stash-task`,
-    inputSchema: z.unknown(),
+    inputSchema: z.object({
+      taskId: reviewedWorkerStateSchema.shape.taskId,
+      goal: z.preprocess((value) => value ?? undefined, reviewedWorkerStateSchema.shape.goal),
+      attempts: z.preprocess(
+        (value) => typeof value === "number" ? value : undefined,
+        reviewedWorkerStateSchema.shape.attempts,
+      ),
+    }),
     sequencerStateSchema: reviewedWorkerStateSchema,
-    execute: async (input, ctx) => {
-      const twi = input as TaskWorkerInput;
-      await ctx.sequencer!.patchState({
-        taskId: twi.taskId,
-        goal: twi.goal,
-        attempts: typeof twi.attempts === "number" ? twi.attempts : 1,
-      });
+    execute: async (task, ctx) => {
+      await ctx.sequencer!.patchState(task);
     },
   });
 
