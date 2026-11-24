@@ -3,14 +3,12 @@
  * The Paper and Night themes come from one set of tokens: every colour a
  * component draws is a token, both themes set every token, the quietest text
  * stays readable on every ground, and the switch draws the page in the other
- * theme and keeps the pick. Day breaks in the conversation say Today,
- * Yesterday or the date.
+ * theme and keeps the pick.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { dayLabel } from "../src/components/Conversation";
 import { applyTheme, initialTheme, useTheme } from "../src/lib/theme";
 
 const SRC = join(__dirname, "../src");
@@ -105,21 +103,28 @@ describe("the theme switch", () => {
     expect(initialTheme()).toBe("paper");
   });
 
+  it("redraws the page when the system switches, until the viewer picks; after a pick it stays", () => {
+    let dark = false;
+    const listeners = new Set<() => void>();
+    window.matchMedia = ((media: string) => ({ get matches() { return dark && media === "(prefers-color-scheme: dark)"; }, media, addEventListener: (_: string, fn: () => void) => listeners.add(fn), removeEventListener: (_: string, fn: () => void) => listeners.delete(fn) })) as never;
+    applyTheme("paper");
+    render(<Switch />);
+    const root = document.documentElement;
+    dark = true;
+    act(() => listeners.forEach((fn) => fn()));
+    expect(root.dataset.theme).toBe("night");
+    expect(screen.getByRole("button").textContent).toBe("night");
+    act(() => fireEvent.click(screen.getByRole("button")));
+    expect(root.dataset.theme).toBe("paper");
+    act(() => listeners.forEach((fn) => fn()));
+    expect(root.dataset.theme).toBe("paper");
+  });
+
   it("follows the system's setting until the viewer picks: Night is the dark default", () => {
     const dark = (matches: boolean) => (window.matchMedia = ((media: string) => ({ matches: matches && media === "(prefers-color-scheme: dark)", media, addEventListener() {}, removeEventListener() {} })) as never);
     dark(true);
     expect(initialTheme()).toBe("night");
     dark(false);
     expect(initialTheme()).toBe("paper");
-  });
-});
-
-describe("a day break", () => {
-  it("says Today, Yesterday, or the date", () => {
-    const now = new Date(2026, 10, 24, 15, 0).getTime();
-    expect(dayLabel(new Date(2026, 10, 24, 0, 5).getTime(), now)).toBe("Today");
-    expect(dayLabel(new Date(2026, 10, 23, 23, 55).getTime(), now)).toBe("Yesterday");
-    expect(dayLabel(new Date(2026, 10, 20, 12, 0).getTime(), now)).toMatch(/20/);
-    expect(dayLabel(new Date(2026, 10, 20, 12, 0).getTime(), now)).not.toMatch(/Today|Yesterday/);
   });
 });

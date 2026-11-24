@@ -3,9 +3,9 @@
  * between them. The theme is the page root's `data-theme`; Night also sets
  * the `dark` class, which the registry's `dark:` variant reads. A viewer's
  * pick is kept in browser storage; with none, the page follows the system's
- * light or dark setting, so Night is the dark default.
+ * light or dark setting, live, so Night is the dark default.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export const THEMES = ["paper", "night"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -39,6 +39,19 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
 /** The current theme and the switch, which draws the page in the other one and keeps the pick. */
 export function useTheme(): { theme: Theme; toggle: () => void } {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme | undefined) ?? initialTheme());
+  // Until the viewer picks, the page follows the system: a switch to dark or light while it is open redraws it.
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const follow = () => {
+      if (picked() !== undefined) return;
+      const next = preferred();
+      applyTheme(next);
+      setTheme(next);
+    };
+    media.addEventListener("change", follow);
+    return () => media.removeEventListener("change", follow);
+  }, []);
   const toggle = useCallback(() => {
     const next: Theme = theme === "night" ? "paper" : "night";
     applyTheme(next);

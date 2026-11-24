@@ -814,6 +814,14 @@ describe("the teammates screen", () => {
     server.board[LEAD]!.push(coding("t-1", "cursor", { leaseUntil: Date.now() + 60 * 60_000 }));
     await waitFor(() => expect(status("Lead")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
+
+    // It fails: the bot goes idle (no done smile), but the header's pill keeps the failure's red, as the sidebar's line does.
+    Object.assign(server.board[LEAD]!.find((t) => t.id === "t-1")!, { status: "errored", completedAt: Date.now(), leaseUntil: undefined });
+    await waitFor(() => expect(header()).toBe("Coding task failed: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
+    const pill = conversation().querySelector<HTMLElement>("[data-header-status]")!;
+    expect(pill.dataset.state).toBe("idle");
+    expect(pill.className).toContain("bg-(--redbg)");
+    expect(pill.className).toContain("text-destructive");
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
@@ -953,6 +961,11 @@ describe("the teammates screen", () => {
     };
     // Fire is in the header's ⋯ menu.
     const more = within(conversation()).getByRole("button", { name: "More for QA Bot" });
+    // The menu closes when focus leaves it, a click outside or a Tab away, so it never hangs open over the page.
+    fireEvent.click(more);
+    await waitFor(() => expect(document.activeElement).toBe(within(conversation()).getByRole("menuitem", { name: "Fire QA Bot" })));
+    act(() => screen.getByLabelText("Message QA Bot").focus());
+    expect(within(conversation()).queryByRole("menu")).toBeNull();
     fireEvent.click(more);
     fireEvent.click(within(conversation()).getByRole("menuitem", { name: "Fire QA Bot" }));
     const ask = within(conversation()).getByRole("group", { name: "Fire QA Bot?" });

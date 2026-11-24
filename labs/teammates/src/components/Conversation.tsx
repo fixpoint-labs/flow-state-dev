@@ -7,7 +7,8 @@ import { useAppClient, useConversation, useConversationCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { BotStatus, Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
-import { answeringStep, useStatus } from "../lib/status";
+import { dayLabel } from "../lib/day-label";
+import { answeringStep, PLAIN, useStatus } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { cn } from "../lib/utils";
 import { BotFigure } from "./Avatar";
@@ -192,6 +193,8 @@ export function Conversation({
   const days = useMemo(() => dayBreaks(drawn), [drawn]);
   // A lost feed may be out of date: the bot and the pill both drop to idle, the words stay, dimmed.
   const shown = stale ? "idle" : status.state;
+  // A failed coding task leaves the bot idle, but its pill keeps the failure's red, as the sidebar's line does.
+  const failed = shown === "idle" && status.tone !== PLAIN;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-start gap-4 border-b border-border px-6 pt-4 pb-3">
@@ -203,12 +206,12 @@ export function Conversation({
             {(
               <span
                 hidden={status.text === ""}
-                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", PILL[shown], stale && STALE_CLASS)}
+                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", failed ? cn("bg-(--redbg)", status.tone) : PILL[shown], stale && STALE_CLASS)}
                 data-header-status
                 data-state={shown}
                 title={status.text}
               >
-                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[shown])} />
+                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-current" : DOT[shown])} />
                 <span className="truncate">{status.text}</span>
               </span>
             )}
@@ -217,7 +220,12 @@ export function Conversation({
               Edit
             </button>
             {worker.standard ? null : (
-              <div className="relative" onKeyDown={(event) => event.key === "Escape" && menu && (event.stopPropagation(), setMenu(false), moreButton.current?.focus())}>
+              <div
+                className="relative"
+                onKeyDown={(event) => event.key === "Escape" && menu && (event.stopPropagation(), setMenu(false), moreButton.current?.focus())}
+                // A click outside or a Tab away closes it: focus leaving the button and its menu.
+                onBlur={(event) => menu && !event.currentTarget.contains(event.relatedTarget as Node | null) && setMenu(false)}
+              >
                 <button
                   ref={moreButton}
                   type="button"
@@ -404,16 +412,6 @@ export function Conversation({
 function lineTime(line: ItemLine): number | undefined {
   const ts = line.kind === "steps" ? line.items[0]?.ts : "item" in line ? line.item.ts : undefined;
   return typeof ts === "number" && Number.isFinite(ts) && ts > 0 ? ts : undefined;
-}
-
-/** A day as its divider says it: *Today*, *Yesterday*, else its date, "Mon, Nov 21". */
-export function dayLabel(ts: number, now: number = Date.now()): string {
-  const day = (t: number) => new Date(t).toDateString();
-  if (day(ts) === day(now)) return "Today";
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (day(ts) === yesterday.toDateString()) return "Yesterday";
-  return new Date(ts).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
 /** The lines that start a day, by id, with the day's label: the first timed line of each day. */

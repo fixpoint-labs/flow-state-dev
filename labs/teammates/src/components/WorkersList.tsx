@@ -100,7 +100,6 @@ export function WorkersList({
   const nudge = waiting && !notify.on && supported();
   const team = teamOf(workers);
   const [teamOpen, setTeamOpen] = useState(true);
-  const theme = useTheme();
   const list = (
     <ul aria-label={team.name} className="flex flex-col gap-0.5">
       {workers.map((w) => (
@@ -148,17 +147,7 @@ export function WorkersList({
                   </span>
                 ) : null}
               </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={theme.theme === "night"}
-                aria-label="Night theme"
-                title={theme.theme === "night" ? "Switch to Paper" : "Switch to Night"}
-                onClick={theme.toggle}
-                className={ICON_BUTTON}
-              >
-                {theme.theme === "night" ? <MoonIcon aria-hidden className="size-4" /> : <SunIcon aria-hidden className="size-4" />}
-              </button>
+              <ThemeSwitch />
             </>
           )}
           {onToggle === undefined ? null : (
@@ -268,6 +257,24 @@ export function WorkersList({
         </div>
       </nav>
     </div>
+  );
+}
+
+/** The sun/moon switch between Paper and Night; it owns the theme's state, so a switch redraws only itself. */
+function ThemeSwitch() {
+  const { theme, toggle } = useTheme();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={theme === "night"}
+      aria-label="Night theme"
+      title={theme === "night" ? "Switch to Paper" : "Switch to Night"}
+      onClick={toggle}
+      className={ICON_BUTTON}
+    >
+      {theme === "night" ? <MoonIcon aria-hidden className="size-4" /> : <SunIcon aria-hidden className="size-4" />}
+    </button>
   );
 }
 

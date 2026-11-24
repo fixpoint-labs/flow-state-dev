@@ -122,6 +122,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
+    // A failed task leaves the bot idle (no done smile); the words and their red tone say it failed.
     return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false, state: ended.status === "errored" ? "idle" : "done" };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
