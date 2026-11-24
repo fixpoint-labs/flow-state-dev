@@ -15,7 +15,7 @@ For browser-level regressions that only show up against a live SSE stream and re
 - **`testBlock` / `testRouter`** — a single block's logic. State changes, output shape, error paths. Most unit-test work belongs here.
 - **`testFlow`** — one flow action, end to end. Generator wiring, sequencer step ordering, action dispatch.
 - **Flow integration tests** — multi-pattern flows whose pathology emerges from composition. Supervisor's claim-system + reviewer + synthesizer interaction is the canonical example. Live in `packages/integration-tests`.
-- **`fsdev run`** — your hands on the wheel: real flow, real models, real stream. Use it to confirm a flow change works in practice. See [agent dev loop](../cli/agent-dev-loop).
+- **`fsdev run`** — your hands on the wheel: real flow, real models, real stream. Use it to confirm a flow change works in practice. See [agent dev loop](https://flow-state.dev/docs/start/build-with-your-coding-agent).
 
 The integration suite isn't trying to be comprehensive. It targets the highest-value composition surfaces — the ones where a bug means an infinite loop, a deadlock, or a silent data loss.
 

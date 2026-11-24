@@ -12,7 +12,7 @@ If you've cloned the flow-state-dev repository, Shift Manager comes with two Lab
 
 The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab still starts, and its start log says Claude Code isn't ready and what to set. Coding tasks fail until you fix it. The projects flow's `harnessReadiness` action returns the same answer, and `{ refresh: true }` checks again after you sign in.
 
-The [Shift Coordinator](../workforce/shift-coordinator.md) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
+The [Shift Coordinator](https://flow-state.dev/docs/catalog/starters/shift-manager) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 To run the scripted coder (`stub`) instead of Claude Code, set `DEVFORCE_LAB_HARNESS=stub`. It writes one file and costs nothing. A `Coder:` line at start names the coder the Lab started with.
 
@@ -74,7 +74,7 @@ That shows only the run's commits, whichever of the two it started from. The bra
 
 ### Giving runs Linear
 
-Open [Settings](./settings.md) and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each user sets their own. A run for someone who hasn't set one works without Linear and says so.
+Open [Settings](https://flow-state.dev/docs/catalog/starters/shift-manager) and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each user sets their own. A run for someone who hasn't set one works without Linear and says so.
 
 For runs with nobody at the keyboard, such as the repository's checks or CI, `LINEAR_MCP_API_KEY` stands in for the key of the Lab's owner, the user Shift Manager opens as on your machine, until that user sets one. An `MCP servers:` line in the terminal when it starts says whether the owner has a key.
 
@@ -82,18 +82,18 @@ For runs with nobody at the keyboard, such as the repository's checks or CI, `LI
 
 `devteam` is a software team, at `packages/shift-manager/teams/devteam/fsdev.config.mts`. Its workers' files sit beside the config; the [`teams/devteam` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/shift-manager/teams/devteam) lays out the tree and the checks that run against it.
 
-An EM worker leads workstreams and files the coder's tasks on each one's board, and a coder worker runs each task as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, with none. Each user talks to a project through its [project coordinator](../workforce/projects.md#talking-to-a-project), which opens a workstream when you ask it for new work.
+An EM worker leads workstreams and files the coder's tasks on each one's board, and a coder worker runs each task as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, with none. Each user talks to a project through its [project coordinator](https://flow-state.dev/docs/catalog/workforce/projects#talking-to-a-project), which opens a workstream when you ask it for new work.
 
-Its [Shift Coordinator](../workforce/shift-coordinator.md) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and it hands your message to the EM. The EM files the feature as a row on the board, or answers that it filed nothing because your message names no feature.
+Its [Shift Coordinator](https://flow-state.dev/docs/catalog/starters/shift-manager) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and it hands your message to the EM. The EM files the feature as a row on the board, or answers that it filed nothing because your message names no feature.
 
 Rows run on the scripted coder (`stub`), with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead; the Lab then checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as the `fsd` profile does.
 
-Usage shows how much of each Codex window your machine's Codex sign-in has used. Opening Usage asks the Codex CLI, at most once a minute. That read works only on your own machine (see [Reading usage left](../tools/codex.md#reading-usage-left)).
+Usage shows how much of each Codex window your machine's Codex sign-in has used. Opening Usage asks the Codex CLI, at most once a minute. That read works only on your own machine (see [Reading usage left](https://flow-state.dev/docs/catalog/harnesses/codex)).
 
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points, so projects, their workstreams and your conversations survive a restart. Delete the file to start fresh.
 
 ### Its Shift Coordinator's memory
 
-The Shift Coordinator has [memory](../workforce/shift-coordinator.md#giving-it-memory): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it.
+The Shift Coordinator has [memory](https://flow-state.dev/docs/catalog/starters/shift-manager): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it.
 
 Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. When the Shift Coordinator hands a request straight to a delegate, it takes no turn of its own, so nothing is recorded for that request. The request can appear as earlier context in a later turn that is recorded. Its memory is kept per user, apart from your other flows.
