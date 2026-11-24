@@ -15,7 +15,7 @@ import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
 import { resolveSkillsCollection } from "./partition";
 import { listOfferedSkills } from "./skill-catalog";
-import { skillActivatorStateSchema } from "./skill-activation-types";
+import { matchedSkillSchema, skillActivatorStateSchema } from "./skill-activation-types";
 
 // FIX-311.
 /** Default confidence threshold matching the classifier gate. */
@@ -31,11 +31,9 @@ export const skillClassifierOutputSchema = z.object({
   /** Anchoring mitigation: ask the model to think before labeling. */
   reasoning: z.string(),
   activeSkills: z.array(
-    z.object({
-      name: z.string(),
-      input: z.string().default(""),
-      confidence: z.number().min(0).max(1),
-    }),
+    matchedSkillSchema
+      .pick({ name: true, input: true, confidence: true })
+      .required({ confidence: true }),
   ),
 });
 
