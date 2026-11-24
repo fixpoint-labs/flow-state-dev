@@ -223,7 +223,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const record =
         identity === undefined
           ? undefined
-          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode)).record;
+          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
       // The checkout is held for the talk, as for any run, so a follow-up
       // claimed meanwhile waits rather than resume the same session beside it.

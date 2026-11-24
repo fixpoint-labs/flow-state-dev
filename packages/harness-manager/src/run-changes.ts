@@ -90,7 +90,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
       const record =
         identity === undefined
           ? undefined
-          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode)).record;
+          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       const at = input.path === undefined ? {} : { path: input.path };
       if (record?.filesOnly === true) {
         return input.path === undefined

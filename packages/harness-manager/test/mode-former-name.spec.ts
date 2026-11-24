@@ -114,3 +114,46 @@ describe("a fixed-board row filed before the rename", () => {
     expect(lab.seen).toHaveLength(0);
   }, 60_000);
 });
+
+describe("the former-name read is the task's own", () => {
+  // The former key is read only for the run of THIS task. Another row for the
+  // same issue that names the mode's new name has no run there yet; finding
+  // the old row's record under the former key must not hand it that row's
+  // session, checkout or record.
+  it("a second fixed-board row for the same issue, filed under the new name, does not adopt the old row's run", async () => {
+    const oldId = "fix-1--code";
+    const before = claimHost({ mode: "fixed", modeName: "code", isDone: () => false, script: [{ answer: "half done", commits: 1 }] });
+    await before.seed({ ledgerId: FIXED_BOARD, id: oldId, goal: "the feature", input: { issue: "FIX-1", phase: "code" }, maxAttempts: 3 });
+    await before.runAttempt(FIXED_BOARD, oldId);
+    const stored = (await before.record(runTopic(FIXED_BOARD, "FIX-1", "code")))!;
+    expect(stored.taskId).toBe(oldId);
+
+    const after = claimHost({ mode: "fixed", modeName: "default", formerName: "code", restartOf: { dir: before.dir, stores: before.stores } });
+    const newId = "fix-1--default";
+    await after.seed({ ledgerId: FIXED_BOARD, id: newId, goal: "another feature", input: { issue: "FIX-1", phase: "default" }, maxAttempts: 1 });
+    const { result } = await after.runAttempt(FIXED_BOARD, newId);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+
+    expect(after.seen[0]?.resume).toBeNull();
+    expect(after.seen[0]?.cwd).not.toBe(before.seen[0]!.cwd);
+    const own = (await after.record(runTopic(FIXED_BOARD, "FIX-1", "default")))!;
+    expect(own.taskId).toBe(newId);
+    expect(own.branch).not.toBe(stored.branch);
+    // The old row's record is as it left it: its attempt, its session, its task.
+    const untouched = (await after.record(runTopic(FIXED_BOARD, "FIX-1", "code")))!;
+    expect({ taskId: untouched.taskId, attempt: untouched.attempt, sessionId: untouched.sessionId }).toEqual({ taskId: oldId, attempt: stored.attempt, sessionId: stored.sessionId });
+  }, 60_000);
+
+  it("a payload naming the mode in another case finds the run under the mode's own key", async () => {
+    // `DEFAULT` and `default` are one task id, one checkout and one branch (the
+    // segment folds), so they are one run record too.
+    const id = "fix-1--default";
+    const lab = claimHost({ mode: "fixed", modeName: "default", formerName: "code" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id, goal: "the feature", input: { issue: "FIX-1", phase: "DEFAULT" }, maxAttempts: 2 });
+    await lab.putRecord(runTopic(FIXED_BOARD, "FIX-1", "default"), { taskId: id, sessionId: "sess_kept", outcome: "failed" });
+    const { result } = await lab.runAttempt(FIXED_BOARD, id);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect(lab.seen[0]?.resume).toBe("sess_kept");
+    expect(await lab.record(runTopic(FIXED_BOARD, "FIX-1", "DEFAULT"))).toBeNull();
+  }, 60_000);
+});

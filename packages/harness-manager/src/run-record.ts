@@ -715,12 +715,17 @@ export async function readRunRecord(
  * when that key is absent and the mode names a `formerName`, under the former
  * key. The segment it was found under is the run's from then on; nothing is
  * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ *
+ * The former key is this task's only: a record there that names another task
+ * (`taskId`) is another row's run, so it counts as absent and the task opens
+ * a new run under `name`. Pass the reading task's id whenever it is known.
  */
 export async function readModeRunRecord(
   ctx: CollectionHoldingContext,
   epic: string,
   issue: string,
   mode: { readonly name: string; readonly formerName?: string },
+  taskId?: string,
 ): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
   const topic = runTopic(epic, issue, mode.name);
   const record = await readRunRecord(ctx, topic);
@@ -729,7 +734,8 @@ export async function readModeRunRecord(
   }
   const formerTopic = runTopic(epic, issue, mode.formerName);
   const former = await readRunRecord(ctx, formerTopic);
-  return former === undefined ? { segment: mode.name, topic, record } : { segment: mode.formerName, topic: formerTopic, record: former };
+  const anotherTasks = taskId !== undefined && former?.taskId != null && former.taskId !== taskId;
+  return former === undefined || anotherTasks ? { segment: mode.name, topic, record } : { segment: mode.formerName, topic: formerTopic, record: former };
 }
 
 /**

@@ -2762,7 +2762,22 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // A payload naming the mode's own name reads it with its fallback; one
       // naming its former name (a row filed before the rename) is read, and
       // finishes, under that segment, as its derived id and branch already are.
-      const found = await readModeRunRecord(ctx, epic, issue, sameSegment(segment, mode.name) ? { ...mode, name: segment } : { name: segment });
+      //
+      // **The key is folded as the checkout and the task id are**, so `DEFAULT`
+      // and `default`, which are one task, one checkout and one branch, are one
+      // run record too. And the former key is read for this task only: a
+      // record there of another row (another payload of the same issue) is not
+      // this run, and is never adopted.
+      const keyed = assertSafeSegment("mode", segment);
+      const found = await readModeRunRecord(
+        ctx,
+        epic,
+        issue,
+        sameSegment(segment, mode.name)
+          ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
+          : { name: keyed },
+        input.taskId,
+      );
       const phaseName = found.segment;
       const topic = found.topic;
 
