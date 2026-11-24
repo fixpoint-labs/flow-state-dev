@@ -5,6 +5,7 @@
  * case asserts on what is drawn, never on the address alone, so an app that
  * writes the address and ignores it on load fails.
  */
+import { lookOf } from "../src/lib/looks";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
@@ -142,7 +143,7 @@ describe("the page's address", () => {
     const missing: string[] = [];
     const draw = (sessionId: string, taskId: string) => (
       <TestProvider server={adapter} client={client}>
-        <PopupView popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />
+        <PopupView popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />
       </TestProvider>
     );
     const { rerender } = render(draw("session-a", "task-a"));

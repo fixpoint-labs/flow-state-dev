@@ -72,7 +72,7 @@ function MessageLine({ item, line }: { item: MessageItem; line?: ItemLine }) {
         {files.length > 0 ? <MessageFiles files={files} readFile={readFile} /> : null}
         {/* A line of files alone has no words to box. */}
         {text !== "" || files.length === 0 ? (
-          <div className="max-w-[min(560px,85%)] rounded-[16px_16px_4px_16px] border border-border bg-surface-raised px-4 py-3 text-base leading-[1.6] whitespace-pre-wrap" data-entry="user">
+          <div className="max-w-[min(560px,85%)] rounded-[14px_14px_4px_14px] border border-(--mine-line) bg-(--mine) px-4 py-2.5 text-base leading-[1.6] whitespace-pre-wrap text-foreground" data-entry="user">
             {text}
           </div>
         ) : null}
@@ -114,13 +114,13 @@ function ReportLine({ item }: { item: DataItem }) {
       data-from={from}
       data-message-id={value.id ?? ""}
       data-reply-requested={String(value.replyRequested === true)}
-      className="group/report w-full overflow-hidden rounded-lg border border-border bg-surface"
+      className="group/report w-full overflow-hidden rounded-lg border border-border bg-card shadow-(--shadow-card)"
     >
       <section>
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm group-data-[state=closed]/report:border-b-0" data-part="label">
           {avatarOf?.(from) ?? null}
-          <span className="font-medium text-foreground">{nameOf(from)}</span>
-          {notes.length === 0 ? null : <span className="truncate text-text-2">{notes.join(" · ")}</span>}
+          <span className="font-semibold text-foreground">{nameOf(from)}</span>
+          {notes.length === 0 ? null : <span className="truncate rounded-full bg-muted px-2 py-px text-xs text-text-2">{notes.join(" · ")}</span>}
           <span className="flex-1" />
           {at === undefined ? null : (
             <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">

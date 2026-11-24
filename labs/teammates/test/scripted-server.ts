@@ -116,9 +116,9 @@ const RESPOND = "respond";
 const RECEIVE = TURN_ACTIONS.find((action) => action !== RESPOND && /receive/i.test(action)) ?? "messageReceived";
 
 const ROSTER: ScriptedTeammate[] = [
-  { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
-  { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
-  { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
+  { id: "teammates.chief-of-staff", name: "Lead", icon: "pip", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.researcher", name: "researcher", icon: "hex", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
+  { id: "teammates.writer", name: "writer", icon: "tally", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.claude-code", name: "Claude Code", role: "Runs coding tasks on Claude Code.", takesTasks: true, harness: "claude-code" },
   { id: "teammates.codex", name: "Codex", role: "Runs coding tasks on Codex.", takesTasks: true, harness: "codex" },
   { id: "teammates.cursor", name: "Cursor", role: "Runs coding tasks on Cursor.", takesTasks: true, harness: "cursor" },
@@ -470,9 +470,11 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     return { id, flow: "agent" };
   };
   // As the workforce's edit: a file's teammate becomes the user's copy, under the same id; a null name clears it.
-  const edit = ({ id, name }: { id: string; name?: string | null }) => {
+  const edit = ({ id, name, settingsPatch }: { id: string; name?: string | null; settingsPatch?: { icon?: string; color?: string; harness?: string } }) => {
     const w = worker(id);
     if (name !== undefined) w.teammate = { ...w.teammate, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
+    // The look and default harness the form changed, as the roster's settings patch merges them.
+    if (settingsPatch !== undefined) w.teammate = { ...w.teammate, ...settingsPatch };
     if (!w.teammate.own) w.teammate = { ...w.teammate, edited: true };
     notify();
     return { id, flow: "agent" };

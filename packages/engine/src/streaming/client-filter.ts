@@ -6,7 +6,8 @@
  *
  * The emitter still tracks all items for persistence and replay-from-store.
  * This filter only affects the live SSE connection to the end-user client.
- * Devtools opts into trace items via the `?include=trace` query parameter.
+ * Devtools opts into trace items via the `?include=trace` query parameter,
+ * honoured only while trace observability is on (`traceRequestAllowed`).
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
