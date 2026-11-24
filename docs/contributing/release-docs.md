@@ -25,8 +25,7 @@ gate, put `apps/docs/` and `packages/*/README.md` under CODEOWNERS.
 
 Each published package's `packages/<dir>/README.md` is short: an install line, one example under 20
 lines, and a link to the package's section of the generated API reference. The docs cutover moved
-these into place from `docs-revamp/readmes/`; `scripts/check-cut-readmes.mjs` held the two copies in
-step until then and has nothing left to compare.
+these into place from `docs-revamp/readmes/`, and retired the check that held the two copies in step.
 
 ## In a normal PR
 
