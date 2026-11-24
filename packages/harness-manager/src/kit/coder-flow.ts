@@ -40,6 +40,7 @@ import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type De
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -357,7 +358,7 @@ export function coderWorkerFlow(
         const name = `${CODER_FLOW}-${id}${modeName === KIT_MODE ? "" : `-${modeName}`}${reviewChanges ? "-reviewed" : ""}`;
         const mode = resolved.modes[modeName]!;
         const workspace = mode.workspace ?? options.workspace;
-        return harnessManager({
+        const built = harnessManager({
           name,
           ledgers: conversationLedgers,
           tenant: undefined,
@@ -375,6 +376,10 @@ export function coderWorkerFlow(
           ...(options.approveTools === true ? { approveTools: true } : {}),
           ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
+        // The claim gate shares a task's child session between tasks, so a harness that authors
+        // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.
+        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built as never });
+        return built;
       };
       const modeNames = Object.keys(resolved.modes);
       /**

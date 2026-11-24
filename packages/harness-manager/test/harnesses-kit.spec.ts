@@ -11,12 +11,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { Harness } from "../src/harness";
 import { scriptedHarness } from "../src/scripted-harness";
 import { codingDrainBudgetMs, harnesses } from "../src/kit";
+import { z } from "zod";
 
 const states: FlowState[] = [];
 const dirs: string[] = [];
@@ -101,6 +104,30 @@ describe("the harness kit", () => {
     );
     expect(refused).toContain("codex");
     expect(refused).toContain("flow");
+  });
+
+  it("refuses to start with a harness that keeps session state beneath the task entry, naming the entry", async () => {
+    // The claim gate shares a task's child session between tasks: a block below `work` that authors
+    // session state would corrupt another's with no error, so the app is refused before anything runs.
+    const attached: Harness = {
+      ...harness("codex", true),
+      agent: () =>
+        handler({
+          name: "attached-harness",
+          inputSchema: harnessRunInputSchema,
+          outputSchema: harnessRunHandleSchema,
+          sessionStateSchema: z.object({ turns: z.number().default(0) }),
+          execute: async () => {
+            throw new Error("never runs");
+          },
+        }) as never,
+    };
+    const state = start([harnesses({ workspace }), workforce({ directory: tree(TEAM) })], { [harnesses.slots.harnesses]: [attached] });
+    const refused = await state.ready().then(
+      () => "started",
+      (error: Error) => error.message,
+    );
+    expect(refused).toMatch(/task entry "work".*sessionStateSchema/);
   });
 
   it("refuses a worker that names a harness nobody filled", async () => {
