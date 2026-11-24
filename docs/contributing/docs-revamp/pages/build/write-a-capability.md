@@ -131,7 +131,7 @@ export const summarizeOrder = generator({
 
 ## Step 6: Call a helper from a handler
 
-`refundLastOrder` refunds the order `lookUpOrder` last looked up, read through the helper, with no model involved. `refundOrder` is a stand-in in `src/lib/orders.ts`.
+`refundLastOrder` refunds the order `lookUpOrder` last looked up, read through the helper, with no model involved. `refundOrder`, another stand-in in `src/lib/orders.ts`, takes the caller and refuses an order the caller doesn't own.
 
 ```ts title="src/flows/support/blocks/refund-last-order.ts"
 import { handler } from "@flow-state-dev/core";

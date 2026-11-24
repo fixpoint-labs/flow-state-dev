@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 658 words. Scenario: The support desk's `orde
 
 - After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 787 words. Page sha256 7e5885653a04.
 
+- After PR review (Gitar): step 6 says `refundOrder` also takes the caller and refuses an order the caller doesn't own, so the saved `lastOrderId` is never trusted on its own. 799 words. Page sha256 202f8c16ecb0.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c25ca765b6eb, and the 7 Reference row(s) pass 6 moved.
