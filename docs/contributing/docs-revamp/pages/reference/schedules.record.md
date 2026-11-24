@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 2790 words. Scenario: The `digest` flow: stat
 
 - After the loop (review): the three open pass 7 findings are taken in the editor's wording: a fire under way at a delete can run once more, or answers `404 schedule_not_found`; the `alice`/`acme` example is shown as the encoded dispatch id `acme%2Falice%2Fweekly`; the index retry names `claimDue`. The cron check no longer names `isFiveFieldCron`, which is exported only from `@flow-state-dev/core/internal` (packages/core/src/internal/index.ts:172), not `/types`; it says to count five fields and use `parseNextFireAt` from `@flow-state-dev/scheduled` (packages/scheduled/src/index.ts:33), and `isKnownTimeZone` stays on `@flow-state-dev/core/types` (packages/core/src/types/index.ts:151). 3105 words. Page sha256 c130dcaeacd9: the page check exits 0.
 
+- Re-run after the 2026-11-24 release docs pass, which added this release's changes to the page: `node scripts/check-docs-page.mjs` ok (3392 words), brand lint 0 findings, and each new or changed TypeScript example type-checked in a scratch folder, with a planted error caught.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 64a3c744cfbc, and the 15 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 64a
 - Reference row 4: "a fire already claimed before the delete still goes out" Untrue: Not always. claimDue only advances the index row and returns it. The fire is then POSTed to the dispatch endpoint, which re-reads the row through the resolver (createResourceCollectionScheduleResolver does resourceState.get and returns null when the row is gone), so a fire claimed before the delete but resolved after it answers 404 schedule_not_found and does not run. It goes out only if the dispatch resolves the row before the delete lands. Files: /home/user/flow-state-dev/packages/scheduled/src/createResourceCollectionScheduleResolver.ts:137-138; /home/user/flow-state-dev/packages/engine/src/transports/scheduled/routes.ts:119-143; /home/user/flow-state-dev/packages/engine/src/execution/schedule-tick.ts:119-150 (Reference row 4) The row is recorded corrected.
 
 - Re-run after the review edit: `isFiveFieldCron` is exported from `@flow-state-dev/core/internal` only (packages/core/src/internal/index.ts:172); `parseNextFireAt` from the `@flow-state-dev/scheduled` root (packages/scheduled/src/index.ts:33) returns `null` on a cron it cannot parse; `isKnownTimeZone` is on `@flow-state-dev/core/types` (packages/core/src/types/index.ts:151).
+
+- Re-run after the 2026-11-24 release docs pass: the writer checked each new claim and name against the package entries and source it describes. This was the writer's check, not a separate code-reader pass.
 
 ## 6 · Depth pass
 
