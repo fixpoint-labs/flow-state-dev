@@ -12,7 +12,7 @@ import {
 } from "@flow-state-dev/core/types";
 import { hasClientProjection, resolveClientData } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { isTraceObservabilityEnabled, warnOnce, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore } from "../stores/types";
@@ -544,8 +544,9 @@ export async function buildResourceSnapshot(options: {
  * The request's physical log is collapsed to its canonical view first:
  * a resumed request's suspending block re-emits its pre-suspension
  * items, and the superseded copies must not surface. Per request, because
- * logical ids are scoped by request id. Then either the caller's type filter
- * or, without one, client visibility decides what stays.
+ * logical ids are scoped by request id. Without a type filter, client
+ * visibility decides what stays; with one, the named types stay, and a
+ * client-hidden item of a named type only while trace observability is on.
  *
  * The one filter behind both the session snapshot (`GET /sessions/:id/state`)
  * and the session stream (`GET /sessions/:id/stream`), so a live view and a
@@ -560,10 +561,32 @@ export function snapshotItemsOf(
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
-  // Visibility drops trace rows unless `itemTypes` names one.
-  return collapseToCanonicalLog(items).filter((item) =>
-    itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
-  ) as OutputItem[];
+  // Visibility drops client-hidden rows unless `itemTypes` names one and
+  // trace observability is on: naming a type is the caller's request, not a grant.
+  // Asked at most once per call: `traceRequestAllowed` warns when it refuses.
+  let hiddenAllowed: boolean | undefined;
+  return collapseToCanonicalLog(items).filter((item) => {
+    if (itemTypes === undefined) return resolveItemVisibility(item).client;
+    if (!itemTypes.has(item.type)) return false;
+    return resolveItemVisibility(item).client || (hiddenAllowed ??= traceRequestAllowed());
+  }) as OutputItem[];
+}
+
+/**
+ * Whether a caller's request for client-hidden items (`?include=trace`, or an
+ * `item_types` filter naming a hidden item) may be honoured. Call it only when
+ * such a request was made. The answer is the server's trace-observability gate
+ * (`isTraceObservabilityEnabled`: on outside production, and in production
+ * only with `FSDEV_TRACE_OBSERVABILITY=true`), never the query string. A
+ * refused request is logged once per process, and the caller gets the client view.
+ */
+export function traceRequestAllowed(): boolean {
+  if (isTraceObservabilityEnabled()) return true;
+  warnOnce(
+    "engine/trace-request-ignored",
+    "a request for trace items (`?include=trace` or `item_types` naming a client-hidden item) was ignored because trace observability is off; set FSDEV_TRACE_OBSERVABILITY=true to serve them"
+  );
+  return false;
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

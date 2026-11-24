@@ -1,7 +1,7 @@
 ---
 name: Chief of Staff
 description: Runs the team's work with you. It asks researcher and writer for facts and drafts, and starts coding tasks for code changes.
-icon: "★"
+icon: pip
 color: amber
 delegates: all
 capabilities:
