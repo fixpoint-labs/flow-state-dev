@@ -225,4 +225,23 @@ describe("Shift Manager's coder is the harness kit's coder flow", () => {
     expect(stub.runs).toHaveLength(1);
     expect(await runSegmentsOf(opened, question.id)).toEqual(["answer"]);
   }, 120_000);
+
+  it("on a fixed repository, still files a question that names no project, as main did: the answer mode's project is its run's, not the filing's", async () => {
+    const stub = harnessStub({ finalMessage: ANSWER });
+    const dirs = createScratchRepo("coder-is-the-kit-fixed-no-project");
+    opened = await openLab({
+      modelResolver: filing({ "what is in the repo?": { toolName: "createTask", args: { goal: "What is in the repo?", assignee: "eng.coder" } } }),
+      stores: inMemoryStores(),
+      harnesses: [readyHarness(stub.slot)],
+      runTimeoutMs: 30_000,
+      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      coderWorkerId: "eng.coder",
+      inventory: true,
+      withoutJudge: true,
+    });
+    // Filed, not refused at filing for want of a project (no `no_project`): its run then needs one, as the fork's did.
+    const question = await fileAndSettle(opened, "what is in the repo?");
+    expect(question.goal).toBe("What is in the repo?");
+    expect(JSON.stringify(question.lastError ?? question.error ?? "")).not.toContain("no_project");
+  }, 120_000);
 });
