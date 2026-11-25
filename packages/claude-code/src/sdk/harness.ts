@@ -13,7 +13,7 @@
  * The collections a run records its work into are declared on the agent block
  * (`recordWork`), so the flow that runs it installs them.
  */
-import { harnessEnv, type Harness, type HarnessBlock } from "@flow-state-dev/core/harness";
+import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { checkClaudeCodeReadiness } from "./account-probe";
 import { claudeCodeAgent } from "./agent";
 import { CLAUDE_CODE_PASS } from "./env-pass";
@@ -55,7 +55,7 @@ export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harne
         permissionMode: plan ? "plan" : "acceptEdits",
         settingSources: ["project"],
         settings: { disableAllHooks: true },
-      } as never) as unknown as HarnessBlock,
+      }),
     readiness: (check) => checkClaudeCodeReadiness({ env: env(), ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CLAUDE_CODE_PASS,
     usage: (read) => readClaudeCodeUsage({ env: env(), ...(read?.signal === undefined ? {} : { signal: read.signal }) }),

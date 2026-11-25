@@ -6,7 +6,7 @@
  * Codex's own environment (`harnessEnv` over `CODEX_PASS`). A run works in
  * `workspace-write` sandbox mode unless the options say otherwise.
  */
-import { harnessEnv, type Harness, type HarnessBlock } from "@flow-state-dev/core/harness";
+import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { checkCodexReadiness } from "./account-probe";
 import { codexAgent, type CodexAgentOptions } from "./agent";
 import { CODEX_PASS } from "./env-pass";
@@ -26,7 +26,6 @@ const READINESS_TIMEOUT_MS = 30_000;
  */
 export function codexHarness(options: CodexHarnessOptions = {}): Harness {
   const env = () => harnessEnv({ pass: CODEX_PASS });
-  const given = options as { thread?: object; client?: object };
   return {
     id: "codex",
     label: "Codex",
@@ -34,14 +33,14 @@ export function codexHarness(options: CodexHarnessOptions = {}): Harness {
       codexAgent({
         name: "codex",
         ...options,
-        thread: { sandboxMode: "workspace-write", ...given.thread },
-        client: { ...given.client, env: env() },
+        thread: { sandboxMode: "workspace-write", ...options.thread },
+        client: { ...options.client, env: env() },
         cwd: feeds.cwd,
         resume: feeds.resume,
         onSession: feeds.onSession,
         ...(feeds.onActivity === undefined ? {} : { onActivity: feeds.onActivity }),
         ...(feeds.onEvent === undefined ? {} : { onEvent: feeds.onEvent }),
-      } as never) as unknown as HarnessBlock,
+      }),
     readiness: (check) => checkCodexReadiness({ env: env(), timeoutMs: READINESS_TIMEOUT_MS, ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CODEX_PASS,
     usage: (read) => readCodexUsage({ env: env(), ...(read?.signal === undefined ? {} : { signal: read.signal }) }),
