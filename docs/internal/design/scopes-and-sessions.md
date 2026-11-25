@@ -4,7 +4,7 @@
 
 Several of the hardest parts of FSD to explain, task boards above all, exist mainly to work around one rule: a session can't reach data that belongs to another session, even when both belong to the same user. Each feature that needed to look across sessions built its own way around that rule, and those workarounds now make up a large share of what a newcomer has to learn.
 
-This doc describes how scopes and sessions should work. It describes the target first. The last section lists where today's code differs, with the files it was read from.
+This doc describes how scopes and sessions should work. It describes the target first. The gap to today, with the files it was read from, is in a companion file, [Scopes and Sessions: Gaps to Today](scopes-and-sessions-gaps.md).
 
 ## Base terms
 
@@ -237,9 +237,9 @@ Naming the parent covers lineage sharing and the copies that only stood in for a
 
 ## Looking across every session
 
-Some views need everything at once: an Inbox of everything waiting on Alice, or a board of every task in every one of her sessions.
+Some screens need everything at once: an Inbox of everything waiting on Alice, or a board of every task in every one of her sessions.
 
-A view asks for a definition's copies across all of the user's sessions in one call:
+A screen asks that question through a **view**, as [Reading, Writing and Installing](reading-writing-installing.md#views) defines it: a read-only question the server answers fresh, here at user scope, with no session opened. That doc's board is exactly this case. This section adds only what the view's block calls to get its rows, a read of a definition's copies across all of the owner's sessions in one call:
 
 ```ts
 const open = await boards.acrossSessions(ctx, "work").list({ status: "open" });
@@ -253,6 +253,10 @@ In the SQL stores this is one query, not one per session. Rows are already store
 * **How many exist:** one query per call, however many sessions the user has.
 
 A view can still name one session when that's all it needs, and `ctx.sessions.list()` still lists sessions with their flow and status.
+
+So there is one way for a screen to see across sessions, a user-scope view, and one way for that view's block to fetch the rows, this read. No second cross-session task story sits beside the view.
+
+**It must keep the view's notices right.** A view records what each of its runs read, and a watcher hears a change to anything it read. A read across sessions reads copies in many sessions, including ones created after the view last ran. So the read records one change topic for the definition and the owner, not one per session copy, and every write to any session's copy of that definition publishes on that topic. Then Alice's board hears a task filed in a session that didn't exist when she opened it.
 
 ### What this replaces
 
@@ -358,22 +362,9 @@ One term, one thing. Retired: lineage (say child session, and name the parent), 
 | Action | A named write a definition offers, such as a board's settle | Open: whether cross-session writes must use one |
 | Board | A task list registered with `defineBoard`, usually kept per session | |
 
-### Retired terms the refactor removes
+### Retired terms
 
-Counts are files that mention the term today: package source, then `docs/` plus the docs site, then labs and apps.
-
-| Retired term | Say instead | Where it lives today | Files |
-| -- | -- | -- | -- |
-| Lineage, `lineageId` | The parent's id; a session's own id | The session record, `resolveLineageId`, the lineage storage scope, dispatch and session birth | 65 / 13 / 0 |
-| Shared to lineage, `sharedToLineage` | Name the parent and reach its copy | The option on per-session resources and task collections | 30 / 33 / 2 |
-| Partition, `partitionBy` | A session's copy | Orchestration's partitioned task collections, the skills collection | 25 / 10 / 0 |
-| Filing session, `filingSessionId` | The parent, or the session that filed it | Workforce session state, the conversation ledger's partition | 32 / 7 / 0 |
-| Board above, `boardAboveOf` | The parent's board | Workforce conversation board | 9 / 0 / 0 |
-| Routed session record | The workstream session's own state | Workforce `routed-session.ts` | 4 / 0 / 0 |
-| Task chain record, `taskChain` | Depth and count read from the parent links | Workforce `chain.ts`, child state | 12 / 12 / 0 |
-| Carrier session | A query across sessions | Shift Manager's cross-conversation board read (`carrier` in `reads.ts`) | 1 / 0 / 0 |
-
-Flow isolation is not retired. A definition that isn't marked shared keeps it, so a flow's private per-user or per-org state stays out of other flows, and two instances of one flow keep separate copies. Only the case where it was forced off so another flow could reach a task board goes, because shared definitions now cover that.
+The terms this model retires, where each lives in code and docs today, and how many files mention it, are listed in [the gaps file](scopes-and-sessions-gaps.md#retired-terms-the-refactor-removes).
 
 ## Decisions
 
@@ -387,6 +378,8 @@ Flow isolation is not retired. A definition that isn't marked shared keeps it, s
 - [X] **Key parts are indexed, not prefixed.** Every part of a resource key that varies can be filtered on by the SQL stores without a scan, as its own refactor. This retires the prefix reads everywhere, not only for tasks.
 - [ ] **Reading across sessions in one query.** Recommend `boards.acrossSessions(ctx, "work")`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
 - [X] **Definitions are declared on blocks and rise into flows, and the registry is their union.** Agreed: option (a).
+- [X] **Screens see across sessions through a user-scope view.** Agreed in direction: the across-sessions read is what a view's block calls, not a second way for screens to read. It follows [Reading, Writing and Installing](reading-writing-installing.md).
+- [ ] **The change topic for a read across sessions.** Open. Recommend one topic per definition per owner, published by every write to any session's copy, so a view hears copies made after it last ran. Would change: that topic is too noisy for an owner with many busy sessions, where a narrower topic per filter would pay off.
 - [ ] **Turns started by writes from other sessions.** Open. Rule 8 lets a definition start a turn when another session writes. A burst of endings (fifty sub-tasks settling at once) must not start fifty turns. Recommend that turns started this way coalesce per session, as a board's notices already do, and that the spec checks fan-out before it is built.
 - [ ] **Cost of the cross-session query.** Open. The decision above weighs session count. Row count may bite first: a user with thousands of open tasks. Recommend paging the across-sessions read from the start, and measuring both on a seeded store before the spec settles the indexes.
 - [ ] **Filesystem store parity.** Open. The SQL stores answer the across-sessions read in one query; the filesystem store walks folders. Recommend the same results and order from both, held by the store conformance suite, so `fsdev run` and tests behave as production does.
@@ -394,42 +387,6 @@ Flow isolation is not retired. A definition that isn't marked shared keeps it, s
 - [ ] **Tenants inside per-user data.** Punted. A tenant is a customer of an app that hosts many customers on one install, a level above the org. Per-user data today is keyed by user and org, not tenant, and Workforce puts the tenant into its row ids by hand. Out of scope here, but the gap is real.
 - [ ] **Moving existing data.** Punted to the spec. Six per-user collections are keyed by a session-derived value today. Each needs a decision: become per-session, or stay per-user keyed by its subject.
 
-## What else this simplifies, and how much it removes
-
-Every item below exists today because a session couldn't reach another session's data. Each one goes, or shrinks to a plain read or write by name.
-
-| Area | Today's workaround | What replaces it | Size today |
-| -- | -- | -- | -- |
-| Task boards | One per-user store split per conversation by a partition function, flow isolation forced off, and an index to find which partition holds a task | A per-session board, reached by name | `partition.ts` 206 and `find-task-partitions.ts` 60 lines, plus 52 `partitionBy` lines across packages |
-| Lineage | A storage space shared by a parent and its same-flow children, its own storage kind, and the rules for when a child joins or starts one | Naming the parent | `lineage-scope.ts` 306 lines, and 244 lines in the engine that mention lineage |
-| Copies at birth | Parent values (filing session, project, routing, chain) stamped into each child's state, and carried through message hops | Values fixed at filing, such as the project, ride on the task row; the rest are read from the parent by name | `session-fields.ts` 126 lines, the carried-hop parts of `hop.ts` (239), and `filingSessionId` in 78 lines |
-| Board above | A helper that works out which board a task session's task sits on, from the filing session or, for a workstream's session, the conversation that routed the task | The task being worked names its board (`ctx.task.session`) | `board-above.ts` 26 and `filing-session.ts` 115 lines |
-| Routed sessions | A per-user record that says which board's task is using a workstream's lead session (the long-running session a workstream's lead worker works in) | That session's own state, read and written by name | `routed-session.ts` 143 lines |
-| Task chains | A per-user record counting depth and size under the top task, keyed by a hash of its partition | Depth and size read through parent links, or kept on the top task's own row | `chain.ts` 229 lines |
-| Run records | Moved from lineage sharing to per-user scope after a new session couldn't find a finished run | Unchanged: it already sits per user, keyed by its subject. Only its history note goes | none |
-| Cross-session views | Shift Manager's carrier read, the coding board recomputing a partition, the Inbox reading every conversation's tasks | One query across the user's sessions | about 45 lines in Shift Manager, about 20 in the coding board, and the ledger read in the Inbox view |
-| Prefix reads | Stores scan the whole user scope and filter by an encoded prefix | Indexed key parts (rule 12) | the prefix query in each SQL store |
-
-**What I estimate it removes.** Roughly 1,500 to 1,800 lines of package source: about 1,200 in files that go whole (`partition.ts`, `find-task-partitions.ts`, `lineage-scope.ts`, `session-fields.ts`, `board-above.ts`, `filing-session.ts`, `routed-session.ts`, `chain.ts`), plus 300 to 600 in the parts of other files that carry their values, which is the less certain number. That doesn't include tests. 75 test files touch lineage, partitions, filing-session values or chain records, and most of those tests exist only to prove a workaround holds. It also retires eight terms and three options: `sharedToLineage`, `partitionBy` and the partition-reading `readFor`, plus the places that force flow isolation off for task boards.
-
-**What it doesn't count.** The task board cleanup that this unlocks is separate and bigger: one board per session instead of the delegation and plan stores, a parent link instead of three copies of it, and the rules that exist because of two stores (`plan.ts` alone is 526 lines). The estimate above covers only what the scope change removes by itself.
-
-**What it adds.** A registry lookup, the `{ session }` option on every resource accessor with its owner check, indexed key parts in the two SQL stores, and one store query that reads a definition across a user's sessions. That's on the order of a few hundred lines, mostly in the engine.
-
 ## Where today's code differs
 
-| Target | Today |
-| -- | -- |
-| A block can read or write another session's copy by naming it, within one user | A block resolves only its own session's storage key, or its lineage root for resources marked shared to lineage (`packages/engine/src/context/createExecutionContext.ts:1543-1546`). The only general cross-session API for blocks, where the block chooses the session, returns a session's flow, its readable state fields, its history and lists. It reaches no resources (`packages/core/src/types/request-host.ts:296-314, 488-516`). The one exception is narrow: a dispatched request can read and settle the single parent-board row it was started for, at a server-stamped address (`request-host.ts:554-572`) |
-| A resource is registered once by name, and any flow reaches it | A resource is reachable only from a flow that declares it. Same-name clashes are checked across flows at user and org scope, but a lineage space can't see two flows' declarations, which is why a cross-flow child gets its own lineage (`packages/engine/src/context/create-request-host.ts:457-465`) |
-| Blocks and the HTTP API follow the same rule | The HTTP routes already serve any of the user's own sessions after an owner check (`packages/engine/src/routes/route-utils.ts:250-262`). Blocks get less than a browser does |
-| A child reads its parent's data by naming the parent | A same-flow child shares its parent's lineage. A cross-flow child roots its own, because the lineage space has no flow in its key and two flows' declarations would collide there (`packages/engine/src/context/create-request-host.ts:457-475`). Session state is never shared (`packages/core/src/types/resource.ts:254-256`) |
-| A child doesn't need copies of its parent's values | Parent values are written into each child's state at birth, "however many hops down" (`packages/workforce/src/workers/session-fields.ts:12-19`) |
-| A board is a per-session definition, registered once by name | The conversation board is one per-user collection, split per conversation by a partition function, with flow isolation forced off so another flow can reach it (`packages/workforce/src/conversation-board/ledger.ts:136-150`, `packages/orchestration/src/tasks/collection/define-task-collection.ts:237-246`, `packages/orchestration/src/tasks/collection/partition.ts:4-12`). The steps a worker files for itself sit in a second collection, split the same way (`packages/workforce/src/conversation-board/plan.ts:80-83`) |
-| A task id finds its row through the session that holds it | A separate index finds which partition holds a task id (`packages/orchestration/src/tasks/collection/find-task-partitions.ts:1-20`) |
-| A view across sessions is one query | Shift Manager reads the whole task store through the first session whose flow declares it, then regroups rows by conversation (`packages/shift-manager/src/lib/reads.ts:388-431`). The coding board looks up a session's lineage to recompute its partition (`packages/harness-manager/src/kit/coding-board.ts:95-118`). The Inbox view reads every conversation's tasks at once (`packages/workforce/src/workers/inbox-view.ts:1-35`) |
-| Data about a user's work is kept per user, keyed by its subject | The coding run record was moved from lineage sharing to per-user scope after a new session read `run: null` for a finished job (`packages/harness-manager/src/run-record.ts:22-43`). Matches the target, reached the hard way |
-| One session's lock lives in that session | A workstream session's routing lock is a per-user record keyed by session id, because two conversations' boards route to it (`packages/workforce/src/conversation-board/routed-session.ts:1-38`) |
-| A child reads its parent's task row by naming the parent | A one-row read and settle of the parent's task exists on the request host, but the default host leaves the read unwired (`packages/core/src/types/request-host.ts:554-572`, `packages/engine/src/flowstate/createFlowState.ts:1069-1072`) |
-| Session ids are never trusted beyond the owner check | Matches. The lineage space is a separate storage kind precisely because session ids are caller-chosen (`packages/engine/src/context/createExecutionContext.ts:1574-1587`) |
-| Rows inside one shared copy can have per-row owners | Matches. Owner-private and owner-writes collections already do this (`packages/core/src/types/resource-collection.ts:75-94`) |
+The gap between this model and today's code is in [Scopes and Sessions: Gaps to Today](scopes-and-sessions-gaps.md). It has three parts: where today's code differs (each claim cited to the file it was read from), the retired terms with file counts, and what else this simplifies with an estimate of the code it removes. This doc is the model; that file is the backlog a spec works from.
