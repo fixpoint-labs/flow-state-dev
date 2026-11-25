@@ -42,20 +42,22 @@ logs; each control breaks one named assertion.
 |---|---|
 | **Goal check** | `goals/realtime/a-change-reaches-every-screen/`, extended · two scenes, `j2-teammates` and `j2-claude-code-style` (`GOAL_SCENES`) · model `n/a` (scripted, [D1](DECISIONS.md#d1)) · run by the implementer on one `main` commit, verdict in the implementation PR and the goal's verdict log; kept and run on demand as the rest of the goal is |
 | **Signal** | Every `j2-<lab>:<assertion>` in [the signal](#the-signal) passes, for both labs. Each "within 1 s" is 5 samples, all under 1000 ms, none retried |
-| **Input** | Per lab: its own host (`openTeammates`, `openClaudeCodeStyle`) served twice with `fsdev dev --app`, on two ports, over the Postgres the goal already starts (`log_statement = all`, an `application_name` per process), its store line swapped as [FIX-2368 D2](../FIX-2368/DECISIONS.md#d2) swaps the run-lab's; its workers answer through `labs/test-support`'s `scriptedModels`, and coding tasks run on harness-manager's scripted coder. One Chromium context per lab, one page on process 2, fronted |
+| **Input** | Per lab: its own host (`openTeammates`, `openClaudeCodeStyle`) served as two OS processes, each its own `fsdev dev --app` child on its own port, as the fixture's two processes are forked, over the Postgres the goal already starts (`log_statement = all`, an `application_name` per process), its store line swapped as [FIX-2368 D2](../FIX-2368/DECISIONS.md#d2) swaps the run-lab's; its workers answer through `labs/test-support`'s `scriptedModels`, and coding tasks run on harness-manager's scripted coder. One Chromium context per lab, one page on process 2, fronted |
 | **Anti-game** | Never `publish` calls. Grade what the page drew, the requests Playwright saw it send, and the statements Postgres logged by process. Every graded change is shown, from the statement log, to be written by process 1. The run sets no poll, timer or timed-read switch. A page under 20 frames a second is a setup error, never a sample |
-| **Control that must fail** | `memory-bus`: **`:message`, `:turn`, `:activity`, `:task`** on both labs (process 2 never hears) · `no-request-publish`: **`:message`, `:turn`** on both labs, with `:task` passing · `never-crosses`, new (the Postgres bus never listens, so it never says it crosses): **`:no-poll`, `:no-timed-read`** on both labs |
+| **Control that must fail** | `memory-bus`: **`:message`, `:turn`, `:activity`, `:task`** on both labs (process 2 never hears) · `no-request-publish`: **`:message`, `:turn`, `:activity`** on both labs (it also cuts the request's `run` notice on the user topic, which the worker sessions view hears), with `:task` passing · `never-crosses`, new (FIX-2427's `no-listen` first hunk only, `#start()` returns, without its second hunk that makes `crossesProcesses` say true; so the bus never listens and never says it crosses): **`:no-poll`, `:no-timed-read`** on both labs, by the requests and statements its idle window counts |
 
 ### The signal
 
 | Assertion | Passes when |
 |---|---|
 | `j2-<lab>:message` | A line sent into the worker's conversation from another client, on process 1, is answered there by the scripted model; process 2's page draws the answer within 1 s of the send |
-| `j2-<lab>:turn` | A held turn starts on process 1; the conversation draws it running within 1 s of the store holding it running, and ended within 1 s of the store holding it ended |
+| `j2-<lab>:turn` | Each sample is one held turn on process 1, graded at both ends: the conversation draws it running within 1 s of the store holding it running, and ended within 1 s of the store holding it ended. A sample passes only when both ends do |
 | `j2-<lab>:activity` | During that turn, the worker list (Teammates' status line, claude-code-style's sessions list) draws the worker working within 1 s of the store |
 | `j2-<lab>:task` | A task the scripted model files on process 1 runs on the scripted coder there and settles; the tasks view draws it settled within 1 s of the store holding it completed |
-| `j2-<lab>:no-poll` | Over 10 s from the page's first `crosses: true` frame, nothing written and nothing running, the page sends 0 requests |
-| `j2-<lab>:no-timed-read` | Over the same 10 s, Postgres logs 0 statements from process 2 naming a watched session |
+| `j2-<lab>:no-poll` | Over 10 s from the page's first `crosses: true` frame and its opening reads gone quiet, nothing written and nothing running, the page sends 0 requests. As j2's `:no-poll` and leg a's `a:no-timer` count, per page |
+| `j2-<lab>:no-timed-read` | Over the same 10 s, Postgres logs 0 statements from process 2 naming a watched session, as leg d's `d:no-timed-read` counts |
+
+Under `never-crosses` no `crosses: true` frame comes, so its window starts once the page has seen `crosses: false` and its opening reads have gone quiet. The control fails only on what that window counts: at least one request from the page, and at least one statement from process 2 naming a watched session, each printed. A run that fails on the missing frame alone shows nothing and is a setup error.
 
 ## What changes
 
@@ -133,7 +135,7 @@ slower closure run nobody repeats.
    If wrong: a project another client shares stays stale in claude-code-style's picker until the
    page loads again, unchecked.
 
-**Open: none.** D2 is the one to weigh.
+**Open: none.** Of the two decisions, D2 is the one to weigh at sign-off.
 
 Feature · closure follow-up · `goals/` only · medium: 2 scenes, 1 control, 2 configs, 0 packages ·
 no epic; follows [FIX-2368](../FIX-2368/SPEC.md) (done) · Linear

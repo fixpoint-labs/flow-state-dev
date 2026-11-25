@@ -64,6 +64,10 @@ to follow other clients. Then the view is built under its own issue and joins th
   amendment.
 - **One scene per lab, in FIX-2368's goal, not a new goal.** It reuses the Postgres, the
   controls and the scenes switch, and the issue names that harness. `GOAL_SCENES` runs a lab alone.
+- **Both scenes are in the goal's default scene list**, beside `a,b,c,d,j2,j3,j4`. The goal is run
+  on demand, never in CI, so the cost of four lab processes is paid only when someone asks for
+  the closure; leaving the labs out by default is how a closure run would skip them, which the
+  goal's *not done if* forbids. `GOAL_SCENES` narrows a run.
 - **Each lab is served the way it ships, with `fsdev dev --app` over its built pages**, from a
   goal-owned config that calls the lab's own open function. Its `host.mts` is the file on `main`,
   its store line swapped as it loads (or in a scratch copy, the implementer's call within FIX-2368
@@ -93,8 +97,7 @@ to follow other clients. Then the view is built under its own issue and joins th
 
 ## Analysis
 
-Nov 25, at `35e48f5`. **Right approach, one fold.** Run by the author in this dispatch: the
-worker can't start a fresh sub-agent. The owner can dispatch an independent pass.
+Nov 25, at `35e48f5`. **Right approach, one fold.**
 
 - **Reuse:** nothing added to a package. The scripted model, the hosts' options, the lab
   launchers, Postgres and two controls are reused; `never-crosses` derives from `no-listen`.
@@ -108,5 +111,9 @@ worker can't start a fresh sub-agent. The owner can dispatch an independent pass
 - **Draft** — the labs' half of FIX-2368's j2 as two scenes in its goal, each lab on two processes
   over Postgres with the store swapped as FIX-2368 D2 does, its workers on the scripted model the
   labs' tests use. Found: no test worker is needed, and neither lab has a live project view.
+- **Review (Nov 25)** — `never-crosses` gets its own idle start (`crosses: false` seen, opening
+  reads quiet) and must fail on counted requests and statements, not on the missing frame;
+  `no-request-publish` must also fail `:activity`, since it cuts the request's user-topic `run`.
+  The scenes join the default list; each `:turn` sample is one turn graded at both ends.
 
-**Open: none.**
+**Open: none.** The sign-off decisions D1 and D2 are what approval settles; no question beyond them is open.
