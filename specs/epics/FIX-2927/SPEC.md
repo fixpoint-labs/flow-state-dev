@@ -27,7 +27,7 @@ mechanism for each and no copies.**
 | **The real need** | A harness that does not drag in the manager, and one answer to "where is this scope's folder" and "what did this run change". It serves goal 4 of `docs/objectives.md`, keep the foundation honest |
 | **Smaller, and rejected** | Moving the `Harness` type only (FIX-2928 alone). The vendor packages lose their manager dependency, but the bash tools and the manager still disagree on folders, and the commit counts still disagree |
 | **Bigger, and not this epic's yet** | Containment attached to the workspace ([FIX-2440](https://linear.app/fixpoint-labs/issue/FIX-2440)) · a task-run layer outside the manager ([FIX-2936](https://linear.app/fixpoint-labs/issue/FIX-2936)) · where GitHub lives ([FIX-2931](https://linear.app/fixpoint-labs/issue/FIX-2931)) · plan mode as read-only access ([FIX-2929](https://linear.app/fixpoint-labs/issue/FIX-2929)). All four are children, held for Jake |
-| **Not done if** | The closure check has not run · `@flow-state-dev/workspace/internal` exists · `WorkspaceConfig` exists · a vendor package depends on harness-manager · two feed types exist · a path encoder for scope folders exists outside the workspace package · `harness-manager/src/commits.ts` exists · a closure bug is open |
+| **Not done if** | The closure check has not run · `@flow-state-dev/workspace/internal` exists · `WorkspaceConfig` exists · a vendor package depends on harness-manager · two feed types exist · a scope folder's path is built outside the workspace package (source only; tests and comments may still name the path) · `harness-manager/src/commits.ts` exists · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -43,7 +43,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue, [FIX-2937](https://linear.app/fixpoint-labs/issue/FIX-2937), on one `main` commit after every active child merges |
-| **Signal** | **a:** `rg 'workspace/internal'`, `rg WorkspaceConfig`, `rg '@flow-state-dev/harness-manager' packages/{claude-code,codex,cursor}`, `rg '\.fsdev.*workspaces'` outside `packages/workspace`, and `ls packages/harness-manager/src/commits.ts` each find nothing. **b:** `goals/harness-manager/*` and `goals/workspace/worktrees-resource` pass through `fsdev run`. **c:** a run that merges a moved-on base shows the same commit count in `fsdev worktrees`, the review detail and the turn diff, and the count leaves out the base's commits |
+| **Signal** | **a:** `rg 'workspace/internal'`, `rg WorkspaceConfig`, `rg '@flow-state-dev/harness-manager' packages/{claude-code,codex,cursor}`, `rg '\.fsdev.*workspaces' packages/*/src -g '!packages/workspace/**' -g '!*.test.ts'` with comment lines dropped (`rg -v '^\s*(//|\*)'` on the matches), and `ls packages/harness-manager/src/commits.ts` each find nothing. **b:** `goals/harness-manager/*` and `goals/workspace/worktrees-resource` pass through `fsdev run`. **c:** a run that merges a moved-on base shows the same commit count in `fsdev worktrees`, the review detail and the turn diff, and the count leaves out the base's commits |
 | **Anti-game** | The checks run on the merged tree, not on a child's branch. Leg c reads the three surfaces a person reads, not the reader's return value |
 | **Control that must fail** | Today's `main`: leg a finds every pattern; leg c shows the merged-in base commits on the worktree row |
 

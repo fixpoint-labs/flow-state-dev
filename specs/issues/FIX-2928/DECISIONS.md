@@ -18,7 +18,14 @@ type. The kit does two things: it fills the `harnesses` slot with one or two har
 **Check first.** Before deleting the kit, the implementer confirms the run's writes reach the
 same collections when they are installed by the coder flow rather than a dedicated flow (scope
 and owning flow of the records). If they cannot, stop and report: the fallback is a tiny kit in
-harness-manager that installs the flow, which is a decision for Jake, not the implementer.
+harness-manager that installs the flow, which is a decision for Jake, not the implementer. Until he decides, FIX-2928 and the epic's
+closure are blocked; the issue is not reshaped around the fallback, since a vendor kit in the
+manager is what the epic's D2 rejects.
+
+**Checked (2026-11-25).** The check passes. With the kit deleted and `claudeCodeHarness()` filled,
+the coder flow serves `observed-file-ops` and `observed-gaps` and no `claude-code` flow exists; an
+integration test pins it (`claude-code-harness-in-the-kit`), and it fails when the block records no
+work. The fallback is not needed.
 
 ## D2 · Fields only one runner fills are optional; `worktree` is required and both fill it
 

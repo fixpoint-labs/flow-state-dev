@@ -19,16 +19,16 @@ in the workspace package.**
 
 | How we verify | |
 |---|---|
-| **Signal** | `rg '\.fsdev.*workspaces'` and the encoders (`sanitize`, `safeSegment`, `encodeSegment`, `tenantSegment`, `hashKeySegment`) match only in `packages/workspace`. `FileEntryState` is gone. The projection session helper has three callers. The bash containment tests (ids outside the root, tenant collisions, case-insensitive collisions) pass unchanged, pointed at the shared rule. `pnpm typecheck` and the tools, claude-code, harness-manager and workspace tests pass |
-| **Control that must fail** | Today's tree: the `rg` finds the bash encoders and the harness-manager encoders |
+| **Signal** | In non-test source, with comment lines dropped, `rg '\.fsdev.*workspaces' packages/*/src` matches only in `packages/workspace`. The scope-folder encoders are defined only there: bash's `sanitize` and `safeSegment` are gone, and harness-manager's `encodeSegment` and `tenantSegment` (the ones `checkoutPathFor` uses) are imported from workspace, not defined in the manager. Not scope-folder encoders, so they stay where they are: harness-manager's `hashKeySegment` (a ledger key for a vendor account id) and the engine filesystem store's own `encodeSegment` (store record paths). `FileEntryState` is gone. The projection session helper has three callers. The bash containment tests (ids outside the root, tenant collisions, case-insensitive collisions) pass unchanged, pointed at the shared rule. `pnpm typecheck` and the tools, claude-code, harness-manager and workspace tests pass |
+| **Control that must fail** | Today's tree: the `rg` finds bash's path construction, and `sanitize`, `safeSegment`, `encodeSegment` and `tenantSegment` are defined outside workspace |
 
 ## What changes
 
 - **Workspace.** A folder-for-a-scope function: a scope plus a principal (from
-  `scopeComponents`) become one path under a root, through one segment encoder that keeps the
+  `scopeComponents`) become one path under a root, through one segment encoder (harness-manager's `encodeSegment` and `tenantSegment`, moved) that keeps the
   guarantees both sides have today (no traversal, tenant separation, case-insensitive
-  filesystems). harness-manager's `checkoutPathFor` and the bash defaults call it; the other
-  encoders are deleted.
+  filesystems). harness-manager's `checkoutPathFor` and the bash defaults call it; bash's `sanitize` and
+  `safeSegment` are deleted. `hashKeySegment` is not a folder encoder and stays in harness-manager.
 - **Workspace.** A projection session helper lifted from `projection-setup.ts`: hydrate the
   mounts, hand back the place's root, flush with diagnostics. `createBashBlocks`,
   `createBashTool` and `createClaudeCodeWorkspaceCapability` call it.
