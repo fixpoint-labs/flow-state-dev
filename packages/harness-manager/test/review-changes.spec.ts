@@ -733,6 +733,25 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(prompt).not.toContain("a teammate's change");
   }, 60_000);
 
+  it("shows the reviewer only the run's own work after the run merged the moved-on base in, on a host that names no base", async () => {
+    // A host over a person's own checkout cuts from the branch it has checked out (`HEAD`): the review still reads as the pull request would.
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      upstream: true,
+      checkedOutBase: true,
+      script: [{ answer: "added the line", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+      manager: { reviewChanges: true },
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    const prompt = task.holds?.find((h) => h.source.kind === "suspension")?.ask.prompt;
+    expect(prompt).toContain("2 commits on");
+    expect(prompt).toContain("1 file changed (+1 −0).");
+    expect(prompt).not.toContain("a teammate's change");
+  }, 60_000);
+
   // FIX-2847.
   it("ends the run that reaches its review after its task was cancelled, so no stopped run is left counted", async () => {
     // The judge reads after the harness step, where no poll of the row stops the run: a cancel
@@ -1455,7 +1474,16 @@ describe("a coding run's review carries what was asked, the run's summary and it
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const listed = [{ number: 41, html_url: ${JSON.stringify(PR_URL)}, state: "closed", title: "Tidy the task list", created_at: new Date().toISOString(), head: { ref: "x" } }];
-process.stdout.write(args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "") ? JSON.stringify(listed) : "[]");
+const path = args.find((a) => a.startsWith("repos/")) ?? "";
+// Read on its own, #41's head is one commit behind the run's branch (gh runs in the run's checkout).
+const head = () => require("node:child_process").execFileSync("git", ["rev-parse", "HEAD~1"], { encoding: "utf8" }).trim();
+process.stdout.write(
+  args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "")
+    ? JSON.stringify(listed)
+    : args[0] === "api" && path === "repos/acme/widgets/pulls/41"
+      ? JSON.stringify({ ...listed[0], merged_at: null, head: { ref: "x", sha: head() } })
+      : "[]",
+);
 `,
     );
     chmodSync(join(bin, "gh"), 0o755);
@@ -1481,6 +1509,18 @@ process.stdout.write(args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "") ? 
       expect(prompt).toContain("Asked: the feature");
       expect(prompt).toContain("The run's summary: done");
       expect(prompt).toContain(`Pull request #41: ${PR_URL}`);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("says which pull request the work is already on, as GitHub has it now, and how many of the branch's commits it lacks", async () => {
+    // The card offered to open a pull request beside one the task already had: it needs that one's state and what a push would add.
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      expect(reviewDetail(await h.reviewData(held))?.pullRequest).toEqual({ number: 41, url: PR_URL, state: "closed", unpushed: 1 });
     } finally {
       await h.dispose();
     }

@@ -238,6 +238,14 @@ export const runRecordStateSchema = z.object({
   baseCommit: z.string().nullable().default(null),
   // BP-030.
   /**
+   * The branch {@link baseRef} named when the run's branch was cut (for
+   * `"HEAD"`, the branch the repository had checked out then): the one whose
+   * tip a review reads the run against. `null` on a row written before this
+   * field existed, or when the host didn't say.
+   */
+  baseBranch: z.string().nullable().default(null),
+  // BP-030.
+  /**
    * The cut the run's last settle read it against (`effectiveCut`): the base
    * branch's tip then, when it had {@link baseCommit} in its history, else the
    * cut. Written on every settle, beside the decision, so a file's patch read

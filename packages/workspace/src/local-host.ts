@@ -401,6 +401,13 @@ export interface WorkspacePlace {
     /** The commit it was cut at. Only when `created`. */
     baseCommit?: string;
     /**
+     * The branch `baseRef` named when the run's branch was cut: for `"HEAD"`,
+     * the branch the repository had checked out then. Only when `created`, in a
+     * repository the operator listed. Hand it to `baseTip`, which answers none
+     * for `"HEAD"` (the branch checked out now may not be the one cut from).
+     */
+    baseBranch?: string;
+    /**
      * Present when the checkout was handed back off the run's branch and moved
      * back onto it (see `MovedBack`). Tell the run, which may still think it is
      * on the branch it switched to.
@@ -1164,6 +1171,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       branchCut: worktree.baseRef !== undefined,
       ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
       ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
+      ...(worktree.baseBranch !== undefined ? { baseBranch: worktree.baseBranch } : {}),
       ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
       ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
     };
@@ -1180,7 +1188,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     repo: string,
     baseRef: string | undefined,
     left: () => number,
-  ): Promise<{ ref: string; commitish: string; commit: string }> {
+  ): Promise<{ ref: string; commitish: string; commit: string; branch?: string }> {
     const base = baseRef ?? "HEAD";
     // A pinned remote's branch (`origin/main`) is that branch as the remote
     // has it now: fetched first, then cut from. Only a commit this fetch
@@ -1211,19 +1219,20 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const branchRef = full.startsWith("refs/heads/") ? full : undefined;
     const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
     // Recorded as asked (`HEAD` when no base is named); the commit cut at
-    // is recorded beside it.
+    // is recorded beside it, and the branch the name was on then.
     const ref = base;
+    const named = branchRef === undefined ? {} : { branch: branchRef.slice("refs/heads/".length) };
     // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
     const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
     // Equal, or local ahead: the person's branch, as it always was.
     if (upstream === undefined || (await isAncestor(git, repo, upstream.commit, local, left()))) {
       // The commit compared, not the name: the name can move while the fetch runs.
-      return { ref, commitish: local, commit: local };
+      return { ref, commitish: local, commit: local, ...named };
     }
     // Behind: cut at the commit, never the ref's name, so the run's branch
     // doesn't come out tracking the person's upstream.
     if (await isAncestor(git, repo, local, upstream.commit, left())) {
-      return { ref, commitish: upstream.commit, commit: upstream.commit };
+      return { ref, commitish: upstream.commit, commit: upstream.commit, ...named };
     }
     throw new WorkspaceRefusedError(
       "base-diverged",

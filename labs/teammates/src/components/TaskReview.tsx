@@ -475,18 +475,39 @@ export function RunMeta({
   );
 }
 
-/** Each way to land, as the footer's buttons say it; onto a pull request already open, the registry's "Push to PR #N". */
-const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullRequest"> | undefined): string =>
-  land === "pull-request" && review?.openPullRequest == null ? "Open pull request" : landLabel(land, review?.openPullRequest);
+/**
+ * Each way to land, as the footer's buttons say it: onto the pull request the work is already on, "Push update";
+ * onto one open from the branch, the registry's "Push to PR #N".
+ */
+const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullRequest" | "pullRequest"> | undefined): string =>
+  land === "pull-request" && review?.pullRequest != null
+    ? "Push update"
+    : land === "pull-request" && review?.openPullRequest == null
+      ? "Open pull request"
+      : landLabel(land, review?.openPullRequest);
+
+/**
+ * Whether a `pull-request` land can be offered beside the pull request the work is already on: only a push onto
+ * it (the one open from the branch, which is where that land goes, not read as merged or closed) of commits it
+ * lacks. What couldn't be read counts against nothing, so a push is never hidden on a read that failed. No such
+ * pull request: the land as it is.
+ */
+const pushable = (review: Pick<ReviewDetail, "openPullRequest" | "pullRequest">): boolean => {
+  const on = review.pullRequest ?? null;
+  return on === null || (review.openPullRequest?.number === on.number && on.state !== "merged" && on.state !== "closed" && on.unpushed !== 0);
+};
 
 /** What the primary button does, in a line under the buttons. Exported for its test. */
-export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest">, open: number): string {
+export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest" | "pullRequest">, open: number): string {
   const branch = review.branch === null ? "the run's branch" : shortBranch(review.branch);
   const onto = review.openPullRequest ?? null;
+  const lacks = review.pullRequest?.unpushed ?? null;
   const said =
     land === "pull-request"
       ? onto !== null
-        ? `Pushes ${branch} to PR #${onto.number}, already open from it; no second PR is opened.`
+        ? lacks === null
+          ? `Pushes ${branch} to PR #${onto.number}, already open from it; no second PR is opened.`
+          : `Pushes the ${lacks} commit${lacks === 1 ? "" : "s"} PR #${onto.number} lacks from ${branch}; no second PR is opened.`
         : `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`
       : land === "merge"
         ? `Merges ${branch} into your checkout.`
@@ -565,12 +586,16 @@ export function ReviewFooter({
     if (note !== "") void send({ verdict: "revise", words: note });
   };
   const accept = (land?: ReviewLand) => void send({ verdict: "accepted", ...(land ? { land } : {}), ...(land && note !== "" ? { words: note } : {}) });
-  const ordered = orderedLands(review?.lands ?? [], failed);
+  // Beside the pull request the work is already on, a pull-request land is only ever a push onto it.
+  const ordered = orderedLands((review?.lands ?? []).filter((land) => land !== "pull-request" || review === undefined || pushable(review)), failed);
   const primary = ordered[0] ?? null;
   const others = ordered.slice(1);
   const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;
   const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${landButton(land, review)}` : landButton(land, review));
   const onto = review?.openPullRequest ?? null;
+  // The pull request the work is already on, with its state as read; else the one open from the branch.
+  const on = review?.pullRequest ?? null;
+  const linked = on ?? onto;
   // A disabled secondary keeps its border, so it still reads as a button; only its words dim.
   const secondary = "h-9 rounded-md border border-border-strong px-3.5 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:text-text-3 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-ring";
   return (
@@ -652,11 +677,11 @@ export function ReviewFooter({
       </div>
       <p className="text-xs leading-relaxed text-text-3" data-land-hint>
         {landHint(primary, review ?? { branch: null }, open)}
-        {onto === null ? null : (
+        {linked === null ? null : (
           <>
             {" "}
-            <a href={onto.url} target="_blank" rel="noreferrer" data-open-pull-request className="inline-flex items-center gap-0.5 font-medium text-brand underline-offset-2 hover:underline">
-              View PR #{onto.number}
+            <a href={linked.url} target="_blank" rel="noreferrer" data-open-pull-request className="inline-flex items-center gap-0.5 font-medium text-brand underline-offset-2 hover:underline">
+              {on === null ? `View PR #${linked.number}` : `PR #${on.number}${on.state === null ? "" : ` · ${on.state}`}`}
               <ArrowUpRightIcon aria-hidden className="size-3" />
             </a>
           </>
