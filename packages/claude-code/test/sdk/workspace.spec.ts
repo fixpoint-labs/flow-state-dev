@@ -571,8 +571,13 @@ describe("createClaudeCodeWorkspaceCapability", () => {
       // is to stop two runs sharing it, which needs its name.
       const rows = await result.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.list();
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.state.kind).toBe("contested");
-      expect(rows[0]!.state.path).toBe("artifacts/shared.md");
+      expect(rows[0]!.state).toMatchObject({
+        kind: "contested",
+        path: "artifacts/shared.md",
+        base: null,
+        theirs: null,
+        ours: null,
+      });
     } finally {
       sharedClaimRegistry.releaseAll(otherRun);
       discard(base);

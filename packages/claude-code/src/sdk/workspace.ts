@@ -34,10 +34,7 @@ import {
   type ClaudeCodeAgentOptions,
 } from "./agent";
 import { claudeCodeAgentHandleSchema } from "./types";
-import { CLAUDE_CODE_WORKSPACE_OUTCOMES, claudeCodeWorkspaceResources } from "./workspace-collections";
-
-/** The block context these callbacks see. Loose for the reasons `./agent` gives. */
-type WorkspaceContext = BlockContext<any, any, any, any, any, any, any, any, any>;
+import { CLAUDE_CODE_WORKSPACE_OUTCOMES, claudeCodeWorkspaceResources, claudeCodeWorkspaceOutcomeStateSchema } from "./workspace-collections";
 
 /** A collection selection entry. A bare string is `{ key, writable: true }`. */
 export type ClaudeCodeWorkspaceCollectionSpec = string | { key: string; writable?: boolean };
@@ -125,14 +122,9 @@ export interface ClaudeCodeWorkspaceCapabilityOptions
  * this as a tool can call it several times in one request, and each call is a
  * separate workspace.
  *
- * The entry carries the root too, and that is what makes the one-directory
- * invariant structural rather than a promise. The agent's `cwd` and the
- * sandbox's `allowWrite` both READ this value instead of calling the resolver
- * again — a resolver that mints a directory (`mkdtemp`) returns a different one
- * each call, so two reads would hand the run one directory and confine it to
- * another.
+ * The sequencer keeps the resolved root so every reader uses the directory hydrate opened.
  */
-const openWorkspaces = new Map<string, { projection: Projection; root: string }>();
+const openWorkspaces = new Map<string, Projection>();
 
 /** State the chain carries so its three steps address one workspace. */
 const workspaceSequencerState = z.object({
@@ -148,8 +140,7 @@ let nextWorkspaceId = 0;
 /** Duck-type check: is this entry on `ctx.resources` a collection ref? */
 function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObject> {
   if (value === null || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.pattern === "string" && typeof v.list === "function";
+  return "pattern" in value && typeof value.pattern === "string" && "list" in value && typeof value.list === "function";
 }
 
 const normalizeSpec = (spec: ClaudeCodeWorkspaceCollectionSpec) =>
@@ -163,26 +154,18 @@ const normalizeSpec = (spec: ClaudeCodeWorkspaceCollectionSpec) =>
  * converging them belongs with the change that touches both consumers. Named
  * here so that change knows where to look.
  */
-export function discoverMountsForTest(
-  ctx: WorkspaceContext,
+function discoverMounts(
+  ctx: Parameters<typeof principalFromContext>[0] & { resources?: Record<string, unknown> },
   explicit?: ClaudeCodeWorkspaceCollectionSpec[],
   exclude?: string[],
 ): Mount[] {
-  return discoverMounts(ctx, explicit, exclude);
-}
-
-function discoverMounts(
-  ctx: WorkspaceContext,
-  explicit: ClaudeCodeWorkspaceCollectionSpec[] | undefined,
-  exclude: string[] | undefined,
-): Mount[] {
-  const principal = principalFromContext(ctx as unknown as Parameters<typeof principalFromContext>[0]);
+  const principal = principalFromContext(ctx);
   const excluded = new Set(exclude ?? []);
   const wanted = explicit
     ? new Map(explicit.map((s) => [normalizeSpec(s).key, normalizeSpec(s)]))
     : undefined;
   const mounts: Mount[] = [];
-  const bag = (ctx as { resources?: Record<string, unknown> }).resources;
+  const bag = ctx.resources;
   if (bag === undefined || typeof bag !== "object") return mounts;
 
   for (const [key, value] of Object.entries(bag)) {
@@ -198,7 +181,7 @@ function discoverMounts(
     // hydrate's `for (const entry of await list())` throws before the run
     // starts, and it carries no mutators for a writable mount to flush
     // through. The brand is what separates them; the shape does not.
-    if ((value as { projected?: unknown }).projected === true) {
+    if ("projected" in value && value.projected === true) {
       console.warn(
         `[workspace-agent] collection "${key}" is a read-through projection, so it cannot be mounted into a directory — skipped.`,
       );
@@ -227,6 +210,8 @@ function discoverMounts(
   }
   return mounts;
 }
+
+export { discoverMounts as discoverMountsForTest };
 
 /**
  * Tools that move a run out of the directory it was given.
@@ -306,8 +291,8 @@ export function createClaudeCodeWorkspaceCapability(
     ...agentOptions
   } = options;
 
-  const rootFor = (ctx: WorkspaceContext): string => {
-    const root = (ctx.sequencer?.state as { root?: string | null } | undefined)?.root;
+  const rootFor = (ctx: Pick<BlockContext, "sequencer">): string => {
+    const root = ctx.sequencer?.state.root;
     if (typeof root !== "string" || root === "") {
       throw new Error(
         "[workspace-agent] no workspace is open for this run — the agent block ran without its hydrate step. It is only usable inside the sequencer this capability builds.",
@@ -340,7 +325,7 @@ export function createClaudeCodeWorkspaceCapability(
       // that throws is one nothing will ever come back for. On a long-lived
       // server that is a projection and a baseline retained per failed
       // attempt.
-      openWorkspaces.set(workspaceId, { projection, root });
+      openWorkspaces.set(workspaceId, projection);
     },
   });
 
@@ -357,12 +342,11 @@ export function createClaudeCodeWorkspaceCapability(
    * flush, so whichever caller arrives first does the work and the other
    * returns immediately.
    */
-  const reconcile = async (ctx: WorkspaceContext): Promise<void> => {
-      const key = (ctx.sequencer?.state as { workspaceId?: string | null } | undefined)
-        ?.workspaceId;
+  const reconcile = async (ctx: Pick<BlockContext, "sequencer" | "resources" | "emit">): Promise<void> => {
+      const key = ctx.sequencer?.state.workspaceId;
       if (typeof key !== "string") return;
-      const entry = openWorkspaces.get(key);
-      if (entry === undefined) return;
+      const projection = openWorkspaces.get(key);
+      if (projection === undefined) return;
       // Removed before the flush, not after. A flush that throws still ends
       // this run's ownership of the directory; leaving the entry would let a
       // later block in the same run flush a projection whose place is gone.
@@ -370,7 +354,7 @@ export function createClaudeCodeWorkspaceCapability(
 
       let outcomes: readonly FlushOutcome[];
       try {
-        outcomes = (await entry.projection.flush()).outcomes;
+        outcomes = (await projection.flush()).outcomes;
       } catch (err) {
         // One failure is reported rather than rethrown into a run that has
         // otherwise finished its work: the projection refused to decide
@@ -394,32 +378,9 @@ export function createClaudeCodeWorkspaceCapability(
       if (unsettled.length === 0) return;
 
       const at = Date.now();
-      const log = (ctx as { resources: Record<string, any> }).resources[
-        CLAUDE_CODE_WORKSPACE_OUTCOMES
-      ];
+      const log = ctx.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES] as ResourceCollectionRef<z.infer<typeof claudeCodeWorkspaceOutcomeStateSchema>>;
       for (const outcome of unsettled) {
-        const state =
-          outcome.kind === "conflict"
-            ? {
-                kind: "conflict" as const,
-                path: outcome.path,
-                base: outcome.base,
-                theirs: outcome.theirs,
-                ours: outcome.ours,
-                at,
-              }
-            : {
-                // `outcome.kind` rather than a literal: orphan and contested
-                // share this shape — neither carries hashes — but they are not
-                // the same row, and writing one of them under the other's name
-                // is how a reader learns the wrong fix.
-                kind: outcome.kind,
-                path: outcome.path,
-                base: null,
-                theirs: null,
-                ours: null,
-                at,
-              };
+        const state = claudeCodeWorkspaceOutcomeStateSchema.parse({ ...outcome, at });
         const ref = await log.getOrCreate(`${key}/${outcome.path}`, state);
         await ref.patchState(state);
       }
@@ -454,9 +415,7 @@ export function createClaudeCodeWorkspaceCapability(
     description: "Reconcile the run's workspace back into its collections.",
     inputSchema: z.any(),
     resources: claudeCodeWorkspaceResources,
-    execute: async (_input: unknown, ctx) => {
-      await reconcile(ctx as WorkspaceContext);
-    },
+    execute: (_input, ctx) => reconcile(ctx),
   });
 
   const agent = claudeCodeAgent({
@@ -472,14 +431,14 @@ export function createClaudeCodeWorkspaceCapability(
       // caller's ran, and the block runtime swallows hook errors to preserve
       // the agent's own, so their cleanup is skipped with nothing said.
       try {
-        await reconcile(ctx as WorkspaceContext);
+        await reconcile(ctx);
       } finally {
         await agentOptions.onErrored?.(error, ctx);
       }
     },
     // Owned by this capability: the directory is the projection's, and it is
-    // READ from the registry rather than re-resolved. See `openWorkspaces`.
-    cwd: (ctx) => rootFor(ctx as WorkspaceContext),
+    // read from the sequencer state that hydrate wrote.
+    cwd: rootFor,
     ...(contain
       ? {
           // An explicit setting wins. Containment is a default, not a lock.
@@ -492,7 +451,7 @@ export function createClaudeCodeWorkspaceCapability(
           ],
           sandbox:
             agentOptions.sandbox ??
-            ((ctx) => claudeCodeContainmentSandbox(rootFor(ctx as WorkspaceContext))),
+            ((ctx) => claudeCodeContainmentSandbox(rootFor(ctx))),
         }
       : {}),
   });
