@@ -25,7 +25,7 @@ export const DEFAULT_WORKING_MEMORY_CONFIG = {
   decay: { strategy: 'power-law' as const, rate: 0.5 },
 } as const
 
-function resolveConfig(config?: WorkingMemoryHelperConfig) {
+export function resolveWorkingMemoryConfig(config?: WorkingMemoryHelperConfig) {
   return {
     capacity: config?.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
     maxPinnedSlots: config?.maxPinnedSlots ?? DEFAULT_WORKING_MEMORY_CONFIG.maxPinnedSlots,
@@ -109,7 +109,7 @@ export async function add(
   entry: AddEntryInput,
   config?: WorkingMemoryHelperConfig,
 ): Promise<WorkingMemoryEntry> {
-  const resolved = resolveConfig(config)
+  const resolved = resolveWorkingMemoryConfig(config)
   // Generated once, so the id is stable across CAS retries — same reasoning as
   // `createTask` in the task collection. Only the state-derived fields below are
   // computed per invocation.
@@ -187,7 +187,7 @@ export async function pin(
   id: string,
   config?: WorkingMemoryHelperConfig,
 ): Promise<boolean> {
-  const resolved = resolveConfig(config)
+  const resolved = resolveWorkingMemoryConfig(config)
 
   return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
@@ -235,7 +235,7 @@ export async function refresh(
   id: string,
   config?: WorkingMemoryHelperConfig,
 ): Promise<boolean> {
-  const resolved = resolveConfig(config)
+  const resolved = resolveWorkingMemoryConfig(config)
 
   return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
@@ -257,7 +257,7 @@ export async function advance(
   ref: WmRef,
   config?: WorkingMemoryHelperConfig,
 ): Promise<void> {
-  const resolved = resolveConfig(config)
+  const resolved = resolveWorkingMemoryConfig(config)
 
   await ref.updateState((s: WorkingMemoryState) => {
     const newTurn = s.currentTurn + 1
