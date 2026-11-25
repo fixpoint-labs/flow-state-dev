@@ -267,7 +267,8 @@ const postStateSchema = z.object({
   coordinator: z.string(),
   /** This conversation's id and incarnation, read from its session record when the post opened. */
   filingSessionId: z.string(),
-  /** This conversation's recent lines before this request, read when the post opened. */
+  // BP-030.
+  /** This conversation's lines when the post opened. Older resumed requests can omit them. */
   recent: z.array(conversationLineSchema),
   policy: z.string(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
@@ -289,7 +290,8 @@ type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
 
-type RoutingContext = BlockContext<z.infer<typeof requestStateSchema>, CoordinatorSessionState>;
+type RoutingRequestState = z.infer<typeof requestStateSchema>;
+type RoutingContext = BlockContext<RoutingRequestState, CoordinatorSessionState>;
 
 /** One routed task to file. */
 const deliveryRequestSchema = z.object({
@@ -641,12 +643,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // policy. Its request state keeps the name it had as a post (BP-030).
   // -------------------------------------------------------------------------
 
-  /** The message being routed, from request state. Set by the door before anything routes. */
-  const postOf = (ctx: Pick<RoutingContext, "request">): PostState => {
-    const post = ctx.request.state[POST_STATE];
+  /** The door sets the post before a routing step reads or updates it. */
+  const requirePost = (post: PostState | undefined): PostState => {
     if (post === undefined) throw new Error("No message is being routed in this request.");
-    // A request opened before posts carried their lines, and resumed since, reads as having none (BP-030).
-    return post.recent === undefined ? { ...post, recent: [] } : post;
+    return post;
   };
 
   /** A delegate record as a delivery names it: its worker, and its target when it has one. */
@@ -674,7 +674,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     from: passed.from,
     coordinator: post.coordinator,
     filingSessionId: post.filingSessionId,
-    recent: post.recent
+    recent: post.recent === undefined ? [] : post.recent
   });
 
   /** What every record of this request's routing starts with, its note and best fit's evaluator error included when it has them. */
@@ -812,8 +812,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * it came to is kept for the turn's record; a pick that files nothing is a
    * refusal the model reads.
    */
-  const fileJudged = async (ctx: BlockContext, init: TaskInit): Promise<Task> => {
-    const post = postOf(ctx);
+  const fileJudged = async (ctx: BlockContext<RoutingRequestState>, init: TaskInit): Promise<Task> => {
+    const post = requirePost(ctx.request.state[POST_STATE]);
     // A routed task starts now, in the delegate's ongoing session, and stands
     // alone: a setting that says otherwise is refused, never dropped.
     if (init.session !== undefined && init.session !== "ongoing") {
@@ -845,12 +845,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       "refused" in judged
         ? { routed: { worker: init.assignee, outcome: "skipped" as const, reason: judged.refused } }
         : await routeTask(ctx, judged, init);
-    await ctx.request.patchState(POST_STATE as never, ((state: PostState) => {
-      const current = state;
+    await ctx.request.patchState(POST_STATE, (state) => {
+      const current = requirePost(state);
       // A replayed call's delivery is recorded once: a delegate takes the message once a round.
       const again = filed.routed.outcome === "delivered" && current.dispatches.some((entry) => entry.outcome === "delivered" && sameDelegate(entry, filed.routed));
       return again ? current : { ...current, dispatches: [...current.dispatches, filed.routed] };
-    }) as never);
+    });
     const row = filed.taskId === undefined ? undefined : (await conversationLedgerAt(ctx, post.filingSessionId))?.get(filed.taskId);
     if (filed.routed.outcome === "delivered" && row !== undefined) return row;
     // A refusal's reason is a sentence of its own, often with its period.
@@ -923,7 +923,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: z.object({}),
     requestStateSchema,
     execute: async (_reply: unknown, ctx) => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       await emitCoordinatorRoute(ctx, {
         ...recordOf(post),
         by: "judgment",
@@ -1016,7 +1016,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     requestStateSchema,
     execute: async (_input, ctx): Promise<BestFitCaseValue> => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const listed = currentDelegates(ctx.session.state, post.defaults);
       const reachable: string[] = [];
       const options: Record<string, string> = {};
@@ -1045,7 +1045,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         },
         byLabel,
         skipped,
-        recent: post.recent,
+        recent: post.recent === undefined ? [] : post.recent,
         post: { from: post.from, text: post.body }
       };
     }
@@ -1058,10 +1058,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: z.object({}),
     requestStateSchema,
     execute: async (evaluated, ctx) => {
-      await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({
-        ...state,
+      await ctx.request.patchState(POST_STATE, (post) => ({
+        ...requirePost(post),
         evaluationFailed: evaluated.failed
-      })) as never);
+      }));
       return {};
     }
   });
@@ -1116,14 +1116,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema,
     execute: async (answer: unknown, ctx): Promise<Placed> => {
       const bestFit = bestFitCaseSchema.parse(ctx.parent?.input);
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const placed = placeBestFit(bestFit.ladder as BestFitCase, answer);
       // Only a user's post moves the hold.
       const holds = post.round === 0;
       if (placed.by === "none" || placed.by === "coordinator") {
         if (holds) await ctx.session.patchState({ [HOLD_STATE]: null });
         const fit = fitOf(placed, bestFit.ladder.minConfidence);
-        await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({ ...state, fit })) as never);
+        await ctx.request.patchState(POST_STATE, (current) => ({ ...requirePost(current), fit }));
         const reason =
           placed.by === "coordinator"
             ? "the evaluation picked the coordinator"
@@ -1159,7 +1159,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema,
     execute: async (outcomes: RoutedDelegate[], ctx) => {
       const placed = placedSchema.parse(ctx.parent?.input);
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const delegates = [...(placed.place === "deliver" ? outcomes : []), ...placed.skipped];
       const delivered = outcomes.some((outcome) => outcome.outcome === "delivered");
       await emitCoordinatorRoute(ctx, {
@@ -1185,7 +1185,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema,
     execute: async (error: unknown, ctx) => {
       if (ctx.signal.aborted) throw error;
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const why = `best fit couldn't place it, and the coordinator's own turn failed: ${
         error instanceof Error ? error.message : String(error)
       }`;
@@ -1210,7 +1210,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   });
 
   const judgmentAfterBestFit = (judgmentTurn.rescue([{ block: unplaced }]) as BlockDefinition<any, any>).connectInput(
-    (_placed: unknown, ctx: BlockContext) => ({ message: turnMessage(postOf(ctx)) })
+    (_placed: unknown, ctx: BlockContext<RoutingRequestState>) => ({
+      message: turnMessage(requirePost(ctx.request.state[POST_STATE]))
+    })
   );
 
   /**
@@ -1223,7 +1225,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: z.object({ unplaced: z.string() }),
     requestStateSchema,
     execute: async (placed: Placed, ctx) => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const reason = placed.place === "deliver" ? "no pick could be delivered" : placed.reason;
       await emitCoordinatorRoute(ctx, {
         ...recordOf(post),
@@ -1292,7 +1294,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     requestStateSchema,
     execute: async (_input: unknown, ctx): Promise<Placed> => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const list = currentDelegates(ctx.session.state, post.defaults).delegates;
       const author = post.exclude;
       // A user's post claims each turn before checking it, so two posts at
@@ -1339,7 +1341,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     requestStateSchema,
     execute: async (_input: unknown, ctx): Promise<Placed> => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const answers = post.answers;
       const picks: DeliveryRequest[] = [];
       const records = currentDelegates(ctx.session.state, post.defaults).delegates;
@@ -1499,7 +1501,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     requestStateSchema,
     execute: async (_value: unknown, ctx) => {
-      const post = postOf(ctx);
+      const post = requirePost(ctx.request.state[POST_STATE]);
       const now = Date.now();
       const isThisRound = (open: OpenRound) => open.messageRequestId === post.messageRequestId && open.round === post.round;
       // A round at the limit was never opened, one closed at its deadline is
