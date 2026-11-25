@@ -322,6 +322,26 @@ describe("builtin fetch adapter — allowed hosts", () => {
     expect(result.markdown).toContain("Allowed page");
   });
 
+  it("matches a listed Unicode host to the punycode form a URL carries", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(page());
+
+    const result = await builtinFetchAdapter.fetch("https://bücher.de/", {
+      waitForJS: false,
+      allowedHosts: ["Bücher.de"],
+    });
+
+    expect(result.markdown).toContain("Allowed page");
+  });
+
+  it("allows no host when the list is empty", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("https://docs.example/", { waitForJS: false, allowedHosts: [] })
+    ).rejects.toMatchObject({ code: "fetch_blocked_url" });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("matches hosts exactly, so a subdomain is not allowed by its parent", async () => {
     globalThis.fetch = vi.fn();
 

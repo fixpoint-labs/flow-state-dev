@@ -43,7 +43,7 @@ export interface FetchConfig {
    * allow `www.example.com`). Checked on the URL the model asks for and on every
    * redirect hop. Only the built-in provider can check redirect hops, so setting
    * this selects it, and naming a hosted provider with it throws. Unset: any
-   * public host.
+   * public host; an empty list allows none.
    */
   allowedHosts?: string[];
   /** Explicit API keys. If omitted, auto-detect from env vars. */

@@ -70,13 +70,29 @@ export interface FetchValidatedOptions {
   signal?: AbortSignal;
   /**
    * Hostnames the fetch may reach, matched exactly (no subdomains). Checked on
-   * the starting URL and every redirect hop. Unset: any public host.
+   * the starting URL and every redirect hop. Unset: any public host. An empty
+   * list allows no host.
    */
   allowedHosts?: readonly string[];
   /** Overrides the deadline. Tests only. */
   timeoutMs?: number;
   /** Overrides the byte cap. Tests only. */
   maxBytes?: number;
+}
+
+/**
+ * The form a listed host is compared in: the one `URL.hostname` gives for the
+ * same host, so a Unicode name (`bücher.de`) matches its punycode hop
+ * (`xn--bcher-kva.de`). An entry `URL` cannot parse is compared as written.
+ */
+function allowedHostKey(entry: string): string {
+  const host = normalizeHostname(entry);
+  if (host.includes(":")) return host; // an IPv6 literal, already in canonical-enough form
+  try {
+    return normalizeHostname(new URL(`http://${host}`).hostname);
+  } catch {
+    return host;
+  }
 }
 
 /**
@@ -96,7 +112,7 @@ export async function fetchValidated(
   const deadline = AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   const maxBytes = options.maxBytes ?? MAX_BODY_BYTES;
-  const allowedHosts = options.allowedHosts && new Set(options.allowedHosts.map(normalizeHostname));
+  const allowedHosts = options.allowedHosts && new Set(options.allowedHosts.map(allowedHostKey));
   let currentUrl = url;
 
   try {

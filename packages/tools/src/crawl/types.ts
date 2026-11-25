@@ -54,7 +54,7 @@ export interface CrawlConfig {
    * allow `www.example.com`). Checked on the root URL and on every redirect hop
    * of every page. Only the built-in provider can check redirect hops, so
    * setting this selects it, and naming Firecrawl with it throws. Unset: any
-   * public host.
+   * public host; an empty list allows none.
    */
   allowedHosts?: string[];
   /** Explicit API keys. */
