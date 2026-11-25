@@ -114,7 +114,7 @@ export async function effectiveCut(cwd: string, cut: string | null, tip: string 
 export async function mergedBaseOf(cwd: string, base: string, head: string, tip: string | null): Promise<string | null> {
   if (tip === null) return null;
   try {
-    // A tip that already has the turn's head would read its work as none.
+    // A tip that already has the turn's head would read its work as none (the guard `effectiveCut` keeps for a board run).
     if (await isAncestor(cwd, head, tip)) return null;
     const merged = (await git(cwd, ["merge-base", head, tip])).trim();
     if (merged === "" || (await isAncestor(cwd, merged, base))) return null;
@@ -137,7 +137,8 @@ export async function turnDiffStart(cwd: string, base: string, mergedBase: strin
   if (mergedBase === null) return base;
   try {
     if (await isAncestor(cwd, base, mergedBase)) return mergedBase;
-    return (await git(cwd, ["merge-tree", "--write-tree", base, mergedBase])).split("\n")[0]!.trim() || base;
+    const [tree] = (await git(cwd, ["merge-tree", "--write-tree", base, mergedBase])).split("\n");
+    return tree?.trim() || base;
   } catch {
     return base;
   }
