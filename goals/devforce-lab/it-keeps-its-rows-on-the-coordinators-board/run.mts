@@ -46,6 +46,7 @@ import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { DRAIN_ENTRY, EM_FLOW, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["em-session"] as const;
@@ -89,7 +90,7 @@ await runGoal(async (failures) => {
   const stub = harnessStub({ duringRun: commitWork });
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: CODER,
     logger: silentLogger,

@@ -201,7 +201,7 @@ export interface PlanningEntryOptions<
  * planner left without one. Planner-emitted context wins (we only fill
  * gaps). Returns the rewritten `{ tasks }` for `seedTasksFromPlan`.
  */
-function createGoalContextEnricher<TState>(
+function createGoalContextEnricher<TState extends PlanningEntryStateShape>(
   name: string,
   stateSchema: z.ZodType<TState>,
 ) {
@@ -211,7 +211,7 @@ function createGoalContextEnricher<TState>(
     outputSchema: seedTaskInputSchema,
     sequencerStateSchema: stateSchema,
     execute: async (planOutput, ctx) => {
-      const goal = (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "";
+      const goal = ctx.sequencer?.state.goal ?? "";
       return {
         tasks: planOutput.tasks.map((t) => {
           const hasContext = typeof t.context === "string" && t.context.length > 0;
@@ -223,18 +223,6 @@ function createGoalContextEnricher<TState>(
       };
     },
   });
-}
-
-/**
- * Pre-connect a custom `taskContext` block so it receives `{ goal, tasks }`
- * (the contract from D4) and returns `{ tasks }`. The goal comes from the
- * sequencer state set by `setInitialState`.
- */
-function connectCustomContextEnricher(block: BlockDefinition<any, any>) {
-  return block.connectInput<{ tasks: unknown[] }>((planOutput, ctx) => ({
-    goal: (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "",
-    tasks: planOutput.tasks,
-  }));
 }
 
 // BP-011; FIX-827.
@@ -392,11 +380,12 @@ export function createPlanningEntry<
       ? undefined
       : taskContext === "goal"
         ? createGoalContextEnricher(name, stateSchema)
-        : connectCustomContextEnricher(taskContext);
+        : taskContext.connectInput<{ tasks: unknown[] }>(({ tasks }, ctx) => {
+            const goal = ctx.sequencer?.state.goal;
+            return { goal: typeof goal === "string" ? goal : "", tasks };
+          });
 
-  // Build conditionally — loosely typed because each fluent step returns a
-  // distinct sequencer type and the optional enricher changes the chain shape.
-  let chain: any = sequencer({
+  const planned = sequencer({
     name: `${name}-capture-and-plan`,
     inputSchema,
     stateSchema,
@@ -405,7 +394,6 @@ export function createPlanningEntry<
     .tap(setInitialState)
     .tap(emitPlanningMeta)
     .step(planner);
-  if (enricherBlock !== undefined) chain = chain.step(enricherBlock);
-  chain = chain.tap(seedTasks);
-  return chain as BlockDefinition<any, any>;
+  const enriched = enricherBlock === undefined ? planned : planned.step(enricherBlock);
+  return enriched.tap(seedTasks);
 }

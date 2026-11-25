@@ -43,7 +43,7 @@ const PILL: Record<BotStatus, string> = {
 };
 const DOT: Record<BotStatus, string> = { running: "bg-brand", needs: "bg-attention-foreground", done: "bg-success", queued: "border border-dashed border-current", idle: "bg-presence-idle" };
 
-/** A teammate's own string setting (`model`, `harness`), or `undefined` when it follows the lab's. */
+/** A teammate's own string setting (`model`), or `undefined` when it follows the lab's. */
 const settingOf = (worker: RosterEntry, key: string): string | undefined => {
   const value = worker.settings[key];
   return typeof value === "string" ? value : undefined;
@@ -267,7 +267,7 @@ export function Conversation({
               harnesses={harnesses}
               onRecheck={onRecheck}
               model={settingOf(worker, "model") ?? context?.model}
-              harness={settingOf(worker, "harness") ?? context?.harness}
+              harness={context?.harness}
             />
           )}
         </div>
@@ -276,12 +276,12 @@ export function Conversation({
         open={panel === "edit"}
         onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
         title={`Edit ${displayName(worker)}`}
-        description={`${displayName(worker)}'s name, instructions, look, model and default coding harness. Changes apply from its next turn.`}
+        description={`${displayName(worker)}'s name, instructions, look and model. Changes apply from its next turn.`}
       >
         <EditForm
           name={displayName(worker)}
-          choices={{ models: context?.models, harnesses }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
+          choices={{ models: context?.models }}
+          current={{ model: settingOf(worker, "model") ?? context?.model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
@@ -395,8 +395,8 @@ export function Conversation({
         onPrefilled={onPrefilled}
         uploader={calls}
         harnesses={harnesses}
-        // The teammate's own default coding harness and model when it has them set (in Edit teammate), else the lab's.
-        defaultHarness={settingOf(worker, "harness") ?? context?.harness}
+        // The lab's default coder, where Lead starts coding work; the teammate's own model when it has one set (in Edit teammate), else the lab's.
+        defaultHarness={context?.harness}
         replyModel={settingOf(worker, "model") ?? context?.model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.

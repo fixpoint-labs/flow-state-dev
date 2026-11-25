@@ -22,7 +22,8 @@ import { RunChecks, type RunCheck } from "./run-checks";
  * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
  * words }` (harness-manager's `harnessReviewAnswerSchema`). When the review
  * offers ways to land the work (`lands`), Accept is two labelled actions
- * instead, **Open a PR** and **Merge locally**, each an accept naming its
+ * instead, **Open a PR** (**Push to PR #N** when one is already open from
+ * the branch, `openPullRequest`) and **Merge locally**, each an accept naming its
  * `land`, carrying what is in the text box as its `words`: the note goes to
  * the coding session if the landing fails. A landing that failed shows each
  * try (`landAttempts`) and its error with **Retry**. It spells none of
@@ -63,6 +64,8 @@ export interface ReviewDetail {
   answer?: string | null;
   /** Where the work is up for review: the task's pull requests. Absent reads as none. */
   pullRequests?: Array<{ number: number; url: string }>;
+  /** The pull request already open from the branch, which a `pull-request` accept puts the work on instead of opening one; `null` or absent when none is. */
+  openPullRequest?: { number: number; url: string } | null;
   /** This round's commits, when the branch had commits before it; `null` or absent when the round is the whole branch. */
   round?: { commits: number; subjects: string[] } | null;
   /** Each file the run changed and its lines; `null` or absent when they couldn't be read. */
@@ -83,6 +86,14 @@ export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand; words?: str
 
 /** Each way to land, as its button says it. */
 export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a PR", merge: "Merge locally" };
+
+/**
+ * A way to land as its button says it: `pull-request` onto a pull request already open from
+ * the branch pushes to it, so it never reads as opening one. Shared, as {@link orderedLands} is.
+ */
+export function landLabel(land: ReviewLand, open: { number: number } | null | undefined): string {
+  return land === "pull-request" && open != null ? `Push to PR #${open.number}` : LAND_LABEL[land];
+}
 
 /**
  * The ways to land, with a failed landing's way first: the retry. Each way once, in the review's order.
@@ -107,12 +118,13 @@ export function LandFailure({ failed }: { failed: { land: ReviewLand; message: s
 
 /** Where an accepted run's work went, as harness-manager's output records it. */
 export type LandedWork =
-  | { kind: "pull-request"; url: string; number: number; branch: string; base: string }
+  | { kind: "pull-request"; url: string; number: number; branch: string; base: string; state?: "merged" | "closed" }
   | { kind: "merge"; branch: string; commit: string; checkout: string; from: string };
 
 /**
  * Where an accepted run's work went, and what comes next: the pull request's
- * link, or the branch and commit it was merged at in your checkout.
+ * link, or the branch and commit it was merged at in your checkout. A pull
+ * request that has since merged or closed says so, and asks for nothing next.
  */
 export function LandedOutcome({ landed }: { landed: LandedWork }) {
   return (
@@ -123,7 +135,8 @@ export function LandedOutcome({ landed }: { landed: LandedWork }) {
           <a href={landed.url} target="_blank" rel="noreferrer" className="font-semibold underline">
             pull request #{landed.number}
           </a>{" "}
-          into <code className="font-mono">{landed.base}</code>. Next: review and merge it.
+          into <code className="font-mono">{landed.base}</code>.{" "}
+          {landed.state === "merged" ? "It has merged." : landed.state === "closed" ? "It was closed without merging." : "Next: review and merge it."}
         </>
       ) : (
         <>
@@ -397,7 +410,7 @@ export function ReviewHold({
                       : "rounded-md border border-border px-3 py-1 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   }
                 >
-                  {failed?.land === land ? `Retry: ${LAND_LABEL[land]}` : `Accept: ${LAND_LABEL[land]}`}
+                  {failed?.land === land ? `Retry: ${landLabel(land, review?.openPullRequest)}` : `Accept: ${landLabel(land, review?.openPullRequest)}`}
                 </button>
               ))
             )}

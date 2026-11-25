@@ -19,6 +19,7 @@ import { createLabReader } from "../src/lib/reads";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 let lab: Lab | undefined;
 let served: ServedLab | undefined;
@@ -37,7 +38,7 @@ it("the project member and the outsider read the organization's workers and proj
   root = mkdtempSync(join(tmpdir(), "sm-project-inventory-"));
   lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     inventory: true,

@@ -69,13 +69,13 @@ const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
 const SILENT_STUB: ModulePatch[] = [
   {
     module: "packages/shift-manager/teams/devteam/harness.mts",
-    from: "const harness = selectHarness\\(value, stepMs, defaultChoice\\);",
-    to: 'const harness = selectHarness("stub", stepMs, defaultChoice);',
+    from: "const harness = selectFrom\\(value, defaultChoice, runMinutes, values\\);",
+    to: 'const harness = selectFrom("stub", defaultChoice, runMinutes, values);',
   },
   {
     module: "packages/shift-manager/teams/devteam/host.mts",
-    from: "harnesses\\(\\{ workspace: workspaceHost \\?\\? answerHost, logReadiness: true \\}\\)",
-    to: "harnesses({ workspace: workspaceHost ?? answerHost, logReadiness: false })",
+    from: "harnesses\\(\\{ \\.\\.\\.coderConfig, logReadiness: true \\}\\)",
+    to: "harnesses({ ...coderConfig, logReadiness: false })",
   },
 ];
 

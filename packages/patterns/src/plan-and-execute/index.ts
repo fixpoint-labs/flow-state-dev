@@ -293,7 +293,7 @@ function createDefaultReplanner(config: {
       // evaluator and synthesizer consult, so all three see one
       // canonical view of progress.
       return JSON.stringify(
-        { goal: ctx.sequencer!.state.goal ?? "" },
+        { goal: ctx.sequencer!.state.goal },
         null,
         2,
       );

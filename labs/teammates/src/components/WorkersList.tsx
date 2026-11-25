@@ -74,10 +74,10 @@ export function WorkersList({
   onHiring: (open: boolean) => void;
   /** The working folder's name (and full path for its tooltip), shown under the app's name. */
   workspace?: { name: string; path: string };
-  /** What a new teammate's model and default coding harness are picked from. */
+  /** What a new teammate's model is picked from. */
   choices?: SettingsChoices;
-  /** The lab's model and default harness: where the hire form's settings start. */
-  defaults?: { model?: string; harness?: string };
+  /** The lab's model: where the hire form's settings start. */
+  defaults?: { model?: string };
   /** Drawn as a rail of icons rather than the full list. */
   collapsed?: boolean;
   /** Opened on a narrow window: it lies over the conversation, over a dimmed backdrop that closes it, and picking a teammate closes it. */

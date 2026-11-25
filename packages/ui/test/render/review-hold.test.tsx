@@ -142,6 +142,15 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" });
   });
 
+  // FIX-2920: a branch with a pull request already open was offered "Open a PR"; an accept there goes onto that one.
+  it("onto a pull request already open from the branch, the accept says it pushes there, not that it opens one", async () => {
+    const answer = vi.fn(async () => {});
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], openPullRequest: { number: 5661, url: "https://github.com/a/b/pull/5661" } }} answer={answer} />);
+    expect(screen.queryByRole("button", { name: "Accept: Open a PR" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Push to PR #5661" }));
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" }));
+  });
+
   it("a landing that failed shows its error and a Retry of the same way first, with the other way still offered", async () => {
     const answer = vi.fn(async () => {});
     const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
@@ -219,6 +228,17 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(screen.getByText("c15d6f098abc")).toBeTruthy();
     expect(screen.getByText("/work/relay")).toBeTruthy();
     expect(screen.getByText(/Next: push main when you're ready\./)).toBeTruthy();
+  });
+
+  it("a pull request that has since merged or closed says so, and asks for no review", () => {
+    const pr = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" } as const;
+    render(<LandedOutcome landed={{ ...pr, state: "merged" }} />);
+    expect(screen.getByText(/It has merged\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
+    cleanup();
+    render(<LandedOutcome landed={{ ...pr, state: "closed" }} />);
+    expect(screen.getByText(/It was closed without merging\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
   });
 });
 

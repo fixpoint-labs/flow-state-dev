@@ -172,10 +172,10 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, its instructions, and optionally its model and default coding harness. It joins the list at once, you can talk to it, and Lead can
+does, its instructions, and optionally its model. It joins the list at once, you can talk to it, and Lead can
 hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
-instructions, or change its model (what its replies run on, from the next reply) and default coding harness
-(where the composer's *Code with* starts). A teammate from the files can be edited too, and *Reset to default*
+instructions, or change its model (what its replies run on, from the next reply). A teammate has no coding
+harness of its own: coding work starts on the lab's default. A teammate from the files can be edited too, and *Reset to default*
 puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
@@ -209,7 +209,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the *Model* field of *Edit teammate* and *Hire a teammate*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on, and where *Code with* starts for a teammate with no default harness of its own: `claude-code`, `codex` or `cursor` | `cursor` |
+| `TEAMMATES_HARNESS` | the lab's default coder: Lead starts coding work on the coding worker with this harness unless you name another, and *Code with* starts there: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |

@@ -2,11 +2,11 @@ import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
 import { useApp, type CodingBoardTask, type TaskWork } from "../app";
 import { cn } from "../lib/utils";
-import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
+import { type LandedWork, landLabel, orderedLands, type ReviewLand } from "./flow-state/review-hold";
 
 /**
  * A thread's accept, shared by its card and its view. The accept offers the ways its review lists in
- * `lands` (Open a PR, Merge locally) and nothing else; a review with none offers a plain Resolve. A
+ * `lands` (Open a PR, or Push to PR #N when one is already open from the branch; Merge locally) and nothing else; a review with none offers a plain Resolve. A
  * failed landing shows why, and its way comes back as Retry. The accept reads as *Landing…* from the
  * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
  * landing is still going on.
@@ -29,6 +29,8 @@ export function useReviewAccept(sessionId: string, task: CodingBoardTask, work: 
   return {
     lands,
     failed,
+    // The pull request already open from the branch, which a pull-request accept goes onto (FIX-2920).
+    openPullRequest: review?.openPullRequest ?? null,
     // A coding task's accept waits for its review to be read, so a plain Resolve can't go before the lands are known.
     ready: review !== undefined || task.harness == null,
     waiting: submit.busy || (awaitingReview && answered === round),
@@ -45,6 +47,7 @@ export function useReviewAccept(sessionId: string, task: CodingBoardTask, work: 
 export function AcceptButtons({
   lands,
   failed,
+  openPullRequest = null,
   disabled,
   busy,
   compact = false,
@@ -52,6 +55,8 @@ export function AcceptButtons({
 }: {
   lands: ReviewLand[];
   failed: { land: ReviewLand; message: string } | null;
+  /** The pull request already open from the branch: a pull-request accept pushes to it, so its button says so. */
+  openPullRequest?: { number: number } | null;
   disabled: boolean;
   busy: boolean;
   /** The compact card's buttons are a size smaller than the view's. */
@@ -77,7 +82,7 @@ export function AcceptButtons({
           onClick={() => onAccept(land)}
           className={i === 0 ? cn(base, "bg-primary font-semibold text-primary-foreground") : cn(base, "border border-border bg-muted hover:bg-accent")}
         >
-          {busy ? "Landing…" : failed?.land === land ? `Retry: ${LAND_LABEL[land]}` : LAND_LABEL[land]}
+          {busy ? "Landing…" : failed?.land === land ? `Retry: ${landLabel(land, openPullRequest)}` : landLabel(land, openPullRequest)}
         </button>
       ))}
     </>

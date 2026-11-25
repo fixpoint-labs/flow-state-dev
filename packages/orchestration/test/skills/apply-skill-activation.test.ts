@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import { createApplySkillActivation } from "../../src/skills/apply-skill-activation";
 import { createMockSkillsCollection } from "./mocks";
@@ -43,6 +43,21 @@ function buildCtx(opts: {
 }
 
 describe("createApplySkillActivation — honors each skill's contextMode", () => {
+  it("rejects an unsupported scope even if the context has a writable handle there", async () => {
+    const handler = createApplySkillActivation({
+      // @ts-expect-error JavaScript callers can supply a scope outside the binding schema.
+      activeState: { scope: "self", field: "chosenSkills" },
+    });
+    const patchState = vi.fn();
+    const ctx = Object.assign(buildCtx({ collection: createMockSkillsCollection(), matched: [] }), {
+      self: { patchState },
+    });
+    await expect(runForTest(handler, { message: "x" }, ctx)).rejects.toThrow(
+      "Skill activation cannot write to self state — scope unavailable",
+    );
+    expect(patchState).not.toHaveBeenCalled();
+  });
+
   it("stamps inline mode when the skill omits contextMode", async () => {
     const c = createMockSkillsCollection();
     c._store.set("skills/legacy/SKILL.md", {

@@ -6,9 +6,8 @@
  * audit task emission, and the bias-mitigation toggles.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
-import { makeSchemaStrict } from "@flow-state-dev/core";
-import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { defineFlow, handler, makeSchemaStrict } from "@flow-state-dev/core";
+import { createTestContext, mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
 import { z, type ZodTypeAny } from "zod";
 import {
   debate,
@@ -690,6 +689,46 @@ describe("debate", () => {
       });
       return { block, getCount: () => count };
     }
+
+    it("resumes a debate whose saved moderator history is null", async () => {
+      const moderator = handler({
+        name: "wait-for-speaker",
+        outputSchema: debateModeratorOutputSchema,
+        execute: async (_input, ctx) => {
+          await ctx.suspendForUser({ kind: "approval", prompt: "Hear from B?" });
+          return { nextSpeakers: ["b"], briefing: null, newAngle: null, done: true };
+        },
+      });
+      const block = debate({
+        name: "resume-debate",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        moderator,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+      const flow = defineFlow({ kind: "debate", actions: { run: block } })({ id: "debate" });
+      const { stores } = await createTestContext();
+      const run = await testFlow({ flow, action: "run", input: { question: "Q?" }, userId: "u", stores });
+      expect(run.status).toBe("suspended");
+      const stop = await stores.suspensions.get(run.requestId, run.suspension!.suspensionId);
+      const checkpoint = await stores.checkpoints.latest(run.requestId, stop!.blockInstanceId);
+      expect(checkpoint?.state).toMatchObject({ round: 1, moderatorDecisions: [] });
+      await stores.checkpoints.write({
+        ...checkpoint!,
+        state: { question: "Q?", round: 1, moderatorDecisions: null },
+      });
+
+      const resumed = await run.answer({ action: "approve" });
+      expect(resumed.status).toBe("completed");
+      expect(resumed.output).toMatchObject({
+        rounds: 1,
+        transcript: [{ agentName: "b" }],
+        moderatorDecisions: [{ round: 1, nextSpeakers: ["b"] }],
+      });
+    });
 
     it("each moderator decision opens its own round (moderator runs at the top)", async () => {
       const moderator = makeScriptedModerator([

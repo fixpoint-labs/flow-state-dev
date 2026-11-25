@@ -148,7 +148,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   lab = await openLab({
     modelResolver: scripted(),
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

@@ -220,7 +220,7 @@ async function openHost(name: HostName, dir: string, stub: { apiUrl: string }, s
     bearer = { [LAB_USERS.owner.userId]: LAB_USERS.owner.bearer, [LAB_USERS.member.userId]: LAB_USERS.member.bearer };
     const lab = await openDevTeam({
       stores: sqliteStores({ filename: store }),
-      harness: harness.slot,
+      harnesses: [harness.value],
       runTimeoutMs: harness.runTimeoutMs,
       workspace: { root: join(dir, "runs"), remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",

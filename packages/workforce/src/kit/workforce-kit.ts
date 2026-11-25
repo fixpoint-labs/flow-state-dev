@@ -54,6 +54,8 @@ import { workerFlow } from "../workers/worker-flow";
 export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation"> & {
   /** The settings a user sees on a worker's roster row (`icon`, `color`). */
   showSettings?: readonly string[];
+  /** Settings the app no longer takes: a stored worker that set one reads without it, and a hire or an edit naming one is refused. */
+  retiredSettings?: readonly string[];
 };
 
 /** The coordinator flow's options, as the kit's config takes them. */
@@ -237,7 +239,7 @@ function installWorkforce(
 
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
-    const { showSettings, ...agent } = config.agent ?? {};
+    const { showSettings, retiredSettings, ...agent } = config.agent ?? {};
     builtIn[AGENT_FLOW] = workerFlow(
       (installation) =>
         defineAgentWorkerFlow({
@@ -246,7 +248,7 @@ function installWorkforce(
           installation,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
-      { showSettings: showSettings ?? [] },
+      { showSettings: showSettings ?? [], retiredSettings: retiredSettings ?? [] },
     );
   }
   if (config.coordinator !== undefined) {

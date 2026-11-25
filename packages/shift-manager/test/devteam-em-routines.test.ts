@@ -24,6 +24,7 @@ import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_FLOW, EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const STOREFRONT: ProjectAddress = { visibility: "shared", id: "storefront" };
 const ALICE = LAB_USERS.owner;
@@ -89,7 +90,7 @@ describe("the EM manages its routines", () => {
     lab = await openLab({
       modelResolver: resolver,
       stores: inMemoryStores(),
-      harness: harnessStub({ finalMessage: "Done." }).slot,
+      harnesses: [readyHarness(harnessStub({ finalMessage: "Done." }).slot)],
       workspace: { root, remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",
       inventory: true,

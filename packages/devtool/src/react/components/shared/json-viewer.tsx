@@ -78,7 +78,7 @@ function JsonDialog({ text, onClose }: { text: string; onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-fs-ink/50 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-fs-scrim p-6"
       onClick={onClose}
     >
       <div

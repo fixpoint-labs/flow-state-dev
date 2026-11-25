@@ -49,6 +49,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from 
 import { DRAIN_ENTRY, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["fixed-source", "no-sync-back"] as const;
@@ -210,7 +211,7 @@ await runGoal(async (failures) => {
   const stub = harnessStub({ duringRun });
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     workspace,
     coderWorkerId: CODER_SEAT,
     logger: silentLogger,
