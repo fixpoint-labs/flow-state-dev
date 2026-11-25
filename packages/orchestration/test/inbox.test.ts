@@ -51,7 +51,7 @@ const found = (suspensionId: string, over: Partial<InboxSuspension> = {}): Inbox
 });
 
 /** A suspension hold's id, as the list writes it. */
-const hold = suspensionHoldId;
+const holdId = suspensionHoldId;
 
 const flows = (sessionId: string) => (sessionId.startsWith("run_") || sessionId.startsWith("s_") ? "asker" : undefined);
 
@@ -76,13 +76,13 @@ describe("inboxItems: one item type", () => {
     // The run's session holds the same stop: the reader found it there as well.
     const items = inboxItems({ rows, suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1", since: 70, detail: "the card" }), found("lone")], flowOf: flows });
     expect(items.map((i) => [i.id, i.task?.taskId ?? null])).toEqual([
-      [hold("req_lone", "lone"), null],
+      [holdId("req_lone", "lone"), null],
       [taskItemId(BOARD, "t1"), "t1"],
     ]);
     const held = items[1]!;
     expect(held.holds).toEqual([
       {
-        id: hold("req_t1", "sp1"),
+        id: holdId("req_t1", "sp1"),
         source: { kind: "suspension", flowId: "asker", sessionId: "run_t1", requestId: "req_t1", suspensionId: "sp1" },
         ask: { kind: "approval", prompt: "Approve t1?" },
         openedAt: 70,
@@ -99,7 +99,7 @@ describe("inboxItems: one item type", () => {
     const turning = { ...stopped("t1", "sp1"), keptOpenBy: null };
     const items = inboxItems({ rows: [turning], suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1" })], flowOf: flows });
     expect(items.map((i) => [i.id, i.answerable])).toEqual([[taskItemId(BOARD, "t1"), true]]);
-    expect(taskTruthOf([turning])).toEqual([{ board: BOARD, taskId: "t1", suspensionHolds: [hold("req_t1", "sp1")], ownHolds: [] }]);
+    expect(taskTruthOf([turning])).toEqual([{ board: BOARD, taskId: "t1", suspensionHolds: [holdId("req_t1", "sp1")], ownHolds: [] }]);
   });
 
   it("keeps a stop's place when a notice turn moves its row's updatedAt: since is the stop's own", () => {
@@ -116,10 +116,10 @@ describe("inboxItems: one item type", () => {
     // Before the stop arm's write, or a record the row couldn't read: run r1, stop sp1 in r1, no mirror.
     const row = stopped("t1", "sp1", { holds: null, run: { sessionId: "run_t1", requestId: "r1" } });
     const items = inboxItems({ rows: [row], suspensions: [found("sp1", { sessionId: "run_t1", requestId: "r1" })], flowOf: flows });
-    expect(items.map((i) => [i.id, i.answerable, i.holds.map((h) => h.id)])).toEqual([[taskItemId(BOARD, "t1"), true, [hold("r1", "sp1")]]]);
+    expect(items.map((i) => [i.id, i.answerable, i.holds.map((h) => h.id)])).toEqual([[taskItemId(BOARD, "t1"), true, [holdId("r1", "sp1")]]]);
     // The row's missing record is the check's to report: drift, and the item isn't one its row holds.
     const result = reconcileInbox(items, { rows: taskTruthOf([row]), suspensions: [{ suspensionId: "sp1", sessionId: "run_t1", requestId: "r1", taskRun: true }] });
-    expect(result.drift).toEqual([`stop ${hold("r1", "sp1")}: 0 open questions`, `item ${taskItemId(BOARD, "t1")} shows ${hold("r1", "sp1")}, its task has none`]);
+    expect(result.drift).toEqual([`stop ${holdId("r1", "sp1")}: 0 open questions`, `item ${taskItemId(BOARD, "t1")} shows ${holdId("r1", "sp1")}, its task has none`]);
   });
 
   it("lists nothing for a row that holds nothing, or a finished one whose kept mirror only addresses its owed resume", () => {
@@ -147,7 +147,7 @@ describe("inboxItems: one item type", () => {
     const row = stopped("t1", "sp1", { run: { sessionId: "run_x", requestId: "req_t1" } });
     const items = inboxItems({ rows: [row], suspensions: [found("sp9", { sessionId: "s_sp9", requestId: "req_t1", flowId: "asker" })], flowOf: () => undefined });
     expect(items).toHaveLength(1);
-    expect(items[0]!.holds.map((h) => [h.id, h.answerable])).toEqual([[hold("req_t1", "sp9"), true], [hold("req_t1", "sp1"), false]]);
+    expect(items[0]!.holds.map((h) => [h.id, h.answerable])).toEqual([[holdId("req_t1", "sp9"), true], [holdId("req_t1", "sp1"), false]]);
     expect(items[0]).toMatchObject({ answerable: true, unanswerable: null });
   });
 
@@ -155,10 +155,10 @@ describe("inboxItems: one item type", () => {
   it("lists a stop from a run with no conversation on its own, answerable through its flow, its deadline as the hold's due", () => {
     const [item] = inboxItems({ rows: [], suspensions: [found("sp1", { sessionId: null, flowId: "worker-flow", due: 9_000 })], flowOf: () => undefined });
     expect(item).toMatchObject({
-      id: hold("req_sp1", "sp1"),
+      id: holdId("req_sp1", "sp1"),
       task: null,
       answerable: true,
-      holds: [{ id: hold("req_sp1", "sp1"), due: 9_000, source: { kind: "suspension", sessionId: null, flowId: "worker-flow", requestId: "req_sp1" } }],
+      holds: [{ id: holdId("req_sp1", "sp1"), due: 9_000, source: { kind: "suspension", sessionId: null, flowId: "worker-flow", requestId: "req_sp1" } }],
     });
   });
 
@@ -186,6 +186,12 @@ describe("inboxItems: one item type", () => {
       const items = inboxItems({ rows: [task], suspensions: [found("approve-deploy", { sessionId: "run_t1", requestId: "req_t1" }), b], flowOf: flows });
       expect(items.map((i) => i.id).sort()).toEqual([suspensionHoldId("req_b", "approve-deploy"), taskItemId(BOARD, "t1")].sort());
       expect(items.find((i) => i.task !== null)!.holds.map((h) => h.id)).toEqual([suspensionHoldId("req_t1", "approve-deploy")]);
+    });
+
+    it("two pairs never share a hold id, whatever `:` a caller's ids carry", () => {
+      expect(suspensionHoldId("a:b", "c")).not.toBe(suspensionHoldId("a", "b:c"));
+      const items = inboxItems({ rows: [], suspensions: [found("c", { requestId: "a:b" }), found("b:c", { requestId: "a" })], flowOf: flows });
+      expect(items).toHaveLength(2);
     });
 
     it("answering one answers its own request, never the other's", async () => {
@@ -268,7 +274,7 @@ describe("reconcileInbox", () => {
     const answered = { ...truth, suspensions: truth.suspensions.filter((s) => s.suspensionId !== "sp1") };
     const result = reconcileInbox(items, answered);
     expect(result.green).toBe(false);
-    expect(result.drift).toEqual([`question ${hold("req_t1", "sp1")} on ${BOARD}:t1: no live stop`]);
+    expect(result.drift).toEqual([`question ${holdId("req_t1", "sp1")} on ${BOARD}:t1: no live stop`]);
   });
 
   it("control stale-item: a listed item still offering a stop its row no longer holds is drift", () => {
@@ -277,17 +283,17 @@ describe("reconcileInbox", () => {
     const stale = inboxItems({ rows: [stopped("t1", "sp1"), stopped("t2", "sp2b")], suspensions: [], flowOf: flows });
     const result = reconcileInbox(stale, truthOf(now, []));
     expect(result.green).toBe(false);
-    expect(result.drift).toEqual([`item ${taskItemId(BOARD, "t1")} shows ${hold("req_t1", "sp1")}, its task has ${hold("req_t1", "sp2")}`]);
+    expect(result.drift).toEqual([`item ${taskItemId(BOARD, "t1")} shows ${holdId("req_t1", "sp1")}, its task has ${holdId("req_t1", "sp2")}`]);
   });
 
   it("drift: a task run's stop with no hold on any row", () => {
     const unmirrored = { ...truth, rows: truth.rows.filter((r) => r.taskId !== "t2") };
-    expect(reconcileInbox(items, unmirrored).drift).toEqual([`stop ${hold("req_t2", "sp2")}: 0 open questions`, `item ${taskItemId(BOARD, "t2")} shows ${hold("req_t2", "sp2")}, its task has none`]);
+    expect(reconcileInbox(items, unmirrored).drift).toEqual([`stop ${holdId("req_t2", "sp2")}: 0 open questions`, `item ${taskItemId(BOARD, "t2")} shows ${holdId("req_t2", "sp2")}, its task has none`]);
   });
 
   it("an item the truth doesn't hold is an orphan", () => {
     const extra = inboxItems({ rows, suspensions: [...lone, found("gone")], flowOf: flows });
-    expect(reconcileInbox(extra, truth).orphan).toEqual([hold("req_gone", "gone")]);
+    expect(reconcileInbox(extra, truth).orphan).toEqual([holdId("req_gone", "gone")]);
   });
 
   it("the answerable clause fails on an item with no route", () => {
@@ -295,8 +301,8 @@ describe("reconcileInbox", () => {
     const result = reconcileInbox(noRoute, truth);
     expect(result.green).toBe(false);
     expect(result.unanswerable.map((u) => [u.id, u.hold]).sort()).toEqual([
-      [taskItemId(BOARD, "t1"), hold("req_t1", "sp1")],
-      [taskItemId(BOARD, "t2"), hold("req_t2", "sp2")],
+      [taskItemId(BOARD, "t1"), holdId("req_t1", "sp1")],
+      [taskItemId(BOARD, "t2"), holdId("req_t2", "sp2")],
     ]);
   });
 
@@ -305,21 +311,21 @@ describe("reconcileInbox", () => {
     const again = [stopped("t1", "sp2"), stopped("t2", "sp2b")];
     const listed = inboxItems({ rows: again, suspensions: lone, flowOf: flows });
     expect(listed.find((i) => i.task?.taskId === "t1")?.id).toBe(taskItemId(BOARD, "t1"));
-    expect(reconcileInbox(listed, { ...truthOf(again, lone), closed: [hold("req_t1", "sp1")] })).toMatchObject({ green: true, reopened: [] });
+    expect(reconcileInbox(listed, { ...truthOf(again, lone), closed: [holdId("req_t1", "sp1")] })).toMatchObject({ green: true, reopened: [] });
   });
 
   it("control reopened: an answered hold back in a later read, in the list or in the truth alone, is red", () => {
     // sp1 closed, and listed again.
-    expect(reconcileInbox(items, { ...truth, closed: [hold("req_t1", "sp1")] })).toMatchObject({ green: false, reopened: [hold("req_t1", "sp1")] });
+    expect(reconcileInbox(items, { ...truth, closed: [holdId("req_t1", "sp1")] })).toMatchObject({ green: false, reopened: [holdId("req_t1", "sp1")] });
     // Back in the independently read rows only, the list having dropped it.
     const listedWithout = inboxItems({ rows: [stopped("t2", "sp2")], suspensions: lone, flowOf: flows });
-    expect(reconcileInbox(listedWithout, { ...truth, closed: [hold("req_t1", "sp1")] }).reopened).toEqual([hold("req_t1", "sp1")]);
+    expect(reconcileInbox(listedWithout, { ...truth, closed: [holdId("req_t1", "sp1")] }).reopened).toEqual([holdId("req_t1", "sp1")]);
   });
 
   it("control one-stop-two-items: a hold listed under two items is a duplicate, though the items' ids differ", () => {
     const t1 = items.find((i) => i.task?.taskId === "t1")!;
-    const loneCopy = { ...t1, id: hold("req_t1", "sp1"), task: null };
-    expect(reconcileInbox([...items, loneCopy], truth).duplicate).toContain(hold("req_t1", "sp1"));
+    const loneCopy = { ...t1, id: holdId("req_t1", "sp1"), task: null };
+    expect(reconcileInbox([...items, loneCopy], truth).duplicate).toContain(holdId("req_t1", "sp1"));
   });
 });
 
@@ -424,7 +430,7 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
     it("is green on the list it should be: the row's open questions and the task run's mirror", () => {
       expect(taskTruthOf(rows)).toEqual([
         { board: BOARD, taskId: "t1", suspensionHolds: [], ownHolds: ["q1", "q2"] },
-        { board: BOARD, taskId: "t9", suspensionHolds: [hold("req_t9", "sp9")], ownHolds: [] },
+        { board: BOARD, taskId: "t9", suspensionHolds: [holdId("req_t9", "sp9")], ownHolds: [] },
       ]);
       expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
     });

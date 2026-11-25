@@ -28,10 +28,11 @@ export function taskItemId(board: string, taskId: string): string {
 /**
  * A suspension hold's id, and a lone suspension's item id: its request and its
  * suspension. A suspension id is unique only within its request, so two
- * requests that stop on the same id are two holds.
+ * requests that stop on the same id are two holds. Each part is URI-encoded,
+ * so no `:` inside a caller's request or suspension id can make two pairs one id.
  */
 export function suspensionHoldId(requestId: string, suspensionId: string): string {
-  return `suspension:${requestId}:${suspensionId}`;
+  return `suspension:${encodeURIComponent(requestId)}:${encodeURIComponent(suspensionId)}`;
 }
 
 /** Whether a row is still open: not completed, errored or cancelled. */
