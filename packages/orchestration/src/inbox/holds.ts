@@ -25,6 +25,15 @@ export function taskItemId(board: string, taskId: string): string {
   return `task:${board}:${taskId}`;
 }
 
+/**
+ * A suspension hold's id, and a lone suspension's item id: its request and its
+ * suspension. A suspension id is unique only within its request, so two
+ * requests that stop on the same id are two holds.
+ */
+export function suspensionHoldId(requestId: string, suspensionId: string): string {
+  return `suspension:${requestId}:${suspensionId}`;
+}
+
 /** Whether a row is still open: not completed, errored or cancelled. */
 export function isOpenTask(row: InboxTaskInput): boolean {
   return !isTerminalStatus(row.status as TaskStatus);
@@ -45,7 +54,7 @@ function withAnswerable<TDetail>(hold: Omit<InboxHold<TDetail>, "answerable" | "
 /** A suspension hold for a stop the reader found, where its own session is. */
 export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHold<TDetail> {
   return withAnswerable<TDetail>({
-    id: s.suspensionId,
+    id: suspensionHoldId(s.requestId, s.suspensionId),
     source: { kind: "suspension", flowId: s.flowId, sessionId: s.sessionId, requestId: s.requestId, suspensionId: s.suspensionId },
     ask: { kind: s.kind, prompt: s.prompt, ...(s.title !== undefined ? { title: s.title } : {}) },
     openedAt: s.since,
@@ -63,7 +72,7 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
 export function openUserHolds<TDetail>(
   row: InboxTaskInput,
   flowOf: (sessionId: string) => string | null | undefined,
-  foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
+  foundFor: (holdId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
   // A caller may hand rows it never parsed (a replayed stream item, a raw store read): `openHolds` and `isOwnHold` read a hold's marker forward.
   const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
@@ -96,11 +105,12 @@ export function openUserHolds<TDetail>(
     }
     // A task run's stop: its answer goes to the run's session, where it is parked.
     if (!isSuspensionHold(hold) || row.run == null) continue;
-    const found = foundFor(hold.source.suspensionId);
+    const id = suspensionHoldId(hold.source.requestId, hold.source.suspensionId);
+    const found = foundFor(id);
     const flowId = flowOf(row.run.sessionId) ?? found?.flowId ?? null;
     holds.push(
       withAnswerable<TDetail>({
-        id: hold.source.suspensionId,
+        id,
         source: {
           kind: "suspension",
           flowId,
