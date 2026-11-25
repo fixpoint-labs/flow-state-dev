@@ -156,12 +156,19 @@ Every operation that goes over a whole copy acts on this copy unless the block n
 
 ## Another session's copy
 
-A block reaches another session's copy by naming the session:
+A block reaches another session's copy by naming the session. This works the same way for every per-session resource, not only boards:
 
 ```ts
+ctx.resources.notes                              // my session's notes
+ctx.resources.at({ session: launchChatId }).notes // the launch chat's notes, by name
+
+// A board is reached the same way. boards() is a thin wrapper that gives
+// the copy a task-board API: create, get, list, claim, settle.
 const launch = boards(ctx, "work", { session: launchChatId });
 const row = launch.get(taskId);
 ```
+
+`boards(ctx, name, { session })` adds nothing to the reach. It resolves the board through `ctx.resources.at({ session })` and wraps the copy it gets. So rule 5 is a promise about resources in general, and the next feature that needs another session's data uses the same call instead of building its own way around.
 
 The server checks one thing: the named session has the same owner as this request, meaning the same user, the same org and the same tenant, each compared against what the session record stores. Session ids are chosen by callers, so the id proves nothing by itself. A session that fails the check gets nothing, in the same way as one that doesn't exist, so a caller can't learn which ids are taken. That includes Alice's own session in another org: it is answered as missing, not refused. No other permission is involved. Within one owner, reaching another session is always allowed. A child run inherits the org and tenant of the request that started it.
 
@@ -307,13 +314,13 @@ Bob never appears. Even if coder were handed the id of one of Bob's sessions, bo
 
 | Shape | Example | Fits | Risk |
 | -- | -- | -- | -- |
-| A registry lookup by name | `boards(ctx, "work", { session })` | No shared import; one board API for every board | The name is a string, so a typo fails at run time unless names are typed from the registry |
-| The definition's own accessor | `work.tasks(ctx, { session })` | Typed by the import | Every flow imports the module that defined the board |
+| Reach on every resource, boards as a thin wrapper | `ctx.resources.at({ session }).notes`, `boards(ctx, "work", { session })` | One rule for all per-session data; boards get a friendly API on top | Two spellings for a board's copy, the raw resource and the wrapper |
+| A board-only lookup | `boards(ctx, "work", { session })` and nothing else | Small surface | Every other resource needs its own way across, the pattern this doc ends |
 | A sessions handle | `ctx.sessions.get(id).boards("work")` | One place for everything about a session | A second way to reach the same copy |
 
 The sessions handle exists today: a block can ask the engine about its user's other sessions, meaning their flow, the state fields their flow marks readable, their history, and a list of them. It reaches no resources.
 
-**Recommend the registry lookup**, with board names typed from the registry the way flow names are, so a typo fails when the app is built. The definition's accessor can stay as a typed shortcut to the same lookup. The sessions handle stays for what isn't a resource. This changes if registry typing turns out to need a build step apps won't accept.
+**Decided: reach on every resource, with `boards()` as a thin wrapper.** Board names are typed from the registry the way flow names are, so a typo fails when the app is built. The raw resource is there for code that needs the rows as stored; everything that works tasks uses `boards()`. The sessions handle stays for what isn't a resource.
 
 ## The rules
 
@@ -323,7 +330,7 @@ A behavior none of these rules explains is a bug in the model.
 2. The owner (one user, in one org, under one tenant) is the only access boundary. Nothing of one owner's is reachable by another, including the same user in another org or tenant. Sharing means writing to a resource kept per org.
 3. A scope decides how many copies of a resource exist and which one "mine" means. It never decides who may look.
 4. A block reaches its own copy without naming it.
-5. A block may read or write another session's copy by naming that session and the resource. The server checks only that the session belongs to the same owner (the same user, tenant and org), using the session's stored owner, and answers a session that isn't the user's exactly like one that doesn't exist.
+5. A block may read or write another session's copy of any resource by naming that session and the resource (`ctx.resources.at({ session })`; a board's wrapper uses the same call). The server checks only that the session belongs to the same owner (the same user, tenant and org), using the session's stored owner, and answers a session that isn't the user's exactly like one that doesn't exist.
 6. A resource name has one registered definition per installation. A second, different definition under a taken name is refused when the app starts. Only a definition marked shared is reachable by name from any flow. Any other definition is reachable only from the flows that declare it, and may keep a separate copy per flow instance.
 7. A write from another session runs the definition's own checks, such as a task's claim, exactly as a local write does. Apart from rule 5's owner check, which is about the user, scope adds no check of its own.
 8. A write from another session notifies the owning session exactly as a local write would. Whether that starts a turn is the definition's call.
@@ -378,6 +385,7 @@ The terms this model retires, where each lives in code and docs today, and how m
 - [X] **Key parts are indexed, not prefixed.** Every part of a resource key that varies can be filtered on by the SQL stores without a scan, as its own refactor. This retires the prefix reads everywhere, not only for tasks.
 - [ ] **Reading across sessions in one query.** Recommend `boards.acrossSessions(ctx, "work")`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
 - [X] **Definitions are declared on blocks and rise into flows, and the registry is their union.** Agreed: option (a).
+- [X] **Reaching another session is a resource feature.** `ctx.resources.at({ session })` works for every per-session resource; `boards(ctx, name, { session })` is a thin wrapper over it that gives a board's copy its task API.
 - [X] **Screens see across sessions through a user-scope view.** Agreed in direction: the across-sessions read is what a view's block calls, not a second way for screens to read. It follows [Reading, Writing and Installing](reading-writing-installing.md).
 - [ ] **The change topic for a read across sessions.** Open. Recommend one topic per definition per owner, published by every write to any session's copy, so a view hears copies made after it last ran. Would change: that topic is too noisy for an owner with many busy sessions, where a narrower topic per filter would pay off.
 - [ ] **Turns started by writes from other sessions.** Open. Rule 8 lets a definition start a turn when another session writes. A burst of endings (fifty sub-tasks settling at once) must not start fifty turns. Recommend that turns started this way coalesce per session, as a board's notices already do, and that the spec checks fan-out before it is built.
