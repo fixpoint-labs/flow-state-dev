@@ -3,7 +3,7 @@ import { EllipsisIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { useAppClient, useConversation, useConversationCalls } from "../app";
+import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { BotStatus, Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
@@ -24,6 +24,10 @@ import { LoadEarlier } from "./LoadEarlier";
 import { LineContext, stillRunningLine, type LineContextValue } from "./flow-state/conversation-lines";
 import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
+import { WaitingCard } from "./WaitingCard";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { holdOf, taskStatus, workerOf } from "../lib/task";
 
 /** A borderless button in the conversation's header. */
 const HEADER_BUTTON =
@@ -189,6 +193,24 @@ export function Conversation({
   );
 
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
+  // What the conversation's tasks wait on you for, each a card where it was asked; one you answered here keeps its line.
+  const tasks = useTasks(sessionId).value;
+  // Kept with the conversation they were given in: switching teammates shows none of another's.
+  const [given, setGiven] = useState<{ session: string; all: Readonly<Record<string, Answered>> }>({ session: sessionId, all: {} });
+  const answers = given.session === sessionId ? given.all : NONE_ANSWERED;
+  const waiting = useMemo(() => waitingCards(tasks ?? [], answers, lines), [tasks, answers, lines]);
+  const card = (w: Waiting) => (
+    <WaitingCard
+      key={w.key}
+      task={w.task}
+      hold={w.hold}
+      sessionId={sessionId}
+      who={isCoding(workerOf(w.task)) ? "The coding task" : nameOf(workerOf(w.task))}
+      answered={answers[w.key]?.line}
+      onAnswered={(line) => setGiven((was) => ({ session: sessionId, all: { ...(was.session === sessionId ? was.all : {}), [w.key]: { line, openedAt: w.openedAt, task: w.task } } }))}
+      onOpen={() => onOpen({ kind: "task", sessionId, taskId: w.task.id })}
+    />
+  );
   // The first drawn line of each day, and its day's label.
   const days = useMemo(() => dayBreaks(drawn), [drawn]);
   // A lost feed may be out of date: the bot and the pill both drop to idle, the words stay, dimmed.
@@ -205,7 +227,8 @@ export function Conversation({
             {/* Drawn while empty too (before the first read), hidden: what reads the line finds it from the start. */}
             {(
               <span
-                hidden={status.text === ""}
+                // What waits on you is a card in the conversation, never a banner here: the rail and the task panel say it waits.
+                hidden={status.text === "" || status.needsYou}
                 className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", failed ? cn("bg-(--redbg)", status.tone) : PILL[shown], stale && STALE_CLASS)}
                 data-header-status
                 data-state={shown}
@@ -349,6 +372,7 @@ export function Conversation({
             ) : null}
             {lines.map((line, i) => (
               <Fragment key={line.id}>
+                {waiting.filter((w) => w.at === i).map(card)}
                 {days.get(line.id) === undefined ? null : <Divider label={days.get(line.id)!} data-day="" />}
                 {i === markAt && mark ? (
                   <Divider label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} />
@@ -363,6 +387,7 @@ export function Conversation({
                 </div>
               </Fragment>
             ))}
+            {waiting.filter((w) => w.at === lines.length).map(card)}
             {answering ? (
               <div role="status" data-chat-activity className={cn("w-fit rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
@@ -426,4 +451,34 @@ function dayBreaks(lines: readonly ItemLine[], now: number = Date.now()): Map<st
     last = day;
   }
   return breaks;
+}
+
+/** No answers given yet: one object, so the cards' read doesn't change for a new empty one. */
+const NONE_ANSWERED: Readonly<Record<string, Answered>> = {};
+
+/** A card's hold you answered here: the line it keeps, and where it stood. */
+type Answered = { line: string; openedAt: number; task: CodingBoardTask };
+
+/** One card in the conversation: the task, its open hold (none once answered), when it was asked, and the line index it is drawn before. */
+type Waiting = { key: string; task: CodingBoardTask; hold: InboxHold | undefined; openedAt: number; at: number };
+
+/**
+ * The cards the conversation draws for what its tasks wait on you for: each
+ * running task's open hold, and each hold answered here, drawn before the
+ * first line written after it was asked (at the end when none was).
+ */
+function waitingCards(tasks: readonly CodingBoardTask[], answers: Readonly<Record<string, Answered>>, lines: readonly ItemLine[]): Waiting[] {
+  const open = tasks.flatMap((task) => {
+    const hold = holdOf(task);
+    return taskStatus(task) === "running" && hold !== undefined ? [{ key: `${task.id}:${hold.id}`, task, hold: hold as InboxHold, openedAt: hold.openedAt }] : [];
+  });
+  const done = Object.entries(answers)
+    .filter(([key]) => !open.some((w) => w.key === key))
+    .map(([key, a]) => ({ key, task: a.task, hold: undefined, openedAt: a.openedAt }));
+  return [...open, ...done]
+    .map((w) => {
+      const at = lines.findIndex((line) => (lineTime(line) ?? 0) > w.openedAt);
+      return { ...w, at: at < 0 ? lines.length : at };
+    })
+    .sort((a, b) => a.openedAt - b.openedAt);
 }
