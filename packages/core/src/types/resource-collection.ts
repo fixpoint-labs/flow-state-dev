@@ -421,7 +421,7 @@ export function defineResourceCollection<
 >(
   config: TConfig
 ): TConfig & DefinedResourceCollection<
-  AsStateObject<TStateSchema["_output"]>,
+  AsStateObject<StateOf<TConfig>>,
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
@@ -542,7 +542,7 @@ export function defineResourceCollection<
     stateSchema,
     __brand: "ResourceCollection" as const,
   }) as unknown as TConfig & DefinedResourceCollection<
-    AsStateObject<TStateSchema["_output"]>,
+    AsStateObject<StateOf<TConfig>>,
     ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
   >;
 }

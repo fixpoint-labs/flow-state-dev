@@ -16,7 +16,6 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core/types";
 import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 
@@ -61,7 +60,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
           if (seen.has(skillName)) continue;
           seen.add(skillName);
           if (allowedSet && !allowedSet.has(skillName)) continue;
-          const state = ref.state as unknown as SkillState;
+          const state = ref.state;
           if (state.disableModelInvocation) continue;
           if (!state.keywords || state.keywords.length === 0) continue;
           if (state.keywords.some((kw) => lowered.includes(kw))) {

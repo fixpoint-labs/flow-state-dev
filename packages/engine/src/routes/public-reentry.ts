@@ -29,6 +29,7 @@
  */
 import {
   INTERNAL_SOURCE,
+  SCHEDULED_SOURCE,
   TASK_SOURCE,
   WEBHOOK_SOURCE,
 } from "../execution/transport-sources";
@@ -116,21 +117,47 @@ export function isPublicReentryAllowed(
   return additionalSources.includes(source);
 }
 
-// FIX-2886.
+// FIX-2886; FIX-2895.
 /**
  * Whether `request` may be re-entered through the public retry / continue /
- * resume routes: its source is allowed ({@link isPublicReentryAllowed}) and it
- * did not run in a schedule's session. A re-run there would skip the
- * schedule's overlap check and run caller-chosen input beside a live fire;
- * the schedule's next fire catches up instead. The routes refuse it, and a
- * request listing marks it not retryable, by this one rule.
+ * resume routes: its source is allowed ({@link isPublicReentryAllowed}), it
+ * did not run in a schedule's session, and it is not a dynamic schedule's fire.
+ *
+ * - A re-run in a schedule's session would skip the schedule's overlap check
+ *   and run caller-chosen input beside a live fire; the schedule's next fire
+ *   catches up instead.
+ * - A dynamic schedule's handler is made by the flow's schedule resolver at
+ *   dispatch time and carried only on that dispatch, never stored, so a re-run
+ *   has no handler to find.
+ *
+ * The routes refuse such a request, and a request listing marks it not
+ * retryable, by this one rule.
  */
 export function isRequestPublicReentryAllowed(
-  request: { readonly source?: string; readonly sessionId?: string | null },
+  request: {
+    readonly source?: string;
+    readonly sessionId?: string | null;
+    readonly metadata?: Readonly<Record<string, unknown>> | null;
+  },
   additionalSources?: readonly string[]
 ): boolean {
   if (request.sessionId != null && isScheduleSessionId(request.sessionId)) return false;
+  if (isDynamicScheduleFire(request)) return false;
   return isPublicReentryAllowed(request.source, additionalSources);
+}
+
+/**
+ * Whether a request is a dynamic (resolver-made) schedule's fire, per its
+ * `metadata.schedule.origin`, falling back to the flat `metadata.origin` of
+ * records enqueued before the metadata was namespaced.
+ */
+function isDynamicScheduleFire(request: {
+  readonly source?: string;
+  readonly metadata?: Readonly<Record<string, unknown>> | null;
+}): boolean {
+  if (request.source !== SCHEDULED_SOURCE) return false;
+  const scheduleMeta = (request.metadata?.schedule ?? request.metadata) as { origin?: unknown } | null | undefined;
+  return scheduleMeta?.origin === "dynamic";
 }
 
 // BP-030.

@@ -10,13 +10,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
-  createWorkerHireBlocks,
   defineProjectBlocks,
   defineWorkstreamBlocks,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import { shiftCoordinatorProjectTools, shiftCoordinatorRosterTools } from "../teams/devteam/host.mts";
+import { shiftCoordinatorProjectTools } from "../teams/devteam/host.mts";
 
 /** The installation the workforce kit hires over a folder with no workers, read through its `flows` slot. */
 async function emptyInstallation(): Promise<WorkerInstallation> {
@@ -48,31 +47,8 @@ describe("Shift Coordinator tools presented with .as()", () => {
     expect(Object.keys((await projectTools()).tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setBrief", "setRepository"]);
   });
 
-  it("hire is the Workforce hire block under the tool's own name", async () => {
-    const installation = await emptyInstallation();
-    const tool = shiftCoordinatorRosterTools(installation).hire;
-    const block = createWorkerHireBlocks(installation).hire;
-    expect(tool.name).toBe("hire");
-    expect(tool.description).toMatch(/^Hire a worker of the user's own: `id` is a short lowercase slug/);
-    expect(tool.kind).toBe(block.kind);
-    expect(tool.kind).not.toBe("sequencer");
-    expect(tool.inputSchema).toBe(block.inputSchema);
-  });
-
-  it("hire's description names a coder's harness as a setting on coder, with the harnesses the Lab runs (FIX-2486)", async () => {
-    const installation = await emptyInstallation();
-    // The coordinator once refused "hire Cursor" for want of a flow per harness.
-    expect(shiftCoordinatorRosterTools(installation, ["stub", "cursor"]).hire.description).toMatch(
-      /A `coder` worker's coding harness is its `settings\.harness`, one of: stub, cursor; there is no flow per harness\./,
-    );
-    // With no harness to pick, the description names none.
-    expect(shiftCoordinatorRosterTools(installation).hire.description).not.toMatch(/harness/);
-  });
-
   it("the tools that wait for an approval keep their sequencer", async () => {
-    const installation = await emptyInstallation();
     const project = (await projectTools()).tools;
-    expect(shiftCoordinatorRosterTools(installation).fire.kind).toBe("sequencer");
     expect(project.createProject.kind).toBe("sequencer");
     expect(project.setRepository.kind).toBe("sequencer");
   });

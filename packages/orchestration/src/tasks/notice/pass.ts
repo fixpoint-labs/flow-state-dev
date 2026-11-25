@@ -296,10 +296,9 @@ export async function delegatingBoardsOf(
   ctx: BlockContext,
   only?: string
 ): Promise<Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }>> {
-  const registry = ctx.resources as { list?: () => unknown[] } | undefined;
   const found: Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }> = [];
-  for (const entry of registry?.list?.() ?? []) {
-    const config = (entry as { config?: unknown }).config;
+  for (const entry of ctx.resources?.list?.() ?? []) {
+    const config = entry.config;
     if (!isDefinedTaskCollection(config) || config.__taskCollection.delivery === undefined) continue;
     const id = config.__taskCollection.id;
     // Resolving a ledger reads it as this request's snapshot: resolve only

@@ -49,7 +49,7 @@ const lookup = handler({
   outputSchema: z.object({ keys: z.array(z.string()), ids: z.array(z.string()) }),
   resources: { work },
   execute: async (input, ctx) => {
-    const ref = ctx.resources.work as unknown as ResourceCollectionRef<{ id: string }>;
+    const ref = ctx.resources.work;
     for (const write of input.before) {
       if (write.delete === true) await ref.delete(write.key);
       else await ref.upsert(write.key, { id: write.id! });
@@ -151,7 +151,7 @@ describe("findBy", () => {
       outputSchema: z.array(z.string()),
       resources: { notes },
       execute: async (_input, ctx) =>
-        (await (ctx.resources.notes as unknown as ResourceCollectionRef).findBy("byTopic", "x")).map((r) => r.path),
+        (await ctx.resources.notes.findBy("byTopic", "x")).map((r) => r.path),
     });
     const notesFlow = defineFlow({ kind: "notes", actions: { find } });
     const h = await boot({ notes: notesFlow() });
@@ -218,7 +218,7 @@ describe("the index writer on the runtime's stores", () => {
       outputSchema: z.object({}),
       resources: { work: plainWork },
       execute: async (_input, ctx) => {
-        await (ctx.resources.work as unknown as ResourceCollectionRef).create("c9/x", { id: "t-other" });
+        await ctx.resources.work.create("c9/x", { id: "t-other" });
         return {};
       },
     });

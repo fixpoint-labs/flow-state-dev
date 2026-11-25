@@ -27,7 +27,7 @@ import {
   debateStateSchema,
   debateVerdictSchema,
   type DebateContributionEntry,
-  type DebateTranscriptState,
+  type DebateContextSlot,
 } from "../schemas";
 
 export interface CreateJudgeOptions {
@@ -96,6 +96,7 @@ export function formatTranscriptForJudge(
 export function createJudge(opts: CreateJudgeOptions) {
   const anonymize = opts.anonymizeTranscript ?? true;
   const shuffle = opts.shuffleForJudge ?? true;
+  const context: DebateContextSlot | undefined = opts.context;
   return generator({
     name: `${opts.name}-judge`,
     model: opts.model ?? "intent/synthesize",
@@ -103,15 +104,13 @@ export function createJudge(opts: CreateJudgeOptions) {
     resources: { transcript: opts.transcript },
     sequencerStateSchema: debateStateSchema,
     itemVisibility: opts.itemVisibility ?? { client: true, history: true },
-    ...(opts.context !== undefined ? { context: opts.context } : {}),
-    ...(opts.uses ? { uses: opts.uses as any } : {}),
-    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
+    ...(context !== undefined ? { context } : {}),
+    ...(opts.uses ? { uses: opts.uses } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
     prompt: async (input, ctx) => {
-      const resolved = opts.instructions
-        ? typeof opts.instructions === "function"
-          ? await opts.instructions(input, ctx)
-          : opts.instructions
-        : null;
+      const resolved = typeof opts.instructions === "function"
+        ? await opts.instructions(input, ctx)
+        : opts.instructions;
       const instructionsBlock = resolved
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
@@ -128,9 +127,7 @@ export function createJudge(opts: CreateJudgeOptions) {
     },
     user: (_input, ctx) => {
       const state = ctx.sequencer!.state;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
-      const entries = transcriptState?.entries ?? [];
+      const entries = ctx.resources.transcript?.state?.entries ?? [];
       const positionsBlock = opts.stances.length > 0
         ? `Positions argued:\n${opts.stances.map((s) => `- ${s}`).join("\n")}`
         : "";

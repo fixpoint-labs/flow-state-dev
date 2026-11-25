@@ -184,10 +184,6 @@ export const SPEND_TICK_MS = 2_000;
  */
 const admitted = new Map<string, Admitted>();
 
-function requestKey(ctx: BlockContext): string {
-  return ctx.request.identity.id;
-}
-
 // FIX-2082.
 /**
  * The task the running request was admitted for in this process, and the
@@ -286,7 +282,7 @@ export async function admitClaimedTask(
           // down stops renewing. The check at its end stops it otherwise.
           signal: ctx.signal,
         });
-  const key = requestKey(ctx);
+  const key = ctx.request.identity.id;
   const before = admitted.get(key);
   before?.renewal?.stop();
   before?.spendTick?.stop();
@@ -334,7 +330,7 @@ export async function admitClaimedTask(
 async function writeSpend(record: Admitted, part: "live" | "settle", spend: RequestSpend): Promise<boolean> {
   const recordSpend = record.ref.recordSpend;
   if (recordSpend === undefined) return false;
-  const requestId = requestKey(record.ctx);
+  const requestId = record.ctx.request.identity.id;
   try {
     // Only the task this request was admitted for: two tasks a worker runs at once never share a request's spend.
     await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend, writer: record.writer, admittedAt: record.admittedAt, recovered: record.recovered }, { claim: record.ticket });
@@ -410,7 +406,7 @@ type TaskEnding = Omit<RequestEnding, "spend">;
  * the task is checked here.
  */
 async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
-  const key = requestKey(ctx);
+  const key = ctx.request.identity.id;
   const record = admitted.get(key);
   if (record === undefined) return;
   if (record.answerCounts) record.answer = { output };
@@ -595,7 +591,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
 async function checkStopped(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
   const { ref, ticket } = record;
   record.answer = undefined;
-  record.stoppedBy = requestKey(record.ctx);
+  record.stoppedBy = record.ctx.request.identity.id;
   const parked = (outcome: TaskWriteOutcome | undefined) => {
     if (outcome?.outcome === "declined") {
       console.warn(`[task-board] task "${row.id}": a stopped later request couldn't park the task again (${outcome.reason}); the next claim takes it`);
@@ -700,7 +696,7 @@ function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undef
     actor: "user",
     openedAt: Date.now(),
     ...(suspension.expiresAt !== undefined ? { due: suspension.expiresAt } : {}),
-    source: { kind: "suspension", requestId: requestKey(ctx), suspensionId: suspension.suspensionId },
+    source: { kind: "suspension", requestId: ctx.request.identity.id, suspensionId: suspension.suspensionId },
     ask: {
       kind,
       prompt: prompt.length > MAX_QUESTION_PROMPT ? `${prompt.slice(0, MAX_QUESTION_PROMPT - 1)}…` : prompt,
@@ -792,7 +788,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   const stored = (await readCommittedTask(ref, row.id)) ?? row;
   // The turn owed for a steer that took none: owing another would loop with
   // no end, so the task settles and the steers stay on it, untaken.
-  const noProgress = record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx));
+  const noProgress = record.prior === "steer" && !tookSteers(stored, record.ctx.request.identity.id);
   if (untakenSteers(stored).length > 0) {
     if (noProgress) {
       console.warn(`[task-board] task "${row.id}"'s steer turn took none of its steers; it settles without another turn`);
@@ -1037,14 +1033,14 @@ export const noteTaskAnswer = handler({
  * that runs before the check.
  */
 export async function afterTaskCheck(ctx: BlockContext, after: () => Promise<unknown>): Promise<void> {
-  const record = admitted.get(requestKey(ctx));
+  const record = admitted.get(ctx.request.identity.id);
   if (record !== undefined && !record.inline && onRequestEnded(ctx, async () => void (await after()))) return;
   await after();
 }
 
 /** The claim this request holds on `ledger`, server-set (the gate's or an admission's), and its admission record. */
 function heldClaimOn(ctx: BlockContext, ledger: TaskCollectionRef) {
-  const record = admitted.get(requestKey(ctx));
+  const record = admitted.get(ctx.request.identity.id);
   const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
   return { record, claim: claim === undefined || claim.collectionId !== ledger.collectionId ? undefined : claim };
 }

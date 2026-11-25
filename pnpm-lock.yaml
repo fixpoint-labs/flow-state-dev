@@ -1840,6 +1840,9 @@ importers:
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../tools
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -2324,6 +2327,9 @@ importers:
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
+      undici:
+        specifier: ^7.29.1
+        version: 7.29.1
       zod:
         specifier: ^3.25.76
         version: 3.25.76
