@@ -643,7 +643,8 @@ function tookSteers(task: Task, requestId: string): boolean {
 
 // FIX-2898.
 /**
- * Whether the task's own request (the row's run link) is still parked, as
+ * Whether the task's own request (the one its stop's mirror names, else the
+ * row's run link) is still parked, as
  * the engine records it ({@link requestStates}). A later request's admission
  * clears the row's wait, and the task's own entry admits that request's
  * resume on a row showing none, so a person can answer the stop while the
@@ -653,7 +654,9 @@ function tookSteers(task: Task, requestId: string): boolean {
  * answers parked, as the row last recorded.
  */
 async function ownRequestParked(record: Admitted, task: Task): Promise<boolean> {
-  const requestId = task.run?.requestId;
+  // A stop for a person names its request on the row: a steer's turn that
+  // stopped is not the request the run link names.
+  const requestId = suspensionHoldOf(task)?.source.requestId ?? task.run?.requestId;
   if (requestId === undefined) return true;
   const standing = (await requestStates(record.ctx, [requestId]))?.[requestId];
   return standing !== "running" && standing !== "ended";
@@ -985,7 +988,12 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
         const found = await options.find(ctx);
         if (found === undefined) return;
         const { ref, row } = found;
-        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true)) return;
+        // The resume of the stop the row waits on is that stop's own request, whichever entry
+        // started it (a steer's turn, after an answered question): its admission closes the
+        // mirror, and its end settles the task. Admitted on a row a later request cleared too
+        // (FIX-2898). Any other request admitted meanwhile is a later one.
+        const own = suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id;
+        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true && !own)) return;
         let admittedAs: Awaited<ReturnType<typeof admitClaimedTask>>;
         try {
           admittedAs = await admitClaimedTask(ctx, {
@@ -993,10 +1001,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
             row,
             ticket: ticketForClaim(ref.collectionId, row, ref.partition),
             answerCounts: options.answerCounts,
-            // The resume of the stop the row waits on is that stop's own request, whichever entry
-            // started it (a steer's turn, after an answered question): its admission closes the
-            // mirror, and its end settles the task. Any other request admitted meanwhile is a later one.
-            own: suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id,
+            own,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
           });
         } catch (error) {

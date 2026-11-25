@@ -1346,6 +1346,44 @@ describe("a later request parks the task on its own request only while that requ
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
   });
 
+  it("a steer's turn stopped for a person is the request the task waits on: a notice re-parks on it, and its resume during a notice settles the task", async () => {
+    const h = await harness({ hostWaits: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return "a partial answer";
+    });
+    await h.run();
+    await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+    // The owed turn stops for a person's review; the row's run link still names the first request.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.setSteerTurn(async (_steers, ctx) => {
+      const answer = await ctx.suspend!({ reason: "user_input", message: "look?" });
+      await released;
+      return { reviewed: answer };
+    });
+    const steer = await h.runLater("steerTurn");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice while the steer's turn is parked parks the task on it again.
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice during which the person answers: the steer's turn resumes on a row showing no wait.
+    let finished: Promise<unknown> | undefined;
+    h.setLaterTurn(async () => {
+      finished = h.resume(steer.requestId!, "fine");
+      for (let i = 0; i < 200 && (await h.requests.get(steer.requestId!))?.status !== "in_progress"; i += 1) await sleep(10);
+      expect((await h.requests.get(steer.requestId!))?.status).toBe("in_progress");
+      return "a later answer";
+    });
+    await h.runLater("notice");
+    expect((await h.row())?.keptOpenBy).toBeUndefined();
+    release();
+    await finished;
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { reviewed: "fine" } });
+  });
+
   it("a stopped later request that ends while the resumed own request runs writes no wait over it either", async () => {
     const { h, resumeOwn, finishOwn } = await parkedOwnRequest("external_event");
     h.setLaterTurn(async (ctx) => {
