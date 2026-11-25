@@ -1229,7 +1229,8 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       const relations = config.semantic?.relations
       const semRef = ctx.resources.semanticMemory
       const edgeApi = semRef?.edges
-      const hasEdgeWork = relations !== undefined && edgeApi !== undefined && (input.edges?.length ?? 0) > 0
+      const proposals = input.edges
+      const hasEdgeWork = relations && edgeApi && proposals && proposals.length > 0
 
       if (input.facts.length === 0 && !hasEdgeWork) {
         return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
@@ -1356,8 +1357,8 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // non-fatal (consolidation runs in a background `.sideChain()`): we warn and
       // continue rather than crash the turn. Edge extraction NEVER touches fact
       // subjects — it only reads them to canonicalize endpoints (FIX-703).
-      if (relations && edgeApi && input.edges) {
-        await applyEdges(edgeApi, knownSubjects(semRef), relations, input.edges)
+      if (hasEdgeWork) {
+        await applyEdges(edgeApi, knownSubjects(semRef), relations, proposals)
       }
 
       // Fact-consolidation bookkeeping (FIX-745 follow-up): mark episodes

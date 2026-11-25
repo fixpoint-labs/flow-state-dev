@@ -1,7 +1,6 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineProjectedResourceCollection, handler } from "../src";
-import type { BlockContext, InferResourcesFromDefinitions } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
 describe("handler builder", () => {
   it("builds a handler block definition", async () => {
@@ -17,7 +16,7 @@ describe("handler builder", () => {
     await expect(runForTest(block, "team", ctx)).resolves.toEqual({ message: "hi team" });
   });
 
-  it("keeps conditionally declared resource handles optional and typed", () => {
+  it("registers a conditional resource only when enabled", () => {
     const notes = defineProjectedResourceCollection({
       pattern: "notes/*",
       scope: "user",
@@ -25,17 +24,10 @@ describe("handler builder", () => {
       read: async () => null,
       search: async () => ({ hits: [] })
     });
-    type NotesRef = InferResourcesFromDefinitions<{ notes: typeof notes }>["notes"];
     const block = (enabled: boolean) => handler({
       name: "optional-notes",
       resources: { ...(enabled ? { notes } : {}) },
-      execute: async (_input, ctx) => {
-        expectTypeOf(ctx).toExtend<BlockContext>();
-        expectTypeOf(ctx.resources.notes).toEqualTypeOf<NotesRef | undefined>();
-        expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<NotesRef>();
-        expectTypeOf(ctx.resources.list()).toEqualTypeOf<NotesRef[]>();
-        return (await ctx.resources.notes?.list())?.items ?? [];
-      }
+      execute: () => undefined
     });
 
     expect(block(false).declaredResources?.notes).toBeUndefined();

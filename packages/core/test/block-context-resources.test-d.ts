@@ -15,9 +15,9 @@
  */
 import { expectTypeOf } from "vitest";
 import { z } from "zod";
-import { defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core";
-import type { AnyResourceRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import type { AnyResourceRef, ProjectedResourceCollectionRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 const notes = defineResource({ scope: "session", stateSchema: z.object({ count: z.number() }) });
 const skills = defineResourceCollection({
@@ -123,6 +123,27 @@ handler({
       Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }>>
     >();
     return input;
+  },
+});
+
+const portfolio = defineProjectedResourceCollection({
+  pattern: "positions/*",
+  scope: "user",
+  stateSchema: z.object({ shares: z.number() }),
+  read: async () => null,
+  search: async () => ({ hits: [] }),
+});
+declare const showPortfolio: boolean;
+
+handler({
+  name: "declares-optional-portfolio",
+  resources: { ...(showPortfolio ? { portfolio } : {}) },
+  execute: (_input, ctx) => {
+    readsAnyCtx(ctx);
+    type PortfolioRef = ProjectedResourceCollectionRef<{ shares: number }>;
+    expectTypeOf(ctx.resources.portfolio).toEqualTypeOf<PortfolioRef | undefined>();
+    expectTypeOf(ctx.resources.get("portfolio")).toEqualTypeOf<PortfolioRef>();
+    expectTypeOf(ctx.resources.list()).toEqualTypeOf<PortfolioRef[]>();
   },
 });
 
