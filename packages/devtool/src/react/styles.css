@@ -31,7 +31,7 @@
  * never collide with the panel's. Components read these tokens only — never
  * a literal hex. Hairlines are ink at /12, /20, /30, /45; hover is an ink
  * wash at /5; selection is a 1px blueprint ring; focus a 2px blueprint halo.
- * The dim layer behind every dialog is `bg-fs-scrim`, dark in every theme.
+ * A dialog that dims the page behind it does so with `bg-fs-scrim`, dark in every theme.
  *
  * Meaning is fixed: blueprint (`fs-blue`) = interactive or live, highlighter
  * (`fs-hl`) = a person needs to act, `fs-red` = failed, `fs-green` = done.

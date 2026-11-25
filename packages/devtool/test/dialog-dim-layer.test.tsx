@@ -72,6 +72,10 @@ function dimLayerColor(layer: HTMLElement, theme: "light" | "draft" | "dark") {
     .find((m) => m !== null);
   if (!utility) throw new Error(`dim layer has no bg-fs-* color: ${layer.className}`);
   const [, token, opacity] = utility;
+  // Tailwind only generates `bg-fs-<token>` for a token mapped in `@theme inline`.
+  if (!stylesheet.includes(`--color-fs-${token}: var(--fs-${token});`)) {
+    throw new Error(`bg-fs-${token} has no --color-fs-${token} mapping in @theme`);
+  }
   const value = themeTokens(theme)[`--fs-${token}`];
   if (!value) throw new Error(`--fs-${token} is not defined in the ${theme} theme`);
   const color = parseColor(value);
