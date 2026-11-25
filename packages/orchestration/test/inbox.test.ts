@@ -213,6 +213,9 @@ describe("the one answer call, routed by source, typed by what the hold asks", (
     const said = 'Suspension "sp1" has already been resolved (status: "resolved")';
     answer.mockRejectedValueOnce(new ClientHttpError("Request failed (409) Conflict", { status: 409, body: { error: said, refused: "already-resolved" } }));
     await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toThrow(said);
+    // Still the route's refusal: a caller that tells a 409 from a 404 by its status still can.
+    answer.mockRejectedValueOnce(new ClientHttpError("Request failed (409) Conflict", { status: 409, body: { error: said } }));
+    await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toMatchObject({ status: 409, message: said });
     // A 5xx is not a refusal: it comes back as it came.
     answer.mockRejectedValueOnce(new ClientHttpError("Request failed (503)", { status: 503, body: { error: "down" } }));
     await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toThrow("Request failed (503)");

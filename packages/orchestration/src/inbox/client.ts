@@ -81,7 +81,8 @@ function refusalOf(error: unknown): unknown {
   if (!(error instanceof ClientHttpError) || error.status < 400 || error.status >= 500) return error;
   const body = error.body as { error?: unknown; message?: unknown } | null | undefined;
   const said = [body?.error, body?.message].find((text): text is string => typeof text === "string" && text !== "");
-  return new Error(said ?? error.message);
+  // Still the route's refusal, status and body kept: only its message is the route's own words.
+  return new ClientHttpError(said ?? error.message, { status: error.status, body: error.body });
 }
 
 /**
