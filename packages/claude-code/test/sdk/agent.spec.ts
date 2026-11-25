@@ -217,6 +217,20 @@ describe("claudeCodeAgent", () => {
     expect(messageItems[0].content[0].text).toBe("just one");
   });
 
+  it("reports a cached run's whole input on the handle, cache reads and writes included", async () => {
+    // The handle's `usage` is what a host records as the run's spend when the
+    // sign-in bills no dollar cost; dropping the cached part under-reports it.
+    const cached: ClaudeCodeSdkMessage = {
+      ...RESULT_OK,
+      usage: { input_tokens: 5, output_tokens: 10, cache_read_input_tokens: 400, cache_creation_input_tokens: 45 },
+    };
+    const { output } = await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([cached]) }), {
+      input: { prompt: "go" },
+    });
+
+    expect((output as ClaudeCodeAgentHandle).usage).toEqual({ inputTokens: 450, outputTokens: 10 });
+  });
+
   it("persists the SDK session id and appends the handle after a run", async () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
     const { state, output } = await testBlock(block, { input: { prompt: "go" } });
