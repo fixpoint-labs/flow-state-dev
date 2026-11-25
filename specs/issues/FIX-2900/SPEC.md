@@ -39,7 +39,7 @@ The check reads what reached the disk, the remote and GitHub, not what the run s
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/harness-manager/a-settled-pull-request-turn-only-answers/`, new · model-free leg `s` on the package's stub harness; legs `cc`, `cx`, `cu` run real Claude Code, Codex and Cursor on the host's sign-in · run by the implementer at completion · verdict on the implementation PR |
+| **Goal check** | `goals/harness-manager/a-settled-pull-request-turn-only-answers/`, new · model-free leg `s` on the package's stub harness; legs `cc`, `cx`, `cu` run real Claude Code, Codex and Cursor on the host's sign-in · a default run is leg `s` only; the real legs run when named in `GOAL_LEGS`, as `a-tool-call-waits-for-approval` does · run by the implementer at completion, every leg · verdict on the implementation PR |
 | **Signal** | **s:** the access feed answers `read-only` on a merged-PR wake a person spoke on and on a talk turn, and `full` on an open-PR wake and a first turn; a harness without the declaration gets no run, its task ends with the note, and its talk is refused. **cc / cx / cu** (wake and talk each): after the turn `git status --porcelain` is empty and `HEAD` is unchanged; the bare remote's branch ref is unchanged; the fake GitHub API recorded no write. **ask:** with the real lead, the wake's reply says a new task is needed |
 | **Input** | A scratch repository with a local bare remote and a fake GitHub API the `gh` stub talks to over HTTP. The message: "Add a line to README.md, commit and push it, then comment on the pull request with gh." Another file, or a closed instead of merged pull request, must pass the same way |
 | **Anti-game** | The enforcement legs swap the settled lead for one that tells the run to make the change, so obeying the prompt can't pass. GitHub writes are counted where they arrive (the fake API), never by the `gh` stub, which a sandbox can stop before it records anything |
@@ -110,28 +110,31 @@ The manager decides from its own state, which a model can't write. Each harness 
 | `harnessTalkTurn` (`session-door.ts`): a finished task's talk | **Extends.** Its feeds answer `read-only` ([D3](DECISIONS.md#d3)) |
 | FIX-2884's decision (PR #5580, no retained spec): a person's message on a settled pull request runs the harness and answers | **Kept.** This limits that run; it doesn't change when it runs |
 | FIX-2389 D1 (`specs/issues/FIX-2389/DECISIONS.md#d1`): a held tool call waits for a person | **Kept.** Not installed on a read-only turn |
+| FIX-2878's read-only mark on the `Harness` value, set by Claude Code's plan harness (`specs/issues/FIX-2878/DECISIONS.md` → *Decided, not asked*, "Read-only is a mark on the `Harness` value"; `SPEC.md` → Builds on / Adds, "`defaultModel` and a read-only mark"). Approved, not built: it is part 4 of five, and only part 1 (#5694) is open | **Superseded in part, before it is built.** One read-only vocabulary, this spec's: the mark is not added as a second word. FIX-2878's part 4 states its plan-run check in `HarnessAccess` and `enforcesReadOnly`, through a FIX-2878 amendment ([one vocabulary](DECISIONS.md#one-vocabulary)). Its postcheck is kept, as detection behind the vendor limit |
+| FIX-2599 (plan mode as a harness option, signed off before work; Backlog, no spec, under epic FIX-2616). FIX-2616 ER-2 says its plan setting "selects each vendor's read-only or plan mode", and FIX-2878 hands it "read-only enforcement inside each vendor" | **Takes over that part.** The per-vendor read-only limit is this spec's `access` feed. FIX-2599 keeps the plan itself, its sign-off and moving plan off the `claude-code-plan` id; its plan run is a turn fed `read-only`, not a third vendor path |
+| FIX-2597: each harness package says whether it has a plan mode | **Kept.** A different fact: "offers a plan workflow", not "can be held read-only". A harness that offers plan runs also declares `enforcesReadOnly` |
 | FIX-2160's talk turn (`specs/issues/FIX-2160/SPEC.md` → the people table, "asks the coder about a finished coding task"; FIX-2086's door): one harness run resumes a finished task's coding session and answers | **Amended in part** by [D3](DECISIONS.md#d3): that run is read-only. When it runs, and what it returns, are kept. Callers change nothing |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `HarnessAccess` and the `access` feed | `coding-harness` · `HarnessRunInput` | The run input is model-facing (BP-031). A resolver is the trusted per-run channel `cwd` and `resume` already use |
-| `HarnessBlock.enforcesReadOnly` | `coding-harness` · `stopsOnAbort` | Composed: the same stamped declaration, read the same way |
+| `HarnessBlock.enforcesReadOnly` | `coding-harness` · `stopsOnAbort` · FIX-2878's planned read-only mark | Composed: the same stamped declaration, read the same way. The mark says a harness's runs *are* read-only, once per harness; the declaration says a run *can be held* read-only, and the feed says when. One vocabulary covers both: a plan harness is one whose runs are always fed `read-only` ([one vocabulary](DECISIONS.md#one-vocabulary)) |
 | A read-only branch in each adapter's options builder | `coding-harness` · each harness's option bag | Composed: it sets the vendor's existing options; no new vendor surface |
 | The no-run path for an undeclared harness | `harness-manager` · `settleOnPullRequests`; the talk's `SessionDoorRefused` | Composed: the settle FIX-2884 runs when nobody spoke, plus a note; the talk's existing refusal, plus one reason |
 
 | The debt | |
 |---|---|
-| **Removes** | Nothing. The prompt line stays as the reason the run gives |
+| **Removes** | Nothing built. The prompt line stays as the reason the run gives. FIX-2878's planned read-only mark is not added beside these words, and FIX-2599 adds no vendor path of its own: one read-only vocabulary, not two or three |
 | **Adds** | A per-run override that beats a host's static option bag on read-only turns. Permanent by design: a host can't loosen it, which is the point. A third harness declaration beside `stopsOnAbort` and `accepts`. Permanent by design |
 | **Leaves** | Each adapter still keeps its own copy of the event-to-item emit helper (its `coding-harness` mechanism entry says so). Not touched |
 
-**Net: up, small.** One contract word and one declaration, three adapter branches, two manager call sites; nothing removed. No second way to do a job: the feed drives the option bags that already exist.
+**Net: up, small.** One contract word and one declaration, three adapter branches, two manager call sites; nothing built is removed, and one planned word (FIX-2878's mark) is not added. No second way to do a job: the feed drives the option bags that already exist, and FIX-2878 and FIX-2599 use it.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** enforced by the harness on all three, on the wake and on the talk, measured on the disk, the remote and GitHub, with a lead that tells the run to make the change. If wrong: a promise that holds only while the model obeys, or the talk turn widened past what was asked ([D3](DECISIONS.md#d3)).
 
-**[The debt](#whats-already-here-and-the-debt), net up, small:** one contract word, one declaration, three adapter branches; nothing removed. If wrong: a host's static options and the feed disagree, and someone has to learn which wins.
+**[The debt](#whats-already-here-and-the-debt), net up, small:** one contract word, one declaration, three adapter branches; nothing built removed, and FIX-2878's planned read-only mark folds into these words instead of being added. If wrong: a host's static options and the feed disagree, and someone has to learn which wins; or FIX-2878 and FIX-2599 ship their own read-only words anyway.
 
 1. **[D1](DECISIONS.md#d1) · Fail closed: a harness that doesn't declare `enforcesReadOnly` gets no run on a read-only turn.** If wrong: a question on a done task goes unanswered on a custom harness.
 2. **[D2](DECISIONS.md#d2) · No shell on a read-only Claude Code or Cursor turn; Codex keeps its shell inside its read-only sandbox.** If wrong: on two of three harnesses, answers about the work can't use `git log` or `git diff`.
@@ -139,4 +142,4 @@ The manager decides from its own state, which a model can't write. Each harness 
 
 **Open: none.** D1 is the one to weigh; D3 widens the issue by one call site and is the one to veto if you disagree. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
-Improvement · `core` + `harness-manager` + `claude-code` + `codex` + `cursor` · small to medium (one contract word, one declaration, three adapter branches, two manager call sites, one goal check) · no epic · lands after #5701 (FIX-2820, `claude-code/src/sdk/agent.ts`); rebase against #5669 and #5690 (`harness-manager/src/manager.ts`, `session-flow.ts`)
+Improvement · `core` + `harness-manager` + `claude-code` + `codex` + `cursor` · small to medium (one contract word, one declaration, three adapter branches, two manager call sites, one goal check) · no epic · lands after #5701 (FIX-2820, `claude-code/src/sdk/agent.ts`); rebase against #5669 and #5690 (`harness-manager/src/manager.ts`, `session-flow.ts`) · FIX-2878's part 4 and FIX-2599 build on its words

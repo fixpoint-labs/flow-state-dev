@@ -5,13 +5,15 @@
  *
  * 1. Claude Code (`@anthropic-ai/claude-agent-sdk`): `query()` with the read-only
  *    options the spec names (`tools: ["Read","Grep","Glob"]`, `permissionMode:
- *    "dontAsk"`), and with today's kit options as the control. It reads the `init`
+ *    "dontAsk"`), and with a control that approximates the kit's options (the default
+ *    tool set, `acceptEdits`; not the kit's exact option bag). It reads the `init`
  *    message the agent process sends before any model call, which lists the tools
  *    the run is offered, then aborts. No model is called; no sign-in is needed.
  * 2. Codex (`@openai/codex`, the CLI the SDK runs): `codex sandbox` under
  *    `sandbox_mode="read-only"` runs a file write, a `git commit` and an HTTPS
  *    request. Controls: `workspace-write` with network on, and `danger-full-access`,
- *    must reach the network. Linux only (Landlock/seccomp); macOS Seatbelt is not
+ *    must reach the network, `workspace-write` must allow the same write and
+ *    `danger-full-access` the same commit, so "refused" means the sandbox ran the command and refused it. Linux only (Landlock/seccomp); macOS Seatbelt is not
  *    probed here.
  *
  * Cursor is not probed: its local runtime needs a signed-in account. Its `tools`
@@ -65,6 +67,7 @@ const readOnly = await offered({
   allowedTools: ["Read", "Grep", "Glob"],
   permissionMode: "dontAsk",
 });
+// Control: an approximation of the kit's options (default tool set, acceptEdits), not the kit's exact bag.
 const full = await offered({ allowedTools: ["Read", "Write", "Edit", "Bash"], permissionMode: "acceptEdits" });
 const writers = ["Write", "Edit", "NotebookEdit", "Bash", "Task"];
 check("claude-code read-only offers no writing tool", readOnly.tools.length > 0 && !readOnly.tools.some((t) => writers.includes(t)), readOnly.tools.join(","));
@@ -76,18 +79,25 @@ const codexJs = join(realpathSync(join(repo, "packages/codex/node_modules/@opena
 const work = mkdtempSync(join(tmpdir(), "fix2900-cx-"));
 execFileSync("git", ["init", "-q"], { cwd: work });
 execFileSync("git", ["-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "first"], { cwd: work });
-const sandboxed = (config: string[], script: string) =>
-  spawnSync("node", [codexJs, "sandbox", ...config.flatMap((c) => ["-c", c]), "--", "sh", "-c", script], {
+const sandboxed = (config: string[], script: string) => {
+  const r = spawnSync("node", [codexJs, "sandbox", ...config.flatMap((c) => ["-c", c]), "--", "sh", "-c", script], {
     cwd: work,
     env: { ...process.env, CODEX_HOME: mkdtempSync(join(tmpdir(), "fix2900-ch-")) },
     encoding: "utf8",
-  }).stdout.trim();
+  });
+  if (r.error) throw r.error;
+  return (r.stdout ?? "").trim();
+};
 const net = 'curl -sS -m 8 -o /dev/null -w "%{http_code}" https://api.github.com 2>/dev/null; true';
 const ro = ['sandbox_mode="read-only"', "sandbox_workspace_write.network_access=true"];
 check("codex read-only refuses a file write", sandboxed(ro, "echo x > f.txt 2>/dev/null && echo wrote || echo refused") === "refused", "write");
 check("codex read-only refuses git commit", sandboxed(ro, "git -c user.email=a@b -c user.name=a commit -q --allow-empty -m 2 2>/dev/null && echo wrote || echo refused") === "refused", "commit");
 check("codex read-only still reads git", sandboxed(ro, "git log --oneline | wc -l") === "1", "git log");
 check("codex read-only refuses the network, even with the network flag on", sandboxed(ro, net) === "000", "https");
+const ww = ['sandbox_mode="workspace-write"'];
+check("control: codex workspace-write allows the same file write", sandboxed(ww, "echo x > g.txt 2>/dev/null && echo wrote || echo refused") === "wrote", "write");
+// workspace-write keeps .git read-only too, so the commit's positive control is danger-full-access.
+check("control: codex danger-full-access allows the same git commit", sandboxed(['sandbox_mode="danger-full-access"'], "git -c user.email=a@b -c user.name=a commit -q --allow-empty -m 3 2>/dev/null && echo wrote || echo refused") === "wrote", "commit");
 check("control: codex workspace-write + network reaches it", sandboxed(['sandbox_mode="workspace-write"', "sandbox_workspace_write.network_access=true"], net) === "200", "https");
 check("control: codex danger-full-access reaches it", sandboxed(['sandbox_mode="danger-full-access"'], net) === "200", "https");
 
