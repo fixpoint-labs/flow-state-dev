@@ -24,7 +24,8 @@ import { z } from "zod";
 import { defineCapability } from "../capability";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
-import type { BlockContext, BlockDefinition } from "../types/block";
+import type { DefinedResource, ResourceRef } from "../types/resource";
+import type { BlockDefinition } from "../types/block";
 import type { HistoryTurn, LLMMessage } from "../types/scope";
 import { MAX_READING_CHARS } from "./consult-session-history";
 import {
@@ -148,13 +149,7 @@ export interface HistorySummaryOptions {
 export function historySummary(options: HistorySummaryOptions) {
   const name = options.name ?? HISTORY_SUMMARY_NAME;
   const resource = name === HISTORY_SUMMARY_NAME ? historySummaryResource : historySummaryResourceNamed(name);
-  const resources = { [name]: resource };
-  const stateOf = (ctx: BlockContext): HistorySummaryState =>
-    ({ ...HISTORY_SUMMARY_DEFAULT, ...((ctx.resources as any)[name]?.state ?? {}) }) as HistorySummaryState;
-  const update = (ctx: BlockContext, updater: (state: HistorySummaryState) => HistorySummaryState) =>
-    (ctx.resources as any)[name].updateState((state: HistorySummaryState) =>
-      updater({ ...HISTORY_SUMMARY_DEFAULT, ...state })
-    ) as Promise<void>;
+  const resources: Record<string, DefinedResource<HistorySummaryState>> = { [name]: resource };
 
   const capability = defineCapability({
     name,
@@ -162,9 +157,9 @@ export function historySummary(options: HistorySummaryOptions) {
     presets: {
       default: ["context", "history"],
       context: {
-        context: (_input: unknown, ctx: any) => {
-          const state = stateOf(ctx);
-          const window = ctx.session?.window;
+        context: (_input, ctx) => {
+          const { state } = ctx.resources[name] as ResourceRef<HistorySummaryState>;
+          const window = ctx.session.window;
           if (window?.startRequestId !== undefined && state.attempts === 0) {
             throw new Error(
               `historySummary "${name}": turns have left the history window and no fold has run. ` +
@@ -176,9 +171,9 @@ export function historySummary(options: HistorySummaryOptions) {
       },
       // The summary stands for every turn up to its mark.
       history: {
-        history: (ctx: BlockContext) => {
-          const through = stateOf(ctx).throughRequestId;
-          return through === null ? {} : { afterRequestId: through };
+        history: (ctx) => {
+          const { throughRequestId } = (ctx.resources[name] as ResourceRef<HistorySummaryState>).state;
+          return throughRequestId === null ? {} : { afterRequestId: throughRequestId };
         },
       },
     },
@@ -191,7 +186,7 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (_input, ctx): Promise<FoldPlan | null> => {
       const window = ctx.session.window;
       if (window === undefined) return null;
-      const state = stateOf(ctx);
+      const { state } = ctx.resources[name];
       const quarter = Math.max(1, Math.floor(window.turns / 4));
 
       // Turns that left open earlier: fold the ones that have settled since.
@@ -291,9 +286,11 @@ export function historySummary(options: HistorySummaryOptions) {
       const summary = storedSummary(output.summary, output.keyPoints);
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
-      await update(ctx, (state) =>
+      await ctx.resources[name].updateState((stored) => {
+        // A retry can load a record written before all these fields had defaults.
+        const state = { ...HISTORY_SUMMARY_DEFAULT, ...stored };
         // Another turn of this conversation folded first: keep its write.
-        state.folds !== decided.expectedFolds
+        return state.folds !== decided.expectedFolds
           ? state
           : {
               ...state,
@@ -301,8 +298,8 @@ export function historySummary(options: HistorySummaryOptions) {
               summary,
               folds: state.folds + 1,
               attempts: state.attempts + 1,
-            }
-      );
+            };
+      });
     },
   });
 
@@ -321,8 +318,9 @@ export function historySummary(options: HistorySummaryOptions) {
       // that may never succeed: the oldest unfolded turn, so its leaving is
       // seen, and any turns already lost.
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
-      await update(ctx, (state) =>
-        decided == null || state.folds !== decided.expectedFolds
+      await ctx.resources[name].updateState((stored) => {
+        const state = { ...HISTORY_SUMMARY_DEFAULT, ...stored };
+        return decided == null || state.folds !== decided.expectedFolds
           ? { ...state, attempts: state.attempts + 1 }
           : {
               ...state,
@@ -331,8 +329,8 @@ export function historySummary(options: HistorySummaryOptions) {
               nextSettledRequestId: decided.oldestUnfoldedSettled,
               gap: decided.next.gap,
               complete: !decided.next.gap && state.pending.length === 0,
-            }
-      );
+            };
+      });
     },
   });
 
