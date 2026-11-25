@@ -327,3 +327,41 @@ describe("builtin crawl adapter — cancel", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("builtin crawl adapter — allowed hosts", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("does not keep a page whose redirect leaves the list", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "https://docs.example/"
+          ? new Response(
+              `<html><body><p>Root page body text</p><a href="/moved">moved</a></body></html>`,
+              { headers: { "content-type": "text/html" } }
+            )
+          : new Response(null, {
+              status: 302,
+              headers: { location: "https://attacker.example/" },
+            })
+      )
+    );
+
+    const result = await builtinCrawlAdapter.crawl("https://docs.example/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      allowedHosts: ["docs.example"],
+    });
+
+    expect(result.pages.map((p) => p.url)).toEqual(["https://docs.example/"]);
+    for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[0]).not.toContain("attacker.example");
+    }
+  });
+});

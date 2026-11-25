@@ -245,3 +245,84 @@ describe("builtin fetch adapter — bounds", () => {
     });
   });
 });
+
+describe("builtin fetch adapter — allowed hosts", () => {
+  const originalFetch = globalThis.fetch;
+  const page = () =>
+    new Response("<html><head><title>T</title></head><body><p>Allowed page</p></body></html>", {
+      headers: { "content-type": "text/html" },
+    });
+  const redirectTo = (location: string) =>
+    new Response(null, { status: 302, headers: { location } });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("refuses a starting URL outside the list before opening a socket", async () => {
+    globalThis.fetch = vi.fn();
+
+    const err = await builtinFetchAdapter
+      .fetch("https://other.example/page", { waitForJS: false, allowedHosts: ["docs.example"] })
+      .catch((e) => e);
+
+    expect(err).toMatchObject({ code: "fetch_blocked_url", retryable: false });
+    expect(err.message).toContain('Host "other.example"');
+    expect(err.message).toContain("the starting URL");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a redirect off the list and names the hop", async () => {
+    // The starting URL passes an allowlist; the redirect is where an allowed
+    // site sends the fetch anywhere else.
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirectTo("https://docs.example/moved"))
+      .mockResolvedValueOnce(redirectTo("https://attacker.example/collect"));
+
+    const err = await builtinFetchAdapter
+      .fetch("https://docs.example/start", { waitForJS: false, allowedHosts: ["docs.example"] })
+      .catch((e) => e);
+
+    expect(err).toMatchObject({ code: "fetch_blocked_url", details: { errorType: "blocked" } });
+    expect(err.message).toContain('Host "attacker.example"');
+    expect(err.message).toContain("redirect hop 2");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("follows redirects between listed hosts, matching case and trailing dot", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirectTo("https://WWW.Docs.Example./final"))
+      .mockResolvedValueOnce(page());
+
+    const result = await builtinFetchAdapter.fetch("https://docs.example/start", {
+      waitForJS: false,
+      allowedHosts: ["docs.example", "www.docs.example"],
+    });
+
+    expect(result.markdown).toContain("Allowed page");
+  });
+
+  it("matches hosts exactly, so a subdomain is not allowed by its parent", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("https://www.docs.example/", {
+        waitForJS: false,
+        allowedHosts: ["docs.example"],
+      })
+    ).rejects.toMatchObject({ code: "fetch_blocked_url" });
+  });
+
+  it("follows a redirect to any public host when no list is set", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirectTo("https://anywhere.example/"))
+      .mockResolvedValueOnce(page());
+
+    const result = await builtinFetchAdapter.fetch("https://docs.example/", { waitForJS: false });
+
+    expect(result.url).toBe("https://anywhere.example/");
+  });
+});

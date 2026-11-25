@@ -46,6 +46,7 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
         // skipped by the surrounding catch, like any other unreachable page.
         const { response, body: html } = await fetchValidated(entry.url, {
           signal: options.signal,
+          allowedHosts: options.allowedHosts,
         });
 
         if (!response.ok) continue;

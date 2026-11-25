@@ -6,7 +6,8 @@
  * two copies of a security decision drift, and the next tweak would only land
  * on one of them.
  *
- * - Every hop is checked. Redirects are followed by hand rather than with
+ * - Every hop is checked, against the public-address policy and, when the app
+ *   set one, its allowed hosts. Redirects are followed by hand rather than with
  *   `redirect: "follow"`, which would hide the hop that matters: a public front
  *   door that redirects to `127.0.0.1` is the standard way past a check that
  *   only looks at the URL it was handed.
@@ -19,7 +20,12 @@
  *   off at a byte cap instead of buffered whole.
  */
 import { Agent } from "undici";
-import { assertPublicHttpUrl, BlockedUrlError, publicAddressLookup } from "./public-url";
+import {
+  assertPublicHttpUrl,
+  BlockedUrlError,
+  normalizeHostname,
+  publicAddressLookup,
+} from "./public-url";
 
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -61,6 +67,11 @@ export interface ValidatedFetchResult {
 export interface FetchValidatedOptions {
   /** The run's signal; aborting it aborts the fetch. */
   signal?: AbortSignal;
+  /**
+   * Hostnames the fetch may reach, matched exactly (no subdomains). Checked on
+   * the starting URL and every redirect hop. Unset: any public host.
+   */
+  allowedHosts?: readonly string[];
   /** Overrides the deadline. Tests only. */
   timeoutMs?: number;
   /** Overrides the byte cap. Tests only. */
@@ -70,8 +81,8 @@ export interface FetchValidatedOptions {
 /**
  * Fetches `url` within the policy above and reads its body.
  *
- * Throws {@link BlockedUrlError} for a refused destination (including one the
- * socket's lookup refused), {@link ResponseTooLargeError} for an oversized
+ * Throws {@link BlockedUrlError} for a refused destination (a host outside
+ * `allowedHosts`, or one the socket's lookup refused), {@link ResponseTooLargeError} for an oversized
  * body, and otherwise whatever the resolver or the transport threw — a
  * `TimeoutError` when the deadline passes. Callers shape those into their own
  * error types, since a policy refusal and a DNS blip warrant different
@@ -84,11 +95,16 @@ export async function fetchValidated(
   const deadline = AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   const maxBytes = options.maxBytes ?? MAX_BODY_BYTES;
+  const allowedHosts = options.allowedHosts && new Set(options.allowedHosts.map(normalizeHostname));
   let currentUrl = url;
 
   try {
     for (let redirects = 0; ; redirects++) {
-      assertPublicHttpUrl(currentUrl);
+      const host = normalizeHostname(assertPublicHttpUrl(currentUrl).hostname);
+      if (allowedHosts && !allowedHosts.has(host)) {
+        const hop = redirects === 0 ? "the starting URL" : `redirect hop ${redirects}`;
+        throw new BlockedUrlError(`Host "${host}" is not an allowed host (${hop}: ${currentUrl})`);
+      }
 
       const response = await globalThis.fetch(currentUrl, {
         headers: {
