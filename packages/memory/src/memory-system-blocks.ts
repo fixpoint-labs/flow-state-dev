@@ -1604,12 +1604,12 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
 
       // Track all fact IDs referenced in merges to avoid double-removal
       const mergedFactIds = new Set<string>()
-      for (const merge of (input.merges ?? [])) {
+      for (const merge of input.merges) {
         for (const id of merge.sourceFactIds) mergedFactIds.add(id)
       }
 
       // Process removals (skip any that are also in a merge)
-      for (const removal of (input.removals ?? [])) {
+      for (const removal of input.removals) {
         if (mergedFactIds.has(removal.factId)) continue
         try {
           await removeFact(semRef, removal.factId)
@@ -1620,7 +1620,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
       }
 
       // Process merges: update first source fact with merged content, remove the rest
-      for (const merge of (input.merges ?? [])) {
+      for (const merge of input.merges) {
         if (merge.sourceFactIds.length < 2) continue
         try {
           const [keepId, ...removeIds] = merge.sourceFactIds
