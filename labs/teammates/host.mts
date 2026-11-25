@@ -96,7 +96,7 @@ export async function openTeammates(options: TeammatesOptions) {
           maxSteps: 100,
         },
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
-        hire: { models, tools: ["globProjectSource", "readProjectSource", "grepProjectSource"] },
+        hire: { models },
         github: { provider: github, poll: true },
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),

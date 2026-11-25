@@ -267,12 +267,13 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   draws its context strip and first-run lines from it.
 - **Teammates** you hire from the page are rows of your own roster, written through the workforce
   kit's roster flow; nothing restarts.
-- **Hiring from the conversation:** Lead holds workforce's `hireWorker` tool (the `hireWorkers`
-  capability), so you can ask it for a teammate. It writes through the same roster `hire` as the
-  page's form, after you approve the whole hire in Inbox: the id, its role, its model, its
-  tools and its instructions. Only your own message can start a hire. The model must be one of `TEAMMATES_MODELS` with a key or gateway set; the tools default to
-  reading the working folder. A taken id, an unlisted model or one with no key is refused before
-  anything is asked. It takes no API key, only the provider and model.
+- **Hiring from the conversation:** Lead holds workforce's `hire` and `fire` tools (the `hireWorkers`
+  capability), so you can ask it for a teammate or to let one go. They are the roster's own hire and
+  fire, the same as the page's, after you approve the whole write in Inbox: for a hire, the id, its
+  role, its model, its tools and its instructions. Only your own message can start one. A hire's
+  model must be one of `TEAMMATES_MODELS` with a key or gateway set, on the page's form too; a taken
+  id, an unlisted model or one with no key is refused before anything is asked. It never takes an
+  API key.
 - **Routines:** Lead, researcher and writer hold the routine tools, so you can ask one to follow a
   GitHub pull request or to do something on a clock, and to list, pause or delete what it follows.
   A pull request's events are polled (no public URL) on the operator's own GitHub token, for the

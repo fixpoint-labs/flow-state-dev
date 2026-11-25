@@ -16,7 +16,7 @@
  *
  * - L1: every file is configuration, UI, a small flow, or outside the count,
  *   by its path alone.
- * - L2: at most three flows, each under 200 lines, and 310 lines of
+ * - L2: at most three flows, each under 200 lines, and 300 lines of
  *   configuration in all.
  * - L3: no UI file reaches the server itself: no value imported from the
  *   client (the entry may import `createClient`), no `.subscribe(` and no
@@ -96,7 +96,7 @@ export interface Finding extends Key {
 }
 
 /** ER-1's caps: at most this many flows, each under this many lines, and this many lines of configuration in all. */
-const CAPS = { flows: 3, flowLines: 200, configLines: 310 } as const;
+const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
 
 /**
  * The own-session helpers the epic retires, as an extended regular expression

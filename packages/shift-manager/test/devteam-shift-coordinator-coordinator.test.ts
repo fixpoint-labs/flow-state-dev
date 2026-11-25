@@ -37,6 +37,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { approvePending } from "./helpers/approve";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -260,6 +261,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     ]);
     const turn = await act(lab, id, "respond", { message: "audit our dependencies' licenses" });
     expect(turn.error).toBeUndefined();
+    // The hire waits for the user's Approve; the turn goes on from there.
+    expect(await approvePending(lab)).toBe(1);
     const items = await settledItems(lab, id);
     const answer = items.find((item) => item.type === "message" && item.agentName === "licenses");
     expect(answer).toBeDefined();

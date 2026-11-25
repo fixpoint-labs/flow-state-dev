@@ -272,10 +272,16 @@ describe("the Shift Coordinator's roster writes", () => {
     return Object.keys(rows).map((key) => key.slice("workforce/workers/".length)).sort();
   }
 
-  it("hires a worker of the user's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
+  // FIX-2840: text the Shift Coordinator reads (an error report, a pull request) could ask it to hire.
+  it("a hire waits for the user too: nothing lands while it waits or on Deny, Approve hires; a fire the same", async () => {
     const lab = await open();
-    const hired = await run(lab, { toolName: "hire", args: { id: "helper", flow: "agent" } }, "hire me a helper");
-    expect(hired.error).toBeUndefined();
+    const hire = { toolName: "hire", args: { id: "helper", flow: "agent", description: "Helps.", instructions: "Answer briefly." } };
+    const hiring = await ask(lab, hire, "hire me a helper");
+    for (const shown of ["helper", "agent", "Helps.", "Answer briefly."]) expect(hiring.suspension.message).toContain(shown);
+    expect(await roster(lab)).toEqual([]);
+    await answer(lab, hiring, "reject");
+    expect(await roster(lab)).toEqual([]);
+    await answer(lab, await ask(lab, hire, "hire me a helper"), "approve");
     expect(await roster(lab)).toEqual(["helper"]);
 
     const call = { toolName: "fire", args: { id: "helper" } };

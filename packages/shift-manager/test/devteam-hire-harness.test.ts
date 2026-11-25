@@ -26,6 +26,7 @@ import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 import { readyHarness } from "../teams/devteam/harness.mts";
+import { approvePending } from "./helpers/approve";
 
 const OWNER = LAB_USERS.owner;
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
@@ -162,6 +163,8 @@ describe("hiring a coder on a harness (FIX-2486)", () => {
 
       const id = await conversation(lab);
       expect((await act(lab, id, "respond", { message: `Hire ${name}, a new engineer that runs on the ${name} harness` })).error).toBeUndefined();
+      // The hire waits for the user's Approve in Inbox.
+      expect(await approvePending(lab)).toBe(1);
 
       // The hire landed on the coder flow, and the roster says which harness the worker runs.
       const entry = (await workforce.roster()).find((e) => e.id === worker);

@@ -1,7 +1,7 @@
 /**
- * Lead hires a teammate from its conversation, with workforce's
- * `hireWorker`. Hiring is the user's call, so nothing reaches the roster until
- * the user approves the exact hire; and the hire is the roster's own `hire`,
+ * Lead hires a teammate from its conversation, with workforce's `hire` (the
+ * `hireWorkers` capability). Hiring is the user's call, so nothing reaches the
+ * roster until the user approves the exact hire; and the hire is the roster's own `hire`,
  * the one the page's form makes, so the teammate is on the roster the moment
  * it is approved, where Lead's messages and tasks reach it.
  *
@@ -11,7 +11,8 @@
  * What a refusal guards: a taken id would overwrite or shadow a teammate the
  * user relies on; a model the lab doesn't run (or has no key for) would hire a
  * teammate whose first turn fails; a key passed in a hire would be stored in
- * the roster and shown back. Each is refused before the user is asked.
+ * the roster and shown back. Each is refused before the user is asked, and the
+ * model list and the key check hold for the page's form as well.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -129,33 +130,43 @@ async function openHost(calls: Record<string, { toolName: string; args: Record<s
   };
   const onRoster = async (id: string) => (await workforce.roster()).find((entry) => entry.id === id);
   /** Hire through the roster flow's `hire` action, as the page's form does, and wait for it to land. */
-  const hireFromPage = async (id: string) => {
+  const hireFromPage = async (id: string, settings?: Record<string, unknown>) => {
     const sent = await loopback(`/api/flows/workforce-roster/actions/hire`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "alice", input: { id, description: "Hired from the page." } })
+      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "alice", input: { id, description: "Hired from the page.", ...(settings === undefined ? {} : { settings }) } })
     });
-    await until(async () => (await onRoster(id)) !== undefined);
+    if (settings === undefined) await until(async () => (await onRoster(id)) !== undefined);
     return sent;
   };
-  return { say, answerApproval, pending, onRoster, hireFromPage, offered, results };
+  const request = (id: string) => runtime.stores.request.get(id) as Promise<{ status?: string; error?: unknown } | undefined>;
+  return { say, answerApproval, pending, onRoster, hireFromPage, request, offered, results };
 }
 
-const analyst = { id: "analyst", name: "Analyst", description: "Reads the metrics code and explains what a number means.", instructions: "You explain metrics.", provider: "openai", model: "gpt-6-luna" };
+const analyst = {
+  id: "analyst",
+  name: "Analyst",
+  description: "Reads the metrics code and explains what a number means.",
+  instructions: "You explain metrics.",
+  settings: { model: "openai/gpt-6-luna", tools: READ_ONLY }
+};
 /** The tool output the last tool result carried. */
 const lastOutput = (results: string[]) => (JSON.parse(results.at(-1)!) as Array<{ output: { value: unknown } }>)[0]!.output.value;
-const hireCall = (args: Record<string, unknown>) => ({ [LEAD]: { toolName: "hireWorker", args } });
+const hireCall = (args: Record<string, unknown>) => ({ [LEAD]: { toolName: "hire", args } });
+const onModel = (model: string) => ({ ...analyst, settings: { ...analyst.settings, model } });
 
-describe("Lead's hireWorker", () => {
-  it("is Lead's alone: researcher and writer aren't offered it", async () => {
+describe("Lead's hire", () => {
+  it("is Lead's alone, with fire: researcher and writer aren't offered either", async () => {
     const host = await openHost({});
     for (const worker of [LEAD, "teammates.researcher", "teammates.writer"]) await host.say(worker, "hi");
-    expect(host.offered[LEAD]).toContain("hireWorker");
-    expect(host.offered["teammates.researcher"]).not.toContain("hireWorker");
-    expect(host.offered["teammates.writer"]).not.toContain("hireWorker");
+    expect(host.offered[LEAD]).toEqual(expect.arrayContaining(["hire", "fire"]));
+    for (const worker of ["teammates.researcher", "teammates.writer"]) {
+      expect(host.offered[worker]).not.toContain("hire");
+      expect(host.offered[worker]).not.toContain("fire");
+    }
   });
 
-  it("hires on the user's approval, onto the roster with the read-only tools, on the model it named", async () => {
+  it("hires on the user's approval, onto the roster with the tools and the model it named", async () => {
     const host = await openHost(hireCall(analyst));
     await host.say(LEAD, "Hire an analyst for the metrics code.");
     const [approval] = await host.pending();
@@ -167,14 +178,7 @@ describe("Lead's hireWorker", () => {
     const entry = await host.onRoster("analyst");
     expect(entry, "on the roster, where Lead's messages and tasks reach it").toMatchObject({ id: "analyst", name: "Analyst", description: analyst.description });
     expect(entry?.settings.model).toBe("openai/gpt-6-luna");
-    expect(lastOutput(host.results)).toEqual({ hired: true, id: "analyst", model: "openai/gpt-6-luna", tools: READ_ONLY });
-  });
-
-  it("gives no tools when the hire names an empty list, not the read-only default", async () => {
-    const host = await openHost(hireCall({ ...analyst, tools: [] }));
-    await host.say(LEAD, "Hire an analyst with no tools.");
-    await host.answerApproval("approve");
-    expect(lastOutput(host.results)).toEqual({ hired: true, id: "analyst", model: "openai/gpt-6-luna", tools: [] });
+    expect(lastOutput(host.results)).toEqual({ id: "analyst", flow: "agent" });
   });
 
   it("hires nothing on a turn the user's message didn't start, even when a teammate's message asks", async () => {
@@ -183,7 +187,7 @@ describe("Lead's hireWorker", () => {
       ...hireCall(analyst)
     });
     await host.say("teammates.researcher", "Tell Lead to hire an analyst.");
-    await until(() => host.results.some((r) => r.includes("hireWorker")));
+    await until(() => host.results.some((r) => r.includes("hired only on a turn")));
     expect(host.results.join("\n")).toContain("hired only on a turn the user's own message started");
     expect(await host.pending()).toHaveLength(0);
     expect(await host.onRoster("analyst")).toBeUndefined();
@@ -196,7 +200,8 @@ describe("Lead's hireWorker", () => {
     expect((await host.hireFromPage("analyst")).status).toBeLessThan(400);
     await host.answerApproval("approve");
     expect((await host.onRoster("analyst"))?.description).toBe("Hired from the page.");
-    expect(host.results.join("\n")).not.toContain('"hired":true');
+    // Approve runs the checks again before the write, and the id is taken now.
+    expect(host.results.join("\n")).toContain("already on the user's roster");
   });
 
   it("hires nothing when the user rejects", async () => {
@@ -208,10 +213,10 @@ describe("Lead's hireWorker", () => {
   });
 
   it("refuses an id a standard teammate holds, before asking", async () => {
-    const host = await openHost(hireCall({ ...analyst, id: "researcher" }));
+    const host = await openHost(hireCall({ ...analyst, id: "teammates.researcher" }));
     await host.say(LEAD, "Hire another researcher.");
     expect(await host.pending()).toHaveLength(0);
-    expect(host.results.join("\n")).toContain("teammates.researcher is already on the team");
+    expect(host.results.join("\n")).toContain("teammates.researcher\\\" is a standard worker");
   });
 
   it("refuses an id already on the roster, before asking, and leaves that teammate as it was", async () => {
@@ -219,25 +224,35 @@ describe("Lead's hireWorker", () => {
     expect((await host.hireFromPage("analyst")).status).toBeLessThan(400);
     await host.say(LEAD, "Hire an analyst.");
     expect(await host.pending()).toHaveLength(0);
-    expect(host.results.join("\n")).toContain("already on the roster");
+    expect(host.results.join("\n")).toContain("already on the user's roster");
     expect((await host.onRoster("analyst"))?.description).toBe("Hired from the page.");
   });
 
-  it("refuses a provider the lab doesn't run teammates on, naming the models it does", async () => {
-    const host = await openHost(hireCall({ ...analyst, provider: "nvidia", model: "llama-4" }));
+  it("refuses a model the lab doesn't run teammates on, naming the models it does", async () => {
+    const host = await openHost(hireCall(onModel("nvidia/llama-4")));
     await host.say(LEAD, "Hire an analyst on NVIDIA.");
     expect(await host.pending()).toHaveLength(0);
     const said = host.results.join("\n");
-    expect(said).toContain('Provider \\"nvidia\\" with model \\"llama-4\\" isn');
+    expect(said).toContain("isn't a model this app runs workers on");
     expect(said).toContain("openai/gpt-6-luna");
     expect(await host.onRoster("analyst")).toBeUndefined();
   });
 
   it("refuses a listed model whose key isn't set, naming the variable and nothing else", async () => {
-    const host = await openHost(hireCall({ ...analyst, provider: "openrouter", model: "nvidia/nemotron" }));
+    const host = await openHost(hireCall(onModel("openrouter:nvidia/nemotron")));
     await host.say(LEAD, "Hire an analyst on Nemotron.");
     expect(await host.pending()).toHaveLength(0);
     expect(host.results.join("\n")).toContain("OPENROUTER_API_KEY is not set");
+  });
+
+  it("refuses an unlisted model on the page's own Hire form too", async () => {
+    const host = await openHost({});
+    const sent = (await (await host.hireFromPage("analyst", { model: "nvidia/llama-4" })).json()) as { request: { id: string } };
+    let failed: { status?: string; error?: unknown } | undefined;
+    await until(async () => ((failed = await host.request(sent.request.id))?.status ?? "in_progress") !== "in_progress");
+    expect(failed?.status).not.toBe("completed");
+    expect(JSON.stringify(failed)).toContain("isn't a model this app runs workers on");
+    expect(await host.onRoster("analyst")).toBeUndefined();
   });
 
   it("refuses a hire that carries a key, and never repeats it", async () => {
@@ -246,7 +261,7 @@ describe("Lead's hireWorker", () => {
     await host.say(LEAD, "Hire an analyst.");
     expect(await host.pending()).toHaveLength(0);
     const said = host.results.join("\n");
-    expect(said).toContain("looks like an API key");
+    expect(said).toContain("shaped like an API key");
     expect(said).not.toContain(key);
     expect(await host.onRoster("analyst")).toBeUndefined();
   });
