@@ -7,12 +7,12 @@
  *   the eyes blue, needs-you puts it on the highlighter, queued draws it as a
  *   dashed outline, idle dims its eyes, done keeps them ink.
  * - {@link BotFigure}: the header's bot, full size with no frame, its head
- *   filled with the teammate's dark tint and animated by its state (the
- *   `hb-*` keyframes in `styles.css`, which stop under reduced motion).
+ *   filled with the teammate's dark tint and marked by its state. It never
+ *   moves: a bot that waits on you sits still beside a waiting dot.
  *
  * The eleven faces (Pip, Tally, Bolt, Dot, Hex, Sprocket, Visor, Dome, Pod,
  * Telly, Chip) share one layout: an antenna at the top, the head, then the
- * shoulders, so the animations move the same parts on every face.
+ * shoulders, so each state's mark sits in the same place on every face.
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { BotFace, BotStatus, Look } from "../lib/looks";
@@ -23,7 +23,7 @@ interface FaceParts {
   head: ReactNode;
   /** The open eyes, each a filled shape. */
   eyes: ReactNode;
-  /** The antenna, from the head's top: it sways while the bot runs. */
+  /** The antenna, from the head's top. */
   antenna: ReactNode;
   /** Where the eyes sit, for the shut eyes of a queued bot. */
   eyeY: number;
@@ -235,11 +235,11 @@ function BotSvg({ face, state, figure = false, size }: { face: BotFace; state: B
   );
 }
 
-/** What only the header's bot draws: its arms, and its state's mark (typing dots, a tick, z's, an alert). */
+/** What only the header's bot draws: its arms, and its state's mark (typing dots, a tick, z's, a waiting dot). None of it moves. */
 function FigureExtras({ state }: { state: BotStatus }) {
   return (
     <>
-      {state === "needs" ? <path d="M20 52l-7-9M44 52l7-9" className="hb-arms" /> : <path d="M20 54l-5 7M44 54l5 7" />}
+      <path d="M20 54l-5 7M44 54l5 7" />
       {state === "running" ? (
         <g className="hb-type" fill="var(--b-eye)" stroke="none">
           <circle cx="27" cy="55" r="1.6" />
@@ -254,12 +254,7 @@ function FigureExtras({ state }: { state: BotStatus }) {
           <text x="55" y="8" fontSize="6">z</text>
         </g>
       ) : null}
-      {state === "needs" ? (
-        <g className="hb-flash">
-          <circle cx="54" cy="10" r="6" fill="var(--hl)" stroke="var(--bot-ink)" strokeWidth="1.5" />
-          <path d="M54 7v3.5M54 13v.2" stroke="var(--bot-ink)" strokeWidth="1.8" />
-        </g>
-      ) : null}
+      {state === "needs" ? <circle data-waiting-dot cx="54" cy="10" r="5" fill="var(--hl)" stroke="var(--bot-ink)" strokeWidth="1.5" /> : null}
     </>
   );
 }
@@ -304,10 +299,9 @@ export function Avatar({ look, size = "md", state = "done" }: { look: Look; size
 
 /**
  * The header's bot: 64px with no frame, its head filled with the
- * teammate's dark tint, animated by its state. Running sways and pulses the
- * antenna, scans the eyes and types on the chest; done bobs and blinks with a
- * smile and a tick; queued breathes with its eyes shut under drifting z's;
- * needs-you hops with its arms up beside a flashing alert.
+ * teammate's dark tint, marked by its state and never moving. Running has
+ * blue eyes and typing dots on the chest; done a smile and a tick; queued
+ * its eyes shut under z's; needs-you a waiting dot beside its head.
  */
 export function BotFigure({ look, state }: { look: Look; state: BotStatus }) {
   return (
