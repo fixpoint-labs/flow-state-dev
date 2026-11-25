@@ -36,7 +36,6 @@ import {
   runTopic,
   type HarnessFeeds,
   type ModeSpec,
-  type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
@@ -46,6 +45,7 @@ import {
   joinIdentity,
 } from "@flow-state-dev/harness-manager/checkout";
 import { isAbsolute } from "node:path";
+import { localRepoWorkspaceHost, type LocalRepoWorkspaceHostOptions } from "@flow-state-dev/workspace";
 
 const ASSIGNEE = "harness" as const;
 
@@ -55,7 +55,8 @@ const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
 export interface HarnessGoalFlowOptions {
   /** Names the board and the collection so two goals do not share rows. */
   epic: string;
-  workspace: WorkspaceConfig;
+  /** The one repository every run is cut from, and where checkouts go. */
+  workspace: LocalRepoWorkspaceHostOptions & { baseRef: string };
   maxAttempts?: number;
   runTimeoutMs?: number;
   mode: ModeSpec;
@@ -112,7 +113,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     slot,
   } = options;
 
-  const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
+  const workspace = Object.freeze({ ...callerWorkspace });
   const mode: ModeSpec = Object.freeze({ ...callerMode });
 
   assertPositiveInt("runTimeoutMs", runTimeoutMs);
@@ -120,15 +121,15 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
   if (workspace.provisionTimeoutMs !== undefined) {
     assertPositiveInt("workspace.provisionTimeoutMs", workspace.provisionTimeoutMs);
   }
-  for (const field of ["root", "sourceRepo"] as const) {
+  for (const field of ["root", "repo"] as const) {
     if (!isAbsolute(workspace[field])) {
       throw new Error(
         `workspace.${field} is relative (${workspace[field]}). Pass an absolute path.`,
       );
     }
   }
-  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo, process.cwd());
-  assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+  assertDistinctRepository("workspace.repo", workspace.repo, process.cwd());
+  assertBaseRefExists(workspace.repo, workspace.baseRef, "workspace.baseRef");
   assertCheckoutRootUsable(workspace.root, "workspace.root");
   assertSafeSegment("mode", mode.name);
 
@@ -146,7 +147,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     boardCollection: tasks,
     tenant: undefined,
     mode,
-    workspace,
+    workspace: localRepoWorkspaceHost(workspace),
     runTimeoutMs,
     // The feeds are spread, so a feed the manager adds (onUsage was the last)
     // reaches the harness without an edit here.

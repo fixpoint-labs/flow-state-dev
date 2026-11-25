@@ -852,7 +852,7 @@ mechanisms:
     file: packages/harness-manager/src/manager.ts
     builtOn: [task-board, coding-harness, harness-steering, workspace, kit]
     overlaps:
-      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run, and hostForConfig, the workspace host a fixed repository runs through (localWorkspaceHost over that repository). It is not a second workspace implementation." }
+      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. A fixed repository is a localRepoWorkspaceHost from the workspace package. It is not a second workspace implementation." }
     status: canonical
     doc: packages/harness-manager/README.md
 

@@ -46,7 +46,7 @@ export interface Posted {
 export const RUN = { sessionId: "run-1", requestId: "q1" } as const;
 
 /** A coding run's review stop, as its run session stores it. */
-export const reviewStop = (id: string, review: unknown) => ({ id, type: "suspension", kind: "review", status: "pending", requestId: RUN.requestId, itemIndex: 0, ts: 1, data: review });
+export const reviewStop = (id: string, review: unknown) => ({ id: `item-${id}`, type: "suspension", suspensionId: id, kind: "review", status: "pending", requestId: RUN.requestId, itemIndex: 0, ts: 1, data: review });
 
 /** The review hold a coding task carries on the board, answered at the run's stop `stop`. */
 const reviewHold = (stop = "stop-1"): InboxHold =>

@@ -19,16 +19,17 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { z } from "zod";
 
 const file = z.object({ type: z.literal("file"), mediaType: z.string(), filename: z.string().optional(), data: z.string() });
+const sessionState = z.object({ files: z.array(file).default([]) });
 // The composer goal's send names its files only beside the input, so `files` may be absent here.
-const input = z.object({ message: z.string(), files: z.array(file).default([]) });
+const input = sessionState.extend({ message: z.string() });
 
 const send = handler({
   name: "send",
   inputSchema: input,
   outputSchema: z.object({ kept: z.number() }),
-  sessionStateSchema: z.object({ files: z.array(file).default([]) }),
+  sessionStateSchema: sessionState,
   execute: async ({ files }, ctx) => {
-    await ctx.session.patchState({ files: [...(ctx.session.state.files ?? []), ...files] });
+    await ctx.session.patchState({ files: [...ctx.session.state.files, ...files] });
     return { kept: files.length };
   },
 });
@@ -37,7 +38,7 @@ const chat = defineFlow({
   kind: "chat",
   // Files ride on the user line, so the action that takes them writes one.
   actions: { send: { inputSchema: input, block: send, userMessage: (i: { message: string }) => i.message } },
-  session: { stateSchema: z.object({ files: z.array(file).default([]) }), client: { expose: ["files"] } },
+  session: { stateSchema: sessionState, client: { expose: ["files"] } },
 } as never)();
 
 const flowState = createFlowState({

@@ -147,7 +147,7 @@ async function open(
   const lab = await openLab({
     stores: inMemoryStores(),
     harnesses: [readyHarness(harness)],
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     inventory: true,

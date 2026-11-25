@@ -11,7 +11,7 @@
  * conversation (a popup) the lines draw with no action.
  */
 import { memo, useMemo, type ReactNode } from "react";
-import type { DataItem, FileContent, MessageItem } from "@flow-state-dev/core/items";
+import type { DataItem, FileContent, MessageItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { codingBoardViewRef, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { ItemsRenderer, useFlowContext, useView, type ItemLine, type RendererRegistry } from "@flow-state-dev/react";
@@ -23,7 +23,7 @@ import type { Look } from "../lib/looks";
 import { settingOf, takesTasks } from "../lib/roster";
 import { workerOf } from "../lib/task";
 import { Avatar } from "./Avatar";
-import { CompactSteps, conversationLineRenderers, useLineContext, type LineContextValue } from "./flow-state/conversation-lines";
+import { ApprovalLine, CompactSteps, conversationLineRenderers, useLineContext, type LineContextValue } from "./flow-state/conversation-lines";
 import { MessageFiles } from "./flow-state/message";
 import { MarkdownText } from "./flow-state/message-response";
 import { withBrief, workforceLineRenderers } from "./flow-state/workforce-lines";
@@ -202,6 +202,17 @@ function TaskLine({ item }: { item: DataItem }) {
 }
 
 /**
+ * The registry's approval line, over a stop read by its kind: one a store kept
+ * under the reason's old name reaches it as the approval it is. The line is a
+ * registry copy that compares the reason itself, so the lab hands it the
+ * current one rather than edit the copy.
+ */
+function CurrentApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine }) {
+  const approval = suspendForUserKindOf(item) === "approval";
+  return <ApprovalLine item={approval && item.reason !== "user_approval" ? { ...item, reason: "user_approval" } : item} {...(line === undefined ? {} : { line })} />;
+}
+
+/**
  * The lab's registry: the registry's failed, stopped and approval lines and
  * workforce's lines, the lab's bubbles for messages (a task's brief folded),
  * and its own live card for a filed task. Module level, so the registry is
@@ -209,6 +220,7 @@ function TaskLine({ item }: { item: DataItem }) {
  */
 export const teammatesRenderers: RendererRegistry = {
   ...conversationLineRenderers,
+  suspension: CurrentApprovalLine,
   message: withBrief(MessageLine),
   status: false,
   source: false,

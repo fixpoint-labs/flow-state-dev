@@ -4,6 +4,7 @@
  * check commands. Only the harness is a stub. The check, `node check.mjs`, is
  * red until a run writes "ok" into `state.txt`.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
@@ -142,7 +143,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     boardCollection: ledger,
     tenant: undefined,
     mode: commandCheck(basePhase, { commands: options.checks ?? ["node check.mjs"], timeoutMs: options.timeoutMs ?? 20_000 }),
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen, (cwd) => options.afterStep?.(cwd)),
