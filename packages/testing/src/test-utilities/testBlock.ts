@@ -1,4 +1,5 @@
 import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -113,16 +114,18 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     signal: options.signal,
     actionName: `test:${block.name}`,
     sessionId: "test-session",
+    // A sequencer under test stays the root of its own trace.
+    sequencer: block.kind === "sequencer" ? options.sequencer : undefined,
     sequencerName: block.name
   });
 
   let parentSequencer: StateRef | undefined;
   const blockUnderTest =
-    options.sequencer !== undefined
+    options.sequencer !== undefined && block.kind !== "sequencer"
       ? sequencer({
           name: options.sequencer.name ?? `${block.name}-sequencer`,
           inputSchema: z.any(),
-          stateSchema: z.object({}).passthrough().default(options.sequencer.state)
+          stateSchema: z.object({}).passthrough().default(cloneValue(options.sequencer.state))
         }).step((input, ctx) => {
           parentSequencer = ctx.sequencer;
           return input;

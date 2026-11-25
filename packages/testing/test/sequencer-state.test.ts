@@ -56,11 +56,43 @@ describe("sequencer state testing utilities", () => {
       name: "outer",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(7) })
-    }).step(inner);
+    }).step(inner).sideChain(handler({
+      name: "audit",
+      inputSchema: z.unknown(),
+      execute: () => "recorded"
+    }));
 
+    const unseeded = await testBlock(outer, { input: 1 });
     const result = await testBlock(outer, { input: 1, sequencer: { state: { count: 3 } } });
     expect(result.output).toEqual({ nearest: "inner", count: 11 });
     expect(result.state.sequencer).toEqual({ count: 3 });
+    expect(result.steps.map(({ blockName, stepName, phase }) => ({ blockName, stepName, phase })))
+      .toEqual(unseeded.steps.map(({ blockName, stepName, phase }) => ({ blockName, stepName, phase })));
+    expect(result.loopIterations).toBe(unseeded.loopIterations);
+    expect(result.sideChainResults.map(({ blockName, output }) => ({ blockName, output })))
+      .toEqual(unseeded.sideChainResults.map(({ blockName, output }) => ({ blockName, output })));
+    expect(result.sideChainResults.some((trace) => trace.blockName === "audit")).toBe(true);
+  });
+
+  it("isolates nested seed data from the caller", async () => {
+    const increment = handler({
+      name: "increment-nested",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (input, ctx) => {
+        const counters = ctx.sequencer?.state.counters as { value: number }[];
+        counters[0]!.value += input;
+        return counters[0]!.value;
+      }
+    });
+    const seed = { state: { counters: [{ value: 3 }] } };
+
+    const first = await testBlock(increment, { input: 2, sequencer: seed });
+    const second = await testBlock(increment, { input: 1, sequencer: seed });
+
+    expect(first.output).toBe(5);
+    expect(second.output).toBe(4);
+    expect(seed.state.counters).toEqual([{ value: 3 }]);
   });
 
   it("tool chain context: createTestContext seeds ctx.sequencer for downstream tool execution paths", async () => {
