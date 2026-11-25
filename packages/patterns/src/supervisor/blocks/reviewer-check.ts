@@ -33,7 +33,7 @@ import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { reviewerVerdictSchema, type ReviewerInput, type SupervisorState } from "../schemas";
+import { reviewerVerdictSchema, supervisorStateSchema, type ReviewerInput, type SupervisorState } from "../schemas";
 
 /** Patch a single `reviewMetadata[taskId]` slot on the supervisor sequencer's
  * outer state without touching sibling slots. The supervisor sequencer is
@@ -108,12 +108,13 @@ export function buildReviewedWorker(
     name: `${name}-${workerKey}-stash-output`,
     inputSchema: z.unknown(),
     sequencerStateSchema: reviewedWorkerStateSchema,
+    targetStateSchemas: { [name]: supervisorStateSchema },
     execute: async (workerOutput, ctx) => {
       await ctx.sequencer!.patchState({ workerOutput });
       const taskId = ctx.sequencer!.state.taskId;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorState>(name),
+          ctx.targets[name],
           taskId,
           { entered: true },
         );
@@ -131,11 +132,12 @@ export function buildReviewedWorker(
     inputSchema: reviewerVerdictSchema,
     outputSchema: z.unknown(),
     sequencerStateSchema: reviewedWorkerStateSchema,
+    targetStateSchemas: { [name]: supervisorStateSchema },
     execute: async (verdict, ctx) => {
       const { workerOutput, taskId } = ctx.sequencer!.state;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorState>(name),
+          ctx.targets[name],
           taskId,
           { entered: true, lastVerdict: verdict.decision },
         );

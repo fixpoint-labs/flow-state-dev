@@ -170,11 +170,11 @@ export function useTaskActions(sessionId: string) {
         const brief = await actions.get(task.id);
         return actions.refile(brief, rerunOverrides(task, brief.context, worker));
       },
-      /** Answer what `task` waits on you for: a question's words, or a review's verdict. */
-      answer: async (task: CodingBoardTask, answer: { text: string } | ReviewAnswer) => {
+      /** Answer what `task` waits on you for (the hold `holdId` when given): a question's words, or a review's verdict. */
+      answer: async (task: CodingBoardTask, answer: { text: string } | ReviewAnswer, holdId?: string) => {
         const kind = "text" in answer ? "question" : "review";
         // No fresh board read: the server refuses a round the run moved past (409, popup-holds.test "refuses, out loud…").
-        const hold = task.asks.find((h) => h.ask.kind === kind);
+        const hold = task.asks.find((h) => (holdId === undefined ? h.ask.kind === kind : h.id === holdId));
         if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);
         await inbox.answerOne(hold, inboxAnswerOf(answer));
       },
