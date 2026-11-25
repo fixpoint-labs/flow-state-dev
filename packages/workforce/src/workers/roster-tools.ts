@@ -1,7 +1,6 @@
 /**
  * Hiring and firing from a conversation: `hire` and `fire`, the roster
- * flow's own `hire` and `fire` blocks (`hire-blocks.ts`) as a worker's tools,
- * each waiting for the user's approval before it writes.
+ * flow's own `hire` and `fire` blocks (`hire-blocks.ts`) as a worker's tools.
  *
  * They write the roster of the user talking to the worker, through the same
  * blocks the user's own Hire form and Fire button run, so a hire is checked
@@ -11,14 +10,15 @@
  *
  * - **Only on the user's own turn.** A turn a delivered event, a worker's
  *   message, a routine or a task started can't hire or fire: text read there
- *   could ask for one. The same mark gates the standing-rule tools.
- * - **Checks before asking.** Every check the write makes, and an id already
- *   on the roster (or one not there, for a fire), refuses before the user is
- *   asked, with the reason.
- * - **The user's approval.** A stock `user_approval` shows what will be
- *   written: for a hire, the id, the flow, the description, the settings and
- *   the instructions it will keep. Reject throws out of the tool before the
- *   write. Without durable execution there is nobody to ask, so it refuses.
+ *   could ask for one, and nobody could answer an approval there. The same
+ *   mark gates the standing-rule tools.
+ * - **Checks first.** Every check the write makes, and an id already on the
+ *   roster (or one not there, for a fire), refuses with the reason.
+ * - **A hire lands at once**: the user's own message asked for it, and a
+ *   worker is easily fired.
+ * - **A fire waits for the user's approval**, a stock `user_approval`, since
+ *   it can't be taken back. Reject throws out of the tool before the write.
+ *   Without durable execution there is nobody to ask, so it refuses.
  *
  * Its one preset, `tools`, carries both. It is on, so a worker whose
  * `tools:` line names `hire` or `fire` gets it, and a worker with no line gets
@@ -45,20 +45,11 @@ function rosterOf(ctx: BlockContext): ResourceCollectionRef {
   return (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as ResourceCollectionRef;
 }
 
-/** Refuse unless the user's own message started this turn and the server can ask them. */
+/** Refuse unless the user's own message started this turn. */
 function refuseUnasked(ctx: BlockContext, verb: string): void {
   if (!isUserTurn(ctx)) {
     throw new Error(`A worker is ${verb} only on a turn the user's own message started; this one can't. Nothing was written.`);
   }
-  if (ctx.suspend === undefined) {
-    throw new Error(`This server can't ask the user to approve, and a worker is ${verb} only on their yes. Nothing was written.`);
-  }
-}
-
-/** The settings a hire keeps, one per line, for the approval. */
-function settingsLines(settings: Record<string, unknown> | undefined): string {
-  const entries = Object.entries(settings ?? {});
-  return entries.length === 0 ? "none" : entries.map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("; ");
 }
 
 /**
@@ -69,27 +60,18 @@ function settingsLines(settings: Record<string, unknown> | undefined): string {
 export function hireWorkersCapability(installation: WorkerInstallation, checks: HireChecks = {}) {
   const blocks = createWorkerHireBlocks(installation, checks);
 
-  // Every check the write makes, then the user's yes. Reject throws out of the tool before the write.
-  const confirmHire = handler({
-    name: "workforce-hire-confirm",
+  // Every check the write makes, before it: a refusal names the reason, and nothing is written.
+  const checkHire = handler({
+    name: "workforce-hire-check",
     inputSchema: blocks.hire.inputSchema,
     outputSchema: z.void(),
     resources: { ...installation.resources },
     execute: async (input: HireInput, ctx: BlockContext) => {
       refuseUnasked(ctx, "hired");
-      const worker = checkedHire(installation, input, checks);
+      checkedHire(installation, input, checks);
       if ((await rosterOf(ctx).getOptional(input.id)) !== undefined) {
         throw new Error(`"${input.id}" is already on the user's roster. Pick another id. Nothing was written.`);
       }
-      await ctx.suspend!({
-        reason: "user_approval",
-        message:
-          `Hire ${worker.name ?? input.id} (${input.id}) on ${worker.flow}: ${worker.description ?? "no description"}. ` +
-          `Settings: ${settingsLines(worker.settings)}.` +
-          (worker.instructions === null ? "" : `\n\nIts instructions:\n${worker.instructions}`),
-        data: { id: input.id, flow: worker.flow, description: worker.description, settings: worker.settings, instructions: worker.instructions },
-        allow: ["approve", "reject"]
-      });
     }
   });
 
@@ -100,6 +82,9 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     resources: { ...installation.resources },
     execute: async (input: { id: string }, ctx: BlockContext) => {
       refuseUnasked(ctx, "fired");
+      if (ctx.suspend === undefined) {
+        throw new Error("This server can't ask the user to approve, and a worker is fired only on their yes. Nothing was written.");
+      }
       if (installation.standardWorker(input.id) !== undefined) {
         throw new Error(`"${input.id}" is a standard worker, which nobody can fire: its files are changed by editing its folder. Nothing was written.`);
       }
@@ -111,14 +96,14 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
   const hire = sequencer({
     name: "hire",
     description:
-      "Hire a worker of the user's own, once the user approves it: `id` is a short lowercase slug, `flow` the flow it runs on " +
+      "Hire a worker of the user's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
       "(`agent` when omitted), `description` one line on what it does, `instructions` its guidance, and `settings` the keys its " +
       "file would declare (such as `model` and `tools`). Only when the user asks for one. Everything is checked first, and a " +
       "refusal says why. Never pass an API key.",
     inputSchema: blocks.hire.inputSchema,
     outputSchema: blocks.hire.outputSchema
   })
-    .tap(confirmHire)
+    .tap(checkHire)
     .step(blocks.hire);
 
   const fire = sequencer({

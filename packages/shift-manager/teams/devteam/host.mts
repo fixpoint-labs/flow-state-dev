@@ -1049,8 +1049,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // coordinator names the writes to its own project. Hire and fire are
   // Workforce's (`hireWorkersCapability`), and write the roster of the user
   // talking to it: a worker of their own, which runs on that user's turns only.
-  // A hire, a fire and a project's repository wait for a user's Approve in
-  // Inbox, which needs durable execution (asked for below).
+  // A hire lands at once, on the user's own turn only; a fire and a project's
+  // repository wait for a user's Approve in Inbox, which needs durable
+  // execution (asked for below).
   // Core's general read tools, under their own names: a worker that names them reads every `llmReadable`
   // collection its flow declares. Here that is the Error Reporter's history (`error-history/**`), which
   // the Shift Coordinator and error-reporter search when asked what was reported.
@@ -1099,7 +1100,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // List, save, pause and delete routines, on the `agent` flow and the coordinator's turn alike: a
       // worker names the four tools in its `tools:` line (each conversation worker here does).
       createRoutinesCapability(installation),
-      // Hire and fire, each on the user's Approve: only the Shift Coordinator's line names them.
+      // Hire and fire (a fire on the user's Approve): only the Shift Coordinator's line names them.
       hireWorkersCapability(installation),
     ],
   };

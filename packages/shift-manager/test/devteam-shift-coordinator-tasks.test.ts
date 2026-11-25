@@ -35,7 +35,6 @@ import { taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/boards";
 import { selectHarness, readyHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { approvePending } from "./helpers/approve";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
@@ -187,7 +186,6 @@ describe("the Shift Coordinator files tasks (FIX-1794 S11)", () => {
     const lab = await open(scripted([...hireTaskTaker, END_TURN], seen));
     const id = await conversation(lab);
     expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
-    expect(await approvePending(lab)).toBe(1);
     seen.length = 0;
     expect((await act(lab, id, "respond", { message: "what's on my board?" })).error).toBeUndefined();
     expect(seen).toHaveLength(1);
@@ -204,7 +202,6 @@ describe("the Shift Coordinator files tasks (FIX-1794 S11)", () => {
     const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "createTask", args: { goal, assignee: "licenses" } }]));
     const id = await conversation(lab);
     expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
-    expect(await approvePending(lab)).toBe(1);
     expect((await act(lab, id, "respond", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
 
     // The conversation's own read, the one Shift Manager's TASKS panel makes: the task, completed by its delegate.

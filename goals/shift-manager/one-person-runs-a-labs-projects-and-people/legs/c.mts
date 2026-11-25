@@ -1,7 +1,7 @@
 /**
  * Leg c: a release cut the flow one of the person's workers ran on. The
  * worker's turn is refused, naming the flow, while its row stays for the
- * person to clear; the Shift Coordinator hires it and fires it on the person's Approve, and
+ * person to clear; the Shift Coordinator fires it on the person's Approve, and
  * it is gone after a restart.
  *
  * Steps c1 to c4 (PLAN.md → Checks), over one store and three boots: boot 1
@@ -16,7 +16,7 @@
  * Coordinator or Inbox.
  */
 import { EXTRA_FLOW_DOOR } from "../controls/patches.mts";
-import { answerInInbox, approveHireInInbox, askShiftCoordinator, asksOf, shiftCoordinatorFlowOf, quote, readWorkers, rosterOwn, type World } from "../steps.mts";
+import { answerInInbox, askShiftCoordinator, asksOf, callsTo, shiftCoordinatorFlowOf, quote, readWorkers, rosterOwn, type World } from "../steps.mts";
 
 export async function legC(world: World, opts: { worker: string; flow: string; patchedConfig: string; shippedConfig: string }): Promise<void> {
   const r = world.record;
@@ -35,8 +35,8 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
       r.fail("c1", "no Shift Coordinator seat: the Shift Coordinator view draws no Shift Coordinator to ask");
       return;
     }
-    const approved = await approveHireInInbox(world, hire, worker);
-    if (approved !== undefined) r.fail("c1", approved);
+    const hires = callsTo(hire, "hire");
+    if (hires.length !== 1 || !hires[0]!.ok) r.fail("c1", `Shift Coordinator's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
     const row = await rowOf();
     const drawn = (await rosterOwn(world)).find((x) => x.id === worker);
     if (row === undefined) r.fail("c1", `the person's roster has no row for "${worker}": ${quote(hire)}`);

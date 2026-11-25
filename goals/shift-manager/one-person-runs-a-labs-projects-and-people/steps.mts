@@ -463,24 +463,6 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   return turn;
 }
 
-// FIX-2840.
-/**
- * Approve, in Inbox, the one `user_approval` a hire turn stopped on, which
- * must name `worker`, and wait for the turn to end. Why it couldn't, or
- * `undefined` once the approved turn completed. A hire waits for the person's
- * Approve, as a fire does.
- */
-export async function approveHireInInbox(world: World, turn: Turn, worker: string): Promise<string | undefined> {
-  if (turn.sessionId === null || turn.requestId === null) return `the hire turn left no session or request: ${quote(turn)}`;
-  const asks = (await asksOf(world.routes.owner, turn.sessionId, turn.requestId)).filter((a) => a.reason === "user_approval");
-  if (turn.status !== "suspended" || asks.length !== 1) return `the hire turn ended ${turn.status} with ${asks.length} user_approval ask(s): ${quote(turn)}`;
-  const ask = asks[0]!;
-  if (!(ask.message ?? "").includes(worker)) return `the hire's ask says "${ask.message}", not a hire of "${worker}"`;
-  if (ask.suspensionId === undefined || !(await answerInInbox(world, ask.suspensionId, "Approve")).clicked) return `Inbox draws no card for the hire's ask ${ask.suspensionId}`;
-  const settled = await world.routes.owner.settle(await shiftCoordinatorFlowOf(world), turn.requestId, 180_000, true);
-  return settled === "completed" ? undefined : `the approved hire's turn ended ${settled}`;
-}
-
 /** The tool calls a turn made to a tool whose name ends with `name`. */
 export function callsTo(turn: Turn | undefined, name: string) {
   return (turn?.tools ?? []).filter((t) => t.name === name || t.name.endsWith(`/${name}`) || t.name.endsWith(`.${name}`) || t.name.endsWith(`_${name}`));

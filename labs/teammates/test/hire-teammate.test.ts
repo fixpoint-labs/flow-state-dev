@@ -1,9 +1,8 @@
 /**
  * Lead hires a teammate from its conversation, with workforce's `hire` (the
- * `hireWorkers` capability). Hiring is the user's call, so nothing reaches the
- * roster until the user approves the exact hire; and the hire is the roster's own `hire`,
- * the one the page's form makes, so the teammate is on the roster the moment
- * it is approved, where Lead's messages and tasks reach it.
+ * `hireWorkers` capability). The user asked for it, so it lands at once; and
+ * the hire is the roster's own `hire`, the one the page's form makes, so the
+ * teammate is on the roster right away, where Lead's messages and tasks reach it.
  *
  * Only a turn the user's own message started can hire: a request to hire in
  * something Lead read (a teammate's message, here) is not the user asking.
@@ -11,7 +10,7 @@
  * What a refusal guards: a taken id would overwrite or shadow a teammate the
  * user relies on; a model the lab doesn't run (or has no key for) would hire a
  * teammate whose first turn fails; a key passed in a hire would be stored in
- * the roster and shown back. Each is refused before the user is asked, and the
+ * the roster and shown back. Each is refused before anything is written, and the
  * model list and the key check hold for the page's form as well.
  */
 import { execFileSync } from "node:child_process";
@@ -97,36 +96,18 @@ async function openHost(calls: Record<string, { toolName: string; args: Record<s
   const runtime = await (flowState as unknown as { getRuntime(): Promise<{ stores: Stores }> }).getRuntime();
   const workforce = createWorkforceClient(createClient({ userId: "alice", baseUrl: "", fetcher: (input, init) => loopback(input, init) }));
   const pending = () => runtime.stores.suspensions.list({ status: "pending" });
-  let flowKind = "agent";
 
   /** Say `message` to `worker` and wait until its turn has read a tool result or stopped to ask the user. */
   const say = async (worker: string, message: string) => {
     turn = worker;
     const before = results.length;
     const session = await workforce.ensureWorkerSession({ worker });
-    flowKind = session.flowKind;
     await loopback(`/api/flows/${session.flowKind}/actions/respond`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", sessionId: session.id, input: { message } })
     });
     await until(async () => results.length > before || (await pending()).length > 0 || (offered[worker] !== undefined && calls[worker] === undefined));
-  };
-  /** Answer the one pending approval with `action`, and wait for the turn to read the tool's answer or end. */
-  const answerApproval = async (action: "approve" | "reject") => {
-    const [approval] = await pending();
-    const before = results.length;
-    const resumed = await loopback(`/api/flows/${flowKind}/requests/${approval!.requestId}/resume`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ suspensionId: approval!.suspensionId, action, resumedBy: "alice" })
-    });
-    expect(resumed.status, "the answer was taken").toBe(202);
-    await until(async () => {
-      if (results.length > before) return true;
-      const status = (await runtime.stores.request.get(approval!.requestId))?.status;
-      return status !== "suspended" && status !== "in_progress" && status !== "pending";
-    });
   };
   const onRoster = async (id: string) => (await workforce.roster()).find((entry) => entry.id === id);
   /** Hire through the roster flow's `hire` action, as the page's form does, and wait for it to land. */
@@ -140,7 +121,7 @@ async function openHost(calls: Record<string, { toolName: string; args: Record<s
     return sent;
   };
   const request = (id: string) => runtime.stores.request.get(id) as Promise<{ status?: string; error?: unknown } | undefined>;
-  return { say, answerApproval, pending, onRoster, hireFromPage, request, offered, results };
+  return { say, pending, onRoster, hireFromPage, request, offered, results };
 }
 
 const analyst = {
@@ -166,15 +147,10 @@ describe("Lead's hire", () => {
     }
   });
 
-  it("hires on the user's approval, onto the roster with the tools and the model it named", async () => {
+  it("hires at once on the user's ask, onto the roster with the tools and the model it named", async () => {
     const host = await openHost(hireCall(analyst));
     await host.say(LEAD, "Hire an analyst for the metrics code.");
-    const [approval] = await host.pending();
-    expect(approval?.message, "the user is asked about this exact hire").toContain("analyst");
-    expect(approval?.message).toContain("openai/gpt-6-luna");
-    expect(approval?.message, "the instructions it will keep are shown").toContain(analyst.instructions);
-    expect(await host.onRoster("analyst"), "nothing is hired before the user's yes").toBeUndefined();
-    await host.answerApproval("approve");
+    expect(await host.pending(), "the user asked: nothing waits on them").toHaveLength(0);
     const entry = await host.onRoster("analyst");
     expect(entry, "on the roster, where Lead's messages and tasks reach it").toMatchObject({ id: "analyst", name: "Analyst", description: analyst.description });
     expect(entry?.settings.model).toBe("openai/gpt-6-luna");
@@ -193,33 +169,14 @@ describe("Lead's hire", () => {
     expect(await host.onRoster("analyst")).toBeUndefined();
   });
 
-  it("leaves a teammate hired while the user decided as it was: the approved write is refused", async () => {
-    const host = await openHost(hireCall(analyst));
-    await host.say(LEAD, "Hire an analyst.");
-    expect(await host.pending()).toHaveLength(1);
-    expect((await host.hireFromPage("analyst")).status).toBeLessThan(400);
-    await host.answerApproval("approve");
-    expect((await host.onRoster("analyst"))?.description).toBe("Hired from the page.");
-    // Approve runs the checks again before the write, and the id is taken now.
-    expect(host.results.join("\n")).toContain("already on the user's roster");
-  });
-
-  it("hires nothing when the user rejects", async () => {
-    const host = await openHost(hireCall(analyst));
-    await host.say(LEAD, "Hire an analyst.");
-    expect(await host.pending()).toHaveLength(1);
-    await host.answerApproval("reject");
-    expect(await host.onRoster("analyst")).toBeUndefined();
-  });
-
-  it("refuses an id a standard teammate holds, before asking", async () => {
+  it("refuses an id a standard teammate holds", async () => {
     const host = await openHost(hireCall({ ...analyst, id: "teammates.researcher" }));
     await host.say(LEAD, "Hire another researcher.");
     expect(await host.pending()).toHaveLength(0);
     expect(host.results.join("\n")).toContain("teammates.researcher\\\" is a standard worker");
   });
 
-  it("refuses an id already on the roster, before asking, and leaves that teammate as it was", async () => {
+  it("refuses an id already on the roster, and leaves that teammate as it was", async () => {
     const host = await openHost(hireCall(analyst));
     expect((await host.hireFromPage("analyst")).status).toBeLessThan(400);
     await host.say(LEAD, "Hire an analyst.");

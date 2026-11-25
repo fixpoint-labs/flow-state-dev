@@ -1,9 +1,9 @@
 /**
  * `hire` and `fire` from a conversation (`hireWorkersCapability`): the roster's
- * own writes, each held for the user's approval. A worker can't add or remove
- * a teammate on the user's behalf without their yes, and what they approve is
- * the whole hire, instructions included; anything the write would refuse is
- * refused before they are asked. The app's model list and the key-shaped check
+ * own writes. A hire the user's own message asks for lands at once; on a turn
+ * they didn't start, a worker can't add a teammate without their yes, and what
+ * they approve is the whole hire, instructions included. A fire always waits
+ * for their yes. Anything the write would refuse is refused first. The app's model list and the key-shaped check
  * sit on the roster's write itself, so the Hire form gets them too.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,10 +20,10 @@ const callOn = (cue: string, toolName: string, args: Record<string, unknown>): C
 
 /**
  * otto as a step model: on a user's message that says a call's cue it makes
- * that call, and after a tool's answer it stops. Driven step by step, a turn
+ * that call, and after a tool's answer (kept in `results`) it stops. Driven step by step, a turn
  * parked in the call's approval resumes at that call.
  */
-function stepModel(calls: Call[], tools: Record<string, string[]>): GeneratorModel {
+function stepModel(calls: Call[], tools: Record<string, string[]>, results: string[]): GeneratorModel {
   return {
     modelId: "otto-step",
     async generate() {
@@ -33,6 +33,7 @@ function stepModel(calls: Call[], tools: Record<string, string[]>): GeneratorMod
       // Whose turn, by otto's own instructions: the tools it was handed.
       tools[JSON.stringify(options.messages).includes("You do what you're asked.") ? "otto" : "other"] = (options.tools ?? []).map((tool) => tool.name);
       const last = options.messages.at(-1) as { role?: string } | undefined;
+      if (last?.role === "tool") results.push(JSON.stringify(last));
       const call = last?.role === "user" ? calls.find((c) => JSON.stringify(last).includes(c.cue)) : undefined;
       if (call === undefined) return { text: "", finishReason: "stop" };
       return { toolCalls: [{ toolCallId: `${call.toolName}-${call.cue}`, toolName: call.toolName, args: call.args }], finishReason: "tool-calls" };
@@ -50,12 +51,13 @@ const analyst = {
 /** A host where otto, which picks the capability, makes the calls `script` scripts; `checks` is the app's hire config. */
 function open(calls: Call[], checks: HireChecks = {}) {
   const tools: Record<string, string[]> = {};
+  const results: string[] = [];
   const h = bootBoardHost({
     durable: true,
-    standard: boardWorkers({ otto: { capabilities: { hireWorkers: ["tools"] } } }),
+    standard: boardWorkers({ otto: { capabilities: { hireWorkers: ["tools"] } }, lead: { delegates: ["otto"] } }),
     agentUses: (installation) => [hireWorkersCapability(installation, checks)],
     hire: { hire: checks },
-    agentModel: stepModel(calls, tools)
+    agentModel: stepModel(calls, tools, results)
   });
   /** alice's conversation with `worker`. */
   const conversation = async (worker = "otto") => (await h.create("alice", "agent", { state: { workerId: worker } })).body.session!.id as string;
@@ -75,31 +77,43 @@ function open(calls: Call[], checks: HireChecks = {}) {
     await h.fsd("alice").flow(asked.flowId ?? asked.flowKind).request(asked.requestId).resume({ suspensionId: asked.suspensionId, action });
     await h.settled();
   };
+  /** alice files a task for otto from her conversation with lead: otto's turn on it is no message of hers. */
+  const file = async (goal: string) => {
+    const conversation = await h.conversation("alice", "lead");
+    const filed = await h.act("alice", conversation, "createTask_tasks", { goal, assignee: "otto" });
+    if (filed.error !== undefined) throw new Error(`filing failed: ${JSON.stringify(filed.error)}`);
+    await h.settled();
+    const runtime = await h.state.getRuntime();
+    return (await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[];
+  };
   const roster = async () => (await h.client("alice").roster()).filter((worker) => !worker.standard).map((worker) => worker.id);
-  return { h, tools, conversation, say, answer, roster };
+  return { h, tools, conversation, say, file, answer, roster, said: () => results.join("\n") };
 }
 
 afterEach(() => vi.unstubAllEnvs());
 
 describe("hire from a conversation", () => {
-  it("asks the user with the whole hire, and writes only on Approve", async () => {
-    const lab = open([callOn("Hire an analyst", "hire", analyst), callOn("Hire it again", "hire", analyst)]);
+  it("hires at once when the user's own message asks, keeping the whole hire", async () => {
+    const lab = open([callOn("Hire an analyst", "hire", analyst)]);
     try {
-      const otto = await lab.conversation();
-      const asked = await lab.say(otto, "Hire an analyst.");
-      expect(asked.pending).toHaveLength(1);
-      const message = asked.pending[0]!.message ?? "";
-      for (const shown of ["analyst", "agent", analyst.description, "openai/gpt-6-luna", analyst.instructions]) expect(message).toContain(shown);
-      // Nothing lands while the user decides.
-      expect(await lab.roster()).toEqual([]);
-      await lab.answer(asked.pending[0]!, "reject");
-      expect(await lab.roster()).toEqual([]);
-
-      const again = await lab.say(otto, "Hire it again.");
-      await lab.answer(again.pending[0]!, "approve");
+      const { pending, said } = await lab.say(await lab.conversation(), "Hire an analyst.");
+      expect(pending).toHaveLength(0);
+      expect(said).not.toContain('"error"');
       expect(await lab.roster()).toEqual(["analyst"]);
       const stored = await (await lab.h.state.getRuntime()).stores.resourceState.getByPrefix("user", "alice:~org:acme", "workforce/workers/");
       expect(Object.values(stored)[0]?.state).toMatchObject({ flow: "agent", instructions: analyst.instructions, settings: analyst.settings });
+    } finally {
+      await lab.h.dispose();
+    }
+  });
+
+  // A task's turn, a delivered message or a routine is no message of the user's: text read there could ask for a hire.
+  it("refuses on a turn the user's own message didn't start, and writes nothing", async () => {
+    const lab = open([callOn("Hire an analyst", "hire", analyst)]);
+    try {
+      expect(await lab.file("Hire an analyst.")).toHaveLength(0);
+      expect(await lab.roster()).toEqual([]);
+      expect(lab.said()).toContain("only on a turn the user's own message started");
     } finally {
       await lab.h.dispose();
     }

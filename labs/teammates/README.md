@@ -269,10 +269,10 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   kit's roster flow; nothing restarts.
 - **Hiring from the conversation:** Lead holds workforce's `hire` and `fire` tools (the `hireWorkers`
   capability), so you can ask it for a teammate or to let one go. They are the roster's own hire and
-  fire, the same as the page's, after you approve the whole write in Inbox: for a hire, the id, its
-  role, its model, its tools and its instructions. Only your own message can start one. A hire's
+  fire, the same as the page's. A hire you ask for lands at once; a fire waits for your Approve in
+  Inbox. Only your own message can start either. A hire's
   model must be one of `TEAMMATES_MODELS` with a key or gateway set, on the page's form too; a taken
-  id, an unlisted model or one with no key is refused before anything is asked. It never takes an
+  id, an unlisted model or one with no key is refused before anything is written. It never takes an
   API key.
 - **Routines:** Lead, researcher and writer hold the routine tools, so you can ask one to follow a
   GitHub pull request or to do something on a clock, and to list, pause or delete what it follows.
