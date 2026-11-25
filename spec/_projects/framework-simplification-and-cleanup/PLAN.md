@@ -5,16 +5,16 @@
 Sequencing, not building. What order the epics run in, what each hands the next, and what is
 deliberately not next. Each epic's own plan owns its checks.
 
-![The arc: fifteen epic lanes from Aug 10 to Nov 23. Declared surface ran inside one day, Aug 12, and is done. Durable storage ran Aug 13 to Aug 28 and is done. Verified identity's direction merged Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive's direction merged Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, filed Oct 15, and durable agents, filed Oct 24, have no bar: both are in Backlog, though some of their children are done. The mechanism sweep ran Oct 30 to 31 and is done. Clean SDK's direction merged Nov 5 and it wrapped Nov 15. Vocabulary, feature kits and docs revamp each had their direction merged within a day or two of filing, Nov 7, Nov 9 and Nov 12, and run to the now line. Kit reads in the apps was filed Nov 11, its direction merged Nov 17, and it runs to the now line. Showcase kits, filed Nov 18, has no bar though three of its children have implementation PRs open. Kit system evolution, filed Nov 22, has no bar. Coder selection was filed Nov 22, its direction merged Nov 23, and its bar starts at the now line.](figures/arc.svg)
+![The arc: sixteen epic lanes from Aug 10 to Nov 25. Declared surface ran inside one day, Aug 12, and is done. Durable storage ran Aug 13 to Aug 28 and is done. Verified identity's direction merged Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive's direction merged Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, filed Oct 15, and durable agents, filed Oct 24, have no bar: both are in Backlog, though some of their children are done. The mechanism sweep ran Oct 30 to 31 and is done. Clean SDK's direction merged Nov 5 and it wrapped Nov 15. Vocabulary, feature kits and docs revamp each had their direction merged within a day or two of filing, Nov 7, Nov 9 and Nov 12, and run to the now line. Kit reads in the apps was filed Nov 11, its direction merged Nov 17, and it runs to the now line. Showcase kits, filed Nov 18, has no bar though three of its children have implementation PRs open. Kit system evolution, filed Nov 22, has no bar. Coder selection was filed Nov 22, its direction merged Nov 23, and it runs to the now line with two of five children done. Sessions reach each other, filed Nov 25, has no bar: its epic spec is being authored.](figures/arc.svg)
 
-Two short closed bars in August, two long live ones since late September, then eleven epics filed
+Two short closed bars in August, two long live ones since late September, then twelve epics filed
 in under six weeks. Clean SDK is the first of those to close a long bar: ten days from direction to
 wrap. Four more run behind it, three approved within two days of filing and kit reads in the apps
 within six. Verified identity's bar is still direction only, nine weeks on. Two Backlog epics have
 children landing with no approved direction above them, and showcase kits has implementation PRs
 open the same way. Kit system evolution, filed Nov 22, has no bar: it is open thinking. Coder selection's
-direction merged the day after it was filed, Nov 23; its five issue specs come next, as one
-spec-set PR.
+direction merged the day after it was filed, Nov 23, and two of its five children are done.
+Sessions reach each other, filed Nov 25, has no bar yet: its epic spec is being authored.
 
 ## What each epic consumes and releases
 
@@ -51,7 +51,7 @@ The original pass ran in May as 19 issues in three tiers: cleanup, editorial, re
 waiting on the model-layer complexity question, and voice, since moved to the Realtime Voice
 project. The tier structure is not carried forward; later work runs as epics or as single issues.
 
-**82 open issues sit under no epic**, 29 of them bugs, among them clean SDK's handoff and
+**78 open issues sit under no epic**, 29 of them bugs, among them clean SDK's handoff and
 follow-up, FIX-2739 and [FIX-2737](https://linear.app/fixpoint-labs/issue/FIX-2737). The two largest clusters are resource-store
 correctness, where stores disagree or silently discard a write, and model strings. Neither has an
 epic yet.
