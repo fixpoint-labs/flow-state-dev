@@ -38,7 +38,7 @@ import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 
 /** The capability's name, as a worker file names it. */
-export const HIRE_WORKERS_CAPABILITY = "hireWorkers";
+const HIRE_WORKERS_CAPABILITY = "hireWorkers";
 
 /** The roster of the user this turn runs for. */
 function rosterOf(ctx: BlockContext): ResourceCollectionRef {

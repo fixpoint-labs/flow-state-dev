@@ -59,7 +59,7 @@ export {
   type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type HireChecks, type WorkerHireBlocks } from "./hire-blocks";
-export { hireWorkersCapability, HIRE_WORKERS_CAPABILITY } from "./roster-tools";
+export { hireWorkersCapability } from "./roster-tools";
 export { defineWorkerRosterFlow } from "./roster-flow";
 export { inventoryWorkers } from "./register";
 export { workerConfigOf } from "./verified-worker";
