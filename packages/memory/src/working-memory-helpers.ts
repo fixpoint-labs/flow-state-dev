@@ -25,6 +25,7 @@ export const DEFAULT_WORKING_MEMORY_CONFIG = {
   decay: { strategy: 'power-law' as const, rate: 0.5 },
 } as const
 
+/** Fill omitted capacity, pin limit, and decay settings from the working memory defaults. */
 export function resolveWorkingMemoryConfig(config?: WorkingMemoryHelperConfig) {
   return {
     capacity: config?.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
