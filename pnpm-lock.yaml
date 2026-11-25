@@ -1449,9 +1449,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/workforce':
-        specifier: workspace:*
-        version: link:../workforce
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1459,9 +1456,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
