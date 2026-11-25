@@ -26,8 +26,8 @@ async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   try {
     list = await readStandingRules(ctx);
   } catch (error) {
-    if (!saidReadFailed.has(ctx.session as object)) {
-      saidReadFailed.add(ctx.session as object);
+    if (!saidReadFailed.has(ctx.session)) {
+      saidReadFailed.add(ctx.session);
       const reason = error instanceof Error ? error.message : String(error);
       ctx.emit?.status?.(`This turn runs without standing rules: they couldn't be read (${reason}).`, { transient: false });
     }

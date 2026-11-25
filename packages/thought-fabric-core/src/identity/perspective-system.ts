@@ -163,7 +163,7 @@ export function system(
   // across the bundled blocks and capability so they all reference the same
   // `defineResource()` instance — required for FIX-435's same-reference rule
   // and for tests that compare resource identity across the bundle.
-  const positionsResource: DefinedResource = positionScope === 'session'
+  const positionsResource = positionScope === 'session'
     ? perspectivePositionsResource
     : createPerspectivePositionsResource(positionScope)
 

@@ -230,16 +230,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
     }),
     outputSchema: workingMemoryEntrySchema,
     resources: { workingMemory: workingMemoryResource },
-    execute: async (input, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
-      return add(ref, {
-        content: input.content,
-        importance: input.importance,
-        pinned: input.pinned ?? false,
-        id: input.id,
-        metadata: input.metadata,
-      }, helperConfig)
-    },
+    execute: (input, ctx) => add(ctx.resources.workingMemory, input, helperConfig),
   })
 }
 

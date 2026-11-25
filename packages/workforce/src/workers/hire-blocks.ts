@@ -14,7 +14,7 @@
  * roster then read before the file; reset deletes that copy.
  */
 import { handler, type JsonObject } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerManifest } from "../manifest";
@@ -126,20 +126,10 @@ function rowFromStandard(manifest: WorkerManifest, keepName = false): WorkerReso
 /**
  * Build the hire, fork, edit, fire and reset blocks over `installation`.
  *
- * Mount them on a flow that declares `installation.resources` (the roster
- * flow does): each reads and writes the caller's own roster through it.
+ * Each block declares the worker collection through the installation and
+ * reads or writes the caller's own roster.
  */
 export function createWorkerHireBlocks(installation: WorkerInstallation): WorkerHireBlocks {
-  const roster = (ctx: BlockContext): ResourceCollectionRef => {
-    const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
-      | ResourceCollectionRef
-      | undefined;
-    if (collection === undefined) {
-      throw new Error("The worker blocks need the worker collection: declare `installation.resources` on the flow.");
-    }
-    return collection;
-  };
-
   const refuseStandard = (id: string, verb: string): void => {
     if (installation.standardWorker(id) !== undefined) {
       throw new Error(
@@ -170,19 +160,19 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   };
 
-  const write = async (ctx: BlockContext, id: string, row: WorkerResourceState): Promise<void> => {
+  const write = async (workers: ResourceCollectionRef, id: string, row: WorkerResourceState): Promise<void> => {
     try {
-      await roster(ctx).create(id, row as unknown as JsonObject);
+      await workers.create(id, row as unknown as JsonObject);
     } catch (error) {
-      if ((await roster(ctx).getOptional(id)) !== undefined) {
+      if ((await workers.getOptional(id)) !== undefined) {
         throw new Error(`"${id}" is already on your roster. Pick another id. Nothing was written.`);
       }
       throw error;
     }
   };
 
-  const readOwn = async (ctx: BlockContext, id: string): Promise<WorkerResourceState> => {
-    const stored = await roster(ctx).getOptional(id);
+  const readOwn = async (workers: ResourceCollectionRef, id: string): Promise<WorkerResourceState> => {
+    const stored = await workers.getOptional(id);
     if (stored === undefined) throw new Error(`No worker "${id}" on your roster.`);
     const parsed = parseWorkerResourceState(stored.state);
     if ("problem" in parsed) throw new Error(`Worker "${id}" can't be read: ${parsed.problem}.`);
@@ -199,14 +189,14 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       const row = workerResourceStateSchema.parse({
         flow: input.flow ?? AGENT_FLOW,
         name: textOrNull(input.name),
-        description: input.description ?? null,
+        description: input.description,
         instructions: textOrNull(input.instructions),
-        skills: input.skills ?? [],
-        settings: input.settings ?? {}
+        skills: input.skills,
+        settings: input.settings
       });
       refuseRetired(input.id, row.flow, input.settings);
       check(input.id, row);
-      await write(ctx, input.id, row);
+      await write(ctx.resources[WORKERS_RESOURCE], input.id, row);
       return { id: input.id, flow: row.flow };
     }
   });
@@ -217,16 +207,17 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: writtenOutput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
+      const workers = ctx.resources[WORKERS_RESOURCE];
       refuseStandard(input.id, "replace");
       // The caller's own row first: an edited standard worker forks as they edited it.
       const file = installation.standardWorker(input.from);
-      const own = file === undefined ? undefined : await roster(ctx).getOptional(input.from);
+      const own = file === undefined ? undefined : await workers.getOptional(input.from);
       const row =
         file !== undefined && own === undefined
           ? rowFromStandard(file)
-          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from, name: null };
+          : { ...(await readOwn(workers, input.from)), forkedFrom: input.from, name: null };
       check(input.id, row);
-      await write(ctx, input.id, row);
+      await write(workers, input.id, row);
       return { id: input.id, flow: row.flow };
     }
   });
@@ -237,11 +228,12 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: writtenOutput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
+      const workers = ctx.resources[WORKERS_RESOURCE];
       // A standard worker's first edit starts from the copy a fork makes, under its own id.
       const file = installation.standardWorker(input.id);
-      const stored = file === undefined ? undefined : await roster(ctx).getOptional(input.id);
+      const stored = file === undefined ? undefined : await workers.getOptional(input.id);
       const copying = file !== undefined && stored === undefined;
-      const current = copying ? { ...rowFromStandard(file, true), forkedFrom: input.id } : await readOwn(ctx, input.id);
+      const current = copying ? { ...rowFromStandard(file, true), forkedFrom: input.id } : await readOwn(workers, input.id);
       // The file's worker as it stands, before the edit: a flow kept for standard
       // workers stays read-only even when the edit names another flow.
       if (copying) check(input.id, current);
@@ -264,7 +256,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       // A setting stored before its flow retired it goes with this write.
       const next: WorkerResourceState = { ...edited, settings: withoutRetired(edited.flow, edited.settings) };
       check(input.id, next);
-      await roster(ctx).create(input.id, next as unknown as JsonObject, {
+      await workers.create(input.id, next as unknown as JsonObject, {
         replace: true
       });
       return { id: input.id, flow: next.flow };
@@ -277,9 +269,10 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: z.object({ id: z.string() }),
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
+      const workers = ctx.resources[WORKERS_RESOURCE];
       refuseStandard(input.id, "fire");
-      await readOwn(ctx, input.id);
-      await roster(ctx).delete(input.id);
+      await readOwn(workers, input.id);
+      await workers.delete(input.id);
       return { id: input.id };
     }
   });
@@ -290,13 +283,14 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: z.object({ id: z.string() }),
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
+      const workers = ctx.resources[WORKERS_RESOURCE];
       if (installation.standardWorker(input.id) === undefined) {
         throw new Error(`"${input.id}" isn't a standard worker, so there is no default to reset it to. Nothing was written.`);
       }
-      if ((await roster(ctx).getOptional(input.id)) === undefined) {
+      if ((await workers.getOptional(input.id)) === undefined) {
         throw new Error(`You haven't edited "${input.id}", so it already matches its file. Nothing was written.`);
       }
-      await roster(ctx).delete(input.id);
+      await workers.delete(input.id);
       return { id: input.id };
     }
   });

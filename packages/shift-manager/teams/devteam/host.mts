@@ -65,9 +65,14 @@ import {
   upgradeKeptTurns,
   type HarnessFeeds,
   type Harness,
-  type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import {
+  localRepoWorkspaceHost,
+  localWorkspaceHost,
+  type LocalRepoWorkspaceHostOptions,
+  type WorkspaceHost,
+  type WorkspaceSetup,
+} from "@flow-state-dev/workspace";
 import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import Database from "better-sqlite3";
@@ -128,7 +133,6 @@ import {
 } from "@flow-state-dev/workforce";
 import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import { hostForConfig } from "@flow-state-dev/harness-manager/checkout";
 import { CODER_FLOW, codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -405,16 +409,16 @@ export interface OpenLabOptions {
   /**
    * Where each coding run works.
    *
-   * `{ root, sourceRepo, baseRef }`: every feature run is a new branch of one
-   * fixed repository, as the older checks run, on a workspace host over that
-   * repository. `{ root, remotes }`: a
+   * `{ root, repo, baseRef }`: every feature run is a new branch of one
+   * fixed repository, as the older checks run, on `localRepoWorkspaceHost`
+   * over that repository. `{ root, remotes }`: a
    * workspace host whose source is `projectWorkspace()`, so a run works in a
    * branch of its project's repository (reached only if `remotes.allow` lists
    * it), or on its project's files when the project has none. Its project is
    * the one of the workstream its task was filed from, or the one the task
    * names.
    */
-  workspace: WorkspaceConfig | LabWorkspaceHost;
+  workspace: (LocalRepoWorkspaceHostOptions & { baseRef: string }) | LabWorkspaceHost;
   /**
    * The worker the EM's `file` and `askToFile` doors file each feature for:
    * one of the EM's delegates that takes tasks.
@@ -835,9 +839,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (saveNothing && workspaceHost === undefined) {
     throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
   }
-  // A fixed repository is a workspace host on that repository, the one harness-manager runs a fixed config through.
-  const fixed = lab === undefined ? (options.workspace as WorkspaceConfig) : undefined;
-  const coderHost: WorkspaceHost = workspaceHost ?? hostForConfig(fixed!);
+  // A fixed repository is a workspace host on that repository.
+  const fixed = lab === undefined ? (options.workspace as LocalRepoWorkspaceHostOptions & { baseRef: string }) : undefined;
+  const coderHost: WorkspaceHost = workspaceHost ?? localRepoWorkspaceHost(fixed!);
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the workers' document reads — and BR-17 — matter.
@@ -1015,7 +1019,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     workerOf: coderWorkerOf,
     requireAcceptance: options.requireAcceptance === true,
     ...(options.dropTask === true ? { dropTask: true } : {}),
-    ...(fixed === undefined ? {} : { repository: { sourceRepo: fixed.sourceRepo, baseRef: fixed.baseRef } }),
+    ...(fixed === undefined ? {} : { repository: { sourceRepo: fixed.repo, baseRef: fixed.baseRef } }),
   });
   const answer = defineAnswerPhase({ workerOf: coderWorkerOf });
   // Shift Manager's coder is the harness kit's `coder` flow, in two modes: a
