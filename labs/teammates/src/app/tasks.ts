@@ -52,7 +52,7 @@ export function useTaskDetail(sessionId: string, taskId: string): { value: Codin
 
 /**
  * A task's run, read only: its lines from its session's items, its latest
- * review stop (harness-manager's `reviewDetail`), and, while it runs, the call
+ * review stop (harness-manager's `reviewDetail`, and the stop's id as `reviewStop`), and, while it runs, the call
  * in flight (the run request's own stream, which sends a call as it starts,
  * beside the feed, whose finished copy wins) and the plan its harness recorded.
  */
@@ -68,13 +68,14 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const stream = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined });
   return useMemo(() => {
     const fed = (feed?.items ?? []) as readonly OutputItem[];
-    const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown } | undefined;
+    const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown; suspensionId?: string } | undefined;
     const inFlight = running ? inFlightOf(stream.items as unknown as readonly OutputItem[], fed, requestId) : undefined;
     const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
       lines: runSession === null ? [] : conversationLines(fed, [], { renderers: teammatesRenderers }),
       replyStartedAt: running ? stream.startedAt : undefined,
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
+      reviewStop: stop?.suspensionId,
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
     };
   }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan]);
@@ -172,8 +173,7 @@ export function useTaskActions(sessionId: string) {
       /** Answer what `task` waits on you for: a question's words, or a review's verdict. */
       answer: async (task: CodingBoardTask, answer: { text: string } | ReviewAnswer) => {
         const kind = "text" in answer ? "question" : "review";
-        // No fresh board read: the server refuses a round the run moved past (409 already-resolved),
-        // so it never lands on the newer one (popup-holds.test "refuses, out loud…").
+        // No fresh board read: the server refuses a round the run moved past (409, popup-holds.test "refuses, out loud…").
         const hold = task.asks.find((h) => h.ask.kind === kind);
         if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);
         await inbox.answerOne(hold, inboxAnswerOf(answer));

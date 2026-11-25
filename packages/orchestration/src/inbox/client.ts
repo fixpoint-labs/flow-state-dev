@@ -74,6 +74,16 @@ type BoardRoute = { flowId: string; sessionId: string; action: string };
 type BoardOutput = { ok?: boolean; error?: string } & Record<string, unknown>;
 
 /**
+ * A 4xx refusal as an error carrying the route's own words (its body's
+ * `error`), not the transport's "Request failed (409)"; any other failure as it came.
+ */
+function refusalOf(error: unknown): unknown {
+  if (!(error instanceof ClientHttpError) || error.status < 400 || error.status >= 500) return error;
+  const said = (error.body as { error?: unknown } | null | undefined)?.error;
+  return new Error(typeof said === "string" && said !== "" ? said : error.message);
+}
+
+/**
  * Send one board action and read what it said back: the one routine every
  * board action and every row answer goes through. Resolves to the action's
  * output when the board said `ok: true`. Rejects with the board's own words
@@ -88,8 +98,7 @@ async function sendBoardAction(client: Client, route: BoardRoute, input: Record<
   try {
     requestId = (await flow.send(action, input, { sessionId })).id;
   } catch (error) {
-    if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
-    throw error;
+    throw refusalOf(error);
   }
   let settled: RequestResult;
   try {
@@ -214,7 +223,10 @@ export function createInboxClient(client: Client): InboxClient {
     const { flowId, requestId, suspensionId } = hold.source;
     if (flowId === null) throw new Error(`Inbox question "${hold.id}" names no flow`);
     const resume = resumeOf(hold.ask.kind, answer);
-    await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
+    // A refusal (the round already answered, say) rejects with the route's own words.
+    await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume }).catch((error: unknown) => {
+      throw refusalOf(error);
+    });
   };
   return {
     answerOne,
