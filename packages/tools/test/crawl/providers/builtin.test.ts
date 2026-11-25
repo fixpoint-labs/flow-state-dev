@@ -292,3 +292,38 @@ describe("builtin crawl adapter — network boundary", () => {
     }
   });
 });
+
+describe("builtin crawl adapter — cancel", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("ends during the pause between pages instead of waiting it out", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(`<html><body><p>Root page body text</p><a href="/next">next</a></body></html>`, {
+          headers: { "content-type": "text/html" },
+        })
+      )
+    );
+    const run = new AbortController();
+    const started = Date.now();
+
+    const pending = builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      signal: run.signal,
+    });
+    setTimeout(() => run.abort(), 50);
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The pause between pages is a second; a cancel must not sit through it.
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});

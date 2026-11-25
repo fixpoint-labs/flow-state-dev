@@ -120,8 +120,11 @@ export async function fetchValidated(
   } catch (error) {
     // A refusal from the socket's lookup arrives wrapped in fetch's
     // `TypeError: fetch failed`; surface it as the refusal it is.
-    const cause = (error as { cause?: unknown } | null)?.cause;
-    if (cause instanceof BlockedUrlError) throw cause;
+    let cause: unknown = error;
+    for (let depth = 0; depth < 4 && cause !== null && typeof cause === "object"; depth++) {
+      if (cause instanceof BlockedUrlError) throw cause;
+      cause = (cause as { cause?: unknown }).cause;
+    }
     throw error;
   }
 }

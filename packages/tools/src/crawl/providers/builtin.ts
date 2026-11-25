@@ -17,7 +17,6 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
     const pages: FetchResult[] = [];
 
     while (queue.length > 0 && pages.length < options.maxPages) {
-      // A cancelled run ends the crawl instead of skipping every page left.
       options.signal?.throwIfAborted();
       const entry = queue.shift()!;
       const normalized = normalizeUrl(entry.url);
@@ -38,7 +37,7 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
       try {
         // Rate limit: 1 second between requests
         if (pages.length > 0) {
-          await delay(1000);
+          await delay(1000, options.signal);
         }
 
         // Validates the queued URL and every redirect hop. Links come from the
@@ -78,7 +77,9 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
           }
         }
       } catch {
-        // Skip failed pages, continue crawling
+        // Skip failed pages, continue crawling — unless the run was cancelled,
+        // which ends the crawl rather than counting as one failed page.
+        options.signal?.throwIfAborted();
         continue;
       }
     }
@@ -151,6 +152,17 @@ export function globMatch(path: string, pattern: string): boolean {
   return new RegExp(`^${regex}$`).test(path);
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
