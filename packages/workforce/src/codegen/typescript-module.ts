@@ -4,27 +4,26 @@
  *
  * The locked folders (`./discover`), the `resources/` module walk
  * (`./discover-resource-modules`) and the `blocks/` walk
- * (`./discover-worker-blocks`) all read `.ts`, `.tsx`, `.mts` and `.cts` as
- * modules and nothing else: the same set the kit claims
- * (`../loader/read-workforce-folder`), so a file that starts the app is one
- * `fsdev gen` registers. One definition, so a walk cannot quietly stop finding
- * one of them while the others still do.
+ * (`./discover-worker-blocks`) all read `.ts`, `.tsx` and `.mts` as modules and
+ * nothing else: the same set the kit claims (`../loader/read-workforce-folder`),
+ * so a code file that starts the app is one `fsdev gen` registers. One
+ * definition, so a walk cannot quietly stop finding one while the others still
+ * do.
  */
 
 /**
- * Each TypeScript extension, mapped to the suffix its import specifier carries.
- * `.ts` and `.tsx` are imported extensionless. `.mts` and `.cts` are not found
- * that way, so they are imported as the `.mjs` and `.cjs` they compile to,
- * which TypeScript and the bundlers resolve back to the source file.
+ * Each registered extension, mapped to the suffix its import specifier carries.
+ * `.ts` and `.tsx` are imported extensionless. A `.mts` module is not found
+ * that way, so it is imported as the `.mjs` it compiles to, which TypeScript
+ * and the bundlers resolve back to the source file.
  */
 const TYPESCRIPT_EXTENSIONS: ReadonlyMap<string, string> = new Map([
   [".ts", ""],
   [".tsx", ""],
   [".mts", ".mjs"],
-  [".cts", ".cjs"],
 ]);
 
-/** The TypeScript extension this entry carries, or `undefined` when it is not a TypeScript module. */
+/** The TypeScript extension this entry carries, or `undefined` when it is not a module the walks register. */
 export function typescriptExtension(entry: string): string | undefined {
   return [...TYPESCRIPT_EXTENSIONS.keys()].find((extension) => entry.endsWith(extension));
 }

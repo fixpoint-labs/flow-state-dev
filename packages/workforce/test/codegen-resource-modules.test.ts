@@ -224,17 +224,13 @@ describe("where the modules are found", () => {
     ]);
   });
 
-  it("finds a .mts and a .cts module, imported as .mjs and .cjs", async () => {
-    const root = tree({
-      "teams/engineering/resources/digest.mts": MODULE,
-      "teams/engineering/resources/ledger.cts": MODULE,
-    });
+  it("finds a .mts module, imported as the .mjs it compiles to", async () => {
+    const root = tree({ "teams/engineering/resources/digest.mts": MODULE });
 
     const { resourceModules } = await discoverWorkforceCode(root);
 
     expect(resourceModules.map((module) => [module.ref, module.importPath])).toEqual([
       ["teams/engineering/digest", "./teams/engineering/resources/digest.mjs"],
-      ["teams/engineering/ledger", "./teams/engineering/resources/ledger.cjs"],
     ]);
   });
 

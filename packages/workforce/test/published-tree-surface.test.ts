@@ -56,6 +56,7 @@ import {
 } from "../src/loader/read-resources-directory";
 import { readWorkerSkills } from "../src/loader/read-worker-skills";
 import { readWorkforce } from "../src/loader/read-workforce";
+import { isWorkforcePath } from "../src/loader/read-workforce-folder";
 import { DOCUMENT_SLOTS } from "../src/loader/resource-convention";
 
 /** Repo root, from this file: `packages/workforce/test/` is three levels down. */
@@ -93,7 +94,7 @@ interface Readout {
   teamWorkerSkills: string[];
   /** Document refs that loaded, paired with the worker each one is addressed to. */
   workerAddressedRefs: Array<{ ref: string; worker: string; folder: string }>;
-  /** Every root-relative path any reader reported as a failure. */
+  /** Every root-relative path any reader reported as a failure, or the kit's claim pass leaves unclaimed. */
   reported: string[];
   /** Whether the codegen walk threw, which empties {@link Readout.code} and {@link Readout.resourceModules}. */
   codeWalkThrew: boolean;
@@ -950,7 +951,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   },
   // `.mts` and `.cts`, published in one sentence the way `.tsx` is. One row per
   // extension, and one per walk between them: the code-folder walk takes
-  // `.mts`, the resource-module walk `.cts`.
+  // `.mts`, which it registers, the resource-module walk `.cts`, which the
+  // kit leaves unclaimed so the app refuses it.
   {
     shape: "flows/workers/<kind>.mts",
     publishedIn: {
@@ -1045,6 +1047,15 @@ async function readEverything(root: string): Promise<Readout> {
     codeWalkThrew = true;
   }
 
+  // The kit's claim pass. A file the kit's folder reader does not claim is
+  // refused by path when the app starts, which is a report like any reader's
+  // error. Refusing what is unclaimed is the engine's half, tested there; what
+  // this package decides is the claim set, so it is asked directly. Asked of
+  // the rule rather than through `readWorkforceFolder`, which claims nothing
+  // when the roster fails — as this fixture's deliberate collisions make it —
+  // and would leave every path reading as refused.
+  for (const rel of await filesIn(root)) if (!isWorkforcePath(rel)) reported.push(rel);
+
   return {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
@@ -1063,6 +1074,14 @@ async function readEverything(root: string): Promise<Readout> {
     reported,
     codeWalkThrew,
   };
+}
+
+/** Every file under `root`, as slash-separated paths relative to it. */
+async function filesIn(root: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
 }
 
 /**
