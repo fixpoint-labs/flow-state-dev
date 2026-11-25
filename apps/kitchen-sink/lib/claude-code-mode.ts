@@ -47,7 +47,7 @@ import {
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
-import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
@@ -133,7 +133,7 @@ export interface ClaudeCodeSeams {
  * Code's own preset. A plain string there would turn off its planning tool,
  * and the plan panel would never fill.
  */
-export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
+export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
   const trust = harnessTrust();
   return claudeCodeAgent({

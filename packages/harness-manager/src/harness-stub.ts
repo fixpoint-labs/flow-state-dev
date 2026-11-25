@@ -26,10 +26,10 @@ import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
+  HarnessFeeds,
   HarnessRunOutcome,
   HarnessRunStatus,
 } from "@flow-state-dev/core/harness";
-import type { HarnessFeeds } from "./manager";
 import { TOOL_NOT_ALLOWED } from "./tool-approval";
 
 /** One run the stub was asked to perform, exactly as it arrived. */

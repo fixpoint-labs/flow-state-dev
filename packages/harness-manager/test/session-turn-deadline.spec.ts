@@ -18,6 +18,7 @@
  *   - the step's timer left running when it settles: an hour-long timer
  *     outlives each finished turn.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { harnessSessionFlow, harnessStub, type HarnessSessionFeeds, type HarnessSessionState } from "../src";
+import { harnessSessionFlow, harnessStub, type HarnessSessionState } from "../src";
 
 const KIND = "deadline-session";
 const USER = "alice";
@@ -60,7 +61,7 @@ function host(options: {
   const flow = harnessSessionFlow({
     kind: KIND,
     workspace: { provision: async () => cwd, locate: () => cwd, branch: () => null },
-    agent: (feeds: HarnessSessionFeeds) => stub.slot(feeds as never) as HarnessBlock,
+    agent: (feeds: HarnessFeeds) => stub.slot(feeds as never) as HarnessBlock,
     harnessLabel: "the stub harness",
     ...(options.turnTimeoutMs === undefined ? {} : { turnTimeoutMs: options.turnTimeoutMs }),
     ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),

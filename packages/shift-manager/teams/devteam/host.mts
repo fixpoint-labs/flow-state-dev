@@ -39,6 +39,7 @@
  * reason.
  */
 
+import type { Harness, HarnessFeeds } from "@flow-state-dev/core/harness";
 import {
   createBearerSecretPrincipalResolver,
   createFlowState,
@@ -63,8 +64,6 @@ import {
   harnessUsageFlow,
   HARNESS_USAGE_FLOW,
   upgradeKeptTurns,
-  type HarnessFeeds,
-  type Harness,
 } from "@flow-state-dev/harness-manager";
 import {
   localRepoWorkspaceHost,

@@ -12,6 +12,7 @@
  * request, whichever way the agent opened it, and one opened before the run is
  * not claimed as the run's. A run that failed is checked too.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -28,7 +29,7 @@ import type { HarnessBlock, PullRequestFollower, RecordedPullRequest } from "@fl
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";

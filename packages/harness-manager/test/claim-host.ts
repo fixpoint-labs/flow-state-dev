@@ -14,6 +14,7 @@
  * a real git checkout. Only the harness is a stub, scripted per call, and it
  * records what it was fed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -40,7 +41,6 @@ import {
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
-  type HarnessFeeds,
   type PromptRunContext,
   type RunRecordState,
 } from "../src";
