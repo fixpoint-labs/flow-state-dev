@@ -220,10 +220,11 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: Inbo
   const cut = hours.reduce((sum, hour) => sum + hour.cut, 0);
   const dayEntries = hours.flatMap((hour) => hour.entries);
   // A held request names no report: it is the report its task's ending went to, as that ending's entry names it.
+  // Keyed by report too: another report's entry can name the same task.
   const taskSince = new Map<string, number>();
   for (const e of dayEntries) {
     const since = e.reportId === undefined ? undefined : sinceOf(e, e.reportId);
-    if (e.kind === "occurrence" && e.taskId !== undefined && since !== undefined) taskSince.set(e.taskId, since);
+    if (e.kind === "occurrence" && e.taskId !== undefined && since !== undefined) taskSince.set(`${e.reportId}\n${e.taskId}`, since);
   }
   const known = new Map<string, number[]>();
   for (const e of dayEntries) {
@@ -236,7 +237,7 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: Inbo
     const report = reportId === undefined ? undefined : read.reports.find((r) => r.id === reportId);
     if (report === undefined) continue;
     // A held request whose task's ending is not in the day goes with the current report, as it always has.
-    const since = entry.reportId === undefined ? (taskSince.get(entry.taskId!) ?? report.firstSeenAt) : sinceOf(entry, report.id);
+    const since = entry.reportId === undefined ? (taskSince.get(`${report.id}\n${entry.taskId}`) ?? report.firstSeenAt) : sinceOf(entry, report.id);
     const lifetime = lifetimeOf(entry, since, report, known.get(report.id) ?? []);
     const groupKey = lifetime.current ? report.id : `${report.id}@${lifetime.key}`;
     const grouped = groups.get(groupKey);
