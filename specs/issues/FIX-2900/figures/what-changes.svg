@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after for a turn on a task whose pull request merged. Before: the manager tells the harness only through the prompt, and Claude Code, Codex and Cursor each run with edit, shell, push and gh. After: the manager also feeds access read-only through a trusted feed. Claude Code is offered Read, Grep and Glob in dontAsk mode. Codex runs in its read-only sandbox: reads and git log work, writes and the network are refused. Cursor is offered reading tools only. A harness that never declared enforcesReadOnly gets no run. A turn on an open pull request gets access full, which is today's options unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-off { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; marker-end:url(#a); }
+    .divide { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-bad { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-good { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7A828B"/></marker></defs>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">TODAY · A MESSAGE ON A MERGED PULL REQUEST</text>
+    <rect class="n-box" x="16" y="40" width="180" height="72" rx="5"/>
+    <text class="t-b" x="30" y="64">harness manager</text>
+    <text class="t-s" x="30" y="84">prompt: "push nothing,</text>
+    <text class="t-s" x="30" y="98">say a new task"</text>
+    <path class="arrow" d="M196,76 L232,76"/>
+    <rect class="n-gone" x="236" y="40" width="200" height="72" rx="5"/>
+    <text class="t-b" x="250" y="64">any harness</text>
+    <text class="t-bad" x="250" y="84">edit · shell · push · gh</text>
+    <text class="t-s" x="250" y="98">kept out by the prompt only</text>
+    <text class="t-lbl" x="16" y="150">THE TALK ON A FINISHED TASK</text>
+    <rect class="n-gone" x="16" y="162" width="420" height="48" rx="5"/>
+    <text class="t-b" x="30" y="184">resumes the coding session, full tools</text>
+    <text class="t-bad" x="30" y="200">no warning at all; nothing records what it changed</text>
+  </g>
+
+  <line class="divide" x1="458" y1="16" x2="458" y2="384"/>
+
+  <g id="after">
+    <text class="t-lbl" x="476" y="26">AFTER · THE SAME TURN, AND THE TALK</text>
+    <rect class="n-acc" x="476" y="40" width="150" height="72" rx="5"/>
+    <text class="t-b" x="490" y="64">harness manager</text>
+    <text class="t-s" x="490" y="84">access feed:</text>
+    <text class="t-s" x="490" y="98">"read-only"</text>
+    <path class="arrow" d="M626,62 L660,62"/>
+    <path class="arrow" d="M626,90 C640,90 640,145 660,145"/>
+    <path class="arrow" d="M626,104 C634,104 634,228 660,228"/>
+    <path class="arrow" d="M551,112 L551,304"/>
+
+    <rect class="n-ok" x="664" y="36" width="260" height="56" rx="5"/>
+    <text class="t-b" x="678" y="58">Claude Code</text>
+    <text class="t-good" x="678" y="78">Read · Grep · Glob · dontAsk</text>
+
+    <rect class="n-ok" x="664" y="104" width="260" height="70" rx="5"/>
+    <text class="t-b" x="678" y="126">Codex</text>
+    <text class="t-good" x="678" y="146">sandbox read-only · shell kept</text>
+    <text class="t-s" x="678" y="162">git log works; writes, network refused</text>
+
+    <rect class="n-ok" x="664" y="186" width="260" height="56" rx="5"/>
+    <text class="t-b" x="678" y="208">Cursor</text>
+    <text class="t-good" x="678" y="228">tools: reading only · no shell</text>
+
+    <rect class="n-off" x="476" y="308" width="220" height="60" rx="5"/>
+    <text class="t-b" x="490" y="330">harness not declared</text>
+    <text class="t-s" x="490" y="350">no run · ends with a note</text>
+
+    <rect class="n-box" x="712" y="308" width="212" height="60" rx="5"/>
+    <text class="t-lbl" x="726" y="328">OPEN PULL REQUEST</text>
+    <text class="t-b" x="726" y="348">access "full"</text>
+    <text class="t-s" x="726" y="362">today's options, unchanged</text>
+  </g>
+</svg>
