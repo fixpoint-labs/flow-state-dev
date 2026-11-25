@@ -243,25 +243,8 @@ export interface ResourceBackedOptions {
   };
 }
 
-/**
- * The read of a stored task. Collection instances are stored, not parsed, so
- * this returns the row as it was written.
- *
- * Every read of committed task state goes through this — `readTaskState` for
- * a ref, and directly for the `current` a CAS updater is handed, since that
- * mutator re-reads committed state on each retry.
- */
-function readTaskStateOf<TInput, TOutput>(
-  state: JsonObject
-): Task<TInput, TOutput> {
-  return state as unknown as Task<TInput, TOutput>;
-}
-
-function readTaskState<TInput, TOutput>(
-  ref: ResourceRef<JsonObject>
-): Task<TInput, TOutput> {
-  return readTaskStateOf<TInput, TOutput>(ref.state);
-}
+// This backing stores task state through core's JSON resource interface.
+type StoredTask = Task & JsonObject;
 
 // FIX-990.
 /**
@@ -282,17 +265,17 @@ function readTaskState<TInput, TOutput>(
  * exist — a retry within the same request reads them and is correct to.
  */
 const taskSets = new WeakMap<
-  ResourceCollectionRef<JsonObject>,
-  Map<string, ResourceRef<JsonObject>>
+  ResourceCollectionRef<StoredTask>,
+  Map<string, ResourceRef<StoredTask>>
 >();
 
 /** Get (or create) the task-set record shared across resolutions of `collection`. */
 function sharedTaskSet(
-  collection: ResourceCollectionRef<JsonObject>
-): Map<string, ResourceRef<JsonObject>> {
+  collection: ResourceCollectionRef<StoredTask>
+): Map<string, ResourceRef<StoredTask>> {
   const existing = taskSets.get(collection);
   if (existing !== undefined) return existing;
-  const created = new Map<string, ResourceRef<JsonObject>>();
+  const created = new Map<string, ResourceRef<StoredTask>>();
   taskSets.set(collection, created);
   return created;
 }
@@ -305,11 +288,11 @@ function sharedTaskSet(
  * owns that, for the reasons it lists.
  */
 async function adoptUnknownRows(
-  mirror: Map<string, ResourceRef<JsonObject>>,
-  collection: ResourceCollectionRef<JsonObject>
+  mirror: Map<string, ResourceRef<StoredTask>>,
+  collection: ResourceCollectionRef<StoredTask>
 ): Promise<void> {
   for (const ref of await collection.list()) {
-    const id = readTaskState(ref).id;
+    const id = ref.state.id;
     if (typeof id === "string" && id.length > 0 && !mirror.has(id)) mirror.set(id, ref);
   }
 }
@@ -401,8 +384,8 @@ async function adoptUnknownRows(
  *     cover the window, and a read that is not a pure read belongs in it.
  */
 async function reconcileTaskSet(
-  mirror: Map<string, ResourceRef<JsonObject>>,
-  collection: ResourceCollectionRef<JsonObject>
+  mirror: Map<string, ResourceRef<StoredTask>>,
+  collection: ResourceCollectionRef<StoredTask>
 ): Promise<void> {
   // The exact entries this pass is allowed to retire, captured before the read.
   const retirable = new Map(mirror);
@@ -410,7 +393,7 @@ async function reconcileTaskSet(
 
   const stored = new Set<string>();
   for (const ref of listed) {
-    const id = readTaskState(ref).id;
+    const id = ref.state.id;
     // Cases 6 and 9: no usable id means the instance went away mid-read, or the
     // stored record is malformed. Either way there is nothing to key on, and
     // adopting it would plant an unaddressable phantom in a record every handle
@@ -447,17 +430,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   // Construction still hydrates (the only async step) and reconciles the
   // record against the store in both directions — see `reconcileTaskSet` for
   // why a plain merge and a plain replace are each wrong.
-  const mirror = sharedTaskSet(options.collection);
-  await reconcileTaskSet(mirror, options.collection);
+  const collection = options.collection as ResourceCollectionRef<StoredTask>;
+  const mirror = sharedTaskSet(collection);
+  await reconcileTaskSet(mirror, collection);
 
   function listAll(): Task[] {
-    return Array.from(mirror.values()).map((ref) => readTaskState<unknown, unknown>(ref) as Task);
+    return Array.from(mirror.values(), (ref) => ref.state);
   }
 
   /** The board's committed row by id, read through the mirror. */
   function lookupRow(id: string): Task | undefined {
-    const r = mirror.get(id);
-    return r === undefined ? undefined : (readTaskState(r) as Task);
+    return mirror.get(id)?.state;
   }
 
   /** The board as this process reads it: the mirror, every ref through its live getter. */
@@ -475,12 +458,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       throw new Error(`[tasks] task "${id}" not found`);
     }
     try {
-      return await updateStateWith<JsonObject, TaskWritten<R>>(ref, (current) => {
-        const task = readTaskStateOf<unknown, unknown>(current) as Task;
-        const decision = decide(task, board);
+      return await updateStateWith<StoredTask, TaskWritten<R>>(ref, (current) => {
+        const decision = decide(current, board);
         if (decision === undefined) return { state: current, result: undefined };
-        if ("decline" in decision) throw new WriteDeclined(decision.decline, task.status);
-        return { state: decision.row as unknown as JsonObject, result: { committed: decision.result } };
+        if ("decline" in decision) throw new WriteDeclined(decision.decline, current.status);
+        return { state: decision.row as StoredTask, result: { committed: decision.result } };
       });
     } catch (err) {
       // Only the decline is absorbed. A store failure, CAS exhaustion, or an
@@ -563,7 +545,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     const own = delivery?.ownRequest;
     if (delivery === undefined || own === undefined) return;
     delivery.hooks.whenRequestEnds?.(async () => {
-      await adoptUnknownRows(mirror, options.collection);
+      await adoptUnknownRows(mirror, collection);
       for (const filed of listAll()) {
         if (filed.filer?.requestId !== own) continue;
         await ref.refresh?.(filed.id);
@@ -636,7 +618,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     // Rows another process filed after this mirror was hydrated.
-    adoptStoredRows: () => adoptUnknownRows(mirror, options.collection),
+    adoptStoredRows: () => adoptUnknownRows(mirror, collection),
 
     write: writeRow,
 
@@ -658,7 +640,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async insert(rows, check, inserted) {
       check(board);
       for (const task of rows) {
-        const created = await options.collection.create(task.id, task as unknown as JsonObject);
+        const created = await collection.create(task.id, task as StoredTask);
         mirror.set(task.id, created);
         inserted(task);
         noteFiled(task);
