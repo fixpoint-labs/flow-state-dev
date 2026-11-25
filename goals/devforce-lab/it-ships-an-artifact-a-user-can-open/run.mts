@@ -87,9 +87,9 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_BRANCH_PREFIX, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { DRAIN_ENTRY, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
-import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../../../packages/shift-manager/teams/devteam/acceptance.mts";
 import {
   BASE_REF,
@@ -579,7 +579,7 @@ await runGoal(async (failures) => {
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
-      harness: () => unavailableHarness(),
+      harnesses: [readyHarness(() => unavailableHarness())],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -660,7 +660,7 @@ await runGoal(async (failures) => {
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
-      harness: () => inertHarness(),
+      harnesses: [readyHarness(() => inertHarness())],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -722,7 +722,7 @@ await runGoal(async (failures) => {
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
       requireAcceptance: true,
-      harness: ({ cwd }) => committingHarness(cwd),
+      harnesses: [readyHarness(({ cwd }) => committingHarness(cwd))],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -803,7 +803,7 @@ await runGoal(async (failures) => {
     inventory: true,
     projects: [{ id: STOREFRONT.id, title: "Storefront" }],
     workstreams: [{ as: "owner", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: COORDINATOR_SEAT } }],
-    harness: ({ cwd, resume, onSession }) =>
+    harnesses: [readyHarness(({ cwd, resume, onSession }) =>
       sequencer({
         name: "devforce-ships-harness",
         inputSchema: harnessRunInputSchema,
@@ -825,7 +825,7 @@ await runGoal(async (failures) => {
               "Do what your instructions and your brief say, then commit your work with git. " +
               "Do nothing else.",
           } as never) as never,
-        ) as unknown as HarnessBlock,
+        ) as unknown as HarnessBlock, "claude-code", "Claude Code")],
   });
 
   /** Filled in once the run has been published, so the legs after `dispose` can read them. */

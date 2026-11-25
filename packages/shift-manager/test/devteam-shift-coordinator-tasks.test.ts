@@ -33,7 +33,7 @@ import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/boards";
-import { selectHarness } from "../teams/devteam/harness.mts";
+import { selectHarness, readyHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
@@ -98,7 +98,7 @@ async function open(model: ModelResolver): Promise<Lab> {
   opened = await openLab({
     modelResolver: model,
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-tasks-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
@@ -294,7 +294,7 @@ async function openCoderLab(model: ModelResolver, stub: HarnessStub, options: { 
   opened = await openLab({
     modelResolver: model,
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-tasks-")), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,
@@ -686,7 +686,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await expect(
       openLab({
         stores: inMemoryStores(),
-        harness: attached,
+        harnesses: [readyHarness(attached)],
         workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-attached-")), remotes: { allow: ["file"] } },
         coderWorkerId: CODER,
       }),
@@ -745,7 +745,7 @@ describe("a line the coder's door kept before lines became steers (FIX-2086)", (
     const first = await openLab({
       modelResolver: scriptedCoder([]),
       stores,
-      harness: harnessStub().slot,
+      harnesses: [readyHarness(harnessStub().slot)],
       runTimeoutMs: 30_000,
       workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
       coderWorkerId: CODER,
@@ -769,7 +769,7 @@ describe("a line the coder's door kept before lines became steers (FIX-2086)", (
       opened = await openLab({
         modelResolver: scriptedCoder([]),
         stores,
-        harness: harnessStub().slot,
+        harnesses: [readyHarness(harnessStub().slot)],
         runTimeoutMs: 30_000,
         workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
         coderWorkerId: CODER,

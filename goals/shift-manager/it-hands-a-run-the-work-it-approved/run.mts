@@ -52,11 +52,10 @@ import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-de
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_BRANCH_PREFIX, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
-import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 
@@ -140,14 +139,14 @@ function stubFor(seen: SeenRun[]) {
 /** Open the DevTeam tree as the `devteam` profile does, for `ask`. */
 async function open(
   label: string,
-  harness: OpenLabOptions["harness"],
+  harness: Parameters<typeof readyHarness>[0],
   ask: Feature,
   over: Partial<OpenLabOptions> = {},
 ): Promise<{ lab: Lab; sourceRepo: string }> {
   const dirs = createScratchRepo(label);
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness,
+    harnesses: [readyHarness(harness)],
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,

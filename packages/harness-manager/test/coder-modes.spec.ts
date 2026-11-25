@@ -161,6 +161,16 @@ describe("an app that registers its modes", () => {
     for (const config of managerConfigs) expect(config.uses).toBeDefined();
   });
 
+  it("lets one mode work in its task's project when the kit's `project` is off, and the other not", async () => {
+    // The Lab on one fixed repository: its answer host reads the task's project, its implement checkout doesn't.
+    const answerInProject = { ...shiftManager, modes: { ...shiftManager.modes, answer: { ...shiftManager.modes.answer, project: true } } };
+    expect(await start(answerInProject)).toBe("started");
+    const byName = Object.fromEntries(managerConfigs.map((config) => [config.name as string, config]));
+    expect(byName["coder-codex-answer"]!.uses).toBeDefined();
+    expect(byName["coder-codex-answer-reviewed"]!.uses).toBeDefined();
+    expect(byName["coder-codex-implement"]!.uses).toBeUndefined();
+  });
+
   it("keeps each mode's requires for the filing check", () => {
     const { modes } = resolveCoderModes(shiftManager, kitMode, "coder");
     expect(modes.implement!.requires).toEqual(["issue"]);
@@ -219,9 +229,10 @@ describe("which mode a task runs", () => {
 
   it("finds a feature task's run under its own phase, and a malformed one's nowhere", () => {
     expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly)).toEqual({ name: "code" });
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toMatchObject({ name: "default", formerName: "code" });
+    // Only the key a run is found by: its name, and the one it was stored under before.
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toEqual({ name: "default", formerName: "code" });
     expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered)).toBeUndefined();
-    expect(runModeOfTask({}, registered)).toMatchObject({ name: "answer" });
+    expect(runModeOfTask({}, registered)).toEqual({ name: "answer" });
   });
 });
 

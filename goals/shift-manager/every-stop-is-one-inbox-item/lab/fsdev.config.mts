@@ -35,7 +35,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerFlow, workerTaskEntry } from "@flow-state-dev/workforce";
 import { TASK_ID_STATE_KEY } from "../../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../../packages/workforce/src/conversation-board/steer.ts";
-import { claudeCodeHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeHarness, readyHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 
@@ -213,7 +213,7 @@ const sweepIntervalMs = number("GOAL_SWEEP_MS");
 const lab = await openLab({
   root: TREE,
   stores: sqliteStores({ filename: STORE }),
-  harness: recorded as never,
+  harnesses: [readyHarness(recorded as never)],
   runTimeoutMs: HARNESS === "claude-code" ? 15 * 60_000 : 30_000,
   workspace: { root: RUNS, remotes: { allow: ["file"] } },
   coderWorkerId: "eng.coder",

@@ -25,7 +25,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readTree } from "../../../lib/workers.mts";
 import { startHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
-import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { EM_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 
 const STORE = process.env.USAGE_GOAL_STORE;
@@ -45,7 +45,7 @@ if (coderWorkerId === undefined) throw new Error("the DevTeam tree names no code
 const harness = await startHarness("stub");
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
-  harness: harness.slot,
+  harnesses: [harness.value],
   runTimeoutMs: harness.runTimeoutMs,
   workspace: { root: join(STORE, "..", "runs"), remotes: { allow: ["file"] } },
   coderWorkerId,

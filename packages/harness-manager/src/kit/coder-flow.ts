@@ -14,8 +14,9 @@
  * Its policy is the kit's config, not code an app copies:
  *
  * - **Review.** A run that committed waits for your review before its task
- *   completes when the worker's `review:` line says so, else when the kit's
- *   `review` does. Either way `goalJudge` reads a run first (`judge`).
+ *   completes when the kit's `review` says so, or the worker's `review:` line
+ *   does; a worker can turn review on, never off. Either way `goalJudge`
+ *   reads a run first (`judge`).
  * - **Pull requests.** A task whose run opened a pull request is done when it
  *   merges, cancelled when it closes unmerged (`pullRequests`, on by default).
  * - **Checks.** A run that changed files is done only when the kit's `checks`
@@ -40,6 +41,7 @@ import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type De
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -99,7 +101,7 @@ export interface CoderFlowOptions {
   workspace: WorkspaceHost;
   /** The harness a worker whose file names none runs on. Absent: such a worker's task is refused. */
   defaultHarness?: string;
-  /** A run that committed waits for your review before its task completes, unless the worker's `review:` line says otherwise. Default false. */
+  /** A run that committed waits for your review before its task completes, whatever the worker's `review:` line says; a worker's `review: true` turns it on alone. Default false. */
   review?: boolean;
   /** A task whose run opened a pull request waits for it to merge or close. Default true. */
   pullRequests?: boolean;
@@ -107,7 +109,7 @@ export interface CoderFlowOptions {
   judge?: boolean;
   /** The commands a run that changed files must pass in its worktree, and how long they may take together. */
   checks?: { readonly commands: readonly string[]; readonly timeoutMs?: number };
-  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. */
+  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. A mode's own `project` overrides the last two for its runs. */
   project?: boolean;
   /** How long a run's harness may send nothing before the run is stopped and fails. Default 20 minutes. */
   idleTimeoutMs?: number;
@@ -284,7 +286,7 @@ export function codingModes(options: Pick<CoderFlowOptions, "checks" | "project"
   const resolved = resolveCoderModes(options, DEFAULT_MODE, CODER_FLOW);
   return {
     defaultMode: resolved.defaultMode,
-    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, options) }])),
+    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, { ...options, project: mode.project ?? options.project }) }])),
   };
 }
 
@@ -357,7 +359,7 @@ export function coderWorkerFlow(
         const name = `${CODER_FLOW}-${id}${modeName === KIT_MODE ? "" : `-${modeName}`}${reviewChanges ? "-reviewed" : ""}`;
         const mode = resolved.modes[modeName]!;
         const workspace = mode.workspace ?? options.workspace;
-        return harnessManager({
+        const built = harnessManager({
           name,
           ledgers: conversationLedgers,
           tenant: undefined,
@@ -373,8 +375,13 @@ export function coderWorkerFlow(
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
           ...(options.approveTools === true ? { approveTools: true } : {}),
-          ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
+          // A mode may work in its task's project when the kit doesn't, or not when it does.
+          ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
+        // The claim gate shares a task's child session between tasks, so a harness that authors
+        // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.
+        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built as never });
+        return built;
       };
       const modeNames = Object.keys(resolved.modes);
       /**
@@ -413,7 +420,9 @@ export function coderWorkerFlow(
         if (id === undefined || found === undefined) {
           throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md, and the harness kit sets no \`defaultHarness\`.`);
         }
-        const review = (worker.config.review as boolean | undefined) ?? options.review === true;
+        // The kit's review is a floor: a worker's `review:` can turn it on, never off, so a worker anyone
+        // can hire never settles a change no user saw.
+        const review = options.review === true || worker.config.review === true;
         return { ...found, id, manager: review ? found.reviewed : found.manager };
       };
       /** Route by the session's worker; a run that starts work first asks whether its harness can run here. */

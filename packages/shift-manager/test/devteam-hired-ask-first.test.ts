@@ -85,7 +85,7 @@ describe("a worker hired after the Lab opened", () => {
       stores: inMemoryStores(),
       root: treeWithoutFire(),
       withoutProjectTools: true,
-      harness: harness.slot,
+      harnesses: [harness.value],
       runTimeoutMs: harness.runTimeoutMs,
       workspace: { root: mkdtempSync(join(tmpdir(), "sm-hired-ask-")), remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",

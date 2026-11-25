@@ -81,7 +81,7 @@ async function open(memoryCapture?: boolean): Promise<Lab> {
   opened = await openLab({
     modelResolver: model,
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-memory-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

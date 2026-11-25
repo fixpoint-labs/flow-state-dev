@@ -54,6 +54,7 @@ import {
   type Lab,
 } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const SHIFT_COORDINATOR = "shift-coordinator";
 const CODER = "eng.coder";
@@ -200,7 +201,7 @@ async function openFollowingLab(name: string): Promise<Lab> {
   opened = await openLab({
     modelResolver: models,
     stores: inMemoryStores(),
-    harness: harnessStub({ finalMessage: `Opened ${PR_URL}` }).slot,
+    harnesses: [readyHarness(harnessStub({ finalMessage: `Opened ${PR_URL}` }).slot)],
     runTimeoutMs: 30_000,
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

@@ -26,6 +26,7 @@ import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const SHIFT_COORDINATOR = "shift-coordinator";
 const CODER = "eng.coder";
@@ -101,7 +102,7 @@ describe("the coder addressing a pull request's review feedback", () => {
     opened = await openLab({
       modelResolver: models,
       stores: inMemoryStores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       runTimeoutMs: 30_000,
       workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-replies-")), remotes: { allow: ["file"] } },
       coderWorkerId: CODER,

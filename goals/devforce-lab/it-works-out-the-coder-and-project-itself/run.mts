@@ -44,6 +44,7 @@ import { gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripInt
 import { FSD_PROJECTS } from "../../../packages/shift-manager/teams/devteam/fsd-projects.mts";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -171,7 +172,7 @@ await runGoal(async (failures) => {
     openLab({
       modelResolver: liveResolver(),
       stores: inMemoryStores(),
-      harness: harnessStub({ finalMessage: () => "I looked at the code." }).slot,
+      harnesses: [readyHarness(harnessStub({ finalMessage: () => "I looked at the code." }).slot)],
       runTimeoutMs: 30_000,
       workspace: { root: mkdtempSync(join(tmpdir(), "works-it-out-")), remotes: { allow: ["file"] } },
       coderWorkerId: CODER,

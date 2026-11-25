@@ -86,7 +86,7 @@ Config is the kit's own object. It is strict: an unknown key is refused. `hk:46-
 |---|---|---|---|
 | `workspace` | The workspace host a run works in, from `@flow-state-dev/workspace` (`localWorkspaceHost(...)`). Required. | none | `hk:48-50`; `cf:74-75` |
 | `defaultHarness` | The harness a worker whose file names none runs on. Absent: such a worker's task is refused. | absent | `cf:76-77`; `cf:228-230` |
-| `review` | A run that committed waits for a user's review before its task completes, unless the worker's own `review:` says otherwise. | `false` | `cf:78-79`; `cf:231` |
+| `review` | A run that committed waits for a user's review before its task completes, whatever the worker's own `review:` says; a worker's `review: true` turns it on alone. | `false` | `cf:78-79`; `cf:231` |
 | `pullRequests` | A task whose run opened a pull request waits for it to merge or close. | `true` | `cf:80-81`; `cf:206` |
 | `judge` | `goalJudge` reads each run against its task's goal. | `true` | `cf:82-83`; `cf:205` |
 | `checks` | `{ commands, timeoutMs? }`: the commands a run that changed files must pass in its worktree, and how long they may take together. | none; 10 minutes when `timeoutMs` is left out | `cf:84-85`; `cf:70`, `cf:144` |
