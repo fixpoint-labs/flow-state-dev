@@ -13,7 +13,7 @@
  * (`fsd/` by default, no longer `conductor/`); a run recorded before any of
  * these keeps its older place and branch (`org-place.spec.ts`,
  * `workspace.spec.ts`). A field added to the record (`landedPullRequests`)
- * adds a line, and changes none of the keys; so did `effectiveCut`.
+ * adds a line, and changes none of the keys; so did `effectiveCut` and `baseBranch`.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";
