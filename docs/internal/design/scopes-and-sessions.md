@@ -172,7 +172,7 @@ The server checks one thing: the named session belongs to the user this request 
 ### When to use it
 
 * **To read or change where your own work came from**, such as coder settling its task on the launch chat's board, name the session.
-* **To show something across every session**, list the user's sessions and name each one (see *Looking across every session*).
+* **To show something across every session**, don't name sessions one by one. Use the one-call read across sessions (see *Looking across every session*).
 * **For data that belongs to the user rather than to any one session**, such as a coding run's record that every later conversation should find, keep it per user, keyed by what it's about.
 
 ## Writes across sessions
@@ -241,7 +241,7 @@ const open = await boards.acrossSessions(ctx, "work").list({ status: "open" });
 // each row comes back with the session it belongs to
 ```
 
-In the SQL stores this is one query, not one per session. Rows are already stored with the session they belong to, and the sessions table already records each session's user. The store joins the two: every row of the work board, in any session whose user is Alice, that matches the filter. It needs two things the stores will have anyway: the parts of a key that vary are indexed (rule 12), and a field a definition filters on, such as a task's status, has an index the definition declares. The filesystem store, used in development, walks the user's session folders instead.
+In the SQL stores this is one query, not one per session. Rows are already stored with the session they belong to, and the sessions table already records each session's user. The store joins the two: every row of the work board, in any session that belongs to Alice, that matches the filter. "Belongs to Alice" is the same owner rule that naming a session uses: the same user, the same tenant and the same org, compared so that a missing tenant or org matches only a missing one. The user id alone isn't enough, because one user id can exist under several tenants or orgs. The sessions table needs an index over that whole owner. The engine already reads a user's pending approvals this way, in one query joined across sessions (`packages/engine/src/context/request-sessions.ts:23-26`). It needs two things the stores will have anyway: the parts of a key that vary are indexed (rule 12), and a field a definition filters on, such as a task's status, has an index the definition declares. The filesystem store, used in development, walks the user's session folders instead.
 
 * **Who owns it:** the engine. Nothing extra is written for it, so there's nothing to keep in step.
 * **Where it's stored:** nowhere new. It reads every session's copy through one query.
@@ -314,7 +314,7 @@ A behavior none of these rules explains is a bug in the model.
 2. The user is the only access boundary. Nothing of one user's is reachable by another. Sharing means writing to a resource kept per org.
 3. A scope decides how many copies of a resource exist and which one "mine" means. It never decides who may look.
 4. A block reaches its own copy without naming it.
-5. A block may read or write another session's copy by naming that session and the resource. The server checks only that the session belongs to the same user, using the session's stored owner, and answers a session that isn't the user's exactly like one that doesn't exist.
+5. A block may read or write another session's copy by naming that session and the resource. The server checks only that the session belongs to the same owner (the same user, tenant and org), using the session's stored owner, and answers a session that isn't the user's exactly like one that doesn't exist.
 6. A resource name has one registered definition per installation, and any flow reaches it by that name. A second, different definition under a taken name is refused when the app starts.
 7. A write from another session runs the definition's own checks, such as a task's claim, exactly as a local write does. Apart from rule 5's owner check, which is about the user, scope adds no check of its own.
 8. A write from another session notifies the owning session exactly as a local write would. Whether that starts a turn is the definition's call.
@@ -381,6 +381,9 @@ Counts are files that mention the term today: package source, then `docs/` plus 
 - [X] **Key parts are indexed, not prefixed.** Every part of a resource key that varies can be filtered on by the SQL stores without a scan, as its own refactor. This retires the prefix reads everywhere, not only for tasks.
 - [ ] **Reading across sessions in one query.** Recommend `boards.acrossSessions(ctx, "work")`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
 - [X] **Definitions are declared on blocks and rise into flows, and the registry is their union.** Agreed: option (a).
+- [ ] **Turns started by writes from other sessions.** Open. Rule 8 lets a definition start a turn when another session writes. A burst of endings (fifty sub-tasks settling at once) must not start fifty turns. Recommend that turns started this way coalesce per session, as a board's notices already do, and that the spec checks fan-out before it is built.
+- [ ] **Cost of the cross-session query.** Open. The decision above weighs session count. Row count may bite first: a user with thousands of open tasks. Recommend paging the across-sessions read from the start, and measuring both on a seeded store before the spec settles the indexes.
+- [ ] **Filesystem store parity.** Open. The SQL stores answer the across-sessions read in one query; the filesystem store walks folders. Recommend the same results and order from both, held by the store conformance suite, so `fsdev run` and tests behave as production does.
 - [ ] **Session state across sessions.** Open. Recommend keeping today's rule: another session reads only the state fields its flow marks readable. State is the flow's working memory. Data meant to be read elsewhere belongs in a resource.
 - [ ] **Tenants inside per-user data.** Punted. A tenant is a customer of an app that hosts many customers on one install, a level above the org. Per-user data today is keyed by user and org, not tenant, and Workforce puts the tenant into its row ids by hand. Out of scope here, but the gap is real.
 - [ ] **Moving existing data.** Punted to the spec. Six per-user collections are keyed by a session-derived value today. Each needs a decision: become per-session, or stay per-user keyed by its subject.
@@ -411,7 +414,7 @@ Every item below exists today because a session couldn't reach another session's
 
 | Target | Today |
 | -- | -- |
-| A block can read or write another session's copy by naming it, within one user | A block resolves only its own session's storage key, or its lineage root for resources marked shared to lineage (`packages/engine/src/context/createExecutionContext.ts:1543-1546`). The only cross-session API for blocks returns a session's flow, its readable state fields, its history and lists. It reaches no resources (`packages/core/src/types/request-host.ts:296-314, 488-516`) |
+| A block can read or write another session's copy by naming it, within one user | A block resolves only its own session's storage key, or its lineage root for resources marked shared to lineage (`packages/engine/src/context/createExecutionContext.ts:1543-1546`). The only general cross-session API for blocks, where the block chooses the session, returns a session's flow, its readable state fields, its history and lists. It reaches no resources (`packages/core/src/types/request-host.ts:296-314, 488-516`). The one exception is narrow: a dispatched request can read and settle the single parent-board row it was started for, at a server-stamped address (`request-host.ts:554-572`) |
 | A resource is registered once by name, and any flow reaches it | A resource is reachable only from a flow that declares it. Same-name clashes are checked across flows at user and org scope, but a lineage space can't see two flows' declarations, which is why a cross-flow child gets its own lineage (`packages/engine/src/context/create-request-host.ts:457-465`) |
 | Blocks and the HTTP API follow the same rule | The HTTP routes already serve any of the user's own sessions after an owner check (`packages/engine/src/routes/route-utils.ts:250-262`). Blocks get less than a browser does |
 | A child reads its parent's data by naming the parent | A same-flow child shares its parent's lineage. A cross-flow child roots its own, because the lineage space has no flow in its key and two flows' declarations would collide there (`packages/engine/src/context/create-request-host.ts:457-475`). Session state is never shared (`packages/core/src/types/resource.ts:254-256`) |
