@@ -27,7 +27,7 @@ mechanism for each and no copies.**
 | **The real need** | A harness that does not drag in the manager, and one answer to "where is this scope's folder" and "what did this run change". It serves goal 4 of `docs/objectives.md`, keep the foundation honest |
 | **Smaller, and rejected** | Moving the `Harness` type only (FIX-2928 alone). The vendor packages lose their manager dependency, but the bash tools and the manager still disagree on folders, and the commit counts still disagree |
 | **Bigger, and not this epic's yet** | Containment attached to the workspace ([FIX-2440](https://linear.app/fixpoint-labs/issue/FIX-2440)) · a task-run layer outside the manager ([FIX-2936](https://linear.app/fixpoint-labs/issue/FIX-2936)) · where GitHub lives ([FIX-2931](https://linear.app/fixpoint-labs/issue/FIX-2931)) · plan mode as read-only access ([FIX-2929](https://linear.app/fixpoint-labs/issue/FIX-2929)). All four are children, held for Jake |
-| **Not done if** | The closure check has not run · `@flow-state-dev/workspace/internal` exists · `WorkspaceConfig` exists · a vendor package depends on harness-manager · two feed types exist · a scope folder's path is built outside the workspace package (source only; tests and comments may still name the path) · `harness-manager/src/commits.ts` exists · a closure bug is open |
+| **Not done if** | The closure check has not run · `@flow-state-dev/workspace/internal` exists · `WorkspaceConfig` exists · a vendor package depends on harness-manager · two feed types exist · a scope folder's path is built outside the workspace package (building it goes through workspace; tests, comments and docs may still name the path) · `harness-manager/src/commits.ts` exists · a closure bug is open |
 
 ```mermaid
 flowchart LR

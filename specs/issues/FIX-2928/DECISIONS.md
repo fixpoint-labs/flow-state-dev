@@ -22,10 +22,11 @@ harness-manager that installs the flow, which is a decision for Jake, not the im
 closure are blocked; the issue is not reshaped around the fallback, since a vendor kit in the
 manager is what the epic's D2 rejects.
 
-**Checked (2026-11-25).** The check passes. With the kit deleted and `claudeCodeHarness()` filled,
-the coder flow serves `observed-file-ops` and `observed-gaps` and no `claude-code` flow exists; an
-integration test pins it (`claude-code-harness-in-the-kit`), and it fails when the block records no
-work. The fallback is not needed.
+**Evidence.** The FIX-2928 PR carries the check as an integration test,
+`packages/integration-tests/src/scenarios/claude-code-harness-in-the-kit.test.ts`: with the kit
+deleted and `claudeCodeHarness()` filled, the coder flow serves `observed-file-ops` and
+`observed-gaps` and no `claude-code` flow exists. Its control is the same test with the block
+recording no work, which must fail. The gate above stands until that PR shows both.
 
 ## D2 · Fields only one runner fills are optional; `worktree` is required and both fill it
 
