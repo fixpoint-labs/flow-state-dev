@@ -10,7 +10,7 @@ This doc describes how scopes and sessions should work. It describes the target 
 
 **A user is always a person, signed in, inside one org.** The framework has no system users.
 
-**The user is the only access boundary.** Nothing that belongs to Alice is ever reachable by Bob. The one way to share is to write to something stored for the whole org.
+**The owner is the only access boundary.** An owner is one user, inside one org, under one tenant when the app has tenants. Nothing that belongs to Alice is ever reachable by Bob, and nothing Alice owns in one org or tenant is reachable from her requests in another. The one way to share is to write to something stored for the whole org.
 
 **A scope is a place to keep a copy, not a lock.** It says how many copies of a resource exist, and which copy "mine" means by default. It never decides who may look.
 
@@ -99,7 +99,9 @@ What it costs, and how each cost is handled:
 
 ## Definitions
 
-A definition is a resource's shape: its name, its scope, and the shape of its data. Every definition is **registered by name** with the installation, the same way blocks will be. Any flow reaches a registered resource by its name. No flow has to import the module that defined it.
+A definition is a resource's shape: its name, its scope, and the shape of its data. Every definition is **registered by name** with the installation, the same way blocks will be. A definition that other flows need to reach, such as a board, is marked **shared**, and any flow reaches it by its name. No flow has to import the module that defined it.
+
+A definition that isn't marked shared stays reachable only from the flows that declare it, and can keep a separate copy per flow instance, as today's flow isolation does. That's where a flow's internal or background state lives: data no other flow's model should be able to pull into its context. A name is not an access check, so reach by name is opt-in.
 
 Registration is where shapes are checked. One name has one definition per installation, and a second, different definition under a taken name is refused when the app starts. Two flows that genuinely need separate data use two names.
 
@@ -109,6 +111,7 @@ A board is the example used throughout:
 
 ```ts
 // Anywhere in the app. Registering it is what makes "work" exist.
+// A board is always a shared definition: other flows reach it by name.
 defineBoard({ name: "work", scope: "session" });
 
 // Any flow, by name: the common board API.
@@ -160,14 +163,16 @@ const launch = boards(ctx, "work", { session: launchChatId });
 const row = launch.get(taskId);
 ```
 
-The server checks one thing: the named session belongs to the user this request runs as. If it doesn't, the call gets nothing, and it gets nothing in the same way when the session doesn't exist, so a caller can't learn which ids are taken. No other permission is involved. Within one user, reaching another session is always allowed.
+The server checks one thing: the named session has the same owner as this request, meaning the same user, the same org and the same tenant, each compared against what the session record stores. Session ids are chosen by callers, so the id proves nothing by itself. A session that fails the check gets nothing, in the same way as one that doesn't exist, so a caller can't learn which ids are taken. That includes Alice's own session in another org: it is answered as missing, not refused. No other permission is involved. Within one owner, reaching another session is always allowed. A child run inherits the org and tenant of the request that started it.
+
+The spec for this check needs a refusal test for each way it can fail: another user, the same user in another org, and the same user under another tenant.
 
 | Question | Answer |
 | -- | -- |
 | Who can do it | Any block running as the same user |
 | What it needs | The session's id, and the resource's registered name |
 | What it reaches | That session's copy of that resource, nothing more |
-| What it can't reach | Another user's sessions, ever |
+| What it can't reach | Another user's sessions, or the same user's sessions in another org or tenant, ever |
 
 ### When to use it
 
@@ -311,11 +316,11 @@ The sessions handle exists today: a block can ask the engine about its user's ot
 A behavior none of these rules explains is a bug in the model.
 
 1. Every request runs as one user, inside one org. The server sets both.
-2. The user is the only access boundary. Nothing of one user's is reachable by another. Sharing means writing to a resource kept per org.
+2. The owner (one user, in one org, under one tenant) is the only access boundary. Nothing of one owner's is reachable by another, including the same user in another org or tenant. Sharing means writing to a resource kept per org.
 3. A scope decides how many copies of a resource exist and which one "mine" means. It never decides who may look.
 4. A block reaches its own copy without naming it.
 5. A block may read or write another session's copy by naming that session and the resource. The server checks only that the session belongs to the same owner (the same user, tenant and org), using the session's stored owner, and answers a session that isn't the user's exactly like one that doesn't exist.
-6. A resource name has one registered definition per installation, and any flow reaches it by that name. A second, different definition under a taken name is refused when the app starts.
+6. A resource name has one registered definition per installation. A second, different definition under a taken name is refused when the app starts. Only a definition marked shared is reachable by name from any flow. Any other definition is reachable only from the flows that declare it, and may keep a separate copy per flow instance.
 7. A write from another session runs the definition's own checks, such as a task's claim, exactly as a local write does. Apart from rule 5's owner check, which is about the user, scope adds no check of its own.
 8. A write from another session notifies the owning session exactly as a local write would. Whether that starts a turn is the definition's call.
 9. An operation that goes over a whole copy (listing, counting, claiming the next task, hearing its changes) goes over one copy: your own, or the one you named. Nothing sweeps every session by accident.
@@ -326,11 +331,11 @@ A behavior none of these rules explains is a bug in the model.
 
 ## Vocabulary
 
-One term, one thing. Retired: lineage (say child session, and name the parent), shared to lineage, partition (say a session's copy), filing session (say the session that filed it, or the parent), board above (say the parent's board), conversation (when it means any session, including a task's: say session), carrier session, flow isolation of per-user data (say a separate name).
+One term, one thing. Retired: lineage (say child session, and name the parent), shared to lineage, partition (say a session's copy), filing session (say the session that filed it, or the parent), board above (say the parent's board), conversation (when it means any session, including a task's: say session), carrier session.
 
 | Term | Means | Turns on |
 | -- | -- | -- |
-| User | A person, signed in, inside one org. The access boundary | |
+| User | A person, signed in, inside one org | |
 | Org | What every user and every shared resource sits inside | |
 | Session | One conversation or piece of work, belonging to one user and running one flow | Owned by one user |
 | Conversation | A session with a person in it, such as the launch chat | |
@@ -343,7 +348,9 @@ One term, one thing. Retired: lineage (say child session, and name the parent), 
 | Filer | The session that filed a task, which hears how it ended | |
 | Installation | One running app with its registry, flows and stores | |
 | Scope | How many copies of a resource exist: per session, per user, per org | Never who may look |
-| Definition | A resource's name, scope and shape, registered once with the installation | One per name |
+| Definition | A resource's name, scope and shape, registered once with the installation | One per name; shared or not |
+| Shared definition | A definition any flow can reach by name, such as a board | Opt-in |
+| Owner | One user, in one org, under one tenant when there are tenants. The access boundary | |
 | Registry | The installation's list of definitions (and, later, blocks) by name | |
 | Copy | One scope's data for one definition, such as the launch chat's work board | Per session, user or org |
 | Your own copy | The copy a block reaches without naming anything | |
@@ -362,12 +369,11 @@ Counts are files that mention the term today: package source, then `docs/` plus 
 | Partition, `partitionBy` | A session's copy | Orchestration's partitioned task collections, the skills collection | 25 / 10 / 0 |
 | Filing session, `filingSessionId` | The parent, or the session that filed it | Workforce session state, the conversation ledger's partition | 32 / 7 / 0 |
 | Board above, `boardAboveOf` | The parent's board | Workforce conversation board | 9 / 0 / 0 |
-| Flow isolation, `flowIsolation`, `isolateUserState` | A separate name, when two flows really need separate data | The resource option and the flow flags | 83 / 56 / 1, and 53 / 36 / 1 |
 | Routed session record | The workstream session's own state | Workforce `routed-session.ts` | 4 / 0 / 0 |
 | Task chain record, `taskChain` | Depth and count read from the parent links | Workforce `chain.ts`, child state | 12 / 12 / 0 |
 | Carrier session | A query across sessions | Shift Manager's cross-conversation board read (`carrier` in `reads.ts`) | 1 / 0 / 0 |
 
-`flowIsolation` is retired once each of its uses is checked. A per-user resource that two flows really must keep apart gets two names.
+Flow isolation is not retired. A definition that isn't marked shared keeps it, so a flow's private per-user or per-org state stays out of other flows, and two instances of one flow keep separate copies. Only the case where it was forced off so another flow could reach a task board goes, because shared definitions now cover that.
 
 ## Decisions
 
@@ -404,7 +410,7 @@ Every item below exists today because a session couldn't reach another session's
 | Cross-session views | Shift Manager's carrier read, the coding board recomputing a partition, the Inbox reading every conversation's tasks | One query across the user's sessions | about 45 lines in Shift Manager, about 20 in the coding board, and the ledger read in the Inbox view |
 | Prefix reads | Stores scan the whole user scope and filter by an encoded prefix | Indexed key parts (rule 12) | the prefix query in each SQL store |
 
-**What I estimate it removes.** Roughly 1,500 to 1,800 lines of package source: about 1,200 in files that go whole (`partition.ts`, `find-task-partitions.ts`, `lineage-scope.ts`, `session-fields.ts`, `board-above.ts`, `filing-session.ts`, `routed-session.ts`, `chain.ts`), plus 300 to 600 in the parts of other files that carry their values, which is the less certain number. That doesn't include tests. 75 test files touch lineage, partitions, filing-session values or chain records, and most of those tests exist only to prove a workaround holds. It also retires nine terms and four options: `sharedToLineage`, `partitionBy`, forced `flowIsolation`, and the partition-reading `readFor`.
+**What I estimate it removes.** Roughly 1,500 to 1,800 lines of package source: about 1,200 in files that go whole (`partition.ts`, `find-task-partitions.ts`, `lineage-scope.ts`, `session-fields.ts`, `board-above.ts`, `filing-session.ts`, `routed-session.ts`, `chain.ts`), plus 300 to 600 in the parts of other files that carry their values, which is the less certain number. That doesn't include tests. 75 test files touch lineage, partitions, filing-session values or chain records, and most of those tests exist only to prove a workaround holds. It also retires eight terms and three options: `sharedToLineage`, `partitionBy` and the partition-reading `readFor`, plus the places that force flow isolation off for task boards.
 
 **What it doesn't count.** The task board cleanup that this unlocks is separate and bigger: one board per session instead of the delegation and plan stores, a parent link instead of three copies of it, and the rules that exist because of two stores (`plan.ts` alone is 526 lines). The estimate above covers only what the scope change removes by itself.
 
