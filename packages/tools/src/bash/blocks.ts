@@ -20,12 +20,11 @@
  * ```ts
  * import { createBashBlocks } from "@flow-state-dev/tools/bash";
  *
- * // Zero config — discovers whatever collections are installed on the block.
- * const { bashCommand } = createBashBlocks({
- *   provider: { type: "local" },
- * });
+ * // Zero config — the just-bash emulator, mounting whatever collections are
+ * // installed on the block.
+ * const { bashCommand } = createBashBlocks();
  *
- * // Or narrow explicitly:
+ * // The host shell is an explicit choice. Narrow the mounts explicitly too:
  * const { bashCommand } = createBashBlocks({
  *   provider: { type: "local" },
  *   collections: ["artifacts", { key: "skills", writable: false }],
@@ -93,7 +92,11 @@ export interface CreateBashBlocksOptions {
    */
   exclude?: string[];
 
-  /** Sandbox provider. Default: `{ type: "local" }`. */
+  /**
+   * Sandbox provider. Default: `{ type: "just-bash" }`, the in-process
+   * emulator. The host shell (`{ type: "local" }`) runs real commands on the
+   * host and is only ever an explicit choice.
+   */
   provider?: SandboxProvider;
 
   /**
@@ -739,7 +742,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   const {
     collections,
     exclude,
-    provider = { type: "local" },
+    provider = { type: "just-bash" },
     destination = defaultDestinationFor(options.provider),
     createState = () => ({}),
   } = options;

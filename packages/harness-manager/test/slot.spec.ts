@@ -12,6 +12,7 @@
  * flow. Duplicating that here would be a second copy of a suite, not a second
  * thing tested.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,7 @@ import { defineCapability, defineResourceCollection, handler } from "@flow-state
 import { harnessRunInputSchema, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { harnessManager, RUNS, type HarnessFeeds } from "../src";
+import { harnessManager, RUNS } from "../src";
 import { joinIdentity, tenantSegment } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 

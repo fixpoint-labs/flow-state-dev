@@ -205,6 +205,7 @@ export { SLASH_COMMAND_PATTERN } from "../helpers/slash-command";
 export { assertEvaluatorBlock } from "../blocks/evaluator";
 export { createBindingCache } from "../bindings";
 export { errorDetailsWithCause } from "../errors";
+export { serializeError } from "../errors/serialize-error";
 export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
 // FIX-2894: a delegate's task input, as `listDelegates` shows it to a model.
 export { inlinedJsonSchema } from "../helpers/inlined-json-schema";

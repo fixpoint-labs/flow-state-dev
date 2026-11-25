@@ -3,10 +3,10 @@ import { EllipsisIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { useAppClient, useConversation, useConversationCalls } from "../app";
+import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { BotStatus, Look } from "../lib/looks";
-import { displayName, roleOf, useWorkforce } from "../lib/roster";
+import { displayName, settingOf, useWorkforce } from "../lib/roster";
 import { dayLabel } from "../lib/day-label";
 import { answeringStep, PLAIN, useStatus } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
@@ -24,6 +24,10 @@ import { LoadEarlier } from "./LoadEarlier";
 import { LineContext, stillRunningLine, type LineContextValue } from "./flow-state/conversation-lines";
 import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
+import { WaitingCard } from "./WaitingCard";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { taskStatus, workerOf } from "../lib/task";
 
 /** A borderless button in the conversation's header. */
 const HEADER_BUTTON =
@@ -42,12 +46,6 @@ const PILL: Record<BotStatus, string> = {
   idle: "bg-muted text-text-2",
 };
 const DOT: Record<BotStatus, string> = { running: "bg-brand", needs: "bg-attention-foreground", done: "bg-success", queued: "border border-dashed border-current", idle: "bg-presence-idle" };
-
-/** A teammate's own string setting (`model`), or `undefined` when it follows the lab's. */
-const settingOf = (worker: RosterEntry, key: string): string | undefined => {
-  const value = worker.settings[key];
-  return typeof value === "string" ? value : undefined;
-};
 
 /** The ids of the messages the worker's sent lines sent. */
 const sentIds = (lines: readonly ItemLine[]) =>
@@ -163,6 +161,7 @@ export function Conversation({
   // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
   const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
   const workerName = displayName(worker);
+  const model = settingOf(worker, "model") ?? context?.model;
   const backgroundRunning = view?.backgroundRunning ?? undefined;
   const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
   const names = useLinesNames(nameOf, lookOf, isCoding);
@@ -189,6 +188,24 @@ export function Conversation({
   );
 
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
+  // What the conversation's tasks wait on you for, each a card where it was asked; one you answered here keeps its line.
+  const tasks = useTasks(sessionId).value;
+  // Kept with the conversation they were given in: switching teammates shows none of another's.
+  const [given, setGiven] = useState<{ session: string; all: Readonly<Record<string, Answered>> }>({ session: sessionId, all: {} });
+  const answers = given.session === sessionId ? given.all : NONE_ANSWERED;
+  const waiting = useMemo(() => waitingCards(tasks ?? [], answers, lines), [tasks, answers, lines]);
+  const card = (w: Waiting) => (
+    <WaitingCard
+      key={w.key}
+      task={w.task}
+      hold={w.hold}
+      sessionId={sessionId}
+      who={isCoding(workerOf(w.task)) ? "The coding task" : nameOf(workerOf(w.task))}
+      answered={answers[w.key]?.line}
+      onAnswered={(line) => setGiven((was) => ({ session: sessionId, all: { ...(was.session === sessionId ? was.all : {}), [w.key]: { line, openedAt: w.openedAt, task: w.task } } }))}
+      onOpen={() => onOpen({ kind: "task", sessionId, taskId: w.task.id })}
+    />
+  );
   // The first drawn line of each day, and its day's label.
   const days = useMemo(() => dayBreaks(drawn), [drawn]);
   // A lost feed may be out of date: the bot and the pill both drop to idle, the words stay, dimmed.
@@ -205,7 +222,8 @@ export function Conversation({
             {/* Drawn while empty too (before the first read), hidden: what reads the line finds it from the start. */}
             {(
               <span
-                hidden={status.text === ""}
+                // What waits on you is a card in the conversation, never a banner here: the rail and the task panel say it waits.
+                hidden={status.text === "" || status.needsYou}
                 className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", failed ? cn("bg-(--redbg)", status.tone) : PILL[shown], stale && STALE_CLASS)}
                 data-header-status
                 data-state={shown}
@@ -256,17 +274,17 @@ export function Conversation({
               </div>
             )}
           </div>
-          {roleOf(worker) === "" ? null : (
-            <p className="truncate text-sm text-text-2" title={roleOf(worker)}>
-              {roleOf(worker)}
+          {worker.description ? (
+            <p className="truncate text-sm text-text-2" title={worker.description}>
+              {worker.description}
             </p>
-          )}
+          ) : null}
           {onRecheck === undefined ? null : (
             <ContextStrip
               context={context}
               harnesses={harnesses}
               onRecheck={onRecheck}
-              model={settingOf(worker, "model") ?? context?.model}
+              model={model}
               harness={context?.harness}
             />
           )}
@@ -281,7 +299,7 @@ export function Conversation({
         <EditForm
           name={displayName(worker)}
           choices={{ models: context?.models }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
+          current={{ model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
@@ -347,7 +365,9 @@ export function Conversation({
                 </ul>
               </div>
             ) : null}
-            {lines.map((line, i) => (
+            {/* One keyed list, so a card stays mounted (and keeps your draft) when a new line moves it. */}
+            {lines.flatMap((line, i) => [
+              ...waiting.filter((w) => w.at === i).map(card),
               <Fragment key={line.id}>
                 {days.get(line.id) === undefined ? null : <Divider label={days.get(line.id)!} data-day="" />}
                 {i === markAt && mark ? (
@@ -361,8 +381,8 @@ export function Conversation({
                 >
                   <Line line={line} />
                 </div>
-              </Fragment>
-            ))}
+              </Fragment>,
+            ]).concat(waiting.filter((w) => w.at === lines.length).map(card))}
             {answering ? (
               <div role="status" data-chat-activity className={cn("w-fit rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
@@ -397,7 +417,7 @@ export function Conversation({
         harnesses={harnesses}
         // The lab's default coder, where Lead starts coding work; the teammate's own model when it has one set (in Edit teammate), else the lab's.
         defaultHarness={context?.harness}
-        replyModel={settingOf(worker, "model") ?? context?.model}
+        replyModel={model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
@@ -426,4 +446,33 @@ function dayBreaks(lines: readonly ItemLine[], now: number = Date.now()): Map<st
     last = day;
   }
   return breaks;
+}
+
+/** No answers given yet: one object, so the cards' read doesn't change for a new empty one. */
+const NONE_ANSWERED: Readonly<Record<string, Answered>> = {};
+
+/** A card's hold you answered here: the line it keeps, and where it stood. */
+type Answered = { line: string; openedAt: number; task: CodingBoardTask };
+
+/** One card in the conversation: the task, its open hold (none once answered), when it was asked, and the line index it is drawn before. */
+type Waiting = { key: string; task: CodingBoardTask; hold: InboxHold | undefined; openedAt: number; at: number };
+
+/**
+ * The cards the conversation draws for what its tasks wait on you for: each
+ * open hold of each running task, and each hold answered here, drawn before the
+ * first line written after it was asked (at the end when none was).
+ */
+function waitingCards(tasks: readonly CodingBoardTask[], answers: Readonly<Record<string, Answered>>, lines: readonly ItemLine[]): Waiting[] {
+  const open = tasks.flatMap((task) =>
+    taskStatus(task) === "running" ? task.asks.map((hold) => ({ key: `${task.id}:${hold.id}`, task, hold: hold as InboxHold, openedAt: hold.openedAt })) : [],
+  );
+  const done = Object.entries(answers)
+    .filter(([key]) => !open.some((w) => w.key === key))
+    .map(([key, a]) => ({ key, task: a.task, hold: undefined, openedAt: a.openedAt }));
+  return [...open, ...done]
+    .map((w) => {
+      const at = lines.findIndex((line) => (lineTime(line) ?? 0) > w.openedAt);
+      return { ...w, at: at < 0 ? lines.length : at };
+    })
+    .sort((a, b) => a.openedAt - b.openedAt);
 }

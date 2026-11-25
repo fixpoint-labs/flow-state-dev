@@ -45,7 +45,7 @@ export interface SessionRepositorySourceOptions {
  */
 export function sessionRepositorySource(options: SessionRepositorySourceOptions): RunSource {
   return async (ctx) => {
-    const repository = (ctx.session.state as Record<string, unknown> | undefined)?.[options.field];
+    const repository = ctx.session.state?.[options.field];
     if (typeof repository !== "string") {
       return { kind: "refused", reason: "no-repository", message: "This session works in no repository. Open a new session on one." };
     }
