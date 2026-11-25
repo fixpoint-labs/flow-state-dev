@@ -8,7 +8,7 @@
 |---|---|---|
 | **builds its own harness** | Imports `Harness` from harness-manager, so it pulls in the whole manager, workforce and orchestration to get one type. Reaches into `@flow-state-dev/workspace/internal` for a private temp folder | Imports the harness type and its feeds from `@flow-state-dev/core/harness`, and folders, locks and temp roots from `@flow-state-dev/workspace`'s one export |
 | **points the manager at a local repository** | Picks between `WorkspaceConfig` and `WorkspaceHost`, or copies a five-field `localWorkspaceHost({…})` setup that exists in five places | Calls one helper that returns a `WorkspaceHost`. The manager takes only a host |
-| **gives an agent bash over a scope** | Gets a folder under `.fsdev/workspaces/{scope}/{id}` from rules that live only in the bash module, beside a second set of path rules in harness-manager | Gets the same folder from one rule in the workspace package, which the harness manager's checkout paths also use |
+| **gives an agent bash over a scope** | Gets a folder under `.fsdev/workspaces/{scope}/{id}` from rules that live only in the bash module, beside a second set of path rules in harness-manager | Gets the same folder from one rule in the workspace package; the harness manager's checkout paths come from the same package, through their own encoder |
 | **reads what a run changed** | Sees one commit count on the worktrees list and another on the review card for a run that merged its moved-on base | Sees one count everywhere, from one reader in the workspace package |
 
 **Why now.** We are about to build our own harness and to settle containment
