@@ -17,6 +17,8 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
     const pages: FetchResult[] = [];
 
     while (queue.length > 0 && pages.length < options.maxPages) {
+      // A cancelled run ends the crawl instead of skipping every page left.
+      options.signal?.throwIfAborted();
       const entry = queue.shift()!;
       const normalized = normalizeUrl(entry.url);
 
@@ -43,14 +45,15 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
         // crawled markup, so without this a public page can walk the crawler
         // into loopback or a metadata service. A blocked URL throws and is
         // skipped by the surrounding catch, like any other unreachable page.
-        const { response } = await fetchValidated(entry.url);
+        const { response, body: html } = await fetchValidated(entry.url, {
+          signal: options.signal,
+        });
 
         if (!response.ok) continue;
 
         const contentType = response.headers.get("content-type") ?? "";
         if (!contentType.includes("text/html")) continue;
 
-        const html = await response.text();
         const parsed = htmlToMarkdown(html, entry.url);
 
         pages.push({

@@ -3,42 +3,42 @@ import { htmlToMarkdown } from "../../_internal/html-to-markdown";
 import {
   blockedUrlFetchError,
   httpFetchError,
-  readTruncatedBody,
+  responseTooLargeFetchError,
   transportFetchError,
+  truncateBody,
 } from "../errors";
 import { BlockedUrlError } from "../../_internal/public-url";
-import { fetchValidated } from "../../_internal/fetch-validated";
+import { fetchValidated, ResponseTooLargeError } from "../../_internal/fetch-validated";
 
 export const builtinFetchAdapter: FetchProviderAdapter = {
   name: "builtin",
-  async fetch(url, _options): Promise<FetchResult> {
+  async fetch(url, options): Promise<FetchResult> {
     let response: Response;
     let finalUrl: string;
+    let body: string;
 
     try {
-      ({ response, finalUrl } = await fetchValidated(url));
+      ({ response, finalUrl, body } = await fetchValidated(url, { signal: options.signal }));
     } catch (cause) {
       // A blocked destination is a policy refusal — permanent, so non-retryable,
-      // and its own `errorType` rather than a transport class. Everything else
-      // — the guard's DNS lookup, the socket, an over-long redirect chain — is a
-      // transport failure and keeps the shaping callers already expect, so
-      // `ENOTFOUND`/`EAI_AGAIN` still classify as network and stay retryable.
+      // and its own `errorType` rather than a transport class. So is a body past
+      // the byte cap. Everything else — DNS, the socket, the deadline, an
+      // over-long redirect chain — is a transport failure and keeps the shaping
+      // callers already expect, so `ENOTFOUND`/`EAI_AGAIN` still classify as
+      // network and stay retryable.
       if (cause instanceof BlockedUrlError) throw blockedUrlFetchError("builtin", url, cause);
+      if (cause instanceof ResponseTooLargeError) {
+        throw responseTooLargeFetchError("builtin", url, cause);
+      }
       throw transportFetchError("builtin", url, cause);
     }
 
     if (!response.ok) {
-      throw httpFetchError(
-        "builtin",
-        finalUrl,
-        response,
-        await readTruncatedBody(response),
-      );
+      throw httpFetchError("builtin", finalUrl, response, truncateBody(body));
     }
 
-    const html = await response.text();
     const contentType = response.headers.get("content-type") ?? "text/html";
-    const parsed = htmlToMarkdown(html, finalUrl);
+    const parsed = htmlToMarkdown(body, finalUrl);
 
     return {
       url: finalUrl,

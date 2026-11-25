@@ -7,15 +7,16 @@
  * request forgery surface. Hosted providers (Firecrawl, Jina) are exempt: they
  * call a vendor API and never open a socket to the target from here.
  *
- * Known limitation — DNS rebinding. The guard resolves the hostname and then
- * hands the hostname to `fetch`, which resolves it again when it connects. A
- * short-TTL record can answer public here and private there. Closing that means
- * pinning the connection to the validated address (an undici `Agent` with a
- * custom `connect.lookup`) while preserving Host/SNI, which is a larger change
- * than this guard. Literal-IP and open-redirect SSRF are covered; rebinding is
- * not.
+ * The check has two halves. {@link assertPublicHttpUrl} judges what the URL
+ * alone shows: scheme, credentials, `localhost`, and literal IPs (a literal
+ * never reaches a resolver). {@link publicAddressLookup} judges a hostname, and
+ * it runs as the socket's own `lookup`, so the address it approves is the
+ * address the connection uses. Resolving once to check and letting the
+ * transport resolve again to connect is what DNS rebinding exploits: a
+ * short-TTL record answers public to the check and private to the connect.
  */
 import { lookup } from "node:dns/promises";
+import type { LookupFunction } from "node:net";
 import { isIP } from "node:net";
 
 /** Injectable for tests; matches the shape of `node:dns/promises`.`lookup`. */
@@ -39,15 +40,15 @@ export class BlockedUrlError extends Error {
   }
 }
 
+const NOT_PUBLIC = "Fetch URL must resolve only to public IP addresses";
+
 /**
- * Resolves `value` and throws {@link BlockedUrlError} unless every address it
- * maps to is publicly routable. Returns the parsed URL so callers can use the
- * normalized form. A DNS lookup failure propagates as the resolver threw it.
+ * Throws {@link BlockedUrlError} unless `value` is an HTTP(S) URL without
+ * credentials whose host is not `localhost` and, if it is a literal IP, is
+ * publicly routable. Returns the parsed URL. A hostname is not resolved here:
+ * {@link publicAddressLookup} checks it when the socket connects.
  */
-export async function assertPublicHttpUrl(
-  value: string,
-  resolve: AddressLookup = lookup as unknown as AddressLookup,
-): Promise<URL> {
+export function assertPublicHttpUrl(value: string): URL {
   let url: URL;
   try {
     url = new URL(value);
@@ -64,19 +65,32 @@ export async function assertPublicHttpUrl(
   }
 
   // `url.hostname` keeps the brackets on an IPv6 literal and may carry the
-  // root-zone trailing dot; strip both before classifying or resolving.
+  // root-zone trailing dot; strip both before classifying.
   const hostname = url.hostname
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
 
   if (hostname === "" || hostname === "localhost" || hostname.endsWith(".localhost")) {
-    throw new BlockedUrlError("Fetch URL must resolve only to public IP addresses");
+    throw new BlockedUrlError(NOT_PUBLIC);
+  }
+  if (isIP(hostname) && !isPublicIp(hostname)) {
+    throw new BlockedUrlError(NOT_PUBLIC);
   }
 
-  const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await resolve(hostname, { all: true, verbatim: true });
+  return url;
+}
+
+/**
+ * Resolves `hostname` and throws {@link BlockedUrlError} unless every address
+ * it maps to is publicly routable. A DNS lookup failure propagates as the
+ * resolver threw it.
+ */
+export async function resolvePublicAddresses(
+  hostname: string,
+  resolve: AddressLookup = lookup as unknown as AddressLookup,
+): Promise<{ address: string; family: number }[]> {
+  const addresses = await resolve(hostname, { all: true, verbatim: true });
 
   // Reject if ANY answer is private: a hostname with mixed A/AAAA records must
   // not be reachable through whichever record the connect path happens to pick.
@@ -84,11 +98,25 @@ export async function assertPublicHttpUrl(
     addresses.length === 0 ||
     addresses.some(({ address }) => !isPublicIp(address))
   ) {
-    throw new BlockedUrlError("Fetch URL must resolve only to public IP addresses");
+    throw new BlockedUrlError(NOT_PUBLIC);
   }
-
-  return url;
+  return addresses.map(({ address }) => ({ address, family: isIP(address) }));
 }
+
+/**
+ * A `net.connect` `lookup` that only ever hands the socket public addresses.
+ * Wired into the built-in providers' dispatcher, so the hostname is resolved
+ * once, checked, and connected to with the same answer.
+ */
+export const publicAddressLookup: LookupFunction = (hostname, options, callback) => {
+  resolvePublicAddresses(hostname).then(
+    (addresses) => {
+      if (options.all) callback(null, addresses);
+      else callback(null, addresses[0].address, addresses[0].family);
+    },
+    (error: NodeJS.ErrnoException) => callback(error, ""),
+  );
+};
 
 /** True when `address` is a publicly routable unicast IPv4 or IPv6 address. */
 export function isPublicIp(address: string): boolean {

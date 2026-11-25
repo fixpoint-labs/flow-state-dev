@@ -16,15 +16,10 @@ describe("builtin crawl adapter", () => {
     const linkTags = links
       .map((l) => `<a href="${l}">link</a>`)
       .join("\n");
-    return {
-      ok: true,
-      status: 200,
-      text: () =>
-        Promise.resolve(
-          `<html><head><title>${url}</title></head><body><p>${body}</p>${linkTags}</body></html>`
-        ),
-      headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
-    };
+    return new Response(
+      `<html><head><title>${url}</title></head><body><p>${body}</p>${linkTags}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }
+    );
   }
 
   it("crawls root page", async () => {
@@ -66,7 +61,7 @@ describe("builtin crawl adapter", () => {
     };
 
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      return Promise.resolve(callMap[url] ?? { ok: false, status: 404, statusText: "Not Found" });
+      return Promise.resolve(callMap[url] ?? new Response("", { status: 404, statusText: "Not Found" }));
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -96,7 +91,7 @@ describe("builtin crawl adapter", () => {
     };
 
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      return Promise.resolve(callMap[url] ?? { ok: false, status: 404, statusText: "Not Found" });
+      return Promise.resolve(callMap[url] ?? new Response("", { status: 404, statusText: "Not Found" }));
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -120,12 +115,9 @@ describe("builtin crawl adapter", () => {
           ])
         );
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve("PDF content"),
-        headers: new Headers({ "content-type": "application/pdf" }),
-      });
+      return Promise.resolve(
+        new Response("PDF content", { headers: { "content-type": "application/pdf" } })
+      );
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -277,16 +269,13 @@ describe("builtin crawl adapter — network boundary", () => {
       if (url === "http://127.0.0.1/") {
         throw new Error("crawler opened a socket to a private address");
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () =>
-          Promise.resolve(
-            `<html><head><title>Root</title></head><body><p>Root page body text</p>` +
-              `<a href="http://127.0.0.1/">internal</a></body></html>`
-          ),
-        headers: new Headers({ "content-type": "text/html" }),
-      });
+      return Promise.resolve(
+        new Response(
+          `<html><head><title>Root</title></head><body><p>Root page body text</p>` +
+            `<a href="http://127.0.0.1/">internal</a></body></html>`,
+          { headers: { "content-type": "text/html" } }
+        )
+      );
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com/", {
