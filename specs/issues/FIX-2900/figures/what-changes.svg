@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Before and after for a turn on a task whose pull request merged. Before: the manager tells the harness only through the prompt, and Claude Code, Codex and Cursor each run with edit, shell, push and gh. After: the manager also feeds access read-only through a trusted feed. Claude Code is offered Read, Grep and Glob in dontAsk mode. Codex runs in its read-only sandbox: reads and git log work, writes and the network are refused. Cursor is offered reading tools only. A harness that never declared enforcesReadOnly gets no run. A turn on an open pull request gets access full, which is today's options unchanged."
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after for a turn on a task whose pull request merged. Before: the manager tells the harness only through the prompt, and Claude Code, Codex and Cursor each run with edit, shell, push and gh. After: the manager also feeds access read-only through a trusted feed. Claude Code is offered Read, Grep and Glob in dontAsk mode, and loads no settings, hooks or MCP servers from the checkout. Codex runs in its read-only sandbox: reads and git log work, writes and the network are refused. Cursor is offered reading tools only. A harness that never declared enforcesReadOnly gets no run. A turn on an open pull request gets access full, which is today's options unchanged."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -57,7 +57,8 @@
 
     <rect class="n-ok" x="664" y="36" width="260" height="56" rx="5"/>
     <text class="t-b" x="678" y="58">Claude Code</text>
-    <text class="t-good" x="678" y="78">Read · Grep · Glob · dontAsk</text>
+    <text class="t-good" x="678" y="75">tools Read · Grep · Glob · dontAsk</text>
+    <text class="t-s" x="678" y="87">no checkout settings, hooks or MCP</text>
 
     <rect class="n-ok" x="664" y="104" width="260" height="70" rx="5"/>
     <text class="t-b" x="678" y="126">Codex</text>
