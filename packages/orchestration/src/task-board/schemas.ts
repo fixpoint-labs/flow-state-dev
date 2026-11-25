@@ -98,7 +98,7 @@ export const taskBoardWorkerBodyStateSchema = z.object({
 });
 
 /** Context of a block running inside the declared worker-body sequencer. */
-export type TaskBoardWorkerBodyContext = BlockContext & {
+export type TaskBoardWorkerBodyContext = Omit<BlockContext, "sequencer"> & {
   sequencer?: StateRef<z.infer<typeof taskBoardWorkerBodyStateSchema>>;
 };
 

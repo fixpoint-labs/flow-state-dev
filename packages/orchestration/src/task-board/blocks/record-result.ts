@@ -330,7 +330,7 @@ async function releaseRow(
 
 export interface RecordSuccessOptions {
   name: string;
-  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  collection: (ctx: TaskBoardWorkerBodyContext) => Promise<TaskCollectionRef>;
   // FIX-963.
   /** Recorder-failure reporting for this settlement site. */
   recorderFailure?: RecorderFailureWiring;
