@@ -33,7 +33,6 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerFlow, workerTaskEntry } from "@flow-state-dev/workforce";
-import { TASK_ID_STATE_KEY } from "../../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../../packages/workforce/src/conversation-board/steer.ts";
 import { claudeCodeHarness, readyHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
@@ -76,9 +75,8 @@ const doorInput = z.object({ message: z.string() });
 
 function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["installation"]) {
   const board = defineSessionBoard({ installation, flowKind: "doer" });
-  const taskOf = (ctx: BlockContext) => (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
-  const rowOf = async (ctx: BlockContext): Promise<Task | undefined> => {
-    const taskId = taskOf(ctx);
+  const sessionStateSchema = z.object(installation.sessionStateShape);
+  const rowOf = async (ctx: BlockContext, taskId: string | undefined): Promise<Task | undefined> => {
     const filing = await filingConversationBoard(ctx);
     return taskId === undefined ? undefined : (filing?.tasks.get(taskId) as Task | undefined);
   };
@@ -88,11 +86,12 @@ function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["insta
   const turn = handler({
     name: "closure-doer-turn",
     inputSchema: doorInput,
+    sessionStateSchema,
     outputSchema: doorInput,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const row = await rowOf(ctx);
-      prove({ kind: "turn", taskId: taskOf(ctx), requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, attempt: row?.attempts, turn: row?.turn, message: input.message });
+    execute: async (input, ctx) => {
+      const { taskId } = ctx.session.state;
+      const row = await rowOf(ctx, taskId);
+      prove({ kind: "turn", taskId, requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, attempt: row?.attempts, turn: row?.turn, message: input.message });
       return input;
     },
   });
@@ -100,26 +99,26 @@ function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["insta
   const work = handler({
     name: "closure-doer-work",
     inputSchema: doorInput,
+    sessionStateSchema,
     outputSchema: doorInput,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      prove({ kind: "work", taskId: taskOf(ctx), requestId: ctx.request.identity.id });
+    execute: async (input, ctx) => {
+      prove({ kind: "work", taskId: ctx.session.state.taskId, requestId: ctx.request.identity.id });
       return input;
     },
   });
   const stop = handler({
     name: "closure-doer-stop",
     inputSchema: doorInput,
+    sessionStateSchema,
     outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const taskId = taskOf(ctx);
+    execute: async (input, ctx) => {
+      const { taskId } = ctx.session.state;
       const kind = stopOf(input.message);
       // A later turn on the same attempt (a steer's) does the work without stopping again.
-      if (kind === undefined || ((await rowOf(ctx))?.turn ?? 1) > 1) return `done ${taskId ?? "no task"}`;
+      if (kind === undefined || ((await rowOf(ctx, taskId))?.turn ?? 1) > 1) return `done ${taskId ?? "no task"}`;
       const deadline = /\[deadline:(\d+)\]/.exec(input.message)?.[1];
       const answer = await ctx.suspendForUser({ kind, prompt: STOPS[kind], ...(deadline === undefined ? {} : { deadline: Number(deadline) }) } as never);
-      const row = await rowOf(ctx);
+      const row = await rowOf(ctx, taskId);
       prove({ kind: "resumed", taskId, stop: kind, requestId: ctx.request.identity.id, attempt: row?.attempts, outcome: answer });
       return { [kind]: answer };
     },
