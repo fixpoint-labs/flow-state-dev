@@ -1,0 +1,162 @@
+<svg viewBox="0 0 940 508" role="img" aria-label="Who owns what: thirteen rules across FIX-2942 named reach, FIX-2943 shared definitions, FIX-2944 indexed keys, FIX-2945 the read across sessions, FIX-2946 boards per session, FIX-2947 children get their work, FIX-2948 per-user keys, FIX-2949 the closure, and the coordinator. Each rule has exactly one owner. FIX-2942 owns ER-1 the owner predicate, ER-2 the cross-session write, ER-3 one copy per sweep. FIX-2943 owns ER-4 opt-in reach and ER-5 one shape per name. FIX-2944 owns ER-6 indexed key segments. FIX-2945 owns ER-7 one view across sessions and ER-8 one change topic. FIX-2946 owns ER-9 the board wrapper and ctx.task.session. FIX-2947 owns ER-10 a child gets its work. FIX-2948 owns ER-11 per-user data keyed by subject. Each child owns ER-12 for its own records and terms. The coordinator owns ER-13. The closure checks ER-1, 2, 6, 7, 8, 10, 11 and 12." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .line { stroke:var(--rule); stroke-width:1; }
+    .o    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u    { fill:var(--accent-soft); }
+    .c    { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="508"/>
+
+  <g id="columns">
+    <text class="t-col" x="368" y="34" text-anchor="middle">2942</text>
+    <text class="t-lbl" x="368" y="50" text-anchor="middle">reach</text>
+    <text class="t-col" x="432" y="34" text-anchor="middle">2943</text>
+    <text class="t-lbl" x="432" y="50" text-anchor="middle">shared</text>
+    <text class="t-col" x="496" y="34" text-anchor="middle">2944</text>
+    <text class="t-lbl" x="496" y="50" text-anchor="middle">keys</text>
+    <text class="t-col" x="560" y="34" text-anchor="middle">2945</text>
+    <text class="t-lbl" x="560" y="50" text-anchor="middle">across</text>
+    <text class="t-col" x="624" y="34" text-anchor="middle">2946</text>
+    <text class="t-lbl" x="624" y="50" text-anchor="middle">boards</text>
+    <text class="t-col" x="688" y="34" text-anchor="middle">2947</text>
+    <text class="t-lbl" x="688" y="50" text-anchor="middle">children</text>
+    <text class="t-col" x="752" y="34" text-anchor="middle">2948</text>
+    <text class="t-lbl" x="752" y="50" text-anchor="middle">per-user</text>
+    <text class="t-col" x="816" y="34" text-anchor="middle">2949</text>
+    <text class="t-lbl" x="816" y="50" text-anchor="middle">closure</text>
+    <text class="t-col" x="880" y="34" text-anchor="middle">Coord.</text>
+    <text class="t-lbl" x="880" y="50" text-anchor="middle">the loop</text>
+    <line class="line" x1="16" y1="60" x2="924" y2="60"/>
+  </g>
+  <g id="er-1">
+    <text class="t-id" x="16" y="82">ER-1</text>
+    <text class="t-b" x="62" y="82">One owner predicate; a miss reads missing</text>
+    <rect class="o" x="340" y="67" width="56" height="20" rx="3"/><text class="t-o" x="368" y="81" text-anchor="middle">owns</text>
+    <rect class="u" x="532" y="67" width="56" height="20" rx="3"/><text class="t-u" x="560" y="81" text-anchor="middle">uses</text>
+    <rect class="u" x="596" y="67" width="56" height="20" rx="3"/><text class="t-u" x="624" y="81" text-anchor="middle">uses</text>
+    <rect class="c" x="788" y="67" width="56" height="20" rx="3"/><text class="t-u" x="816" y="81" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="92" x2="924" y2="92"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="112">ER-2</text>
+    <text class="t-b" x="62" y="112">A cross-session write: checks, notice</text>
+    <rect class="o" x="340" y="97" width="56" height="20" rx="3"/><text class="t-o" x="368" y="111" text-anchor="middle">owns</text>
+    <rect class="u" x="596" y="97" width="56" height="20" rx="3"/><text class="t-u" x="624" y="111" text-anchor="middle">uses</text>
+    <rect class="c" x="788" y="97" width="56" height="20" rx="3"/><text class="t-u" x="816" y="111" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="122" x2="924" y2="122"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="142">ER-3</text>
+    <text class="t-b" x="62" y="142">One copy per sweep, never all</text>
+    <rect class="o" x="340" y="127" width="56" height="20" rx="3"/><text class="t-o" x="368" y="141" text-anchor="middle">owns</text>
+    <rect class="u" x="596" y="127" width="56" height="20" rx="3"/><text class="t-u" x="624" y="141" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="152" x2="924" y2="152"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="172">ER-4</text>
+    <text class="t-b" x="62" y="172">Reach from another flow is opt-in</text>
+    <rect class="o" x="404" y="157" width="56" height="20" rx="3"/><text class="t-o" x="432" y="171" text-anchor="middle">owns</text>
+    <rect class="u" x="596" y="157" width="56" height="20" rx="3"/><text class="t-u" x="624" y="171" text-anchor="middle">uses</text>
+    <rect class="u" x="724" y="157" width="56" height="20" rx="3"/><text class="t-u" x="752" y="171" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="182" x2="924" y2="182"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="202">ER-5</text>
+    <text class="t-b" x="62" y="202">One shape per name; a clash stops start</text>
+    <rect class="o" x="404" y="187" width="56" height="20" rx="3"/><text class="t-o" x="432" y="201" text-anchor="middle">owns</text>
+    <rect class="u" x="532" y="187" width="56" height="20" rx="3"/><text class="t-u" x="560" y="201" text-anchor="middle">uses</text>
+    <rect class="u" x="596" y="187" width="56" height="20" rx="3"/><text class="t-u" x="624" y="201" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="212" x2="924" y2="212"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="232">ER-6</text>
+    <text class="t-b" x="62" y="232">Indexed key segments, no scans</text>
+    <rect class="o" x="468" y="217" width="56" height="20" rx="3"/><text class="t-o" x="496" y="231" text-anchor="middle">owns</text>
+    <rect class="u" x="532" y="217" width="56" height="20" rx="3"/><text class="t-u" x="560" y="231" text-anchor="middle">uses</text>
+    <rect class="u" x="724" y="217" width="56" height="20" rx="3"/><text class="t-u" x="752" y="231" text-anchor="middle">uses</text>
+    <rect class="c" x="788" y="217" width="56" height="20" rx="3"/><text class="t-u" x="816" y="231" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="242" x2="924" y2="242"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="16" y="262">ER-7</text>
+    <text class="t-b" x="62" y="262">Screens see across through one view</text>
+    <rect class="o" x="532" y="247" width="56" height="20" rx="3"/><text class="t-o" x="560" y="261" text-anchor="middle">owns</text>
+    <rect class="u" x="596" y="247" width="56" height="20" rx="3"/><text class="t-u" x="624" y="261" text-anchor="middle">uses</text>
+    <rect class="c" x="788" y="247" width="56" height="20" rx="3"/><text class="t-u" x="816" y="261" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="272" x2="924" y2="272"/>
+  </g>
+  <g id="er-8">
+    <text class="t-id" x="16" y="292">ER-8</text>
+    <text class="t-b" x="62" y="292">One change topic per definition, owner</text>
+    <rect class="o" x="532" y="277" width="56" height="20" rx="3"/><text class="t-o" x="560" y="291" text-anchor="middle">owns</text>
+    <rect class="u" x="596" y="277" width="56" height="20" rx="3"/><text class="t-u" x="624" y="291" text-anchor="middle">uses</text>
+    <rect class="c" x="788" y="277" width="56" height="20" rx="3"/><text class="t-u" x="816" y="291" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="302" x2="924" y2="302"/>
+  </g>
+  <g id="er-9">
+    <text class="t-id" x="16" y="322">ER-9</text>
+    <text class="t-b" x="62" y="322">Boards via boards() and ctx.task.session</text>
+    <rect class="o" x="596" y="307" width="56" height="20" rx="3"/><text class="t-o" x="624" y="321" text-anchor="middle">owns</text>
+    <rect class="u" x="660" y="307" width="56" height="20" rx="3"/><text class="t-u" x="688" y="321" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="er-10">
+    <text class="t-id" x="16" y="352">ER-10</text>
+    <text class="t-b" x="62" y="352">A child gets its work, never copies</text>
+    <rect class="o" x="660" y="337" width="56" height="20" rx="3"/><text class="t-o" x="688" y="351" text-anchor="middle">owns</text>
+    <rect class="c" x="788" y="337" width="56" height="20" rx="3"/><text class="t-u" x="816" y="351" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="362" x2="924" y2="362"/>
+  </g>
+  <g id="er-11">
+    <text class="t-id" x="16" y="382">ER-11</text>
+    <text class="t-b" x="62" y="382">Per-user data keyed by its subject</text>
+    <rect class="o" x="724" y="367" width="56" height="20" rx="3"/><text class="t-o" x="752" y="381" text-anchor="middle">owns</text>
+    <rect class="c" x="788" y="367" width="56" height="20" rx="3"/><text class="t-u" x="816" y="381" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="392" x2="924" y2="392"/>
+  </g>
+  <g id="er-12">
+    <text class="t-id" x="16" y="412">ER-12</text>
+    <text class="t-b" x="62" y="412">Old records readable; terms retired</text>
+    <rect class="o" x="340" y="397" width="440" height="20" rx="3"/>
+    <text class="t-o" x="560" y="411" text-anchor="middle">each child owns its own</text>
+    <rect class="c" x="788" y="397" width="56" height="20" rx="3"/><text class="t-u" x="816" y="411" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="422" x2="924" y2="422"/>
+  </g>
+  <g id="er-13">
+    <text class="t-id" x="16" y="442">ER-13</text>
+    <text class="t-b" x="62" y="442">Consumed issues keep their parents</text>
+    <rect class="o" x="852" y="427" width="56" height="20" rx="3"/><text class="t-o" x="880" y="441" text-anchor="middle">owns</text>
+    <line class="line" x1="16" y1="452" x2="924" y2="452"/>
+  </g>
+  <g id="legend">
+    <rect class="o" x="16" y="474" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="487">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="380" y="474" width="40" height="18" rx="3"/>
+    <text class="t-b" x="428" y="487">uses it · must not decide again</text>
+    <rect class="c" x="680" y="474" width="40" height="18" rx="3"/>
+    <text class="t-b" x="728" y="487">the closure checks it</text>
+  </g>
+</svg>
