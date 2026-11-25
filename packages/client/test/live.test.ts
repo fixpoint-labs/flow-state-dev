@@ -12,7 +12,8 @@
  *   yes costs one read, a false no leaves a screen stale);
  * - a value is reported only when it changed;
  * - a failed read tries again on its own, 1 s doubling to 30 s, and says the
- *   screen is stale until a read lands, with no notice needed (D2);
+ *   screen is stale until a read lands, with no notice needed (D2); a 404
+ *   does not, since what it reads is not there and asking again won't make it;
  * - topics can come from the last result, and an unchanged set never churns;
  * - nothing is reported after `close`.
  *
@@ -21,7 +22,7 @@
  * client's own subscription.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "../src";
+import { ClientHttpError, createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "../src";
 import { liveRead } from "../src/live/live-read";
 import { mayHold, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import { storageRootsOf } from "../src/live/paths";
@@ -338,6 +339,59 @@ describe("liveRead: a failed read recovers on its own", () => {
     await flush();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(at.length - before).toBe(2);
+  });
+
+  it("does not retry a 404 on its own: the screen hears the error and stays stale, and a notice or refresh still reads", async () => {
+    // A 404 is a read of something that is not there (a view the flow never
+    // declared). Retrying it on backoff, every 30 s for as long as the screen is
+    // open, can't make it appear; the error goes to the screen instead.
+    const sub = fakeSubscribe();
+    let reads = 0;
+    const stale: boolean[] = [];
+    const errors: unknown[] = [];
+    const notFound = new ClientHttpError("Request failed (404)", { status: 404, body: { error: "not found" } });
+    const live = liveRead(sub.subscribe, [{ scope: "user" }], {
+      read: async () => {
+        reads += 1;
+        throw notFound;
+      },
+      onStale: (value) => stale.push(value),
+      onError: (error) => errors.push(error),
+      pollIntervalMs: null
+    });
+    await flush();
+    expect(errors).toEqual([notFound]);
+    expect(stale).toEqual([true]);
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reads).toBe(1);
+
+    // Something that may have created it still reads.
+    sub.notify(null);
+    await flush();
+    live.refresh();
+    await flush();
+    expect(reads).toBe(3);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reads).toBe(3);
+  });
+
+  it("still retries any other failed request, a 500 or a request that never got an answer", async () => {
+    for (const status of [500, 0]) {
+      const sub = fakeSubscribe();
+      let reads = 0;
+      const live = liveRead(sub.subscribe, [{ scope: "user" }], {
+        read: async () => {
+          reads += 1;
+          throw new ClientHttpError("failed", { status, body: null });
+        },
+        pollIntervalMs: null
+      });
+      await flush();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(reads).toBe(2);
+      live.close();
+    }
   });
 
   it("drops a waiting retry on close", async () => {

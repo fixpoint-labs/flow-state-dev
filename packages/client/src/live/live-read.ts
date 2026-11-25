@@ -14,6 +14,9 @@
  * 4. **A failed read** tries again on its own, on the client's backoff (1 s
  *    doubling to 30 s), and the screen hears it is stale until a read lands:
  *    while push is up there is no timer, so nothing else would read again.
+ *    A 404 does not try again on its own: what it reads is not there, and
+ *    asking every 30 s won't make it so. The screen hears the error and stays
+ *    stale; a notice, a tick or `refresh()` still reads.
  *
  * A read may also return the topics to hear next (`topicsFromResult`). When
  * that set changes (deduped and sorted, so an unchanged set never churns) the
@@ -30,6 +33,7 @@
  */
 import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/contracts";
 import { backoffDelay } from "../internal/backoff";
+import { ClientHttpError } from "../types";
 import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
 import { coalesce } from "./coalesce";
 import { hearsNotice, mayHold, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
@@ -54,7 +58,7 @@ export type LiveResult<T> = { value: T; topics: readonly WireTopic[]; hears?: re
 type LiveReadBase<T> = {
   /** Called with each value read, only when it differs (by value) from the last one reported. */
   onValue?: (value: T) => void;
-  /** Called with each failed read's error. The read tries again on its own. */
+  /** Called with each failed read's error. The read tries again on its own, except after a 404. */
   onError?: (error: unknown) => void;
   /** `true` when a read fails, `false` when one lands after it. */
   onStale?: (stale: boolean) => void;
@@ -153,8 +157,11 @@ export function liveRead<T>(
     reported = false;
     last = undefined;
     clearTimeout(retry);
-    retry = setTimeout(() => reads.request(null), backoffDelay(failures));
-    failures += 1;
+    retry = undefined;
+    if (!(error instanceof ClientHttpError && error.status === 404)) {
+      retry = setTimeout(() => reads.request(null), backoffDelay(failures));
+      failures += 1;
+    }
     if (!stale) {
       stale = true;
       onStale?.(true);
