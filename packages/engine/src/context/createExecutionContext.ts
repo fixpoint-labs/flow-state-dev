@@ -3217,6 +3217,7 @@ export async function createExecutionContext<
         : {
             onCommitted: () => publishScopeNotice(scope, "state"),
             // The browser sees the fields the scope exposes, on the stream as in client data.
+            // Expose only, the clientData keys: not clientVisibleStateKeys (expose plus readonly).
             exposedKeys: new Set<string>(flow[scope]?.client?.expose ?? [])
           })
     });

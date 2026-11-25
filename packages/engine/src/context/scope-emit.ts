@@ -85,14 +85,18 @@ type StateChange = {
  * A state change cut down to the fields a client may see. The same `expose`
  * list decides client data (`computeClientData`), so a stream and a snapshot
  * show one view of state. Field-addressed changes (`push`, record writes and
- * deletes, a `patchState(key, updater)`) name the field in `path`: one on an
- * unexposed field keeps its operation and drops its path and delta, so the
- * item still says the scope changed and shows nothing of it. Value deltas
- * keep only exposed keys.
+ * deletes, a `patchState(key, updater)`) pass the literal state key as
+ * `field`, never parsed back out of `path`, since a key may contain a dot:
+ * one on an unexposed field keeps its operation and drops its path and delta,
+ * so the item still says the scope changed and shows nothing of it. Value
+ * deltas keep only exposed keys.
  */
-function projectToExposed(change: StateChange, exposed: ReadonlySet<string>): StateChange {
-  if (change.path !== undefined) {
-    const field = change.path.split(".", 1)[0]!;
+function projectToExposed(
+  change: StateChange,
+  field: string | undefined,
+  exposed: ReadonlySet<string>
+): StateChange {
+  if (field !== undefined) {
     return exposed.has(field) ? change : { operation: change.operation };
   }
   if (change.delta === null || typeof change.delta !== "object") return change;
@@ -162,8 +166,9 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     return { filtered: filtered as Partial<T>, hasNonTransient };
   }
 
-  function emit(change: StateChange): Promise<void> {
-    const params = options.exposedKeys === undefined ? change : projectToExposed(change, options.exposedKeys);
+  /** `field` is the literal state key a field-addressed change wrote. */
+  function emit(change: StateChange, field?: string): Promise<void> {
+    const params = options.exposedKeys === undefined ? change : projectToExposed(change, field, options.exposedKeys);
     return emitStateChangeItem({
       response: options.getResponse(),
       requestId: options.requestId,
@@ -192,7 +197,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
       options.onCommitted?.();
       if (typeof updatesOrKey === "string") {
         if (useTransientFiltering && isTransientKey(updatesOrKey)) return true;
-        await emit({ operation: "patch", path: updatesOrKey, delta: { path: updatesOrKey } });
+        await emit({ operation: "patch", path: updatesOrKey, delta: { path: updatesOrKey } }, updatesOrKey);
         return true;
       }
 
@@ -229,7 +234,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
       if (!committed) return false;
       options.onCommitted?.();
       if (useTransientFiltering && isTransientKey(field)) return true;
-      await emit({ operation: "push", path: field, delta: value });
+      await emit({ operation: "push", path: field, delta: value }, field);
       return true;
     },
     async setStateRecord(field: string, key: string, value: unknown) {
@@ -241,7 +246,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
         operation: "patch",
         path: `${field}.${key}`,
         delta: { [field]: { [key]: value } }
-      });
+      }, field);
       return true;
     },
     async deleteStateRecord(field: string, key: string) {
@@ -253,7 +258,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
         operation: "delete_key",
         path: `${field}.${key}`,
         delta: { [field]: key }
-      });
+      }, field);
       return true;
     },
     async atomicState(mutator: (state: Readonly<TState>) => Partial<TState>) {

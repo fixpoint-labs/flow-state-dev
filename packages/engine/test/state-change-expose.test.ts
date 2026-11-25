@@ -97,7 +97,11 @@ function expectOnlyExposed(body: string): void {
   expect(changes.length).toBeGreaterThan(0);
   const wire = JSON.stringify(changes);
   expect(wire).not.toContain(SECRET);
-  expect(wire).not.toMatch(/internal/);
+  // A change addressed to an unexposed field (push, record write, record
+  // delete) arrives as its operation alone: no path names the field.
+  const fieldAddressed = changes.filter((c) => c.scope === "session" && !("delta" in c));
+  expect(new Set(fieldAddressed.map((c) => c.operation))).toEqual(new Set(["push", "patch", "delete_key"]));
+  for (const change of fieldAddressed) expect(change).not.toHaveProperty("path");
   // The exposed fields still arrive.
   expect(changes).toContainEqual(expect.objectContaining({ scope: "session", operation: "patch", delta: { shown: "shown-1" } }));
   expect(changes).toContainEqual(expect.objectContaining({ scope: "session", operation: "set", delta: { shown: "shown-2", visits: 0 } }));

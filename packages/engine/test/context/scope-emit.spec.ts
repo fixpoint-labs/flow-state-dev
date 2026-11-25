@@ -270,6 +270,66 @@ describe("wrapStateOpsWithEmit", () => {
   });
 });
 
+describe("wrapStateOpsWithEmit with exposedKeys (session, user, org)", () => {
+  type ExposeState = Record<string, any>;
+
+  function buildExposed(initial: ExposeState, expose: string[]) {
+    const container = new MemoryStateContainer<ExposeState>(initial, 0);
+    const res = mockResponse();
+    const ops = wrapStateOpsWithEmit<ExposeState>({
+      scope: "session",
+      baseOps: createScopeStateOps(container),
+      container,
+      getResponse: () => res,
+      requestId: "req-1",
+      nextItemIndex: (() => { let i = 0; return () => ++i; })(),
+      provenance: makeProvenance,
+      transient: false,
+      exposedKeys: new Set(expose),
+    });
+    return { ops, res };
+  }
+
+  it("a value delta keeps only exposed keys", async () => {
+    const { ops, res } = buildExposed({ count: 0, secret: "" }, ["count"]);
+    await ops.patchState({ count: 1, secret: "SECRET" });
+    expect(res.added[0].delta).toEqual({ count: 1 });
+  });
+
+  it("a field-addressed change on an unexposed field keeps only its operation", async () => {
+    const { ops, res } = buildExposed({ tokens: [], notes: {} }, []);
+    await ops.pushState("tokens", "SECRET");
+    await ops.setStateRecord("notes", "k", "SECRET");
+    await ops.deleteStateRecord("notes", "k");
+    expect(res.added.map((i: any) => [i.operation, i.path, i.delta])).toEqual([
+      ["push", undefined, undefined],
+      ["patch", undefined, undefined],
+      ["delete_key", undefined, undefined],
+    ]);
+  });
+
+  it("a field-addressed change on an exposed field streams whole", async () => {
+    const { ops, res } = buildExposed({ notes: {} }, ["notes"]);
+    await ops.setStateRecord("notes", "k", "v");
+    expect(res.added[0]).toMatchObject({ path: "notes.k", delta: { notes: { k: "v" } } });
+  });
+
+  // A state key may contain a dot; the check reads the literal key, not the
+  // text before the first dot of the joined path.
+  it("a dotted unexposed key is not taken for the exposed key before its dot", async () => {
+    const { ops, res } = buildExposed({ public: [], "public.secret": [] }, ["public"]);
+    await ops.pushState("public.secret", "SECRET");
+    expect(res.added[0]).toEqual(expect.objectContaining({ operation: "push" }));
+    expect(JSON.stringify(res.added[0])).not.toContain("SECRET");
+  });
+
+  it("an empty expose list streams no state values", async () => {
+    const { ops, res } = buildExposed({ count: 0 }, []);
+    await ops.patchState({ count: 1 });
+    expect(res.added[0].delta).toEqual({});
+  });
+});
+
 describe("shouldPersistScopeChange", () => {
   it("returns true when persistStateChanges is set on the flow", () => {
     const flow = { persistStateChanges: true } as unknown as FlowInstance;
