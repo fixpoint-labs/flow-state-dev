@@ -1990,7 +1990,7 @@ async function checkBranchPullRequests(ctx: ManagerContext, host: WorkspaceHost,
   // The repository the host pinned for the run's base: `gh` is told it, and never reads the run's checkout.
   // A host that rejects is a host with no pinned repository: this check never throws.
   const repository = await host
-    .pullRequestRepository?.({ cwd: state.workspacePath, baseRef: state.baseRef ?? null })
+    .pullRequestRepository?.({ cwd: state.workspacePath, baseRef: state.baseRef ?? null, remote: state.remote ?? null })
     .catch(() => undefined);
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,

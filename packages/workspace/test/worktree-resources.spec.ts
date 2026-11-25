@@ -420,6 +420,27 @@ describe("the pull requests on the branch", () => {
   });
 });
 
+describe("the repository the branch check asks", () => {
+  it("is the record's remote for a clone of an allowed remote, whatever the run sets the clone's remote to", async () => {
+    const h = localWorkspaceHost({
+      root,
+      remotes: { allow: ["file"] },
+      source: noSource,
+      // The fixture remote is a file URL; it stands for the GitHub repository o/r.
+      pullRequestRepo: (url) => (url === upstream.url ? "github.com/o/r" : undefined),
+    });
+    const place = await h.provision({ kind: "repo", repo: upstream.url }, { place: ["s-clone"], branch: "fsd/s-clone" });
+    const remote = place.repo!.remote;
+    // The clone's config is the run's to write: a remote it adds names another repository.
+    git(place.cwd, "remote", "add", "origin", "https://github.com/someone-else/elsewhere.git");
+    expect(await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null, remote })).toBe("github.com/o/r");
+    // No record of the remote, nothing to ask: the clone's config is never read for it.
+    expect(await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null })).toBeUndefined();
+    // A remote the checkout is not a clone of is not its repository.
+    expect(await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null, remote: createRemote("other").url })).toBeUndefined();
+  });
+});
+
 describe("a row's name", () => {
   it("is a slug of at most 32 then 6 hex, falling back to the place's last segment", () => {
     expect(worktreeName("k", "A".repeat(50), ["x"])).toMatch(/^a{32}-[0-9a-f]{6}$/);

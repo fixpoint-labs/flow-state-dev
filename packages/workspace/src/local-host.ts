@@ -93,7 +93,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { existingPullRequest, landRun, landWays, pullRequestRepository, type ExistingPullRequest, type Landed, type LandRequest, type LandTarget } from "./land";
+import { existingPullRequest, landRun, landWays, pullRequestRepository, repoOf, type ExistingPullRequest, type Landed, type LandRequest, type LandTarget } from "./land";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
@@ -617,10 +617,15 @@ export interface WorkspaceHost {
    * The GitHub repository (`host/owner/name`) a pull request from this
    * checkout would be in: the one its base's pinned remote names, never read
    * from the checkout, which the run can configure. What the turn-end check
-   * (`recordBranchPullRequests`) is told to ask. `undefined` where `landWays`
-   * offers no `pull-request`. Never rejects.
+   * (`recordBranchPullRequests`) is told to ask. For a worktree of a listed
+   * repository, the remote its base's pin names; for a worktree of the
+   * host's clone of a remote, `remote`, the one the run's record names
+   * (`WorkspacePlace.repo.remote`), when it is allowed and the checkout is a
+   * worktree of that remote's clone. `undefined` otherwise. Never rejects.
    */
-  pullRequestRepository?(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined>;
+  pullRequestRepository?(
+    target: Pick<LandTarget, "cwd" | "baseRef"> & { readonly remote?: string | null },
+  ): Promise<string | undefined>;
   /**
    * The commit the run's base branch is at now, fetched from the remote the
    * host pinned: what a pull request from the run's branch would be diffed
@@ -2374,9 +2379,24 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /** `WorkspaceHost.pullRequestRepository`: none where `land` would refuse as `land-unsupported`. */
-  async function repositoryFor(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined> {
+  async function repositoryFor(
+    target: Pick<LandTarget, "cwd" | "baseRef"> & { readonly remote?: string | null },
+  ): Promise<string | undefined> {
     const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
-    return repo === undefined ? undefined : await pullRequestRepository(landHost(repo), target);
+    if (repo !== undefined) return await pullRequestRepository(landHost(repo), target);
+    // A clone of a remote: the record's remote, never the clone's config, which its worktrees share with the run.
+    if (target.remote == null) return undefined;
+    const remote = checkRemote(target.remote, allow);
+    if ("reason" in remote) return undefined;
+    try {
+      const common = async (dir: string) =>
+        realpathSync(await git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS));
+      const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
+      if ((await common(target.cwd)) !== (await common(clone))) return undefined;
+    } catch {
+      return undefined;
+    }
+    return (options.pullRequestRepo ?? repoOf)(target.remote);
   }
 
   /** `WorkspaceHost.baseTip`: the fetched commit `localBase` would compare, and never the local one. */

@@ -194,7 +194,12 @@ export async function recordBranchPullRequests(
     return { status: "unavailable", reason: "no GitHub repository is pinned for this checkout, so GitHub was not asked" };
   }
   // An empty directory, so `gh` reads no repository the run can configure; the ceiling keeps it from climbing out.
-  const ghDir = scratchDir();
+  let ghDir: string;
+  try {
+    ghDir = scratchDir();
+  } catch (err) {
+    return { status: "unavailable", reason: `no empty directory could be made to run gh in: ${reasonOf(err)}` };
+  }
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   let asked: Array<{ branch: string; listed: unknown } | { branch: string; error: string }>;
   try {

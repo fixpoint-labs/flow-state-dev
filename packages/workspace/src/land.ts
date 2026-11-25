@@ -597,7 +597,7 @@ function pushRemote(pins: KeptFetchPins | undefined, resolved: Base): PushRemote
 }
 
 /** `gh`'s `--repo` for a GitHub URL (`host/owner/name`), or `undefined` when it isn't one. */
-function repoOf(url: string): string | undefined {
+export function repoOf(url: string): string | undefined {
   const scp = /^(?:[^@/]+@)?([^:/]+):([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url);
   if (scp !== null && !/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) return `${scp[1]}/${scp[2]}/${scp[3]}`;
   try {

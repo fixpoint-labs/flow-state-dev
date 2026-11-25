@@ -208,4 +208,20 @@ describe("recordBranchPullRequests", () => {
     expect(existsSync(join(gh.path, "..", "calls.log"))).toBe(false);
     expect(collection.rows.size).toBe(0);
   });
+
+  it("hands back why, never a throw, when there is nowhere to make gh's empty directory", async () => {
+    const collection = memoryCollection();
+    const cwd = checkout("notes");
+    const gh = stubGh({ notes: [listed(90, "notes")] });
+    const tmp = process.env.TMPDIR;
+    process.env.TMPDIR = join(cwd, "no", "such", "dir");
+    try {
+      const result = await recordBranchPullRequests(ctxWith(collection), { cwd, gh: gh.path, repository: REPO });
+      expect(result).toEqual({ status: "unavailable", reason: expect.stringMatching(/no empty directory/) });
+    } finally {
+      if (tmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = tmp;
+    }
+    expect(collection.rows.size).toBe(0);
+  });
 });
