@@ -105,6 +105,11 @@ export async function effectiveCut(cwd: string, cut: string | null, tip: string 
  * turn that pushed its own work to the base), one git can't read in `cwd`, or
  * none. Read at the turn's end and kept on its record, so a later read of the
  * turn's changes doesn't depend on where the base has moved since.
+ *
+ * Work the turn itself pushed to the base before its last commit is the
+ * base's by then, and reads as such: git can't tell it from anyone else's
+ * commit on the base, and a pull request from the branch wouldn't show it
+ * either, as {@link effectiveCut} reads a board run.
  */
 export async function mergedBaseOf(cwd: string, base: string, head: string, tip: string | null): Promise<string | null> {
   if (tip === null) return null;
