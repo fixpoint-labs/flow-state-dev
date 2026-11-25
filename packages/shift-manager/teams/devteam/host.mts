@@ -55,6 +55,7 @@ import {
   encodeUserSegment,
   type BlockContext,
   type FlowInstance,
+  type InitialSkill,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
 import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harness";
@@ -136,7 +137,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { defineReadOwnFacts, DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_DATA_TYPE, workerOf } from "./worker-config.mts";
+import { defineReadOwnFacts, INSPECT_ENTRY, WORKER_FACTS_DATA_TYPE, workerOf, workerSettingsSchema } from "./worker-config.mts";
 import { editedTree } from "./edited-tree.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import {
@@ -682,11 +683,7 @@ export interface LabWorkspaceHost {
 }
 
 /** One skill on a worker record, as the loader shapes it. */
-export interface WorkerSkill {
-  name: string;
-  skillMd: string;
-  files?: Array<{ path: string; content: string }>;
-}
+export type WorkerSkill = InitialSkill;
 
 /** Everything a check needs to drive and observe one lab. */
 export interface Lab {
@@ -905,7 +902,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ? redirected
       : {
           ...redirected,
-          skills: options.mutateSkills(redirected.id, (redirected.skills ?? []) as WorkerSkill[]),
+          skills: options.mutateSkills(redirected.id, redirected.skills ?? []),
         };
   });
 
@@ -970,8 +967,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // names none would pass every isolation check trivially, so it never boots.
   for (const worker of workers) {
     const flow = worker.declared.flow;
-    if ((flow === EM_FLOW || flow === CODER_FLOW) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
-      throw new Error(`worker "${worker.id}" runs on "${flow}" and names no \`${DOCUMENT_KEY}:\`; every worker on this flow reads one`);
+    if ((flow === EM_FLOW || flow === CODER_FLOW) && typeof worker.declared.document !== "string") {
+      throw new Error(`worker "${worker.id}" runs on "${flow}" and names no \`document:\`; every worker on this flow reads one`);
     }
   }
 
@@ -1049,7 +1046,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     defaultMode: answer.name,
     // The Lab's own part of every coder: the document it reads, the documents it reads them from, and its inspect read.
     worker: {
-      settings: { [DOCUMENT_KEY]: z.string().min(1).optional() },
+      settings: { document: workerSettingsSchema.shape.document },
       resources,
       actions: (on: WorkerInstallation) => ({
         [INSPECT_ENTRY]: {
