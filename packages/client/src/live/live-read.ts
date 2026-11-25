@@ -158,7 +158,9 @@ export function liveRead<T>(
     last = undefined;
     clearTimeout(retry);
     retry = undefined;
-    if (!(error instanceof ClientHttpError && error.status === 404)) {
+    if (error instanceof ClientHttpError && error.status === 404) {
+      failures = 0;
+    } else {
       retry = setTimeout(() => reads.request(null), backoffDelay(failures));
       failures += 1;
     }

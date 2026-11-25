@@ -342,9 +342,6 @@ describe("liveRead: a failed read recovers on its own", () => {
   });
 
   it("does not retry a 404 on its own: the screen hears the error and stays stale, and a notice or refresh still reads", async () => {
-    // A 404 is a read of something that is not there (a view the flow never
-    // declared). Retrying it on backoff, every 30 s for as long as the screen is
-    // open, can't make it appear; the error goes to the screen instead.
     const sub = fakeSubscribe();
     let reads = 0;
     const stale: boolean[] = [];
@@ -392,6 +389,27 @@ describe("liveRead: a failed read recovers on its own", () => {
       expect(reads).toBe(2);
       live.close();
     }
+  });
+
+  it("starts the backoff over after a 404, so the next failure retries at 1 s again", async () => {
+    const sub = fakeSubscribe();
+    const statuses = [500, 500, 404, 500];
+    let reads = 0;
+    liveRead(sub.subscribe, [{ scope: "user" }], {
+      read: async () => {
+        const status = statuses[reads] ?? 500;
+        reads += 1;
+        throw new ClientHttpError("failed", { status, body: null });
+      },
+      pollIntervalMs: null
+    });
+    await vi.advanceTimersByTimeAsync(1_000 + 2_000);
+    expect(reads).toBe(3);
+    sub.notify(null);
+    await flush();
+    expect(reads).toBe(4);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(reads).toBe(5);
   });
 
   it("drops a waiting retry on close", async () => {
