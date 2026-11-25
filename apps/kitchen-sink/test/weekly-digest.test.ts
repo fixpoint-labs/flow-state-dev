@@ -12,7 +12,7 @@ it("reschedules the same digest and removes its index entry when cleared", async
   const upsert = vi.spyOn(scheduleIndex, "upsert");
   const remove = vi.spyOn(scheduleIndex, "remove");
   for (const cron of ["0 9 * * 1", "0 15 * * 5"]) {
-    const result = await testFlow({ ...run, action: "scheduleDigest", input: { cron, enabled: false } });
+    const result = await testFlow({ ...run, action: "scheduleDigest", input: { cron } });
     expect(result.output).toEqual({ key: "digest" });
     expect(upsert).toHaveBeenLastCalledWith(expect.objectContaining({ key: "digest", cron }));
   }

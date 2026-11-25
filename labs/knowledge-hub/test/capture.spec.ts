@@ -50,7 +50,8 @@ describe("logActivity", () => {
       kind: "task",
       content: "Book dentist appointment",
       situation: "Mentioned while planning the week in a Claude conversation",
-      status: "swept", // Only the sweeper may set this field.
+      // The action input schema strips these server-owned fields.
+      status: "swept",
       fingerprint: "caller-supplied",
     });
 
