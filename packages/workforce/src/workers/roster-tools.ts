@@ -70,8 +70,8 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
   const blocks = createWorkerHireBlocks(installation, checks);
 
   // Every check the write makes, then the user's yes. Reject throws out of the tool before the write.
-  const askHire = handler({
-    name: "workforce-hire-ask",
+  const confirmHire = handler({
+    name: "workforce-hire-confirm",
     inputSchema: blocks.hire.inputSchema,
     outputSchema: z.void(),
     resources: { ...installation.resources },
@@ -93,8 +93,8 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     }
   });
 
-  const askFire = handler({
-    name: "workforce-fire-ask",
+  const confirmFire = handler({
+    name: "workforce-fire-confirm",
     inputSchema: blocks.fire.inputSchema,
     outputSchema: z.void(),
     resources: { ...installation.resources },
@@ -118,7 +118,7 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     inputSchema: blocks.hire.inputSchema,
     outputSchema: blocks.hire.outputSchema
   })
-    .tap(askHire)
+    .tap(confirmHire)
     .step(blocks.hire);
 
   const fire = sequencer({
@@ -127,7 +127,7 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     inputSchema: blocks.fire.inputSchema,
     outputSchema: blocks.fire.outputSchema
   })
-    .tap(askFire)
+    .tap(confirmFire)
     .step(blocks.fire);
 
   return defineCapability({
