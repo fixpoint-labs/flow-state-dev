@@ -76,7 +76,7 @@ export function claudeCodeEnv(
 /** What a Claude Code run loads from the repository: its setting sources and a settings layer above them. */
 export interface ClaudeCodeRepoOptions {
   readonly settingSources: ["project"] | [];
-  readonly settings?: { readonly disableAllHooks: true };
+  readonly settings?: { readonly disableAllHooks: boolean };
 }
 
 /**
@@ -85,14 +85,13 @@ export interface ClaudeCodeRepoOptions {
  * settings, `CLAUDE.md` and skills, with a settings layer above them that turns
  * every hook off. Never the operator's own user settings.
  *
- * The goal control `hooks-on` drops the layer, so the goal leg that no hook
- * runs can be seen to fail.
+ * The goal control `hooks-on` asks for the hooks (`disableAllHooks: false`;
+ * leaving the layer out would still run with them off), so the goal leg that
+ * no hook runs can be seen to fail.
  */
 export function claudeCodeRepoOptions(trust: HarnessTrust = harnessTrust()): ClaudeCodeRepoOptions {
   if (!trust.trusted) return { settingSources: [] };
-  return goalControl() === "hooks-on"
-    ? { settingSources: ["project"] }
-    : { settingSources: ["project"], settings: { disableAllHooks: true } };
+  return { settingSources: ["project"], settings: { disableAllHooks: goalControl() !== "hooks-on" } };
 }
 
 /** The header's line for a Claude Code session, read off the options its run gets. */
