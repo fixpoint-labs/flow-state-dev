@@ -226,6 +226,7 @@ export function claimHost(options: HostOptions) {
 
   const seen: SeenRun[] = [];
   const answersSeen: Array<string | null | undefined> = [];
+  const host = localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 });
   const manager = harnessManager({
     ...(options.mode === "fixed"
       ? { boardCollectionId: FIXED_BOARD, boardCollection: fixedLedger }
@@ -251,10 +252,7 @@ export function claimHost(options: HostOptions) {
         },
       },
     },
-    workspace:
-      options.baseTip === undefined
-        ? localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 })
-        : { ...localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
+    workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
