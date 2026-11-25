@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="Two task lines, before and after. Before: PR open, number 7, and the hint Merged? Say so here and I'll check, the same for every task. After, three lines: a polled task reads Checked 3 min ago, every 5 min; one followed with no poll reads Not checked on a schedule; one nothing follows reads Not checked automatically: send a message to check now. Under them, the path: the poll fire stamps its own record on every answer from GitHub; the routines view's event row carries the follow's task and the poll's time and interval; the host's line watches that view, filtered by task."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .ask   { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .acc   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .ext   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-q   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">WHAT CHANGES</text>
+  <text class="t-q" x="32" y="52">A waiting task says whether, how often and when its pull request was checked</text>
+
+  <g id="today">
+    <text class="t-lbl" x="32" y="90">TODAY · EVERY WAITING TASK</text>
+    <rect class="n-box" x="32" y="100" width="400" height="58" rx="5"/>
+    <text class="t-b" x="48" y="124">PR open · #7</text>
+    <text class="t-s" x="48" y="144">Merged? Say so here and I'll check.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="476" y="90">AFTER · ONE OF THREE</text>
+    <rect class="new" x="476" y="100" width="432" height="40" rx="5"/>
+    <text class="t-b" x="492" y="124">PR open · #7</text>
+    <text class="t-c" x="590" y="124">Checked 3 min ago · every 5 min</text>
+    <rect class="n-box" x="476" y="148" width="432" height="40" rx="5"/>
+    <text class="t-b" x="492" y="172">PR open · #7</text>
+    <text class="t-s" x="590" y="172">Not checked on a schedule (follow, no poll)</text>
+    <rect class="n-box" x="476" y="196" width="432" height="40" rx="5"/>
+    <text class="t-b" x="492" y="220">PR open · #7</text>
+    <text class="t-g" x="590" y="220">Not checked automatically: send a message</text>
+    <text class="t-lbl" x="476" y="254">POLLED · FOLLOWED, NO POLL · NOT FOLLOWED OR PAUSED</text>
+  </g>
+
+  <g id="path">
+    <text class="t-lbl" x="32" y="290">HOW THE LINE IS READ</text>
+    <rect class="ext" x="32" y="302" width="170" height="62" rx="5"/>
+    <text class="t-b" x="46" y="326">GitHub poll fire</text>
+    <text class="t-s" x="46" y="346">every answer counts</text>
+    <path class="arrow" d="M202 333 H222"/>
+    <rect class="new" x="222" y="302" width="180" height="62" rx="5"/>
+    <text class="t-b" x="236" y="326">Poll record</text>
+    <text class="t-s" x="236" y="346">+ checked at · every N min</text>
+    <path class="arrow" d="M402 333 H442"/>
+    <rect class="acc" x="442" y="302" width="250" height="62" rx="5"/>
+    <text class="t-b" x="456" y="326">Routines view · event row</text>
+    <text class="t-s" x="456" y="346">+ the follow's task · the poll's time</text>
+    <path class="arrow" d="M692 333 H732"/>
+    <rect class="n-box" x="732" y="302" width="176" height="62" rx="5"/>
+    <text class="t-b" x="746" y="326">Host's PR-wait line</text>
+    <text class="t-s" x="746" y="346">by task, live; age ticks</text>
+  </g>
+</svg>
