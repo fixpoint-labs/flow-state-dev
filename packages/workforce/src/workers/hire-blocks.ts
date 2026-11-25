@@ -156,27 +156,27 @@ function retiredOn(installation: WorkerInstallation, flow: string): readonly str
   return installation.workerFlows()[flow]?.retiredSettings ?? [];
 }
 
-/** Refuse `row` for worker `id` when its flow would refuse it on a turn. */
-function refuseProblems(installation: WorkerInstallation, id: string, row: WorkerResourceState): void {
-  const problems = installation.configurationProblems(id, row);
+/** Refuse `worker` under `id` when its flow would refuse it on a turn. */
+function refuseProblems(installation: WorkerInstallation, id: string, worker: WorkerResourceState): void {
+  const problems = installation.configurationProblems(id, worker);
   if (problems.length > 0) {
     throw new Error(`Worker "${id}" ${problemsClause(problems)}. Nothing was written.`);
   }
 }
 
 /**
- * The row a hire of `input` writes, after every check the write makes short
+ * The worker a hire of `input` writes, after every check the write makes short
  * of the roster itself (an id already there): a standard worker's id, a
  * credential, a refused model, a retired setting, and the flow's own schema.
  *
  * @throws With the reason, when any check refuses. Nothing is written.
  */
-export function hireRowOf(installation: WorkerInstallation, input: HireInput, checks: HireChecks = {}): WorkerResourceState {
+export function checkedHire(installation: WorkerInstallation, input: HireInput, checks: HireChecks = {}): WorkerResourceState {
   if (installation.standardWorker(input.id) !== undefined) {
     throw new Error(`"${input.id}" is a standard worker, which nobody can hire over. Fork it to get a worker of your own.`);
   }
   refuseUnsafe(input.id, input, input.settings?.model, checks);
-  const row = workerResourceStateSchema.parse({
+  const worker = workerResourceStateSchema.parse({
     flow: input.flow ?? AGENT_FLOW,
     name: textOrNull(input.name),
     description: input.description ?? null,
@@ -184,9 +184,9 @@ export function hireRowOf(installation: WorkerInstallation, input: HireInput, ch
     skills: input.skills ?? [],
     settings: input.settings ?? {}
   });
-  refuseRetired(installation, input.id, row.flow, input.settings);
-  refuseProblems(installation, input.id, row);
-  return row;
+  refuseRetired(installation, input.id, worker.flow, input.settings);
+  refuseProblems(installation, input.id, worker);
+  return worker;
 }
 
 /** Whitespace is not instructions. */
@@ -274,9 +274,9 @@ export function createWorkerHireBlocks(installation: WorkerInstallation, checks:
     outputSchema: writtenOutput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
-      const row = hireRowOf(installation, input, checks);
-      await write(ctx, input.id, row);
-      return { id: input.id, flow: row.flow };
+      const worker = checkedHire(installation, input, checks);
+      await write(ctx, input.id, worker);
+      return { id: input.id, flow: worker.flow };
     }
   });
 

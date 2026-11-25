@@ -1,6 +1,6 @@
 /**
  * Leg b: the person changes who works in the Lab through the Shift Coordinator.
- * A hire lands at once; a fire waits for the person's Approve in Inbox, holds
+ * A hire lands on the person's Approve in Inbox; a fire waits for it too, holds
  * across a restart while it waits, and lands only on Approve; a team seat
  * asked to hire doesn't.
  *
@@ -13,9 +13,9 @@
  */
 import {
   answerInInbox,
+  approveHireInInbox,
   askShiftCoordinator,
   asksOf,
-  callsTo,
   shiftCoordinatorFlowOf,
   hex,
   inboxAsks,
@@ -145,11 +145,8 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
     return;
   }
   const shiftCoordinatorSession = hire.sessionId;
-  const hires = callsTo(hire, "hire");
-  if (hires.length !== 1 || !hires[0]!.ok) r.fail("b1", `Shift Coordinator's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
-  const raised = shiftCoordinatorSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, shiftCoordinatorSession, hire.requestId)).filter((a) => a.reason === "user_approval");
-  if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} user_approval ask(s)`);
-  if (hire.status !== "completed") r.fail("b1", `the hire turn ended ${hire.status}`);
+  const approved = await approveHireInInbox(world, hire, seat);
+  if (approved !== undefined) r.fail("b1", approved);
   const hired = await where(world, seat);
   if (hired.rosterRow === undefined) r.fail("b1", `seat appears: the person's roster has no row for "${seat}"`);
   if (!hired.onRoster) r.fail("b1", `seat appears: Roster doesn't list "${seat}" as the person's own`);

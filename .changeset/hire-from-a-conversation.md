@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/workforce": minor
 "@flow-state-dev/core": minor
-"@flow-state-dev/shift-manager": patch
+"@flow-state-dev/shift-manager": minor
 ---
 
 FIX-2840.

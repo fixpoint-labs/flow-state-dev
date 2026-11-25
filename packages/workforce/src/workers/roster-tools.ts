@@ -33,7 +33,7 @@ import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { isUserTurn } from "../standing-rules/user-turn";
-import { createWorkerHireBlocks, hireRowOf, type HireChecks, type HireInput } from "./hire-blocks";
+import { createWorkerHireBlocks, checkedHire, type HireChecks, type HireInput } from "./hire-blocks";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 
@@ -77,17 +77,17 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     resources: { ...installation.resources },
     execute: async (input: HireInput, ctx: BlockContext) => {
       refuseUnasked(ctx, "hired");
-      const row = hireRowOf(installation, input, checks);
+      const worker = checkedHire(installation, input, checks);
       if ((await rosterOf(ctx).getOptional(input.id)) !== undefined) {
         throw new Error(`"${input.id}" is already on the user's roster. Pick another id. Nothing was written.`);
       }
       await ctx.suspend!({
         reason: "user_approval",
         message:
-          `Hire ${row.name ?? input.id} (${input.id}) on ${row.flow}: ${row.description ?? "no description"}. ` +
-          `Settings: ${settingsLines(row.settings)}.` +
-          (row.instructions === null ? "" : `\n\nIts instructions:\n${row.instructions}`),
-        data: { id: input.id, flow: row.flow, description: row.description, settings: row.settings, instructions: row.instructions },
+          `Hire ${worker.name ?? input.id} (${input.id}) on ${worker.flow}: ${worker.description ?? "no description"}. ` +
+          `Settings: ${settingsLines(worker.settings)}.` +
+          (worker.instructions === null ? "" : `\n\nIts instructions:\n${worker.instructions}`),
+        data: { id: input.id, flow: worker.flow, description: worker.description, settings: worker.settings, instructions: worker.instructions },
         allow: ["approve", "reject"]
       });
     }
