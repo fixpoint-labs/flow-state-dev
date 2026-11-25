@@ -58,7 +58,7 @@ export const standingRulesCollection = defineResourceCollection({
 
 /** The rules collection declared by the running flow. */
 function collectionOf(ctx: BlockContext): ResourceCollectionRef {
-  const ref = ctx.resources?.[STANDING_RULES_RESOURCE];
+  const ref = ctx.resources[STANDING_RULES_RESOURCE];
   if (typeof ref !== "object" || ref === null || !("getOrCreate" in ref)) {
     throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
   }

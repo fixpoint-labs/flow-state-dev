@@ -55,7 +55,7 @@ export async function markUserTurn(ctx: BlockContext): Promise<void> {
 
 /** Whether this request is a turn a user's own message started. */
 export function isUserTurn(ctx: BlockContext): boolean {
-  return ctx.request.state?.[USER_TURN_STATE] === true;
+  return ctx.request.state[USER_TURN_STATE] === true;
 }
 
 /** {@link markUserTurn} as a step, for a door whose message passes through untouched. */
