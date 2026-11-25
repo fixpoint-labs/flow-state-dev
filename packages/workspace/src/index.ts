@@ -44,6 +44,8 @@ export {
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
+export { localRepoWorkspaceHost } from "./local-repo-host";
+export type { LocalRepoWorkspaceHostOptions } from "./local-repo-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";

@@ -36,7 +36,7 @@
  *   the member who started it, and another member's drain leaves it alone.
  * - `ModeSpec` (a mode: its name, instructions and done check) and the run-context types its hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
- * - `WorkspaceConfig`, and the construction-time guards a host should run at
+ * - The construction-time guards a host should run at
  *   its own door (`assertDistinctRepository`, `assertBaseRefExists`,
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
@@ -367,7 +367,7 @@ export {
 // The TYPES a host needs to write `workspace:` and `ownership:`. The functions
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
-export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+export type { OwnershipBounds } from "./workspace";
 
 // Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";
