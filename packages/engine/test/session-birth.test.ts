@@ -661,3 +661,32 @@ describe("one birth function", () => {
     expect(writers).toEqual(["context/session-birth.ts"]);
   });
 });
+
+// FIX-2881.
+describe("fields a create check derives", () => {
+  it("are written over the initial state when the session is born, and the session keeps them", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const named = defineFlow({
+      kind: "named",
+      resources: { workers },
+      session: {
+        stateSchema: z.object({ workerId: z.string().readonly(), workerName: z.string().readonly().optional() }),
+        // Reads the worker and names the session after what it read.
+        createCheck: async (input) => {
+          const worker = await input.readCollectionResource("workers", input.state.workerId as string);
+          return worker === undefined ? { ok: false, status: 404, message: "No worker." } : { ok: true, state: { workerName: `On ${String(worker.flow)}` } };
+        }
+      },
+      actions: { whoami: handler({ name: "named-whoami", inputSchema: z.object({}).passthrough(), execute: () => ({}) }) }
+    })({ id: "named" }) as unknown as FlowInstance;
+    registry.register(named);
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    const cell = resolveUserStorageKey("alice", ORG, { id: "named", isolateUserState: false });
+    await stores.resourceState.set("user", cell, "workers/amy", { flow: "named" }, "absent");
+
+    const res = await create(router, "named", { userId: "alice", sessionId: "s1", state: { workerId: "amy" } });
+    expect(res.status).toBe(201);
+    expect((await stores.session.get("s1"))?.state).toEqual({ workerId: "amy", workerName: "On named" });
+  });
+});

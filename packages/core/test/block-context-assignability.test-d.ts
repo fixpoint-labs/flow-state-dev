@@ -143,6 +143,19 @@ handler({
   },
 });
 
+declare const targetName: string;
+
+handler({
+  name: "declares-dynamic-target",
+  ...io,
+  targetStateSchemas: { [targetName]: S },
+  execute: (i, ctx) => {
+    readsAnyCtx(ctx);
+    expectTypeOf(ctx.targets[targetName]).toEqualTypeOf<StateRef<{ count: number }> | undefined>();
+    return i;
+  },
+});
+
 /** A block that declares no targets reads a closed `ctx.targets`. */
 handler({
   name: "no-targets",

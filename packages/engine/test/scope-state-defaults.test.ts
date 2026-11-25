@@ -10,7 +10,7 @@
  * drop what another flow stored there.
  */
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { GeneratorModel, JsonObject, ModelResolver } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -63,13 +63,6 @@ const flow = defineFlow({
   }
 })();
 
-type UserState = { count: number; prefs: { theme: string; lang?: string } };
-type SessionState = { mode: string; topic?: string; features: { search: boolean } };
-
-/** This flow's scope state, typed as its schema promises (the context's own types are untyped JSON). */
-const userOf = (ctx: { user: { state: unknown } }) => ctx.user.state as UserState;
-const sessionOf = (ctx: { session: { state: unknown } }) => ctx.session.state as SessionState;
-
 async function open(stores: ReturnType<typeof createInMemoryStores>, requestId: string) {
   return createExecutionContext({
     flow,
@@ -93,11 +86,9 @@ describe("scope state defaults on load", () => {
   it("a fresh user, session and org read every defaulted field with no fallback", async () => {
     const ctx = await open(createInMemoryStores(), "req_fresh");
 
-    expect(userOf(ctx).count).toBe(0);
-    expect(userOf(ctx).prefs.theme).toBe("light");
-    expect(sessionOf(ctx).mode).toBe("chat");
+    expect(ctx.user.state).toMatchObject({ count: 0, prefs: { theme: "light" } });
     // Nested inside an object default, as kitchen-sink's `features.search` reads it.
-    expect(sessionOf(ctx).features.search).toBe(false);
+    expect(ctx.session.state).toMatchObject({ mode: "chat", features: { search: false } });
     expect(ctx.org?.state.tier).toBe("free");
   });
 
@@ -122,7 +113,8 @@ describe("scope state defaults on load", () => {
     expect(ctx.user.state).toEqual({ otherFlow: { seen: 3 }, prefs: { lang: "fr", theme: "light" }, count: 0 });
 
     // A two-field patch writes the whole record back.
-    await ctx.user.patchState({ count: 1, prefs: { ...userOf(ctx).prefs, theme: "dark" } });
+    const prefs = ctx.user.state.prefs as JsonObject;
+    await ctx.user.patchState({ count: 1, prefs: { ...prefs, theme: "dark" } });
 
     const stored = await stores.user.get(USER_KEY);
     expect(stored?.state).toEqual({ otherFlow: { seen: 3 }, prefs: { lang: "fr", theme: "dark" }, count: 1 });
@@ -136,15 +128,14 @@ describe("scope state defaults on load", () => {
     // record the store returns, which carries only what was ever written.
     await ctx.user.patchState({ count: 5 });
 
-    expect(userOf(ctx).count).toBe(5);
-    expect(userOf(ctx).prefs.theme).toBe("light");
+    expect(ctx.user.state).toMatchObject({ count: 5, prefs: { theme: "light" } });
   });
 
   it("a field that fails its schema does not stop its siblings getting their defaults", async () => {
     const ctx = await open(createInMemoryStores(), "req_half");
     // `topic` is required with no default and the session was created without it.
-    expect(sessionOf(ctx).topic).toBeUndefined();
-    expect(sessionOf(ctx).mode).toBe("chat");
+    expect(ctx.session.state.topic).toBeUndefined();
+    expect(ctx.session.state.mode).toBe("chat");
   });
 
   it("the re-read after a concurrent write reads defaults too", async () => {
