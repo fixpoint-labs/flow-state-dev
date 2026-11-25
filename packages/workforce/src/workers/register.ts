@@ -142,8 +142,8 @@ function hire(installation: WorkerInstallation, options: HireWorkforceOptions): 
     );
   }
   const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation, options.hire);
-  const scheduled = defineScheduledWork(installation, options.routines?.index);
-  const routines = defineRoutineActions(installation, options.routines ?? {}, scheduled.resources);
+  const schedules = defineScheduledWork(installation, options.routines?.index);
+  const routines = defineRoutineActions(installation, options.routines ?? {});
   const roster = defineWorkerRosterFlow(
     installation,
     {
@@ -154,7 +154,7 @@ function hire(installation: WorkerInstallation, options: HireWorkforceOptions): 
       reset: { inputSchema: reset.inputSchema, block: reset },
       ...routines.actions
     },
-    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
+    { resources: routines.resources, schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
   return copies;
