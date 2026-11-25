@@ -165,6 +165,7 @@ async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunProje
     return refused("no-such-workstream", `this run's session names workstream "${link}", which names no workstream.`);
   }
   const { project, id } = address;
+  // Match the run's user to the owner recorded on the workstream session.
   const runOwner = ctx.user?.identity?.userId;
   if (runOwner !== owner) {
     return refused(
