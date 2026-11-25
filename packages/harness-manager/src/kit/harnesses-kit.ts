@@ -21,7 +21,6 @@
  * Only this subpath imports workforce: the package root never does.
  */
 import { defineFlow, defineKit, slot } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { WorkerInstallation } from "@flow-state-dev/workforce";
 import { codingBoardView } from "./coding-board";
@@ -147,12 +146,13 @@ export const harnesses = defineKit({
         [HARNESSES_FLOW]: (installation: WorkerInstallation) => [
           defineFlow({
             kind: HARNESSES_FLOW,
+            actions: {},
             description: "The coding harnesses' readiness and the coding board, read as views. Nobody talks to it, so it has no sessions.",
             views: {
               readiness: harnessReadinessView(readiness),
               [CODING_BOARD_VIEW]: codingBoardView(installation, config.defaultHarness),
             },
-          } as never)({ id: HARNESSES_FLOW } as never) as unknown as FlowInstance,
+          })({ id: HARNESSES_FLOW }),
         ],
       },
     };

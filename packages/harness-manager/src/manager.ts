@@ -112,7 +112,6 @@ import {
   type HeldWork,
   type ExistingPullRequest,
   type Landed,
-  type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
@@ -198,6 +197,7 @@ import {
   assertBranchPrefix,
   branchFor,
   checkoutLeaseFromState,
+  worktreesOf,
   freeRunLocation,
   locationFor,
   hostForConfig,
@@ -1629,7 +1629,7 @@ function pullRequestText(
  * it. Never throws: a record that can't be written is a status note.
  */
 async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
+  const collection = ctx.resources?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
   const link = pullRequestRefFromUrl(landed.url);
   if (typeof collection?.upsert !== "function" || link === null) return;
   try {
@@ -1998,12 +1998,6 @@ async function checkBranchPullRequests(ctx: ManagerContext, worktree?: string | 
   if (result.status === "unavailable") {
     ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
   }
-}
-
-/** The user's worktree rows off a block's context, when the capability is installed. */
-function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
-  return typeof collection?.upsert === "function" ? collection : undefined;
 }
 
 /**

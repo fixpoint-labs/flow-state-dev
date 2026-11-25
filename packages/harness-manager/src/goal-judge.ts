@@ -104,7 +104,6 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     name,
     model,
     inputSchema: harnessJudgeInputSchema,
-    state: (input: HarnessJudgeInput) => ({ goal: input.goal, answer: input.answer, commits: input.commits, diff: input.diff }),
     questions: () => ({
       [GOAL_JUDGE_QUESTION]: choice(
         "A coding agent was given the goal and ended with the answer, having made the commits listed, " +
@@ -122,17 +121,15 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     name: `${name}-verdict`,
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
     outputSchema: harnessJudgeVerdictSchema,
+    parentInputSchema: harnessJudgeInputSchema,
     execute: async ({ answers }, ctx) => {
-      const input = harnessJudgeInputSchema.parse(ctx.sequencer?.input);
       const answer = answers[GOAL_JUDGE_QUESTION] as { choice?: string; confidence?: number } | undefined;
       if (typeof answer?.choice !== "string") throw new Error("the judge answered no outcome");
       const why = (answers[GOAL_JUDGE_WHY_QUESTION] as { choice?: string } | undefined)?.choice;
-      return verdictOf(input, answer.choice, answer.confidence, why);
+      return verdictOf(ctx.parent!.input, answer.choice, answer.confidence, why);
     },
   });
 
-  // Stateful, so its steps' `ctx.sequencer` is this sequencer and its input
-  // the run as the judge was handed it, not the manager's.
   const block = sequencer({
     name: `${name}-run`,
     inputSchema: harnessJudgeInputSchema,
@@ -142,5 +139,5 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     .step(read)
     .step(decide);
 
-  return { block: block as never, floor };
+  return { block, floor };
 }
