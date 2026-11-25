@@ -153,7 +153,11 @@ describe("the teammates screen", () => {
   });
 
   it("draws Lead's message to researcher in both conversations", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
+    const lab = fast();
+    render(<TestProvider server={lab}><App /></TestProvider>);
+    // researcher's turn holds until Lead's row has been read: on the script's own clock its reply lands
+    // about 240 ms after the message, and Lead stops waiting then.
+    const researcherAnswers = lab.holdNextTurn("teammates.researcher");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
 
     // Step 2: one line in Lead's conversation, "Messaged researcher", that opens the exchange.
@@ -164,12 +168,16 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(workerRow("Lead").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
 
     // researcher sees the message as a line from Lead.
+    act(() => researcherAnswers());
     fireEvent.click(workerRow("researcher"));
     expect(await within(conversation()).findByRole("region", { name: "From Lead" })).toBeTruthy();
   });
 
   it("opens a message line to the exchange in a popup that fills in live, and closes it with Esc or a click outside", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
+    const lab = fast();
+    render(<TestProvider server={lab}><App /></TestProvider>);
+    // researcher's turn holds until the popup is open, so "working" is read before the reply can land.
+    const researcherAnswers = lab.holdNextTurn("teammates.researcher");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("working");
@@ -182,6 +190,7 @@ describe("the teammates screen", () => {
     expect(popup.contains(document.activeElement)).toBe(true);
     expect(conversation().contains(line)).toBe(true);
     // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
+    act(() => researcherAnswers());
     await waitFor(() => expect(popup.querySelector('[data-line="received"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector('[data-line="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("replied"));
