@@ -129,7 +129,7 @@ export async function routedTaskHistory(
   _input: unknown,
   ctx: BlockContext<Record<string, unknown> & z.infer<typeof routedLinesStateSchema>>
 ): Promise<LLMMessage[]> {
-  const noted = ctx.request.state[ROUTED_LINES_STATE];
+  const noted = ctx.request.state?.[ROUTED_LINES_STATE];
   const history = await ctx.session.items.history();
   if (!noted?.recent?.length) return history;
   const lines: LLMMessage = {

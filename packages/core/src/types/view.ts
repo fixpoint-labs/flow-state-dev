@@ -13,6 +13,7 @@
  * schema's type, so a screen never holds an untyped answer.
  */
 import type { ChangeKind, WireTopic } from "@flow-state-dev/contracts";
+import type { SchemaInput } from "../schema/common";
 import type { BlockDefinition, BlockOutput } from "./block";
 
 /** Where a view runs: on a session, or at the caller's user or org scope with no session. */
@@ -62,7 +63,7 @@ export type ViewOutput<TView extends { block: BlockDefinition }> = BlockOutput<T
 
 /** The input a caller sends to a view, before its schema applies defaults or transforms. */
 export type ViewInput<TView extends { block: BlockDefinition }> =
-  TView["block"] extends { inputSchema: { _input: infer TInput } } ? TInput : never;
+  SchemaInput<TView["block"]["inputSchema"]>;
 
 // FIX-2625 D1.
 /**
