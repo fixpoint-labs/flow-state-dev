@@ -257,7 +257,11 @@ export async function admitClaimedTask(
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
   const askedTurn = options.own && row.askedInTurn === ticket.turn;
-  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setKeptOpenBy !== undefined) {
+  // The run's own resume closes the mirror of its stop on a row whose wait a
+  // later request's admission cleared, too: a person can answer the stop while
+  // that request runs, and a mirror left open refuses the run's settle (FIX-2898).
+  const closesMirror = options.own && suspensionHoldOf(row) !== undefined;
+  if (!askedTurn && (prior !== undefined || row.turnOwed === true || closesMirror) && ref.setKeptOpenBy !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
     // The run's own resume closes the mirror of its stop (FIX-2133). A later
     // request (a notice, a steer's turn) keeps it: the task's own run is
@@ -484,7 +488,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   // request, and keeps an answer this one gave that counts. One a person
   // stopped keeps no answer (below).
   if (!record.own && waitsOnItsOwnRequest(record.prior) && ending.status !== "aborted") {
-    await waitOn(record, row, record.prior!, record.answer);
+    if (await ownRequestParked(record, row)) await waitOn(record, row, record.prior!, record.answer);
     return undefined;
   }
   if (ending.status === "suspended") {
@@ -617,7 +621,7 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
     return undefined;
   }
   if (record.prior === "suspended") {
-    parked(await waitOn(record, row, "suspended", undefined));
+    if (await ownRequestParked(record, row)) parked(await waitOn(record, row, "suspended", undefined));
     return undefined;
   }
   // As stored, with the steers this request took untaken, as the write below leaves them.
@@ -636,6 +640,25 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
  */
 function tookSteers(task: Task, requestId: string): boolean {
   return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId));
+}
+
+// FIX-2898.
+/**
+ * Whether the task's own request (the row's run link) is still parked, read
+ * through the request host: neither running its own work nor ended. A later
+ * request's admission clears the row's wait, and the task's own entry admits
+ * that request's resume on a row showing none, so a person can answer the stop
+ * while the later request runs. Then the row is left as it stands: the own
+ * request, running, checks the task at its end, and one that ended has
+ * checked it already. A host that can't say (no request host, no `running` or
+ * `ended`, no run link) answers parked, as the row last recorded.
+ */
+async function ownRequestParked(record: Admitted, task: Task): Promise<boolean> {
+  const requestId = task.run?.requestId;
+  const waits = requestHostOf(record.ctx)?.waits;
+  if (requestId === undefined || waits?.running === undefined || waits.ended === undefined) return true;
+  const [running, ended] = await Promise.all([waits.running([requestId]), waits.ended([requestId])]);
+  return running[requestId] !== true && ended[requestId] !== true;
 }
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
