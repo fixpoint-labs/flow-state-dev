@@ -28,7 +28,7 @@ export interface SerializedError {
  * Credential shapes a provider may echo back in an error message: OpenAI /
  * Anthropic `sk-…` keys, bearer tokens, Google `AIza…` keys, GitHub tokens,
  * xAI and Groq keys. OpenAI masks most of a rejected key itself; this covers
- * the providers and gateways that don't.
+ * the providers and gateways that don't. NVIDIA's `nvapi-…` keys too.
  */
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{8,}/g,
@@ -38,6 +38,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
   /\bxai-[A-Za-z0-9]{16,}/g,
   /\bgsk_[A-Za-z0-9]{16,}/g,
+  /\bnvapi-[A-Za-z0-9_-]{16,}/g,
 ];
 
 /**
@@ -47,6 +48,15 @@ const SECRET_PATTERNS: RegExp[] = [
  */
 export function redactSecrets(text: string): string {
   return SECRET_PATTERNS.reduce((out, pattern) => out.replace(pattern, "[redacted]"), text);
+}
+
+/**
+ * Whether `text` carries something shaped like an API key or bearer token, by
+ * the same shapes {@link redactSecrets} removes. For a write that must refuse a
+ * credential rather than store it.
+ */
+export function containsSecret(text: string): boolean {
+  return redactSecrets(text) !== text;
 }
 
 /**

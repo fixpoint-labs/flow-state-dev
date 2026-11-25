@@ -50,10 +50,9 @@ import {
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
-import { defineCapability, handler, readResourceContentTool, resourceSearchTools, sequencer } from "@flow-state-dev/core";
+import { defineCapability, readResourceContentTool, resourceSearchTools } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
-  type BlockContext,
   type FlowInstance,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
@@ -83,7 +82,7 @@ import {
   AGENT_FLOW,
   COORDINATOR_FLOW,
   defineCoordinatorFlow,
-  createWorkerHireBlocks,
+  hireWorkersCapability,
   createRoutinesCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
@@ -330,62 +329,6 @@ export function shiftCoordinatorProjectTools(blocks: ProjectBlocks, workstreams:
     ...writes,
   };
 }
-
-/**
- * Hire and fire as the Shift Coordinator's tools, under the names its `tools:`
- * line spells: Workforce's hire blocks, each a write to the roster of the
- * user talking to it. A catalog key must be the tool's own name, so `hire`
- * is the block under `.as()`; `fire` is a sequencer, because it waits for an
- * approval first.
- *
- * **A fire waits for the user.** It pauses on a stock `user_approval`
- * naming the worker before the write; Deny throws out of the tool before the
- * write runs, and nothing changes. Without durable execution the tool refuses
- * rather than firing unasked.
- */
-export function shiftCoordinatorRosterTools(installation: WorkerInstallation, harnesses: readonly string[] = []) {
-  const blocks = createWorkerHireBlocks(installation);
-  // A coder's harness is a setting on the one `coder` flow, never a flow of its own.
-  const harnessLine =
-    harnesses.length === 0
-      ? ""
-      : ` A \`${CODER_FLOW}\` worker's coding harness is its \`settings.harness\`, one of: ${harnesses.join(", ")}; ` +
-        "there is no flow per harness.";
-  return {
-    hire: blocks.hire.as({
-      name: "hire",
-      description:
-        "Hire a worker of the user's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
-        "(`agent` when omitted), and `settings` the keys its file would declare. It lands at once." +
-        harnessLine,
-    }),
-    fire: sequencer({
-      name: "fire",
-      description:
-        "Fire one of the user's own workers, by its id, once the user approves it. A worker the files declare can't be fired.",
-      inputSchema: blocks.fire.inputSchema,
-      outputSchema: blocks.fire.outputSchema,
-    })
-      .tap(askFire)
-      .step(blocks.fire),
-  };
-}
-
-/** The approval a fire waits on: a stock `user_approval` naming the worker. Returns on Approve; on Deny the runtime throws out of it. */
-const askFire = handler({
-  name: "devforce-shift-coordinator-ask-fire",
-  inputSchema: z.object({ id: z.string() }).passthrough(),
-  outputSchema: z.void(),
-  execute: async (input: { id: string }, ctx: BlockContext) => {
-    // A host without durable execution refuses at the stop itself (FIX-2063).
-    await ctx.suspend!({
-      reason: "user_approval",
-      message: `Fire worker "${input.id}"?`,
-      data: { worker: input.id },
-      allow: ["approve", "reject"],
-    });
-  },
-});
 
 export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
@@ -1107,12 +1050,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // shift-coordinator/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
   // its `tools:`: in this tree the Shift Coordinator names them, and the project
-  // coordinator names the writes to its own project. Hire and fire
-  // write the roster of the user talking to it: a worker of their own, which
-  // runs on that user's turns only. A fire, and a project's repository, wait
-  // for a user's Approve in Inbox, which needs durable execution (asked for
-  // below).
-  const rosterTools = shiftCoordinatorRosterTools(installation, harnessNames);
+  // coordinator names the writes to its own project. Hire and fire are
+  // Workforce's (`hireWorkersCapability`), and write the roster of the user
+  // talking to it: a worker of their own, which runs on that user's turns only.
+  // A hire lands at once, on the user's own turn only; a fire and a project's
+  // repository wait for a user's Approve in Inbox, which needs durable
+  // execution (asked for below).
   // Core's general read tools, under their own names: a worker that names them reads every `llmReadable`
   // collection its flow declares. Here that is the Error Reporter's history (`error-history/**`), which
   // the Shift Coordinator and error-reporter search when asked what was reported.
@@ -1131,7 +1074,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // one and otherwise on the answer host, which has the same run source.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
-      ...rosterTools,
       // The trusted GitHub reviewers, on the operator's own word: only the Shift Coordinator's line names it.
       // The list's only writer: no HTTP action writes it.
       setGitHubReviewers: reviewers.tool,
@@ -1162,6 +1104,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // List, save, pause and delete routines, on the `agent` flow and the coordinator's turn alike: a
       // worker names the four tools in its `tools:` line (each conversation worker here does).
       createRoutinesCapability(installation),
+      // Hire and fire (a fire on the user's Approve): only the Shift Coordinator's line names them.
+      hireWorkersCapability(installation),
     ],
   };
   const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
