@@ -137,11 +137,38 @@ export async function turnDiffStart(cwd: string, base: string, mergedBase: strin
   if (mergedBase === null) return base;
   try {
     if (await isAncestor(cwd, base, mergedBase)) return mergedBase;
+    // A merge driver or filter runs a program the checkout's config names, which the run can write: no merge then.
+    if (await namesMergeProgram(cwd)) return base;
     const [tree] = (await git(cwd, ["merge-tree", "--write-tree", base, mergedBase])).split("\n");
     return tree?.trim() || base;
   } catch {
     return base;
   }
+}
+
+/**
+ * Whether the checkout's own config (`local`, `worktree`) names a program a
+ * merge would run: a merge driver, or a content filter. A run shares that
+ * config and can set one, and the program's output would then be the start a
+ * turn's diff is read from. The person's and the host's config (`global`,
+ * `system`, `command`) the run can't write, as the workspace package's local
+ * merge trusts them too. Rejects when git can't read the config.
+ */
+async function namesMergeProgram(cwd: string): Promise<boolean> {
+  let out: string;
+  try {
+    // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
+    out = await git(cwd, ["config", "-z", "--show-scope", "--includes", "--get-regexp", "^(merge\\..+\\.driver|filter\\..+\\.(clean|smudge|process))$"]);
+  } catch (error) {
+    // Exit 1 is "none set".
+    if ((error as { code?: unknown }).code === 1) return false;
+    throw error;
+  }
+  const fields = out.split("\0");
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    if (!["global", "system", "command"].includes(fields[i]!)) return true;
+  }
+  return false;
 }
 
 /** Whether `ancestor` is in `of`'s history (or is it). Rejects when git can't read either. */

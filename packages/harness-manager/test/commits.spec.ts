@@ -315,5 +315,8 @@ describe("turnDiffStart", () => {
     commit(dir, "clean");
     const clean = git(dir, "rev-parse", "HEAD").trim();
     expect(await turnDiffStart(dir, start, clean)).not.toBe(start);
+    // A merge driver the checkout's config names (which a run can write) would run in that merge: the start is kept instead.
+    git(dir, "config", "merge.theirs.driver", "cp %B %A");
+    expect(await turnDiffStart(dir, start, clean)).toBe(start);
   });
 });
