@@ -8,7 +8,7 @@
  * commits somebody else made.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -315,8 +315,31 @@ describe("turnDiffStart", () => {
     commit(dir, "clean");
     const clean = git(dir, "rev-parse", "HEAD").trim();
     expect(await turnDiffStart(dir, start, clean)).not.toBe(start);
-    // A merge driver the checkout's config names (which a run can write) would run in that merge: the start is kept instead.
-    git(dir, "config", "merge.theirs.driver", "cp %B %A");
-    expect(await turnDiffStart(dir, start, clean)).toBe(start);
+  });
+
+  it("runs no merge driver or attributes the checkout names, which a run can write", async () => {
+    // The driver would run in the merge and its output become the turn's start; here it would also leave a mark.
+    const dir = mkdtempSync(join(tmpdir(), "hm-turn-driver-"));
+    dirs.push(dir);
+    git(dir, "init", "-q", "-b", "main");
+    writeFileSync(join(dir, "shared.txt"), "one\ntwo\nthree\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "first");
+    git(dir, "checkout", "-q", "-b", "work");
+    writeFileSync(join(dir, "shared.txt"), "one\ntwo\nthree\nthe session's\n");
+    git(dir, "commit", "-qam", "session");
+    const start = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "main");
+    writeFileSync(join(dir, "shared.txt"), "main's\none\ntwo\nthree\n");
+    git(dir, "commit", "-qam", "main");
+    const merged = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "work");
+    const mark = join(dir, "driver-ran");
+    git(dir, "config", "merge.planted.driver", `touch ${mark}; printf planted > %A`);
+    writeFileSync(join(dir, ".git", "info", "attributes"), "*.txt merge=planted\n");
+    const from = await turnDiffStart(dir, start, merged);
+    expect(existsSync(mark)).toBe(false);
+    // Git's own merge of the two edits, with no driver's output in it.
+    expect(git(dir, "show", `${from}:shared.txt`)).toBe("main's\none\ntwo\nthree\nthe session's\n");
   });
 });

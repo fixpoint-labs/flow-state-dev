@@ -17,7 +17,9 @@
  * Git runs through the workspace package's bounded `run`, the one place a
  * child process is started for this package.
  */
-import { devNull } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
+import { join } from "node:path";
 import { run } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
@@ -137,9 +139,7 @@ export async function turnDiffStart(cwd: string, base: string, mergedBase: strin
   if (mergedBase === null) return base;
   try {
     if (await isAncestor(cwd, base, mergedBase)) return mergedBase;
-    // A merge driver or filter runs a program the checkout's config names, which the run can write: no merge then.
-    if (await namesMergeProgram(cwd)) return base;
-    const [tree] = (await git(cwd, ["merge-tree", "--write-tree", base, mergedBase])).split("\n");
+    const [tree] = (await isolatedMergeTree(cwd, base, mergedBase)).split("\n");
     return tree?.trim() || base;
   } catch {
     return base;
@@ -147,28 +147,39 @@ export async function turnDiffStart(cwd: string, base: string, mergedBase: strin
 }
 
 /**
- * Whether the checkout's own config (`local`, `worktree`) names a program a
- * merge would run: a merge driver, or a content filter. A run shares that
- * config and can set one, and the program's output would then be the start a
- * turn's diff is read from. The person's and the host's config (`global`,
- * `system`, `command`) the run can't write, as the workspace package's local
- * merge trusts them too. Rejects when git can't read the config.
+ * `git merge-tree --write-tree ours theirs`, run against `cwd`'s objects but
+ * none of its config, attributes or hooks, nor the person's or the system's
+ * config. A run shares its checkout's `.git` and can name a merge driver or a
+ * filter there; the merge would run that program, and its output would be the
+ * start a turn's diff is read from. Here git sees an empty repository of its
+ * own whose objects are the checkout's, so only git's built-in merge runs: a
+ * driver an in-tree `.gitattributes` names has no command, and a conflict
+ * fails the merge, as it would anyway. The merged tree is written into the
+ * checkout's objects, where the diff reads it.
  */
-async function namesMergeProgram(cwd: string): Promise<boolean> {
-  let out: string;
+async function isolatedMergeTree(cwd: string, ours: string, theirs: string): Promise<string> {
+  const common = (await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim();
+  const empty = await mkdtemp(join(tmpdir(), "hm-merge-tree-"));
+  const env = {
+    ...TRUE_HISTORY.env,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_COUNT: "0",
+    GIT_OBJECT_DIRECTORY: join(common, "objects"),
+  };
   try {
-    // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
-    out = await git(cwd, ["config", "-z", "--show-scope", "--includes", "--get-regexp", "^(merge\\..+\\.driver|filter\\..+\\.(clean|smudge|process))$"]);
-  } catch (error) {
-    // Exit 1 is "none set".
-    if ((error as { code?: unknown }).code === 1) return false;
-    throw error;
+    // No template, so no hooks either.
+    await run("git", ["init", "--bare", "--quiet", "--template=", empty], { cwd: empty, timeoutMs: GIT_READ_TIMEOUT_MS, env });
+    return (
+      await run("git", [...TRUE_HISTORY.args, "merge-tree", "--write-tree", ours, theirs], {
+        cwd: empty,
+        timeoutMs: GIT_READ_TIMEOUT_MS,
+        env: { ...env, GIT_DIR: empty },
+      })
+    ).stdout;
+  } finally {
+    await rm(empty, { recursive: true, force: true });
   }
-  const fields = out.split("\0");
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    if (!["global", "system", "command"].includes(fields[i]!)) return true;
-  }
-  return false;
 }
 
 /** Whether `ancestor` is in `of`'s history (or is it). Rejects when git can't read either. */
