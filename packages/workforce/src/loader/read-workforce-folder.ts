@@ -41,8 +41,13 @@ export interface WorkforceFolder {
 
 /** A level: where workers, documents, references, skills and packages may sit. */
 const LEVEL = String.raw`(?:org|teams/[^/]+|org/workers/[^/]+|teams/[^/]+/workers/[^/]+)`;
-/** A TypeScript module, as `fsdev gen` registers one. */
-const CODE = String.raw`\.(?:ts|tsx|mts|cts)`;
+/**
+ * A TypeScript module, as `fsdev gen` registers one (`../codegen/typescript-module`).
+ * A `.cts` file is left unclaimed, so the engine refuses it by path: the
+ * generated file default-imports every module, and a CommonJS module's
+ * `export default` reaches an ES module as `{ default }` under Node.
+ */
+const CODE = String.raw`\.(?:ts|tsx|mts)`;
 
 /** Each path the published convention tells an author they may write, relative to the folder. */
 const CLAIMED: readonly RegExp[] = [
@@ -58,8 +63,8 @@ const CLAIMED: readonly RegExp[] = [
   new RegExp(`^(?:teams/[^/]+|teams/[^/]+/workers/[^/]+)/blocks/[^/]+${CODE}$`),
 ];
 
-/** Whether `rel`, a slash-separated path in the folder, is one workforce reads. */
-function isWorkforcePath(rel: string): boolean {
+/** Whether `rel`, a slash-separated path in the folder, is one workforce reads: the kit claims it, and the engine refuses every file it does not. */
+export function isWorkforcePath(rel: string): boolean {
   return CLAIMED.some((rule) => rule.test(rel));
 }
 

@@ -63,6 +63,18 @@ describe("what a worker's blocks folder registers", () => {
     ]);
   });
 
+  it("registers a .mts block, imported as the .mjs it compiles to", async () => {
+    await write("teams/support/workers/clerk/blocks/check-inventory.mts");
+
+    const found = await discoverWorkforceCode(root);
+    expect(found.workerBlocks.map((entry) => [entry.path, entry.importPath])).toEqual([
+      [
+        "teams/support/workers/clerk/blocks/check-inventory.mts",
+        "./teams/support/workers/clerk/blocks/check-inventory.mjs",
+      ],
+    ]);
+  });
+
   it("registers a team's block for every worker on that team", async () => {
     await write("teams/support/blocks/desk-note.ts");
     await write("teams/support/workers/clerk/WORKER.md", "---\ndescription: Clerk.\n---\n");
