@@ -79,6 +79,9 @@ export {
   type TaskInputRecord,
   type TaskInputWorker
 } from "./task-input/declaration";
+// Whether a stored row's input was written by the filing check for a flow's current declaration (FIX-2878):
+// a reader that trusts a filer-written field only on such a row asks it.
+export { stampMatches } from "./task-input/filing-check";
 // A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
 export { routedTaskHistory } from "./coordinator/routed-brief";
 // Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on

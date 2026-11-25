@@ -27,6 +27,10 @@
  *   modes, is refused on any write. A stored row's is read at claim
  *   ({@link storedCodingInput}): it runs in the registered mode whose old phase
  *   value its `phase` is, on its issue, or is refused by name.
+ * - **Only a row this check stamped honours its `mode` and `issue`**
+ *   ({@link trustedCodingInput}). On a row stored before, they were whatever a
+ *   model wrote, with no meaning: such a row runs the default mode on no
+ *   issue, unless it carries the old marker.
  */
 import { toolCallOf } from "@flow-state-dev/orchestration/internal";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
@@ -37,6 +41,7 @@ import { HARNESS_FEATURE_KEY, harnessFeatureSchema } from "../manager";
 import { isTrackerIssue, TRACKER_ISSUE_REFUSED } from "../issue-spec";
 import { sameSegment } from "../workspace";
 import type { ResolvedModes } from "./coder-modes";
+import { quotedList as listed } from "./quoted-list";
 
 /** The run settings a coding task carries, written by the server only. */
 export const RUN_SETTINGS = ["harness", "model", "plan"] as const;
@@ -76,6 +81,7 @@ export const codingTaskInputSchema = z
 export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
 
 /** The run settings the server wrote on a task: none, or some of the three. */
+// Only `harness` is filled for now: `model` joins in FIX-2878 p3, `plan` in p4.
 export interface RunSettings {
   readonly harness?: string;
 }
@@ -119,7 +125,6 @@ export function runSettingsOf(session: object): RunSettings | undefined {
 
 const nothingFiled = "Nothing was filed.";
 
-const listed = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ").replace(/, ([^,]*)$/, " and $1");
 
 /** Refused at claim, ending as an attempt does. */
 const refusedAtClaim = (code: string, message: string) => new TaskWriteRefusedError(code, `${message} Nothing ran.`);
@@ -158,6 +163,38 @@ export function storedCodingInput(raw: TaskInputRecord, resolved: ResolvedModes)
         )?.[0];
   if (mode === undefined) throw refusedAtClaim("legacy_marker", `legacy task names phase ${JSON.stringify(phase)}, which no registered mode keeps.`);
   return { ...rest, mode, issue };
+}
+
+// BP-030.
+/**
+ * A stored row's input in the types the declaration parses, so a row stored
+ * before this change never fails its claim on a field it never meant: a
+ * `mode` or `issue` that isn't a non-empty string reads as absent. A row the
+ * filing check stamped always has them as strings, so this leaves it as is.
+ */
+export function storedTypes(raw: TaskInputRecord): TaskInputRecord {
+  const bad = (value: unknown) => value !== undefined && (typeof value !== "string" || value === "");
+  if (!bad(raw.mode) && !bad(raw.issue)) return raw;
+  const { mode, issue, ...rest } = raw;
+  return { ...rest, ...(bad(mode) ? {} : { mode }), ...(bad(issue) ? {} : { issue }) };
+}
+
+// BP-030; BP-031.
+/**
+ * The input a coding route reads, given whether the filing check stamped the
+ * row for the coder flow's current declaration. A stamped row's `mode` and
+ * `issue` are the checked ones. Any other row's were a filer's free fields, so
+ * they are dropped, and it runs the default mode on no issue; a row carrying
+ * the old marker is read by {@link storedCodingInput}.
+ *
+ * @throws TaskWriteRefusedError as {@link storedCodingInput} does.
+ */
+export function trustedCodingInput(raw: TaskInputRecord, stamped: boolean, resolved: ResolvedModes): TaskInputRecord {
+  const typed = storedTypes(raw);
+  if (stamped) return typed;
+  if (Object.hasOwn(typed, HARNESS_FEATURE_KEY)) return storedCodingInput(typed, resolved);
+  const { mode: _mode, issue: _issue, ...rest } = typed;
+  return rest;
 }
 
 /** The mode a checked input names: its own, or the default the filing wrote. */
@@ -229,6 +266,25 @@ export function lockProblem(workerId: string, lock: WorkerLock | undefined, reso
   return undefined;
 }
 
+/**
+ * The lock refusal for a task with checked `input` on `worker`, or `undefined`
+ * when the worker's lock takes it. The harness compared is the task's own,
+ * then the worker's `harness:`, then the kit's default; the mode, the task's,
+ * then the app's default. The filing check and the claim both ask it, so a
+ * lock set after a task was filed refuses it at claim.
+ *
+ * @throws TaskWriteRefusedError `lock_unreadable` for a lock that can't be read.
+ */
+export function taskLockProblem(
+  worker: { readonly id: string; readonly config: Readonly<Record<string, unknown>> },
+  input: TaskInputRecord,
+  options: Pick<CodingTaskInputOptions, "modes" | "defaultHarness" | "harnesses">,
+): { code: string; text: string } | undefined {
+  const schema = workerLockSchema(options.harnesses, Object.keys(options.modes.modes));
+  const harness = (input.harness as string | undefined) ?? (worker.config.harness as string | undefined) ?? options.defaultHarness;
+  return lockProblem(worker.id, lockOf(worker, schema), { harness, mode: modeIn(input, options.modes) });
+}
+
 /** What {@link codingTaskInput} builds the declaration from: the kit's config and the app's modes. */
 export interface CodingTaskInputOptions {
   readonly modes: ResolvedModes;
@@ -260,7 +316,6 @@ async function filledSettings(ctx: BlockContext, defaultHarness: string | undefi
  */
 export function codingTaskInput(options: CodingTaskInputOptions): TaskInputSchema {
   const { modes: resolved, defaultHarness } = options;
-  const lockSchema = workerLockSchema(options.harnesses, Object.keys(resolved.modes));
   return taskInputSchema(codingTaskInputSchema as unknown as z.ZodType<TaskInputRecord, z.ZodTypeDef, unknown>, {
     serverOwned: SERVER_OWNED,
     refuse: (sent) => {
@@ -279,12 +334,12 @@ export function codingTaskInput(options: CodingTaskInputOptions): TaskInputSchem
       if (checked.issue !== undefined && !isTrackerIssue(checked.issue)) {
         throw new TaskWriteRefusedError("issue_malformed", `issue ${JSON.stringify(checked.issue)} isn't a tracker issue. ${TRACKER_ISSUE_REFUSED} ${nothingFiled}`);
       }
-      const harness = (checked.harness as string | undefined) ?? (worker.config.harness as string | undefined) ?? defaultHarness;
-      const locked = lockProblem(worker.id, lockOf(worker, lockSchema), { harness, mode: checked.mode as string });
+      const locked = taskLockProblem(worker, checked, options);
       if (locked !== undefined) throw new TaskWriteRefusedError(locked.code, `${locked.text} ${nothingFiled}`);
       return checked;
     },
-    stored: (raw) => storedCodingInput(raw, resolved),
+    // Types only: which fields a route trusts is decided where the row's stamp is read (`trustedCodingInput`).
+    stored: (raw) => storedTypes(raw),
     ...(options.project === true ? { project: "required" as const } : {}),
   });
 }

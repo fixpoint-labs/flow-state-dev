@@ -224,15 +224,27 @@ describe("which mode a task runs", () => {
 
   it("finds a stored task's run under the mode the claim reads it in, and a refused one's nowhere", () => {
     // A stored marker reads as the mode whose old phase value its phase is: the kit's `code` is `default`.
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly)).toEqual({ name: "default", formerName: "code" });
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toEqual({ name: "default", formerName: "code" });
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, registered)).toEqual({ name: "implement" });
-    expect(runModeOfTask({ mode: "implement", issue: "FIX-12" }, registered)).toEqual({ name: "implement" });
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly, false)).toEqual({ name: "default", formerName: "code" });
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly, false)).toEqual({ name: "default", formerName: "code" });
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, registered, false)).toEqual({ name: "implement" });
+    // A row the filing check stamped runs the mode it checked.
+    expect(runModeOfTask({ mode: "implement", issue: "FIX-12" }, registered, true)).toEqual({ name: "implement" });
     // No run is keyed by a row the claim refuses, or by a mode the app doesn't have.
-    expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered)).toBeUndefined();
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "review" } }, registered)).toBeUndefined();
-    expect(runModeOfTask({ mode: "constructor" }, registered)).toBeUndefined();
-    expect(runModeOfTask({}, registered)).toEqual({ name: "answer" });
+    expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered, false)).toBeUndefined();
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "review" } }, registered, false)).toBeUndefined();
+    expect(runModeOfTask({ mode: "constructor" }, registered, true)).toBeUndefined();
+    expect(runModeOfTask({}, registered, true)).toEqual({ name: "answer" });
+  });
+
+  it("never lets a mode a filer wrote on a row the check didn't stamp choose the run", () => {
+    expect(runModeOfTask({ mode: "implement", issue: "FIX-12" }, registered, false)).toEqual({ name: "answer" });
+    expect(runModeOfTask({ mode: "bogus" }, registered, false)).toEqual({ name: "answer" });
+  });
+
+  it("keys no run by a row the legacy read refuses, and lets any other fault surface", () => {
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "review" } }, registered, false)).toBeUndefined();
+    const broken = Object.defineProperty({}, "harnessFeature", { enumerable: true, get: () => { throw new Error("the store handed back a broken row"); } });
+    expect(() => runModeOfTask(broken, registered, false)).toThrow("the store handed back a broken row");
   });
 });
 
@@ -240,7 +252,7 @@ describe("modes are refused at start, naming the mode", () => {
   it("refuses a defaultMode that isn't registered, naming the modes there are", async () => {
     const refused = await start({ ...shiftManager, defaultMode: "review" });
     expect(refused).toContain('the default mode is "review"');
-    expect(refused).toContain('"implement", "answer"');
+    expect(refused).toContain('"implement" and "answer"');
   });
 
   it("refuses modes without a default when no defaultMode names one", async () => {
@@ -251,7 +263,7 @@ describe("modes are refused at start, naming the mode", () => {
   it("refuses a mode that requires a field a task doesn't carry", async () => {
     const refused = await start({ modes: { default: { requires: ["isue" as never] } } });
     expect(refused).toContain('mode "default" requires "isue"');
-    expect(refused).toContain('"issue", "project"');
+    expect(refused).toContain('"issue" and "project"');
   });
 
   it("refuses a mode other than default with no instructions or done check", async () => {

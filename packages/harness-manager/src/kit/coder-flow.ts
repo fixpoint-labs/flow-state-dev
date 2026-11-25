@@ -62,6 +62,7 @@ import {
   workerFlow,
   workerMessagesResources,
   workerTaskEntry,
+  stampMatches,
   type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
@@ -77,7 +78,7 @@ import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
-import { codingTaskInput, modeProblem, noteRunSettings, storedCodingInput, workerLockSchema } from "./coding-task-input";
+import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
 
 import { CODER_FLOW } from "../coder-flow-name";
@@ -362,7 +363,7 @@ export function coderWorkerFlow(
           : {
               tasks: filed.tasks,
               runOf: (task: Task) => {
-                const mode = runModeOfTask(task.input, resolved);
+                const mode = runModeOfTask(task.input, resolved, stampMatches(task, CODER_FLOW, declaration));
                 return mode === undefined ? undefined : { issue: taskIssueSegment(task.id), mode };
               },
             };
@@ -446,7 +447,7 @@ export function coderWorkerFlow(
         // The kit's review is a floor: a worker's `review:` can turn it on, never off, so a worker anyone
         // can hire never settles a change no user saw.
         const review = options.review === true || worker.config.review === true;
-        return { ...found, id, manager: review ? found.reviewed : found.manager };
+        return { ...found, id, manager: review ? found.reviewed : found.manager, worker };
       };
       /**
        * Route by the session's worker; a run that starts work first checks the mode its task's checked
@@ -460,13 +461,17 @@ export function coderWorkerFlow(
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
           resources: installation.resources,
           execute: async (input: unknown, ctx: never) => {
+            const task = ((input as { input?: unknown }).input ?? {}) as Record<string, unknown>;
             if (ready) {
               // The claim re-checks what the filing did: the app's modes or a mode's `requires` may have changed.
-              const problem = modeProblem(((input as { input?: unknown }).input ?? {}) as Record<string, unknown>, resolved);
+              const problem = modeProblem(task, resolved);
               if (problem !== undefined) throw new Error(`${problem.code}: ${problem.text} Nothing ran.`);
             }
             const chosen = await harnessOf(ctx);
             if (ready) {
+              // And the worker's lock, read as this claim resolves the worker: one set after the filing refuses it here.
+              const locked = taskLockProblem(chosen.worker, task, { modes: resolved, harnesses: ids, ...(options.defaultHarness === undefined ? {} : { defaultHarness: options.defaultHarness }) });
+              if (locked !== undefined) throw new Error(`${locked.code}: ${locked.text} Nothing ran.`);
               const missing = await refusal(chosen.id);
               if (missing !== undefined) throw new Error(missing);
             }
@@ -474,6 +479,22 @@ export function coderWorkerFlow(
             return pick(chosen);
           },
         } as never) as BlockDefinition<any, any>;
+      /**
+       * The task as a coding route reads it: its input as stored, trusted as far as the row's stamp
+       * says (`trustedCodingInput`). The row is read from the board the claim names, never from the
+       * input the route was handed, so a field a filer wrote on a row the check never stamped decides nothing.
+       */
+      const trusted = (name: string, block: BlockDefinition<any, any>) =>
+        sequencer({ name, inputSchema: taskWorkerInputSchema.passthrough() }).step(
+          async (task: { taskId: string; input?: unknown; claim?: { collectionId: string; partition?: string } }, ctx: never) => {
+            const claim = task.claim;
+            const ledger = claim === undefined ? undefined : await conversationLedgers(claim.collectionId, ctx, claim.partition, task.taskId);
+            const stored = ledger?.get(task.taskId);
+            const stamped = stored !== undefined && stampMatches(stored, CODER_FLOW, declaration);
+            return { ...task, input: trustedCodingInput((task.input ?? {}) as Record<string, unknown>, stamped, resolved) };
+          },
+          block,
+        ) as BlockDefinition<any, any>;
       const anyDoor = Object.values(built)[0]!.door;
       // The app's documents meet the installation's by the flow-build rule: a shared accessor must be the same resource.
       const flowResources = mergeDeclaredResources(options.worker?.resources, { ...installation.resources, ...workerMessagesResources });
@@ -520,13 +541,10 @@ export function coderWorkerFlow(
             }),
             // The turn a steer or a delivered message owes a task it woke from its pull-request wait.
             // The steer hands the row as stored: its input is read as the claim reads it, so it runs in the mode
-            // the claim ran it in, never by a marker on its raw input (FIX-2878).
+            // the claim ran it in, never by a field on its raw input (FIX-2878).
             onTaskSteered: steerTurnEntry({
               name: `${CODER_FLOW}-steer-turn`,
-              block: sequencer({ name: `${CODER_FLOW}-steer-read`, inputSchema: taskWorkerInputSchema.passthrough() }).step(
-                (task: { input?: unknown }) => ({ ...task, input: storedCodingInput(((task.input ?? {}) as Record<string, unknown>), resolved) }),
-                byHarness(`${CODER_FLOW}-steer`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
-              ),
+              block: trusted(`${CODER_FLOW}-steer-read`, byHarness(`${CODER_FLOW}-steer`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true)),
             }),
           },
         },
@@ -534,7 +552,7 @@ export function coderWorkerFlow(
           actions: {
             work: workerTaskEntry({
               name: `${CODER_FLOW}-work`,
-              block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
+              block: trusted(`${CODER_FLOW}-work-read`, byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true)),
               // What a coding task takes (FIX-2878): its mode and issue, the run settings the server fills, and,
               // with `project`, a project to work in, refused at filing when it has none (FIX-2894).
               inputSchema: declaration,

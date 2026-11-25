@@ -13,7 +13,9 @@
  */
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import type { ModeDone, ModeSpec } from "../manager";
-import { storedCodingInput } from "./coding-task-input";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
+import { trustedCodingInput } from "./coding-task-input";
+import { quotedList as listed } from "./quoted-list";
 import { assertSafeSegment } from "../workspace";
 
 /** The kit's own mode's name: what a task runs when the app registers no modes. */
@@ -67,7 +69,6 @@ export interface ResolvedModes {
   defaultMode: string;
 }
 
-const listed = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
 
 /**
  * The app's modes, completed and checked.
@@ -144,16 +145,21 @@ export function modeOfTask(input: unknown, resolved: ResolvedModes): string {
 /**
  * The mode a task's run is keyed by, with its former name, for a reader that
  * finds the run from the stored task (a line typed in its session): the
- * stored input read as the claim reads it. `undefined` for a row no run is
- * keyed by: one the claim refuses, or one in a mode the app no longer has.
+ * stored input read as the claim reads it, `stamped` saying whether the
+ * filing check wrote it. `undefined` for a row no run is keyed by: one the
+ * claim refuses, or one in a mode the app no longer has.
+ *
+ * @throws Any error the legacy read throws that isn't its refusal.
  */
-export function runModeOfTask(input: unknown, resolved: ResolvedModes): { readonly name: string; readonly formerName?: string } | undefined {
+export function runModeOfTask(input: unknown, resolved: ResolvedModes, stamped: boolean): { readonly name: string; readonly formerName?: string } | undefined {
   const raw = input !== null && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
   let read: Record<string, unknown>;
   try {
-    read = storedCodingInput(raw, resolved);
-  } catch {
-    return undefined;
+    read = trustedCodingInput(raw, stamped, resolved);
+  } catch (error) {
+    // Only the legacy read's own refusal means no run is keyed by the row; anything else is a fault, and surfaces.
+    if (error instanceof TaskWriteRefusedError) return undefined;
+    throw error;
   }
   const name = modeOfTask(read, resolved);
   if (!Object.hasOwn(resolved.modes, name)) return undefined;

@@ -362,3 +362,72 @@ describe("a row stored before this change, at its claim", () => {
     expect(runs[0]!.branch).toContain("fix-2165");
   });
 });
+
+describe("a lock set after a task was filed", () => {
+  it("refuses the task at claim, by name, and nothing runs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "fsd-coding-task-input-lock-"));
+    dirs.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    seedRepo(repo);
+    const app = await boot("answer", localWorkspaceHost({ root: join(root, "runs"), remotes: { allow: ["file"] }, source: () => ({ kind: "repo", repo: `file://${repo}` }) }));
+    const taskId = filedId(await app.file("core.explainer"));
+    // Filed while its worker took implement: the stored task, stamp and all, as that filing wrote it.
+    await app.restore(taskId, (task) => ({ ...task, input: { ...task.input, mode: "implement", issue: "FIX-2165" } }));
+    expect(await app.tool("updateTask_tasks", { id: taskId, status: "pending" })).toMatchObject({ ok: true });
+    let task = await app.stored(taskId) as { status: string; error?: string };
+    for (let n = 0; n < 500 && !["completed", "errored", "failed", "cancelled"].includes(task.status); n++) {
+      await new Promise((r) => setTimeout(r, 20));
+      task = await app.stored(taskId) as { status: string; error?: string };
+    }
+    expect(task.status).not.toBe("completed");
+    expect(task.error).toContain('mode_locked: worker "core.explainer" always runs with mode answer; this task asked for implement.');
+    expect(task.error).toContain("Nothing ran.");
+    expect(await app.runModes(taskId)).toEqual([]);
+  });
+});
+
+describe("a field a model wrote on a row stored before this change", () => {
+  /** A row filed to core.coder, rewritten as an older build stored it (`input`, and no stamp), released, and run to its end. */
+  async function runUnstamped(input: Record<string, unknown>) {
+    const root = mkdtempSync(join(tmpdir(), "fsd-coding-task-input-old-"));
+    dirs.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    seedRepo(repo);
+    const app = await boot("answer", localWorkspaceHost({ root: join(root, "runs"), remotes: { allow: ["file"] }, source: () => ({ kind: "repo", repo: `file://${repo}` }) }));
+    const taskId = filedId(await app.file("core.coder"));
+    await app.restore(taskId, (task) => {
+      const { inputFilledFor: _stamp, ...metadata } = task.metadata ?? {};
+      return { ...task, input, metadata };
+    });
+    expect(await app.tool("updateTask_tasks", { id: taskId, status: "pending" })).toMatchObject({ ok: true });
+    let task = await app.stored(taskId) as { status: string; error?: string };
+    for (let n = 0; n < 500 && !["completed", "errored", "failed", "cancelled"].includes(task.status); n++) {
+      await new Promise((r) => setTimeout(r, 20));
+      task = await app.stored(taskId) as { status: string; error?: string };
+    }
+    return { task, runs: await app.runModes(taskId) };
+  }
+
+  it("never chooses its mode: a plain implement runs the default mode, on no issue", async () => {
+    const { task, runs } = await runUnstamped({ mode: "implement", issue: "FIX-123" });
+    expect(task.status, JSON.stringify(task)).toBe("completed");
+    expect(runs.map((run) => run.mode)).toEqual(["answer"]);
+    expect(runs[0]!.branch).not.toContain("fix-123");
+  });
+
+  it("runs a plain mode the app doesn't have in the default mode, not as an error", async () => {
+    const { task, runs } = await runUnstamped({ mode: "bogus" });
+    expect(task.status, JSON.stringify(task)).toBe("completed");
+    expect(runs.map((run) => run.mode)).toEqual(["answer"]);
+  });
+
+  it("reads an issue that isn't a string as none, so its claim never fails on it", async () => {
+    for (const issue of [null, { id: 7 }]) {
+      const { task, runs } = await runUnstamped({ issue, description: "Why?" });
+      expect(task.status, `${JSON.stringify(issue)}: ${JSON.stringify(task)}`).toBe("completed");
+      expect(runs.map((run) => run.mode)).toEqual(["answer"]);
+    }
+  });
+});
