@@ -64,6 +64,7 @@ import { resolve, sep } from "node:path";
 import {
   acquireLock,
   localWorkspaceHost,
+  refreshLock,
   releaseLock,
   WorkspaceRefusedError,
   worktreeLockPath,
@@ -71,7 +72,6 @@ import {
   type WorkspaceHost,
   type WorkspaceSetup,
 } from "@flow-state-dev/workspace";
-import { refreshLock } from "@flow-state-dev/workspace/internal";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
