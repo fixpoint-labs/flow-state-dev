@@ -65,8 +65,8 @@ handler({
 
     // The declared ref keeps its own type, by property and through `get`;
     // it is not widened to the `AnyResourceRef` union.
-    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<any>>();
-    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<any>>();
+    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<{ count: number }>>();
+    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<{ count: number }>>();
     // @ts-expect-error `get` accepts only a declared name.
     ctx.resources.get("missing");
     // @ts-expect-error an undeclared name is a missing property.
@@ -118,9 +118,9 @@ handler({
   execute: (input, ctx) => {
     readsAnyCtx(ctx);
     readsOpenRegistry(ctx.resources);
-    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<any>>();
+    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<{ name: string }>>();
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<
-      Array<ResourceRef<any> | ResourceCollectionRef<any>>
+      Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }>>
     >();
     return input;
   },
