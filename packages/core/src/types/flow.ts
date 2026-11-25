@@ -2,13 +2,10 @@ import type { ZodTypeAny } from "zod";
 import type { AuthenticationConfig } from "./auth";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, RetryPolicy } from "./block";
 import type {
-  DefinedResource,
   ResourceConfig,
-  ResourceRef,
-  StateOf
+  ResourceRef
 } from "./resource";
 import type {
-  DefinedResourceCollection,
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
@@ -29,21 +26,6 @@ import type { FileContent } from "../items/content";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
-
-type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
-  // All collection refs expose async reads regardless of prefetchMode
-  // — FIX-700 collapsed the eager/lazy type split. An `projected`-branded
-  // collection (FIX-858) resolves to the read-only ref — tested FIRST because
-  // it is a narrower `DefinedResourceCollection`, so the plain-collection branch
-  // would otherwise swallow it.
-  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { projected: true }
-    ? ProjectedResourceCollectionRef<S>
-    : TResources[K] extends DefinedResourceCollection<infer S>
-      ? ResourceCollectionRef<S>
-      : TResources[K] extends DefinedResource<infer S>
-        ? ResourceRef<S>
-        : ResourceRef<StateOf<TResources[K]>>;
-};
 
 /** Union of handle types that can appear in a resource registry. */
 export type AnyResourceHandle =
