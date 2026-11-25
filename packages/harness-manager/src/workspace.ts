@@ -914,6 +914,12 @@ export interface CheckoutLease {
   token: string;
 }
 
+/** Read the lock and its ownership token from the state persisted by a manager run or a talk turn. */
+export function checkoutLeaseFromState(state: Readonly<Record<string, unknown>> | undefined): CheckoutLease | undefined {
+  if (typeof state?.lockPath !== "string" || typeof state.leaseToken !== "string") return undefined;
+  return { lockPath: state.lockPath, token: state.leaseToken };
+}
+
 /**
  * Release a checkout lease — the one place a lock this process took is
  * removed, called from every exit. Never unlinks a lock that is not this
