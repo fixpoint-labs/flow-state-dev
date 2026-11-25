@@ -300,6 +300,56 @@ describe("builtin crawl adapter — cancel", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("rejects when cancelled during the root fetch instead of returning no pages", async () => {
+    globalThis.fetch = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+        })
+    ) as typeof globalThis.fetch;
+    const run = new AbortController();
+
+    const pending = builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      signal: run.signal,
+    });
+    setTimeout(() => run.abort(), 20);
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("does not read the body of a page it skips by content type", async () => {
+    const pdf = new ReadableStream({
+      pull() {
+        throw new Error("crawler read a body it was going to skip");
+      },
+    });
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "https://example.com/"
+          ? new Response(`<html><body><p>Root page body text</p><a href="/file.pdf">pdf</a></body></html>`, {
+              headers: { "content-type": "text/html" },
+            })
+          : new Response(pdf, { headers: { "content-type": "application/pdf" } })
+      )
+    );
+
+    const result = await builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+    });
+
+    expect(result.pages).toHaveLength(1);
+    expect(pdf.locked).toBe(false);
+  });
+
   it("ends during the pause between pages instead of waiting it out", async () => {
     globalThis.fetch = vi.fn().mockImplementation(() =>
       Promise.resolve(

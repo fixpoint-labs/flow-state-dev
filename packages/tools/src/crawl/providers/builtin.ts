@@ -44,14 +44,18 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
         // crawled markup, so without this a public page can walk the crawler
         // into loopback or a metadata service. A blocked URL throws and is
         // skipped by the surrounding catch, like any other unreachable page.
-        const { response, body: html } = await fetchValidated(entry.url, {
+        const { response, readBody } = await fetchValidated(entry.url, {
           signal: options.signal,
         });
 
-        if (!response.ok) continue;
-
+        // Judge the page by its headers before reading a body it will not use.
         const contentType = response.headers.get("content-type") ?? "";
-        if (!contentType.includes("text/html")) continue;
+        if (!response.ok || !contentType.includes("text/html")) {
+          await response.body?.cancel();
+          continue;
+        }
+
+        const html = await readBody();
 
         const parsed = htmlToMarkdown(html, entry.url);
 

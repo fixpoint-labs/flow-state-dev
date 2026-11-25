@@ -48,14 +48,15 @@ export class ResponseTooLargeError extends Error {
 }
 
 /**
- * The final response, the URL it actually came from after any redirects, and
- * its body as text. The body has already been read, so `response.body` is
- * consumed; use `body`.
+ * The final response and the URL it actually came from after any redirects.
+ * Read the body only through `readBody`, which applies the byte cap and stays
+ * under the deadline; a caller that skips the body cancels `response.body`.
  */
 export interface ValidatedFetchResult {
   response: Response;
   finalUrl: string;
-  body: string;
+  /** The body as UTF-8 text; rejects with {@link ResponseTooLargeError} past the cap. */
+  readBody(): Promise<string>;
 }
 
 export interface FetchValidatedOptions {
@@ -68,11 +69,10 @@ export interface FetchValidatedOptions {
 }
 
 /**
- * Fetches `url` within the policy above and reads its body.
+ * Fetches `url` within the policy above, up to the response headers.
  *
  * Throws {@link BlockedUrlError} for a refused destination (including one the
- * socket's lookup refused), {@link ResponseTooLargeError} for an oversized
- * body, and otherwise whatever the resolver or the transport threw — a
+ * socket's lookup refused), and otherwise whatever the resolver or the transport threw — a
  * `TimeoutError` when the deadline passes. Callers shape those into their own
  * error types, since a policy refusal and a DNS blip warrant different
  * treatment.
@@ -106,7 +106,8 @@ export async function fetchValidated(
         ? response.headers.get("location")
         : null;
       if (location === null) {
-        return { response, finalUrl: currentUrl, body: await readCapped(response, currentUrl, maxBytes) };
+        const finalUrl = currentUrl;
+        return { response, finalUrl, readBody: () => readCapped(response, finalUrl, maxBytes) };
       }
 
       // Release the redirect body rather than leaving it unread — including the

@@ -223,6 +223,24 @@ describe("builtin fetch adapter — bounds", () => {
     });
   });
 
+  it("keeps the HTTP error and its retry when the error page is past the cap", async () => {
+    // The status decides retryability; an unreadable body only loses the excerpt.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("x".repeat(5 * 1024 * 1024 + 1), {
+        status: 503,
+        statusText: "Service Unavailable",
+      })
+    );
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com/down", { waitForJS: false })
+    ).rejects.toMatchObject({
+      code: "fetch_http_error",
+      retryable: true,
+      details: { errorType: "http", httpStatus: 503 },
+    });
+  });
+
   it("aborts with the run's signal", async () => {
     globalThis.fetch = vi.fn(
       (_url: string, init: RequestInit) =>
