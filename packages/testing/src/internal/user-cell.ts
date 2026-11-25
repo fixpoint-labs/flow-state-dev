@@ -14,29 +14,25 @@ import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { getPatternPrefix, isCollectionConfig, resourceStorageKeys } from "@flow-state-dev/core/types";
 
-type UserDeclaration = { scope?: string; flowIsolation?: boolean; pattern?: string };
-
 /**
  * The `flowIsolation` of the user-scoped declaration that owns `storageKey`,
  * or `undefined` when none does.
  */
 function owningIsolation(flow: FlowInstance, storageKey: string): boolean | undefined {
-  const all = (flow.resources ?? {}) as Record<string, UserDeclaration>;
-  const user: Record<string, UserDeclaration> = {};
-  for (const [accessor, config] of Object.entries(all)) {
-    if (config?.scope === "user") user[accessor] = config;
-  }
+  const user = Object.fromEntries(
+    Object.entries(flow.resources ?? {}).filter(([, config]) => config?.scope === "user")
+  );
   const canonical = resourceStorageKeys(user);
   let best: { length: number; isolation: boolean | undefined } | undefined;
   for (const [accessor, config] of Object.entries(user)) {
     if (!isCollectionConfig(config)) {
-      if ((canonical[accessor] ?? accessor) === storageKey) return config.flowIsolation ?? flow.isolateUserState;
+      if ((canonical[accessor] ?? accessor) === storageKey) return config.flowIsolation;
       continue;
     }
-    const raw = getPatternPrefix(config.pattern as string);
+    const raw = getPatternPrefix(config.pattern);
     const prefix = raw === "" ? "" : `${raw}/`;
     if ((prefix === "" || storageKey.startsWith(prefix)) && (best === undefined || prefix.length > best.length)) {
-      best = { length: prefix.length, isolation: config.flowIsolation ?? flow.isolateUserState };
+      best = { length: prefix.length, isolation: config.flowIsolation };
     }
   }
   return best?.isolation;
