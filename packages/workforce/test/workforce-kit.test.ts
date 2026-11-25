@@ -84,7 +84,12 @@ describe("workforce as a kit", () => {
       "teams/core/workers/lead/WORKER.md": LEAD,
       "notes.txt": "a note",
       // A worker flow is read, so the folder beside it is walked and the helper named on its own.
-      "flows/workers/coder.mts": "export {};",
+      "flows/workers/coder.ts": "export {};",
+      // `fsdev gen` registers `.ts` and `.tsx` only, so a `.mts` worker flow would start an app no worker could name it in.
+      "flows/workers/digest.mts": "export {};",
+      // A document is read, so its folder is walked and the `.cts` module named on its own.
+      "teams/core/resources/handbook.md": "---\ndescription: How we work.\n---\nBe brief.",
+      "teams/core/resources/ledger.cts": "module.exports = {};",
       "flows/helper.mts": "export {};",
       "teams/core/notes.md": "a note",
       "flows/workers/nested/deep.ts": "export {};",
@@ -94,11 +99,19 @@ describe("workforce as a kit", () => {
       () => "started",
       (error: Error) => error.message,
     );
-    for (const stray of ["notes.txt", "flows/helper.mts", "teams/core/notes.md", "flows/workers/nested"]) {
+    for (const stray of [
+      "notes.txt",
+      "flows/helper.mts",
+      "flows/workers/digest.mts",
+      "teams/core/resources/ledger.cts",
+      "teams/core/notes.md",
+      "flows/workers/nested",
+    ]) {
       expect(refused).toContain(`"${stray}"`);
     }
     expect(refused).not.toContain("WORKER.md");
-    expect(refused).not.toContain("coder.mts");
+    expect(refused).not.toContain("coder.ts");
+    expect(refused).not.toContain("handbook.md");
   });
 
   it("refuses to start when a worker file doesn't load, naming it", async () => {
