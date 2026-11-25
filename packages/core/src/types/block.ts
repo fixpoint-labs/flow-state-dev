@@ -1506,7 +1506,7 @@ export type InferBlockResources<TSchemas, TDefs> =
  */
 export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
-    ? string extends keyof TSchemas
+    ? Record<string, ZodTypeAny> extends TSchemas
       // The open map (`BlockContext`'s default): any name, an untyped handle.
       ? Record<string, StateRef | undefined>
       : { [K in keyof TSchemas]: StateRef<z.infer<TSchemas[K]>> | undefined }
