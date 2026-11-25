@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
 import type { BlockTraceItem, OutputItem, ResourceLoadRecord } from "@flow-state-dev/core/items";
+import { isRefusal } from "@flow-state-dev/core/items";
 
 // Generator config + connected-input view used by DebugPayloadSection.
 // Sourced directly from `block_trace.generator` and `block_trace.input.connected`.
@@ -35,7 +36,7 @@ import { JsonViewer } from "../shared/json-viewer";
 import { BlockValueView, OmittedValueView, ToolOutputView } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
 import { SequencerStateSection } from "./sequencer-state-panel";
-import { safeParseJson } from "../../lib/utils";
+import { cn, safeParseJson } from "../../lib/utils";
 import type { TraceNode } from "../../lib/trace-tree";
 
 export function ItemDetail() {
@@ -124,7 +125,7 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       </div>
 
       {traceItem?.status === "failed" && traceItem.error && (
-        <ErrorPanel error={traceItem.error} />
+        <ErrorPanel error={traceItem.error} refused={isRefusal(traceItem)} />
       )}
 
       {/* Tool call — surfaces the originating tool_call's arguments on the
@@ -524,7 +525,7 @@ function BlockOutputDetail({ item }: { item: DevtoolItem & { type: "block_trace"
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
       {item.status === "failed" && item.error && (
-        <ErrorPanel error={item.error} />
+        <ErrorPanel error={item.error} refused={isRefusal(item)} />
       )}
       {item.toolCall && (
         <CollapsibleSection title="Tool Call" defaultOpen>
@@ -643,7 +644,7 @@ function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "tool_out
       <MetadataRow label="Tool" value={item.toolCall.name} mono />
       <MetadataRow label="Call ID" value={item.toolCall.callId} mono />
       <MetadataRow label="Generator" value={item.toolCall.generatorBlock} />
-      {isFailed && item.error && <ErrorPanel error={item.error} />}
+      {isFailed && item.error && <ErrorPanel error={item.error} refused={isRefusal(item)} />}
       <CollapsibleSection title="Arguments" defaultOpen>
         <JsonViewer data={safeParseJson(item.toolCall.arguments)} />
       </CollapsibleSection>
@@ -788,11 +789,16 @@ function CauseChain({ cause }: { cause: SerializedErrorNode }) {
  * The fetch tool's well-known keys (`errorType`, `httpStatus`, `responseBody`,
  * and the serialized `cause` chain) likewise render as dedicated
  * sections so a failed fetch is diagnosable without reading raw JSON.
+ *
+ * A refusal (`refused`: the block declined on a precondition, and the request
+ * went on) draws the same sections under a "Refused" heading in ink, not red.
  */
 function ErrorPanel({
   error,
+  refused = false,
 }: {
   error: { message: string; code?: string; details?: Record<string, unknown> };
+  refused?: boolean;
 }) {
   const details = error.details;
   const rawOutput = typeof details?.rawOutput === "string" ? (details.rawOutput as string) : undefined;
@@ -825,8 +831,10 @@ function ErrorPanel({
       : undefined;
   return (
     <div className="space-y-2">
-      <div className="border border-fs-red bg-fs-card px-3 py-2">
-        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-red">Error</span>
+      <div className={cn("border bg-fs-card px-3 py-2", refused ? "border-fs-ink/30" : "border-fs-red")}>
+        <span className={cn("font-fs-mono text-[10px] font-medium uppercase tracking-[.14em]", refused ? "text-fs-ink3" : "text-fs-red")}>
+          {refused ? "Refused" : "Error"}
+        </span>
         <p className="mt-0.5 whitespace-pre-wrap font-fs-mono text-[11.5px] text-fs-ink">{error.message}</p>
         {(httpStatus !== undefined || errorType !== undefined) && (
           <div className="flex items-center gap-1.5 mt-1">

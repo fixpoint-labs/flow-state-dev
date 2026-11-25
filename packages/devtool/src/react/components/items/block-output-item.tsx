@@ -3,9 +3,11 @@
  *
  * Tool calls: "▸ toolName(arg1, arg2)" collapsed, full JSON on expand.
  * Regular outputs: "▸ blockName → completed" collapsed, full JSON on expand.
+ * A refusal reads "→ refused" with its reason, in ink rather than red.
  */
 import { useState } from "react";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
+import { isRefusal } from "@flow-state-dev/core/items";
 import { Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "../shared/json-viewer";
 import { BlockValueView } from "../shared/block-value-view";
@@ -65,9 +67,13 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
     );
   }
 
-  const statusLabel = item.status === "completed" ? "completed" : item.status === "in_progress" ? "running" : item.status;
+  // A refusal (a block declining on a precondition) reads as refused, in ink;
+  // red is for a block that broke.
+  const refused = isRefusal(item);
+  const statusLabel = refused ? "refused" : item.status === "completed" ? "completed" : item.status === "in_progress" ? "running" : item.status;
   const failedMessage = item.status === "failed" ? item.error?.message : undefined;
   const failedSummary = item.status === "failed" ? errorSummary(item.error?.details) : undefined;
+  const errorTone = refused ? "text-fs-ink3" : "text-fs-red";
 
   return (
     <div>
@@ -82,14 +88,14 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
         <Braces className="h-3 w-3 shrink-0 text-fs-ink3" />
         <span className="font-fs-mono font-medium text-fs-ink">{item.blockName}</span>
         <span className="text-fs-ink4">→</span>
-        <span className={`font-fs-mono ${item.status === "failed" ? "text-fs-red" : "text-fs-ink3"}`}>{statusLabel}</span>
+        <span className={`font-fs-mono ${item.status === "failed" ? errorTone : "text-fs-ink3"}`}>{statusLabel}</span>
         {failedSummary && (
-          <span className="text-[9.5px] font-fs-mono px-1 py-0 border border-fs-red text-fs-red shrink-0">
+          <span className={`text-[9.5px] font-fs-mono px-1 py-0 border shrink-0 ${refused ? "border-fs-ink/45 text-fs-ink3" : "border-fs-red text-fs-red"}`}>
             {failedSummary}
           </span>
         )}
         {failedMessage && (
-          <span className="text-fs-red truncate max-w-[20rem]" title={failedMessage}>
+          <span className={`${errorTone} truncate max-w-[20rem]`} title={failedMessage}>
             {failedMessage}
           </span>
         )}
@@ -100,8 +106,8 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
         <div className="ml-7 mt-1.5 space-y-2">
           {item.status === "failed" && item.error && (
             <div>
-              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-red">Error</span>
-              <p className="text-xs text-fs-red font-fs-mono mt-0.5">{item.error.message}</p>
+              <span className={`font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] ${errorTone}`}>{refused ? "Refused" : "Error"}</span>
+              <p className={`text-xs font-fs-mono mt-0.5 ${refused ? "text-fs-ink" : "text-fs-red"}`}>{item.error.message}</p>
               {item.error.code && (
                 <p className="text-[10px] text-fs-ink4 font-fs-mono mt-0.5">{item.error.code}</p>
               )}

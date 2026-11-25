@@ -134,3 +134,25 @@ export function isSuspensionResumeItem(item: OutputItem): item is SuspensionResu
 export function isSuspensionWait(item: { readonly type: string; readonly status?: string; readonly error?: { readonly code?: string } }): boolean {
   return item.type === "tool_output" && item.status === "failed" && item.error?.code === "SUSPENSION";
 }
+
+/**
+ * The `error.code` of a refusal: a block that declined on a precondition (the
+ * session it ran on is not one the write applies to, say) rather than broke.
+ * A thrower sets it by throwing a `FlowError` with this code, and the block's
+ * failed `block_trace` and `tool_output` carry it. The request goes on unless
+ * something lets the refusal escape.
+ */
+export const REFUSED_ERROR_CODE = "refused";
+
+/**
+ * True when `item` is a failed `block_trace` or `tool_output` whose error is a
+ * refusal ({@link REFUSED_ERROR_CODE}). Renderers use this to draw the block as
+ * refused, with its reason, rather than as a failure.
+ */
+export function isRefusal(item: { readonly type: string; readonly status?: string; readonly error?: { readonly code?: string } }): boolean {
+  return (
+    (item.type === "block_trace" || item.type === "tool_output") &&
+    item.status === "failed" &&
+    item.error?.code === REFUSED_ERROR_CODE
+  );
+}

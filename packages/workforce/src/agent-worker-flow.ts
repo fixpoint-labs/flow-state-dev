@@ -88,6 +88,7 @@ import { defineSessionBoard, type SessionBoard } from "./conversation-board/sess
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
 import { finishedTasksAnswerAgain } from "./conversation-board/take-finished";
 import { workstreamOpenedEntry } from "./projects/workstream-lead";
+import { offeredOnSession } from "./projects/lead-tools";
 import { WORKSTREAM_OPENED_ENTRY } from "./projects/workstream-ref";
 import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
@@ -1218,13 +1219,15 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       tools: async (_input, ctx): Promise<GeneratorTool[]> => {
         const config = turnConfig(ctx);
         const listed = config.tools;
-        const named =
+        // A lead-only tool (`updateWorkstream`) is left out on a session that leads no workstream.
+        const named = (
           listed === undefined
             ? [
                 ...(await selectedPresetTools(workerCapabilityCatalog, config.capabilities, ctx)),
                 ...(config[WORKER_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
               ]
-            : listed.map((toolName) => catalog[toolName] as GeneratorTool);
+            : listed.map((toolName) => catalog[toolName] as GeneratorTool)
+        ).filter((tool) => offeredOnSession(tool, ctx));
         const own = config[WORKER_TOOLS_KEY] as GeneratorTool[] | undefined;
         // The sharing flow's own tools, on every worker it runs.
         const extra = share.extraTools ?? [];

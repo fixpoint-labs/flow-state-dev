@@ -106,6 +106,8 @@ export {
 
 export { ProjectRefusedError, type ProjectRefusalReason } from "./project-refusal";
 
+export { offeredOnSession } from "./lead-tools";
+
 export {
   definePrivateWorkstreamsCollection,
   defineWorkstreamsCollection,
