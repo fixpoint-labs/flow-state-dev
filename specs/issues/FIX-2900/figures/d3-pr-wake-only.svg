@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, the finished task&#x27;s talk. Chosen: read-only too. Instead of: limit only the pull-request wake the issue names. It comes down to the same push one door over: chosen, closed on both; instead, the talk can still push to the merged branch, unreviewed and unrecorded. Price: a quick change through the talk now needs a task. Size: one more call site against none. Locks in: a change on done work is always a new task. Flips if: someone relies on the talk to change code after the task is done."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, the finished task&#x27;s talk. Chosen by the product owner: the pull-request wake only. Instead of: the talk read-only too. It comes down to what the issue asks: chosen, the wake as written; instead, one door wider. The same push one door over: chosen, still open on the talk, full tools and unrecorded; instead, closed on both. A quick fix on a done task: chosen, still possible through the talk; instead, needs a new task. Locks in: the talk is a known exposure, out of scope. Flips if: a talk turn changes done work unseen; then the talk gets the same feed, one call site."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,68 +35,69 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL · DECIDED BY JAKE, 2026-11-25</text>
     <text class="t-q" x="32" y="52">Is the talk on a finished task read-only too?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Read-only, as the wake</text>
+    <text class="t-h c-code" x="228" y="112">No · the pull-request wake only</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">The pull-request wake only</text>
+    <text class="t-h c-lost" x="592" y="112">Read-only, as the wake</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">THE SAME PUSH,</text>
-    <text class="t-lbl" x="32" y="169">ONE DOOR OVER</text>
+    <text class="t-lbl" x="32" y="156">WHAT THE</text>
+    <text class="t-lbl" x="32" y="169">ISSUE ASKS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Closed on both</text>
-    <text class="t-s" x="248" y="179">a change on done work is a new task</text>
+    <text class="t-b" x="248" y="161">The wake, as written</text>
+    <text class="t-s" x="248" y="179">one call site; the talk stays as it is</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Open on the talk</text>
-    <text class="t-s" x="612" y="179">full tools, no warning, unrecorded</text>
+    <text class="t-b" x="612" y="161">One door wider</text>
+    <text class="t-s" x="612" y="179">the talk&#x2019;s feeds answer read-only too</text>
   </g>
 
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">A QUICK FIX ON</text>
-    <text class="t-lbl" x="32" y="235">A DONE TASK</text>
+    <text class="t-lbl" x="32" y="222">THE SAME PUSH,</text>
+    <text class="t-lbl" x="32" y="235">ONE DOOR OVER</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Needs a new task</text>
-    <text class="t-s" x="248" y="241">the talk only answers</text>
+    <text class="t-b" x="248" y="223">Still open on the talk</text>
+    <text class="t-s" x="248" y="241">full tools, no warning, unrecorded</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Still possible</text>
-    <text class="t-s" x="612" y="241">through the talk</text>
+    <text class="t-b" x="612" y="223">Closed on both</text>
+    <text class="t-s" x="612" y="241">a change on done work is a new task</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="280">SIZE</text>
-    <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">One more call site</text>
-    <text class="t-s" x="248" y="299">the talk’s feeds answer read-only</text>
-    <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">None</text>
-    <text class="t-s" x="612" y="299">the issue as written</text>
+    <text class="t-lbl" x="32" y="274">A QUICK FIX ON</text>
+    <text class="t-lbl" x="32" y="287">A DONE TASK</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Still possible</text>
+    <text class="t-s" x="248" y="299">through the talk</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Needs a new task</text>
+    <text class="t-s" x="612" y="299">the talk only answers</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A change on done work is always a new task</text>
-    <text class="t-s" x="32" y="389">a finished session can only answer</text>
+    <text class="t-b" x="32" y="371">The talk is a known exposure, out of scope</text>
+    <text class="t-s" x="32" y="389">listed in the spec&#x2019;s debt</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Someone relies on the talk to change code</text>
-    <text class="t-s" x="494" y="389">then the talk keeps full access</text>
+    <text class="t-b" x="494" y="371">A talk turn changes done work unseen</text>
+    <text class="t-s" x="494" y="389">then the talk gets the same feed, one call site</text>
   </g>
 
 </svg>
