@@ -416,6 +416,7 @@ describe("a coding run that made changes waits for a person's review", () => {
         pullRequests: [],
         // Nothing open from the branch, so a `pull-request` accept opens one.
         openPullRequest: null,
+        pullRequest: null,
         round: null,
         files: [{ path: "change-1.txt", added: 1, removed: 0 }],
         fileCount: 1,
