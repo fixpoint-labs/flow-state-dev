@@ -1256,6 +1256,66 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(task?.leaseUntil).toBeUndefined();
   });
 
+  // FIX-2897: a side chain that ignores the abort can hold the request's end past its lease, whose renewal the stop ended.
+  describe("a stopped request whose lease lapsed before its end write takes the row back first", () => {
+    it("the task's own request: the cancel lands on the same attempt", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        // Nothing reclaimed the row: only its lease ran out.
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      const { requestId } = await h.run();
+      expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+      // Not left running for the next claim to take as an abandonment: cancelled, as the person asked.
+      expect(await h.row()).toMatchObject({ status: "cancelled", attempts: 1 });
+    });
+
+    it("a later request that took an owed turn gives the turn back", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx, ledger) => {
+        await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+        return "a partial answer";
+      });
+      await h.run();
+      await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+      const owed = (await h.row())!;
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      // Owed again on the same attempt, with no lease: the board's claim takes it as a turn, not a new attempt.
+      expect(task).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      expect(await h.reclaim()).toMatchObject({ id: "t1", attempts: 1, turn: (owed.turn ?? 0) + 2 });
+    });
+
+    // Parked on an external event: a stop for a person mirrors a hold on the row, and a held row renews no lease.
+    it("a later request while the task's own request is parked parks the task on it again", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "external_event", message: "waiting" }));
+      await h.run();
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      // Still parked: no claim takes it as abandoned.
+      expect(await h.reclaim()).toBeNull();
+    });
+  });
+
   it("a stop that lands after a later attempt took the row writes nothing on it: the cancel is fenced", async () => {
     const h = await harness();
     let next: Task | undefined;
