@@ -146,7 +146,7 @@ import {
   type WorktreeOwner,
   type WorktreeRecording,
 } from "@flow-state-dev/workspace";
-import { headCommit, readRunChanges, runChangesSchema } from "./commits";
+import { headCommit, mergedBaseOf, readRunChanges, runChangesSchema, turnDiffStart } from "./commits";
 import { z } from "zod";
 import {
   assertCommandCheckOptions,
@@ -209,6 +209,15 @@ export const harnessTurnRecordSchema = z.object({
   base: z.string().nullable().default(null),
   /** The commit the checkout was on when the turn ended: where its changes end. `null` while it runs. */
   head: z.string().nullable().default(null),
+  // BP-030.
+  /**
+   * The newest commit of the base branch the turn merged in, read at its end
+   * against the host's base tip (`HarnessSessionWorkspace.baseTip`), so its
+   * changes leave out what the merge brought. `null` on a turn that merged
+   * none, for a host that can't say where its base is, and on a turn recorded
+   * before this field.
+   */
+  mergedBase: z.string().nullable().default(null),
   /** The checks `verify` ran when the turn ended, in order; `null` when none ran. */
   checks: z.array(commandCheckResultSchema).nullable().default(null),
   /**
@@ -393,6 +402,14 @@ export interface HarnessSessionWorkspace {
    * keeps what provision wrote.
    */
   recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by?: WorktreeOwner }): Promise<unknown>;
+  /**
+   * The commit the session's base branch is at now, from a source the run
+   * can't move (`WorkspaceHost.baseTip`), or `undefined` when the host can't
+   * say. Read when a turn ends, so a turn that merged the base in reads as
+   * only its own changes. Optional: without it, a turn's changes are
+   * everything between the commits it started and ended on.
+   */
+  baseTip?(place: HarnessSessionPlace): Promise<string | undefined>;
 }
 
 /** The user's worktree rows off a block's context, when the flow has them. */
@@ -1011,7 +1028,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     if (!existsSync(cwd)) return;
     const head = await headCommit(cwd);
     if (head === null) return;
-    await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, head })));
+    const base = ctx.session.state.turns![requestId]!.base!;
+    // A host that can't say, or fails, leaves the turn's changes from its start.
+    const tip = options.workspace.baseTip === undefined ? undefined : await options.workspace.baseTip(workPlaceOf(options.kind, ctx)).catch(() => undefined);
+    const mergedBase = await mergedBaseOf(cwd, base, head, tip ?? null);
+    await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, head, mergedBase })));
   }
   const recordTurnHead = sessionHandler({
     name: "record-turn-head",
@@ -1068,10 +1089,14 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       // A turn that never reached a git checkout has no base: an unverified, empty answer.
       // `== null`: a turn recorded before these fields has neither, and reads unverified (BP-030).
       const base = record.base ?? null;
+      const checkout = existsSync(cwd) ? cwd : "";
+      // From the commit the turn started on, with the base it merged in merged into it: what that merge brought isn't the turn's.
+      const from = base === null || record.mergedBase == null ? undefined : await turnDiffStart(checkout, base, record.mergedBase);
       // With a base commit the read uses it alone; the ref only has to be non-null (`resolveBases`).
-      return readRunChanges(existsSync(cwd) ? cwd : "", base === null ? null : "HEAD", base, {
+      return readRunChanges(checkout, base === null ? null : "HEAD", base, {
         // From the commit the turn started on, exactly: a turn that amended the last one's commit is still only its own work.
         exactBase: true,
+        ...(from !== undefined ? { from } : {}),
         ...(record.head != null ? { head: record.head } : {}),
         ...(input.path !== undefined ? { path: input.path } : {}),
       });

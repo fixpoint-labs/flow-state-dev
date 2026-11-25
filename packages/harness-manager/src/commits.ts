@@ -98,6 +98,59 @@ export async function effectiveCut(cwd: string, cut: string | null, tip: string 
 }
 
 /**
+ * The base commit a session turn merged in: the newest commit of the base
+ * branch's tip now (`tip`, as the host fetched it) that the turn's `head` has
+ * and its start (`base`) didn't. `null` when the turn brought in none of the
+ * base's commits, and for a tip that already has `head` in its history (a
+ * turn that pushed its own work to the base), one git can't read in `cwd`, or
+ * none. Read at the turn's end and kept on its record, so a later read of the
+ * turn's changes doesn't depend on where the base has moved since.
+ */
+export async function mergedBaseOf(cwd: string, base: string, head: string, tip: string | null): Promise<string | null> {
+  if (tip === null) return null;
+  try {
+    // A tip that already has the turn's head would read its work as none.
+    if (await isAncestor(cwd, head, tip)) return null;
+    const merged = (await git(cwd, ["merge-base", head, tip])).trim();
+    if (merged === "" || (await isAncestor(cwd, merged, base))) return null;
+    return merged;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where a session turn's diff starts when it merged the base in
+ * ({@link mergedBaseOf}): its start with that base commit merged into it, so
+ * the base's changes the merge brought are not read as the turn's. A start the
+ * base commit already descends from (a fast-forward) is that commit itself;
+ * otherwise git merges the two trees without touching any ref, and a merge
+ * with conflicts keeps the start, so the turn reads as more than its own work
+ * and never less.
+ */
+export async function turnDiffStart(cwd: string, base: string, mergedBase: string | null): Promise<string> {
+  if (mergedBase === null) return base;
+  try {
+    if (await isAncestor(cwd, base, mergedBase)) return mergedBase;
+    return (await git(cwd, ["merge-tree", "--write-tree", base, mergedBase])).split("\n")[0]!.trim() || base;
+  } catch {
+    return base;
+  }
+}
+
+/** Whether `ancestor` is in `of`'s history (or is it). Rejects when git can't read either. */
+async function isAncestor(cwd: string, ancestor: string, of: string): Promise<boolean> {
+  try {
+    await git(cwd, ["merge-base", "--is-ancestor", ancestor, of]);
+    return true;
+  } catch (error) {
+    // Exit 1 is "no"; anything else is a read that failed.
+    if ((error as { code?: unknown }).code === 1) return false;
+    throw error;
+  }
+}
+
+/**
  * The copies of the base that exist in `cwd`, by the rule {@link readRunCommits}
  * documents. Empty when there is no base, or none of its copies is there.
  */
@@ -217,6 +270,12 @@ export interface RunDiffOptions {
    * meeting point back, and would read that earlier turn's work as its own.
    */
   exactBase?: boolean;
+  /**
+   * With `exactBase`, the commit or tree the diff starts at instead of the
+   * base ({@link turnDiffStart}). The base is still what the read is verified
+   * against.
+   */
+  from?: string;
 }
 
 /** {@link RunDiff}, as a schema: what a review's data and a changes read carry. */
@@ -268,8 +327,8 @@ const UNVERIFIED_DIFF: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0
  * The commit a run's diff starts at: where `head` and the base last met, so a
  * base that moved on after the branch was cut adds nothing to the run's diff.
  */
-async function diffStart(cwd: string, head: string, bases: string[], exactBase = false): Promise<string> {
-  if (exactBase) return bases[0]!;
+async function diffStart(cwd: string, head: string, bases: string[], exactBase = false, from?: string): Promise<string> {
+  if (exactBase) return from ?? bases[0]!;
   return (await git(cwd, ["merge-base", head, ...bases])).trim();
 }
 
@@ -288,7 +347,7 @@ export async function readRunDiff(
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
-    const start = await diffStart(cwd, head, bases, options.exactBase);
+    const start = await diffStart(cwd, head, bases, options.exactBase, options.from);
     // `-z` keeps every path exactly as it is, whatever characters it holds.
     const out = await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, head]);
     const diff: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0, verified: true };
@@ -335,7 +394,7 @@ export async function readRunFilePatch(
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return unverified;
   try {
-    const start = await diffStart(cwd, head, bases, options.exactBase);
+    const start = await diffStart(cwd, head, bases, options.exactBase, options.from);
     let patch = "";
     let truncated = false;
     // Line by line, so a huge patch is never held whole: past the cut, lines are dropped.
