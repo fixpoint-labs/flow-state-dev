@@ -45,7 +45,7 @@
     <text class="t-lbl" x="330" y="62">ORCHESTRATION AND WORKFORCE</text>
     <rect class="chip" x="330" y="70" width="282" height="46" rx="4"/>
     <text class="t-b" x="342" y="89">Boards are per-session copies</text>
-    <text class="t-s" x="342" y="106">boards() and ctx.task.session · 2946</text>
+    <text class="t-s" x="342" y="106">reach by session, ctx.task.session · 2946</text>
     <rect class="chip" x="330" y="124" width="282" height="46" rx="4"/>
     <text class="t-b" x="342" y="143">A child gets its work</text>
     <text class="t-s" x="342" y="160">fixed values on the task row · 2947</text>

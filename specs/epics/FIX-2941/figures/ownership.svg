@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 508" role="img" aria-label="Who owns what: thirteen rules across FIX-2942 named reach, FIX-2943 shared definitions, FIX-2944 indexed keys, FIX-2945 the read across sessions, FIX-2946 boards per session, FIX-2947 children get their work, FIX-2948 per-user keys, FIX-2949 the closure, and the coordinator. Each rule has exactly one owner. FIX-2942 owns ER-1 the owner predicate, ER-2 the cross-session write, ER-3 one copy per sweep. FIX-2943 owns ER-4 opt-in reach and ER-5 one shape per name. FIX-2944 owns ER-6 indexed key segments. FIX-2945 owns ER-7 one view across sessions and ER-8 one change topic. FIX-2946 owns ER-9 the board wrapper and ctx.task.session. FIX-2947 owns ER-10 a child gets its work. FIX-2948 owns ER-11 per-user data keyed by subject. Each child owns ER-12 for its own records and terms. The coordinator owns ER-13. The closure checks ER-1, 2, 6, 7, 8, 10, 11 and 12." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 508" role="img" aria-label="Who owns what: thirteen rules across FIX-2942 named reach, FIX-2943 shared definitions, FIX-2944 indexed keys, FIX-2945 the read across sessions, FIX-2946 boards per session, FIX-2947 children get their work, FIX-2948 per-user keys, FIX-2949 the closure, and the coordinator. Each rule has exactly one owner. FIX-2942 owns ER-1 the routes' owner rule, extended, ER-2 the cross-session write, ER-3 one copy per sweep. FIX-2943 owns ER-4 opt-in reach and ER-5 one shape per name. FIX-2944 owns ER-6 indexed key segments. FIX-2945 owns ER-7 one read across sessions and ER-8 the change topic. FIX-2946 owns ER-9 board reach by session and ctx.task.session. FIX-2947 owns ER-10 a child gets its work. FIX-2948 owns ER-11 per-user data keyed by subject. Each child owns ER-12 for its own records and terms. The coordinator owns ER-13. The closure checks ER-1, 2, 6, 7, 8, 10, 11 and 12." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -53,7 +53,7 @@
   </g>
   <g id="er-1">
     <text class="t-id" x="16" y="82">ER-1</text>
-    <text class="t-b" x="62" y="82">One owner predicate; a miss reads missing</text>
+    <text class="t-b" x="62" y="82">The routes' owner rule; a miss is missing</text>
     <rect class="o" x="340" y="67" width="56" height="20" rx="3"/><text class="t-o" x="368" y="81" text-anchor="middle">owns</text>
     <rect class="u" x="532" y="67" width="56" height="20" rx="3"/><text class="t-u" x="560" y="81" text-anchor="middle">uses</text>
     <rect class="u" x="596" y="67" width="56" height="20" rx="3"/><text class="t-u" x="624" y="81" text-anchor="middle">uses</text>
@@ -70,7 +70,7 @@
   </g>
   <g id="er-3">
     <text class="t-id" x="16" y="142">ER-3</text>
-    <text class="t-b" x="62" y="142">One copy per sweep, never all</text>
+    <text class="t-b" x="62" y="142">One copy per sweep; across only on purpose</text>
     <rect class="o" x="340" y="127" width="56" height="20" rx="3"/><text class="t-o" x="368" y="141" text-anchor="middle">owns</text>
     <rect class="u" x="596" y="127" width="56" height="20" rx="3"/><text class="t-u" x="624" y="141" text-anchor="middle">uses</text>
     <line class="line" x1="16" y1="152" x2="924" y2="152"/>
@@ -102,7 +102,7 @@
   </g>
   <g id="er-7">
     <text class="t-id" x="16" y="262">ER-7</text>
-    <text class="t-b" x="62" y="262">Screens see across through one view</text>
+    <text class="t-b" x="62" y="262">Across sessions only through one read</text>
     <rect class="o" x="532" y="247" width="56" height="20" rx="3"/><text class="t-o" x="560" y="261" text-anchor="middle">owns</text>
     <rect class="u" x="596" y="247" width="56" height="20" rx="3"/><text class="t-u" x="624" y="261" text-anchor="middle">uses</text>
     <rect class="c" x="788" y="247" width="56" height="20" rx="3"/><text class="t-u" x="816" y="261" text-anchor="middle">checks</text>
@@ -110,7 +110,7 @@
   </g>
   <g id="er-8">
     <text class="t-id" x="16" y="292">ER-8</text>
-    <text class="t-b" x="62" y="292">One change topic per definition, owner</text>
+    <text class="t-b" x="62" y="292">The FIX-2750 topic, keyed by session</text>
     <rect class="o" x="532" y="277" width="56" height="20" rx="3"/><text class="t-o" x="560" y="291" text-anchor="middle">owns</text>
     <rect class="u" x="596" y="277" width="56" height="20" rx="3"/><text class="t-u" x="624" y="291" text-anchor="middle">uses</text>
     <rect class="c" x="788" y="277" width="56" height="20" rx="3"/><text class="t-u" x="816" y="291" text-anchor="middle">checks</text>
@@ -118,7 +118,7 @@
   </g>
   <g id="er-9">
     <text class="t-id" x="16" y="322">ER-9</text>
-    <text class="t-b" x="62" y="322">Boards via boards() and ctx.task.session</text>
+    <text class="t-b" x="62" y="322">Board reach by session; ctx.task.session</text>
     <rect class="o" x="596" y="307" width="56" height="20" rx="3"/><text class="t-o" x="624" y="321" text-anchor="middle">owns</text>
     <rect class="u" x="660" y="307" width="56" height="20" rx="3"/><text class="t-u" x="688" y="321" text-anchor="middle">uses</text>
     <line class="line" x1="16" y1="332" x2="924" y2="332"/>

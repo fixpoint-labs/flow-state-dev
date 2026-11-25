@@ -63,7 +63,9 @@ the right column is what the set deletes.
 **Docs:** the shared story is "a scope is how many copies exist; the owner decides who may look;
 name a session to reach its copy". [FIX-2942](https://linear.app/fixpoint-labs/issue/FIX-2942)'s
 changeset carries it, and its PR updates `docs/architecture/state-and-scopes.md`. Each child
-records its own surface in its changeset.
+records its own surface in its changeset. The set keeps today's names: `defineTaskCollection`
+stays the one board definer, and there is no `defineBoard`. The concept doc's examples use
+`defineBoard`; it is amended to match on #5765, which is the owner's call.
 
 ## The set · as of 2026-11-25
 
@@ -76,7 +78,7 @@ spec route, in one spec-set PR.
 | [FIX-2943](https://linear.app/fixpoint-labs/issue/FIX-2943) | Shared definitions, registered by name; the rest keep flow isolation | Ready to spec |
 | [FIX-2944](https://linear.app/fixpoint-labs/issue/FIX-2944) | Range reads over indexed key segments in both SQL stores | Ready to spec |
 | [FIX-2945](https://linear.app/fixpoint-labs/issue/FIX-2945) | One read across an owner's sessions: one query, one change topic | Ready to spec |
-| [FIX-2946](https://linear.app/fixpoint-labs/issue/FIX-2946) | The conversation board and plan ledger as per-session copies; partitions go; three screens read one view | Ready to spec |
+| [FIX-2946](https://linear.app/fixpoint-labs/issue/FIX-2946) | The conversation board and plan ledger as per-session copies; partitions go; three screens read one view, and the task-id lookup reads across sessions by id | Ready to spec |
 | [FIX-2947](https://linear.app/fixpoint-labs/issue/FIX-2947) | Children get their work: lineage, child-state copies, routed-session and chain records go | Ready to spec |
 | [FIX-2948](https://linear.app/fixpoint-labs/issue/FIX-2948) | Per-user records keyed by a session value move to session scope or to their subject | Ready to spec |
 | [FIX-2949](https://linear.app/fixpoint-labs/issue/FIX-2949) | The QA run on one `main` commit | **closure · required** · blocked by all seven |
@@ -120,9 +122,12 @@ follows it.
 
 | Already here | What the set does with it |
 |---|---|
-| HTTP routes serve the owner's sessions after an owner check (`engine/src/routes/route-utils.ts`) | **Builds on.** Blocks get the same rule |
+| HTTP routes admit a session through several functions, not one owner check: `admitListedSession` and `ownResolverVerdict` (`engine/src/routes/instance-caller.ts`: an instance with its own caller resolver decides, and a write session is never listed), `isOrgAttributed` (`engine/src/context/org-attribution.ts`: a session with no org is left out), and `ownsRecord` with the instance's `ownerPin` (`engine/src/context/record-owner.ts`, applied in `context/create-request-host.ts`) | **Extended.** A block is admitted by these same functions ([ER-1](DECISIONS.md#who-owns-what)), so it never reaches a session a browser can't |
 | The owner rule and the one-query `userSuspensions` read (`engine/src/context/request-sessions.ts`) | **Builds on.** FIX-2945's join has its shape and predicate |
 | Views that record what each run read ([FIX-2623](../../issues/FIX-2623/DECISIONS.md)) | **Builds on** for the change topic |
+| Board-insert notices on one user topic, each partition sent as an HMAC key ([FIX-2750](https://linear.app/fixpoint-labs/issue/FIX-2750), Done: `engine/src/push/partition-key.ts`, `ViewHearing.partitions`). The topic spans the user's orgs | **Extended** by FIX-2945 into the change topic ([ER-8](DECISIONS.md#who-owns-what)) |
+| Finding a task's session from its id alone: `taskSessionOf` and `findTaskPartitions`, called from `workforce/src/messages/message-target.ts`, `queue.ts` and `consult.ts`. None of them is a view | **Superseded** by FIX-2946: a deliberate read across sessions filtered by the id ([ER-3, ER-7](DECISIONS.md#who-owns-what)) |
+| Typed task input ([FIX-2894](../../issues/FIX-2894/SPEC.md)): a flow's `work` entry declares what its tasks take | **Extended** by FIX-2947 for values fixed at filing |
 | Declared field indexes ([FIX-2532](https://linear.app/fixpoint-labs/issue/FIX-2532), in review) | **Consumed** by FIX-2945 |
 | The parent-row read and settle on the request host (`core/src/types/request-host.ts`) | **Superseded** by FIX-2946's reach through the task |
 | Lineage sharing (FIX-1068), partitions and the `byTaskId` index | **Superseded** by FIX-2947 and FIX-2946 |
@@ -131,10 +136,11 @@ follows it.
 | Adds | Existing piece considered | How composed |
 |---|---|---|
 | `ctx.resources.at({ session })` · FIX-2942 | The sessions handle; the parent-row read | Extends the resource accessor. The handle reaches no resources and stays for what isn't one |
-| `shared` and the registry · FIX-2943 | `defineFlow`'s merge of block resources; the start-up clash check; the manifest registry (`createManifestRegistry`) | Extends the clash check: the union the merge computes, taken across flows. The manifest registry is a model's discovery door, a different job; FIX-2943 says how the two relate and adds no second public "registry" noun beside it |
+| `shared` and the registry · FIX-2943 | `defineFlow`'s merge of block resources; the start-up clash check; the manifest registry (`createManifestRegistry`) | Extends the clash check: the union the merge computes, taken across flows. The manifest registry is a model's discovery door, a different job; FIX-2943 says how the two relate and adds no second public "registry" noun beside it. The `shared` flag itself is new: if FIX-2943's spec finds no consumer but boards, it waits and boards are reached by their own rule |
 | `acrossSessions` · FIX-2945 | `userSuspensions`; views | Extends the store's read with an owner join; no kept index |
-| One change topic per definition per owner · FIX-2945 | The change bus (`change-bus`: a scope's topic, optionally one resource) | Extends: a user-scope topic for one definition, published on the bus's one write path |
-| `boards(ctx, name, { session })`, `ctx.task.session` · FIX-2946 | `defineTaskCollection`'s handle; the board-above helper | A thin wrapper, no second definer ([ER-9](DECISIONS.md#who-owns-what)); `ctx.task.session` replaces the helper |
+| The change topic · FIX-2945 | FIX-2750's user topic with HMAC-keyed partitions; the change bus (`change-bus`: a scope's topic, optionally one resource) | Extends the FIX-2750 topic: its partition key becomes a session key, published on the bus's one write path. FIX-2946 retires the old partition key with partitions. FIX-2945 settles whether the topic stays per user, spanning orgs as it does today, or becomes per owner |
+| Board reach by session, `ctx.task.session` · FIX-2946 | The board's typed capability (`TaskBoardHandle.capability`, `ctx.cap.<name>`); `defineTaskCollection`'s handle; the board-above helper | Per [Q2](DECISIONS.md#q2): extend the capability (`ctx.cap.work.at({ session })`, recommended) or a thin `boards()` wrapper over `ctx.resources.at`. No second definer ([ER-9](DECISIONS.md#who-owns-what)); `ctx.task.session` replaces the helper |
+| Values fixed at filing · FIX-2947 | FIX-2894's typed task input | Extends it: the fixed values are fields of the declared input on the task row, not a second record |
 
 **The set's debt: net down.** It removes about 1,500 to 1,800 lines of package source
 ([the gaps estimate](../../../docs/internal/design/scopes-and-sessions-gaps.md#what-else-this-simplifies-and-how-much-it-removes)),
@@ -156,6 +162,7 @@ an owner with many sessions, and a kept per-user index comes back.
    board waits.** If wrong: plan rows move twice.
 
 **Open: [Q1](DECISIONS.md#q1)**, whether a write from another session must go through a named
-action. It gates FIX-2942's and FIX-2946's specs.
+action. It gates FIX-2942's and FIX-2946's specs. **[Q2](DECISIONS.md#q2)**, whether a board is
+reached through its typed capability or a new `boards()` helper. It gates FIX-2946's spec.
 
 Epic · 8 issues · Framework simplification & cleanup · the kill line and goal 4
