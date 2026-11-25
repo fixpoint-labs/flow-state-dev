@@ -50,6 +50,8 @@ describe("logActivity", () => {
       kind: "task",
       content: "Book dentist appointment",
       situation: "Mentioned while planning the week in a Claude conversation",
+      status: "swept", // Only the sweeper may set this field.
+      fingerprint: "caller-supplied",
     });
 
     expect(result.status).toBe("completed");
