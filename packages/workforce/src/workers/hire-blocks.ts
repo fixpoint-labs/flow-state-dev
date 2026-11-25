@@ -12,8 +12,14 @@
  * standard worker's id. Edit on one makes the caller's own copy of it under
  * the same id, the copy a fork makes, which the turn and the
  * roster then read before the file; reset deletes that copy.
+ *
+ * A hire or an edit is also refused when anything it writes looks like an API
+ * key (core's `containsSecret`), and, when the app lists the models a worker
+ * may run on (`HireChecks.models`), when the model it names isn't listed or
+ * has no key or gateway in this server's environment.
  */
-import { handler, type JsonObject } from "@flow-state-dev/core";
+import { containsSecret, handler, type JsonObject } from "@flow-state-dev/core";
+import { describeModelRoute } from "@flow-state-dev/core/models";
 import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AGENT_FLOW } from "../agent-worker-flow";
@@ -95,6 +101,94 @@ export interface WorkerHireBlocks {
   reset: BlockDefinition<typeof resetInput, z.ZodObject<{ id: z.ZodString }>>;
 }
 
+/** What every hire and edit is checked against beyond the worker's flow: the kit's `hire` config. */
+export interface HireChecks {
+  /**
+   * The models a worker may name in `settings.model`, as model strings
+   * (`openai/gpt-6-luna`, `openrouter:nvidia/…`). Each must also have a key or
+   * gateway in the server's environment (`describeModelRoute`): a key handed
+   * to a model resolver in code isn't seen. Omitted: any model the flow takes.
+   */
+  models?: readonly string[];
+}
+
+/** The hire input, as the roster's `hire` action and the `hire` tool take it. */
+export type HireInput = z.infer<typeof hireInput>;
+
+/**
+ * Why `model` can't be written under `checks`, or `undefined` when it can.
+ * Only a model a write names is checked: a worker naming none runs on its
+ * flow's default.
+ */
+function modelProblem(model: unknown, checks: HireChecks): string | undefined {
+  if (checks.models === undefined || typeof model !== "string") return undefined;
+  if (!checks.models.includes(model)) {
+    return `runs on "${model}", which isn't a model this app runs workers on (${checks.models.join(", ") || "none"})`;
+  }
+  const route = describeModelRoute(model, { ...process.env });
+  return route.available ? undefined : `runs on "${model}", which can't run on this server: ${route.reason}`;
+}
+
+/** Refuse a write of `fields` and `model` for worker `id`: a credential in any of them, or a model `checks` refuses. */
+function refuseUnsafe(id: string, fields: unknown, model: unknown, checks: HireChecks): void {
+  if (containsSecret(JSON.stringify(fields ?? null))) {
+    throw new Error(
+      `Worker "${id}" carries something shaped like an API key. A key never goes on a worker: the server reads it from its environment. Nothing was written.`
+    );
+  }
+  const problem = modelProblem(model, checks);
+  if (problem !== undefined) throw new Error(`Worker "${id}" ${problem}. Nothing was written.`);
+}
+
+/** Refuse a write that names a setting `flow` retired. */
+function refuseRetired(installation: WorkerInstallation, id: string, flow: string, settings: Record<string, unknown> | undefined): void {
+  const named = Object.keys(settings ?? {}).filter((key) => retiredOn(installation, flow).includes(key));
+  if (named.length > 0) {
+    throw new Error(
+      `Worker "${id}" sets ${named.map((key) => `"${key}"`).join(", ")}, which flow "${flow}" no longer takes. Leave it out. Nothing was written.`
+    );
+  }
+}
+
+// BP-030.
+/** The settings `flow` retired: a stored row reads without them, and a write naming one is refused. */
+function retiredOn(installation: WorkerInstallation, flow: string): readonly string[] {
+  return installation.workerFlows()[flow]?.retiredSettings ?? [];
+}
+
+/** Refuse `row` for worker `id` when its flow would refuse it on a turn. */
+function refuseProblems(installation: WorkerInstallation, id: string, row: WorkerResourceState): void {
+  const problems = installation.configurationProblems(id, row);
+  if (problems.length > 0) {
+    throw new Error(`Worker "${id}" ${problemsClause(problems)}. Nothing was written.`);
+  }
+}
+
+/**
+ * The row a hire of `input` writes, after every check the write makes short
+ * of the roster itself (an id already there): a standard worker's id, a
+ * credential, a refused model, a retired setting, and the flow's own schema.
+ *
+ * @throws With the reason, when any check refuses. Nothing is written.
+ */
+export function hireRowOf(installation: WorkerInstallation, input: HireInput, checks: HireChecks = {}): WorkerResourceState {
+  if (installation.standardWorker(input.id) !== undefined) {
+    throw new Error(`"${input.id}" is a standard worker, which nobody can hire over. Fork it to get a worker of your own.`);
+  }
+  refuseUnsafe(input.id, input, input.settings?.model, checks);
+  const row = workerResourceStateSchema.parse({
+    flow: input.flow ?? AGENT_FLOW,
+    name: textOrNull(input.name),
+    description: input.description ?? null,
+    instructions: textOrNull(input.instructions),
+    skills: input.skills ?? [],
+    settings: input.settings ?? {}
+  });
+  refuseRetired(installation, input.id, row.flow, input.settings);
+  refuseProblems(installation, input.id, row);
+  return row;
+}
+
 /** Whitespace is not instructions. */
 function textOrNull(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
@@ -125,11 +219,12 @@ function rowFromStandard(manifest: WorkerManifest, keepName = false): WorkerReso
 
 /**
  * Build the hire, fork, edit, fire and reset blocks over `installation`.
+ * `checks` adds the app's own refusals to hire and edit.
  *
  * Mount them on a flow that declares `installation.resources` (the roster
  * flow does): each reads and writes the caller's own roster through it.
  */
-export function createWorkerHireBlocks(installation: WorkerInstallation): WorkerHireBlocks {
+export function createWorkerHireBlocks(installation: WorkerInstallation, checks: HireChecks = {}): WorkerHireBlocks {
   const roster = (ctx: BlockContext): ResourceCollectionRef => {
     const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
       | ResourceCollectionRef
@@ -148,27 +243,11 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   };
 
-  // BP-030.
-  /** The settings `flow` retired: a stored row reads without them, and a write naming one is refused. */
-  const retiredOn = (flow: string): readonly string[] => installation.workerFlows()[flow]?.retiredSettings ?? [];
-  const refuseRetired = (id: string, flow: string, settings: Record<string, unknown> | undefined): void => {
-    const named = Object.keys(settings ?? {}).filter((key) => retiredOn(flow).includes(key));
-    if (named.length > 0) {
-      throw new Error(
-        `Worker "${id}" sets ${named.map((key) => `"${key}"`).join(", ")}, which flow "${flow}" no longer takes. Leave it out. Nothing was written.`
-      );
-    }
-  };
   /** `settings` without the ones `flow` retired. */
   const withoutRetired = (flow: string, settings: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(settings).filter(([key]) => !retiredOn(flow).includes(key)));
+    Object.fromEntries(Object.entries(settings).filter(([key]) => !retiredOn(installation, flow).includes(key)));
 
-  const check = (id: string, row: WorkerResourceState): void => {
-    const problems = installation.configurationProblems(id, row);
-    if (problems.length > 0) {
-      throw new Error(`Worker "${id}" ${problemsClause(problems)}. Nothing was written.`);
-    }
-  };
+  const check = (id: string, row: WorkerResourceState): void => refuseProblems(installation, id, row);
 
   const write = async (ctx: BlockContext, id: string, row: WorkerResourceState): Promise<void> => {
     try {
@@ -195,17 +274,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: writtenOutput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
-      refuseStandard(input.id, "hire over");
-      const row = workerResourceStateSchema.parse({
-        flow: input.flow ?? AGENT_FLOW,
-        name: textOrNull(input.name),
-        description: input.description ?? null,
-        instructions: textOrNull(input.instructions),
-        skills: input.skills ?? [],
-        settings: input.settings ?? {}
-      });
-      refuseRetired(input.id, row.flow, input.settings);
-      check(input.id, row);
+      const row = hireRowOf(installation, input, checks);
       await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
     }
@@ -260,7 +329,8 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         ...(input.settings !== undefined ? { settings: input.settings } : {}),
         ...(input.settingsPatch !== undefined ? { settings: { ...current.settings, ...input.settingsPatch } } : {})
       };
-      refuseRetired(input.id, edited.flow, { ...input.settings, ...input.settingsPatch });
+      refuseRetired(installation, input.id, edited.flow, { ...input.settings, ...input.settingsPatch });
+      refuseUnsafe(input.id, input, input.settingsPatch?.model ?? input.settings?.model, checks);
       // A setting stored before its flow retired it goes with this write.
       const next: WorkerResourceState = { ...edited, settings: withoutRetired(edited.flow, edited.settings) };
       check(input.id, next);
