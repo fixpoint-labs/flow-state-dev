@@ -269,7 +269,7 @@ const postStateSchema = z.object({
   filingSessionId: z.string(),
   // BP-030.
   /** This conversation's lines when the post opened. Older resumed requests can omit them. */
-  recent: z.array(conversationLineSchema),
+  recent: z.array(conversationLineSchema).optional(),
   policy: z.string(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each dispatch of the judgment turn came to. */
