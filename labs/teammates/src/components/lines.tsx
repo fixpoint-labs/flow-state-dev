@@ -12,6 +12,7 @@
  */
 import { memo, useMemo, type ReactNode } from "react";
 import type { DataItem, FileContent, MessageItem } from "@flow-state-dev/core/items";
+import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { codingBoardViewRef, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { ItemsRenderer, useFlowContext, useView, type ItemLine, type RendererRegistry } from "@flow-state-dev/react";
 import { FILED_TASK_DATA_TYPE, RECEIVED_MESSAGE_DATA_TYPE, rosterView, type FiledTaskValue, type ReceivedMessageValue, type RosterEntry } from "@flow-state-dev/workforce/browser";
@@ -152,7 +153,7 @@ function ReportLine({ item }: { item: DataItem }) {
  */
 export function drawsLine(line: ItemLine): boolean {
   if (line.kind === "steps") return line.items.some((item) => item.type === "tool_output");
-  if (line.kind === "suspension") return line.item.reason === "user_approval";
+  if (line.kind === "suspension") return suspendForUserKindOf(line.item) === "approval";
   if (line.kind === "item") return (teammatesRenderers as Record<string, unknown>)[line.item.type] !== false;
   return true;
 }
