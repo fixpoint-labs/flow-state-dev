@@ -748,15 +748,12 @@ writes. Because these fields cannot move, they are the only ones the list
 route filters on (`?state.<field>=<value>`), and each store filters in its
 query.
 
-**The testing helpers are outside this contract, and that costs coverage rather
-than correctness.** `createTestContext` and `testFlow` seed a session record
-directly — no `lineageId`, written `"any"` — so a session either one creates
-lands on the derived fallback instead of a minted lineage. The consequence is
-not a broken invariant in production but an unguarded one: a test whose session
-comes from a helper exercises the fallback, and the lineage tests that do exist
-hand-seed a `lineageId` themselves, so nothing in the suite drives the minting
-path. Removing the mint from `ensureSessionRecord` entirely leaves both the
-engine and integration suites green. FIX-1132 tracks closing that.
+When `testFlow` has no `seed.session`, the action creates a missing session
+through `ensureSessionRecord`, evaluates the flow's session defaults and mints
+a lineage id. Subsequent runs against the same stored session reuse it.
+`createTestContext` and an explicit `testFlow` session fixture can still seed a
+stored record directly. These records use the derived fallback lineage and can
+represent older state that predates a schema field.
 
 Descendants get the id from the dispatch seam in `createRequestHost`, copied
 verbatim. It is also part of the derived child session id, because otherwise a
