@@ -115,8 +115,8 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     }),
   });
 
-  // The model's answers, read beside the run the judge was handed (this
-  // sequencer's own input), since an ask quotes it.
+  // Read the model's answers alongside the judge input on this step's parent,
+  // since an ask quotes the run the judge was handed.
   const decide = handler({
     name: `${name}-verdict`,
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
