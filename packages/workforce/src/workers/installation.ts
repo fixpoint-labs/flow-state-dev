@@ -714,7 +714,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         };
       }
     }
-    // The worker's name is this check's to write, from the worker it reads below (FIX-2881).
+    // The worker's name is this check's to write, from the worker it reads below (FIX-2881), so it is
+    // refused on every path, a dispatch's included. `taskTitle` is the hand-over's, refused above off it.
     if (input.state[WORKER_NAME_STATE_KEY] !== undefined) {
       return { ok: false, status: 400, message: `"${WORKER_NAME_STATE_KEY}" is written from the worker when the session is created; no create can set it.` };
     }
