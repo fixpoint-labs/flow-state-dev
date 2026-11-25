@@ -90,27 +90,29 @@ export const recallToolInputSchema = z.object({
 /** Inferred input shape from `recallToolInputSchema`. */
 export type RecallToolInput = z.infer<typeof recallToolInputSchema>
 
+// The tool validates query length and numeric bounds at entry. Strategy envelopes
+// retain their original string and number fields for direct strategy callers.
 const prepareInputSchema = z.object({
   query: z.string(),
   /** Resolved limit (default applied, clamped to [1, 20]). */
   limit: z.number(),
   /** Forwarded sinceTurn (episode floor). Strategies enforce in `prepareBlock`. */
   sinceTurn: z.number().optional(),
-  /** Strategy identifier surfaced on results. */
+  /** Strategy identifier. Strategies must copy this into the envelope. */
   strategyName: z.string(),
-  /** Per-item char cap applied during formatting. */
+  /** Per-item formatting cap. Strategies must copy this into the envelope. */
   perItemCharCap: z.number(),
 })
 
 /**
  * Input shape passed to `RetrievalStrategy.prepareBlock`. The recall tool's
  * factory enriches `RecallToolInput` (resolves the optional limit, stamps the
- * strategy name, propagates the per-item char cap) before invoking prepare,
- * so the strategy can carry these straight through to the envelope without
- * re-deriving them.
+ * strategy name, propagates the per-item char cap) before invoking prepare.
+ * Strategies must copy `strategyName` and `perItemCharCap` unchanged into the envelope.
  */
 export type PrepareInput = z.infer<typeof prepareInputSchema>
 
+/** @internal Shared by the built-in prepare and merge blocks. Custom strategies implement `PrepareEnvelope`. */
 export const prepareEnvelopeSchema = prepareInputSchema.extend({
   /** Each retrieval strategy supplies its own candidates. Pass them through intact. */
   candidates: z.array(z.custom<MemoryItem>()),
