@@ -46,8 +46,12 @@ import type {
   ItemVisibility,
   PresetDef,
 } from "@flow-state-dev/core";
-import { activeSkillsArraySchema } from "./active-skill-state";
-import type { ActivationLocation } from "./activation-store";
+import { activeSkillStateSchema } from "./active-skill-state";
+import {
+  explicitActivationScopeSchema,
+  type ActivationLocation,
+  type ExplicitActivationScope,
+} from "./activation-store";
 import { buildSkillBindingReader } from "./binding-reader";
 import {
   defineSkillsCollection,
@@ -147,7 +151,7 @@ export interface SkillsBindingConfig {
    * whenever an upstream matcher (which runs before the generator) writes it.
    */
   activeState?: {
-    scope: "request" | "session" | "user" | "org";
+    scope: ExplicitActivationScope;
     field: string;
   };
 }
@@ -200,7 +204,7 @@ const bindingConfigSchema = z
     allowed: z.array(z.string()).optional(),
     activeState: z
       .object({
-        scope: z.enum(["request", "session", "user", "org"]),
+        scope: explicitActivationScopeSchema,
         field: z.string().min(1),
       })
       .strict()
@@ -447,13 +451,8 @@ export function createSkillsLibrary(
     // the upstream matcher (`createApplySkillActivation`) declares its scope
     // schema on its own block, and a code/generator writer declares the field on
     // its own `sessionStateSchema`. The reader tolerates an absent field.
-    const ownStateFields: Record<string, z.ZodTypeAny> = {};
     if (location.kind === "block" && dynamic) {
-      ownStateFields.activeSkills = activeSkillsArraySchema;
-    }
-
-    if (Object.keys(ownStateFields).length > 0) {
-      contributions.stateSchema = z.object(ownStateFields);
+      contributions.stateSchema = activeSkillStateSchema;
     }
 
     // De-dupe by identity so a tool declared by both `active` and `allowed`
