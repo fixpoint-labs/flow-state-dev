@@ -216,6 +216,11 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     narrow(narrowed);
     expect(displayCause(normalizeError(narrowed))).toBe(thrown);
 
+    // A cause below the wrapped one that cannot be turned into a string (no
+    // prototype) still normalizes, and is still unwrapped to.
+    const bare = Object.assign(Object.create(null) as object, { message: "socket closed" });
+    expect(displayCause(normalizeError(new Error("raw", { cause: bare })))).toBe(bare);
+
     // Replaced in place with a different error.
     const replaced = normalizeError(raw());
     const replacement = Object.assign(new Error("raw"), { code: "E_PROVIDER_RESET" });

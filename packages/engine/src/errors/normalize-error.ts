@@ -122,10 +122,18 @@ type WrapperRecord = { message: string; cause: unknown; causeLayer: string };
  */
 const NORMALIZED_WRAPPERS = new WeakMap<FlowError, WrapperRecord>();
 
-/** The cause's own layer as `serializeError` shows it, without the chain below it. */
+/**
+ * The cause's own layer as `serializeError` shows it, without the chain below
+ * it. The layer is read through a view whose own `cause` is hidden, so the
+ * chain below is never visited (serializing it can throw, for example on an
+ * object with no prototype).
+ */
 function causeLayer(cause: unknown): string {
-  const { cause: _below, ...layer } = serializeError(cause, 0);
-  return JSON.stringify(layer);
+  const layer =
+    cause !== null && typeof cause === "object"
+      ? Object.create(cause, { cause: { value: undefined } })
+      : cause;
+  return JSON.stringify(serializeError(layer, 0));
 }
 
 function markWrapper(error: FlowError): FlowError {
