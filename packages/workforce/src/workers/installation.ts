@@ -888,12 +888,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const collection = workerCollection(ctx, "resolveWorker");
-    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
-    if (found.found === "none") {
-      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+    const worker = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (worker.found === "none") {
+      return refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
     }
-    if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
-    const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
+    if (worker.found === "unreadable") return refuse(`Worker "${workerId}" can't run: ${worker.problem}.`);
     const flow = worker.flow;
     if (flow !== flowKind) {
       refuse(
@@ -907,8 +906,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (worker.found === "own") {
       if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
       const built = manifestOfRow(workerId, worker.row);
-      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
-      manifest = (built as { manifest: WorkerManifest }).manifest;
+      if (!built.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
+      manifest = built.manifest;
       description = worker.row.description;
     } else {
       manifest = worker.manifest;
@@ -917,8 +916,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const minted = mint(manifest);
-    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
-    const instance = (minted as { worker: FlowInstance }).worker;
+    if (!minted.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
+    const instance = minted.worker;
     const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
@@ -929,8 +928,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
-    noteTaskInputSource(ctx.session as object, taskInputSource);
+    markVerifiedWorker(ctx.session, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    noteTaskInputSource(ctx.session, taskInputSource);
     return {
       id: workerId,
       standard: worker.found === "standard",
