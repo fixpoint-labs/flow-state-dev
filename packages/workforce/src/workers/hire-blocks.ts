@@ -217,7 +217,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
           ? rowFromStandard(file)
           : { ...(await readOwn(workers, input.from)), forkedFrom: input.from, name: null };
       check(input.id, row);
-      await write(ctx.resources[WORKERS_RESOURCE], input.id, row);
+      await write(workers, input.id, row);
       return { id: input.id, flow: row.flow };
     }
   });
