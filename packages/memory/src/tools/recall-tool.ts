@@ -33,6 +33,7 @@ import {
   formatRecallSummary,
 } from './format-helpers'
 import {
+  prepareEnvelopeSchema,
   recallToolDescription,
   recallToolInputSchema,
 } from './types'
@@ -69,16 +70,11 @@ export type CreateRecallToolOptions = {
  */
 const filterMergeBlock = handler({
   name: 'memory/recall.merge',
-  execute: async (
-    filterOut: { selectedIds: string[] },
-    ctx,
-  ): Promise<PrepareEnvelope & { selectedIds: string[] }> => {
-    const env = ctx.parent!.input as PrepareEnvelope
-    return {
-      ...env,
-      selectedIds: filterOut.selectedIds,
-    }
-  },
+  parentInputSchema: prepareEnvelopeSchema,
+  execute: (filterOut: { selectedIds: string[] }, ctx) => ({
+    ...ctx.parent!.input,
+    selectedIds: filterOut.selectedIds,
+  }),
 })
 
 /**
@@ -132,11 +128,11 @@ export function createRecallTool(opts: CreateRecallToolOptions) {
   // the failed block under the same outer recall sequencer.
   const errorRescueBlock = handler({
     name: 'memory/recall.rescue',
+    parentInputSchema: recallToolInputSchema,
     execute: async (error: Error, ctx): Promise<RecallToolResult> => {
-      const input = ctx.parent!.input as RecallToolInput
       return {
         error: error.message,
-        query: input.query,
+        query: ctx.parent!.input.query,
         strategy: strategy.name,
       }
     },
