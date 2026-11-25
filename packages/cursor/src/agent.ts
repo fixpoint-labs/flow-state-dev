@@ -1019,7 +1019,12 @@ function buildHandle(args: {
     usage:
       settled.usage === null
         ? null
-        : { inputTokens: settled.usage.inputTokens, outputTokens: settled.usage.outputTokens },
+        : {
+            // Cursor's `inputTokens` leaves out what the cache read or wrote;
+            // the handle reports the whole prompt, as `reportCursorSpend` does.
+            inputTokens: settled.usage.inputTokens + settled.usage.cacheReadTokens + settled.usage.cacheWriteTokens,
+            outputTokens: settled.usage.outputTokens,
+          },
     cost: estimateCursorCost(settled.usage, model),
     cursorUsage: settled.usage,
     failureMessage: settled.failureMessage,
