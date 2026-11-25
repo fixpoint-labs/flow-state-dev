@@ -4,25 +4,28 @@ import { z } from "zod";
 import { createTestContext, testBlock } from "../src";
 
 describe("sequencer state testing utilities", () => {
-  it("basic: testBlock supports seeded sequencer state and captures sequencer mutations", async () => {
+  it("combines a parent sequencer seed with the block's defaults and returns its updated state", async () => {
     const increment = handler({
       name: "increment",
       inputSchema: z.number(),
       outputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number().default(0), mode: z.string().default("ready") }),
       execute: async (input, ctx) => {
-        await ctx.sequencer?.incState({ count: input });
-        return Number(ctx.sequencer?.state.count ?? 0);
+        await ctx.sequencer!.incState({ count: input });
+        return ctx.sequencer!.state.count;
       }
     });
 
     const result = await testBlock(increment, {
       input: 2,
       sequencer: {
-        state: { count: 3 }
+        state: { count: 3, legacy: true }
       }
     });
 
-    expect(result.output).toBe(2);
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, mode: "ready", legacy: true });
     expect(result.stateChanges.some((change) => change.scope === "block_instance")).toBe(true);
     expect(
       result.stateChanges.find(
@@ -35,10 +38,11 @@ describe("sequencer state testing utilities", () => {
     const leaf = handler({
       name: "leaf",
       inputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number() }),
       outputSchema: z.object({ nearest: z.string(), count: z.number() }),
-      execute: (input, ctx) => ({
-        nearest: String(ctx.sequencer?.name ?? "none"),
-        count: Number((ctx.sequencer?.state as Record<string, unknown>)?.count ?? input)
+      execute: (_input, ctx) => ({
+        nearest: ctx.sequencer!.name,
+        count: ctx.sequencer!.state.count
       })
     });
 
@@ -54,8 +58,9 @@ describe("sequencer state testing utilities", () => {
       stateSchema: z.object({ count: z.number().default(7) })
     }).step(inner);
 
-    const result = await testBlock(outer, { input: 1 });
+    const result = await testBlock(outer, { input: 1, sequencer: { state: { count: 3 } } });
     expect(result.output).toEqual({ nearest: "inner", count: 11 });
+    expect(result.state.sequencer).toEqual({ count: 3 });
   });
 
   it("tool chain context: createTestContext seeds ctx.sequencer for downstream tool execution paths", async () => {

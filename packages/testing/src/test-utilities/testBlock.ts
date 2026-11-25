@@ -1,10 +1,9 @@
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
 import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
-import { asRecord } from "../internal/json-helpers";
 import { createTestContext, createTestFlow } from "../runtime/createTestContext";
 import { sequencerTraces } from "./sequencerTraces";
 import type {
@@ -14,14 +13,6 @@ import type {
   TestBlockResult
 } from "./types";
 
-
-function inferSequencerStateFromChanges(stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>): Record<string, unknown> {
-  const latest = [...stateChanges]
-    .reverse()
-    .find((change) => change.scope === "block_instance");
-
-  return latest?.resultingState ?? {};
-}
 
 function toTrackedStateChanges(items: OutputItem[]): Array<{
   scope: "block_instance";
@@ -125,13 +116,17 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     sequencerName: block.name
   });
 
+  let parentSequencer: StateRef | undefined;
   const blockUnderTest =
-    options.sequencer !== undefined && block.kind !== "sequencer"
+    options.sequencer !== undefined
       ? sequencer({
           name: options.sequencer.name ?? `${block.name}-sequencer`,
           inputSchema: z.any(),
-          stateSchema: z.record(z.string(), z.unknown())
-        }).step(block)
+          stateSchema: z.object({}).passthrough().default(options.sequencer.state)
+        }).step((input, ctx) => {
+          parentSequencer = ctx.sequencer;
+          return input;
+        }, block)
       : block;
 
   const result = await executeBlock({
@@ -152,10 +147,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
       session: runtime.ctx.session.state,
       user: runtime.ctx.user.state,
       org: runtime.ctx.org?.state ?? {},
-      sequencer:
-        options.sequencer === undefined
-          ? asRecord(runtime.ctx.sequencer?.state)
-          : inferSequencerStateFromChanges(runtime.stateChanges)
+      sequencer: parentSequencer?.state ?? runtime.ctx.sequencer?.state ?? {}
     },
     stateChanges: [...runtime.stateChanges, ...itemStateChanges],
     // The registry the run actually wrote through, not a copy — a test asserting
