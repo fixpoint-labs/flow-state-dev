@@ -8,11 +8,10 @@ built inside the memory kit, and workforce's workers can't get memory without th
 
 **Recommendation: don't build `provides`.** The case that motivated it, memory reaching
 workforce's workers, works today with no new API ([the POC](poc/memory-without-provides/README.md)).
-A value a kit builds at install goes on the installation it already hands every builder: workforce's
-internal events move there from a hidden lookup, `internalEventsOf`, which goes. This spec records
-that, says how a kit shares what it builds, and reshapes FIX-2816 to use it.
+None of the other named cases builds its value in `install`. This spec records that finding,
+says how a kit shares what it builds, and reshapes FIX-2816 to use it.
 
-## Six people, before and after
+## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -20,7 +19,6 @@ that, says how a kit shares what it builds, and reshapes FIX-2816 to use it.
 | **runs workforce workers with memory** | Workers can't get memory unless they are built inside memory's slot | Fills `workforce.slots.uses` with `mem.capability`, one line. Workforce's agent flow carries memory's resources; a block in a kit that never imports memory reads it through `ctx.cap` (the POC checks the second on a stand-in kit, not a model-backed worker run) |
 | **maintains workforce** | Would have to `require` memory, second opinion and research, one at a time, to read what each provides | Requires nothing new. A feature reaches workers through workforce's own `uses` slot |
 | **adds a block that needs memory** | Not affected | Not affected: `uses: [mem.capability]`, as kitchen-sink does today |
-| **publishes internal events from a flow** (an app, or a kit that requires workforce) | Calls `internalEventsOf(installation)`, which reads a map hidden in workforce's module | Reads `installation.internalEvents` in the same builder. `internalEventsOf` is gone, no alias |
 | **reads `kits.md`** | Finds no word on how a kit shares a value it builds | Finds a short rule, with the case for each |
 
 ## The goal, and how we'll know it's met
@@ -33,7 +31,7 @@ one way to do it and no hidden wiring.**
 | **The real need** | The issue: "a way for a kit to share a built thing with other kits", proved on "Memory provides its capability and resources. Workforce workers get `ctx.cap.memory` without memory's builder slot" |
 | **Smaller, and rejected** | "Add `provides` and use it in memory." It meets the case by making workforce require memory, and it does not reach the app's own flows (rule 1: only a kit that requires the provider reads it) |
 | **Bigger, and not this issue's** | An app reading a kit's value after start-up (three test and goal hosts capture workforce's installation through its `flows` slot today). Typed contributions to a slot |
-| **Not done if** | A worker gets memory only by being built inside memory's kit · workforce gains a `requires` on a feature kit · the memory kit keeps a builder slot · `internalEventsOf` or its WeakMap survives beside the field |
+| **Not done if** | A worker gets memory only by being built inside memory's kit · workforce gains a `requires` on a feature kit · the memory kit keeps a builder slot |
 
 ```mermaid
 flowchart LR
@@ -55,7 +53,6 @@ The check reads what the started app registers and what a block does under `fsde
 | **Input** | Workforce as shipped, with an empty `workforce/` folder; `system({ model, working: true })` |
 | **Anti-game** | Assert on the started app's registry and a real `fsdev run`, not on `system()`'s return |
 | **Control that must fail** | `POC_CONTROL=no-fill`. Both legs fail (run 2026-11-21, [the POC](poc/memory-without-provides/README.md)) |
-| **Install-built values** | `goals/internal-events/announce-once`, moved to `installation.internalEvents`, still passes; `@flow-state-dev/workforce/kit` no longer exports `internalEventsOf` |
 
 ## What changes
 
@@ -67,27 +64,12 @@ flowchart LR
   subgraph Chosen["the rule in kits.md"]
     S["the package's export · built from config"] -->|"uses"| A["the app's flows"]
     S -->|"fill a kit's slot"| K["another kit's flows"]
-    I["a value built in install<br/>(installation.internalEvents)"] -->|"on the installation, through the owner's builder slot"| D["a dependent kit's or the app's flows"]
+    I["a value built in install<br/>(folder or slots)"] -->|"the owner's builder slot"| D["a dependent kit's flows"]
   end
 ```
 
-A value made from config is a module export. A value made at install, from the folder, the
-slots or the installation itself, goes on the object the owner hands its builders, and a
-dependent reaches it by contributing a builder to the owner's slot.
-
-Workforce's internal events, the one install-built value shared today:
-
-```diff
- workerFlow((installation) => {
--  const internal = internalEventsOf(installation);
-+  const internal = installation.internalEvents; // undefined without the kit's `internalEvents` config
-   …
- });
-```
-
-`installation.internalEvents` replaces the module-level WeakMap and `internalEventsOf`, removed
-from `@flow-state-dev/workforce/kit` with no alias. Callers move with it: the kit's test and
-`goals/internal-events/announce-once`.
+A value made from config is a module export. Only a value made from the folder or the slots
+needs the kit, and the owner's builder slot covers it.
 
 The memory kit, as FIX-2816 reshapes:
 
@@ -105,10 +87,8 @@ The memory kit, as FIX-2816 reshapes:
 
 Whether memory still ships a kit, for a flow it serves (none in the draft), is FIX-2816's call.
 
-**Docs:** `docs/architecture/kits.md` gains "Sharing what a kit builds" (the cases above). A
-`@flow-state-dev/workforce` changeset records the removal and the one-line move; the routines
-catalog page, which shows `internalEventsOf`, is rewritten from it at release. FIX-2816's
-changeset carries the memory recipe.
+**Docs:** `docs/architecture/kits.md` gains "Sharing what a kit builds" (the three cases above).
+No user docs (no public change); FIX-2816's changeset carries the memory recipe.
 
 ## What stays as it is
 
@@ -126,44 +106,39 @@ changeset carries the memory recipe.
 |---|---|
 | A package export placed with `uses` (`capability` row; kitchen-sink builds memory at module scope, `chat-agent/run/cognition.ts:20`, and places it at `assistant/assistant.ts:32`) | **Builds on** it: the rule for config-only values |
 | A slot the consumer kit declares, filled by the app or a dependent (`workforce.slots.uses`, `packages/workforce/src/kit/workforce-kit.ts:193,226`; harnesses fills it with readiness) | **Builds on** it: how a feature reaches another kit's flows |
-| An owner's builder slot handed its built value (`workforce.slots.flows`, `workerFlow(…)`; harnesses, which requires workforce, fills it at `harnesses-kit.ts:146`) | **Keeps** it as the door to install-built values |
-| Workforce's internal events in a module-level WeakMap, read through `internalEventsOf` (`packages/workforce/src/kit/workforce-kit.ts:271,286,296`) | **Replaces** both with `installation.internalEvents`, no alias |
+| An owner's builder slot handed its built value (`workforce.slots.flows`, `workerFlow(…)`; harnesses uses it at `harnesses-kit.ts:131`) | **Keeps** it for values built from a folder or slots |
 | The draft memory kit's `flows` builder slot (#5434, `packages/memory/src/kit/memory-kit.ts`) | **Removes** it, in FIX-2816, before merge |
 | FIX-2626 [D1](../FIX-2626/DECISIONS.md#d1), epic [ER-5](../../epics/FIX-2618/DECISIONS.md#who-owns-what): "a kit reaches another only through slots that kit publishes" | **Keeps** both. `provides` would have needed ER-5 amended |
 
 | Adds | Existing piece considered | Why it doesn't fit, or how it is composed |
 |---|---|---|
 | A `kits.md` section | — | Docs only |
-| `installation.internalEvents` | `internalEventsOf` | Same value, on the object every caller already holds |
 | The goal check | `goals/kits/install-in-any-order` | Same shape; composed from the POC |
 
 | The debt | |
 |---|---|
-| **Removes** | The memory draft's builder slot, before it lands · workforce's WeakMap and `internalEventsOf` |
-| **Adds** | One optional field on `WorkerInstallation` |
+| **Removes** | The memory draft's builder slot, before it lands |
+| **Adds** | Nothing in code |
 | **Leaves** | Three hosts capture workforce's installation through an empty `flows` builder (`apps/kitchen-sink/test/workforce-host.ts`, `goals/lib/workers.mts`, `goals/pentest-lab/lab/host.mts`): all test or goal plumbing, and `provides` would not have reached them. No issue filed; it earns one when an app needs it |
 
-**Net: down,** by a pattern not copied, a concept not added and a hidden lookup removed.
+**Net: down,** by a pattern not copied and a concept not added.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met):** a kit's built value reaches another kit's
-flows with one way to do it. If wrong: a kit needs another kit's install-built value inside its
-own `install`, where a builder slot can't reach.
+flows with one way to do it. If wrong: a kit appears whose value only `install` can build and a
+kit that is not its owner needs it, and the builder slot is the only door.
 
 **[The debt](#whats-already-here-and-the-debt), net down.** If wrong: each feature kit invents
 its own sharing, which is what this was meant to stop.
 
-1. **[D1](DECISIONS.md#d1) · Don't build `provides`. Config-built values are package exports;
-   install-built values go on the installation, and `internalEventsOf` goes.** Option A, the
-   owner's call on 2026-11-25. If wrong: we add a scoped `provides` when a kit needs another's
-   install-built value inside its own install (FIX-2839's follow-up is the candidate), at the
-   cost of a reshaped memory kit and a second move for internal events.
+1. **[D1](DECISIONS.md#d1) · Don't build `provides`; share through package exports and slots.**
+   The one to weigh. If wrong: we add `provides` later, when a real case arrives, at the cost
+   of a reshaped memory kit.
 2. **[D2](DECISIONS.md#d2) · FIX-2816 drops its builder slot; memory reaches workers through
    `workforce.slots.uses`.** If wrong: one draft PR edited twice.
 
 **Open: none.**
 
-Feature (reshaped to docs, a goal and one workforce field) · `docs/architecture`, `goals`,
-`workforce`; FIX-2816 · S · epic
+Feature (reshaped to docs and a goal) · `docs/architecture`, `goals`; FIX-2816 · S · epic
 [FIX-2618](../../epics/FIX-2618/SPEC.md) · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2836)
