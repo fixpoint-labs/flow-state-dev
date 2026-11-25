@@ -27,7 +27,7 @@ import { answerIn, type Popup } from "./Popups";
 import { WaitingCard } from "./WaitingCard";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { holdOf, taskStatus, workerOf } from "../lib/task";
+import { taskStatus, workerOf } from "../lib/task";
 
 /** A borderless button in the conversation's header. */
 const HEADER_BUTTON =
@@ -370,9 +370,10 @@ export function Conversation({
                 </ul>
               </div>
             ) : null}
-            {lines.map((line, i) => (
+            {/* One keyed list, so a card stays mounted (and keeps your draft) when a new line moves it. */}
+            {lines.flatMap((line, i) => [
+              ...waiting.filter((w) => w.at === i).map(card),
               <Fragment key={line.id}>
-                {waiting.filter((w) => w.at === i).map(card)}
                 {days.get(line.id) === undefined ? null : <Divider label={days.get(line.id)!} data-day="" />}
                 {i === markAt && mark ? (
                   <Divider label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} />
@@ -385,9 +386,8 @@ export function Conversation({
                 >
                   <Line line={line} />
                 </div>
-              </Fragment>
-            ))}
-            {waiting.filter((w) => w.at === lines.length).map(card)}
+              </Fragment>,
+            ]).concat(waiting.filter((w) => w.at === lines.length).map(card))}
             {answering ? (
               <div role="status" data-chat-activity className={cn("w-fit rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
@@ -464,14 +464,13 @@ type Waiting = { key: string; task: CodingBoardTask; hold: InboxHold | undefined
 
 /**
  * The cards the conversation draws for what its tasks wait on you for: each
- * running task's open hold, and each hold answered here, drawn before the
+ * open hold of each running task, and each hold answered here, drawn before the
  * first line written after it was asked (at the end when none was).
  */
 function waitingCards(tasks: readonly CodingBoardTask[], answers: Readonly<Record<string, Answered>>, lines: readonly ItemLine[]): Waiting[] {
-  const open = tasks.flatMap((task) => {
-    const hold = holdOf(task);
-    return taskStatus(task) === "running" && hold !== undefined ? [{ key: `${task.id}:${hold.id}`, task, hold: hold as InboxHold, openedAt: hold.openedAt }] : [];
-  });
+  const open = tasks.flatMap((task) =>
+    taskStatus(task) === "running" ? task.asks.map((hold) => ({ key: `${task.id}:${hold.id}`, task, hold: hold as InboxHold, openedAt: hold.openedAt })) : [],
+  );
   const done = Object.entries(answers)
     .filter(([key]) => !open.some((w) => w.key === key))
     .map(([key, a]) => ({ key, task: a.task, hold: undefined, openedAt: a.openedAt }));

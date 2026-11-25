@@ -140,6 +140,46 @@ describe("a task waiting on you is answered in the conversation", () => {
   });
 });
 
+describe("a task waiting on you for more than one thing", () => {
+  // Behind a hold the conversation can't answer, a later question still gets its own card and its reply lands on it.
+  it("draws a card for each hold, and a reply answers the hold its card shows", async () => {
+    const server = stubServer({
+      board: {
+        [BOARD]: [
+          codingTask({
+            id: "t1",
+            assignee: "teammates.cursor",
+            harness: "cursor",
+            title: "Let the lead hire a teammate",
+            status: "in_progress",
+            run: { sessionId: "run-1", requestId: "q1", attempt: 1 },
+            asks: [
+              hold("question", "Pick a repository first.", { id: "hold-first", unanswerable: "Answer this one from the task." }),
+              hold("question", "Which name should the hire get?", { id: "hold-second" }),
+            ],
+          }),
+        ],
+      },
+      answer: () => ({ ok: true }),
+    });
+    window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}`);
+    render(
+      <TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}>
+        <App />
+      </TestProvider>,
+    );
+    await waitFor(() => expect(within(conversation()).getAllByRole("region", { name: "Asks you" })).toHaveLength(2), { timeout: 3000 });
+    const [first, second] = within(conversation()).getAllByRole("region", { name: "Asks you" });
+    expect(first!.textContent).toContain("Answer this one from the task.");
+    expect(within(first!).queryByRole("textbox")).toBeNull();
+    expect(second!.textContent).toContain("Which name should the hire get?");
+    fireEvent.change(within(second!).getByLabelText("Your reply"), { target: { value: "Call it Scout." } });
+    await act(async () => fireEvent.click(within(second!).getByRole("button", { name: "Send reply" })));
+    await waitFor(() => expect(second!.textContent).toContain("You answered: Call it Scout."));
+    expect(server.posts.some((p) => p.path.endsWith("/actions/updateTask_tasks") && JSON.stringify(p.body).includes("Call it Scout."))).toBe(true);
+  });
+});
+
 describe("the bot that waits on you", () => {
   it("sits still with a waiting dot: no hop, flash or blink in any state", async () => {
     leadWith("question");

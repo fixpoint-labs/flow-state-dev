@@ -68,7 +68,7 @@ export function WaitingCard({
           {hold.unanswerable !== null ? (
             <p className="text-xs text-muted-foreground">{hold.unanswerable}</p>
           ) : kind === "question" || kind === "review" ? (
-            <Reply task={task} sessionId={sessionId} review={kind === "review"} onAnswered={onAnswered} onOpen={onOpen} />
+            <Reply task={task} holdId={hold.id} sessionId={sessionId} review={kind === "review"} onAnswered={onAnswered} onOpen={onOpen} />
           ) : (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="flex-1">Teammates can't answer this kind of wait yet.</span>
@@ -88,7 +88,7 @@ export function WaitingCard({
  * answers with its words. On a review, the words go back as Request changes,
  * and Open review leads to the popup to accept.
  */
-function Reply({ task, sessionId, review, onAnswered, onOpen }: { task: CodingBoardTask; sessionId: string; review: boolean; onAnswered: (line: string) => void; onOpen: () => void }) {
+function Reply({ task, holdId, sessionId, review, onAnswered, onOpen }: { task: CodingBoardTask; holdId: string; sessionId: string; review: boolean; onAnswered: (line: string) => void; onOpen: () => void }) {
   const actions = useTaskActions(sessionId);
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
@@ -99,7 +99,7 @@ function Reply({ task, sessionId, review, onAnswered, onOpen }: { task: CodingBo
     setPending(true);
     setError(null);
     try {
-      await actions.answer(task, review ? { verdict: "revise", words: text } : { text });
+      await actions.answer(task, review ? { verdict: "revise", words: text } : { text }, holdId);
       onAnswered(review ? `Asked for changes: ${text}` : text);
     } catch (failed) {
       setError(failed instanceof Error ? failed.message : String(failed));
