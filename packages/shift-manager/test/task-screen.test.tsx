@@ -704,7 +704,11 @@ describe("the task's actions, in the frame's header beside Interrupt", () => {
     await waitFor(async () => expect(await storedStatus(opened, row.id)).toBe("cancelled"), { timeout: 10_000 });
     // The board's view brings the cancelled row before Retry acts on it.
     await waitFor(() => expect(screen.getByTestId("task-status").textContent).toContain("cancelled"), { timeout: 10_000 });
-    const retry = await screen.findByTestId("task-action-retry", {}, { timeout: 10_000 });
+    const retry = (await screen.findByTestId("task-action-retry", {}, { timeout: 10_000 })) as HTMLButtonElement;
+    // The view can bring the cancelled row before the Cancel press settles, and the
+    // row holds every button disabled until it does: a click then does nothing.
+    expect((await screen.findByTestId("task-action-outcome", {}, { timeout: 10_000 })).textContent).toBe("Cancelled.");
+    expect(retry.disabled).toBe(false);
     fireEvent.click(retry);
     await waitFor(async () => expect(["pending", "in_progress"]).toContain(await storedStatus(opened, row.id)), { timeout: 10_000 });
     // The cancelled attempt's run stops on its lease's next renewal (the goal check

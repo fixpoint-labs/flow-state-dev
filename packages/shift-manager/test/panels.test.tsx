@@ -148,7 +148,13 @@ describe("a screen with no right panel", () => {
     expect(screen.queryByTestId("right-panel-slot")).toBeNull();
     press("]");
     act(() => fireEvent.click(screen.getByTestId("nav-shift-coordinator")));
-    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
+    // Awaited, not read straight after the click: `]` here changes nothing, so no
+    // render runs to flush the frame's mount effects, and the route's subscription
+    // may not be listening yet. It catches up when it subscribes.
+    expect(await screen.findByTestId("shift-coordinator-panel")).toBeTruthy();
+    // Open, not sliding shut under the strip, as it would after a `]` that collapsed it.
+    expect(screen.getByTestId("right-panel").inert).toBe(false);
+    expect(screen.queryByTestId("right-panel-rail")).toBeNull();
   });
 });
 
