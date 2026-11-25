@@ -286,6 +286,8 @@ export interface HistoryRead {
   readonly reports: ReportResourceState[];
   /** A task's report, by task id, for the held entries that name a task and no report. */
   readonly tasks: Record<string, string>;
+  /** That report's first sighting, by task id, where the task's mapping names it. Older mappings don't. */
+  readonly taskSince: Record<string, number>;
 }
 
 /**
@@ -304,9 +306,11 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
   }
   const entries = hours.flatMap((hour) => hour.entries);
   const tasks: Record<string, string> = {};
+  const taskSince: Record<string, number> = {};
   for (const taskId of new Set(entries.filter((e) => e.reportId === undefined && e.taskId !== undefined).map((e) => e.taskId!))) {
-    const mapped = (await reports.getOptional(taskKey(taskId)))?.state as { reportId?: unknown } | undefined;
+    const mapped = (await reports.getOptional(taskKey(taskId)))?.state as { reportId?: unknown; since?: unknown } | undefined;
     if (typeof mapped?.reportId === "string") tasks[taskId] = mapped.reportId;
+    if (typeof mapped?.reportId === "string" && typeof mapped.since === "number") taskSince[taskId] = mapped.since;
   }
   const ids = new Set([...entries.flatMap((e) => (e.reportId === undefined ? [] : [e.reportId])), ...Object.values(tasks)]);
   const found: ReportResourceState[] = [];
@@ -314,7 +318,7 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
     const report = await readReport(reports, id);
     if (report !== undefined) found.push(report);
   }
-  return { hours, reports: found, tasks };
+  return { hours, reports: found, tasks, taskSince };
 }
 
 /**
@@ -582,7 +586,8 @@ export async function intakeOccurrence(
   const decided = await decide();
   // A task's report is where its failed requests are joined: the mapping first, then a fresh read of them.
   if (occurrence.kind === "task" && (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm")) {
-    await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId } as never);
+    // With the report's first sighting, so its held requests on another day go with the same report.
+    await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId, ...(since === undefined ? {} : { since }) } as never);
     if (decided.decision !== "storm") await joinHeld(reports, decided.reportId, await heldOf(reports, occurrence.taskId));
   }
   if (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm") {

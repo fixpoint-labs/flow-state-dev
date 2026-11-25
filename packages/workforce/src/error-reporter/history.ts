@@ -113,6 +113,21 @@ export function statusEntryKey(reportId: string, since: number, status: string, 
 }
 
 /**
+ * The first sighting of the report an entry went to: its own `since`, or for
+ * an older status entry the one its {@link statusEntryKey} carries.
+ * `undefined` for an older occurrence and a held one.
+ *
+ * @param reportId The report the entry went to.
+ */
+export function historyEntrySince(entry: HistoryEntry, reportId: string): number | undefined {
+  if (entry.since !== undefined) return entry.since;
+  const prefix = `status:${reportId}:`;
+  if (entry.kind !== "status" || entry.key?.startsWith(prefix) !== true) return undefined;
+  const since = Number(entry.key.slice(prefix.length).split(":")[0]);
+  return Number.isFinite(since) ? since : undefined;
+}
+
+/**
  * Append one entry to its hour's record. An entry whose `key` the record
  * already holds is skipped, so a retried write appends once; past the cap the
  * entry is counted, not kept. The first record of a UTC day deletes the

@@ -18,7 +18,7 @@ import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import type { ProjectedResourceContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { HISTORY_RETENTION_DAYS, utcDay, type HistoryEntry } from "./history";
+import { HISTORY_RETENTION_DAYS, historyEntrySince, utcDay, type HistoryEntry } from "./history";
 import type { ErrorReporter } from "./reporter";
 import { statusInWords, type EarlierReport, type HistoryRead, type ReportResourceState } from "./reports";
 
@@ -176,25 +176,16 @@ type InboxLinkOf = (reportId: string) => string | undefined;
  */
 type Lifetime = { readonly current: true } | { readonly current: false; readonly key: string; readonly summary?: EarlierReport };
 
-/** The first sighting an entry names: its own `since`, or for an older status entry the one its dedupe key carries. */
-function sinceOf(entry: HistoryEntry, reportId: string): number | undefined {
-  if (entry.since !== undefined) return entry.since;
-  const prefix = `status:${reportId}:`;
-  if (entry.kind !== "status" || entry.key?.startsWith(prefix) !== true) return undefined;
-  const since = Number(entry.key.slice(prefix.length).split(":")[0]);
-  return Number.isFinite(since) ? since : undefined;
-}
-
 /**
  * The report an entry belongs to. By the first sighting it names; an entry
  * that names none is the current report's from its first sighting on, and
  * before it the earlier report that had started by then, of those the report
- * kept or the day's entries name (`known`, oldest first).
+ * kept or the day's entries name (`known`, sorted, oldest first).
  */
 function lifetimeOf(entry: HistoryEntry, since: number | undefined, report: ReportResourceState, known: readonly number[]): Lifetime {
   if (since === undefined ? entry.at >= report.firstSeenAt : since === report.firstSeenAt) return { current: true };
   const earlier = report.earlier ?? [];
-  const started = since ?? [...earlier.map((e) => e.since), ...known].filter((s) => s <= entry.at).sort((a, b) => a - b).at(-1);
+  const started = since ?? known.filter((s) => s <= entry.at).at(-1);
   const summary = started === undefined ? undefined : earlier.find((e) => e.since === started);
   const key = String(started ?? "earlier");
   return summary === undefined ? { current: false, key } : { current: false, key, summary };
@@ -219,26 +210,33 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: Inbo
   const hours = read.hours.filter((hour) => hour.hour.startsWith(`${day}-`));
   const cut = hours.reduce((sum, hour) => sum + hour.cut, 0);
   const dayEntries = hours.flatMap((hour) => hour.entries);
-  // A held request names no report: it is the report its task's ending went to, as that ending's entry names it.
-  // Keyed by report too: another report's entry can name the same task.
-  const taskSince = new Map<string, number>();
+  const reports = new Map(read.reports.map((r) => [r.id, r]));
+  // The first sightings each report's earlier reports started at, kept or named that day: sorted once per day.
+  const named = new Map<string, Set<number>>();
   for (const e of dayEntries) {
-    const since = e.reportId === undefined ? undefined : sinceOf(e, e.reportId);
-    if (e.kind === "occurrence" && e.taskId !== undefined && since !== undefined) taskSince.set(`${e.reportId}\n${e.taskId}`, since);
+    const since = e.reportId === undefined ? undefined : historyEntrySince(e, e.reportId);
+    if (since === undefined) continue;
+    const seen = named.get(e.reportId!);
+    if (seen === undefined) named.set(e.reportId!, new Set([since]));
+    else seen.add(since);
   }
-  const known = new Map<string, number[]>();
-  for (const e of dayEntries) {
-    const since = e.reportId === undefined ? undefined : sinceOf(e, e.reportId);
-    if (since !== undefined) known.set(e.reportId!, [...(known.get(e.reportId!) ?? []), since]);
-  }
+  const knownCache = new Map<string, number[]>();
+  const knownOf = (report: ReportResourceState): number[] => {
+    let known = knownCache.get(report.id);
+    if (known === undefined) {
+      known = [...new Set([...(report.earlier ?? []).map((e) => e.since), ...(named.get(report.id) ?? [])])].sort((x, y) => x - y);
+      knownCache.set(report.id, known);
+    }
+    return known;
+  };
   const groups = new Map<string, { report: ReportResourceState; lifetime: Lifetime; entries: HistoryEntry[] }>();
   for (const entry of dayEntries) {
     const reportId = entry.reportId ?? (entry.taskId === undefined ? undefined : read.tasks[entry.taskId]);
-    const report = reportId === undefined ? undefined : read.reports.find((r) => r.id === reportId);
+    const report = reportId === undefined ? undefined : reports.get(reportId);
     if (report === undefined) continue;
-    // A held request whose task's ending is not in the day goes with the current report, as it always has.
-    const since = entry.reportId === undefined ? (taskSince.get(`${report.id}\n${entry.taskId}`) ?? report.firstSeenAt) : sinceOf(entry, report.id);
-    const lifetime = lifetimeOf(entry, since, report, known.get(report.id) ?? []);
+    // A held request goes with the report its task's mapping names; an older mapping names none, and it goes with the current report.
+    const since = entry.reportId === undefined ? (read.taskSince[entry.taskId!] ?? report.firstSeenAt) : historyEntrySince(entry, report.id);
+    const lifetime = lifetimeOf(entry, since, report, knownOf(report));
     const groupKey = lifetime.current ? report.id : `${report.id}@${lifetime.key}`;
     const grouped = groups.get(groupKey);
     if (grouped === undefined) groups.set(groupKey, { report, lifetime, entries: [entry] });

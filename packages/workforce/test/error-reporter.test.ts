@@ -811,6 +811,31 @@ describe("reading the history", () => {
     expect(earlier).toContain("Issue: FIX-9 https://tracker.example/FIX-9");
   });
 
+  // A task's failed requests are held until it ends, so one can land on the day before its report started. Once that
+  // report has been replaced, the request's day must still read as the report its task went to, not the new one.
+  it("shows a held request from the day before as the earlier report its task went to", async () => {
+    const turns = [
+      { title: "Tasker gives up on large repositories", identifier: "FIX-9" },
+      { title: "Tasker gives up again after the fix", identifier: "FIX-12" }
+    ];
+    const lab = await openLab({ preview: { autoFile: ["task"] }, limits: { commentEveryMs: 0 }, closed: true, turns });
+    const now = Date.now();
+    const yesterday = new Date(now - 24 * 60 * 60_000).toISOString().slice(0, 10);
+    const ending = (taskId: string) => ({ kind: "task", at: Date.now(), taskId, boardId: "board_a", attempt: 1, error: "eng.tasker gave up", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
+    await lab.intake({ ...requestOccurrence("req_held_late", "the step timed out", now - 24 * 60 * 60_000), kind: "held", taskId: "task_a" });
+    await lab.intake(ending("task_a"));
+    await lab.intake(ending("task_b"));
+    await lab.intake(ending("task_c"));
+    expect((await lab.rows())[0]).toMatchObject({ status: "filed", issue: { identifier: "FIX-12" } });
+    const [hit, ...more] = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${yesterday}` });
+    expect(more).toEqual([]);
+    const read = (await lab.readHistory(OPERATOR, hit!.uri)).content!;
+    expect(read).toContain("req_held_late");
+    expect(read).toContain(`# ${turns[0]!.title}`);
+    expect(read).toContain("Issue: FIX-9 https://tracker.example/FIX-9");
+    expect(read).not.toContain("FIX-12");
+  });
+
   it("links the operator to a waiting report's Inbox item, and a user who failed the same way to nothing they can't open", async () => {
     const lab = await openLab({ inboxLink });
     await lab.breaks("disk is full");
