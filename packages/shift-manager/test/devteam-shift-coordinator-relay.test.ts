@@ -60,7 +60,7 @@ describe("the Shift Coordinator after a worker's message", () => {
     opened = await openLab({
       modelResolver: model,
       stores: inMemoryStores(),
-      harness: harness.slot,
+      harnesses: [harness.value],
       runTimeoutMs: harness.runTimeoutMs,
       workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-relay-")), remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",

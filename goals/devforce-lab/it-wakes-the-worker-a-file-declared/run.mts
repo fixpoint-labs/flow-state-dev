@@ -57,6 +57,7 @@ import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -218,7 +219,7 @@ async function open(label: string, over: Partial<OpenLabOptions> = {}): Promise<
   const workspace = { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF };
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     workspace,
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
@@ -647,7 +648,7 @@ await runGoal(async (failures) => {
     const stub = harnessStub({ finalMessage: "I ran out of room." });
     const lab = await openLab({
       stores: inMemoryStores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: fixture.assignedSeat,
       logger: silentLogger,

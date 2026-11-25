@@ -55,6 +55,7 @@ import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conve
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { CONVERSATION_BOARD_COLLECTION } from "../../../packages/shift-manager/src/lib/boards.ts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -248,7 +249,7 @@ async function open(setup: Setup, reopen?: { conversation: string; taskId: strin
   remotes.set(setup.label, remote);
   const lab = await openLab({
     stores: sqliteStores({ filename: join(root, "lab.sqlite") }),
-    harness: setup.slot as never,
+    harnesses: [readyHarness(setup.slot as never)],
     runTimeoutMs: 30_000,
     workspace: { root: join(root, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

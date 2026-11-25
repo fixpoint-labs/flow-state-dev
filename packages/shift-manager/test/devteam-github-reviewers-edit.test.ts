@@ -32,6 +32,7 @@ import { GITHUB_REVIEWERS_DOC, githubReviewersDocument, githubTrustedReviewers }
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 /** The tool's name, as the Shift Coordinator's `tools:` line spells it, and its judge's: both pinned in workforce. */
 const GITHUB_REVIEWERS_TOOL = "setGitHubReviewers";
@@ -110,7 +111,7 @@ async function open(model: ModelResolver, stores = inMemoryStores()): Promise<La
   opened = await openLab({
     modelResolver: model,
     stores,
-    harness: harnessStub({ finalMessage: "done" }).slot,
+    harnesses: [readyHarness(harnessStub({ finalMessage: "done" }).slot)],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-github-reviewers-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

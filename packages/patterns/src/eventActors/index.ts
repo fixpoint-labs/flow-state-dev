@@ -155,7 +155,7 @@ export interface EventActorsWorkspaceConfig {
  */
 export function createEventActorsWorkspace(
   _config: EventActorsWorkspaceConfig
-): { workspace: DefinedResource } {
+) {
   return { workspace: createEventActorsWorkspaceResource() };
 }
 
@@ -231,7 +231,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     reEmit = false,
     maxDepth = 3,
   } = config;
-  const workspaceResource = config.workspace.workspace;
+  const workspaceResource = config.workspace.workspace as DefinedResource<EventActorsWorkspaceState>;
 
   if (actors.length === 0) {
     throw new Error(
@@ -342,10 +342,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       execute: async (output, ctx) => {
         if (!reEmit) return;
 
-        const seqState = ctx.sequencer?.state as
-          | { _taskId?: string }
-          | undefined;
-        const taskId = seqState?._taskId;
+        const taskId = ctx.sequencer?.state._taskId;
         if (!taskId) return;
 
         const collection = await getCollection(ctx);
@@ -356,7 +353,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         const entries = normalizeToEntries(output);
         if (entries.length === 0) return;
 
-        const workspaceRef = (ctx.resources as Record<string, any>)[RESOURCE_KEY];
+        const workspaceRef = ctx.resources[RESOURCE_KEY];
 
         // The unit of atomicity is the whole RE-EMISSION, not one entry
         // (FIX-931). Making a single entry's actors atomic still left the loop
@@ -365,7 +362,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         // output already dispatched. Everything this output wants to spawn goes
         // in ONE `createTasks`, submitted before any state is committed.
         const seen = new Set(
-          (workspaceRef.state as EventActorsWorkspaceState).entries.map(
+          workspaceRef.state.entries.map(
             (e: Record<string, unknown>) => JSON.stringify([e.type, e.topic]),
           ),
         );
@@ -404,7 +401,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         // same moment — where the racing worker fails silently, with a
         // half-populated log that looks legitimate.
         for (const entry of toAppend) {
-          const wsState = workspaceRef.state as EventActorsWorkspaceState;
+          const wsState = workspaceRef.state;
           await workspaceRef.patchState({ entries: [...wsState.entries, entry] });
           ctx.emit.data(
             "rb-entry",

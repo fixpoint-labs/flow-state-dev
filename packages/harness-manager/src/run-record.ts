@@ -816,22 +816,9 @@ interface ReadableCollection {
 }
 
 /**
- * What resolving a collection actually READS off a context: the resource
- * registry, and nothing else.
- *
- * Typed by that rather than as a whole `BlockContext`, which is the same move
- * `RequestIdentityContext` and `harnessCtxState` make in `./manager` and for the
- * same reason — a helper declared against the entire context forces a cast on
- * every caller holding a narrower one. That is not hypothetical here: a harness
- * feed is handed the deliberately-tightened `HarnessCallbackContext`, which is
- * not structurally assignable to the wide `BlockContext`, so the manager's
- * session hook needed an `as unknown as` to reach `writeRunRecord` — an unchecked
- * claim, at a board-state write, which is the worst place to make one.
- *
- * Widening what callers may pass, so every existing one keeps compiling.
- * `resources` is `unknown` rather than a record because `ResourceRegistry` is a
- * mapped type carrying its own methods; the read below casts it exactly as it
- * always did, and pinning a shape here would only move the cast.
+ * A block or harness callback that holds the run-record collection. The
+ * resolver takes only the registry so a harness feed can write records
+ * without casting its callback context to the full BlockContext.
  */
 export interface CollectionHoldingContext {
   resources?: unknown;

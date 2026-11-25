@@ -20,6 +20,7 @@ import {
   type ReviewerInput,
   type ReviewerVerdict,
 } from "../src/supervisor";
+import { buildReviewedWorker } from "../src/supervisor/blocks/reviewer-check";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -401,6 +402,23 @@ describe("supervisor pattern", () => {
 // ---------------------------------------------------------------------------
 
 describe("supervisor per-task review", () => {
+  it.each([
+    { taskId: "t1" },
+    { taskId: "t1", goal: null, attempts: "unknown" },
+  ])("fills missing reviewer fields on partial worker input %#", async (input) => {
+    const reviewer = makeApprovingReviewer("partial-reviewer");
+    const block = buildReviewedWorker({
+      name: "partial-input",
+      workerKey: "worker",
+      workerBlock: echoWorker,
+      reviewerGenerator: reviewer,
+    });
+
+    const result = await testBlock(block, { input });
+    expect(result.error).toBeNull();
+    expect(reviewer.calls).toMatchObject([{ taskId: "t1", goal: "", attempts: 1 }]);
+  });
+
   it("approves on first attempt — task completes", async () => {
     const planner = makeDeterministicPlanner("a1-planner", [
       { id: "t1", goal: "Task" },

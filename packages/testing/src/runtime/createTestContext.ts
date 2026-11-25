@@ -1,7 +1,5 @@
-import type { StateRef } from "@flow-state-dev/core/types";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineResource, type DeclaredResources } from "@flow-state-dev/core";
+import type { FlowInstance, ResourceScope, StateRef } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
@@ -81,81 +79,41 @@ export type TestContextRuntime = {
   getItems: () => OutputItem[];
 };
 
-function nowMs(): number {
-  return Date.now();
-}
-
-function buildFlatResourceMap(
-  resources: Record<string, unknown> | undefined,
-  scope: "session" | "user" | "org"
-): Record<string, { stateSchema: z.ZodTypeAny; writable: true; scope: "session" | "user" | "org" }> {
-  if (resources === undefined) {
-    return {};
-  }
-
+function buildFlatResourceMap(resources: Record<string, unknown> | undefined, scope: ResourceScope): DeclaredResources {
   return Object.fromEntries(
-    Object.keys(resources).map((name) => [
+    Object.keys(resources ?? {}).map((name) => [
       name,
-      {
-        stateSchema: z.record(z.string(), z.unknown()),
-        writable: true,
-        scope
-      }
+      defineResource({ scope, stateSchema: z.record(z.string(), z.unknown()), writable: true })
     ])
   );
 }
 
-function createTestFlow(options: {
-  flow?: FlowInstance;
-  flowConfig?: Record<string, unknown>;
-  sessionId?: string;
-  sessionResources?: Record<string, unknown>;
-  userResources?: Record<string, unknown>;
-  orgResources?: Record<string, unknown>;
-  declaredResources?: DeclaredResources;
-}): FlowInstance {
-  if (options.flow !== undefined) {
-    // A hand-built instance may predate the config bag, or simply omit it.
-    // Production promises a block reads a value at `ctx.flow.config`, so the
-    // harness supplies the same empty bag the registry does rather than
-    // handing the block under test `undefined` (FIX-1331).
-    return (options.flow as { config?: unknown }).config === undefined
-      ? { ...options.flow, config: Object.freeze({}) }
-      : options.flow;
-  }
-
-  // FIX-435: every resource is intrinsically scoped; the test harness now
-  // emits a single flat `flow.resources` map covering all three buckets.
-  //
-  // Block-declared resources are merged first so a block that declares a
-  // resource on its `resources:` slot (e.g. round-robin/debate/routed-specialists)
-  // gets `ctx.resources.X` wired the same way production's `flow.resources` does.
-  // Explicitly-seeded scope resources are spread on top, so a test that opts to
-  // seed an accessor keeps its generic entry and existing behavior is unchanged.
-  const resources: Record<string, unknown> = {
-    ...(options.declaredResources ?? {}),
-    ...buildFlatResourceMap(options.sessionResources, "session"),
-    ...buildFlatResourceMap(options.userResources, "user"),
-    ...buildFlatResourceMap(options.orgResources, "org")
+/** Build a stand-alone flow with the resources declared or seeded by the test. */
+export function createTestFlow(options: CreateTestContextOptions): FlowInstance {
+  // Test seeds override the block's resource definitions so fixtures can supply their own values.
+  const resources = {
+    ...options.declaredResources,
+    ...buildFlatResourceMap(options.session?.resources, "session"),
+    ...buildFlatResourceMap(options.user?.resources, "user"),
+    ...buildFlatResourceMap(options.org?.resources, "org")
   };
+  const resourceKeys = new Set(Object.keys(resources));
 
   return {
     id: "testing-flow",
     kind: "testing-flow",
     cardinality: "singleton",
     requireUser: true,
-    // Frozen, like a minted instance's: production promises a block reads a
-    // value here, never `undefined`, and a harness that disagreed with the
-    // runtime it stands in for would hide exactly that.
     config: Object.freeze({ ...(options.flowConfig ?? {}) }),
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
-    resources: Object.keys(resources).length > 0 ? resources : undefined,
+    resources: resourceKeys.size > 0 ? resources : undefined,
+    flowLevelResourceKeys: resourceKeys,
     session: {},
     user: {},
-    org: options.orgResources === undefined ? undefined : {}
-  } as unknown as FlowInstance;
+    org: options.org?.resources === undefined ? undefined : {}
+  };
 }
 
 async function seedStores(options: {
@@ -174,7 +132,7 @@ async function seedStores(options: {
     org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
-  const now = nowMs();
+  const now = Date.now();
 
   // Resource state lives in the ResourceStateStore (FIX-689), keyed per-resource
   // and separate from the scope record. Seed it there so the execution context
@@ -434,18 +392,17 @@ function createTargetRef(
   };
 }
 
+/**
+ * Create an isolated execution context with the given flow and scope seeds.
+ * A raw context has no block from which to collect state schemas. Pass a flow
+ * to read its scope defaults, or use `testBlock` to include a block's declarations.
+ */
 export async function createTestContext<TInput = unknown>(
   options: CreateTestContextOptions<TInput> = {}
 ): Promise<TestContextRuntime> {
-  const flow = createTestFlow({
-    flow: options.flow,
-    flowConfig: options.flowConfig,
-    sessionId: options.sessionId,
-    sessionResources: options.session?.resources,
-    userResources: options.user?.resources,
-    orgResources: options.org?.resources,
-    declaredResources: options.declaredResources
-  });
+  let flow = options.flow ?? createTestFlow(options);
+  // Hand-built instances may predate the frozen config bag available in production.
+  if (flow.config === undefined) flow = { ...flow, config: Object.freeze({}) };
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
   const sessionId = options.sessionId ?? generateId("test_session");

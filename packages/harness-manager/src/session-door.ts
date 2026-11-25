@@ -38,7 +38,7 @@ import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
 import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
+import { acquireCheckout, checkoutLeaseFromState, releaseCheckout, runBoardSegment } from "./workspace";
 
 /** What the door takes: the line. Shift Manager builds it without knowing the kind. */
 export const sessionDoorInputSchema = z.object({ message: z.string() });
@@ -187,18 +187,19 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
-  const stateOf = (ctx: { sequencer?: { state?: unknown } }) => (ctx.sequencer?.state ?? {}) as z.infer<typeof talkStateSchema>;
-  const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
-    const state = stateOf(ctx);
-    if (state.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
-  };
 
   // The talk's harness, fed from this turn's own state: the checkout the
   // finished run worked in and the session it confirmed. Outside any
   // attempt, so it records no session of its own.
   const talkHarness: HarnessBlock = options.harness({
-    cwd: (ctx) => stateOf(ctx).cwd ?? "",
-    resume: (ctx) => stateOf(ctx).resume,
+    cwd: ({ sequencer }) => {
+      const cwd = sequencer?.state.cwd;
+      return typeof cwd === "string" ? cwd : "";
+    },
+    resume: ({ sequencer }) => {
+      const resume = sequencer?.state.resume;
+      return typeof resume === "string" ? resume : null;
+    },
     onSession: () => undefined,
     // A talk is one turn the person waits on: a line while it runs is its own talk.
     onSteerable: () => undefined,
@@ -214,7 +215,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: talkPromptSchema,
     sequencerStateSchema: talkStateSchema,
     uses,
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       const board = await options.board(ctx);
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
@@ -245,9 +246,9 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: harnessTalkOutputSchema,
     sequencerStateSchema: talkStateSchema,
     execute: async (value, ctx) => {
-      releaseTalkLease(ctx);
+      releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
       const handle = value as { finalMessage?: string | null };
-      return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx).taskId ?? "" };
+      return { reply: handle.finalMessage ?? null, taskId: ctx.sequencer?.state.taskId ?? "" };
     },
   });
 
@@ -263,7 +264,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
           outputSchema: z.unknown(),
           sequencerStateSchema: talkStateSchema,
           execute: (error: unknown, ctx) => {
-            releaseTalkLease(ctx);
+            releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
             throw error;
           },
         }),

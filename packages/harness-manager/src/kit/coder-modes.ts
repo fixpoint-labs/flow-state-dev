@@ -47,6 +47,13 @@ export interface CoderMode {
    * by the filing check; nothing here refuses a task for them. Absent: none.
    */
   requires?: readonly CodingTaskInputField[];
+  /**
+   * This mode's runs work in their task's project: they hold the project
+   * collections their workspace's source reads, and run the project's checks.
+   * Overrides the kit's `project` for this mode only; whether a filing needs a
+   * project stays the kit's. Absent: the kit's.
+   */
+  project?: boolean;
 }
 
 /** A mode as the flow runs it: its spec, where it works, and what it needs. */
@@ -55,6 +62,8 @@ export interface ResolvedMode {
   /** Absent: the kit's workspace. */
   workspace?: WorkspaceHost;
   requires: readonly CodingTaskInputField[];
+  /** Absent: the kit's `project`. */
+  project?: boolean;
 }
 
 /** The modes a flow runs, by name, and the one a task naming none runs. */
@@ -111,6 +120,7 @@ export function resolveCoderModes(
       spec: { ...(base ?? {}), name, instructions, doneWhen },
       ...(mode.workspace === undefined ? {} : { workspace: mode.workspace }),
       requires,
+      ...(mode.project === undefined ? {} : { project: mode.project }),
     };
   }
   const defaultMode = options.defaultMode ?? KIT_MODE;
@@ -139,9 +149,10 @@ export function modeOfTask(input: unknown, resolved: ResolvedModes): string {
  * for a malformed marker, which no run is keyed by.
  */
 export function runModeOfTask(input: unknown, resolved: ResolvedModes): { readonly name: string; readonly formerName?: string } | undefined {
-  const spec = resolved.modes[modeOfTask(input, resolved)]!.spec;
-  if (!namesHarnessFeature(input)) return spec;
+  const { name, formerName } = resolved.modes[modeOfTask(input, resolved)]!.spec;
+  const keyed = formerName === undefined ? { name } : { name, formerName };
+  if (!namesHarnessFeature(input)) return keyed;
   const feature = harnessFeatureOf(input);
   if (feature === undefined) return undefined;
-  return feature.phase === undefined ? spec : { name: feature.phase };
+  return feature.phase === undefined ? keyed : { name: feature.phase };
 }

@@ -36,10 +36,8 @@ import type {
   CompletionRunContext,
   ModeSpec,
   PromptRunContext,
-  WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
-import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { runAcceptance } from "./acceptance.mts";
 import type { WorkerOf } from "./worker-config.mts";
 
@@ -227,10 +225,10 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
  * The phase.
  *
  * `validate` runs at construction, where a misconfiguration is an operator's
- * problem rather than a charged attempt's: for a fixed repository it pins the
- * base ref this phase compares against and confirms the source repository
- * actually has it; for a workspace host it records that each run's base is
- * its own.
+ * problem rather than a charged attempt's: for a fixed repository
+ * (`repository`) it pins the base ref this phase compares against and confirms
+ * the source repository actually has it; on a projects host it records that
+ * each run's base is its own.
  */
 export interface ImplementPhaseOptions {
   /** How a run loads the worker its session names: `workerOf(installation, CODER_FLOW)`. */
@@ -252,6 +250,12 @@ export interface ImplementPhaseOptions {
    * what survives the run, and it would be lying.**
    */
   requireAcceptance?: boolean;
+  /**
+   * The one repository every run works in, when the Lab has one (a host on
+   * it, not a projects host): done is then a commit its `baseRef` lacks.
+   * Absent: each run is on a projects host, and its base is its own.
+   */
+  repository?: { sourceRepo: string; baseRef: string };
   /**
    * Control only: build the prompt without the task the manager handed over,
    * as the builder did before it led with it. The red state of "a run is
@@ -307,18 +311,19 @@ export function defineImplementPhase(options: ImplementPhaseOptions): ModeSpec {
         // unfinished attempt does, so the retry budget still applies.
         return runAcceptance(context.workspacePath).accepted;
       },
-      validate: (workspace: WorkspaceConfig | WorkspaceHost): ValidatedWorkspace => {
-        // A workspace host has no one repository to check: each run's source
+      validate: (): ValidatedWorkspace => {
+        // A projects host has no one repository to check: each run's source
         // names its own, and the host refuses one it cannot reach before the
         // harness runs.
-        if ("provision" in workspace) return { host: true };
+        const fixed = options.repository;
+        if (fixed === undefined) return { host: true };
         // Refused here, before any row is claimed: a base ref the repository does
         // not have fails the done-condition on EVERY attempt, each time after the
         // run has already been paid for. This is the exact shape `validate` exists
-        // for — a precondition only the phase knows about, over a workspace only
-        // the host holds.
-        assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
-        return { baseRef: workspace.baseRef };
+        // for — a precondition only the phase knows about, over a repository only
+        // the Lab holds.
+        assertBaseRefExists(fixed.sourceRepo, fixed.baseRef, "workspace.baseRef");
+        return { baseRef: fixed.baseRef };
       },
     },
   };

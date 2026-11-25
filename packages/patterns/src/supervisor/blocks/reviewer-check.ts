@@ -16,7 +16,7 @@
  *   .tap(stashWorkerOutput)    — capture worker output for applyVerdict
  *                                AND stamp reviewMetadata[taskId].entered=true
  *                                on the supervisor sequencer state
- *   .map(buildReviewerInput)   — adapt workerOutput → ReviewerInput
+ *   .map(...)                 — adapt workerOutput → ReviewerInput
  *   .step(reviewerGenerator)   — produces ReviewerVerdict
  *   .step(applyVerdict)        — approve flows workerOutput through; reject throws
  *
@@ -32,34 +32,24 @@
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import {
-  getOrCreateTaskCollection,
-  type TaskWorkerInput,
-} from "@flow-state-dev/orchestration/tasks";
-import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
-
-type SupervisorReviewState = {
-  reviewMetadata: Record<
-    string,
-    { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" }
-  >;
-};
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { reviewerVerdictSchema, type ReviewerInput, type SupervisorState } from "../schemas";
 
 /** Patch a single `reviewMetadata[taskId]` slot on the supervisor sequencer's
  * outer state without touching sibling slots. The supervisor sequencer is
  * looked up by name; if it can't be found (e.g. the worker is composed
  * outside a supervisor for testing), the write is a silent no-op. */
 async function patchSupervisorReviewMetadata(
-  target: StateRef<SupervisorReviewState> | undefined,
+  target: StateRef<SupervisorState> | undefined,
   taskId: string,
-  patch: { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" },
+  patch: SupervisorState["reviewMetadata"][string],
 ): Promise<void> {
   if (target === undefined) return;
   await target.atomicState((state) => {
-    const previous = state.reviewMetadata?.[taskId] ?? {};
+    const previous = state.reviewMetadata?.[taskId];
     return {
       reviewMetadata: {
-        ...(state.reviewMetadata ?? {}),
+        ...state.reviewMetadata,
         [taskId]: { ...previous, ...patch },
       },
     };
@@ -68,8 +58,8 @@ async function patchSupervisorReviewMetadata(
 
 const reviewedWorkerStateSchema = z.object({
   taskId: z.string().optional(),
-  goal: z.string().optional(),
-  attempts: z.number().int().nonnegative().optional(),
+  goal: z.string().default(""),
+  attempts: z.number().int().nonnegative().default(1),
   workerOutput: z.unknown().optional(),
 });
 
@@ -92,15 +82,17 @@ export function buildReviewedWorker(
 
   const stashTaskId = handler({
     name: `${name}-${workerKey}-stash-task`,
-    inputSchema: z.unknown(),
+    inputSchema: z.object({
+      taskId: reviewedWorkerStateSchema.shape.taskId,
+      goal: z.preprocess((value) => value ?? undefined, reviewedWorkerStateSchema.shape.goal),
+      attempts: z.preprocess(
+        (value) => typeof value === "number" ? value : undefined,
+        reviewedWorkerStateSchema.shape.attempts,
+      ),
+    }),
     sequencerStateSchema: reviewedWorkerStateSchema,
-    execute: async (input, ctx) => {
-      const twi = input as TaskWorkerInput;
-      await ctx.sequencer!.patchState({
-        taskId: twi.taskId,
-        goal: twi.goal,
-        attempts: typeof twi.attempts === "number" ? twi.attempts : 1,
-      });
+    execute: async (task, ctx) => {
+      await ctx.sequencer!.patchState(task);
     },
   });
 
@@ -121,29 +113,13 @@ export function buildReviewedWorker(
       const taskId = ctx.sequencer!.state.taskId;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorReviewState>(name),
+          ctx.getTarget<SupervisorState>(name),
           taskId,
           { entered: true },
         );
       }
     },
   });
-
-  function buildReviewerInput(
-    workerOutput: unknown,
-    ctx: { sequencer?: { state: z.infer<typeof reviewedWorkerStateSchema> } },
-  ): ReviewerInput {
-    const state = ctx.sequencer!.state;
-    return {
-      taskId: state.taskId ?? "",
-      goal: state.goal ?? "",
-      attempts: state.attempts ?? 1,
-      workerOutput,
-      ...(reviewCriteria && reviewCriteria.length > 0
-        ? { criteria: reviewCriteria }
-        : {}),
-    };
-  }
 
   // approve → flow upstream workerOutput through; reject/needs-revision
   // → throw so substrate's recordError + maxAttempts handle the retry.
@@ -159,7 +135,7 @@ export function buildReviewedWorker(
       const { workerOutput, taskId } = ctx.sequencer!.state;
       if (taskId !== undefined) {
         await patchSupervisorReviewMetadata(
-          ctx.getTarget<SupervisorReviewState>(name),
+          ctx.getTarget<SupervisorState>(name),
           taskId,
           { entered: true, lastVerdict: verdict.decision },
         );
@@ -204,7 +180,16 @@ export function buildReviewedWorker(
     .step(workerBlock)
     .tap(stashWorkerOutput)
     .tap(emitReviewingStatus)
-    .map(buildReviewerInput)
+    .map((workerOutput, ctx): ReviewerInput => {
+      const { taskId, goal, attempts } = ctx.sequencer!.state;
+      return {
+        taskId: taskId ?? "",
+        goal,
+        attempts,
+        workerOutput,
+        ...(reviewCriteria?.length ? { criteria: reviewCriteria } : {}),
+      };
+    })
     .step(reviewerGenerator)
     .step(applyVerdict);
 }

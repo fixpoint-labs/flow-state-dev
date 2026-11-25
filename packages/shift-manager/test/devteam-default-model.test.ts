@@ -9,6 +9,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { LAB_DEFAULT_MODEL, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 let lab: Lab | undefined;
 afterEach(async () => {
@@ -21,7 +22,7 @@ it("resolves a worker that names no model to the Lab's default, not to a setup e
   vi.stubEnv("FSDEV_DEFAULT_MODEL", undefined);
   lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-default-model-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
   });

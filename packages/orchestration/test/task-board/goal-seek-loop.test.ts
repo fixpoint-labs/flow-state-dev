@@ -176,9 +176,12 @@ describe("goalSeekLoop - replan", () => {
     });
     const result = await testBlock(loop, { input: undefined });
     expect(result.error).toBeNull();
-    // Two drains: initial + after replan added task b.
-    expect(readTermination(result.items)?.iterations).toBe(2);
-    // Final projection includes both tasks.
+    const patches = result.items
+      .filter((item) => item.type === "state_change")
+      .map((item) => item.delta);
+    expect(patches).toContainEqual({ goalSeekLoopVerdict: { decision: "replan", reason: "more" } });
+    expect(readTermination(result.items)).toMatchObject({ reason: "converged", iterations: 2 });
+    // The replan tasks still reach the board through the verdict on the chain.
     const output = result.output as { tasks: Array<{ id: string }> };
     expect(output.tasks.map((t) => t.id).sort()).toEqual(["a", "b"]);
   });

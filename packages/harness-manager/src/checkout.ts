@@ -25,6 +25,7 @@ export {
   encodeSegment,
   freeRunLocation,
   harnessTaskId,
+  hostForConfig,
   isStrictlyInside,
   joinIdentity,
   locationFor,

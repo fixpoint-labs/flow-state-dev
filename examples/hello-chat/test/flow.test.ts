@@ -2,7 +2,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import helloChatFlow from "../src/flows/hello-chat/flow";
 
 /**
@@ -10,10 +11,6 @@ import helloChatFlow from "../src/flows/hello-chat/flow";
  * They should never require OPENAI_API_KEY or make real network calls.
  */
 
-// Access the pipeline block from the flow definition for state-change assertions.
-// testFlow exercises the runtime path, while testBlock exposes state mutations.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const chatPipeline = (helloChatFlow.actions.chat as any).block;
 const MODEL_ID = "openai/gpt-5.4-mini";
 
 function collectSourceFiles(dir: string): string[] {
@@ -95,22 +92,27 @@ describe("hello-chat", () => {
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 
-  it("increments message count in session state", async () => {
+  it("counts each completed exchange when two requests overlap", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "shared-chat";
     const chatFixture = createChatFixture();
-    const result = await testBlock(chatPipeline, {
-      input: { message: "Hello again" },
-      session: {
-        state: { messageCount: 5 }
-      },
+    const chat = (message: string) => testFlow({
+      flow: helloChatFlow,
+      action: "chat",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { message },
       ...withGeneratorMocks(chatFixture)
     });
 
-    expect(result.error).toBeNull();
-    const patchOp = result.stateChanges.find(
-      (change) => change.scope === "session" && change.operation === "patchState"
-    );
-    expect(patchOp).toBeDefined();
-    expect(patchOp?.resultingState.messageCount).toBe(6);
+    const first = await chat("Hello");
+    expect(first.output).toBe("TypeScript is a typed superset of JavaScript.");
+    expect((await stores.session.get(sessionId))?.state.messageCount).toBe(1);
+
+    const replies = await Promise.all([chat("First follow-up"), chat("Second follow-up")]);
+    expect(replies.map((reply) => reply.status)).toEqual(["completed", "completed"]);
+    expect((await stores.session.get(sessionId))?.state.messageCount).toBe(3);
   });
 
   it("contains no legacy terminology in source", () => {

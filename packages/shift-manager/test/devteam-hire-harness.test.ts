@@ -25,6 +25,7 @@ import { connect } from "../src/lib/connection";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const OWNER = LAB_USERS.owner;
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
@@ -92,9 +93,8 @@ async function open(model: ModelResolver, stubs: Record<string, HarnessStub>) {
   opened = await openLab({
     modelResolver: model,
     stores: inMemoryStores(),
-    harness: stubs[DEFAULT]!.slot,
-    harnessName: DEFAULT,
-    harnesses: Object.fromEntries(NAMED.map((name) => [name, { slot: stubs[name]!.slot }])),
+    harnesses: [DEFAULT, ...NAMED].map((name) => readyHarness(stubs[name]!.slot, name)),
+    defaultHarness: DEFAULT,
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-hire-harness-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
@@ -195,9 +195,10 @@ describe("hiring a coder on a harness (FIX-2486)", () => {
   it("refuses a harness the Lab doesn't run, naming the ones it does, and writes nothing", async () => {
     const stubs = Object.fromEntries([DEFAULT, ...NAMED].map((n) => [n, answering(n)]));
     const { workforce } = await open(scripted([], []), stubs);
+    // The kit's own refusal: exactly the ids the coder runs on, which are the readiness view's rows.
     await expect(
       workforce.hire({ id: "windsurf", flow: "coder", settings: { ...BRIEF, harness: "windsurf" } }),
-    ).rejects.toThrow(/harness "windsurf" is not one this Shift Manager runs; pick one of: stub, claude-code, codex, cursor/);
+    ).rejects.toThrow(/"harness": Invalid enum value. Expected 'stub' \| 'claude-code' \| 'codex' \| 'cursor', received 'windsurf'/);
     expect((await workforce.roster()).some((e) => e.id === "windsurf")).toBe(false);
   }, 60_000);
 });

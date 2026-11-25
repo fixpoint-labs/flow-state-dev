@@ -1,10 +1,11 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { asRecord } from "../internal/json-helpers";
-import { createTestContext } from "../runtime/createTestContext";
+import { createTestContext, createTestFlow } from "../runtime/createTestContext";
 import { sequencerTraces } from "./sequencerTraces";
 import type {
   BlockInput,
@@ -100,9 +101,13 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestBlockResult<BlockOutput<TBlock>>> {
   const startedAt = Date.now();
+  let flow = options.flow ?? createTestFlow({ ...options, declaredResources: block.declaredResources });
+  if (flow.scopeStateSchemas === undefined) {
+    // Hand-built and stand-alone flows have yet to collect their block declarations.
+    flow = { ...flow, scopeStateSchemas: mergeFlowScopeStateSchemas(flow.kind, flow, walkBlockGraph([block])) };
+  }
   const runtime = await createTestContext({
-    flow: options.flow,
-    flowConfig: options.flowConfig,
+    flow,
     request: options.request,
     session: options.session,
     user: options.user,
@@ -117,11 +122,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     signal: options.signal,
     actionName: `test:${block.name}`,
     sessionId: "test-session",
-    sequencerName: block.name,
-    // Wire the block's declared resources (bubbled up from descendants) into the
-    // synthetic flow so `ctx.resources.X` exists for blocks that declare a
-    // `resources:` slot — matching production's flow.resources registration.
-    declaredResources: block.declaredResources
+    sequencerName: block.name
   });
 
   const blockUnderTest =
@@ -147,10 +148,10 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     error: result.error ?? null,
     items,
     state: {
-      request: asRecord(runtime.ctx.request.state),
-      session: asRecord(runtime.ctx.session.state),
-      user: asRecord(runtime.ctx.user.state),
-      org: asRecord(runtime.ctx.org?.state),
+      request: runtime.ctx.request.state,
+      session: runtime.ctx.session.state,
+      user: runtime.ctx.user.state,
+      org: runtime.ctx.org?.state ?? {},
       sequencer:
         options.sequencer === undefined
           ? asRecord(runtime.ctx.sequencer?.state)
@@ -160,7 +161,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     // The registry the run actually wrote through, not a copy — a test asserting
     // on written rows reads them here instead of hand-rolling a context and
     // dispatching `execute` directly, which would skip `executeBlock` above.
-    resources: (runtime.ctx.resources ?? {}) as Record<string, unknown>,
+    resources: runtime.ctx.resources,
     meta: {
       durationMs: Date.now() - startedAt,
       blockName: block.name,
