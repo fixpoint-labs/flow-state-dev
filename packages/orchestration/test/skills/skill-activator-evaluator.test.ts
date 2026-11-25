@@ -105,6 +105,8 @@ async function runTurn(opts: {
   const flow = defineFlow({
     kind: `activator-${requestId}`,
     resources: { skills: defineSkillsCollection({ scope: "session" }) },
+    // A session state_change carries only exposed fields, and the turn is read off them.
+    session: { client: { expose: ["activeSkills"] } },
     actions: {
       run: turn,
     },
@@ -700,7 +702,8 @@ function sessionHarness(
   if (opts.ahead) turn = turn.tap(opts.ahead) as unknown as typeof turn;
   const flow = defineFlow({
     kind: `recent-${sessionId}`,
-    ...(opts.historyWindow ? { session: { historyWindow: opts.historyWindow } } : {}),
+    // activeSkills exposed: the turn is read off its session state_change.
+    session: { client: { expose: ["activeSkills"] }, ...(opts.historyWindow ? { historyWindow: opts.historyWindow } : {}) },
     resources: { skills: defineSkillsCollection({ scope: "session" }) },
     actions: {
       chat: { userMessage: (i) => i.message, block: reply },

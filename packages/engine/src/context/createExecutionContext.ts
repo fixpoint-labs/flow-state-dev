@@ -3212,7 +3212,13 @@ export async function createExecutionContext<
       transient: transientStateChanges,
       // FIX-1506: session, user and org writes publish on their scope's topic,
       // stream or not; request state publishes nothing.
-      ...(scope === "request" ? {} : { onCommitted: () => publishScopeNotice(scope, "state") })
+      ...(scope === "request"
+        ? {}
+        : {
+            onCommitted: () => publishScopeNotice(scope, "state"),
+            // The browser sees the fields the scope exposes, on the stream as in client data.
+            exposedKeys: new Set<string>(flow[scope]?.client?.expose ?? [])
+          })
     });
   }
 

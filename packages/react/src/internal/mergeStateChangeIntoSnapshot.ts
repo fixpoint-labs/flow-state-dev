@@ -8,10 +8,10 @@
  * Why "only merge keys already present in clientData[scope]": `clientData` is
  * the projected slice of scope state — the server filters down to the flow's
  * `expose` list before sending the snapshot.
- * The on-the-wire `state_change` delta carries the *raw* keys the block
- * patched, including non-exposed ones. To avoid leaking those non-exposed
- * keys into `clientData[scope]`, we only update keys the initial snapshot
- * already populated. Trade-off: the first set of an expose key whose initial
+ * The server strips non-exposed keys from a `state_change` before it is
+ * emitted, and this reducer still updates only keys the initial snapshot
+ * already populated, so a `?clientData=` filter that narrowed the snapshot
+ * keeps it narrow. Trade-off: the first set of an expose key whose initial
  * value was `undefined` won't land mid-stream; declare a default in the
  * scope's `stateSchema` if that case matters.
  *
