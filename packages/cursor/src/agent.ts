@@ -104,17 +104,6 @@ import {
   type ResolvedCursorClient,
 } from "./types";
 
-/**
- * The block context an option callback receives — the contract's own alias.
- *
- * This package declared a local copy of this shape until core exported one.
- * Using the contract's is the point of the contract: a resolver a host writes
- * against `HarnessResolver` is handed exactly this, so a harness that narrowed
- * or widened it locally would be the one place a host's callback stopped
- * type-checking for reasons that had nothing to do with the host.
- */
-type AgentCallbackContext = HarnessCallbackContext;
-
 /** A model named by id, or by id and settings. */
 type ModelChoice = string | CursorModelSelection;
 
@@ -499,7 +488,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         }
       : {}),
     ...(uses !== undefined ? { uses } : {}),
-    execute: async (input, ctx: AgentCallbackContext): Promise<CursorAgentHandle> => {
+    execute: async (input, ctx: HarnessCallbackContext): Promise<CursorAgentHandle> => {
       const prompt = input.prompt?.trim();
       if (!prompt) {
         throw new CursorAgentRunError("cursorAgent requires a non-empty prompt.");
@@ -623,7 +612,7 @@ interface RunSpent {
  * input. Cursor's cost is an estimate and its billing unknown. Each report
  * replaces the run's last.
  */
-function reportCursorSpend(ctx: AgentCallbackContext, runId: string, spent: RunSpent): void {
+function reportCursorSpend(ctx: HarnessCallbackContext, runId: string, spent: RunSpent): void {
   const usage = spent.usage;
   reportHarnessSpend(ctx, {
     runId,
@@ -652,7 +641,7 @@ interface SteerOffer {
  */
 function offerSteer(
   run: CursorRunLike,
-  ctx: AgentCallbackContext,
+  ctx: HarnessCallbackContext,
   onSteerable: HarnessSteerHook | undefined,
 ): SteerOffer | null {
   if (onSteerable === undefined || typeof run.steer !== "function") return null;
@@ -707,7 +696,7 @@ function offerSteer(
  * context alone, which makes that unavailable rather than merely discouraged.
  */
 async function openAgent(args: {
-  ctx: AgentCallbackContext;
+  ctx: HarnessCallbackContext;
   resolveCwd: HarnessResolver<string> | undefined;
   resolveResume: HarnessResolver<string | null | undefined> | undefined;
   onSession: HarnessSessionHook | undefined;
@@ -781,10 +770,9 @@ async function resumeAgent(
  * fails is a status note too. The run goes on unrecorded rather than failing
  * over bookkeeping.
  */
-async function openPlanWriter(ctx: AgentCallbackContext, agentId: string): Promise<PlanWriter | null> {
-  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
-  const plan = resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
-  const marker = resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
+async function openPlanWriter(ctx: HarnessCallbackContext, agentId: string): Promise<PlanWriter | null> {
+  const plan = ctx.resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
+  const marker = ctx.resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
   if (typeof plan?.upsert !== "function" || typeof marker?.upsert !== "function") {
     ctx.emit.status(
       `Cursor agent is not recording this run's plan: the "${OBSERVED_PLAN}" and ` +
@@ -861,7 +849,7 @@ function mergeCreateOptions(
  */
 async function mirrorRun(
   run: CursorRunLike,
-  ctx: AgentCallbackContext,
+  ctx: HarnessCallbackContext,
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
   writePlan: PlanWriter | null,
@@ -1016,7 +1004,7 @@ function buildHandle(args: {
   finalMessage: string | null;
   configuredModel: string | undefined;
   name: string;
-  ctx: AgentCallbackContext;
+  ctx: HarnessCallbackContext;
 }): CursorAgentHandle {
   const { settled } = args;
   const model = settled.model ?? args.configuredModel;

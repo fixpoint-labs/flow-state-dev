@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializeError, errorDetailsWithCause } from "../src/errors/serialize-error";
+import { containsSecret, redactSecrets, serializeError, errorDetailsWithCause } from "../src/errors/serialize-error";
 
 describe("serializeError", () => {
   it("copies the non-enumerable name and message", () => {
@@ -107,5 +107,19 @@ describe("errorDetailsWithCause", () => {
     expect(errorDetailsWithCause({ details: existing, cause: new Error("ignored") })).toBe(
       existing
     );
+  });
+});
+
+describe("containsSecret", () => {
+  // A write that refuses credentials and the redactor that strips them must agree on what one looks like.
+  it("finds exactly what redactSecrets would remove, NVIDIA keys included", () => {
+    const nvidia = "use nvapi-abcdefghijklmnopqrstuvwxyz0123 please";
+    expect(redactSecrets(nvidia)).toBe("use [redacted] please");
+    expect(containsSecret(nvidia)).toBe(true);
+    expect(containsSecret("sk-proj-AbCdEf1234567890abcdef")).toBe(true);
+  });
+
+  it("passes ordinary text, env var names included", () => {
+    expect(containsSecret("The key lives in NVIDIA_API_KEY; ask the operator.")).toBe(false);
   });
 });

@@ -72,7 +72,7 @@ export interface PerspectiveCapabilityConfig {
    * bundled blocks and capability share a single `defineResource()`
    * reference under the FIX-435 same-reference rule.
    */
-  positionsResource?: DefinedResource
+  positionsResource?: DefinedResource<PerspectivePositionsState>
 }
 
 // ---------------------------------------------------------------------------

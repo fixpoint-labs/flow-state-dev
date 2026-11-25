@@ -9,6 +9,8 @@
  *   builds it and hands it to every worker flow's builder.
  * - `createWorkerHireBlocks`: hire, fork, edit, fire and reset, as writes to the
  *   caller's roster.
+ * - `hireWorkersCapability`: `hire` and `fire` as a worker's tools, each
+ *   waiting for the user's approval.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
  * - `workerConfigOf`: the configuration of the worker a turn loaded.
  * - `workerFlow`: a worker flow built on its installation, for a flow that
@@ -56,7 +58,8 @@ export {
   type WorkerSessionStateShape,
   type WorkerTurnContext
 } from "./installation";
-export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
+export { createWorkerHireBlocks, type HireChecks, type WorkerHireBlocks } from "./hire-blocks";
+export { hireWorkersCapability } from "./roster-tools";
 export { defineWorkerRosterFlow } from "./roster-flow";
 export { inventoryWorkers } from "./register";
 export { workerConfigOf } from "./verified-worker";

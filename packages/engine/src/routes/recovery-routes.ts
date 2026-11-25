@@ -25,7 +25,6 @@ import { namesSession } from "../context/record-session";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
 import { isRequestPublicReentryAllowed } from "./public-reentry";
-import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 import { ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
@@ -55,20 +54,6 @@ type RecoveryRouteContext = {
 type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
-
-/**
- * Whether a request record is a dynamic (resolver-produced) scheduled
- * dispatch, per its `metadata.schedule.origin` (falling back to the legacy
- * flat `metadata.origin` for in-flight records enqueued before namespacing —
- * see `request-separator.tsx`'s matching fallback).
- */
-function isDynamicScheduleRecord(record: { source: string; metadata?: Record<string, unknown> }): boolean {
-  if (record.source !== SCHEDULED_SOURCE) return false;
-  const scheduleMeta = (record.metadata?.schedule ?? record.metadata) as
-    | { origin?: unknown }
-    | undefined;
-  return scheduleMeta?.origin === "dynamic";
-}
 
 export async function handleRetryRequest(
   request: Request,
@@ -220,19 +205,6 @@ export async function handleContinueRequest(
   // source that is not caller-facing as not found.
   if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
-  }
-
-  // A dynamic schedule's action core is produced at dispatch time by a
-  // resolver and carried only on that original dispatch envelope — unlike a
-  // static schedule, it cannot be re-resolved from `flow.schedules.static`
-  // (see `resolve-action-core.ts`), so `continueRequest` has no core to
-  // re-enter with. The DevTool already hides Continue for these records
-  // (`request-separator.tsx`); reject here too so a direct API client can't
-  // reach the same dead end.
-  if (isDynamicScheduleRecord(originalRecord)) {
-    return jsonResponse(409, {
-      error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
-    });
   }
 
   // A request recorded with no session is history, never run again: a named

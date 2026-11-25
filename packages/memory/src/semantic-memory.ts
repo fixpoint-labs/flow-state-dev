@@ -42,7 +42,7 @@ export type SemanticFact = z.infer<typeof semanticFactSchema>
 /** Schema for the full semantic memory state. */
 export const semanticMemoryStateSchema = z.object({
   /** All stored semantic facts. */
-  facts: z.array(semanticFactSchema),
+  facts: z.array(semanticFactSchema).default([]),
   /** Total number of facts ever created (including removed). */
   totalExtracted: z.number().int().min(0).default(0),
   /** Total consolidation runs completed. */
@@ -75,7 +75,7 @@ export function createSemanticMemoryResource(
     ref: 'semanticMemory',
     scope,
     stateSchema: semanticMemoryStateSchema,
-    default: { facts: [], totalExtracted: 0, totalConsolidations: 0 },
+    default: semanticMemoryStateSchema.parse({}),
     writable: true,
     ...(relations ? { edges: relations } : {}),
     ...flowIsolationEntry(options),

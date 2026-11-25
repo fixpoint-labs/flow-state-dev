@@ -574,7 +574,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -655,7 +655,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: REVIEWER_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -716,7 +716,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -795,7 +795,7 @@ await runGoal(async (failures) => {
 
   const lab = await openLab({
     stores,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,

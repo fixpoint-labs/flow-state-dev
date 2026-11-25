@@ -7,6 +7,7 @@
  * The throttle's window (`PROGRESS_NOTE_MS`) is graded with a fake clock in
  * `progress-note.spec.ts`; here a burst lands inside the first window.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -91,7 +92,7 @@ function host(script: Script) {
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(script, started, reported),

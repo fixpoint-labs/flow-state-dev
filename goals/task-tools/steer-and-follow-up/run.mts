@@ -1,5 +1,6 @@
 /** Goal check. Contract, controls, and the verdict log: `goal.md`. */
 
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -268,7 +269,7 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     ledgers: conversationLedgers,
     tenant: undefined,
     mode: { name: "answer", instructions: async (run: { issue: string }) => `Work on task ${run.issue}.`, doneWhen: { check: () => true } },
-    workspace: { root: checkouts, sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
+    workspace: localRepoWorkspaceHost({ root: checkouts, repo, baseRef: "main", provisionTimeoutMs: 20_000 }),
     runTimeoutMs: 60_000,
     stopsOnAbort: true,
     harness: fakeHarness

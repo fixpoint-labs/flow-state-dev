@@ -29,7 +29,7 @@ export interface SourceReadCapabilityOptions {
  *
  * @throws When the host has no read view (`readSource`).
  * @example
- *   const workspace = localWorkspaceHost({ root, remotes: { allow: [] }, source: () => ({ kind: "repo", repo }) });
+ *   const workspace = localRepoWorkspaceHost({ root, repo });
  *   workforce({ agent: { model, uses: [sourceReadCapability({ workspace })] } });
  */
 export function sourceReadCapability(options: SourceReadCapabilityOptions) {

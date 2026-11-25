@@ -729,9 +729,8 @@ export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
  * conversation, and the run's marker points there.
  */
 function openWorkRecorder(ctx: BlockContext, cwd?: string): ClaudeCodeWorkRecorder | null {
-  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
-    const ref = resources?.[accessor] as UpsertableCollection | undefined;
+    const ref = ctx.resources?.[accessor] as UpsertableCollection | undefined;
     return typeof ref?.upsert === "function" ? ref : undefined;
   };
   const files = upsertable(CLAUDE_CODE_FILE_OPS);

@@ -83,13 +83,13 @@ export function defineLeadFitCheck(model: string) {
     model,
     inputSchema: leadFitCaseSchema,
     question: LEAD_FIT_QUESTION,
-    candidates: ({ lead, description }: LeadFitCase) => ({
+    candidates: ({ lead, description }) => ({
       [lead]: description,
       [NONE_FITS]: "None fits: the worker's description says it handles a different sort of work than this.",
       [SORT_UNSAID]: "The work doesn't say what sort of work it is."
     }),
-    state: ({ title, objectives }: LeadFitCase) => ({ work: { title, objectives } }),
-    work: ({ title, objectives }: LeadFitCase) =>
+    state: ({ title, objectives }) => ({ work: { title, objectives } }),
+    work: ({ title, objectives }) =>
       [`The work: ${title}`, ...objectives.map((objective) => `- ${objective}`)].join("\n")
   });
 
@@ -98,8 +98,9 @@ export function defineLeadFitCheck(model: string) {
     inputSchema: z.unknown(),
     outputSchema: z.object({}),
     requestStateSchema: leadFitStateSchema,
-    execute: async (answer: unknown, ctx) => {
-      const fitCase = leadFitCaseSchema.parse(ctx.parent?.input);
+    parentInputSchema: leadFitCaseSchema,
+    execute: async (answer, ctx) => {
+      const fitCase = ctx.parent!.input;
       const outcome = fitOutcome(answer);
       if ("failed" in outcome) {
         await ctx.request.patchState({ [LEAD_FIT_STATE]: { checked: false, why: `unanswered: ${outcome.failed}` } });

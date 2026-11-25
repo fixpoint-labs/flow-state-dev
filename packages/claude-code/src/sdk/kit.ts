@@ -20,8 +20,7 @@
  * goal check fills a scripted harness under the same id instead.
  */
 import { defineFlow, defineKit } from "@flow-state-dev/core";
-import { harnessEnv, type HarnessBlock } from "@flow-state-dev/core/harness";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { Harness } from "@flow-state-dev/harness-manager";
 import { harnesses } from "@flow-state-dev/harness-manager/kit";
 import { z } from "zod";
@@ -55,7 +54,7 @@ function claudeCodeHarness(id: string, label: string, permissionMode: Permission
         permissionMode,
         settingSources: ["project"],
         settings: { disableAllHooks: true },
-      } as never) as unknown as HarnessBlock,
+      }),
     readiness: (check) => checkClaudeCodeReadiness({ env: env(), ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CLAUDE_CODE_PASS,
     usage: (read) => readClaudeCodeUsage({ env: env(), ...(read?.signal === undefined ? {} : { signal: read.signal }) }),
@@ -83,9 +82,10 @@ export const claudeCode = defineKit({
     flows: [
       defineFlow({
         kind: CLAUDE_CODE_FLOW,
+        actions: {},
         description: "Where the Claude Code harness records its runs and workspaces. Nobody talks to it, so it has no sessions.",
         resources: { ...claudeCodeWorkRecorderResources, ...claudeCodeWorkspaceResources },
-      } as never)({ id: CLAUDE_CODE_FLOW } as never) as unknown as FlowInstance,
+      })({ id: CLAUDE_CODE_FLOW }),
     ],
   }),
 });

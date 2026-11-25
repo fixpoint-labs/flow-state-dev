@@ -7,7 +7,7 @@
  * name its model: `"default"`, Cursor's own pick, unless the options name
  * one. Its sandbox is off: a coding run already works in its own worktree.
  */
-import { harnessEnv, type HarnessBlock } from "@flow-state-dev/core/harness";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { Harness } from "@flow-state-dev/harness-manager";
 import { cursorAgent, type CursorAgentOptions } from "./agent";
 import { CURSOR_PASS } from "./env-pass";
@@ -22,9 +22,8 @@ export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "
  *
  * @param options The Cursor block's options. Its environment is always Cursor's own.
  */
-export function cursorHarness(options: CursorHarnessOptions = {} as CursorHarnessOptions): Harness {
+export function cursorHarness(options: CursorHarnessOptions = {}): Harness {
   const env = () => harnessEnv({ pass: CURSOR_PASS });
-  const given = options as { agent?: { local?: object } };
   return {
     id: "cursor",
     label: "Cursor",
@@ -33,7 +32,7 @@ export function cursorHarness(options: CursorHarnessOptions = {} as CursorHarnes
         name: "cursor",
         model: "default",
         ...options,
-        agent: { mode: "agent", ...given.agent, local: { sandboxOptions: { enabled: false }, ...given.agent?.local } },
+        agent: { mode: "agent", ...options.agent, local: { sandboxOptions: { enabled: false }, ...options.agent?.local } },
         env: env(),
         cwd: feeds.cwd,
         resume: feeds.resume,
@@ -41,7 +40,7 @@ export function cursorHarness(options: CursorHarnessOptions = {} as CursorHarnes
         ...(feeds.onSteerable === undefined ? {} : { onSteerable: feeds.onSteerable }),
         ...(feeds.onActivity === undefined ? {} : { onActivity: feeds.onActivity }),
         ...(feeds.onEvent === undefined ? {} : { onEvent: feeds.onEvent }),
-      } as never) as unknown as HarnessBlock,
+      }),
     readiness: () => checkCursorReadiness(env()),
     pass: CURSOR_PASS,
     models: () => listCursorModels({ env: env() }),

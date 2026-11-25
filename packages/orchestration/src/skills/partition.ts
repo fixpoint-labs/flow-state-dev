@@ -26,6 +26,7 @@
  */
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { encodeUserSegment, getPatternPrefix } from "@flow-state-dev/core/types";
+import type { SkillsCollectionState } from "./collection";
 import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
 
 /**
@@ -136,7 +137,7 @@ function noPartitionView(inner: ResourceCollectionRef, key: string): ResourceCol
 export function resolveSkillsCollection(
   ctx: BlockContext,
   key: string,
-): ResourceCollectionRef | undefined {
+): ResourceCollectionRef<SkillsCollectionState> | undefined {
   const collection = resolveResourceCollection(ctx, key);
   if (collection === undefined) return undefined;
   const partitionBy = (collection.config as { [SKILLS_PARTITION_KEY]?: SkillsPartitionFn } | undefined)?.[

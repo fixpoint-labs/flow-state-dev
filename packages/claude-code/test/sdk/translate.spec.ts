@@ -339,6 +339,32 @@ describe("translateSdkMessage", () => {
     ]);
   });
 
+  it("counts cached input in the result's usage, so the token count matches what the cost charged for", () => {
+    // `input_tokens` is only the uncached part of the prompt. A run that read
+    // most of its prompt from the cache would otherwise report a fraction of
+    // its tokens while `total_cost_usd` charged for all of them.
+    const events = translateOne({
+      type: "result",
+      subtype: "success",
+      result: "all done",
+      session_id: "sess_cache",
+      usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 900, cache_creation_input_tokens: 90 },
+      total_cost_usd: 0.05,
+    });
+    expect(events[0]).toMatchObject({ kind: "result", usage: { inputTokens: 1000, outputTokens: 20 } });
+  });
+
+  it("reads null cache counts as none", () => {
+    const events = translateOne({
+      type: "result",
+      subtype: "success",
+      result: "all done",
+      session_id: "sess_cache",
+      usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: null, cache_creation_input_tokens: null },
+    });
+    expect(events[0]).toMatchObject({ kind: "result", usage: { inputTokens: 10, outputTokens: 20 } });
+  });
+
   it("maps an error_max_turns result (errors[]) to an error event plus a result event", () => {
     // Error-subtype results carry `errors: string[]`, never `result`. The SDK
     // also flags them `is_error`; the error code stays the subtype's own.

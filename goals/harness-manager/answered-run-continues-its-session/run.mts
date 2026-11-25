@@ -239,7 +239,7 @@ await runGoal(async (failures) => {
 
     const built = harnessGoalFlow({
       epic: fixture.epic,
-      workspace: { root: workspaceRoot, sourceRepo, baseRef },
+      workspace: { root: workspaceRoot, repo: sourceRepo, baseRef },
       maxAttempts: MAX_ATTEMPTS,
       runTimeoutMs: RUN_TIMEOUT_MS,
       mode,

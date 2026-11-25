@@ -12,6 +12,7 @@
  * request, whichever way the agent opened it, and one opened before the run is
  * not claimed as the run's. A run that failed is checked too.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -101,7 +102,7 @@ function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullReque
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: PHASE, instructions: () => "go", doneWhen: { check: () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness,

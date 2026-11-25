@@ -22,7 +22,6 @@ import type { BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/cor
 import { z } from "zod";
 import {
   IN_REPLY_TO_INDEX,
-  messageLogOf,
   OPEN_MESSAGES_INDEX,
   WORKER_MESSAGES_RESOURCE,
   workerMessageResourceStateSchema,
@@ -63,7 +62,7 @@ export async function readWorkerMessages(log: WorkerMessageLog, input: z.infer<t
     )
   ]);
   const byId = new Map<string, WorkerMessageResourceState>();
-  for (const ref of [...open, ...onScreen.flat()]) byId.set(ref.state.id, ref.state as WorkerMessageResourceState);
+  for (const ref of [...open, ...onScreen.flat()]) byId.set(ref.state.id, ref.state);
   return [...byId.values()].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
@@ -77,7 +76,7 @@ export function defineWorkerMessagesView(): WorkerMessagesView {
       inputSchema,
       outputSchema,
       resources: { [WORKER_MESSAGES_RESOURCE]: workerMessagesCollection },
-      execute: async (input, ctx) => readWorkerMessages(messageLogOf(ctx), input)
+      execute: (input, ctx) => readWorkerMessages(ctx.resources[WORKER_MESSAGES_RESOURCE], input)
     })
   });
 }

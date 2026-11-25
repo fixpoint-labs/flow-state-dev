@@ -15,7 +15,7 @@ import type { ResourceContext } from '@flow-state-dev/core'
 
 import { workingMemoryResource, type WorkingMemoryState } from './working-memory'
 import {
-  DEFAULT_WORKING_MEMORY_CONFIG,
+  resolveWorkingMemoryConfig,
   add,
   evict,
   pin,
@@ -53,14 +53,7 @@ import { createDigestMemoryResource, type DigestMemoryState } from './digest-mem
  * in the generator's `context` array alongside this capability.
  */
 export function createWorkingMemoryCapability(config?: WorkingMemoryHelperConfig) {
-  const resolved = {
-    capacity: config?.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
-    maxPinnedSlots: config?.maxPinnedSlots ?? DEFAULT_WORKING_MEMORY_CONFIG.maxPinnedSlots,
-    decay: {
-      strategy: config?.decay?.strategy ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.strategy,
-      rate: config?.decay?.rate ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.rate,
-    },
-  }
+  const resolved = resolveWorkingMemoryConfig(config)
 
   return defineCapability({
     name: 'workingMemory' as const,
