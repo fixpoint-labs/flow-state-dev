@@ -412,6 +412,30 @@ export interface HarnessSessionWorkspace {
   baseTip?(place: HarnessSessionPlace): Promise<string | undefined>;
 }
 
+/** The longest a host's base tip read may hold up a turn's end. */
+const BASE_TIP_TIMEOUT_MS = 30_000;
+
+/**
+ * The host's base tip for `place` (`HarnessSessionWorkspace.baseTip`), or
+ * `undefined` for a host without one. A host that can't say, throws, rejects,
+ * or takes longer than {@link BASE_TIP_TIMEOUT_MS} leaves the turn's changes
+ * read from its start, and never fails or holds the turn.
+ */
+async function readBaseTip(workspace: HarnessSessionWorkspace, place: HarnessSessionPlace): Promise<string | undefined> {
+  if (workspace.baseTip === undefined) return undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(resolve, BASE_TIP_TIMEOUT_MS, undefined);
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(() => workspace.baseTip!(place)), timeout]);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The user's worktree rows off a block's context, when the flow has them. */
 function worktreesOf(ctx: { resources?: unknown }): WorktreeCollection | undefined {
   const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
@@ -1029,8 +1053,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     const head = await headCommit(cwd);
     if (head === null) return;
     const base = ctx.session.state.turns![requestId]!.base!;
-    // A host that can't say, or fails, leaves the turn's changes from its start.
-    const tip = options.workspace.baseTip === undefined ? undefined : await options.workspace.baseTip(workPlaceOf(options.kind, ctx)).catch(() => undefined);
+    const tip = await readBaseTip(options.workspace, workPlaceOf(options.kind, ctx));
     const mergedBase = await mergedBaseOf(cwd, base, head, tip ?? null);
     await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, head, mergedBase })));
   }

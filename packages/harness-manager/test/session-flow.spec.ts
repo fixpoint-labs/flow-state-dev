@@ -859,7 +859,7 @@ describe("what a turn changed", () => {
         provision: async () => dir,
         locate: () => dir,
         branch: () => null,
-        ...(options.baseTip !== undefined ? { baseTip: async () => options.baseTip!(dir) } : {}),
+        ...(options.baseTip !== undefined ? { baseTip: () => Promise.resolve(options.baseTip!(dir)) } : {}),
       };
       const agent = (feeds: HarnessSessionFeeds) =>
         handler({
@@ -904,11 +904,13 @@ describe("what a turn changed", () => {
         if (index === prompts.length - 1) before();
         await runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {} } as never);
       }
-      const [last] = Object.entries(((await stores.session.get(sessionId))!.state as { turns: Record<string, { at: number }> }).turns)
+      const turns = ((await stores.session.get(sessionId))!.state as { turns: Record<string, { at: number; error: string | null; head: string | null }> }).turns;
+      const [last] = Object.entries(turns)
         .sort(([, a], [, b]) => b.at - a.at)
         .map(([id]) => id);
-      return (path?: string) =>
+      const read = (path?: string) =>
         viewChanges({ flow, input: { turn: last, ...(path !== undefined ? { path } : {}) }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores }) as Promise<Read>;
+      return Object.assign(read, { record: turns[last!]! });
     }
     const paths = (read: Read) => read.diff!.files.map((file) => file.path);
     const mainTip = (cwd: string) => git(cwd, "rev-parse", "main").trim();
@@ -942,6 +944,22 @@ describe("what a turn changed", () => {
       const { dir, flow } = merging();
       try {
         const read = await lastTurn(flow, "s-no-tip", ["first", "merge"], () => baseMovesOn(dir));
+        expect(paths(await read())).toEqual(["base.txt", "merge.txt"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("ends a turn as usual when the host's tip read throws, reading it from its start", async () => {
+      // A host's tip read is the host's code: a throw, even one not inside a promise, fails no turn.
+      const { dir, flow } = merging({
+        baseTip: () => {
+          throw new Error("the host fell over");
+        },
+      });
+      try {
+        const read = await lastTurn(flow, "s-tip-throws", ["first", "merge"], () => baseMovesOn(dir));
+        expect(read.record).toMatchObject({ error: null, head: git(dir, "rev-parse", "HEAD").trim() });
         expect(paths(await read())).toEqual(["base.txt", "merge.txt"]);
       } finally {
         rmSync(dir, { recursive: true, force: true });
