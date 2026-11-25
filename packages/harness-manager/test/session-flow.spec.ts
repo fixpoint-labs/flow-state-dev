@@ -186,6 +186,7 @@ function recordingWorkspace() {
       return join(places, place.sessionId);
     },
     branch: () => "sessions/never-read",
+    pullRequestRepository: async () => "github.com/acme/app",
     remove: async (place, options) => {
       removed.push({ place, ...options });
       return { branchDeleted: options.deleteBranch };

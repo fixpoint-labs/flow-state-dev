@@ -93,7 +93,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { existingPullRequest, landRun, landWays, type ExistingPullRequest, type Landed, type LandRequest, type LandTarget } from "./land";
+import { existingPullRequest, landRun, landWays, pullRequestRepository, type ExistingPullRequest, type Landed, type LandRequest, type LandTarget } from "./land";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
@@ -613,6 +613,14 @@ export interface WorkspaceHost {
    * (git or GitHub can't be read), so the caller can say so.
    */
   existingPullRequest?(target: LandTarget): Promise<ExistingPullRequest | null>;
+  /**
+   * The GitHub repository (`host/owner/name`) a pull request from this
+   * checkout would be in: the one its base's pinned remote names, never read
+   * from the checkout, which the run can configure. What the turn-end check
+   * (`recordBranchPullRequests`) is told to ask. `undefined` where `landWays`
+   * offers no `pull-request`. Never rejects.
+   */
+  pullRequestRepository?(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined>;
   /**
    * The commit the run's base branch is at now, fetched from the remote the
    * host pinned: what a pull request from the run's branch would be diffed
@@ -2365,6 +2373,12 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return repo === undefined ? null : await existingPullRequest(landHost(repo), target);
   }
 
+  /** `WorkspaceHost.pullRequestRepository`: none where `land` would refuse as `land-unsupported`. */
+  async function repositoryFor(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined> {
+    const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
+    return repo === undefined ? undefined : await pullRequestRepository(landHost(repo), target);
+  }
+
   /** `WorkspaceHost.baseTip`: the fetched commit `localBase` would compare, and never the local one. */
   async function baseTip(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined> {
     const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
@@ -2553,6 +2567,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     land,
     landWays: ways,
     existingPullRequest: existing,
+    pullRequestRepository: repositoryFor,
     baseTip,
     async checkpoint(place, recorded) {
       const holding = place.holding;

@@ -153,6 +153,19 @@ export async function provisionSessionWorktree(
   return { path: realpathSync(provisioned.cwd), branch, ...(provisioned.setup === undefined ? {} : { setup: provisioned.setup }) };
 }
 
+/**
+ * The GitHub repository (`host/owner/name`) a session's pull requests are in:
+ * the one the repository's pinned remote names, never the session worktree's
+ * own remotes, which the run can change. `undefined` when there is none.
+ */
+export async function sessionPullRequestRepository(
+  repository: string,
+  place: SessionPlace,
+  env: WorktreeEnv = process.env,
+): Promise<string | undefined> {
+  return await hostFor(repository, env).pullRequestRepository?.({ cwd: locateSessionWorktree(repository, place, env), baseRef: "HEAD" });
+}
+
 function sourceFor(repository: string) {
   return { kind: "repo" as const, repo: realpathSync(repository), baseRef: "HEAD" };
 }

@@ -1982,14 +1982,17 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: ManagerContext, worktree?: string | null): Promise<void> {
+async function checkBranchPullRequests(ctx: ManagerContext, host: WorkspaceHost, worktree?: string | null): Promise<void> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
   const state = ctx.sequencer?.state;
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
   const worktrees = worktreesOf(ctx);
+  // The repository the host pinned for the run's base: `gh` is told it, and never reads the run's checkout.
+  const repository = await host.pullRequestRepository?.({ cwd: state.workspacePath, baseRef: state.baseRef ?? null });
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
     branches: [state.branch],
+    ...(repository === undefined ? {} : { repository }),
     openedSince: state.openedAt ?? undefined,
     // The whole check, however many branches, inside the one network-call bound the drain budget reserves.
     timeoutMs: NETWORK_CALL_TIMEOUT_MS,
@@ -3262,7 +3265,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const identity = identityOf(ctx, state);
       const succeeded = handle.status === "completed";
       followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
-      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
+      await checkBranchPullRequests(ctx, host, await recordRunCheckout(ctx));
 
       /**
        * The cut every read below starts from, resolved once per settle
@@ -3615,7 +3618,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
       followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
-      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
+      await checkBranchPullRequests(ctx, host, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;

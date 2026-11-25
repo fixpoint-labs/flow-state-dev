@@ -177,6 +177,23 @@ export async function landWays(host: LandHost, target: LandTarget): Promise<Arra
   }
 }
 
+/**
+ * The GitHub repository (`host/owner/name`) a run's base lands in: the one
+ * its pinned remote's URL names, read the way {@link landRun} reads it, so
+ * `gh` can be told the repository instead of reading it from a checkout the
+ * run can configure. `undefined` when there is none or it can't be read.
+ * Never throws.
+ */
+export async function pullRequestRepository(host: LandHost, target: Pick<LandTarget, "baseRef">): Promise<string | undefined> {
+  const git = async (cwd: string, args: string[]) =>
+    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env, pass: HOST_GIT_PASS })).stdout.trim();
+  try {
+    return (await pullRequestPlace(git, host, target.baseRef)).repo;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The pull request already open from a run's branch, as {@link existingPullRequest} finds it. */
 export interface ExistingPullRequest {
   /** The pull request's web link. */

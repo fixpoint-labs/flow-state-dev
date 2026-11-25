@@ -49,7 +49,7 @@ beforeAll(() => {
   writeFileSync(
     join(bin, "gh"),
     `#!/usr/bin/env node
-require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, process.argv[3] + "\\n");
+require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, process.argv.slice(2).join(" ") + "\\n");
 process.stdout.write(JSON.stringify([
   { number: 96, html_url: "https://github.com/acme/app/pull/96", title: "From the branch", state: "open", draft: false, merged_at: null, created_at: new Date().toISOString(), head: { ref: "b" } },
   { number: 12, html_url: "https://github.com/acme/app/pull/12", title: "An earlier run's", state: "closed", draft: false, merged_at: "2024-01-02T00:00:00Z", created_at: "2024-01-01T00:00:00Z", head: { ref: "b" } },
@@ -170,7 +170,10 @@ describe("the run's pull requests, checked on its branch when it ends", () => {
     const rows = await h.pullRequests(run!.session);
     expect(Object.keys(rows)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/app/96`]);
     expect(Object.values(rows)[0]!.state).toMatchObject({ source: "branch", requestId: run!.request, title: "From the branch" });
-    expect(readFileSync(ghLog, "utf8")).toMatch(/head=\{owner\}:[^&]*FIX-7/i);
+    expect(readFileSync(ghLog, "utf8")).toMatch(
+      // The repository the source repo's pinned `origin` names, asked by name: never resolved from the run's checkout.
+      /^api --hostname github\.com repos\/fixpoint-labs\/conductor-fixture\/pulls\?head=fixpoint-labs:[^&]*FIX-7/im,
+    );
   });
 
   // FIX-2535 D2: a coding task follows each pull request from the write that records it, as the run's session.

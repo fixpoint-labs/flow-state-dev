@@ -79,7 +79,14 @@ afterEach(() => {
 });
 
 function host() {
-  return localWorkspaceHost({ root, remotes: { allow: [] }, localRepositories: [repo], source: noSource });
+  return localWorkspaceHost({
+    root,
+    remotes: { allow: [] },
+    localRepositories: [repo],
+    source: noSource,
+    // The person's origin is a local fixture; it stands for the GitHub repository o/r.
+    pullRequestRepo: (url) => (url === upstream.url ? "github.com/o/r" : undefined),
+  });
 }
 
 const owner = { kind: "session" as const, id: "s-1" };
@@ -315,6 +322,11 @@ describe("the pull requests on the branch", () => {
     const worktrees = rows();
     const place = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
     const key = worktreeKey(h.hostId(), ["s-1"]);
+    const repository = await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null });
+    expect(repository).toBe("github.com/o/r");
+    // The run can repoint the remote its checkout shares; the repository asked is still the pinned one.
+    git(place.cwd, "remote", "set-url", "origin", "https://github.com/someone-else/elsewhere.git");
+    expect(await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null })).toBe("github.com/o/r");
     const gh = join(tempDir("gh"), "gh");
     writeFileSync(
       gh,
@@ -328,7 +340,7 @@ describe("the pull requests on the branch", () => {
     };
     const ctx = { resources: { "observed-pull-requests": observed }, request: { identity: { id: "r1" } } };
     for (let i = 0; i < 2; i++) {
-      const result = await recordBranchPullRequests(ctx, { cwd: place.cwd, gh, worktree: { collection: worktrees, key } });
+      const result = await recordBranchPullRequests(ctx, { cwd: place.cwd, gh, repository, worktree: { collection: worktrees, key } });
       expect(result.status).toBe("recorded");
     }
     expect(worktrees.all.get(key)!.pullRequests).toEqual([{ url: "https://github.com/o/r/pull/7", number: 7, state: "open", title: "T" }]);
@@ -348,6 +360,7 @@ describe("the pull requests on the branch", () => {
     const place = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
     const key = worktreeKey(h.hostId(), ["s-1"]);
     await addWorktreePullRequests(worktrees, key, [{ url: "https://github.com/o/r/pull/7", number: 7, state: "open", title: "T" }]);
+    const repository = await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null });
     const gh = join(tempDir("gh"), "gh");
     writeFileSync(
       gh,
@@ -363,6 +376,7 @@ describe("the pull requests on the branch", () => {
     const result = await recordBranchPullRequests(ctx, {
       cwd: place.cwd,
       gh,
+      repository,
       openedSince: Date.parse("2031-01-01T00:00:00Z"),
       worktree: { collection: worktrees, key },
     });
@@ -375,6 +389,8 @@ describe("the pull requests on the branch", () => {
     const worktrees = rows();
     const place = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
     const key = worktreeKey(h.hostId(), ["s-1"]);
+    const repository = await h.pullRequestRepository!({ cwd: place.cwd, baseRef: null });
+    expect(repository).toBe("github.com/o/r");
     const gh = join(tempDir("gh"), "gh");
     writeFileSync(
       gh,
@@ -393,6 +409,7 @@ describe("the pull requests on the branch", () => {
     const result = await recordBranchPullRequests(ctx, {
       cwd: place.cwd,
       gh,
+      repository,
       openedSince: Date.parse("2031-01-01T00:00:00Z"),
       worktree: { collection: worktrees, key, startedOn: 7 },
     });
