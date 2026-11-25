@@ -711,7 +711,9 @@ flow's session `stateSchema` (on a flow that binds its sessions, with a
 `.readonly()` field or a `createCheck`, a state the schema refuses is refused;
 any other flow keeps it as sent, so a flow can create sessions half-filled
 on purpose), runs the `serverOwned` refusal for caller-seeded state and the
-flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
+flow's `session.createCheck` on the parsed state (writing over it any fields
+the check derived and returned as `state`, such as a display name from the
+record it read), reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:
 
