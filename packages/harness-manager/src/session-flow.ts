@@ -788,7 +788,7 @@ export function harnessSessionFeeds(
  *   harnessSessionFlow({
  *     kind: "claude-code-session",
  *     workspace,
- *     agent: (feeds) => claudeCodeAgent({ ...feeds, permissionMode: "bypassPermissions" }),
+ *     agent: (feeds) => claudeCodeAgent({ ...feeds, permissionMode: "acceptEdits" }),
  *   });
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {

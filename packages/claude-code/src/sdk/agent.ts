@@ -73,7 +73,7 @@ import {
   type UpsertableCollection,
   type ClaudeCodeWorkRecorder,
 } from "./work-recorder";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
+import { harnessEnv, OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import {
   CLAUDE_CODE_FILE_OPS,
   CLAUDE_CODE_GAPS,
@@ -82,6 +82,7 @@ import {
 import { defaultResolveClaudeCodeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
+import { CLAUDE_CODE_PASS } from "./env-pass";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
   createClaudeCodeSessionProvider,
@@ -341,15 +342,19 @@ export interface ClaudeCodeAgentOptions {
    */
   settingSources?: ClaudeCodeSettingSource[];
   /**
-   * Settings for this run, in Claude Code's `settings.json` shape, forwarded to
-   * the SDK as given. Default: unset, which hands the SDK no settings of its own.
+   * Settings for this run, in Claude Code's `settings.json` shape, handed to
+   * the SDK on top of `{ disableAllHooks: true }`. Default: unset, which hands
+   * the SDK only that: **every hook off**.
    *
    * They sit above every source `settingSources` loads, so a key here beats
-   * the same key in the repository's `.claude/settings.json`. The case it is
-   * for: a host that trusts the repository a run works in sets
-   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and
-   * `settings: { disableAllHooks: true }` so the repository's hooks, which run
-   * by themselves and show in no transcript, stay off.
+   * the same key in the repository's `.claude/settings.json`. That is why hooks
+   * are off by default: a repository's hooks run by themselves and show in no
+   * transcript, and a run that loads `"project"` settings (the default loads
+   * all three sources) would otherwise run whatever hooks the repository it
+   * works in declares. A host that trusts the repository sets
+   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and the
+   * hooks stay off. A host that wants them passes
+   * `settings: { disableAllHooks: false }`; a key given here always wins.
    *
    * With `mcpTools` set, the run's settings also carry
    * `disableClaudeAiConnectors: true`, whatever this says: `mcpTools` is the
@@ -358,14 +363,23 @@ export interface ClaudeCodeAgentOptions {
   settings?: Record<string, unknown>;
   /**
    * Environment variables for the run's own process. Default: unset, which
-   * hands the run the server's **entire** `process.env` — every key, token and
-   * connection string the server holds, readable by any shell command the
-   * model runs.
+   * hands the run only Claude Code's pass list,
+   * `harnessEnv({ pass: CLAUDE_CODE_PASS })`, read when each run starts. A
+   * server variable outside that list (a database URL, another service's key)
+   * never reaches the run, whose model has a shell.
    *
    * Setting it REPLACES the environment rather than adding to it, which is the
-   * SDK's own behaviour. To pass only named variables, use `harnessEnv` from
-   * `@flow-state-dev/core`: `env: harnessEnv({ pass: ["PATH", "HOME", ...] })`.
-   * Name `PATH` in it: the run's shell commands and git are found through it.
+   * SDK's own behaviour. To pass more, build your own list:
+   * `env: harnessEnv({ pass: [...CLAUDE_CODE_PASS, "MY_VAR"] })`. Name `PATH`
+   * in it: the run's shell commands and git are found through it. Passing
+   * `process.env` hands the run the server's whole environment.
+   *
+   * The pass list covers signing in with `ANTHROPIC_API_KEY` or
+   * `CLAUDE_CODE_OAUTH_TOKEN` only. A host that signs in any other way adds
+   * the names that way reads: `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`
+   * for a gateway, `CLAUDE_CODE_USE_BEDROCK` with its `AWS_*` variables,
+   * `CLAUDE_CODE_USE_VERTEX` with its `GOOGLE_*` / `CLOUD_ML_REGION`
+   * variables, and `CLAUDE_CONFIG_DIR` for a sign-in stored outside `HOME`.
    */
   env?: Record<string, string | undefined>;
   /**
@@ -926,6 +940,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onErrored,
     name = "claude-code-agent",
   } = options;
+  const runSettings: Record<string, unknown> = { disableAllHooks: true, ...settings };
 
   // **Two owners of one decision, refused where a host can still act on it.**
   //
@@ -1115,8 +1130,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // "load all of them", `[]` means "load none" — and the same care costs
         // nothing for the others.
         ...(settingSources !== undefined ? { settingSources } : {}),
-        ...(settings !== undefined ? { settings } : {}),
-        ...(env !== undefined ? { env } : {}),
+        settings: runSettings,
+        env: env ?? harnessEnv({ pass: CLAUDE_CODE_PASS }),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         // In-session, from the block's own conversation state; detached, from
         // the host's resolver. Never both — construction refused that pairing
@@ -1235,7 +1250,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         handedTools =
           typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
         if (handedTools !== undefined) {
-          Object.assign(queryOptions, mcpQueryOptions(handedTools, settings));
+          Object.assign(queryOptions, mcpQueryOptions(handedTools, runSettings));
           // With `mcpTools` set, the relayed tools are allowed without asking.
           queryOptions.allowedTools = [
             ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),

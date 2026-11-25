@@ -80,19 +80,21 @@ describe("mcpTools unset", () => {
     await testBlock(claudeCodeAgent({ ...common, mcpTools: {}, resolveClaudeAgent: scripted(seen) }), { input: { prompt: "go" } });
     const [without, withEmpty] = seen;
 
-    for (const key of ["mcpServers", "strictMcpConfig", "settings"]) expect(without).not.toHaveProperty(key);
-    // Setting it, even to nothing, adds exactly its three keys and changes no other.
+    for (const key of ["mcpServers", "strictMcpConfig"]) expect(without).not.toHaveProperty(key);
+    expect(without!.settings).toEqual({ disableAllHooks: true });
+    // Setting it, even to nothing, adds its two keys and the connector switch, and changes nothing else.
     const { mcpServers, strictMcpConfig, settings, ...rest } = withEmpty!;
-    expect(Object.keys(rest).sort()).toEqual(Object.keys(without!).sort());
+    const { settings: _hooksOff, ...withoutRest } = without!;
+    expect(Object.keys(rest).sort()).toEqual(Object.keys(withoutRest).sort());
     const comparable = (options: object) => {
       const { abortController: _a, spawnClaudeCodeProcess: _s, ...plain } = options as Record<string, unknown>;
       return plain;
     };
-    expect(comparable(rest)).toEqual(comparable(without!));
+    expect(comparable(rest)).toEqual(comparable(withoutRest));
     expect({ mcpServers, strictMcpConfig, settings }).toEqual({
       mcpServers: {},
       strictMcpConfig: true,
-      settings: { disableClaudeAiConnectors: true },
+      settings: { disableAllHooks: true, disableClaudeAiConnectors: true },
     });
   });
 });
@@ -103,7 +105,7 @@ describe("mcpTools set", () => {
     await testBlock(claudeCodeAgent({ mcpTools: linearTools(), resolveClaudeAgent: scripted(seen) }), { input: { prompt: "go" } });
     const options = seen[0]!;
     expect(options.strictMcpConfig).toBe(true);
-    expect(options.settings).toEqual({ disableClaudeAiConnectors: true });
+    expect(options.settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true });
     expect(Object.keys(options.mcpServers!)).toEqual(["linear"]);
     expect(options.mcpServers!.linear).toMatchObject({ type: "sdk", name: "linear" });
     // An in-process server carries no address, no headers and no environment of its own.
