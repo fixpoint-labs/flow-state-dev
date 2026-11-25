@@ -373,6 +373,13 @@ export interface ClaudeCodeAgentOptions {
    * `env: harnessEnv({ pass: [...CLAUDE_CODE_PASS, "MY_VAR"] })`. Name `PATH`
    * in it: the run's shell commands and git are found through it. Passing
    * `process.env` hands the run the server's whole environment.
+   *
+   * The pass list covers signing in with `ANTHROPIC_API_KEY` or
+   * `CLAUDE_CODE_OAUTH_TOKEN` only. A host that signs in any other way adds
+   * the names that way reads: `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`
+   * for a gateway, `CLAUDE_CODE_USE_BEDROCK` with its `AWS_*` variables,
+   * `CLAUDE_CODE_USE_VERTEX` with its `GOOGLE_*` / `CLOUD_ML_REGION`
+   * variables, and `CLAUDE_CONFIG_DIR` for a sign-in stored outside `HOME`.
    */
   env?: Record<string, string | undefined>;
   /**
@@ -934,7 +941,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onErrored,
     name = "claude-code-agent",
   } = options;
-  // Hooks off unless the host's own layer says otherwise: see `settings`.
   const runSettings: Record<string, unknown> = { disableAllHooks: true, ...settings };
 
   // **Two owners of one decision, refused where a host can still act on it.**

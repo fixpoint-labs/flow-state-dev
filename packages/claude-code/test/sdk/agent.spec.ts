@@ -9,6 +9,7 @@ import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import { CLAUDE_CODE_PASS } from "../../src/sdk/env-pass";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -482,7 +483,7 @@ describe("claudeCodeAgent", () => {
     expect("sandbox" in options).toBe(false);
     // `env` and `settings` are never left to the SDK: its defaults are the
     // server's whole environment and every hook the repository declares.
-    expect(Object.keys(options.env).every((key) => (CLAUDE_CODE_PASS as readonly string[]).includes(key))).toBe(true);
+    expect(options.env).toEqual(harnessEnv({ pass: CLAUDE_CODE_PASS }));
     expect(options.settings).toEqual({ disableAllHooks: true });
   });
 
