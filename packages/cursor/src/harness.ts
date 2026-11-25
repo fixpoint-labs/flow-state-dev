@@ -1,14 +1,13 @@
 /**
  * `cursorHarness()`: Cursor as one harness value, for the harness kit's
- * `harnesses` slot (`@flow-state-dev/harness-manager/kit`).
+ * `harnesses` slot.
  *
  * Each run, readiness check and model list gets only Cursor's own
  * environment (`harnessEnv` over `CURSOR_PASS`). A local Cursor run must
  * name its model: `"default"`, Cursor's own pick, unless the options name
  * one. Its sandbox is off: a coding run already works in its own worktree.
  */
-import { harnessEnv } from "@flow-state-dev/core/harness";
-import type { Harness } from "@flow-state-dev/harness-manager";
+import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { cursorAgent, type CursorAgentOptions } from "./agent";
 import { CURSOR_PASS } from "./env-pass";
 import { listCursorModels } from "./model-list";

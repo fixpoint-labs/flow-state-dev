@@ -27,7 +27,7 @@ import { codingBoardView } from "./coding-board";
 import { CODING_BOARD_VIEW, HARNESSES_FLOW } from "../coding-board-ref";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
-import { harnessSchema, type Harness } from "../harness";
+import { harnessSchema, type Harness } from "@flow-state-dev/core/harness";
 import {
   formatHarnessReadiness,
   harnessReadiness,

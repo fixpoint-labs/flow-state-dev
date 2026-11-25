@@ -190,6 +190,10 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const cwd = sequencer?.state.cwd;
       return typeof cwd === "string" ? cwd : "";
     },
+    worktree: ({ sequencer }) => {
+      const cwd = sequencer?.state.cwd;
+      return typeof cwd === "string" ? cwd : "";
+    },
     resume: ({ sequencer }) => {
       const resume = sequencer?.state.resume;
       return typeof resume === "string" ? resume : null;

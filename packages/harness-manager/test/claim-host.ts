@@ -14,6 +14,7 @@
  * a real git checkout. Only the harness is a stub, scripted per call, and it
  * records what it was fed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -40,7 +41,6 @@ import {
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
-  type HarnessFeeds,
   type PromptRunContext,
   type RunRecordState,
 } from "../src";
@@ -226,6 +226,7 @@ export function claimHost(options: HostOptions) {
 
   const seen: SeenRun[] = [];
   const answersSeen: Array<string | null | undefined> = [];
+  const host = localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 });
   const manager = harnessManager({
     ...(options.mode === "fixed"
       ? { boardCollectionId: FIXED_BOARD, boardCollection: fixedLedger }
@@ -251,10 +252,7 @@ export function claimHost(options: HostOptions) {
         },
       },
     },
-    workspace:
-      options.baseTip === undefined
-        ? localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 })
-        : { ...localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
+    workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),

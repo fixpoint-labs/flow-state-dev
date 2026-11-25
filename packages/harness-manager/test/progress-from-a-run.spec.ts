@@ -7,6 +7,7 @@
  * The throttle's window (`PROGRESS_NOTE_MS`) is graded with a fake clock in
  * `progress-note.spec.ts`; here a burst lands inside the first window.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
@@ -20,7 +21,7 @@ import type { HarnessActivity, HarnessBlock } from "@flow-state-dev/core/harness
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 

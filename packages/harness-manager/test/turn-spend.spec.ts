@@ -17,6 +17,7 @@
  *     after a suspension, or continued after a disconnect, loses what its
  *     first run spent.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { DEFAULT_ORG_ID, generator, handler, sequencer } from "@flow-state-dev/core";
 import {
   reportHarnessSpend,
@@ -28,7 +29,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { harnessSessionFlow, type HarnessSessionFeeds, type HarnessSessionState } from "../src";
+import { harnessSessionFlow, type HarnessSessionState } from "../src";
 
 type Stores = ReturnType<typeof createInMemoryStores>;
 
@@ -44,7 +45,7 @@ interface Script {
   reportTwice?: boolean;
 }
 
-const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
+const stubAgent = (script: Script) => (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),

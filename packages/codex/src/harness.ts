@@ -1,13 +1,12 @@
 /**
  * `codexHarness()`: Codex as one harness value, for the harness kit's
- * `harnesses` slot (`@flow-state-dev/harness-manager/kit`).
+ * `harnesses` slot.
  *
  * Each run, and each readiness check, usage read and model list, gets only
  * Codex's own environment (`harnessEnv` over `CODEX_PASS`). A run works in
  * `workspace-write` sandbox mode unless the options say otherwise.
  */
-import { harnessEnv } from "@flow-state-dev/core/harness";
-import type { Harness } from "@flow-state-dev/harness-manager";
+import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { checkCodexReadiness } from "./account-probe";
 import { codexAgent, type CodexAgentOptions } from "./agent";
 import { CODEX_PASS } from "./env-pass";

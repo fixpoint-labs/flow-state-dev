@@ -102,7 +102,6 @@ export {
   type HarnessJudgeVerdict,
   type HarnessReviewAnswer,
   type HarnessSlot,
-  type HarnessFeeds,
   type ModeSpec,
   type ModeDone,
   type ModeRunContext,
@@ -181,7 +180,6 @@ export {
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   harnessSessionAttachedTo,
   HARNESS_SESSION_START_INVALID,
-  type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
   type HarnessSessionProvisioned,
@@ -249,9 +247,6 @@ export {
   toolApprovalStop,
   toolApprovalYesSchema,
   toolGrantSchema,
-  type HarnessToolApprovalDecision,
-  type HarnessToolApprovalHook,
-  type HarnessToolApprovalRequest,
   type HeldToolCall,
   type ToolApprovalOutcome,
   type ToolGrant,
@@ -331,8 +326,6 @@ export {
 } from "./harness-usage";
 
 // ── Which harnesses can run on this machine ─────────────────────────────────
-// FIX-2627: one harness as a value, for the harness kit's `harnesses` slot (`./kit`).
-export type { Harness } from "./harness";
 export {
   harnessReadiness,
   harnessReadinessCapability,

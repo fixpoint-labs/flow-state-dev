@@ -3,6 +3,7 @@
  * real board, real fenced settlement and a real git checkout. Only the
  * harness is a stub, and it records what each step was handed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
@@ -29,7 +30,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   STEER_POLL_MS,
-  type HarnessFeeds,
 } from "../src";
 import { MAX_STEERS } from "@flow-state-dev/orchestration/internal";
 import { harnessTaskId } from "../src/workspace";

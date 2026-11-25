@@ -57,15 +57,11 @@ import {
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
-  HarnessActivityHook,
   HarnessBlock,
-  HarnessEventHook,
-  HarnessResolver,
+  HarnessFeeds,
   HarnessRunInput,
-  HarnessSessionHook,
   HarnessSteer,
-  HarnessSteerHook,
-  HarnessUsageHook,
+  HarnessToolApprovalHook,
 } from "@flow-state-dev/core/harness";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, StateRef } from "@flow-state-dev/core/types";
@@ -172,7 +168,6 @@ import {
   toolApprovalOutcome,
   toolApprovalStop,
   toolApprovalStateSchema,
-  type HarnessToolApprovalHook,
   type HeldToolCall,
 } from "./tool-approval";
 import {
@@ -812,91 +807,6 @@ export interface ManagerOptions {
    */
   uses?: UsesSlot;
   name?: string;
-}
-
-/**
- * The feeds a manager hands its harness, in one call.
- *
- * All of them are **declared in `@flow-state-dev/core`** and imported
- * here rather than restated: what this package picks is the slot that bundles
- * them, not the callbacks' names or their signatures.
- *
- * Why `onSession` and not only `cwd` and `resume`. A harness that throws on the manager's deadline
- * returns no handle at all, and a status item is transient by contract — so
- * neither can carry the session id to the next attempt in exactly the case
- * resume exists for. Unless the harness hands the id to manager-owned durable
- * state the MOMENT the run names it, the resume resolver reads nothing after a
- * deadline kill. `onSession` is that write side.
- */
-export interface HarnessFeeds {
-  /** Where this run works. Reads the checkout off the manager's own state. */
-  cwd: HarnessResolver<string>;
-  /**
-   * Which session this attempt continues, or `null` to start fresh.
-   *
-   * `null` on attempt 1, and on every attempt following one whose harness never
-   * confirmed a session — a resume the vendor refused, above all — so a dead id
-   * is asked for once rather than forever.
-   */
-  resume: HarnessResolver<string | null>;
-  /**
-   * Called by the harness the moment its vendor names the session, writing the
-   * id onto the run row. **The sole writer of that field.**
-   */
-  onSession: HarnessSessionHook;
-  /**
-   * Called by the harness with each subscription usage window its vendor
-   * reports during the run, writing it into the run owner's usage record
-   * (`harness-usage/**`, through `recordHarnessUsage`). A harness that reports
-   * no usage ignores it.
-   */
-  onUsage: HarnessUsageHook;
-  // FIX-2254.
-  /**
-   * Called by a harness whose run can take a line into its turn in flight,
-   * with the steer that does it, and with `null` once it can't.
-   * While a run offers one, the manager hands it each steer as it lands
-   * instead of stopping the step; a line the run refuses takes the step's
-   * end (or the stop, with `stopsOnAbort`). A harness that can't steer
-   * ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onSteerable?: HarnessSteerHook;
-  // FIX-2290.
-  /**
-   * Called by the harness with each assistant message and tool call of its
-   * run. The manager keeps the task's `statusNote` from it: the
-   * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
-   * fenced by the run's claim. A harness that reports none ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onActivity?: HarnessActivityHook;
-  // FIX-2794.
-  /**
-   * Called by the harness on every event its run sends. Each one starts the
-   * run's silence window (`idleTimeoutMs`) again and marks the run's checkout
-   * lock live. A harness that never calls it is stopped once that window has
-   * passed, however busy it is.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onEvent?: HarnessEventHook;
-  // FIX-2389.
-  /**
-   * Called by a harness that asks about each tool call before it runs,
-   * with the call; it answers allow, deny or held. Handed only
-   * when the manager is built with `approveTools`; absent otherwise. A held
-   * call stops the run, waits for a person, and the session resumes with the
-   * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
-   * slot that spreads `...feeds` passes it on. A harness that can't ask per
-   * call ignores it.
-   */
-  onToolApproval?: HarnessToolApprovalHook;
 }
 
 /**
@@ -3698,6 +3608,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The run edits ITS checkout, and the record of what it touched is keyed
     // there too.
     cwd: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
+    // The fence's directory is the checkout itself.
+    worktree: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
     // Which session this attempt continues. `null` on attempt 1, and on every
     // attempt after one whose harness named no session — a resume the vendor
     // refused, above all — so a dead id is not re-sent forever.
