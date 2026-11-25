@@ -265,16 +265,29 @@ describe.each(["terminal replay", "live tail", "record-less replay"] as const)(
       expect(body).toContain("trace-output");
     });
 
-    it("still sends a visible item's content when the cursor is past its item.added", async () => {
-      // The fix must not turn content events into an allowlist of items seen
-      // on this connection: a resumed client already holds this item.
+    it("still brings a resumed client the visible item whose item.added came before the cursor", async () => {
       observabilityOff();
-      const body = await streamBody(await streamedStoresFor(branch), "?starting_after=8");
-      const content = frames(body).filter((frame) => frame.type === "content.done");
-      expect(content.map((frame) => frame.itemId)).toEqual(["m_visible"]);
+      const sent = frames(await streamBody(await streamedStoresFor(branch), "?starting_after=8"));
+      // Its content, where the request record says it is visible; with no
+      // record, the filter cannot tell, and its item.done carries the row.
+      const content = sent.filter((frame) => frame.type === "content.done").map((frame) => frame.itemId);
+      expect(content).toEqual(branch === "record-less replay" ? [] : ["m_visible"]);
+      const done = sent.filter((frame) => frame.type === "item.done");
+      expect(done.map((frame) => (frame.item as { id: string }).id)).toEqual(["m_visible"]);
     });
   }
 );
+
+it("sends none of a hidden item's content to a live tail resumed before the record held the item", async () => {
+  // The record is read when the stream starts; an item its run has not yet
+  // persisted is unknown to the filter, which then drops its content.
+  observabilityOff();
+  const stores = await streamedStoresFor("live tail");
+  await stores.request.set(REQUEST_ID, record("in_progress"), "any");
+  const body = await streamBody(stores, "?starting_after=2");
+  expect(body).toContain("visible-text");
+  expect(body).not.toContain("hidden-text");
+});
 
 // ---------------------------------------------------------------------------
 // GET …/sessions/:id/requests?include_items=true

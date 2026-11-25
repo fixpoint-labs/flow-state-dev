@@ -10,7 +10,6 @@
 import type { VoiceErrorKind, VoiceProvider } from "@flow-state-dev/core/types";
 import { canTranscribe, VoiceError } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
@@ -225,15 +224,12 @@ export async function handleRequestStream(
       lastEventId: request.headers.get("last-event-id"),
       startingAfter: url.searchParams.get("starting_after")
     });
-    // With no record to say which items are hidden, a resumed stream learns
-    // it from the whole log: a hidden item's `item.added` may sit before the
-    // cursor while its content comes after. Without a cursor, the read is the
-    // whole log anyway.
-    const log = await ctx.stores.request.getEvents(route.requestId);
-    const events =
-      cursor.sequenceNumber === undefined
-        ? log
-        : log.filter((event) => event.sequence_number > cursor.sequenceNumber!);
+    // Read only events past the resume cursor — pre-cursor events are never
+    // pulled from the store.
+    const events = await ctx.stores.request.getEvents(
+      route.requestId,
+      cursor.sequenceNumber
+    );
     if (events.length === 0) {
       return unknownRequestStreamResponse(request, route, ctx.registry);
     }
@@ -249,7 +245,7 @@ export async function handleRequestStream(
       lastEventId: request.headers.get("last-event-id"),
       startingAfter: url.searchParams.get("starting_after")
     });
-    if (!includeTrace) replay = filterClientEvents(replay, itemsInEvents(log));
+    if (!includeTrace) replay = filterClientEvents(replay);
     const payload = replay.map((event) => encodeStreamEvent(event)).join("");
     return new Response(payload, { status: 200, headers: SSE_HEADERS });
   }
@@ -321,13 +317,6 @@ export async function handleRequestStream(
     status: 200,
     headers: SSE_HEADERS
   });
-}
-
-/** The items a request's event log announces, for a filter with no record to read them from. */
-function itemsInEvents(events: readonly RequestStreamEvent[]): RuntimeItem[] {
-  return events.flatMap((event) =>
-    event.type === "item.added" || event.type === "item.done" ? [event.item as RuntimeItem] : []
-  );
 }
 
 /**
