@@ -270,7 +270,7 @@ Alice asks em, in the launch chat, to add CSV export.
 flowchart LR
   A["Alice posts<br/>launch chat"] --> F["em files task<br/>launch chat's board"]
   F --> C["CSV task session<br/>child, coder flow"]
-  C -->|"reads its task<br/>by naming the parent"| F
+  C -->|"reads its task<br/>on the board it names"| F
   C --> P["coder files sub-tasks<br/>task session's board"]
   P --> S["coder settles<br/>on launch chat's board"]
   S --> W["em's next turn<br/>tells Alice"]
