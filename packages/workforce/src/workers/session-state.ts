@@ -15,7 +15,9 @@ import {
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
+  TASK_TITLE_STATE_KEY,
   WORKER_ID_STATE_KEY,
+  WORKER_NAME_STATE_KEY,
   WORKSTREAM_STATE_KEY,
   WORK_PROJECT_STATE_KEY
 } from "./keys";
@@ -28,6 +30,10 @@ export const workerSessionStateSchema = z.object({
   // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
   [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
   [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
+  // Written by the create check from the worker it reads (FIX-2881).
+  [WORKER_NAME_STATE_KEY]: z.string().min(1).readonly().optional(),
+  // Written by the hand-over beside the task id; not readonly, so an edited title never blocks adoption (FIX-2881).
+  [TASK_TITLE_STATE_KEY]: z.string().min(1).optional(),
   [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
   [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),
   [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
