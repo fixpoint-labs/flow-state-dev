@@ -74,6 +74,48 @@ describe("sequencer state testing utilities", () => {
     expect(result.sideChainResults.some((trace) => trace.blockName === "audit")).toBe(true);
   });
 
+  it("uses a fixture as the root state for a sequencer without a state schema", async () => {
+    const increment = handler({
+      name: "increment-untyped-root",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number().default(0), mode: z.string().default("ready") }),
+      execute: async (input, ctx) => {
+        if (ctx.sequencer === undefined) return 0;
+        await ctx.sequencer.incState({ count: input });
+        return ctx.sequencer.state.count;
+      }
+    });
+    const pipeline = sequencer({ name: "untyped-root", inputSchema: z.number() }).step(increment);
+
+    const unseeded = await testBlock(pipeline, { input: 2 });
+    const result = await testBlock(pipeline, { input: 2, sequencer: { state: { count: 3 } } });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, mode: "ready" });
+    const stepPath = (run: typeof result) => run.steps.find((step) => step.blockName === increment.name)?.stepName;
+    expect(stepPath(result)).toBeDefined();
+    expect(stepPath(result)).toEqual(stepPath(unseeded));
+  });
+
+  it("applies a fixture to the root's own state while keeping its defaults", async () => {
+    const pipeline = sequencer({
+      name: "stateful-root",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(0), label: z.string().default("default") })
+    }).map(async (input, ctx) => {
+      await ctx.sequencer!.incState({ count: input });
+      return ctx.sequencer!.state.count;
+    });
+
+    const result = await testBlock(pipeline, { input: 2, sequencer: { state: { count: 3 } } });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, label: "default" });
+  });
+
   it("isolates nested seed data from the caller", async () => {
     const increment = handler({
       name: "increment-nested",

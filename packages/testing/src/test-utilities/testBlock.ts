@@ -113,13 +113,40 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
     unmockedDefault: options.unmockedDefault,
     signal: options.signal,
     actionName: `test:${block.name}`,
-    sessionId: "test-session",
-    // A sequencer under test stays the root of its own trace.
-    sequencer: block.kind === "sequencer" ? options.sequencer : undefined,
-    sequencerName: block.name
+    sessionId: "test-session"
   });
 
-  let parentSequencer: StateRef | undefined;
+  let seededSequencer: StateRef | undefined;
+  const seed = options.sequencer;
+  const enterRootScope = runtime.ctx._withExecutionScope;
+  if (block.kind === "sequencer" && seed !== undefined && enterRootScope !== undefined) {
+    const requirement = (block.config as { sequencerStateSchema?: z.ZodTypeAny }).sequencerStateSchema;
+    const fixtureSchema = z.object({}).passthrough().default(() => cloneValue(seed.state));
+
+    // Open the real root scope so its steps share the fixture and keep their original paths.
+    runtime.ctx._withExecutionScope = (scope, execute, signal, sideChainSignal) => {
+      const declaredSchema = scope.stateSchema ?? requirement;
+      return enterRootScope(
+        { ...scope, stateSchema: declaredSchema ?? fixtureSchema },
+        async (ctx) => {
+          const state = ctx.self!;
+          seededSequencer = state;
+          if (declaredSchema !== undefined) {
+            const initial = { ...state.state, ...cloneValue(seed.state) };
+            const parsed = declaredSchema.safeParse(initial);
+            const normalized = parsed.success && parsed.data !== null && typeof parsed.data === "object" && !Array.isArray(parsed.data)
+              ? parsed.data
+              : {};
+            await state.setState({ ...initial, ...normalized });
+          }
+          return execute(ctx);
+        },
+        signal,
+        sideChainSignal
+      );
+    };
+  }
+
   const blockUnderTest =
     options.sequencer !== undefined && block.kind !== "sequencer"
       ? sequencer({
@@ -127,7 +154,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
           inputSchema: z.any(),
           stateSchema: z.object({}).passthrough().default(cloneValue(options.sequencer.state))
         }).step((input, ctx) => {
-          parentSequencer = ctx.sequencer;
+          seededSequencer = ctx.sequencer;
           return input;
         }, block)
       : block;
@@ -150,7 +177,7 @@ async function runBlock<TBlock extends BlockDefinition<any, any>>(
       session: runtime.ctx.session.state,
       user: runtime.ctx.user.state,
       org: runtime.ctx.org?.state ?? {},
-      sequencer: parentSequencer?.state ?? runtime.ctx.sequencer?.state ?? {}
+      sequencer: seededSequencer?.state ?? {}
     },
     stateChanges: [...runtime.stateChanges, ...itemStateChanges],
     // The registry the run actually wrote through, not a copy — a test asserting
