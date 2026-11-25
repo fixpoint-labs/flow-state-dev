@@ -1,4 +1,5 @@
-import { z, type ZodTypeAny } from "zod";
+import type { z, ZodTypeAny } from "zod";
+import type { JsonObject } from "../schema/common";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
 import type { ResourceCollectionRef } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
@@ -35,24 +36,22 @@ export interface UpsertResourceConfig<TInputSchema extends ZodTypeAny> {
 export function upsertResource<TInputSchema extends ZodTypeAny>(
   config: UpsertResourceConfig<TInputSchema>
 ) {
-  type TInput = z.infer<TInputSchema>;
-
   return handler({
     name: config.name,
     description: config.description,
     inputSchema: config.inputSchema,
     resources: config.resources,
     sequencerStateSchema: config.sequencerStateSchema,
-    execute: async (input: TInput, ctx) => {
-      const collection = ctx.resources[config.collectionKey] as unknown as ResourceCollectionRef<any>;
+    execute: async (input, ctx: BlockContext) => {
+      const collection = ctx.resources[config.collectionKey] as ResourceCollectionRef;
       const key = config.key(input);
-      const state = config.state(input, ctx as any);
+      const state = config.state(input, ctx) as JsonObject;
       const content = config.content?.(input);
 
       // getOrCreate sets initial state only on creation; always patchState
       // afterwards so updates are applied whether the resource is new or existing.
-      const ref = await collection.getOrCreate(key, state as any);
-      await ref.patchState(state as any);
+      const ref = await collection.getOrCreate(key, state);
+      await ref.patchState(state);
       if (content !== undefined) {
         await ref.writeContent(content);
       }
