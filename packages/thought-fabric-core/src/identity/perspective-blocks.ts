@@ -32,6 +32,7 @@ import {
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
+  PerspectivePositionsState,
 } from './perspective'
 import {
   formatPerspective,
@@ -61,7 +62,7 @@ export type PositionScope = 'session' | 'user' | 'org'
  */
 export function buildPerspectiveResources(
   scope: PositionScope,
-  positionsResource?: DefinedResource,
+  positionsResource?: DefinedResource<PerspectivePositionsState>,
 ) {
   const positions = positionsResource ?? (
     scope === 'session'
@@ -269,7 +270,7 @@ export interface PerspectivePositionBlockConfig extends PerspectiveStatefulBlock
    * definition (e.g. the one created by `system()`) to share state across
    * blocks under the FIX-435 same-reference rule.
    */
-  positionsResource?: DefinedResource
+  positionsResource?: DefinedResource<PerspectivePositionsState>
 }
 
 // ---------------------------------------------------------------------------

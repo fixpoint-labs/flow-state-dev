@@ -33,6 +33,7 @@
 import { createContext, memo, useContext, type ReactNode } from "react";
 import { isSuspensionWait, type ErrorItem, type FileContent, type SuspensionItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 import type { ItemLine, RendererRegistry } from "@flow-state-dev/react";
+import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { cn } from "@/lib/utils";
 import { Approval } from "./approval";
 import { RequestRecovery } from "./request-recovery";
@@ -113,7 +114,7 @@ export function StoppedLine({ line }: { line: ItemLine }) {
 /** A wait for the person's yes, answered or not. Any other wait draws nothing here. */
 export function ApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine }) {
   const { who, canAnswer } = useLineContext();
-  if (item.reason !== "user_approval") return null;
+  if (suspendForUserKindOf(item) !== "approval") return null;
   const resolution = line?.kind === "suspension" ? line.resolution : undefined;
   return (
     <section aria-label={`${who ?? "The agent"} asks`} data-line="approval" data-resolution={resolution ?? "waiting"}>
