@@ -86,7 +86,8 @@ export {
 } from "./worktrees";
 export type { CheckoutSnapshot } from "./worktrees";
 export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeResourceState, WorktreeStatus } from "./worktrees";
-export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { acquireLock, refreshLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { privateTempRoot } from "./private-temp";
 export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
