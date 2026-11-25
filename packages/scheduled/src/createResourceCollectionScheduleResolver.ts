@@ -144,7 +144,8 @@ export function createResourceCollectionScheduleResolver(
     // schedule entry (FIX-1545).
     const row = await ctx.stores.resourceState.get("user", scopeId, resourceKey);
     if (row === undefined) return null;
-    const state = row.state;
+    // Raw stored state can predate the current schema defaults.
+    const state: Partial<ScheduleResourceState> = row.state;
 
     if (state.enabled === false) return null;
     if (typeof state.cron !== "string" || typeof state.kind !== "string") {
