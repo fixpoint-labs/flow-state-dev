@@ -75,12 +75,13 @@ type BoardOutput = { ok?: boolean; error?: string } & Record<string, unknown>;
 
 /**
  * A 4xx refusal as an error carrying the route's own words (its body's
- * `error`), not the transport's "Request failed (409)"; any other failure as it came.
+ * `error`, else its `message`), not the transport's "Request failed (409)"; any other failure as it came.
  */
 function refusalOf(error: unknown): unknown {
   if (!(error instanceof ClientHttpError) || error.status < 400 || error.status >= 500) return error;
-  const said = (error.body as { error?: unknown } | null | undefined)?.error;
-  return new Error(typeof said === "string" && said !== "" ? said : error.message);
+  const body = error.body as { error?: unknown; message?: unknown } | null | undefined;
+  const said = [body?.error, body?.message].find((text): text is string => typeof text === "string" && text !== "");
+  return new Error(said ?? error.message);
 }
 
 /**
@@ -224,9 +225,11 @@ export function createInboxClient(client: Client): InboxClient {
     if (flowId === null) throw new Error(`Inbox question "${hold.id}" names no flow`);
     const resume = resumeOf(hold.ask.kind, answer);
     // A refusal (the round already answered, say) rejects with the route's own words.
-    await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume }).catch((error: unknown) => {
+    try {
+      await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
+    } catch (error) {
       throw refusalOf(error);
-    });
+    }
   };
   return {
     answerOne,
