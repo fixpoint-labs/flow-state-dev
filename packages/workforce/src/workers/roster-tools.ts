@@ -30,20 +30,15 @@
  * ```
  */
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { isUserTurn } from "../standing-rules/user-turn";
-import { createWorkerHireBlocks, checkedHire, type HireChecks, type HireInput } from "./hire-blocks";
+import { createWorkerHireBlocks, checkedHire, type HireChecks } from "./hire-blocks";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 
 /** The capability's name, as a worker file names it. */
 const HIRE_WORKERS_CAPABILITY = "hireWorkers";
-
-/** The roster of the user this turn runs for. */
-function rosterOf(ctx: BlockContext): ResourceCollectionRef {
-  return (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as ResourceCollectionRef;
-}
 
 /** Refuse unless the user's own message started this turn. */
 function refuseUnasked(ctx: BlockContext, verb: string): void {
@@ -66,10 +61,10 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     inputSchema: blocks.hire.inputSchema,
     outputSchema: z.void(),
     resources: { ...installation.resources },
-    execute: async (input: HireInput, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       refuseUnasked(ctx, "hired");
       checkedHire(installation, input, checks);
-      if ((await rosterOf(ctx).getOptional(input.id)) !== undefined) {
+      if ((await ctx.resources[WORKERS_RESOURCE].getOptional(input.id)) !== undefined) {
         throw new Error(`"${input.id}" is already on the user's roster. Pick another id. Nothing was written.`);
       }
     }
@@ -80,7 +75,7 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
     inputSchema: blocks.fire.inputSchema,
     outputSchema: z.void(),
     resources: { ...installation.resources },
-    execute: async (input: { id: string }, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       refuseUnasked(ctx, "fired");
       if (ctx.suspend === undefined) {
         throw new Error("This server can't ask the user to approve, and a worker is fired only on their yes. Nothing was written.");
@@ -88,8 +83,8 @@ export function hireWorkersCapability(installation: WorkerInstallation, checks: 
       if (installation.standardWorker(input.id) !== undefined) {
         throw new Error(`"${input.id}" is a standard worker, which nobody can fire: its files are changed by editing its folder. Nothing was written.`);
       }
-      if ((await rosterOf(ctx).getOptional(input.id)) === undefined) throw new Error(`No worker "${input.id}" on the user's roster. Nothing was written.`);
-      await ctx.suspend!({ reason: "user_approval", message: `Fire worker "${input.id}"?`, data: { worker: input.id }, allow: ["approve", "reject"] });
+      if ((await ctx.resources[WORKERS_RESOURCE].getOptional(input.id)) === undefined) throw new Error(`No worker "${input.id}" on the user's roster. Nothing was written.`);
+      await ctx.suspend({ reason: "user_approval", message: `Fire worker "${input.id}"?`, data: { worker: input.id }, allow: ["approve", "reject"] });
     }
   });
 

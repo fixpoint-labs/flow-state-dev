@@ -27,7 +27,7 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext, LLMMessage } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { delegateRefSchema } from "../delegates/delegate-list";
-import { conversationLineSchema, type ConversationLine } from "./coordinator-lines";
+import { conversationLineSchema } from "./coordinator-lines";
 
 /** A routed task's brief: server-written, in `Task.sealed`. */
 export const routedBriefSchema = z.object({
@@ -93,7 +93,8 @@ export function routedMessage(brief: RoutedBrief, goal: string): string {
 /** Request state: the lines of the routed task this request works, noted before its turn. */
 const ROUTED_LINES_STATE = "routedLines";
 
-const routedLinesStateSchema = z.object({
+/** Request state declared by the step that records the lines and the turn that reads them. */
+export const routedLinesStateSchema = z.object({
   [ROUTED_LINES_STATE]: z.object({ coordinator: z.string(), recent: z.array(conversationLineSchema) }).optional()
 });
 
@@ -115,25 +116,6 @@ export const noteRoutedLines = handler({
 });
 
 /**
- * The lines as the turn's model reads them: one user-role message,
- * `Recent lines in the conversation with <coordinator> before this message,
- * oldest first:` and then `- <from>: <text>` per line. `undefined` on any
- * other turn and on a routed task with no lines.
- */
-function routedLinesMessage(ctx: { readonly request: { readonly state: unknown } }): LLMMessage | undefined {
-  const noted = (ctx.request.state as z.infer<typeof routedLinesStateSchema> | undefined)?.[ROUTED_LINES_STATE];
-  const recent: readonly ConversationLine[] = noted?.recent ?? [];
-  if (noted === undefined || recent.length === 0) return undefined;
-  return {
-    role: "user",
-    content: [
-      `Recent lines in the conversation with ${noted.coordinator} before this message, oldest first:`,
-      ...recent.map((line) => `- ${line.from}: ${line.text}`)
-    ].join("\n")
-  };
-}
-
-/**
  * A generator's `history` for a turn that may work a routed task: the
  * session's history, as `history: true` reads it, with the brief's lines as
  * one user-role message between the earlier turns and this turn's own items,
@@ -143,10 +125,20 @@ function routedLinesMessage(ctx: { readonly request: { readonly state: unknown }
  * your own whose `work` turn is a generator passes it as that generator's
  * `history` to show its model the same lines.
  */
-export async function routedTaskHistory(_input: unknown, ctx: BlockContext): Promise<LLMMessage[]> {
-  const lines = routedLinesMessage(ctx);
+export async function routedTaskHistory(
+  _input: unknown,
+  ctx: BlockContext<Record<string, unknown> & z.infer<typeof routedLinesStateSchema>>
+): Promise<LLMMessage[]> {
+  const noted = ctx.request.state[ROUTED_LINES_STATE];
   const history = await ctx.session.items.history();
-  if (lines === undefined) return history;
+  if (!noted?.recent?.length) return history;
+  const lines: LLMMessage = {
+    role: "user",
+    content: [
+      `Recent lines in the conversation with ${noted.coordinator} before this message, oldest first:`,
+      ...noted.recent.map((line) => `- ${line.from}: ${line.text}`)
+    ].join("\n")
+  };
   // `history()` is the earlier turns with this request's own items after them.
   const earlier = await ctx.session.items.history({ includeInFlight: false });
   return [...history.slice(0, earlier.length), lines, ...history.slice(earlier.length)];

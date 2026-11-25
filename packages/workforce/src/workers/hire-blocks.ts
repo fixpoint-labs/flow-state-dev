@@ -179,10 +179,10 @@ export function checkedHire(installation: WorkerInstallation, input: HireInput, 
   const worker = workerResourceStateSchema.parse({
     flow: input.flow ?? AGENT_FLOW,
     name: textOrNull(input.name),
-    description: input.description ?? null,
+    description: input.description,
     instructions: textOrNull(input.instructions),
-    skills: input.skills ?? [],
-    settings: input.settings ?? {}
+    skills: input.skills,
+    settings: input.settings
   });
   refuseRetired(installation, input.id, worker.flow, input.settings);
   refuseProblems(installation, input.id, worker);
