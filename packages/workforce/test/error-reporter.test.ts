@@ -784,6 +784,41 @@ describe("reading the history", () => {
     expect(later).not.toContain("FIX-9");
   });
 
+  // An earlier report kept no list of its users: the current report's users must not be let into it, and a user
+  // of it reads only their own words, never the drafted title, the issue or another user's failure.
+  it("shows a user an earlier report only from their own failures that day, and nothing the operator alone reads", async () => {
+    const turns = [
+      { title: "Cache misses pile up under load", identifier: "FIX-9" },
+      { title: "Cache misses are back after the fix", identifier: "FIX-12" }
+    ];
+    const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, closed: true, turns });
+    await lab.breaks("cache miss storm", "alice");
+    await lab.breaks("cache miss storm", "alice");
+    await lab.breaks("cache miss storm", "bob");
+    const operator = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${today()}` });
+    const contents = await Promise.all(operator.map(async (h) => ({ uri: h.uri, content: (await lab.readHistory(OPERATOR, h.uri)).content! })));
+    const earlier = contents.find((c) => c.content.includes(`# ${turns[0]!.title}`))!;
+    const later = contents.find((c) => c.content.includes(`# ${turns[1]!.title}`))!;
+    expect(earlier).toBeDefined();
+    expect(later).toBeDefined();
+
+    // Bob failed only after the reopening: the earlier report is not his, by search or by its path.
+    const bob = await lab.searchHistory("bob", { query: "error report", prefix: `error-history/${today()}` });
+    expect(bob.map((h) => hashOf(h.uri))).toEqual([hashOf(later.uri)]);
+    const refused = await lab.readHistory("bob", earlier.uri);
+    const unknown = await lab.readHistory("bob", `org/error-history/${today()}/no-such-report-zz9`);
+    expect(refused.content).toBeUndefined();
+    expect(refused.error?.replace(earlier.uri, "<uri>")).toBe(unknown.error?.replace(`org/error-history/${today()}/no-such-report-zz9`, "<uri>"));
+
+    // Alice failed only before it: she reads the earlier report in her own words, and not the later one.
+    const alice = await lab.searchHistory("alice", { query: "error report", prefix: `error-history/${today()}` });
+    expect(alice.map((h) => hashOf(h.uri))).toEqual([hashOf(earlier.uri)]);
+    const own = (await lab.readHistory("alice", alice[0]!.uri)).content!;
+    expect(own).toContain("cache miss storm");
+    expect(own).toContain("Seen 2 time(s)");
+    for (const operatorOnly of [turns[0]!.title, "FIX-9", "tracker.example", "user bob"]) expect(own).not.toContain(operatorOnly);
+  });
+
   // History written before reports kept their earlier selves: the entries alone still tell the earlier report apart.
   it("still tells an earlier report's days apart when the report and its entries predate keeping them", async () => {
     const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, closed: true, turns: [{ title: "Cache misses pile up under load", identifier: "FIX-9" }, { title: "Cache misses are back after the fix", identifier: "FIX-12" }] });
