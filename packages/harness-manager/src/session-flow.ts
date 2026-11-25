@@ -155,6 +155,7 @@ import {
   runCommandChecks,
   type CommandCheckOptions,
 } from "./command-check";
+import { worktreesOf } from "./workspace";
 import { assertPositiveInt } from "./guards";
 import { DEFAULT_IDLE_TIMEOUT_MS, resolveRunCap, runStops, type RunStops } from "./run-stops";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
@@ -393,12 +394,6 @@ export interface HarnessSessionWorkspace {
    * keeps what provision wrote.
    */
   recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by?: WorktreeOwner }): Promise<unknown>;
-}
-
-/** The user's worktree rows off a block's context, when the flow has them. */
-function worktreesOf(ctx: { resources?: unknown }): WorktreeCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
-  return typeof collection?.upsert === "function" ? collection : undefined;
 }
 
 /** The session a start attaches to, when it attaches (`{ worktreeOf }`). */

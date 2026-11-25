@@ -178,7 +178,7 @@ function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefi
   const buildable = Object.fromEntries(
     Object.entries(own).map(([key, setting]) => [key, setting.safeParse(undefined).success ? setting : setting.optional()]),
   );
-  return builtIn.extend(buildable) as unknown as typeof builtIn;
+  return builtIn.extend(buildable);
 }
 
 /**
@@ -377,10 +377,10 @@ export function coderWorkerFlow(
           ...(options.approveTools === true ? { approveTools: true } : {}),
           // A mode may work in its task's project when the kit doesn't, or not when it does.
           ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),
-        } as never) as unknown as BlockDefinition<any, any>;
+        });
         // The claim gate shares a task's child session between tasks, so a harness that authors
         // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.
-        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built as never });
+        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built });
         return built;
       };
       const modeNames = Object.keys(resolved.modes);
@@ -396,8 +396,8 @@ export function coderWorkerFlow(
           name: `${CODER_FLOW}-${id}-by-mode${reviewChanges ? "-reviewed" : ""}`,
           inputSchema: taskWorkerInputSchema.passthrough(),
           routes: Object.values(managers),
-          execute: (task: { input?: unknown }) => managers[modeOfTask(task.input, resolved)]!,
-        } as never) as BlockDefinition<any, any>;
+          execute: (task) => managers[modeOfTask(task.input, resolved)]!,
+        });
       };
       const built = Object.fromEntries(
         Object.entries(harnesses).map(([id, harness]) => [
@@ -426,13 +426,13 @@ export function coderWorkerFlow(
         return { ...found, id, manager: review ? found.reviewed : found.manager };
       };
       /** Route by the session's worker; a run that starts work first asks whether its harness can run here. */
-      const byHarness = (name: string, inputSchema: unknown, pick: (b: Built) => unknown, ready: boolean) =>
+      const byHarness = (name: string, inputSchema: z.ZodTypeAny, pick: (b: Built) => BlockDefinition<any, any>, ready: boolean) =>
         router({
           name,
           inputSchema,
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
           resources: installation.resources,
-          execute: async (_input: unknown, ctx: never) => {
+          execute: async (_input, ctx) => {
             const chosen = await harnessOf(ctx);
             if (ready) {
               const missing = await refusal(chosen.id);
@@ -440,7 +440,7 @@ export function coderWorkerFlow(
             }
             return pick(chosen);
           },
-        } as never) as BlockDefinition<any, any>;
+        });
       const anyDoor = Object.values(built)[0]!.door;
       // The app's documents meet the installation's by the flow-build rule: a shared accessor must be the same resource.
       const flowResources = mergeDeclaredResources(options.worker?.resources, { ...installation.resources, ...workerMessagesResources });
@@ -470,8 +470,8 @@ export function coderWorkerFlow(
               inputSchema: z.object({}),
               outputSchema: z.object({ harness: z.string() }),
               resources: installation.resources,
-              execute: async (_input: unknown, ctx: never) => ({ harness: (await harnessOf(ctx)).id }),
-            } as never),
+              execute: async (_input, ctx) => ({ harness: (await harnessOf(ctx)).id }),
+            }),
           },
         },
         internal: {
@@ -502,7 +502,7 @@ export function coderWorkerFlow(
             }),
           },
         },
-      } as never), options.worker?.settings);
+      }), options.worker?.settings);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
     { roles: ["contributor"], showSettings: ["harness"] },
