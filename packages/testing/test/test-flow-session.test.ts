@@ -19,6 +19,7 @@ const flow = defineFlow({
         team: defineResource({ scope: "org", stateSchema: marker })
       },
       execute: (_input, ctx) => ({
+        lineageId: ctx.session.lineageId,
         token: ctx.session.state.token,
         profile: ctx.resources.profile.state.value,
         team: ctx.resources.team.state.value
@@ -45,7 +46,8 @@ it("creates an unseeded session with the flow's factory defaults and reuses it o
   expect(first.error).toBeUndefined();
   const session = await stores.session.get(options.sessionId);
   expect(session).toMatchObject({ lineageId: expect.stringMatching(/^lin_/), state: { token: expect.any(String) } });
-  expect(first.output).toEqual({ token: session?.state.token, profile: "Alice", team: "Support" });
+  expect(session?.lineageId).not.toBe(`lin_${options.sessionId}`);
+  expect(first.output).toEqual({ lineageId: session?.lineageId, token: session?.state.token, profile: "Alice", team: "Support" });
 
   const second = await testFlow({ ...options, stores });
   expect(second.error).toBeUndefined();
@@ -53,7 +55,11 @@ it("creates an unseeded session with the flow's factory defaults and reuses it o
 });
 
 it("treats an explicitly seeded session as a stored record that can predate a factory default", async () => {
-  const run = await testFlow({ ...options, seed: { ...options.seed, session: { state: {} } } });
+  const stores = createInMemoryStores();
+  const run = await testFlow({ ...options, stores, seed: { ...options.seed, session: { state: {} } } });
   expect(run.error).toBeUndefined();
-  expect(run.output).toEqual({ token: undefined, profile: "Alice", team: "Support" });
+  const session = await stores.session.get(options.sessionId);
+  expect(session).toBeDefined();
+  expect(session?.lineageId).toBeUndefined();
+  expect(run.output).toEqual({ lineageId: `lin_${options.sessionId}`, token: undefined, profile: "Alice", team: "Support" });
 });
