@@ -491,15 +491,19 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   if (ending.status === "suspended") {
     const stop = stopOf(record, ending);
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
-    // The mirror must land, so the person can still answer the stop.
-    // Cancelling the stop instead would let the resume, admitted on this
-    // same attempt, settle the task on a review nobody gave (FIX-2847). A
-    // failed takeover is thrown: the attempt may still own the row, so the
-    // stop stays suspended, still needing its review, for the request's
-    // recovery. A definite refusal leaves the write refused, and the stop is
-    // ended below as superseded.
-    if (mirror !== undefined) await takeBackLapsedLease(record, row);
-    const outcome = await waitOn(record, row, stop.on, undefined, mirror);
+    let outcome = await waitOn(record, row, stop.on, undefined, mirror);
+    // Refused on a lease that lapsed after the read above: the mirror must
+    // land, so the person can still answer the stop. Cancelling the stop
+    // instead would let the resume, admitted on this same attempt, settle the
+    // task on a review nobody gave (FIX-2847). So the row is taken back after
+    // the refusal, by the same takeover a stopped request takes before its
+    // end write, and the mirror written again. A failed takeover is thrown:
+    // the attempt may still own the row, so the stop stays suspended, still
+    // needing its review, for the request's recovery. A definite refusal
+    // leaves the write refused, and the stop is ended below as superseded.
+    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim" && (await takeBackLapsedLease(record, row))) {
+      outcome = await waitOn(record, row, stop.on, undefined, mirror);
+    }
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the
     // first branch), and the collection still refuses a mirror on a row a
     // question holds, one source at a time. Cancelled if it does.
@@ -619,27 +623,33 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
 
 // FIX-2897; FIX-2847.
 /**
- * Before an end write that must land, take back a lease that only lapsed: the
- * row as stored is still this claim's attempt and turn, and no reclaim moved
- * it. By the start gate's own takeover (`adoptLapsedLease`: the span the claim
+ * Before an end write that must land, or after one refused on it, take back
+ * a lease that only lapsed: the row as stored is still this claim's attempt
+ * and turn, and no reclaim moved it. By the start gate's own takeover (`adoptLapsedLease`: the span the claim
  * committed to, a renewal that must say it landed), so the write that follows
  * is not refused `lost-claim` and the task settles on its same attempt rather
  * than being taken by the next claim as abandoned.
  *
- * A definite refusal (`StaleTaskClaimError`: a reclaim won, no verdict, no
- * span to take it back for) takes nothing back, and the write is refused as
- * before.
+ * A definite refusal (`StaleTaskClaimError`: a reclaim won, a hold refused
+ * the renewal, no verdict, no span to take it back for) takes nothing back,
+ * and the write is refused as before.
  *
+ * @returns whether the row was taken back.
  * @throws any other failure of the takeover: the attempt may still own the row.
  */
-async function takeBackLapsedLease(record: Admitted, task: Task): Promise<void> {
+async function takeBackLapsedLease(record: Admitted, task: Task): Promise<boolean> {
   const { ref, ticket } = record;
   const stored = await readCommittedTask(ref, task.id);
-  if (!claimHolds(ref, ticket, stored) || !leaseLapsed(stored, ref.now())) return;
+  if (!claimHolds(ref, ticket, stored) || !leaseLapsed(stored, ref.now())) return false;
   try {
     await adoptLapsedLease(ref, stored);
+    return true;
   } catch (error) {
-    if (error instanceof StaleTaskClaimError) return;
+    if (error instanceof StaleTaskClaimError) {
+      // Said here: the write that follows is refused as `lost-claim`, which doesn't say what blocked the takeover.
+      console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write and was not taken back: ${error.message}`);
+      return false;
+    }
     // Said here: an engine with no logger says nothing of a hook that throws.
     console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write, and taking the row back failed: ${(error as Error).message}`);
     throw error;
