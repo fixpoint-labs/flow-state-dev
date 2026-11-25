@@ -31,6 +31,7 @@
  * never collide with the panel's. Components read these tokens only — never
  * a literal hex. Hairlines are ink at /12, /20, /30, /45; hover is an ink
  * wash at /5; selection is a 1px blueprint ring; focus a 2px blueprint halo.
+ * The dim layer behind every dialog is `bg-fs-scrim`, dark in every theme.
  *
  * Meaning is fixed: blueprint (`fs-blue`) = interactive or live, highlighter
  * (`fs-hl`) = a person needs to act, `fs-red` = failed, `fs-green` = done.
@@ -55,6 +56,7 @@
   --color-fs-fill-done: var(--fs-fill-done);
   --color-fs-fill-flight: var(--fs-fill-flight);
   --color-fs-fill-data: var(--fs-fill-data);
+  --color-fs-scrim: var(--fs-scrim);
   --font-fs-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-fs-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -84,6 +86,7 @@
   --fs-fill-done: #aee6a9;
   --fs-fill-flight: #e8f551;
   --fs-fill-data: #e6d7ff;
+  --fs-scrim: rgb(27 26 21 / 0.5);
   color-scheme: light;
 }
 
@@ -108,6 +111,7 @@
   --fs-fill-done: #aee6a9;
   --fs-fill-flight: #e8f551;
   --fs-fill-data: #e6d7ff;
+  --fs-scrim: rgb(27 26 21 / 0.5);
   color-scheme: light;
 }
 
@@ -133,6 +137,7 @@
   --fs-fill-done: rgb(159 227 154 / 0.2);
   --fs-fill-flight: rgb(232 245 81 / 0.22);
   --fs-fill-data: rgb(199 164 255 / 0.22);
+  --fs-scrim: rgb(0 0 0 / 0.6);
   color-scheme: dark;
 }
 
