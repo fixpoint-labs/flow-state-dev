@@ -1,9 +1,8 @@
 import { handler } from "@flow-state-dev/core";
 import {
-  crawlInputSchema,
+  createCrawlInputSchema,
   crawlResultSchema,
   type CrawlConfig,
-  type CrawlInput,
   type CrawlResult,
 } from "./types";
 import { resolveProvider } from "./resolver";
@@ -21,13 +20,13 @@ export function crawl(config: CrawlConfig = {}) {
     description:
       "Crawl a website starting from a root URL, following links up to a specified depth. " +
       "Returns markdown content for each page found. Use this for site-wide content ingestion.",
-    inputSchema: crawlInputSchema,
+    inputSchema: createCrawlInputSchema(config),
     outputSchema: crawlResultSchema,
-    execute: async (input: CrawlInput): Promise<CrawlResult> => {
+    execute: async (input): Promise<CrawlResult> => {
       const { adapter, apiKey } = resolveProvider(config);
       return adapter.crawl(input.url, {
-        maxPages: input.maxPages ?? config.maxPages ?? 20,
-        maxDepth: input.maxDepth ?? config.maxDepth ?? 2,
+        maxPages: input.maxPages,
+        maxDepth: input.maxDepth,
         includePatterns: config.includePatterns ?? [],
         excludePatterns: config.excludePatterns ?? [],
         waitForJS: config.waitForJS ?? false,

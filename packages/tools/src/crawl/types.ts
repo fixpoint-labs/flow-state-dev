@@ -20,17 +20,15 @@ export type CrawlResult = z.infer<typeof crawlResultSchema>;
 
 // --- Tool input schema ---
 
-export const crawlInputSchema = z.object({
-  url: z.string().describe("The root URL of the site to crawl"),
-  maxPages: z
-    .number()
-    .default(20)
-    .describe("Maximum number of pages to crawl"),
-  maxDepth: z
-    .number()
-    .default(2)
-    .describe("Maximum link-following depth from root URL"),
-});
+export function createCrawlInputSchema(config: Pick<CrawlConfig, "maxPages" | "maxDepth"> = {}) {
+  return z.object({
+    url: z.string().describe("The root URL of the site to crawl"),
+    maxPages: z.number().default(config.maxPages ?? 20).describe("Maximum number of pages to crawl"),
+    maxDepth: z.number().default(config.maxDepth ?? 2).describe("Maximum link-following depth from root URL"),
+  });
+}
+
+export const crawlInputSchema = createCrawlInputSchema();
 
 export type CrawlInput = z.infer<typeof crawlInputSchema>;
 

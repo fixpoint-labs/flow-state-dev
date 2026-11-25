@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { crawl, firecrawlCrawl, builtinCrawl } from "../../src/crawl";
+import { builtinCrawlAdapter } from "../../src/crawl/providers";
 import { tools } from "../../src";
 import type { CrawlResult } from "../../src/crawl/types";
 
@@ -108,16 +109,23 @@ describe("crawl tool factory", () => {
     expect(result.source).toBe("firecrawl");
   });
 
-  it("uses input maxPages/maxDepth over config defaults", async () => {
-    const tool = crawl({ maxPages: 100, maxDepth: 5 });
-    // Input values should take precedence
-    const result = await runForTest(tool, 
-      { url: "https://example.com", maxPages: 10, maxDepth: 1 },
-      {} as any
-    );
-
-    expect(result).toBeDefined();
-  });
+  it.each([
+    { config: {}, input: {}, maxPages: 20, maxDepth: 2 },
+    { config: { maxPages: 100, maxDepth: 0 }, input: {}, maxPages: 100, maxDepth: 0 },
+    { config: { maxPages: 100, maxDepth: 5 }, input: { maxPages: 10 }, maxPages: 10, maxDepth: 5 },
+    { config: { maxPages: 100, maxDepth: 5 }, input: { maxDepth: 1 }, maxPages: 100, maxDepth: 1 },
+  ])(
+    "passes $maxPages pages and depth $maxDepth to the crawl adapter",
+    async ({ config, input, maxPages, maxDepth }) => {
+      const tool = builtinCrawl(config);
+      const url = "https://example.com";
+      await runForTest(tool, tool.inputSchema.parse({ url, ...input }), {} as any);
+      expect(builtinCrawlAdapter.crawl).toHaveBeenLastCalledWith(
+        url,
+        expect.objectContaining({ maxPages, maxDepth }),
+      );
+    },
+  );
 });
 
 describe("direct provider crawl factories", () => {
