@@ -21,7 +21,7 @@ handed the SDK. Two hook events, so a hook on one event the switch missed still 
 reach a model.
 **Run:** `pnpm tsx goals/claude-code-harness/loads-a-trusted-repos-conventions-with-hooks-off/run.mts`
 **Controls:**
-- `GOAL_CONTROL=hooks-on` — no `settings`, the trusted sources alone. Must fail `hooks:off`.
+- `GOAL_CONTROL=hooks-on` — `settings: { disableAllHooks: false }`, the host asking for the repository's hooks. Must fail `hooks:off`.
 - `GOAL_CONTROL=untrusted` — `settingSources: []`. Must fail `conventions:code-word` and
   `conventions:skill`.
 
