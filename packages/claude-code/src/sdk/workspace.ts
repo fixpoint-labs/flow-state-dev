@@ -121,8 +121,6 @@ export interface ClaudeCodeWorkspaceCapabilityOptions
  * workspace has. The request id alone would be too coarse: a generator holding
  * this as a tool can call it several times in one request, and each call is a
  * separate workspace.
- *
- * The sequencer keeps the resolved root so every reader uses the directory hydrate opened.
  */
 const openWorkspaces = new Map<string, Projection>();
 
@@ -130,7 +128,10 @@ const openWorkspaces = new Map<string, Projection>();
 const workspaceSequencerState = z.object({
   /** Key into `openWorkspaces`. Minted by hydrate, read by the other two. */
   workspaceId: z.string().nullable().default(null),
-  /** The resolved root, so a reader needs no map lookup to answer `cwd`. */
+  /**
+   * Hydrate resolves this once. A resolver can mint a fresh directory on each call,
+   * so both the agent's cwd and the sandbox's writable path read it through `rootFor`.
+   */
   root: z.string().nullable().default(null),
 });
 
@@ -211,6 +212,7 @@ function discoverMounts(
   return mounts;
 }
 
+/** Test entry point for mount discovery. */
 export { discoverMounts as discoverMountsForTest };
 
 /**
@@ -378,7 +380,10 @@ export function createClaudeCodeWorkspaceCapability(
       if (unsettled.length === 0) return;
 
       const at = Date.now();
-      const log = ctx.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES] as ResourceCollectionRef<z.infer<typeof claudeCodeWorkspaceOutcomeStateSchema>>;
+      const log = ctx.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES];
+      if (log == null || !("getOrCreate" in log)) {
+        throw new Error(`[workspace-agent] Cannot record workspace outcomes. The flow must declare the "${CLAUDE_CODE_WORKSPACE_OUTCOMES}" collection.`);
+      }
       for (const outcome of unsettled) {
         const state = claudeCodeWorkspaceOutcomeStateSchema.parse({ ...outcome, at });
         const ref = await log.getOrCreate(`${key}/${outcome.path}`, state);
