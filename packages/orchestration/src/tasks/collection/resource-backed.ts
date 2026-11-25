@@ -243,7 +243,8 @@ export interface ResourceBackedOptions {
   };
 }
 
-// This backing stores task state through core's JSON resource interface.
+// Ordinary reads use committed resource state. Each CAS retry reads the same
+// state shape from the updater's current value without reparsing it.
 type StoredTask = Task & JsonObject;
 
 // FIX-990.
