@@ -674,8 +674,8 @@ describe("fields a create check derives", () => {
         stateSchema: z.object({ workerId: z.string().readonly(), workerName: z.string().readonly().optional() }),
         // Reads the worker and names the session after what it read.
         createCheck: async (input) => {
-          const row = await input.readCollectionResource("workers", input.state.workerId as string);
-          return row === undefined ? { ok: false, status: 404, message: "No worker." } : { ok: true, state: { workerName: `On ${String(row.flow)}` } };
+          const worker = await input.readCollectionResource("workers", input.state.workerId as string);
+          return worker === undefined ? { ok: false, status: 404, message: "No worker." } : { ok: true, state: { workerName: `On ${String(worker.flow)}` } };
         }
       },
       actions: { whoami: handler({ name: "named-whoami", inputSchema: z.object({}).passthrough(), execute: () => ({}) }) }
