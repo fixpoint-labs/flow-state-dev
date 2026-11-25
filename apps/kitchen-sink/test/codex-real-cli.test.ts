@@ -121,7 +121,8 @@ beforeAll(async () => {
 afterAll(() => {
   server?.close();
   vi.unstubAllEnvs();
-  rmSync(scratch, { recursive: true, force: true });
+  // The codex program can still be writing its home as the run ends (ENOTEMPTY): retry the removal.
+  rmSync(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe("a Codex mode run, on the real Codex program (V5)", () => {
