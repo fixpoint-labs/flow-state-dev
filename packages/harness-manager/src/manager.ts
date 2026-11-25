@@ -679,6 +679,16 @@ export interface ManagerOptions {
    * default: the brief is the phase's prompt alone.
    */
   issueSpec?: IssueSpecOption;
+  // FIX-2878; BP-030.
+  /**
+   * On a board read from the claim: the tracker issue a task's `input` names
+   * (`ENG-142`), or `undefined` for a task that names none. A task naming one
+   * works on that issue's branch, in this manager's mode. A host whose tasks
+   * declare their input reads its own field: the harness kit's coding flow
+   * reads its task input's `issue`. Absent: the `harnessFeature` key, read
+   * for a row stored before task input was declared.
+   */
+  trackerIssueOf?: (input: unknown) => string | undefined;
   // FIX-2389.
   /**
    * Ask a person before each tool call the harness hasn't pre-allowed.
@@ -932,10 +942,13 @@ export const harnessFeatureSchema = z.object({
   phase: z.string().optional(),
 });
 
-// FIX-2282.
+// FIX-2282; FIX-2878; BP-030.
 /**
- * The key a task's `input` names feature work under on a board read from the
- * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
+ * The key a task's `input` named feature work under on a board read from the
+ * claim, before task input was declared: `{ [HARNESS_FEATURE_KEY]: { issue,
+ * phase? } }`. **Internal, and read only as a legacy shape**: a manager given
+ * no `trackerIssueOf` reads it, and the harness kit's coding flow maps a
+ * stored row's onto its mode and issue. Nothing writes it any more.
  *
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
@@ -1420,7 +1433,8 @@ export function describeTenant(tenantId: string | undefined): string {
  * feature row carries, or `undefined` for a row that names no feature work (a
  * task a conversation filed), whose task id then stands in for the issue.
  *
- * On a board read from the claim, feature work is named only under
+ * On a board read from the claim, feature work is named by the host's
+ * `trackerIssueOf` when it passes one, and otherwise only under
  * {@link HARNESS_FEATURE_KEY}; the rest of `input` is the filer's own, so a
  * plain `issue` or `phase` there says nothing. A row whose key holds anything
  * but both as strings is refused: such a row is never run as a task that
@@ -1434,7 +1448,12 @@ export function describeTenant(tenantId: string | undefined): string {
 function taskPayload(
   input: { input?: unknown; taskId: string },
   fixedBoard: boolean,
+  trackerIssueOf: ManagerOptions["trackerIssueOf"],
 ): { issue: string; phase?: string } | undefined {
+  if (!fixedBoard && trackerIssueOf !== undefined) {
+    const issue = trackerIssueOf(input.input);
+    return issue === undefined ? undefined : { issue };
+  }
   if (fixedBoard) {
     const parsed = harnessTaskInputSchema.safeParse(input.input);
     if (parsed.success) return parsed.data;
@@ -2032,6 +2051,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     awaitPullRequests = false,
     onPullRequestRecorded,
     issueSpec,
+    trackerIssueOf,
     approveTools = false,
     tenant,
     mode: callerMode,
@@ -2669,7 +2689,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // its own task ids, unique in their partition, so there the task id
       // keeps two rows with one payload out of one tree, as the derived id
       // does on a fixed board.
-      const payload = taskPayload(input, claim === null);
+      const payload = taskPayload(input, claim === null, trackerIssueOf);
       // A legacy feature payload's own `phase` names the segment its run is keyed by.
       const segment = payload?.phase ?? mode.name;
       const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;

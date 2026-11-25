@@ -195,8 +195,11 @@ await runGoal(async (failures) => {
       const mine = Object.keys(stored).filter((key) => key.endsWith(`/${row.id}`));
       if (mine.length !== 1 || !mine[0]!.startsWith(partition)) {
         note("d:stored-once", `Alice's storage holds the row under ${show(mine)}, wanted one key under ${partition}`);
-      } else if (show((stored[mine[0]!] as Task).input) !== show({ harnessFeature: { issue: ISSUE, phase: "implement" } })) {
-        note("d:names-its-work", `the stored row's payload is ${show((stored[mine[0]!] as Task).input)}, wanted its issue and phase`);
+      } else {
+        const input = (stored[mine[0]!] as Task).input as { mode?: unknown; issue?: unknown } | undefined;
+        if (input?.mode !== "implement" || input.issue !== ISSUE) {
+          note("d:names-its-work", `the stored row's payload is ${show(input)}, wanted its mode and issue`);
+        }
       }
       const inOrg = Object.keys(await lab.stored("org")).filter((key) => key.endsWith(`/${row.id}`));
       if (inOrg.length > 0) note("d:no-org-copy", `the organization's storage holds the row under ${show(inOrg)}`);

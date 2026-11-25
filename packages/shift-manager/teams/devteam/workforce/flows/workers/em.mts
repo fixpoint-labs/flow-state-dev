@@ -23,9 +23,9 @@
  *
  * - **The turn**: a model, with the nine task tools and the lead's
  *   `updateWorkstream`. It takes a user's line, the project coordinator's
- *   delegated post, and each task's notice. Its own file tells it to name the
- *   feature's `issue` and `phase` under `harnessFeature` on every coder task:
- *   a task naming both there is feature work and must end in a commit.
+ *   delegated post, and each task's notice. Its own file tells it to file
+ *   every coder task in mode `implement` with the feature's `issue`: such a
+ *   task is feature work and must end in a commit.
  * - **The lab's doors** (`file`, `askToFile`, `drain`): deterministic, no
  *   model, for the checks that grade the board rather than a model's
  *   judgement. They file through the same board, one row per feature, under

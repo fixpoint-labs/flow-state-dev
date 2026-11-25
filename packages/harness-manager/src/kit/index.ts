@@ -7,3 +7,4 @@
 export { HARNESSES_FLOW, harnesses, type HarnessesConfig } from "./harnesses-kit";
 export { CODER_FLOW, codingDrainBudgetMs, type CoderFlowOptions, type CoderWorkerExtension } from "./coder-flow";
 export { KIT_MODE, type CoderMode, type CodingTaskInputField } from "./coder-modes";
+export { codingTaskInputSchema, type CodingTaskInput, type WorkerLock } from "./coding-task-input";

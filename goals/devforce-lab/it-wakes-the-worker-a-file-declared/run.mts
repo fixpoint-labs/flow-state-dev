@@ -477,8 +477,9 @@ await runGoal(async (failures) => {
       if (filedTaskId === undefined || filedRow?.id !== filedTaskId) {
         note(`the EM seat filed row "${filedTaskId}", and the row naming ${fixture.row.issue} is "${filedRow?.id}"`);
       }
-      if (JSON.stringify(filedRow?.input) !== JSON.stringify({ harnessFeature: { issue: fixture.row.issue, phase: fixture.row.phase } })) {
-        note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its issue and phase`);
+      const filedInput = filedRow?.input as { mode?: unknown; issue?: unknown } | undefined;
+      if (filedInput?.mode !== fixture.row.phase || filedInput?.issue !== fixture.row.issue) {
+        note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its mode and issue`);
       }
 
       const drained = await lab.drain(fixture.coordinatorSeat);

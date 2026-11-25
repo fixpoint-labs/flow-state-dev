@@ -151,9 +151,7 @@ describe("Shift Manager's coder is the harness kit's coder flow", () => {
     opened = await openLab({
       modelResolver: filing({
         "where is the cart badge?": task("Which file renders the cart badge?", {}),
-        "show a badge on the cart": task("Show a badge on the cart", { harnessFeature: { issue: "FIX-7", phase: "implement" } }),
-        "show a badge on the footer": task("Show a badge on the footer", { harnessFeature: { issue: "FIX-8" } }),
-        "show a badge on the header": task("Show a badge on the header", { harnessFeature: { phase: "implement" } }),
+        "show a badge on the cart": task("Show a badge on the cart", { mode: "implement", issue: "FIX-7" }),
       }),
       stores: inMemoryStores(),
       harnesses: [readyHarness(stub.slot, "stub"), readyHarness(other.slot, "codex", "Codex")],
@@ -173,22 +171,11 @@ describe("Shift Manager's coder is the harness kit's coder flow", () => {
     expect(question.output?.answer).toBe(ANSWER);
     expect(await runSegmentsOf(lab, question.id)).toEqual(["answer"]);
 
-    // Feature work naming its phase, as the EM files it: the implement mode, keyed by that phase.
+    // Feature work, as the EM files it: the implement mode on its issue, keyed by the mode's name.
     const named = await fileAndSettle(lab, "show a badge on the cart");
     expect(named.status, JSON.stringify(named.lastError ?? null)).toBe("completed");
+    expect(named.input).toMatchObject({ mode: "implement", issue: "FIX-7" });
     expect(await runSegmentsOf(lab, named.id)).toEqual(["implement"]);
-
-    // Feature work naming no phase: the implement mode, keyed by its own name.
-    const unnamed = await fileAndSettle(lab, "show a badge on the footer");
-    expect(unnamed.status, JSON.stringify(unnamed.lastError ?? null)).toBe("completed");
-    expect(await runSegmentsOf(lab, unnamed.id)).toEqual(["implement"]);
-
-    // A malformed marker: refused in the run, never answered, and no run keyed for it.
-    const runsBefore = stub.runs.length;
-    const malformed = await fileAndSettle(lab, "show a badge on the header");
-    expect(malformed.status).toBe("errored");
-    expect(stub.runs).toHaveLength(runsBefore);
-    expect(await runSegmentsOf(lab, malformed.id)).toEqual([]);
     expect(other.runs).toHaveLength(0);
 
     // The coder is the kit's: the run's session reads the harness it ran on through the kit's own action.

@@ -880,8 +880,8 @@ await runGoal(async (failures) => {
     if (filedRow.assignee !== ASSIGNED_SEAT) {
       failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted ${ASSIGNED_SEAT}`);
     }
-    const payload = (filedRow.input as { harnessFeature?: { issue?: unknown; phase?: unknown } } | undefined)?.harnessFeature;
-    if (payload?.issue !== ISSUE || payload?.phase !== "implement") {
+    const payload = filedRow.input as { issue?: unknown; mode?: unknown } | undefined;
+    if (payload?.issue !== ISSUE || payload?.mode !== "implement") {
       failures.push(`the row names ${JSON.stringify(payload)}; wanted the feature "${ISSUE}" at implement`);
     }
     if (failures.length > 0) return { failures, evidence: "" };

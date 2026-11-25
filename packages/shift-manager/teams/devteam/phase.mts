@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief } from "@flow-state-dev/harness-manager";
 import type {
   CodingBriefParts,
   CompletionRunContext,
@@ -45,17 +45,25 @@ import type { WorkerOf } from "./worker-config.mts";
 export const PHASE = "implement";
 
 /**
- * A feature row's `input`: its issue in {@link PHASE}, under the manager's
- * feature key. Here rather than in the EM's file, which imports no harness
+ * A feature row's `input`: the coder's {@link PHASE} mode, on its issue
+ * (FIX-2878). Here rather than in the EM's file, which imports no harness
  * package: the EM files rows, it never runs one.
  */
 export function featureInput(issue: string): Record<string, unknown> {
-  return { [HARNESS_FEATURE_KEY]: { issue, phase: PHASE } };
+  return { mode: PHASE, issue };
 }
 
-/** The issue a row's `input` names as feature work, or `undefined` for none. */
+// BP-030.
+/**
+ * The issue a row's `input` names as feature work, or `undefined` for none:
+ * an implement task's `issue`, or a row stored before modes, whose
+ * `harnessFeature` marker named it.
+ */
 export function featureIssueOfInput(input: unknown): string | undefined {
-  return harnessFeatureOf(input)?.issue;
+  if (typeof input !== "object" || input === null) return undefined;
+  const { mode, issue, harnessFeature } = input as { mode?: unknown; issue?: unknown; harnessFeature?: { issue?: unknown } | null };
+  if (mode === PHASE && typeof issue === "string") return issue;
+  return mode === undefined && typeof harnessFeature?.issue === "string" ? harnessFeature.issue : undefined;
 }
 
 /**
@@ -369,7 +377,7 @@ export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPh
 
 /**
  * Build the answer phase: the phase of a task that names no feature work
- * (no `harnessFeature`). Done means the run didn't stop at its limit and ended with an
+ * (any mode but implement). Done means the run didn't stop at its limit and ended with an
  * answer; a commit is reported in the output, never required.
  *
  * @param options How the run's worker is loaded.

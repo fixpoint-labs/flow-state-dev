@@ -5,7 +5,11 @@
  *
  * A task handed to a worker on it becomes a supervised coding run through the
  * harness the worker's own `WORKER.md` names in `harness:` (the kit's
- * `defaultHarness` when it names none). It builds one `harnessManager` per
+ * `defaultHarness` when it names none). What a task takes is declared on the
+ * flow's `work` entry (`./coding-task-input`): the mode it runs in and the
+ * issue it works on, which the filer writes and the filing check checks, and
+ * the run settings, which only the server writes. A worker's `lock:` refuses a
+ * task that differs on a locked field. It builds one `harnessManager` per
  * harness, and one more that waits for your review, and routes each task by
  * the worker its session runs, so another coding worker is one more
  * `WORKER.md`, never another flow. A harness this machine isn't set up for
@@ -27,8 +31,8 @@
  *   project, the run works in its checkout, and its checks are the project's.
  * - **Modes.** How a run is told what to do, when it is done and where it
  *   works, by name (`modes`, `defaultMode`): the kit's one `default` mode
- *   unless the app registers its own (`./coder-modes`). The checks wrap
- *   whichever mode runs.
+ *   unless the app registers its own (`./coder-modes`). A task runs the mode
+ *   its checked input names. The checks wrap whichever mode runs.
  * - **Tool approval.** A run asks the user before its tool calls when
  *   `approveTools` is on.
  * - **The app's own worker extension** (`worker`): settings a worker's file
@@ -47,7 +51,6 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
-  taskInputSchema,
   messageReceivedEntry,
   messageReceivedSchema,
   projectChecks,
@@ -74,6 +77,8 @@ import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
+import { codingTaskInput, modeProblem, noteRunSettings, storedCodingInput, workerLockSchema } from "./coding-task-input";
+import { isTrackerIssue } from "../issue-spec";
 
 import { CODER_FLOW } from "../coder-flow-name";
 import { RECORDED_WORK_VIEW } from "../coding-board-ref";
@@ -99,7 +104,11 @@ const CHECKS_TIMEOUT_MS = 10 * 60_000;
 export interface CoderFlowOptions {
   /** Where each run works. */
   workspace: WorkspaceHost;
-  /** The harness a worker whose file names none runs on. Absent: such a worker's task is refused. */
+  /**
+   * The harness a worker whose file names none runs on, and the one a coding
+   * task filed from outside any coding run carries. Absent: such a worker's
+   * task is refused, and such a filing carries none.
+   */
   defaultHarness?: string;
   /** A run that committed waits for your review before its task completes, whatever the worker's `review:` line says; a worker's `review: true` turns it on alone. Default false. */
   review?: boolean;
@@ -165,10 +174,12 @@ export interface CoderWorkerExtension {
  * refuses a worker's copy that leaves it out. A setting that already takes
  * `undefined` (optional, or with a default) is kept as declared.
  */
-function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefined) {
+function coderSettingsSchema(ids: readonly string[], modes: readonly string[], own: z.ZodRawShape | undefined) {
   const builtIn = workerConfigSchema().extend({
     harness: z.enum(ids as [string, ...string[]]).optional(),
     review: z.boolean().optional(),
+    // FIX-2878 D3: values a task for this worker must run with, refused by name when it differs.
+    lock: workerLockSchema(ids, modes).optional(),
   });
   if (own === undefined) return builtIn;
   const taken = Object.keys(own).filter((key) => key in builtIn.shape);
@@ -333,7 +344,13 @@ export function coderWorkerFlow(
     throw new Error(`${CODER_FLOW}: the default harness "${options.defaultHarness}" is not one of ${ids.join(", ")}.`);
   }
   const resolved = codingModes(options);
-  const settingsSchema = coderSettingsSchema(ids, options.worker?.settings);
+  const settingsSchema = coderSettingsSchema(ids, Object.keys(resolved.modes), options.worker?.settings);
+  const declaration = codingTaskInput({
+    modes: resolved,
+    ...(options.defaultHarness === undefined ? {} : { defaultHarness: options.defaultHarness }),
+    harnesses: ids,
+    ...(options.project === true ? { project: true } : {}),
+  });
 
   return workerFlow(
     (installation: WorkerInstallation) => {
@@ -371,6 +388,12 @@ export function coderWorkerFlow(
           ...(options.branchPrefix === undefined ? {} : { branchPrefix: options.branchPrefix }),
           harness: harness.agent,
           reviewChanges,
+          // The task's own `issue`, which the filing check validated; a stored row's plain field that isn't
+          // a tracker issue is a filer's word, as it was before tasks declared their input (BP-030).
+          trackerIssueOf: (input: unknown) => {
+            const issue = (input as { issue?: unknown } | null | undefined)?.issue;
+            return isTrackerIssue(issue) ? issue : undefined;
+          },
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
@@ -425,19 +448,29 @@ export function coderWorkerFlow(
         const review = options.review === true || worker.config.review === true;
         return { ...found, id, manager: review ? found.reviewed : found.manager };
       };
-      /** Route by the session's worker; a run that starts work first asks whether its harness can run here. */
+      /**
+       * Route by the session's worker; a run that starts work first checks the mode its task's checked
+       * input names, then asks whether its harness can run here. The harness chosen is noted for the
+       * request, so a task its coding session files carries it.
+       */
       const byHarness = (name: string, inputSchema: unknown, pick: (b: Built) => unknown, ready: boolean) =>
         router({
           name,
           inputSchema,
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
           resources: installation.resources,
-          execute: async (_input: unknown, ctx: never) => {
+          execute: async (input: unknown, ctx: never) => {
+            if (ready) {
+              // The claim re-checks what the filing did: the app's modes or a mode's `requires` may have changed.
+              const problem = modeProblem(((input as { input?: unknown }).input ?? {}) as Record<string, unknown>, resolved);
+              if (problem !== undefined) throw new Error(`${problem.code}: ${problem.text} Nothing ran.`);
+            }
             const chosen = await harnessOf(ctx);
             if (ready) {
               const missing = await refusal(chosen.id);
               if (missing !== undefined) throw new Error(missing);
             }
+            noteRunSettings((ctx as { session: object }).session, { harness: chosen.id });
             return pick(chosen);
           },
         } as never) as BlockDefinition<any, any>;
@@ -486,9 +519,14 @@ export function coderWorkerFlow(
               ),
             }),
             // The turn a steer or a delivered message owes a task it woke from its pull-request wait.
+            // The steer hands the row as stored: its input is read as the claim reads it, so it runs in the mode
+            // the claim ran it in, never by a marker on its raw input (FIX-2878).
             onTaskSteered: steerTurnEntry({
               name: `${CODER_FLOW}-steer-turn`,
-              block: byHarness(`${CODER_FLOW}-steer`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
+              block: sequencer({ name: `${CODER_FLOW}-steer-read`, inputSchema: taskWorkerInputSchema.passthrough() }).step(
+                (task: { input?: unknown }) => ({ ...task, input: storedCodingInput(((task.input ?? {}) as Record<string, unknown>), resolved) }),
+                byHarness(`${CODER_FLOW}-steer`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
+              ),
             }),
           },
         },
@@ -497,8 +535,9 @@ export function coderWorkerFlow(
             work: workerTaskEntry({
               name: `${CODER_FLOW}-work`,
               block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
-              // A task for a coder works in a project's files: one filed with none to work in is refused at filing (FIX-2894).
-              ...(options.project === true ? { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" }) } : {}),
+              // What a coding task takes (FIX-2878): its mode and issue, the run settings the server fills, and,
+              // with `project`, a project to work in, refused at filing when it has none (FIX-2894).
+              inputSchema: declaration,
             }),
           },
         },

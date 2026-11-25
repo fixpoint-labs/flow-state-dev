@@ -770,14 +770,14 @@ export const ENTRIES = [
   },
   {
     term: "Harness",
-    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
-    decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627",
+    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A coding task's run settings name one by `id`, and so does a worker's `harness:` line, which a task carrying none runs on.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627; FIX-2878 (a task's run settings name it)",
     retires: [],
   },
   {
     term: "Mode",
-    means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. Not a stage of a task on a board.",
-    decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea",
+    means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. A coding task names the mode it runs (`mode`, one the app registered, the app's `defaultMode` when it names none), checked at filing. Not a stage of a task on a board.",
+    decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea; FIX-2878 (a task names its mode)",
     // Code and goals only: the published pages and READMEs that still name the old type are rewritten at
     // release (`/release-docs`), and a changeset names the old names to say what replaced them.
     retires: [
@@ -788,6 +788,18 @@ export const ENTRIES = [
         pattern: /\b(PhaseSpec|PhaseDoneVerdict|PhaseRunContext|codingPhase)\b/,
       },
     ],
+  },
+  {
+    term: "Run settings",
+    means: "What a coding task's run runs with: its `harness`, `model` and `plan`. Only the server writes them on a task, at filing: a filer's are dropped. A task filed from a coding run carries that run's; any other carries the server's default.",
+    decision: "Epic FIX-2876 ER-2, ER-9, ER-10; FIX-2878",
+    retires: [],
+  },
+  {
+    term: "Lock",
+    means: "A coding worker's `lock:`: the values its tasks must run with, for any of the run settings and the mode. A task that differs on a locked field is refused by name, at filing and at claim, never swapped to fit.",
+    decision: "Epic FIX-2876 ER-11; FIX-2878 D3",
+    retires: [],
   },
   {
     term: "Starter",
