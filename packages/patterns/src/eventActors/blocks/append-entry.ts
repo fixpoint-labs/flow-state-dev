@@ -29,7 +29,7 @@ export function createAppendEntry(
   return handler({
     name: `${name}-append`,
     inputSchema: z.any(),
-    resources: { [resourceKey]: workspaceResource },
+    resources: { [resourceKey]: workspaceResource as DefinedResource<EventActorsWorkspaceState> },
     activeStatusMessage: (entry) => {
       const entryTopic =
         (entry as Record<string, unknown> | undefined)?.topic ?? "";
@@ -38,8 +38,8 @@ export function createAppendEntry(
         : "Considering an entry...";
     },
     execute: async (entry, ctx) => {
-      const state = (ctx.resources as Record<string, any>)[resourceKey]
-        .state as EventActorsWorkspaceState;
+      const workspace = ctx.resources[resourceKey];
+      const state = workspace.state;
 
       const entryType = (entry as Record<string, unknown>).type ?? "unknown";
       const entryTopic = (entry as Record<string, unknown>).topic ?? "";
@@ -49,13 +49,11 @@ export function createAppendEntry(
       );
       if (isDuplicate) return;
 
-      await (ctx.resources as Record<string, any>)[resourceKey].patchState({
+      await workspace.patchState({
         entries: [...state.entries, entry],
       });
 
-      const seq = ctx.sequencer;
-      const seqState = seq?.state as { emissionCount?: number } | undefined;
-      const emissionCount = seqState?.emissionCount ?? state.entries.length;
+      const emissionCount = ctx.sequencer?.state.emissionCount ?? state.entries.length;
 
       ctx.emit.data(
         "rb-entry",

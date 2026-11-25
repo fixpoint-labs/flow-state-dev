@@ -227,7 +227,7 @@ function buildDefaultController(config: {
               .join("\n")}`
           : "";
 
-      const iteration = ctx.sequencer?.state?.iteration ?? 0;
+      const iteration = ctx.sequencer!.state.iteration;
 
       return [
         "You are a controller coordinating specialist agents over a shared workspace.",
