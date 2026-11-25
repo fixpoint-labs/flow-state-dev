@@ -1988,7 +1988,10 @@ async function checkBranchPullRequests(ctx: ManagerContext, host: WorkspaceHost,
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
   const worktrees = worktreesOf(ctx);
   // The repository the host pinned for the run's base: `gh` is told it, and never reads the run's checkout.
-  const repository = await host.pullRequestRepository?.({ cwd: state.workspacePath, baseRef: state.baseRef ?? null });
+  // A host that rejects is a host with no pinned repository: this check never throws.
+  const repository = await host
+    .pullRequestRepository?.({ cwd: state.workspacePath, baseRef: state.baseRef ?? null })
+    .catch(() => undefined);
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
     branches: [state.branch],
