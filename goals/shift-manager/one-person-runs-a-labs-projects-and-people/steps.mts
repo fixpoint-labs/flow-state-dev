@@ -463,11 +463,12 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   return turn;
 }
 
+// FIX-2840.
 /**
  * Approve, in Inbox, the one `user_approval` a hire turn stopped on, which
  * must name `worker`, and wait for the turn to end. Why it couldn't, or
  * `undefined` once the approved turn completed. A hire waits for the person's
- * Approve, as a fire does (FIX-2840).
+ * Approve, as a fire does.
  */
 export async function approveHireInInbox(world: World, turn: Turn, worker: string): Promise<string | undefined> {
   if (turn.sessionId === null || turn.requestId === null) return `the hire turn left no session or request: ${quote(turn)}`;
