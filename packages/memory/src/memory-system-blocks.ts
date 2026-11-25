@@ -19,13 +19,14 @@ import {
   reinforce,
   removeFact,
   allFacts,
+  knownSubjects,
 } from './semantic-memory-helpers'
-import type { Edge } from '@flow-state-dev/core/graph'
+import type { Edge, ResourceEdgeApi } from '@flow-state-dev/core/graph'
 import type { ResolvedRelationsConfig } from './internal/config'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
 import type { MemorySystemState, ReadMessage } from './memory-system'
 import { findBestOverlap } from '@flow-state-dev/core/helpers'
-import { canonicalizeSubject, edgesOf } from './internal/helpers'
+import { canonicalizeSubject } from './internal/helpers'
 import { episodicResourceOf, semanticResourceOf } from './internal/tier-resources'
 import { createDigestMemoryResource } from './digest-memory'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks'
@@ -203,9 +204,7 @@ export const consolidationPersistInputSchema = consolidationOutputSchema.extend(
 // ---------------------------------------------------------------------------
 
 /**
- * Apply the generator's extracted edges onto a semantic resource that carries
- * the typed-edge graph (`ref.edges` present). Pure side-effecting helper used
- * by `consolidationPersist`.
+ * Apply the generator's extracted edges to the semantic resource's graph.
  *
  * Per-edge rules:
  *  - Canonicalize `from`/`to` (lowercase/trim) — the same canonicalization
@@ -224,14 +223,11 @@ export const consolidationPersistInputSchema = consolidationOutputSchema.extend(
  * consolidation pass.
  */
 async function applyEdges(
-  semRef: any,
+  edgeApi: ResourceEdgeApi,
+  knownNodes: ReturnType<typeof knownSubjects>,
   relations: ResolvedRelationsConfig,
-  edges: ConsolidationEdge[],
+  edges: NonNullable<z.infer<typeof consolidationPersistInputSchema>['edges']>,
 ): Promise<void> {
-  // Known node identities = canonicalized subjects of every stored fact.
-  const knownNodes = new Set<string>(
-    semRef.state.facts.map((f: any) => canonicalizeSubject(f.subject ?? 'user')),
-  )
 
   // Confidence boost applied when reinforcing an existing edge. Mirrors the
   // semantic-fact reinforce default so edge and fact confidence move in step.
@@ -254,8 +250,8 @@ async function applyEdges(
   // touches proposal endpoints). Merges any new provenance episode ids from the
   // proposal into the carried-over source so reinforcement accrues provenance.
   const reinforceMatch = async (match: Edge, extraSource: string[] = []): Promise<void> => {
-    await semRef.edges.supersede(match.id)
-    await semRef.edges.add({
+    await edgeApi.supersede(match.id)
+    await edgeApi.add({
       from: match.from, to: match.to, type: match.type,
       confidence: Math.min(1, match.confidence + REINFORCE_BOOST),
       source: [...new Set([...match.source, ...extraSource])],
@@ -264,7 +260,7 @@ async function applyEdges(
 
   for (const proposal of edges) {
     try {
-      const activeNow = (semRef.edges.all({ at: new Date().toISOString() }) as Edge[])
+      const activeNow = edgeApi.all({ at: new Date().toISOString() })
 
       // Reinforce-by-id is resolved purely from the stored edge — we must NOT
       // resolve the proposal's from/to first, since that would mint a phantom
@@ -306,7 +302,7 @@ async function applyEdges(
           if (match) {
             await reinforceMatch(match, proposal.sourceEpisodeIds ?? [])
           } else {
-            await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: proposal.sourceEpisodeIds ?? [] })
+            await edgeApi.add({ from, to, type, confidence: proposal.confidence, source: proposal.sourceEpisodeIds ?? [] })
           }
           break
         }
@@ -334,14 +330,14 @@ async function applyEdges(
             : undefined
           const stale = byId ?? activeNow.find((e) => e.from === from && e.type === type)
           if (stale) {
-            await semRef.edges.supersede(stale.id)
+            await edgeApi.supersede(stale.id)
           } else {
             console.warn(
               `[memory] relations: supersede found no active ${from} -${type}-> * to close`,
             )
           }
           // Add the replacement edge described by from/to/type.
-          await semRef.edges.add({ from, to, type, confidence: proposal.confidence, source: proposal.sourceEpisodeIds ?? [] })
+          await edgeApi.add({ from, to, type, confidence: proposal.confidence, source: proposal.sourceEpisodeIds ?? [] })
           break
         }
       }
@@ -758,8 +754,7 @@ export function memorySystemReflect(
     inputSchema: unifiedObservationsSchema,
     outputSchema: z.any(),
     // FIX-435: flat resources map; intrinsic scope on each resource routes
-    // it to the right storage layer. Episodic and semantic are conditionally
-    // installed via spread — widens the inferred ctx type for those keys.
+    // it to the right storage layer. Episodic and semantic are optional.
     resources: {
       workingMemory: workingMemoryResource,
       memorySystem: memorySystemResource,
@@ -769,10 +764,8 @@ export function memorySystemReflect(
     execute: async (input, ctx) => {
       const wmRef = ctx.resources.workingMemory
       const sysRef = ctx.resources.memorySystem
-      // Episodic and semantic are installed conditionally above; cast at
-      // point of use to the helper signatures.
-      const epRef = ctx.resources.episodicMemory as any
-      const semRef = ctx.resources.semanticMemory as any
+      const epRef = ctx.resources.episodicMemory
+      const semRef = ctx.resources.semanticMemory
 
       let episodicWrites = 0
       let evictedPersistent = 0
@@ -848,13 +841,11 @@ export function memorySystemReflect(
           // Dedup is subject-scoped: only compare against facts with the same subject.
           // This prevents "born in May" about user deduping against an unrelated
           // fact about a different person.
-          const sessionOnlyCategories = new Set(['event', 'task'])
-          const isStableCategory = !sessionOnlyCategories.has(item.category)
           if (
             semRef &&
             config.semantic &&
             (item.durability === 'permanent' || item.durability === 'persistent') &&
-            isStableCategory
+            item.category !== 'event' && item.category !== 'task'
           ) {
             const existing = allFacts(semRef, normalizedSubject)
             const match = findBestOverlap(item.content, existing)
@@ -875,7 +866,7 @@ export function memorySystemReflect(
                 subject: normalizedSubject,
                 content: item.content,
                 confidence: item.importance,
-                category: item.category as any,
+                category: item.category,
                 sourceEpisodeIds: [],
               })
             }
@@ -891,7 +882,7 @@ export function memorySystemReflect(
       // evaluator is cleared.
       const allItems = ctx.session?.items?.all?.() ?? []
       const judgedWindow = readJudged?.(ctx)
-      await sysRef.updateState((s: any) => ({
+      await sysRef.updateState((s) => ({
         ...(judgedWindow !== undefined
           ? markJudgedRead(s, judgedWindow, ctx.session?.items)
           : {
@@ -951,7 +942,7 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
         (sysState.episodicWritesSinceLastConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold ||
           sysState.evictedPersistentSinceLastConsolidation > 0)
       ) {
-        await sysRef.updateState((s: any) => ({
+        await sysRef.updateState((s) => ({
           ...s,
           episodicWritesSinceLastConsolidation: 0,
           evictedPersistentSinceLastConsolidation: 0,
@@ -1027,13 +1018,11 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
 
       if (!triggered) return { triggered: false, episodes: [], existingFacts: [] }
 
-      // Episodic and semantic are installed conditionally above; cast at
-      // point of use to the helper signatures.
-      const epRef = ctx.resources.episodicMemory as any
-      const semRef = ctx.resources.semanticMemory as any
+      const epRef = ctx.resources.episodicMemory
+      const semRef = ctx.resources.semanticMemory
 
       const unconsolidated = epRef
-        ? epRef.state.episodes.filter((e: any) => !e.consolidated)
+        ? epRef.state.episodes.filter((e) => !e.consolidated)
         : []
 
       const existingFacts = semRef ? allFacts(semRef) : []
@@ -1226,8 +1215,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     inputSchema: consolidationPersistInputSchema,
     outputSchema: z.any(),
     // FIX-435: flat resources map; intrinsic scope routes each resource.
-    // Episodic and semantic are conditionally installed via spread — widens
-    // the inferred ctx type for those keys.
+    // Episodic and semantic are optional.
     resources: {
       workingMemory: workingMemoryResource,
       memorySystem: memorySystemResource,
@@ -1236,26 +1224,21 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     },
     execute: async (input, ctx) => {
       // Relations tier (FIX-745): resolved relations config + the edge proposals
-      // the generator returned. `edges` is always present on the schema but only
-      // populated when relations is enabled. We process edges whenever relations
-      // is on AND the live ref carries the edge API — so an empty-facts batch
-      // that still proposes edges is not skipped by the fast-path below.
+      // from the generator. Edges can arrive without facts, but are only
+      // processed when the semantic resource carries the graph.
       const relations = config.semantic?.relations
-      const hasEdgeWork = !!relations &&
-        !!edgesOf(ctx) &&
-        Array.isArray((input as any).edges) &&
-        (input as any).edges.length > 0
+      const semRef = ctx.resources.semanticMemory
+      const edgeApi = semRef?.edges
+      const proposals = input.edges
+      const hasEdgeWork = relations && edgeApi && proposals && proposals.length > 0
 
       if (input.facts.length === 0 && !hasEdgeWork) {
         return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
       }
 
-      // Episodic and semantic are installed conditionally above; cast at
-      // point of use to the helper signatures.
-      const semRef = ctx.resources.semanticMemory as any
       if (!semRef) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
 
-      const epRef = ctx.resources.episodicMemory as any
+      const epRef = ctx.resources.episodicMemory
       const sysRef = ctx.resources.memorySystem
       const wmRef = ctx.resources.workingMemory
 
@@ -1269,7 +1252,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // mutation guards below can refuse to rewrite one person's fact with
       // another's content. Returns undefined when the target id isn't found.
       const storedSubjectOf = (factId: string): string | undefined => {
-        const target = semRef.state.facts.find((f: any) => f.id === factId)
+        const target = semRef.state.facts.find((f) => f.id === factId)
         return target ? (target.subject ?? 'user').toLowerCase() : undefined
       }
 
@@ -1374,8 +1357,8 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // non-fatal (consolidation runs in a background `.sideChain()`): we warn and
       // continue rather than crash the turn. Edge extraction NEVER touches fact
       // subjects — it only reads them to canonicalize endpoints (FIX-703).
-      if (relations && edgesOf(ctx) && Array.isArray((input as any).edges)) {
-        await applyEdges(semRef, relations, (input as any).edges as ConsolidationEdge[])
+      if (hasEdgeWork) {
+        await applyEdges(edgeApi, knownSubjects(semRef), relations, proposals)
       }
 
       // Fact-consolidation bookkeeping (FIX-745 follow-up): mark episodes
@@ -1396,13 +1379,13 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
         }
 
         // Increment consolidation counter
-        await semRef.updateState((s: any) => ({
+        await semRef.updateState((s) => ({
           ...s,
           totalConsolidations: s.totalConsolidations + 1,
         }))
 
         // Reset memory system consolidation counters
-        await sysRef.updateState((s: any) => ({
+        await sysRef.updateState((s) => ({
           ...s,
           episodicWritesSinceLastConsolidation: 0,
           evictedPersistentSinceLastConsolidation: 0,
@@ -1494,8 +1477,7 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
       ...(semanticResource ? { semanticMemory: semanticResource } : {}),
     },
     execute: async (_input, ctx) => {
-      // Semantic is installed conditionally above; cast at point of use.
-      const semRef = (ctx.resources as any).semanticMemory
+      const semRef = ctx.resources.semanticMemory
       if (!semRef) return { triggered: false, facts: [] }
 
       const facts = allFacts(semRef)
@@ -1595,8 +1577,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
       ...(semanticResource ? { semanticMemory: semanticResource } : {}),
     },
     execute: async (input, ctx) => {
-      // Semantic is installed conditionally above; cast at point of use.
-      const semRef = (ctx.resources as any).semanticMemory
+      const semRef = ctx.resources.semanticMemory
       if (!semRef) return { removed: 0, merged: 0 }
 
       let removed = 0
@@ -1604,12 +1585,12 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
 
       // Track all fact IDs referenced in merges to avoid double-removal
       const mergedFactIds = new Set<string>()
-      for (const merge of (input.merges ?? [])) {
+      for (const merge of input.merges) {
         for (const id of merge.sourceFactIds) mergedFactIds.add(id)
       }
 
       // Process removals (skip any that are also in a merge)
-      for (const removal of (input.removals ?? [])) {
+      for (const removal of input.removals) {
         if (mergedFactIds.has(removal.factId)) continue
         try {
           await removeFact(semRef, removal.factId)
@@ -1620,7 +1601,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
       }
 
       // Process merges: update first source fact with merged content, remove the rest
-      for (const merge of (input.merges ?? [])) {
+      for (const merge of input.merges) {
         if (merge.sourceFactIds.length < 2) continue
         try {
           const [keepId, ...removeIds] = merge.sourceFactIds
@@ -1758,7 +1739,7 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
     resources: { memorySystem: memorySystemResource },
     execute: async (input, ctx) => {
       const allItems = ctx.session?.items?.all?.() ?? []
-      const state = ctx.resources.memorySystem.state as MemorySystemState
+      const state = ctx.resources.memorySystem.state
       const unread = unreadMessages(allItems, state)
       // With a `source` override the evaluator judges the source text, and the
       // unread session messages are still marked read, as the watermark did.
@@ -1775,7 +1756,7 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
     inputSchema: z.any(),
     resources: { memorySystem: memorySystemResource },
     execute: async (_input, ctx) => {
-      await ctx.resources.memorySystem.updateState((s: any) => markJudgedRead(s, judged(ctx), ctx.session?.items))
+      await ctx.resources.memorySystem.updateState((s) => markJudgedRead(s, judged(ctx), ctx.session?.items))
     },
   })
 

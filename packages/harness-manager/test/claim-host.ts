@@ -14,6 +14,7 @@
  * a real git checkout. Only the harness is a stub, scripted per call, and it
  * records what it was fed.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,7 +45,6 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
-import { hostForConfig } from "../src/workspace";
 import { WORKTREES, localWorkspaceHost, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -256,8 +256,8 @@ export function claimHost(options: HostOptions) {
     workspace: options.checkedOutBase === true
       ? localWorkspaceHost({ root: join(dir, "checkouts"), remotes: { allow: [] }, localRepositories: [sourceRepo], source: () => ({ kind: "repo", repo: sourceRepo }), provisionTimeoutMs: 10_000 })
       : options.baseTip === undefined
-        ? { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }
-        : { ...hostForConfig({ root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
+        ? localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 })
+        : { ...localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),

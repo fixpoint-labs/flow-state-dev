@@ -20,7 +20,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import type { SupervisorState } from "../schemas";
+import { supervisorStateSchema } from "../schemas";
 
 export interface LabelFailedReviewsOptions {
   name: string;
@@ -34,6 +34,7 @@ export function createLabelFailedReviews(options: LabelFailedReviewsOptions) {
   return handler({
     name: `${name}-label-failed-reviews`,
     inputSchema: z.unknown(),
+    targetStateSchemas: { [name]: supervisorStateSchema },
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
@@ -43,7 +44,7 @@ export function createLabelFailedReviews(options: LabelFailedReviewsOptions) {
       // Look up the supervisor sequencer by name (same approach as
       // reviewer-check) rather than `ctx.sequencer`, so the read still
       // works if this handler is ever wrapped inside another sequencer.
-      const reviewMetadata = ctx.getTarget<SupervisorState>(name)?.state.reviewMetadata;
+      const reviewMetadata = ctx.targets[name]?.state.reviewMetadata;
       for (const task of collection.list({ status: "errored" })) {
         const review = reviewMetadata?.[task.id];
         const labels = task.labels ?? [];

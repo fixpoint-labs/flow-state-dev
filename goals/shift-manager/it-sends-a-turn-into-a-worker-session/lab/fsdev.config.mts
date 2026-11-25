@@ -77,7 +77,7 @@ const lab = await openLab({
   // The recording harness's abort ends its run at once, so a steer may stop it: its block says so.
   harnesses: [readyHarness((feeds) => Object.assign(recordingHarness(feeds), { stopsOnAbort: true }))],
   runTimeoutMs: RUN_TIMEOUT_MS,
-  workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
+  workspace: { root: scratch.root, repo: scratch.sourceRepo, baseRef: BASE_REF },
   coderWorkerId,
   modelResolver,
   inventory: true,

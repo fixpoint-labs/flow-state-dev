@@ -6,6 +6,7 @@
  * package's scripted stub, making scripted tool calls; what ran is its own
  * record and the marker files the calls write.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -68,7 +69,7 @@ function host(options: {
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, doneWhen: { check: async () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: (feeds) => {

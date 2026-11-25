@@ -63,59 +63,18 @@ import { createHash } from "node:crypto";
 import { resolve, sep } from "node:path";
 import {
   acquireLock,
-  localWorkspaceHost,
+  refreshLock,
   releaseLock,
   WorkspaceRefusedError,
   worktreeLockPath,
   type IgnoredDirectory,
   type WorkspaceHost,
-  type WorkspaceSetup,
+  type RunSourceAnswer,
 } from "@flow-state-dev/workspace";
-import { refreshLock } from "@flow-state-dev/workspace/internal";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
 export { isStrictlyInside } from "@flow-state-dev/workspace";
-
-/** Where checkouts and their lock files live, and what they are cut from. */
-export interface WorkspaceConfig {
-  /** Directory holding every issue-phase checkout. Host-set, never per-task. */
-  root: string;
-  /** The repository checkouts are cut from. Host-set. */
-  sourceRepo: string;
-  /** The ref a fresh checkout branches from. */
-  baseRef: string;
-  /**
-   * How long **the whole of provisioning** may take, in milliseconds.
-   *
-   * One budget for the operation, not one per git call. That distinction is the
-   * entire point: provisioning runs up to three git commands back to back
-   * (`worktree prune`, a `rev-parse` to test the branch, then `worktree add`),
-   * so a per-call timeout of N bounds the operation at 3N. The ownership
-   * arithmetic reads this number as the longest provisioning can hold the lock,
-   * and a number that is wrong by a factor of the command count is worse than no
-   * number: a live attempt could still be inside `worktree add` when its lock is
-   * declared stale, letting a reclaimed attempt steal the tree and edit the same
-   * checkout concurrently.
-   *
-   * Expressing it as one deadline also means adding a fourth git command cannot
-   * silently widen the bound.
-   */
-  provisionTimeoutMs?: number;
-  /**
-   * A command run in each fresh checkout before a run gets it, such as
-   * `pnpm install`. Passed to the workspace host as its `setup`; it draws from
-   * `provisionTimeoutMs`. Absent, nothing runs.
-   */
-  setup?: WorkspaceSetup;
-  /**
-   * The GitHub repository (`host/owner/name`) the source repository's pinned
-   * remote URL stands for, for an accept that opens a pull request. Passed to
-   * the workspace host as its `pullRequestRepo`. Absent, it is read from a
-   * GitHub-shaped URL, and a remote that names none offers no pull request.
-   */
-  pullRequestRepo?: (url: string) => string | undefined;
-}
 
 /** One provisioned checkout. */
 export interface Checkout {
@@ -720,11 +679,11 @@ function issuePhaseSegment(location: RunLocation): string {
  * A pure function of the durable task, the authenticated identity, and the
  * epic whose board filed it.
  */
-export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation): string {
+export function checkoutPathFor(root: string, location: RunLocation): string {
   // **Absolute, always.** The derived path is consumed from two different
   // working directories: the lock, the existence checks, the recorded path and
   // the agent's `cwd` all resolve it against the dispatcher's directory, while
-  // `git worktree add` runs with `cwd: config.sourceRepo`. A relative
+  // `git worktree add` runs with `cwd` set to the source repository. A relative
   // `workspace.root` therefore split in two — reproduced: the worktree lands
   // under the SOURCE REPO while everything else looks for it under the
   // dispatcher, so the agent is handed a directory that does not exist and no
@@ -742,7 +701,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
   // from. This comment used to say a host "should" pass an absolute one and call
   // the rest unguarded — which is the unenforced convention every other guard at
   // that door exists to replace.
-  return resolve(config.root, ...placeFor(location));
+  return resolve(root, ...placeFor(location));
 }
 
 /** An encoded {@link taskIssueSegment}: `h-` and a {@link hashKeySegment}. */
@@ -849,53 +808,28 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
 };
 
 /**
- * The workspace host a fixed repository runs through: `sourceRepo` is a
- * repository on this machine the operator named, so the host cuts worktrees
- * from it directly and keeps every run's branch in it. It reaches only the
- * base's upstream, to cut a new branch from the newer of the two. The run
- * source is constant.
- */
-export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
-  // Absolute, because the host takes only an absolute path as a repository on
-  // this machine; a relative `sourceRepo` would otherwise be judged a remote.
-  const sourceRepo = resolve(config.sourceRepo);
-  return localWorkspaceHost({
-    root: config.root,
-    remotes: { allow: [] },
-    localRepositories: [sourceRepo],
-    source: () => ({ kind: "repo", repo: sourceRepo, baseRef: config.baseRef }),
-    ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
-    ...(config.setup !== undefined ? { setup: config.setup } : {}),
-    ...(config.pullRequestRepo !== undefined ? { pullRequestRepo: config.pullRequestRepo } : {}),
-    now,
-  });
-}
-
-/**
- * Give this issue-phase a checkout of `config.sourceRepo`, or hand back the
- * one the last attempt left.
+ * Give this issue-phase a checkout from `host`, or hand back the one the last
+ * attempt left.
  *
  * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
  * runs every git command: idempotent, never resets, forces or discards work,
- * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
- * and a checkout whose branch was deleted or that was cut from another
- * repository is refused rather than recreated. A checkout a run switched to
- * another branch is moved back onto the run's branch, keeping what the run made
- * on the other, so the attempt commits where the prompt says. One left there
- * with uncommitted changes is refused (`checkout-moved`): those changes are the
- * run's to commit, stash or discard. The checkout is exactly
- * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
+ * one budget for the whole operation (the host's `provisionTimeoutMs`), and a
+ * checkout whose branch was deleted or that was cut from another repository is
+ * refused rather than recreated. A checkout a run switched to another branch is
+ * moved back onto the run's branch, keeping what the run made on the other, so
+ * the attempt commits where the prompt says. One left there with uncommitted
+ * changes is refused (`checkout-moved`): those changes are the run's to commit,
+ * stash or discard. For a host built by `localRepoWorkspaceHost`, the checkout
+ * is exactly {@link checkoutPathFor}'s path under the host's root and the
+ * branch lives in its repository.
  */
 export async function provisionCheckout(
-  config: WorkspaceConfig,
+  host: WorkspaceHost,
+  answer: RunSourceAnswer,
   location: RunLocation,
-  now: () => number = Date.now,
 ): Promise<Checkout> {
   const branch = branchFor(location);
-  const place = await hostForConfig(config, now).provision(
-    { kind: "repo", repo: resolve(config.sourceRepo), baseRef: config.baseRef },
-    { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
-  );
+  const place = await host.provision(answer, { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED });
   if (place.repo?.offBranch !== undefined) {
     throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
   }

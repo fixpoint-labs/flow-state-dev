@@ -16,7 +16,7 @@ import { fetch, search } from "@flow-state-dev/tools";
 import { githubTrustedReviewers, operatorGitHub, projectSourceTools } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
-import { checkCommandsFrom, localWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { appContextFlow } from "./flows/lab-context.mts";
 
@@ -66,7 +66,7 @@ export async function openTeammates(options: TeammatesOptions) {
   const declared = (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.map((w) => [w.id, w.declared.delegates, w.declared.capabilities] as const);
   const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d)).map(([id, d]) => [id, d])) as Record<string, "all" | string[]>;
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
-  const workspace = localWorkspaceHost({ root: options.runsRoot, remotes: { allow: [] }, localRepositories: [workdir], source: () => ({ kind: "repo", repo: workdir }), ...(options.setup === undefined ? {} : { setup: options.setup }) });
+  const workspace = localRepoWorkspaceHost({ root: options.runsRoot, repo: workdir, ...(options.setup === undefined ? {} : { setup: options.setup }) });
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
   const checks = { commands: options.checks ?? [], timeoutMs: 10 * 60_000 };
   const harness = options.harness ?? "cursor";

@@ -201,7 +201,6 @@ import {
   checkoutLeaseFromState,
   freeRunLocation,
   locationFor,
-  hostForConfig,
   placeFor,
   refreshCheckout,
   releaseCheckout,
@@ -212,7 +211,6 @@ import {
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
-  type WorkspaceConfig,
 } from "./workspace";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
@@ -452,7 +450,7 @@ export interface ModeDone {
    * pin retained by a construction that then failed, and a comparison written
    * to paper over both.
    */
-  validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
+  validate?(workspace: WorkspaceHost): unknown;
 }
 
 /**
@@ -715,14 +713,12 @@ export interface ManagerOptions {
   /**
    * Where each run's files come from, and where it works.
    *
-   * `{ root, sourceRepo, baseRef }` cuts every run a new branch of
-   * `sourceRepo`, kept in that repository, with the checkout under `root`.
-   * A workspace host (`localWorkspaceHost` from `@flow-state-dev/workspace`)
-   * answers per run from its run source instead: a branch of an allowed
-   * remote with kept files beside it, or kept files alone. Both go through
-   * one provisioning path; the first is a host whose source is constant.
+   * A workspace host from `@flow-state-dev/workspace`, which answers per run
+   * from its run source: a branch of one repository on this machine
+   * (`localRepoWorkspaceHost`), a branch of an allowed remote with kept files
+   * beside it, or kept files alone (`localWorkspaceHost`).
    */
-  workspace: WorkspaceConfig | WorkspaceHost;
+  workspace: WorkspaceHost;
   // FIX-2794.
   /**
    * How long the harness may send nothing, in ms, before its run is stopped
@@ -1677,7 +1673,7 @@ function managerState<TState extends Record<string, unknown>>(state: TState | un
  * 1. `waitMs` — the lock wait. A worker queued behind another attempt's tree is
  *    working, not stuck, and cancelling it is the same defect.
  * 2. the provisioning budget — one deadline for all of git, see
- *    `WorkspaceConfig.provisionTimeoutMs`.
+ *    the workspace host's `provisionTimeoutMs`.
  * 3. `runTimeoutMs` — the agent. A run capped on time by its host is waited
  *    out to its cap. The default cap (4 hours) and no cap (`0`) are not a
  *    length a shutdown should wait out, so the host names how long a
@@ -2121,10 +2117,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           doneWhen: Object.freeze({ ...mode.doneWhen, check: (run: CompletionRunContext) => mode.doneWhen.check({ ...run, validated }) }),
         });
 
-  // **One provisioning path.** A fixed repository is a host whose source is
-  // constant and whose repository is used as it stands, so its runs' branches
-  // stay in `sourceRepo` and their checkouts where they always were.
-  const host: WorkspaceHost = isWorkspaceHost(workspace) ? workspace : hostForConfig(workspace);
+  const host: WorkspaceHost = workspace;
 
   // FIX-2794.
   // Checked here, before anything is claimed: a timer handed a bad number
@@ -2801,8 +2794,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **Where the run works, from the workspace host.** Its source is asked
       // now because the checkout's path is recorded on the row and named in
       // the prompt before anything is provisioned. A run already provisioned
-      // keeps the repository its record names (see `pinnedAnswer`). With a
-      // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
+      // keeps the repository its record names (see `pinnedAnswer`). On a
+      // `localRepoWorkspaceHost` this is the path `checkoutPathFor` derives.
       const recorded = found.record;
       try {
         assertPlaceAndHeld(recorded);
@@ -5147,10 +5140,6 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   return answered;
 }
 
-/** Is the `workspace` option a host, rather than a fixed repository's config? */
-function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace is WorkspaceHost {
-  return typeof (workspace as WorkspaceHost).provision === "function";
-}
 
 // BR-19.
 /**

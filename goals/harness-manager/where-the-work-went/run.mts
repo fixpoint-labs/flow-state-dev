@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type ModeSpec } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
+import { localRepoWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
   REPO_ROOT,
@@ -132,12 +132,7 @@ await runGoal(async (failures) => {
   if (legs.has("a")) {
     const { root, repo } = scratchRepo();
     const base = git(repo, "rev-parse", "HEAD");
-    const host = localWorkspaceHost({
-      root: join(root, "worktrees"),
-      remotes: { allow: [] },
-      localRepositories: [repo],
-      source: () => ({ kind: "repo", repo, baseRef: "HEAD" }),
-    });
+    const host = localRepoWorkspaceHost({ root: join(root, "worktrees"), repo, baseRef: "HEAD" });
     const source = { kind: "repo" as const, repo, baseRef: "HEAD" };
     const branchOf = (sessionId: string) => `where/${sessionId}`;
     let subject = 0;
@@ -238,7 +233,7 @@ await runGoal(async (failures) => {
     const mode: ModeSpec = { name: fixture.phase, instructions: () => "make the change", doneWhen: { check: () => true } };
     const built = harnessGoalFlow({
       epic: fixture.epic,
-      workspace: { root: join(root, "checkouts"), sourceRepo: repo, baseRef: "main" },
+      workspace: { root: join(root, "checkouts"), repo, baseRef: "main" },
       maxAttempts: 1,
       mode,
       slot: stub.slot,

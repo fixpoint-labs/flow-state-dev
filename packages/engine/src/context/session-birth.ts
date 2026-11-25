@@ -28,7 +28,8 @@
  *   `stateSchema` (on a flow that binds its sessions, a state the schema
  *   refuses is refused; see {@link parseInitialSessionState}), the
  *   `serverOwned` refusal for state a caller seeded, and the flow's
- *   `createCheck` on what the schema parsed.
+ *   `createCheck` on what the schema parsed, with any fields it derived
+ *   written over the result.
  *
  * The check runs on a miss only. A session that already exists is returned
  * without calling it, so a turn on an existing session costs no check, and a
@@ -286,7 +287,8 @@ export function parseInitialSessionState(
 
 /**
  * Check a create against the flow's declarations, before anything is written.
- * Resolves the session's initial state as the flow's schema parsed it.
+ * Resolves the session's initial state as the flow's schema parsed it, with
+ * the fields the create check derived written over it.
  *
  * @throws SessionCreateRefusedError when the create is refused.
  */
@@ -312,7 +314,7 @@ export async function checkSessionCreate(
   if (!verdict.ok) {
     throw new SessionCreateRefusedError(sessionId, verdict.status ?? 400, verdict.message);
   }
-  return state;
+  return verdict.state === undefined ? state : ({ ...state, ...verdict.state } as JsonObject);
 }
 
 /**
