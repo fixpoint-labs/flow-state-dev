@@ -5,6 +5,7 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
@@ -182,7 +183,7 @@ function host(options: {
             provisionTimeoutMs: 10_000,
             pullRequestRepo: () => "github.com/acme/widgets",
           })
-        : { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" },
+        : localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen, remote),

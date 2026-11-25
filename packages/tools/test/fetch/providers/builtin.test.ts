@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { lookup } from "node:dns/promises";
 import { builtinFetchAdapter } from "../../../src/fetch/providers/builtin";
 
 describe("builtin fetch adapter", () => {
@@ -9,15 +10,12 @@ describe("builtin fetch adapter", () => {
   });
 
   it("fetches a page and converts to markdown", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () =>
-        Promise.resolve(
-          `<html><head><title>Test</title></head><body><p>Hello world content here</p></body></html>`
-        ),
-      headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        `<html><head><title>Test</title></head><body><p>Hello world content here</p></body></html>`,
+        { headers: { "content-type": "text/html; charset=utf-8" } }
+      )
+    );
 
     const result = await builtinFetchAdapter.fetch("https://example.com", {
       waitForJS: false,
@@ -32,12 +30,9 @@ describe("builtin fetch adapter", () => {
   });
 
   it("throws on non-200 response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      statusText: "Not Found",
-      text: () => Promise.resolve("page not found"),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("page not found", { status: 404, statusText: "Not Found" })
+    );
 
     await expect(
       builtinFetchAdapter.fetch("https://example.com/missing", {
@@ -47,12 +42,11 @@ describe("builtin fetch adapter", () => {
   });
 
   it("sends proper user-agent header", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve("<html><body>test</body></html>"),
-      headers: new Headers({ "content-type": "text/html" }),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("<html><body>test</body></html>", {
+        headers: { "content-type": "text/html" },
+      })
+    );
 
     await builtinFetchAdapter.fetch("https://example.com", {
       waitForJS: false,
@@ -130,15 +124,12 @@ describe("builtin fetch adapter — network boundary", () => {
         headers: new Headers({ location: "https://example.com/final" }),
         body: null,
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () =>
-          Promise.resolve(
-            `<html><head><title>Final</title></head><body><p>Landed here after the hop</p></body></html>`
-          ),
-        headers: new Headers({ "content-type": "text/html" }),
-      });
+      .mockResolvedValueOnce(
+        new Response(
+          `<html><head><title>Final</title></head><body><p>Landed here after the hop</p></body></html>`,
+          { headers: { "content-type": "text/html" } }
+        )
+      );
 
     const result = await builtinFetchAdapter.fetch("https://example.com/start", {
       waitForJS: false,
@@ -158,16 +149,15 @@ describe("builtin fetch adapter — guard error shaping", () => {
   });
 
   it("keeps a transient DNS failure retryable", async () => {
-    // The guard resolves the hostname before `fetch` gets a chance to, so a
-    // resolver outage must still surface as the retryable network error callers
-    // (and the generator's retry) already expect.
+    // The hostname is resolved by the socket's lookup inside the real fetch, so
+    // a resolver outage must still surface as the retryable network error
+    // callers (and the generator's retry) already expect.
     const { lookup } = await import("node:dns/promises");
     vi.mocked(lookup).mockRejectedValueOnce(
       Object.assign(new Error("getaddrinfo EAI_AGAIN example.com"), {
         code: "EAI_AGAIN",
       })
     );
-    globalThis.fetch = vi.fn();
 
     await expect(
       builtinFetchAdapter.fetch("https://example.com/page", { waitForJS: false })
@@ -175,6 +165,25 @@ describe("builtin fetch adapter — guard error shaping", () => {
       code: "fetch_transport_error",
       retryable: true,
       details: { errorType: "network" },
+    });
+  });
+
+  it("refuses a hostname that resolves to a private address at connect time", async () => {
+    // DNS rebinding: whatever the name answered to an earlier check, the
+    // address the socket would connect to is the one that is judged. The real
+    // fetch runs here, so this goes through the dispatcher's lookup.
+    vi.mocked(lookup).mockResolvedValueOnce([
+      { address: "169.254.169.254", family: 4 },
+    ] as never);
+
+    await expect(
+      builtinFetchAdapter.fetch("https://rebind.example/latest/meta-data", {
+        waitForJS: false,
+      })
+    ).rejects.toMatchObject({
+      code: "fetch_blocked_url",
+      retryable: false,
+      details: { errorType: "blocked" },
     });
   });
 
@@ -187,6 +196,70 @@ describe("builtin fetch adapter — guard error shaping", () => {
       code: "fetch_blocked_url",
       retryable: false,
       details: { errorType: "blocked" },
+    });
+  });
+});
+
+describe("builtin fetch adapter — bounds", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("refuses a body past the byte cap with its own error", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("x".repeat(5 * 1024 * 1024 + 1), {
+        headers: { "content-type": "text/html" },
+      })
+    );
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com/huge", { waitForJS: false })
+    ).rejects.toMatchObject({
+      code: "fetch_response_too_large",
+      retryable: false,
+      details: { errorType: "too_large", url: "https://example.com/huge" },
+    });
+  });
+
+  it("keeps the HTTP error and its retry when the error page is past the cap", async () => {
+    // The status decides retryability; an unreadable body only loses the excerpt.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("x".repeat(5 * 1024 * 1024 + 1), {
+        status: 503,
+        statusText: "Service Unavailable",
+      })
+    );
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com/down", { waitForJS: false })
+    ).rejects.toMatchObject({
+      code: "fetch_http_error",
+      retryable: true,
+      details: { errorType: "http", httpStatus: 503 },
+    });
+  });
+
+  it("aborts with the run's signal", async () => {
+    globalThis.fetch = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+        })
+    ) as typeof globalThis.fetch;
+    const run = new AbortController();
+
+    const pending = builtinFetchAdapter.fetch("https://example.com/", {
+      waitForJS: false,
+      signal: run.signal,
+    });
+    run.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      code: "fetch_transport_error",
+      retryable: false,
+      details: { errorType: "abort" },
     });
   });
 });

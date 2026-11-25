@@ -3,7 +3,7 @@ import { cloneValue } from "@flow-state-dev/core/helpers";
 import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
-import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
+import type { OutputItem, RuntimeItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { createTestContext, createTestFlow } from "../runtime/createTestContext";
 import { sequencerTraces } from "./sequencerTraces";
@@ -52,12 +52,10 @@ function toTrackedStateChanges(items: OutputItem[]): Array<{
  * that retries decides once per attempt, and the last attempt is the one
  * that produced the result.
  */
-function selectedRouteOf(router: BlockDefinition<any, any>, items: ReadonlyArray<{ type: string }>): string | undefined {
+function selectedRouteOf(router: BlockDefinition<any, any>, items: readonly RuntimeItem[]): string | undefined {
   let selected: string | undefined;
   for (const item of items) {
-    if (item.type !== "router_decision") continue;
-    const decision = item as { routerName?: string; selectedRoute?: string };
-    if (decision.routerName === router.name) selected = decision.selectedRoute;
+    if (item.type === "router_decision" && item.routerName === router.name) selected = item.selectedRoute;
   }
   return selected;
 }
@@ -81,7 +79,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
   const selectedRoute = block.kind === "router" ? selectedRouteOf(block, base.items) : undefined;
   const kindFields =
     block.kind === "sequencer"
-      ? sequencerTraces(base.items as Array<OutputItem | BlockTraceItem>)
+      ? sequencerTraces(base.items)
       : selectedRoute !== undefined
         ? { selectedRoute }
         : {};

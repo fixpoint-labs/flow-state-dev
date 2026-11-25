@@ -39,9 +39,15 @@ describe("selectBashProvider", () => {
     });
   });
 
-  it("picks `local` when STORE_TYPE=filesystem and no explicit override", () => {
+  // The store is a storage choice, not a shell-access grant: a filesystem
+  // store must not hand the model the host shell.
+  it("stays on just-bash when STORE_TYPE=filesystem", () => {
     process.env.STORE_TYPE = "filesystem";
-    expect(selectBashProvider()).toEqual({ type: "local" });
+    expect(selectBashProvider()).toEqual({
+      type: "just-bash",
+      python: true,
+      javascript: true,
+    });
   });
 
   it("picks `moat` when BASH_PROVIDER=moat", () => {

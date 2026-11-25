@@ -94,7 +94,7 @@ The primitives under it (`classify`, `openStructuralDirectory`, `openRoot`, the 
 | `harnesses` | `@flow-state-dev/harness-manager/kit` (the only entry of that package that imports workforce) | `harnesses` (keyed: `Harness` values) | `coder`, the one coding worker flow, to `workerFlows`; the readiness capability to `uses` | the `harnesses` flow, its `readiness` view |
 | `claude-code` | `@flow-state-dev/claude-code` (`claudeCode()`) | none | Claude Code (and, with `plan`, Claude Code in plan mode) to `harnesses` | the `claude-code` flow, declaring the collections a run records into |
 
-Codex and Cursor install nothing, so they are plain values (`codexHarness()`, `cursorHarness()`), filled by the app. The workforce kit adds two capabilities of its own to the flows it builds, over its installation: consulting another conversation and the routine tools, each offered only to a worker whose file picks it. `createWorkerInstallation` and `hireWorkforce` are what its install runs.
+Codex and Cursor install nothing, so they are plain values (`codexHarness()`, `cursorHarness()`), filled by the app. The workforce kit adds three capabilities of its own to the flows it builds, over its installation: consulting another conversation, the routine tools, and hiring and firing on the user's roster (`hireWorkers`: `hire` and `fire`, the roster flow's own blocks, only on a turn the user's own message started; a fire waits for the user's approval), each reaching only a worker whose file picks it or names its tools. The kit's `hire` config (`models`) is checked by the roster's own hire and edit, so the Hire form and a conversation refuse the same models. `createWorkerInstallation` and `hireWorkforce` are what its install runs.
 
 ## Not here yet
 

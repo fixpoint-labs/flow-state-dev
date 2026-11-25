@@ -9,6 +9,7 @@
  * Small real windows here; the 20-minute default is graded with a fake clock
  * in `session-turn-deadline.spec.ts`, through the same stop.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,7 +55,7 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
     harnessLabel: "the stub harness",

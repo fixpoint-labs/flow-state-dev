@@ -43,6 +43,7 @@ import {
   createResourceCollectionScheduleResolver,
   defineScheduleCollection,
   parseNextFireAt,
+  type ScheduleCollectionState,
   type ScheduleIndex
 } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
@@ -76,17 +77,8 @@ export const scheduledTaskInputSchema = z
 
 export type ScheduledTaskInput = z.infer<typeof scheduledTaskInputSchema>;
 
-/** A schedule as the collection stores it. */
-export type StoredSchedule = {
-  cron: string;
-  kind: string;
-  timezone?: string;
-  input?: unknown;
-  description?: string;
-  enabled?: boolean;
-  orgId?: string;
-  metadata?: Record<string, unknown>;
-};
+/** Stored schedules may predate the schema default for `enabled`. */
+export type StoredSchedule = Omit<ScheduleCollectionState, "enabled"> & { enabled?: boolean };
 
 /** When `schedule` is next due, worked out from its cron and zone now; `null` while it is off or its cron doesn't parse. */
 export function nextRunOf(schedule: StoredSchedule): string | null {
@@ -125,7 +117,7 @@ export function clockProblem(cron: string, timezone: string | undefined): string
 export async function removeSchedule(ctx: BlockContext, key: string): Promise<void> {
   const resources = ctx.resources as Record<string, { delete(key: string): Promise<unknown> }>;
   await resources[SCHEDULES_RESOURCE]!.delete(key);
-  const identity = ctx.session.identity as { userId?: string; orgId?: string };
+  const identity = ctx.session.identity;
   if (identity.userId !== undefined && identity.orgId !== undefined) {
     await resources[FIRED_RECORDS_RESOURCE]!.delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, key)));
   }
@@ -192,7 +184,7 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
       }
       // The user's own conversation with the filer: the address their own
       // message reaches, derived here from the run's identity, never the row.
-      const identity = ctx.session.identity as { userId?: string; orgId?: string };
+      const identity = ctx.session.identity;
       if (identity.userId === undefined || identity.orgId === undefined) {
         throw new Error("The scheduled task wasn't filed: the fire runs as no user in no organization.");
       }
@@ -213,24 +205,15 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
 }
 
 /**
- * Clock routines for one installation: the schedule collection and the
- * resolver the roster flow fires schedules through.
+ * The roster flow's clock routines. The installation's schedule collection
+ * mirrors writes into the index that dispatches to this resolver.
  */
-export function defineScheduledWork(installation: WorkerInstallation, index?: ScheduleIndex) {
-  // FIX-2624: the installation's own schedule collection, which every worker flow declares too.
-  // Its index forwards to `index`, the one `hireWorkforce` was given.
-  const resources = { [SCHEDULES_RESOURCE]: installation.resources[SCHEDULES_RESOURCE], [FIRED_RECORDS_RESOURCE]: installation.resources[FIRED_RECORDS_RESOURCE] };
-  const schedules: SchedulesConfig = {
+export function defineScheduledWork(installation: WorkerInstallation, index?: ScheduleIndex): SchedulesConfig {
+  return {
     resolve: createResourceCollectionScheduleResolver({
-      collection: resources[SCHEDULES_RESOURCE],
+      collection: installation.resources[SCHEDULES_RESOURCE],
       blocks: { [TASK_SCHEDULE_HANDLER]: scheduledTaskBlock(installation) }
     }),
     ...(index === undefined ? {} : { index })
-  };
-  return {
-    /** The schedule collection and the fired records, for the roster flow's `resources`. */
-    resources,
-    /** The roster flow's `schedules`: a dispatch id resolves to its row. */
-    schedules
   };
 }

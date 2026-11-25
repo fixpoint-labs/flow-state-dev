@@ -11,6 +11,7 @@
  */
 import { useView, type ItemLine } from "@flow-state-dev/react";
 import type { SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
+import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
@@ -55,7 +56,7 @@ const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** An approval it asked for that you haven't answered yet. */
 const openApproval = (line: ItemLine): line is Extract<ItemLine, { kind: "suspension" }> =>
-  line.kind === "suspension" && line.item.reason === "user_approval" && line.resolution === undefined;
+  line.kind === "suspension" && suspendForUserKindOf(line.item) === "approval" && line.resolution === undefined;
 
 /** One thing a teammate needs from you: its key (one per approval, or per hold of a task, for the notifier), what it asks, and, for a task, the task. */
 export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: CodingBoardTask });

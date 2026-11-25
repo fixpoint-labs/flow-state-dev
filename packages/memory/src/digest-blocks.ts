@@ -24,7 +24,7 @@ import {
   type Digest,
   type DigestMemoryState,
 } from './digest-memory'
-import { computeSourceSignature } from './digest-helpers'
+import { computeSourceSignature, isStale } from './digest-helpers'
 import { memorySystemResource } from './memory-system'
 import type { MemorySystemBlocksConfig } from './memory-system-blocks'
 import { episodicResourceOf, semanticResourceOf, digestResourceOf } from './internal/tier-resources'
@@ -224,24 +224,15 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
         return { triggered: false, facts: [], episodes: [] }
       }
 
-      const signature = computeSourceSignature(semRef, epRef)
-      const stored = digestRef?.state?.digest as Digest | undefined
-
-      const force = !!input?.force
-      const stale =
-        !stored ||
-        stored.sourceSignature.semanticFactCount !== signature.semanticFactCount ||
-        stored.sourceSignature.semanticReinforcementSum !== signature.semanticReinforcementSum ||
-        stored.sourceSignature.episodeCount !== signature.episodeCount
-
-      if (!force && !stale) {
-        return { triggered: false, previous: stored?.content, facts: [], episodes: [] }
+      const previous = digestRef?.state?.digest?.content
+      if (!input?.force && digestRef && !isStale(digestRef, semRef, epRef)) {
+        return { triggered: false, previous, facts: [], episodes: [] }
       }
 
       const facts = topFacts(semRef, config.digest.topN.facts).map((f) => ({
         subject: f.subject,
         content: f.content,
-        category: f.category as string,
+        category: f.category,
         confidence: f.confidence,
         reinforcementCount: f.reinforcementCount,
       }))
@@ -250,13 +241,13 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
         ? rankEpisodesForDigest(recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
             subject: e.subject ?? 'user',
             content: e.content,
-            category: e.category as string,
+            category: e.category,
             significance: e.significance,
             occurredAtTurn: e.occurredAtTurn,
           }))
         : []
 
-      return { triggered: true, previous: stored?.content, facts, episodes }
+      return { triggered: true, previous, facts, episodes }
     },
   })
 }
@@ -314,7 +305,7 @@ export function digestRegenerateGenerate(config: DigestRegenerateConfig) {
     inputSchema: z.any(),
     outputSchema: digestOutputSchema,
     prompt: digestPrompt,
-    context: (input: any) => buildDigestContext(input as DigestGuardOutput),
+    context: buildDigestContext,
     user: () => 'Produce the digest.',
     maxTokens: config.digest.maxTokens,
     itemVisibility: { client: false, history: false },
@@ -346,12 +337,11 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
     inputSchema: digestOutputSchema,
     outputSchema: z.any(),
     resources,
-    execute: async (input, ctx: any) => {
+    execute: async (content, ctx: any) => {
       const digestRef = ctx.resources.digestMemory
       const semRef = ctx.resources.semanticMemory
       const epRef = ctx.resources.episodicMemory
       const wmRef = ctx.resources.workingMemory
-      const content = typeof input === 'string' ? input : ''
       if (!digestRef || content.trim().length === 0) {
         return { persisted: false }
       }

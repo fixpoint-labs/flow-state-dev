@@ -5,6 +5,7 @@ import { isWriteSessionId, ReservedSessionIdError } from "../resources/default-w
 import { isScheduleSessionId, ScheduleSessionIdError } from "../transports/scheduled/schedule-session-id";
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   RequestRecord,
@@ -40,7 +41,8 @@ import {
   projectRequestResult,
   type ProjectedRequestResult,
   refuseUnattributedRecord,
-  sessionCreateRefusedResponse
+  sessionCreateRefusedResponse,
+  snapshotItemsOf
 } from "./route-utils";
 import {
   isSameSession,
@@ -656,9 +658,13 @@ export async function handleListSessionRequests(
     withItems: includeItems
   });
 
+  // The item logs are the client's view unless trace observability is on: the
+  // DevTool's cold open reads the hidden and trace items through here.
+  const clientView = includeItems && !isTraceObservabilityEnabled();
   return jsonResponse(200, {
     requests: requests.map((record) => ({
       ...withListedResult(record, includeResultOutput),
+      ...(clientView ? { items: snapshotItemsOf(record.items) } : {}),
       // FIX-2853: the retry route's own rule, as a session's turns carry it.
       retryable: isRequestPublicReentryAllowed(record, ctx.publicReentrySources)
     }))

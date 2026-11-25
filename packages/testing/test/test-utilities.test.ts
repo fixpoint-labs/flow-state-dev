@@ -243,23 +243,18 @@ describe("testing utilities", () => {
   it("testFlow shares state across runs when given the same stores", async () => {
     const counter = handler({
       name: "counter",
-      execute: async (input: { amount: number }, ctx) => {
-        const current = (ctx.session.state as { count?: number }).count ?? 0;
-        const total = current + input.amount;
-        await ctx.session.patchState({ count: total });
-        return { total };
+      inputSchema: z.object({ amount: z.number() }),
+      sessionStateSchema: z.object({ count: z.number().default(0) }),
+      execute: async (input, ctx) => {
+        await ctx.session.incState({ count: input.amount });
+        return { total: ctx.session.state.count };
       }
     });
 
     const flow = defineFlow({
       kind: "stateful-flow",
       requireUser: true,
-      actions: {
-        run: {
-          inputSchema: passthroughSchema as any,
-          block: counter
-        }
-      }
+      actions: { run: counter }
     })();
 
     const stores = createInMemoryStores();
@@ -290,7 +285,7 @@ describe("testing utilities", () => {
     expect(r2.output).toEqual({ total: 3 });
 
     const session = await stores.session.get(sessionId);
-    expect((session?.state as { count: number }).count).toBe(3);
+    expect(session?.state.count).toBe(3);
   });
 
   it("testItems and snapshotTrace provide deterministic assertions", () => {
