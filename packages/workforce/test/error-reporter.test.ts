@@ -50,7 +50,16 @@ const SECRET = "sk-live-abcdefghijklmnop1234";
 type Prompted = { kind: "draft" | "file" | "comment"; prompt: string; trackerTools: boolean };
 
 /** How the stand-in answers beyond a clean run: a filing that fails `fileFails` times, a comment with no result. */
-type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number; draftTitle?: string };
+type StandIn = {
+  closed?: boolean;
+  trailer?: boolean;
+  fileFails?: number;
+  commentUnreadable?: boolean;
+  draftThrows?: number;
+  draftTitle?: string;
+  /** Each run's draft title and filed issue, in turn, for reports that must differ: past the list, the defaults. */
+  turns?: Array<{ title: string; identifier: string }>;
+};
 
 /**
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
@@ -59,6 +68,8 @@ type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commen
 function standInHarness(prompts: Prompted[], options: StandIn = {}) {
   let fileFails = options.fileFails ?? 0;
   let draftThrows = options.draftThrows ?? 0;
+  let drafts = 0;
+  let files = 0;
   return (feeds: { mcpTools?: unknown }) =>
     handler({
       name: "stand-in-harness",
@@ -72,11 +83,13 @@ function standInHarness(prompts: Prompted[], options: StandIn = {}) {
         }
         const failsNow = kind === "file" && fileFails > 0 ? (fileFails -= 1, true) : false;
         const unreadable = failsNow || (kind === "comment" && options.commentUnreadable === true);
+        const turn = kind === "draft" ? options.turns?.[drafts++] : kind === "file" && !failsNow ? options.turns?.[files++] : undefined;
+        const identifier = turn?.identifier ?? "FIX-9";
         const json =
           kind === "draft"
-            ? { title: options.draftTitle ?? "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
+            ? { title: turn?.title ?? options.draftTitle ?? "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
             : kind === "file"
-              ? { url: "https://tracker.example/FIX-9", identifier: "FIX-9" }
+              ? { url: `https://tracker.example/${identifier}`, identifier }
               : { closed: options.closed === true };
         const fenced = "```json\n" + JSON.stringify(json) + "\n```";
         // A harness that says something after its draft, as a checkout's own instructions can make it.
@@ -172,7 +185,7 @@ async function openLab(
   options: Partial<ErrorReporterOptions> & StandIn & { agentAnswer?: ReturnType<typeof mockGenerator>; hostRun?: (run: ErrorReporterHost["run"]) => ErrorReporterHost["run"] } = {}
 ): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle, hostRun, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle, turns, hostRun, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -194,7 +207,7 @@ async function openLab(
       [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({
         reporter,
         installation,
-        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle }),
+        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle, turns }),
         mcpTools: trackerTools,
         agent: { catalog: { searchResources: resourceSearchTools().searchResources, readResourceContent: readResourceContentTool() } }
       })
@@ -740,6 +753,62 @@ describe("reading the history", () => {
     await lab.intake({ kind: "task", at: Date.now(), taskId: "task_9", boardId: "board_a", attempt: 1, error: "eng.tasker gave up", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
     const [hit] = await lab.searchHistory(OPERATOR, { query: "task_9" });
     expect((await lab.readHistory(OPERATOR, hit!.uri)).content).toContain("req_held_1");
+  });
+
+  // A failure back after its issue closed reuses the report's id. A day of the earlier report must still read as
+  // that report: an operator checking what was filed before would otherwise see the new issue on the old days.
+  it("shows a reopened report's earlier days with the earlier report's own title, count, status and issue", async () => {
+    const turns = [
+      { title: "Cache misses pile up under load", identifier: "FIX-9" },
+      { title: "Cache misses are back after the fix", identifier: "FIX-12" }
+    ];
+    const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, closed: true, turns });
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    const hits = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${today()}` });
+    expect(hits).toHaveLength(2);
+    expect(new Set(hits.map((h) => hashOf(h.uri))).size).toBe(2);
+    const contents = await Promise.all(hits.map(async (h) => (await lab.readHistory(OPERATOR, h.uri)).content!));
+    const earlier = contents.find((c) => c.includes(`# ${turns[0]!.title}`))!;
+    const later = contents.find((c) => c.includes(`# ${turns[1]!.title}`))!;
+    expect(earlier).toBeDefined();
+    expect(earlier).toContain("Error report, issue closed.");
+    expect(earlier).toContain("Seen 2 time(s)");
+    expect(earlier).toContain("Issue: FIX-9 https://tracker.example/FIX-9");
+    expect(earlier).not.toContain("FIX-12");
+    expect(later).toBeDefined();
+    expect(later).toContain("Error report, filed.");
+    expect(later).toContain("Seen 1 time(s)");
+    expect(later).toContain("Issue: FIX-12 https://tracker.example/FIX-12");
+    expect(later).not.toContain("FIX-9");
+  });
+
+  // History written before reports kept their earlier selves: the entries alone still tell the earlier report apart.
+  it("still tells an earlier report's days apart when the report and its entries predate keeping them", async () => {
+    const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, closed: true, turns: [{ title: "Cache misses pile up under load", identifier: "FIX-9" }, { title: "Cache misses are back after the fix", identifier: "FIX-12" }] });
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    const runtime = await lab.host.state.getRuntime();
+    for (const [key, value] of Object.entries(await runtime.stores.resourceState.getByPrefix("org", ORG, "error-reports/"))) {
+      const state = ((value as { state?: unknown }).state ?? value) as Record<string, unknown>;
+      if (Array.isArray(state.entries)) {
+        const entries = (state.entries as Array<Record<string, unknown>>).map(({ since: _since, ...e }) => e);
+        await runtime.stores.resourceState.set("org", ORG, key, { ...state, entries }, "any");
+      } else if (state.earlier !== undefined) {
+        const { earlier: _earlier, ...report } = state;
+        await runtime.stores.resourceState.set("org", ORG, key, report, "any");
+      }
+    }
+    const hits = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${today()}` });
+    expect(hits).toHaveLength(2);
+    const contents = await Promise.all(hits.map(async (h) => (await lab.readHistory(OPERATOR, h.uri)).content!));
+    const earlier = contents.find((c) => !c.includes("FIX-12"))!;
+    expect(earlier).toBeDefined();
+    expect(earlier).toContain("Error report, issue closed.");
+    expect(earlier).toContain("Seen 2 time(s)");
+    expect(earlier).toContain("Issue: FIX-9 https://tracker.example/FIX-9");
   });
 
   it("links the operator to a waiting report's Inbox item, and a user who failed the same way to nothing they can't open", async () => {

@@ -41,6 +41,8 @@ const historyEntrySchema = z.object({
   key: z.string().optional(),
   /** The report it went to. A held occurrence names none: its task's report is joined when it is read. */
   reportId: z.string().optional(),
+  /** That report's first sighting, which tells it from an earlier report under the same id. Absent on held and older entries. */
+  since: z.number().optional(),
   /** What it came from: `request`, `held`, `task` or `manual` for an occurrence; the report's source for a status. */
   source: z.string().optional(),
   fingerprint: z.string().optional(),
