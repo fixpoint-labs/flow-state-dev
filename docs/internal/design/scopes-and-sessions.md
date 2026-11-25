@@ -121,6 +121,25 @@ const work = boards(ctx, "work");
 
 Two boards in one session are two names, `work` and `triage`, with two sets of copies.
 
+### How a definition gets registered
+
+A definition is declared on the blocks that use it, the way resources are declared today, and it rises with those blocks into every flow that includes them. The registry is every installed flow's declarations put together. Two different shapes under one name are refused when the app starts. So a block that needs a board still carries its own declaration and stays portable, and there's no second place to register anything.
+
+A flow that declares nothing about a board still reaches it by name, because some installed flow declared it. If no installed flow declares it, the name finds nothing. With board names typed from the registry, that's an error when the app is built, not at run time.
+
+### Storage and behaviour
+
+Including a board in a flow used to mean two things at once. They are separate.
+
+| | Storage | Behaviour |
+| -- | -- | -- |
+| What it is | The rows: one copy per session | What makes it a board rather than a list: claiming and handing out tasks, the entry that hears a task's ending, the entry a worker takes a task on, the model's tools |
+| Where it comes from | The registry | Blocks and actions a flow includes |
+| Who needs it | Nobody installs it. A session's copy is made the first time anyone writes to it, from any flow | Each flow, for the parts it uses |
+| Example | The launch chat's copy of the work board appears when em files the first task | The em flow includes the board's tools and its ending entry. The coder flow includes the board's task entry |
+
+So "the flow a board lives on" stops being a useful idea. The coder flow doesn't declare the work board's storage, but it includes the board's task entry so it can work tasks, and it reaches the launch chat's copy by name.
+
 ## Your own copy
 
 A block reaches its own copy without naming anything: the copy for the session it runs in, for the user it runs as, or for the org.
@@ -209,20 +228,20 @@ Naming the parent covers both, for reading and for writing, and the registry rem
 
 Some views need everything at once: an Inbox of everything waiting on Alice, or a board of every task in every one of her sessions.
 
-A view across sessions lists the user's sessions and reads each one by name. The engine already lists a user's sessions. The cost is one read per session, and each read is cheap because it filters by key instead of scanning (rule 12).
+A view asks for a definition's copies across all of the user's sessions in one call:
 
 ```ts
-const sessions = await ctx.sessions.list();
-const open = await Promise.all(
-  sessions.map((s) => boards(ctx, "work", { session: s.id }).list({ status: "open" }))
-);
+const open = await boards.acrossSessions(ctx, "work").list({ status: "open" });
+// each row comes back with the session it belongs to
 ```
 
-* **Who owns it:** the view. Nothing extra is stored.
-* **Where it's stored:** nowhere new. It reads each session's copy.
-* **How many exist:** one read per session the view covers.
+In the SQL stores this is one query, not one per session. Rows are already stored with the session they belong to, and the sessions table already records each session's user. The store joins the two: every row of the work board, in any session whose user is Alice, that matches the filter. It needs two things the stores will have anyway: the parts of a key that vary are indexed (rule 12), and a field a definition filters on, such as a task's status, has an index the definition declares. The filesystem store, used in development, walks the user's session folders instead.
 
-If a view ever needs every session of a heavy user on every render, a definition could later ask the engine to keep a per-user index of its copies. Nothing needs that yet (see *Decisions*).
+* **Who owns it:** the engine. Nothing extra is written for it, so there's nothing to keep in step.
+* **Where it's stored:** nowhere new. It reads every session's copy through one query.
+* **How many exist:** one query per call, however many sessions the user has.
+
+A view can still name one session when that's all it needs, and `ctx.sessions.list()` still lists sessions with their flow and status.
 
 ### What this replaces
 
@@ -237,7 +256,7 @@ Alice asks em, in the launch chat, to add CSV export.
 3. **The board hands the task to coder.** The engine starts the CSV task session on the coder flow, as a child of the launch chat. It is given the launch chat's id and the task.
 4. **coder reads its task.** It names the parent: `boards(ctx, "work", { session: parent }).get(taskId)`. The server checks that the launch chat is Alice's, and it is.
 5. **coder splits the work.** It files two pieces on its own copy of the work board, in the CSV task session. A task filed while working another task is its sub-task, so these two are sub-tasks of the CSV task.
-6. **Alice opens her task view.** It lists her sessions and reads the work board in each: the CSV task on the launch chat's board, and its two sub-tasks on the task session's board, all running.
+6. **Alice opens her task view.** It reads the work board across all her sessions in one query: the CSV task on the launch chat's board, and its two sub-tasks on the task session's board, all running.
 7. **The sub-tasks finish, and then coder finishes.** It settles its task on the launch chat's copy. The claim checks that this session holds the task. The CSV task session's request records the settle.
 8. **em hears the ending.** A write from another session notifies the owning session as a local write would, and a board's task ending starts its filer's turn. em's next turn in the launch chat runs once, because of the ending, and tells Alice. Her task view shows all three tasks as done.
 
@@ -249,11 +268,11 @@ flowchart LR
   C --> P["coder files sub-tasks<br/>task session's board"]
   P --> S["coder settles<br/>on launch chat's board"]
   S --> W["em's next turn<br/>tells Alice"]
-  F -. "named read" .-> V["Alice's task view<br/>each session by name"]
-  P -. "named read" .-> V
+  F -. "one query" .-> V["Alice's task view<br/>across sessions"]
+  P -. "one query" .-> V
 ```
 
-*One task, two sessions, two copies of one board.* The only reach across sessions is coder naming the launch chat, once to read and once to settle, and Alice's view naming each session it shows.
+*One task, two sessions, two copies of one board.* The only reach across sessions is coder naming the launch chat, once to read and once to settle, and Alice's view reading every session's copy in one query.
 
 Bob never appears. Even if coder were handed the id of one of Bob's sessions, both the read and the write would be answered exactly as if that session didn't exist.
 
@@ -297,6 +316,7 @@ A behavior none of these rules explains is a bug in the model.
 10. A child session knows the session that started it and the work it was started for, and nothing else implicitly. It reaches its parent's data by naming the parent.
 11. Data that belongs to a user rather than to one session is kept per user, keyed by what it's about, never by a session's id.
 12. Every part of a resource's key that varies (a session, a board, a task id) can be filtered on by the store without a scan. No feature reaches its rows by building a prefix out of encoded values.
+13. Reading a definition's copies across all of a user's sessions is one call and, in the SQL stores, one query. Nothing reads a pile of sessions one by one to build a view.
 
 ## Vocabulary
 
@@ -339,7 +359,7 @@ Counts are files that mention the term today: package source, then `docs/` plus 
 | Flow isolation, `flowIsolation`, `isolateUserState` | A separate name, when two flows really need separate data | The resource option and the flow flags | 83 / 56 / 1, and 53 / 36 / 1 |
 | Routed session record | The workstream session's own state | Workforce `routed-session.ts` | 4 / 0 / 0 |
 | Task chain record, `taskChain` | Depth and count read from the parent links | Workforce `chain.ts`, child state | 12 / 12 / 0 |
-| Carrier session | Each session read by name | Shift Manager's cross-conversation board read (`carrier` in `reads.ts`) | 1 / 0 / 0 |
+| Carrier session | A query across sessions | Shift Manager's cross-conversation board read (`carrier` in `reads.ts`) | 1 / 0 / 0 |
 
 `flowIsolation` is retired once each of its uses is checked. A per-user resource that two flows really must keep apart gets two names.
 
@@ -353,7 +373,8 @@ Counts are files that mention the term today: package source, then `docs/` plus 
 - [ ] **Lineage sharing goes.** Leaning yes. It was meant to let two sessions act on one resource, and a child reaching its parent by name covers that. On `main` its only real user is a Kitchen Sink demo board.
 - [ ] **The server stops copying parent values into child state.** Recommend yes, with lineage: a child reads its parent by name. Would change: a value the child needs on every turn where reading the parent adds measurable cost.
 - [X] **Key parts are indexed, not prefixed.** Every part of a resource key that varies can be filtered on by the SQL stores without a scan, as its own refactor. This retires the prefix reads everywhere, not only for tasks.
-- [ ] **A per-user index of a definition's copies.** Held. With boards back in session scope, cross-session views read each session by name, and nothing needs the index yet. Would change: an Inbox or board view that has to read hundreds of sessions on every render.
+- [ ] **Reading across sessions in one query.** Recommend `boards.acrossSessions(ctx, "work")`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
+- [X] **Definitions are declared on blocks and rise into flows, and the registry is their union.** Agreed: option (a).
 - [ ] **Session state across sessions.** Open. Recommend keeping today's rule: another session reads only the state fields its flow marks readable. State is the flow's working memory. Data meant to be read elsewhere belongs in a resource.
 - [ ] **Tenants inside per-user data.** Punted. A tenant is a customer of an app that hosts many customers on one install, a level above the org. Per-user data today is keyed by user and org, not tenant, and Workforce puts the tenant into its row ids by hand. Out of scope here, but the gap is real.
 - [ ] **Moving existing data.** Punted to the spec. Six per-user collections are keyed by a session-derived value today. Each needs a decision: become per-session, or stay per-user keyed by its subject.
@@ -371,14 +392,14 @@ Every item below exists today because a session couldn't reach another session's
 | Routed sessions | A per-user record that says which board's task is using a workstream's lead session (the long-running session a workstream's lead worker works in) | That session's own state, read and written by name | `routed-session.ts` 143 lines |
 | Task chains | A per-user record counting depth and size under the top task, keyed by a hash of its partition | Depth and size read through parent links, or kept on the top task's own row | `chain.ts` 229 lines |
 | Run records | Moved from lineage sharing to per-user scope after a new session couldn't find a finished run | Unchanged: it already sits per user, keyed by its subject. Only its history note goes | none |
-| Cross-session views | Shift Manager's carrier read, the coding board recomputing a partition, the Inbox reading every conversation's tasks | Listing sessions and reading each by name | about 45 lines in Shift Manager, about 20 in the coding board, and the ledger read in the Inbox view |
+| Cross-session views | Shift Manager's carrier read, the coding board recomputing a partition, the Inbox reading every conversation's tasks | One query across the user's sessions | about 45 lines in Shift Manager, about 20 in the coding board, and the ledger read in the Inbox view |
 | Prefix reads | Stores scan the whole user scope and filter by an encoded prefix | Indexed key parts (rule 12) | the prefix query in each SQL store |
 
 **What I estimate it removes.** Roughly 1,500 to 1,800 lines of package source: about 1,200 in files that go whole (`partition.ts`, `find-task-partitions.ts`, `lineage-scope.ts`, `session-fields.ts`, `board-above.ts`, `filing-session.ts`, `routed-session.ts`, `chain.ts`), plus 300 to 600 in the parts of other files that carry their values, which is the less certain number. That doesn't include tests. 75 test files touch lineage, partitions, filing-session values or chain records, and most of those tests exist only to prove a workaround holds. It also retires nine terms and four options: `sharedToLineage`, `partitionBy`, forced `flowIsolation`, and the partition-reading `readFor`.
 
 **What it doesn't count.** The task board cleanup that this unlocks is separate and bigger: one board per session instead of the delegation and plan stores, a parent link instead of three copies of it, and the rules that exist because of two stores (`plan.ts` alone is 526 lines). The estimate above covers only what the scope change removes by itself.
 
-**What it adds.** A registry lookup, the `{ session }` option on every resource accessor with its owner check, and indexed key parts in the two SQL stores. That's on the order of a few hundred lines, mostly in the engine.
+**What it adds.** A registry lookup, the `{ session }` option on every resource accessor with its owner check, indexed key parts in the two SQL stores, and one store query that reads a definition across a user's sessions. That's on the order of a few hundred lines, mostly in the engine.
 
 ## Where today's code differs
 
@@ -391,7 +412,7 @@ Every item below exists today because a session couldn't reach another session's
 | A child doesn't need copies of its parent's values | Parent values are written into each child's state at birth, "however many hops down" (`packages/workforce/src/workers/session-fields.ts:12-19`) |
 | A board is a per-session definition, registered once by name | The conversation board is one per-user collection, split per conversation by a partition function, with flow isolation forced off so another flow can reach it (`packages/workforce/src/conversation-board/ledger.ts:136-150`, `packages/orchestration/src/tasks/collection/define-task-collection.ts:237-246`, `packages/orchestration/src/tasks/collection/partition.ts:4-12`). The steps a worker files for itself sit in a second collection, split the same way (`packages/workforce/src/conversation-board/plan.ts:80-83`) |
 | A task id finds its row through the session that holds it | A separate index finds which partition holds a task id (`packages/orchestration/src/tasks/collection/find-task-partitions.ts:1-20`) |
-| A view across sessions reads each session by name | Shift Manager reads the whole task store through the first session whose flow declares it, then regroups rows by conversation (`packages/shift-manager/src/lib/reads.ts:388-431`). The coding board looks up a session's lineage to recompute its partition (`packages/harness-manager/src/kit/coding-board.ts:95-118`). The Inbox view reads every conversation's tasks at once (`packages/workforce/src/workers/inbox-view.ts:1-35`) |
+| A view across sessions is one query | Shift Manager reads the whole task store through the first session whose flow declares it, then regroups rows by conversation (`packages/shift-manager/src/lib/reads.ts:388-431`). The coding board looks up a session's lineage to recompute its partition (`packages/harness-manager/src/kit/coding-board.ts:95-118`). The Inbox view reads every conversation's tasks at once (`packages/workforce/src/workers/inbox-view.ts:1-35`) |
 | Data about a user's work is kept per user, keyed by its subject | The coding run record was moved from lineage sharing to per-user scope after a new session read `run: null` for a finished job (`packages/harness-manager/src/run-record.ts:22-43`). Matches the target, reached the hard way |
 | One session's lock lives in that session | A workstream session's routing lock is a per-user record keyed by session id, because two conversations' boards route to it (`packages/workforce/src/conversation-board/routed-session.ts:1-38`) |
 | A child reads its parent's task row by naming the parent | A one-row read and settle of the parent's task exists on the request host, but the default host leaves the read unwired (`packages/core/src/types/request-host.ts:554-572`, `packages/engine/src/flowstate/createFlowState.ts:1069-1072`) |
