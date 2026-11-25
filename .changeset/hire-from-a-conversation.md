@@ -11,4 +11,4 @@ FIX-2840.
 - **core:** `containsSecret(text)` says whether text carries a credential, by the same shapes core redacts from error messages, which now include NVIDIA's `nvapi-` keys.
 - **shift-manager:** the Shift Coordinator's `hire` now waits for the user's Approve in Inbox, like `fire`. Its `hire` and `fire` are workforce's `hireWorkersCapability`; `shiftCoordinatorRosterTools` is gone, with no alias.
 
-Docs: packages/workforce/README.md (the kit's capabilities and its `hire` config).
+Docs: packages/workforce/README.md (the kit's capabilities and its `hire` config) and packages/core/README.md (`containsSecret`).
