@@ -268,15 +268,34 @@ describe.each(["terminal replay", "live tail", "record-less replay"] as const)(
     it("still brings a resumed client the visible item whose item.added came before the cursor", async () => {
       observabilityOff();
       const sent = frames(await streamBody(await streamedStoresFor(branch), "?starting_after=8"));
-      // Its content, where the request record says it is visible; with no
-      // record, the filter cannot tell, and its item.done carries the row.
+      // Its content: the request record, or with no record the event log,
+      // says it is visible.
       const content = sent.filter((frame) => frame.type === "content.done").map((frame) => frame.itemId);
-      expect(content).toEqual(branch === "record-less replay" ? [] : ["m_visible"]);
+      expect(content).toEqual(["m_visible"]);
       const done = sent.filter((frame) => frame.type === "item.done");
       expect(done.map((frame) => (frame.item as { id: string }).id)).toEqual(["m_visible"]);
     });
   }
 );
+
+it("record-less replay still sends content that follows a visible item's item.done", async () => {
+  // A batch TTS snapshot arrives as content after the message's item.done,
+  // with no later item event; a cursor past that item.done must not lose it.
+  observabilityOff();
+  const stores = createInMemoryStores();
+  const audio = { type: "output_audio", mediaType: "audio/mpeg", audio: "audio-bytes" } as never;
+  stores.request.persistEvents(REQUEST_ID, [
+    ...STREAMED.slice(0, 10),
+    { ...base(11), type: "content.added", itemId: "m_visible", contentIndex: 1, content: audio },
+    { ...base(12), type: "content.done", itemId: "m_visible", contentIndex: 1, content: audio },
+    { ...base(13), type: "content.added", itemId: "m_hidden", contentIndex: 1, content: text("hidden-late") },
+    { ...base(14), type: "request.completed", status: "completed" }
+  ]);
+  await stores.request.flushEvents(REQUEST_ID);
+  const body = await streamBody(stores, "?starting_after=10");
+  expect(body).toContain("audio-bytes");
+  expect(body).not.toContain("hidden-late");
+});
 
 it("sends none of a hidden item's content to a live tail resumed before the record held the item", async () => {
   // The record is read when the stream starts; an item its run has not yet

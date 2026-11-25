@@ -29,7 +29,8 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
  * carries the whole row, so the client still converges.
  *
  * @param knownItems Items the stream may carry events for without their
- *   `item.added`: the request record's items, on a resumed stream.
+ *   `item.added`: on a resumed stream, the request record's items, or the
+ *   items its event log announces when the record is gone.
  */
 export function createClientEventFilter(
   knownItems: readonly RuntimeItem[] = []
