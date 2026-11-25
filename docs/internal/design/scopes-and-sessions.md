@@ -200,12 +200,18 @@ Forbidding them is what produced the workarounds this doc removes. Each time a s
 
 A child session is one a session starts for some piece of work. When em hands "Add CSV export" to coder, the CSV task session is a child of the launch chat. A child can run on any flow.
 
-A child carries two things: the id of the session that started it, and the work it was started for, passed in when it starts. For a task, that's the task's id and its board. Nothing else is shared with it implicitly. When it needs the parent's data, it names the parent like any other session, to read or to write:
+A child carries two things: the id of the session that started it, and the work it was started for, passed in when it starts. Nothing else is shared with it implicitly.
+
+**The work names its own board.** For a task, the work is the task's id, the session whose board it sits on, and the values fixed when it was filed, such as the project it belongs to. A block reaches the task it's running through that, not through the session's parent:
 
 ```ts
 // In the CSV task session, on the coder flow
-const filedOn = boards(ctx, "work", { session: ctx.session.parent });
+const filedOn = boards(ctx, "work", { session: ctx.task.session });
 ```
+
+The two usually match, but not always. A workstream's lead session is opened once and then takes tasks routed to it from several conversations. Its parent is the session that opened it, while each task it works sits on the board of the conversation that routed it. So "which board is my task on" is answered by the task, every time, and "who started me" by the parent.
+
+**Fixed values stay fixed.** Some values belong to the work as it was filed and must not change after, even if the parent's data does. A task keeps the project it was filed under when its conversation later switches projects. Those values ride on the task row and arrive with the work. Reading the parent live is only for values that should follow the parent.
 
 There's no chain of sessions that quietly shares data, and no second rule for children on the same flow versus another flow. What the child is given is explicit, and whatever else it needs, it reads from the parent, or writes to it, by name.
 
@@ -220,9 +226,9 @@ There's no chain of sessions that quietly shares data, and no second rule for ch
 Today two mechanisms stand in for "the child acts on the parent's data":
 
 * **Lineage sharing.** A resource can opt in to one copy shared by a parent and its same-flow children, so two sessions act on one resource. A child on another flow starts a lineage of its own, because one lineage space can't hold two flows' declarations of the same name. On `main`, the only resource that opts in outside tests is a Kitchen Sink demo board, plus the task board's own rule that a session-scoped board which hands out work must opt in.
-* **Copies at birth.** The server copies values from the parent's state into each child, "however many hops down".
+* **Copies at birth.** The server copies values from the parent's state into each child, "however many hops down". Some are fixed on purpose, such as a task's project, which must not move when its conversation's does. Others are copies only because the child couldn't read the parent.
 
-Naming the parent covers both, for reading and for writing, and the registry removes the clash between two flows' declarations.
+Naming the parent covers lineage sharing and the copies that only stood in for a read. The values fixed on purpose move onto the task row, where they already partly live, and arrive with the work. The registry removes the clash between two flows' declarations.
 
 ## Looking across every session
 
@@ -254,7 +260,7 @@ Alice asks em, in the launch chat, to add CSV export.
 1. **Alice posts in the launch chat.** Her request runs as Alice, in the launch chat.
 2. **em files a task.** `boards(ctx, "work").create(...)` writes to the launch chat's own copy of the work board.
 3. **The board hands the task to coder.** The engine starts the CSV task session on the coder flow, as a child of the launch chat. It is given the launch chat's id and the task.
-4. **coder reads its task.** It names the parent: `boards(ctx, "work", { session: parent }).get(taskId)`. The server checks that the launch chat is Alice's, and it is.
+4. **coder reads its task.** The task names its board: `boards(ctx, "work", { session: ctx.task.session }).get(taskId)`. The server checks that the launch chat is Alice's, and it is.
 5. **coder splits the work.** It files two pieces on its own copy of the work board, in the CSV task session. A task filed while working another task is its sub-task, so these two are sub-tasks of the CSV task.
 6. **Alice opens her task view.** It reads the work board across all her sessions in one query: the CSV task on the launch chat's board, and its two sub-tasks on the task session's board, all running.
 7. **The sub-tasks finish, and then coder finishes.** It settles its task on the launch chat's copy. The claim checks that this session holds the task. The CSV task session's request records the settle.
@@ -313,7 +319,7 @@ A behavior none of these rules explains is a bug in the model.
 7. A write from another session runs the definition's own checks, such as a task's claim, exactly as a local write does. Apart from rule 5's owner check, which is about the user, scope adds no check of its own.
 8. A write from another session notifies the owning session exactly as a local write would. Whether that starts a turn is the definition's call.
 9. An operation that goes over a whole copy (listing, counting, claiming the next task, hearing its changes) goes over one copy: your own, or the one you named. Nothing sweeps every session by accident.
-10. A child session knows the session that started it and the work it was started for, and nothing else implicitly. It reaches its parent's data by naming the parent.
+10. A child session knows the session that started it and the work it was started for, and nothing else implicitly. The work names the board its task sits on and carries the values fixed at filing. Anything else the child needs from its parent, it reaches by naming the parent.
 11. Data that belongs to a user rather than to one session is kept per user, keyed by what it's about, never by a session's id.
 12. Every part of a resource's key that varies (a session, a board, a task id) can be filtered on by the store without a scan. No feature reaches its rows by building a prefix out of encoded values.
 13. Reading a definition's copies across all of a user's sessions is one call and, in the SQL stores, one query. Nothing reads a pile of sessions one by one to build a view.
@@ -387,8 +393,8 @@ Every item below exists today because a session couldn't reach another session's
 | -- | -- | -- | -- |
 | Task boards | One per-user store split per conversation by a partition function, flow isolation forced off, and an index to find which partition holds a task | A per-session board, reached by name | `partition.ts` 206 and `find-task-partitions.ts` 60 lines, plus 52 `partitionBy` lines across packages |
 | Lineage | A storage space shared by a parent and its same-flow children, its own storage kind, and the rules for when a child joins or starts one | Naming the parent | `lineage-scope.ts` 306 lines, and 244 lines in the engine that mention lineage |
-| Copies at birth | Parent values (filing session, project, routing, chain) stamped into each child's state, and carried through message hops | The child reads its parent by name | `session-fields.ts` 126 lines, the carried-hop parts of `hop.ts` (239), and `filingSessionId` in 78 lines |
-| Board above | A helper that works out which board a task session's task sits on | `ctx.session.parent` | `board-above.ts` 26 and `filing-session.ts` 115 lines |
+| Copies at birth | Parent values (filing session, project, routing, chain) stamped into each child's state, and carried through message hops | Values fixed at filing, such as the project, ride on the task row; the rest are read from the parent by name | `session-fields.ts` 126 lines, the carried-hop parts of `hop.ts` (239), and `filingSessionId` in 78 lines |
+| Board above | A helper that works out which board a task session's task sits on, from the filing session or, for a workstream's session, the conversation that routed the task | The task being worked names its board (`ctx.task.session`) | `board-above.ts` 26 and `filing-session.ts` 115 lines |
 | Routed sessions | A per-user record that says which board's task is using a workstream's lead session (the long-running session a workstream's lead worker works in) | That session's own state, read and written by name | `routed-session.ts` 143 lines |
 | Task chains | A per-user record counting depth and size under the top task, keyed by a hash of its partition | Depth and size read through parent links, or kept on the top task's own row | `chain.ts` 229 lines |
 | Run records | Moved from lineage sharing to per-user scope after a new session couldn't find a finished run | Unchanged: it already sits per user, keyed by its subject. Only its history note goes | none |
