@@ -52,14 +52,12 @@ describe("defineResourceCollection prefetchMode", () => {
       resources: { files: lazyColl, notes: eagerColl },
       execute: (_v, ctx) => {
         // Lazy: list() is async.
-        // @ts-expect-error — source bug FIX-2023: defineResourceCollection infers state as `any`, so the ref is ResourceRef<any>.
         expectTypeOf(ctx.resources.files.list()).toEqualTypeOf<
           Promise<ResourceRef<{ language: string }>[]>
         >();
         // Lazy: count() is async.
         expectTypeOf(ctx.resources.files.count()).toEqualTypeOf<Promise<number>>();
         // Eager: list() is async too (FIX-700).
-        // @ts-expect-error — FIX-2023, the same source bug: the state type is `any`.
         expectTypeOf(ctx.resources.notes.list()).toEqualTypeOf<
           Promise<ResourceRef<{ body: string }>[]>
         >();

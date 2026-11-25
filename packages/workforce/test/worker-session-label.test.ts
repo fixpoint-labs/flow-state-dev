@@ -4,7 +4,7 @@
  * A worker's session id is derived (`wks_…`), and so is a task's (`dsx_…`):
  * both are hashes. `installation.session()` gives every worker flow a
  * `session.label`, so a reader of the session (the developer tool's flow
- * tree) shows "Amy" or "Amy · task_…" instead.
+ * tree) shows "Amy" or "Amy · Audit licenses" instead.
  */
 import { describe, expect, it } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -24,15 +24,23 @@ function installation() {
 describe("a worker flow's session label", () => {
   const label = installation().session().label!;
 
-  it("names a worker's session by the worker's name, else its id", () => {
+  it("names a worker's session by the name it was born with", () => {
+    // A hired worker's name is on its owner's roster: the session carries it from its birth (FIX-2881).
+    expect(label({ id: "wks_3", state: { workerId: "my-helper", workerName: "Tess" } })).toBe("Tess");
+    expect(label({ id: "wks_1", state: { workerId: "desk.amy", workerName: "Amy" } })).toBe("Amy");
+  });
+
+  it("names a session born without a name by its standard worker's file, else its worker id", () => {
     expect(label({ id: "wks_1", state: { workerId: "desk.amy" } })).toBe("Amy");
     expect(label({ id: "wks_2", state: { workerId: "desk.bo" } })).toBe("desk.bo");
-    // A hired worker's name is on its owner's roster, which a label cannot read.
     expect(label({ id: "wks_3", state: { workerId: "my-helper" } })).toBe("my-helper");
   });
 
-  it("names a task's session by its worker and its task", () => {
-    expect(label({ id: "dsx_1", state: { workerId: "desk.amy", taskId: "task_0a1b2c" } })).toBe("Amy · task_0a1b2c");
+  it("names a task's session by its worker and its task's title, else the task's id", () => {
+    expect(
+      label({ id: "dsx_1", state: { workerId: "my-helper", workerName: "Tess", taskId: "task_0a1b2c", taskTitle: "Audit licenses" } })
+    ).toBe("Tess · Audit licenses");
+    expect(label({ id: "dsx_2", state: { workerId: "desk.amy", taskId: "task_0a1b2c" } })).toBe("Amy · task_0a1b2c");
   });
 
   it("names nothing for a session with no worker", () => {

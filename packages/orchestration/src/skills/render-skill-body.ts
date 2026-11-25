@@ -35,8 +35,8 @@
  */
 
 import path from "node:path";
-import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core/types";
-import { skillManifestKey } from "./collection";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { skillManifestKey, type SkillsCollectionState } from "./collection";
 import { substitute } from "./skill-md";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 
@@ -77,14 +77,14 @@ export function formatAllowedToolsIntentNote(
  * @param input      - the activation's `$ARGUMENTS` value, if any
  */
 export async function renderActiveSkillBody(
-  collection: ResourceCollectionRef,
+  collection: ResourceCollectionRef<SkillsCollectionState>,
   name: string,
   mountPath: string,
   input: string | undefined,
 ): Promise<string | null> {
   const manifest = await collection.getOptional(skillManifestKey(name));
   if (!manifest) return null;
-  const state = manifest.state as unknown as SkillState;
+  const { state } = manifest;
   // Honor the LIVE manifest, not a build-time snapshot:
   //  - a skill edited to fork/pattern after binding must not render as
   //    `<active_skill>` context — those are dispatch routes, not injections;

@@ -29,6 +29,7 @@
 // Traces off before anything reads the flag: a resume must run no completed step again without them.
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 
+import type { HarnessToolApprovalHook } from "@flow-state-dev/core/harness";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,7 +44,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { sleep } from "../../lib/time.mts";
-import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type HarnessToolApprovalHook, type StubRun } from "@flow-state-dev/harness-manager";
+import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";

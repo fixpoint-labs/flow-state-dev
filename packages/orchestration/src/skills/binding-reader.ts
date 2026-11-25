@@ -84,30 +84,14 @@ export function buildSkillBindingReader(
     );
     const dynamicNames = new Set(dynamicEntries.map((e) => e.name));
 
-    // 1. Static preloaded skills (no runtime input) — unless superseded by a
-    //    dynamic activation of the same name (rendered below with its input).
-    for (const name of staticActive) {
-      if (rendered.has(name) || dynamicNames.has(name)) continue;
-      const block = await renderActiveSkillBody(collection, name, opts.mountPath, undefined);
+    const staticEntries = staticActive
+      .filter((name) => !dynamicNames.has(name))
+      .map((name) => ({ name, input: undefined }));
+    for (const { name, input } of [...staticEntries, ...dynamicEntries]) {
+      if (rendered.has(name)) continue;
+      const block = await renderActiveSkillBody(collection, name, opts.mountPath, input);
       if (block) {
         rendered.add(name);
-        blocks.push(block);
-      }
-    }
-
-    // 2. Dynamic activations — inline mode only. Preserve each entry's input
-    //    (substituted into `$ARGUMENTS`); fork/pattern entries are dispatch
-    //    concerns and never render as context.
-    for (const entry of dynamicEntries) {
-      if (rendered.has(entry.name)) continue;
-      const block = await renderActiveSkillBody(
-        collection,
-        entry.name,
-        opts.mountPath,
-        entry.input,
-      );
-      if (block) {
-        rendered.add(entry.name);
         blocks.push(block);
       }
     }

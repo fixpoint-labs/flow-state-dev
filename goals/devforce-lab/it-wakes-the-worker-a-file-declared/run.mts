@@ -209,14 +209,14 @@ function controlOptions(): Partial<OpenLabOptions> {
 interface OpenedLab {
   lab: Lab;
   runs: StubRun[];
-  workspace: { root: string; sourceRepo: string; baseRef: string };
+  workspace: { root: string; repo: string; baseRef: string };
 }
 
 /** Open a lab over throwaway stores and a throwaway git repository. */
 async function open(label: string, over: Partial<OpenLabOptions> = {}): Promise<OpenedLab> {
   const dirs = createScratchRepo(label);
   const stub = harnessStub(stubOptions());
-  const workspace = { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF };
+  const workspace = { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF };
   const lab = await openLab({
     stores: inMemoryStores(),
     harnesses: [readyHarness(stub.slot)],
@@ -552,7 +552,7 @@ await runGoal(async (failures) => {
         // against a path this check spelled, so a change to that derivation
         // moves both sides together and the claim stays about the run's cwd
         // being THE derived checkout.
-        const expected = checkoutPathFor(workspace, {
+        const expected = checkoutPathFor(workspace.root, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
           epic,
           issue: row?.id ?? "",
@@ -564,12 +564,12 @@ await runGoal(async (failures) => {
         if (run.cwd !== expected) {
           note(`the run's cwd was ${run.cwd}, wanted the derived checkout ${expected}`);
         }
-        if (run.cwd === workspace.root || run.cwd === workspace.sourceRepo) {
+        if (run.cwd === workspace.root || run.cwd === workspace.repo) {
           note(`the run was given the host's own directory rather than a checkout of its own`);
         }
         // Injective over its components — a redistribution of characters
         // between the issue and the phase must not land in the same tree.
-        const shifted = checkoutPathFor(workspace, {
+        const shifted = checkoutPathFor(workspace.root, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
           epic,
           issue: (row?.id ?? "").slice(0, -1),
@@ -649,7 +649,7 @@ await runGoal(async (failures) => {
     const lab = await openLab({
       stores: inMemoryStores(),
       harnesses: [readyHarness(stub.slot)],
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: fixture.assignedSeat,
       logger: silentLogger,
       withoutJudge: true,

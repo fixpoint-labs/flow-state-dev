@@ -123,7 +123,7 @@ const unjudged = handler({
   name: "subscription-interest-unjudged",
   inputSchema: screeningSchema,
   outputSchema: screeningSchema,
-  execute: async (screening: Screening): Promise<Screening> => judged(screening, { failed: "no interest model" })
+  execute: (screening) => judged(screening, { failed: "no interest model" })
 });
 
 /**
@@ -136,8 +136,8 @@ export function interestJudgment(model: string | EvaluationModel | undefined) {
     name: INTEREST_EVALUATOR,
     model,
     inputSchema: screeningSchema,
-    state: (screening: Screening) => eventAsOutsideContent(screening.event),
-    questions: (screening: Screening) => {
+    state: (screening) => eventAsOutsideContent(screening.event),
+    questions: (screening) => {
       const asks = interestQuestions(screening);
       // Past the bound the call isn't made: every subscription that listed it is refused unjudged, none split off.
       if (asks.length > MAX_INTEREST_QUESTIONS) throw new Error(`${asks.length} distinct interests, past the ${MAX_INTEREST_QUESTIONS} one call asks`);
@@ -148,7 +148,8 @@ export function interestJudgment(model: string | EvaluationModel | undefined) {
     name: "subscription-interest-judged",
     inputSchema: z.unknown(),
     outputSchema: screeningSchema,
-    execute: async (answer: unknown, ctx): Promise<Screening> => judged(screeningSchema.parse(ctx.parent?.input), answer)
+    parentInputSchema: screeningSchema,
+    execute: (answer, ctx) => judged(ctx.parent!.input, answer)
   });
   return sequencer({ name: "subscription-interest-judgment", inputSchema: screeningSchema }).step(ask).step(decide);
 }

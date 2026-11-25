@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { crawl, firecrawlCrawl, builtinCrawl } from "../../src/crawl";
 import { tools } from "../../src";
 import type { CrawlResult } from "../../src/crawl/types";
+import { builtinCrawlAdapter } from "../../src/crawl/providers";
 
 import { runForTest } from "@flow-state-dev/testing";
 // Mock the providers module to avoid real SDK imports
@@ -108,15 +109,41 @@ describe("crawl tool factory", () => {
     expect(result.source).toBe("firecrawl");
   });
 
-  it("uses input maxPages/maxDepth over config defaults", async () => {
-    const tool = crawl({ maxPages: 100, maxDepth: 5 });
-    // Input values should take precedence
-    const result = await runForTest(tool, 
+  // The model's limits come from tool input, which a crawled page can steer, so
+  // the app's limits are ceilings the model can only ask below.
+  const lastCrawlOptions = () => vi.mocked(builtinCrawlAdapter.crawl).mock.lastCall?.[1];
+
+  it("lets the model ask for less than the app's limits", async () => {
+    await runForTest(crawl({ maxPages: 100, maxDepth: 5 }),
       { url: "https://example.com", maxPages: 10, maxDepth: 1 },
       {} as any
     );
 
-    expect(result).toBeDefined();
+    expect(lastCrawlOptions()).toMatchObject({ maxPages: 10, maxDepth: 1 });
+  });
+
+  it("caps a model asking for more than the app's limits", async () => {
+    await runForTest(crawl({ maxPages: 5, maxDepth: 1 }),
+      { url: "https://example.com", maxPages: 100_000, maxDepth: 50 },
+      {} as any
+    );
+
+    expect(lastCrawlOptions()).toMatchObject({ maxPages: 5, maxDepth: 1 });
+  });
+
+  it("caps at the default limits when the app sets none", async () => {
+    await runForTest(crawl(),
+      { url: "https://example.com", maxPages: 100_000, maxDepth: 50 },
+      {} as any
+    );
+
+    expect(lastCrawlOptions()).toMatchObject({ maxPages: 20, maxDepth: 2 });
+  });
+
+  it("uses the app's limits when the model names none", async () => {
+    await runForTest(crawl({ maxPages: 7, maxDepth: 3 }), { url: "https://example.com" }, {} as any);
+
+    expect(lastCrawlOptions()).toMatchObject({ maxPages: 7, maxDepth: 3 });
   });
 });
 

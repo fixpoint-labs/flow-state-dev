@@ -5,8 +5,8 @@
  * the environment it was started with, so the claim is about the real spawn
  * rather than about the options object the block builds. A model with a shell
  * tool can read anything that environment holds, which is why the default and
- * the allowlisted case are both pinned here: the default is what the docs
- * promise today, and the allowlist is what a host relies on to keep its own
+ * the allowlisted case are both pinned here: the default holds only Claude
+ * Code's pass list, and a host's own list is what it relies on to keep its
  * secrets out of the run.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -53,13 +53,27 @@ afterEach(() => {
 });
 
 describe("the environment a Claude Code run's process inherits", () => {
-  it("is the server's whole process.env when no env is given, secrets included", async () => {
+  it("is only Claude Code's pass list when no env is given, so a server secret never reaches the run", async () => {
+    // A direct `claudeCodeAgent()` is as safe as the harness kit's: a host that
+    // forgets `env` must not hand a model with a shell every secret it holds.
     vi.stubEnv(SECRET, "server-only");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-for-the-run");
 
     const seen = await envSeenByRun();
 
-    expect(seen[SECRET]).toBe("server-only");
+    expect(SECRET in seen).toBe(false);
+    // Named in the pass list, so the run can still sign in and find its tools.
+    expect(seen.ANTHROPIC_API_KEY).toBe("sk-for-the-run");
     expect(seen.PATH).toBe(process.env.PATH);
+  });
+
+  it("is the server's whole process.env when the host passes it, secrets included", async () => {
+    // The way back to the old behaviour is explicit, never the default.
+    vi.stubEnv(SECRET, "server-only");
+
+    const seen = await envSeenByRun({ ...(process.env as Record<string, string>) });
+
+    expect(seen[SECRET]).toBe("server-only");
   });
 
   it("holds only what harnessEnv names, so an unnamed server secret never reaches the run", async () => {

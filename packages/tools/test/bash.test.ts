@@ -1047,6 +1047,20 @@ describe("createBashBlocks", () => {
     return { ...base, pattern } as ResourceCollectionRef<FileEntryState>;
   }
 
+  // The host shell runs real commands on the machine, and its guards are a
+  // best-effort fence, not a boundary. Reaching it must be a choice the
+  // caller wrote down, so the zero-config path is the in-process emulator.
+  it("runs in the just-bash emulator when no provider is given", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { createJustBashSandbox } = await import("../src/bash/adapters/just-bash");
+    vi.mocked(createJustBashSandbox).mockClear();
+
+    const { bashCommand } = createBashBlocks();
+    await runForTest(bashCommand, { command: "ls" }, buildCtx("default-provider-1"));
+
+    expect(createJustBashSandbox).toHaveBeenCalledTimes(1);
+  });
+
   it("auto-discovers every collection on ctx and mounts each at its pattern prefix", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 

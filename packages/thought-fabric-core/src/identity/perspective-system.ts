@@ -20,12 +20,7 @@
 import { sequencer } from '@flow-state-dev/core'
 import type { DefinedResource } from '@flow-state-dev/core'
 import { z } from 'zod'
-import {
-  perspectiveInputSchema,
-  perspectiveObservationsResource,
-  createPerspectivePositionsResource,
-  perspectivePositionsResource,
-} from './perspective'
+import { perspectiveInputSchema } from './perspective'
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
@@ -37,6 +32,7 @@ import {
   perspectivePositions,
 } from './perspective-helpers'
 import {
+  buildPerspectiveResources,
   perspectiveApply,
   perspectiveAnalyze,
   perspectiveAuditor,
@@ -163,9 +159,8 @@ export function system(
   // across the bundled blocks and capability so they all reference the same
   // `defineResource()` instance — required for FIX-435's same-reference rule
   // and for tests that compare resource identity across the bundle.
-  const positionsResource: DefinedResource = positionScope === 'session'
-    ? perspectivePositionsResource
-    : createPerspectivePositionsResource(positionScope)
+  const resources = buildPerspectiveResources(positionScope)
+  const positionsResource = resources.perspectivePositions
 
   // Pre-configured static blocks
   const apply = perspectiveApply({
@@ -240,11 +235,6 @@ export function system(
     .stepIf((input) => input.content.length > 0, captureCore)
 
   const capability = createPerspectiveCapability(instance, { positionScope, positionsResource })
-
-  const resources: Record<string, DefinedResource> = {
-    perspectiveObservations: perspectiveObservationsResource,
-    perspectivePositions: positionsResource,
-  }
 
   // Recall helper — reads accumulated state from a runtime ctx
   function recall(ctx: any): PerspectiveAccumulated {
