@@ -3,14 +3,16 @@
 [Spec](SPEC.md) · **Decisions**
 
 The issue asked for `provides`; the dispatch allowed "don't build it" if `requires` plus config
-covers the real cases. The evidence says it does, so both cards argue for not building.
+covers the real cases. The evidence says it does, so both cards argue for not building. D1 was
+reopened on 2026-11-25 for values built at install, and the owner chose option A: they go on
+the installation, with no new primitive.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2836"] --> D1["D1 · don't build provides<br/>share through package exports and slots"]
-  D1 -.->|"rejected"| X1["provides, as the issue sketches it<br/>no named case builds its value in install"]
+  I["FIX-2836"] --> D1["D1 · no provides<br/>config-built: package export · install-built: on the installation"]
+  D1 -.->|"rejected"| X1["B · a scoped provides<br/>four new concepts; every install-built case already holds the installation"]
   I --> D2["D2 · FIX-2816 drops its builder slot<br/>memory reaches workers through workforce.slots.uses"]
   D2 -.->|"rejected"| X2["workforce requires memory (optional)<br/>the core kit learns every feature kit"]
 ```
@@ -18,21 +20,27 @@ flowchart TD
 Solid edges are what you are signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Don't build `provides`; a kit shares what it builds through its package's exports and slots
+## D1 · No `provides`: a value built from config is a package export; a value built at install goes on the installation
 
 | | |
 |---|---|
-| **Instead of** | `provides` on `defineKit`, with `provide` and `provided` in `install`, typed through `requires` (the issue's sketch) |
-| **Because** | Every case the issue names, checked against code and the draft PRs. **Memory** (#5434): `system(config)` needs only config, and its capability reaches workforce's worker flow and a block's `ctx.cap` with no new API ([the POC](poc/memory-without-provides/README.md), control fails). **Second opinion** (#5435) and **research** (#5436): each kit's install returns one flow from config alone; no slot, nothing shared. **Harnesses' list**: its consumers are workforce, which harnesses requires (a cycle if reversed), and Shift Manager, an app; `provides` reaches neither. **Inbox** (FIX-2058): Done, with its wait on the `wait-gate` and `inbox` rows, no kit. **Message board** (FIX-2839): its sketch only takes contributions (`schemas`, `sync`, `watchers`). The one real install-time value, workforce's installation, already reaches harnesses through the `flows` builder slot. And a dependent's `contributes` runs before any install (`packages/engine/src/flowstate/kits.ts:222` vs `:297`), so a provided value could feed only the reader's own `install`: memory reaching workers would need workforce to require memory |
-| **Locks in** | One rule in `kits.md`: a value made from config is a package export, placed with `uses` or a slot fill; a value made from a kit's folder or slots goes to dependents through the owner's builder slot. ER-5 stands unamended. A feature author who wants another kit's flows to have their capability needs that kit to declare a slot, or the app to place it |
+| **Instead of** | **B**, a scoped `provides`: `provide` and `provided` on `defineKit`, typed through `requires`, the requiring kit reading the value in its own install (the issue's sketch; option B on the owner's [2026-11-25 comment](https://github.com/fixpoint-labs/flow-state-dev/pull/5548#issuecomment-7148066040)) |
+| **Because** | **Built from config.** Memory (#5434): `system(config)` needs only config, and its capability reaches workforce's worker flow and a block's `ctx.cap` with no new API ([the POC](poc/memory-without-provides/README.md), control fails). Second opinion (#5435) and research (#5436) return one flow from config; nothing shared. Harnesses' list: its consumers are workforce, which harnesses requires (a cycle if reversed), and Shift Manager, an app; `provides` reaches neither. Inbox (FIX-2058): Done, no kit. **Built at install** (the three cases on the comment). (1) Workforce keeps its internal events in a module-level WeakMap keyed by installation and reads it back through `internalEventsOf(installation)`. Every caller already holds the installation inside a builder (the goal's and the kit test's `workerFlow` builders, the routines page's flow builder), so a field on the installation serves them all. (3) A kit that publishes internal events requires workforce, so it installs after it, and it gets the installation by contributing a builder to `workforce.slots.flows`, as harnesses does; `installation.internalEvents.publishEvent` is there. (2) The message board's validator (FIX-2839) is built from schemas other kits contribute; if workforce needs it, workforce owns that slot and builds the validator in its own install. And a dependent's `contributes` runs before any install, so B could only feed the reader's own `install`: memory reaching workers would need workforce to require memory |
+| **Locks in** | One rule in `kits.md`: a value made from config is a package export, placed with `uses` or a slot fill; a value made at install goes on the object the owner hands its builders (workforce's installation), reached by a dependent through the owner's builder slot. **`installation.internalEvents` replaces `internalEventsOf` and its WeakMap, removed with no alias**: an app that calls it changes one line when it upgrades workforce. ER-5 stands unamended. A feature author who wants another kit's flows to have their capability needs that kit to declare a slot, or the app to place it |
 
-It comes down to where the value is built: every named case builds it from config, so a module
-export already carries it, typed.
+It comes down to where the value is built: from config, a module export carries it, typed; at
+install, the owner already hands the object it built to every builder, so the value rides on it.
 
-**What would change my mind:** a kit whose value needs its folder or its slots, consumed by
-more than one kit that requires it, where a builder slot on the owner reads badly. Then
-`provides` is the right shape, and Fastify's `decorate` with `dependencies` and Backstage's
-service refs with `deps` are the precedent.
+**Why B lost:** four new concepts (`provide`, `provided`, a record `requires`, `.optional()`)
+that reach only kits requiring the provider, never the app's flows, for cases that all run in
+a builder, not in the reader's `install`.
+
+**What would reopen this:** a kit that needs, during its own `install`, a value another kit
+built in its `install`. A builder slot can't hand that over without a closure capturing it. The
+known candidate is FIX-2839's planned follow-up, workforce requiring a separate message-board
+kit: if workforce's install needs that kit's validator, scoped `provides` is the shape, with
+Fastify's `decorate` and `dependencies` and Backstage's service refs and `deps` as precedent.
+FIX-2839's spec decides it, and reopens this card if it lands there.
 
 <a name="d2"></a>
 ## D2 · FIX-2816 drops its builder slot; memory reaches workforce's workers through `workforce.slots.uses`
@@ -54,6 +62,10 @@ holds one at `apps/kitchen-sink/flows/chat-agent/run/cognition.ts:20`.
 
 - **The issue closes on merge of the implementation PR** (the `kits.md` section and the goal),
   not on this spec alone.
+- **`installation.internalEvents` is optional**, `undefined` when the kit has no `internalEvents`
+  config; a caller narrows it instead of catching `internalEventsOf`'s throw. It is set after
+  the installation is created (the service flow is built on it) and before the hire, which is
+  when builders first run.
 - **Typed contributions** (harnesses annotates `installation: WorkerInstallation` by hand at
   `harnesses-kit.ts:131`) are a separate, smaller question; not raised here.
 - **Linear follow-ups when approved:** FIX-2816 loses "a slot whose entries are flow builders";
@@ -63,7 +75,8 @@ holds one at `apps/kitchen-sink/flows/chat-agent/run/cognition.ts:20`.
 
 | Option | Why it lost |
 |---|---|
-| `provides` as sketched | D1: no case needs it, and it can't reach the app's own flows |
+| `provides`, as sketched or scoped (B) | D1: no case needs a value inside its own install, and it can't reach the app's own flows |
+| Keep `internalEventsOf` beside the new field | Two ways to one value; the owner's rule is one mechanism, no aliases |
 | Values on the kit instance (`memory(cfg).value`, built at the factory call) | Same reach as a package export, plus a new `defineKit` field |
 | A bridge kit requiring both memory and workforce | Contributions run before installs, so it can't read memory's built value; with a module export it is just the app's fill, renamed |
 | Leave the builder slot in memory | Every feature kit would copy it (the issue's own warning) |
@@ -105,3 +118,7 @@ Weigh them accordingly. Verdict: **don't build; reshape to a docs rule and a goa
 
 - 2026-11-21 · Drafted. The issue asked to build `provides`; the POC and the case survey turned
   the spec into a recommendation not to.
+- 2026-11-25 · The owner reopened D1: it covered values built from config, not at install
+  (`internalEventsOf`, the message board's validator, kits publishing internal events). The
+  owner chose option A; D1 now puts install-built values on the installation and records B's
+  falsifier.
