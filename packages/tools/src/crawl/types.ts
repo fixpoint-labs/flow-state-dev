@@ -20,6 +20,10 @@ export type CrawlResult = z.infer<typeof crawlResultSchema>;
 
 // --- Tool input schema ---
 
+/**
+ * Build the crawl input schema. Omitted limits use the configured values,
+ * then the built-in defaults. Explicit input limits take precedence.
+ */
 export function createCrawlInputSchema(config: Pick<CrawlConfig, "maxPages" | "maxDepth"> = {}) {
   return z.object({
     url: z.string().describe("The root URL of the site to crawl"),
