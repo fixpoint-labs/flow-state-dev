@@ -203,7 +203,8 @@ async function openFollowingLab(name: string): Promise<Lab> {
     stores: inMemoryStores(),
     harnesses: [readyHarness(harnessStub({ finalMessage: `Opened ${PR_URL}` }).slot)],
     runTimeoutMs: 30_000,
-    workspace: { root, remotes: { allow: ["file"] } },
+    // The project's remote is a local fixture; it stands for the GitHub repository the pull request is in.
+    workspace: { root, remotes: { allow: ["file"] }, pullRequestRepo: (url) => (url === remote.url ? "github.com/acme/storefront" : undefined) },
     coderWorkerId: CODER,
     inventory: true,
     projects: [

@@ -56,7 +56,7 @@ export interface RecordBranchPullRequestsOptions {
   /** The checkout whose current branch is checked. Only git reads it; `gh` never runs there. */
   readonly cwd: string;
   /**
-   * The GitHub repository to ask, as `host/owner/name` (gh's `--repo`): the
+   * The GitHub repository to ask, as `host/owner/name` (the slug `gh --repo` takes; `gh api` gets it as `--hostname` and the path): the
    * one the host pinned for the checkout (`WorkspaceHost.pullRequestRepository`),
    * never read from the checkout. Absent, nothing is asked and the check is
    * `unavailable`.
