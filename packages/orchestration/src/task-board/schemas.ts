@@ -19,6 +19,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
+import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import type { Task } from "../tasks";
 import { taskClaimTicketSchema } from "../tasks/claim-ticket";
 
@@ -95,6 +96,11 @@ export const taskBoardWorkerBodyStateSchema = z.object({
    */
   currentLedger: transientSlot(z.string().optional()),
 });
+
+/** Context of a block running inside the declared worker-body sequencer. */
+export type TaskBoardWorkerBodyContext = BlockContext & {
+  sequencer?: StateRef<z.infer<typeof taskBoardWorkerBodyStateSchema>>;
+};
 
 /**
  * Output of `claimTask`. Workers branch on `claimed`: when true, the

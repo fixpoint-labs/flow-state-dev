@@ -74,7 +74,7 @@ import {
   advisoryFail,
 } from "../../tasks/collection/advisory-write-back";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
-import { taskBoardWorkerBodyStateSchema } from "../schemas";
+import { taskBoardWorkerBodyStateSchema, type TaskBoardWorkerBodyContext } from "../schemas";
 import {
   HandedOverTaskError,
   reportRecorderFailure,
@@ -416,7 +416,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
 
 export interface RecordErrorOptions {
   name: string;
-  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  collection: (ctx: TaskBoardWorkerBodyContext) => Promise<TaskCollectionRef>;
   /**
    * Failure policy. `"skip"` swallows after writing the failure.
    * `"fail"` rethrows so the worker sequencer fails — propagates up
