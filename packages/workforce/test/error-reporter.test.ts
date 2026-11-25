@@ -836,6 +836,23 @@ describe("reading the history", () => {
     expect(read).not.toContain("FIX-12");
   });
 
+  // A storm report is never replaced, and a late failure (an old task's ending) lands on it with a time before
+  // the storm began. It is still that storm's: an earlier report it never had must not appear.
+  it("keeps a late failure on a storm report in that storm's record", async () => {
+    const lab = await openLab({ limits: { newPerWindow: 1 } });
+    const now = Date.now();
+    await lab.intake(requestOccurrence("req_alpha", "alpha broke", now));
+    await lab.intake(requestOccurrence("req_beta", "beta broke", now));
+    await lab.intake(requestOccurrence("req_gamma", "gamma broke", now - 60_000));
+    expect((await lab.rows()).filter((r) => r.kind === "storm")).toHaveLength(1);
+    const hits = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${today()}` });
+    const contents = await Promise.all(hits.map(async (h) => (await lab.readHistory(OPERATOR, h.uri)).content!));
+    const storm = contents.filter((c) => c.includes("req_beta") || c.includes("req_gamma"));
+    expect(storm).toHaveLength(1);
+    expect(storm[0]).toContain("req_beta");
+    expect(storm[0]).toContain("req_gamma");
+  });
+
   it("links the operator to a waiting report's Inbox item, and a user who failed the same way to nothing they can't open", async () => {
     const lab = await openLab({ inboxLink });
     await lab.breaks("disk is full");

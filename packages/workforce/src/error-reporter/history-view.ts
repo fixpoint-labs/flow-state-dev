@@ -180,14 +180,17 @@ type Lifetime = { readonly current: true } | { readonly current: false; readonly
  * The report an entry belongs to. By the first sighting it names; an entry
  * that names none is the current report's from its first sighting on, and
  * before it the earlier report that had started by then, of those the report
- * kept or the day's entries name (`known`, sorted, oldest first).
+ * kept or the day's entries name (`known`, sorted, oldest first). With none
+ * started by then, it is a late occurrence of the current report.
  */
 function lifetimeOf(entry: HistoryEntry, since: number | undefined, report: ReportResourceState, known: readonly number[]): Lifetime {
   if (since === undefined ? entry.at >= report.firstSeenAt : since === report.firstSeenAt) return { current: true };
   const earlier = report.earlier ?? [];
   const started = since ?? known.filter((s) => s <= entry.at).at(-1);
-  const summary = started === undefined ? undefined : earlier.find((e) => e.since === started);
-  const key = String(started ?? "earlier");
+  // Nothing says an earlier report had started: a late occurrence of the current one (a storm's, an older entry's).
+  if (started === undefined) return { current: true };
+  const summary = earlier.find((e) => e.since === started);
+  const key = String(started);
   return summary === undefined ? { current: false, key } : { current: false, key, summary };
 }
 
