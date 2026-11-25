@@ -182,8 +182,8 @@ describe("inboxItems: one item type", () => {
     });
 
     it("a task's stop doesn't claim another request's stop of the same id: that one still lists on its own", () => {
-      const row = stopped("t1", "approve-deploy", { run: { sessionId: "run_t1", requestId: "req_t1" } });
-      const items = inboxItems({ rows: [row], suspensions: [found("approve-deploy", { sessionId: "run_t1", requestId: "req_t1" }), b], flowOf: flows });
+      const task = stopped("t1", "approve-deploy", { run: { sessionId: "run_t1", requestId: "req_t1" } });
+      const items = inboxItems({ rows: [task], suspensions: [found("approve-deploy", { sessionId: "run_t1", requestId: "req_t1" }), b], flowOf: flows });
       expect(items.map((i) => i.id).sort()).toEqual([suspensionHoldId("req_b", "approve-deploy"), taskItemId(BOARD, "t1")].sort());
       expect(items.find((i) => i.task !== null)!.holds.map((h) => h.id)).toEqual([suspensionHoldId("req_t1", "approve-deploy")]);
     });
