@@ -155,7 +155,7 @@ describe("reviewDetail: what the review card needs to decide on", () => {
   it("reads the pull request the work is already on, with its state and what it lacks, and anything it can't read as unknown", () => {
     const pr = { number: 5659, url: "https://github.com/acme/widgets/pull/5659" };
     expect(reviewDetail({ branch: "b", pullRequest: { ...pr, state: "merged", unpushed: 0 } })?.pullRequest).toEqual({ ...pr, state: "merged", unpushed: 0 });
-    expect(reviewDetail({ branch: "b", pullRequest: { ...pr, state: "reopened", unpushed: -1 } })?.pullRequest).toEqual({ ...pr, state: null, unpushed: null });
+    expect(reviewDetail({ branch: "b", pullRequest: { ...pr, state: "draft", unpushed: -1 } })?.pullRequest).toEqual({ ...pr, state: null, unpushed: null });
     expect(reviewDetail({ branch: "b", pullRequest: { number: 5659, url: "javascript:alert(1)", state: "open" } })?.pullRequest).toBeNull();
     // Data from before the field: none.
     expect(reviewDetail({ branch: "b" })?.pullRequest).toBeNull();
