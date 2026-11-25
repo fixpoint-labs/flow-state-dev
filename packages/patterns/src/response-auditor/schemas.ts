@@ -1,3 +1,4 @@
+import type { ItemVisibility } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -67,4 +68,6 @@ export interface ResponseAuditorConfig {
   alwaysRun?: boolean;
   /** Parallel analyzer limit (default: all). */
   maxConcurrency?: number;
+  /** Visibility of audit annotations. Hidden audits also keep working state transient. Defaults to client-visible. */
+  annotationVisibility?: ItemVisibility;
 }

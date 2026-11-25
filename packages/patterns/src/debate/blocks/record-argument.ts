@@ -4,6 +4,7 @@
  * built per debater so the agent's name and stance are bound at
  * build time and render clearly in DevTool.
  */
+import type { ItemVisibility } from "@flow-state-dev/core";
 import { handler } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
@@ -21,6 +22,7 @@ export function createRecordArgument(opts: {
   transcript: DefinedResource;
   collectionId: string;
   warnedAgents: Set<string>;
+  itemVisibility?: ItemVisibility;
 }) {
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
@@ -47,6 +49,7 @@ export function createRecordArgument(opts: {
         ctx,
         backing: "state",
         collectionId: opts.collectionId,
+        changeVisibility: opts.itemVisibility,
         state: ctx.sequencer!,
       });
       const task = await collection.createTask({
@@ -64,7 +67,7 @@ export function createRecordArgument(opts: {
       ctx.emit.data(
         "debate-turn",
         { round, agentName: opts.agentName, stance: opts.stance, text },
-        { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}`, itemVisibility: { client: true, history: false } },
+        { key: `turn-${round}-${opts.agentName}-${(current.entries?.length ?? 0)}`, itemVisibility: opts.itemVisibility ?? { client: true, history: false } },
       );
     },
   });
