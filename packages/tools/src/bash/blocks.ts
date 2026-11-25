@@ -310,7 +310,7 @@ type ScopeIdentity = ScopePrincipal;
  */
 function defaultMoatRunName(identity: ScopeIdentity): string {
   const { key } = resolveScopeKey("session", identity);
-  const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
+  const digest = digestOf(key);
   // Sanitized, not `safeSegment`ed. That helper ends in a digest of the
   // session id alone, and truncating its output to fit a run name cut that
   // digest off again — a hash computed and thrown away, and the wrong hash
@@ -381,8 +381,29 @@ function sanitize(id: string): string {
 
 function safeSegment(id: string): string {
   const safe = sanitize(id).slice(0, 40) || "id";
-  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
-  return `${ENCODED_PREFIX}${safe}-${digest}`;
+  return `${ENCODED_PREFIX}${safe}-${digestOf(id)}`;
+}
+
+/** In `u` mode a surrogate pair is one code point, so only a lone half matches. */
+const LONE_SURROGATE = /\p{Cs}/u;
+
+/**
+ * 12 hex of SHA-256 over bytes that mean `text` and nothing else.
+ *
+ * UTF-8 alone is not that: it cannot carry a lone surrogate, and Node writes
+ * each one as U+FFFD's bytes, so `"\ud800"`, `"\udfff"` and `"\ufffd"` were
+ * one digest and so one directory and one MOAT container.
+ *
+ * Valid Unicode still hashes as UTF-8, so every existing directory and run
+ * name keeps its name and nothing moves. Anything else hashes as `0xFF` then
+ * its UTF-16LE code units, which keeps every code unit. `0xFF` never occurs in
+ * UTF-8, so the two kinds of input cannot spell each other's bytes.
+ */
+function digestOf(text: string): string {
+  const bytes = !LONE_SURROGATE.test(text)
+    ? Buffer.from(text, "utf-8")
+    : Buffer.concat([Buffer.from([0xff]), Buffer.from(text, "utf16le")]);
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 12);
 }
 
 /**
