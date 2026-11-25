@@ -4,6 +4,11 @@
  * stream and `/continue` honour it only while trace observability is on (off
  * in production unless `FSDEV_TRACE_OBSERVABILITY=true`). With it off, the request
  * is ignored and the caller gets the client view, once-per-process logged.
+ *
+ * Two more routes must keep to the client view while observability is off: a
+ * request stream resumed with a cursor (it must still know which items it is
+ * hiding when their `item.added` came before the cursor), and the session
+ * request list's `include_items` item logs.
  */
 import { DEFAULT_ORG_ID, __resetDeprecationWarningsForTests, defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { oneOffSessionId } from "@flow-state-dev/core/helpers";
@@ -17,6 +22,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import { handleContinueRequest } from "../src/routes/recovery-routes";
+import { handleListSessionRequests } from "../src/routes/session-routes";
 import { handleRequestStream } from "../src/routes/stream-routes";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import type { InboundTransportHost } from "../src/transports/types";
@@ -161,6 +167,162 @@ describe("an ignored trace request is logged once per process", () => {
     await streamBody(await storesFor("live tail"), "?include=trace");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toMatch(/trace observability is off/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET …/requests/:id/stream resumed with a cursor
+// ---------------------------------------------------------------------------
+
+const BLOCK_TRACE = {
+  id: "t_trace",
+  type: "block_trace",
+  status: "completed",
+  requestId: REQUEST_ID,
+  itemIndex: 1,
+  provenance: { blockName: "test", blockInstanceId: "test_1", phase: "main" },
+  ts: 101,
+  output: "trace-output"
+} as unknown as MessageItem;
+
+/** The hidden message without its text: what `item.added` carries before the text streams. */
+function streaming(item: MessageItem): MessageItem {
+  return { ...item, status: "in_progress", content: [] };
+}
+
+const HIDDEN = message("m_hidden", "hidden-text", false, 0);
+const VISIBLE = message("m_visible", "visible-text", true, 2);
+const text = (value: string) => ({ type: "output_text", text: value }) as const;
+const base = (sequence: number) => ({ stream: "request", requestId: REQUEST_ID, sequence_number: sequence, ts: 101 }) as const;
+
+/** A run whose hidden message and visible message both stream their text as content events. */
+const STREAMED: RequestStreamEvent[] = [
+  { ...base(1), type: "request.created", status: "in_progress" },
+  { ...base(2), type: "item.added", item: streaming(HIDDEN) },
+  { ...base(3), type: "content.added", itemId: "m_hidden", contentIndex: 0, content: text("") },
+  { ...base(4), type: "content.delta", itemId: "m_hidden", contentIndex: 0, delta: "hidden-text" },
+  { ...base(5), type: "content.done", itemId: "m_hidden", contentIndex: 0, content: text("hidden-text") },
+  { ...base(6), type: "item.done", item: HIDDEN },
+  { ...base(7), type: "item.done", item: BLOCK_TRACE },
+  { ...base(8), type: "item.added", item: streaming(VISIBLE) },
+  { ...base(9), type: "content.done", itemId: "m_visible", contentIndex: 0, content: text("visible-text") },
+  { ...base(10), type: "item.done", item: VISIBLE },
+  { ...base(11), type: "request.completed", status: "completed" }
+];
+
+/** Stores holding the streamed run, its record carrying the items as a run persists them. */
+async function streamedStoresFor(branch: "terminal replay" | "live tail" | "record-less replay"): Promise<StoreRegistry> {
+  const stores: StoreRegistry = createInMemoryStores();
+  const items = [HIDDEN, BLOCK_TRACE, VISIBLE];
+  if (branch === "live tail") {
+    await stores.request.set(REQUEST_ID, { ...record("in_progress"), items }, "any");
+    stores.request.subscribeToEvents = (_id, options) =>
+      (async function* () {
+        for (const event of STREAMED) {
+          if (event.sequence_number > (options?.fromSequence ?? 0)) yield event;
+        }
+      })();
+    return stores;
+  }
+  if (branch === "terminal replay") {
+    await stores.request.set(REQUEST_ID, { ...record("completed"), completedAtMs: 200, items }, "any");
+  }
+  stores.request.persistEvents(REQUEST_ID, STREAMED);
+  await stores.request.flushEvents(REQUEST_ID);
+  return stores;
+}
+
+/** The SSE body's events, parsed from its `data:` lines. */
+function frames(body: string): Array<Record<string, unknown>> {
+  return body
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
+}
+
+describe.each(["terminal replay", "live tail", "record-less replay"] as const)(
+  "GET …/requests/:id/stream resumed between a hidden item's item.added and its content (%s)",
+  (branch) => {
+    it("sends none of the hidden item's content with observability off", async () => {
+      observabilityOff();
+      const body = await streamBody(await streamedStoresFor(branch), "?starting_after=2");
+      expect(body).toContain("visible-text");
+      expect(body).not.toContain("hidden-text");
+      expect(body).not.toContain("trace-output");
+    });
+
+    it("keeps the client view with observability on when no trace was asked for", async () => {
+      observabilityOn();
+      const body = await streamBody(await streamedStoresFor(branch), "?starting_after=2");
+      expect(body).toContain("visible-text");
+      expect(body).not.toContain("hidden-text");
+    });
+
+    it("serves the hidden content to a trace request with observability on, as before", async () => {
+      observabilityOn();
+      const body = await streamBody(await streamedStoresFor(branch), "?starting_after=2&include=trace");
+      expect(body).toContain("hidden-text");
+      expect(body).toContain("trace-output");
+    });
+
+    it("still sends a visible item's content when the cursor is past its item.added", async () => {
+      // The fix must not turn content events into an allowlist of items seen
+      // on this connection: a resumed client already holds this item.
+      observabilityOff();
+      const body = await streamBody(await streamedStoresFor(branch), "?starting_after=8");
+      const content = frames(body).filter((frame) => frame.type === "content.done");
+      expect(content.map((frame) => frame.itemId)).toEqual(["m_visible"]);
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// GET …/sessions/:id/requests?include_items=true
+// ---------------------------------------------------------------------------
+
+async function listedItemIds(): Promise<string[]> {
+  const stores = createInMemoryStores();
+  await stores.session.set(
+    "sess_alice",
+    {
+      orgId: DEFAULT_ORG_ID,
+      id: "sess_alice",
+      flowKind: FLOW_KIND,
+      userId: "alice",
+      state: {},
+      resources: {},
+      version: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      journal: []
+    },
+    "any"
+  );
+  await stores.request.set(
+    REQUEST_ID,
+    { ...record("completed"), orgId: DEFAULT_ORG_ID, completedAtMs: 200, items: [HIDDEN, BLOCK_TRACE, VISIBLE] },
+    "absent"
+  );
+  const response = await handleListSessionRequests(
+    new Request("https://x/api/flows/sessions/sess_alice/requests?include_items=true"),
+    { kind: "list_session_requests", sessionId: "sess_alice" },
+    { registry: { get: () => undefined, list: () => [] } as unknown as FlowRegistry, stores }
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { requests: Array<{ items?: Array<{ id: string }> }> };
+  expect(body.requests).toHaveLength(1);
+  return (body.requests[0]!.items ?? []).map((item) => item.id);
+}
+
+describe("GET …/sessions/:id/requests?include_items=true", () => {
+  it("lists only client-visible items with observability off", async () => {
+    observabilityOff();
+    expect(await listedItemIds()).toEqual(["m_visible"]);
+  });
+
+  it("lists the whole item log with observability on, as before", async () => {
+    observabilityOn();
+    expect(await listedItemIds()).toEqual(["m_hidden", "t_trace", "m_visible"]);
   });
 });
 

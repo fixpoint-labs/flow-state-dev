@@ -11,6 +11,7 @@
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 
 /**
  * Stateful filter for a single SSE connection. Tracks suppressed item IDs so
@@ -24,10 +25,23 @@ import { resolveItemVisibility } from "@flow-state-dev/core/items";
  * whose value the emitter overwrote with the event id — is dropped. Every
  * client-visible update is followed by the item's `item.done`, which carries
  * the patched row, so a client that misses the patch still converges.
+ *
+ * A stream resumed past an item's `item.added` would not know to hide its
+ * content, so a resuming route passes the request's stored items as
+ * `knownItems`: the filter starts out knowing which of them it hides and
+ * which it forwards, as if it had seen their `item.added`.
+ *
+ * @param knownItems Items the stream may carry events for without their
+ *   `item.added`: the request record's items, on a resumed stream.
  */
-export function createClientEventFilter(): (event: RequestStreamEvent) => boolean {
+export function createClientEventFilter(
+  knownItems: readonly RuntimeItem[] = []
+): (event: RequestStreamEvent) => boolean {
   const suppressedItemIds = new Set<string>();
   const clientItemIds = new Set<string>();
+  for (const item of knownItems) {
+    (resolveItemVisibility(item).client ? clientItemIds : suppressedItemIds).add(item.id);
+  }
 
   return (event: RequestStreamEvent): boolean => {
     if (event.type === "item.added" || event.type === "item.done") {
@@ -65,10 +79,13 @@ export function createClientEventFilter(): (event: RequestStreamEvent) => boolea
 
 /**
  * Filters a batch of events, removing non-client items and their content.
+ *
+ * @param knownItems As for {@link createClientEventFilter}.
  */
 export function filterClientEvents(
-  events: RequestStreamEvent[]
+  events: RequestStreamEvent[],
+  knownItems: readonly RuntimeItem[] = []
 ): RequestStreamEvent[] {
-  const shouldForward = createClientEventFilter();
+  const shouldForward = createClientEventFilter(knownItems);
   return events.filter(shouldForward);
 }

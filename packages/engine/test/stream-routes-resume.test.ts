@@ -1,9 +1,10 @@
 /**
  * Route-level tests for SSE resume cursor threading (FIX-685 Slice A).
  *
- * The terminal and record-less replay branches of `handleRequestStream`
- * must push the resolved resume cursor into `getEvents(requestId,
- * fromSequence)` so pre-cursor events are never read from the store, and
+ * The terminal replay branch of `handleRequestStream` must push the resolved
+ * resume cursor into `getEvents(requestId, fromSequence)` so pre-cursor events
+ * are never read from the store (the record-less branch reads the whole log to
+ * learn which items are hidden, and sends only what follows the cursor), and
  * the item-reconstruction fallback must only fire when the *unfiltered*
  * event log is empty (not when a cursor filtered everything out).
  */
@@ -148,15 +149,16 @@ describe("stream resume — route cursor threading (Slice A)", () => {
   // A deleted request no longer produces that state: `delete` takes the
   // events with the record, so a freed id cannot replay its previous run
   // (last case below). Who may read the branch at all is the route's call.
-  it("record-less replay reads the store from the resume cursor", async () => {
+  // With no record to say which items the client view hides, this branch
+  // reads the whole log: a hidden item's `item.added` may sit before the
+  // cursor while its content comes after. It still sends only what follows it.
+  it("record-less replay sends only the events past the resume cursor", async () => {
     const stores: StoreRegistry = createInMemoryStores();
     const requestId = "req_gcd_cursor";
 
     // Events with no request record.
     stores.request.persistEvents(requestId, streamEvents(requestId));
     await stores.request.flushEvents(requestId);
-
-    const getEventsSpy = vi.spyOn(stores.request, "getEvents");
 
     const request = new Request("https://x/y/stream", {
       headers: { "last-event-id": `${requestId}:2` }
@@ -166,7 +168,6 @@ describe("stream resume — route cursor threading (Slice A)", () => {
       stores
     });
 
-    expect(getEventsSpy).toHaveBeenCalledWith(requestId, 2);
     const body = await readBody(response);
     expect(body).toContain("request.completed");
     expect(body).not.toContain("\"sequence_number\":1");
