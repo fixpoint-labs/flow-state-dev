@@ -54,6 +54,8 @@ export interface FetchProviderAdapter {
     options: {
       waitForJS: boolean;
       apiKey?: string;
+      /** The run's signal; aborting it aborts the request. */
+      signal?: AbortSignal;
     }
   ): Promise<FetchResult>;
 }

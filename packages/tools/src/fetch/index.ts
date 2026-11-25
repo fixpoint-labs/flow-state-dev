@@ -23,11 +23,12 @@ export function fetch(config: FetchConfig = {}) {
       "Use this to read the full content of a URL found via search or provided by the user.",
     inputSchema: fetchInputSchema,
     outputSchema: fetchResultSchema,
-    execute: async (input: FetchInput): Promise<FetchResult> => {
+    execute: async (input: FetchInput, ctx): Promise<FetchResult> => {
       const { adapter, apiKey } = resolveProvider(config);
       return adapter.fetch(input.url, {
         waitForJS: config.waitForJS ?? false,
         apiKey,
+        signal: ctx.signal,
       });
     },
   });
