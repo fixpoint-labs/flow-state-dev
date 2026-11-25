@@ -57,9 +57,9 @@ afterAll(() => {
 
 describe("fetchValidated bounds", () => {
   it("returns a body under the cap intact", async () => {
-    const { body, finalUrl } = await fetchValidated(`${base}/small`, { maxBytes: 1024 });
+    const { readBody, finalUrl } = await fetchValidated(`${base}/small`, { maxBytes: 1024 });
 
-    expect(body).toBe("<p>héllo</p>");
+    expect(await readBody()).toBe("<p>héllo</p>");
     expect(finalUrl).toBe(`${base}/small`);
   });
 
@@ -71,13 +71,17 @@ describe("fetchValidated bounds", () => {
 
   it("times out a body that stalls after the headers", async () => {
     // The deadline covers reading the body, not just waiting for headers.
-    await expect(fetchValidated(`${base}/trickle`, { timeoutMs: 100 })).rejects.toMatchObject({
+    const { readBody } = await fetchValidated(`${base}/trickle`, { timeoutMs: 100 });
+
+    await expect(readBody()).rejects.toMatchObject({
       name: "TimeoutError",
     });
   });
 
   it("cuts off a body past the byte cap", async () => {
-    await expect(fetchValidated(`${base}/big`, { maxBytes: 1024 })).rejects.toBeInstanceOf(
+    const { readBody } = await fetchValidated(`${base}/big`, { maxBytes: 1024 });
+
+    await expect(readBody()).rejects.toBeInstanceOf(
       ResponseTooLargeError,
     );
   });
