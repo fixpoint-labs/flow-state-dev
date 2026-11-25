@@ -2,24 +2,8 @@
 # <remote sha>. Read it once here; every check below that needs the refs reads $pushed.
 pushed=$(cat)
 
-# A preview/* branch merges in-flight work for one developer's local preview (preview-mode
-# skill), so it is never pushed. The sha is checked too: `git push origin HEAD:<branch>` names
-# neither side preview/*. Deleting a remote ref (an all-zero local sha) is let through.
-preview_tips=$(git for-each-ref --format='%(objectname)' 'refs/heads/preview/')
-while read -r local_ref local_sha remote_ref _; do
-  [ -z "$local_sha" ] && continue
-  [ "$local_sha" = 0000000000000000000000000000000000000000 ] && continue
-  case "$local_ref $remote_ref" in
-    *refs/heads/preview/*) refused=1 ;;
-    *) if printf '%s\n' "$preview_tips" | grep -qx "$local_sha"; then refused=1; fi ;;
-  esac
-  if [ -n "$refused" ]; then
-    echo "pre-push: preview/* branches are local-only; push the feature branch instead." >&2
-    exit 1
-  fi
-done <<EOF
-$pushed
-EOF
+# A preview/* branch (preview-mode skill) is never pushed; the script says how it judges.
+printf '%s\n' "$pushed" | node scripts/check-preview-push.mjs || exit 1
 
 pnpm lint
 node scripts/check-retired-terms.mjs

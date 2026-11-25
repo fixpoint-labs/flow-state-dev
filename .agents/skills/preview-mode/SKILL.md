@@ -31,9 +31,9 @@ issue work still runs under an epic; the features a preview worker builds are ad
 2. In the primary checkout: `git fetch origin main`, then
    `git switch --no-track -c preview/<user> origin/main`. `--no-track` gives it no upstream, so a
    plain `git pull` or `git push` never targets it, and `.husky/pre-push` refuses to push it.
-   The primary checkout carries standing uncommitted local edits (for example
-   `.claude/helpers/graft-hooks.cjs`, `.cursor/*`, `.gitignore`, `opencode.json`), and `git stash`
-   is blocked here. `git switch` carries those edits across as they are; leave them uncommitted.
+   The primary checkout may carry uncommitted local edits that are meant to stay uncommitted.
+   `git switch` carries them across as they are; never stash, commit or discard them, and never use
+   `--hard` on the primary (see Rebuild).
 3. Record each live feature branch: `git config --add preview.branch <branch>`. A rebuild merges this
    list, and `pnpm wt:prune` never removes a worktree on a listed branch.
 
@@ -58,9 +58,10 @@ issue work still runs under an epic; the features a preview worker builds are ad
 ## Worker rules (put these in every dispatch)
 
 - The harness creates your worktree under `.claude/worktrees/` off the coordinator's checkout, which
-  is the preview branch: it carries every other feature. Move to your own branch before any work:
-  new branch `git fetch origin main && git checkout -B <branch> origin/main`; existing branch
-  `git checkout <branch>`. Work only in this worktree; never touch the primary or another worktree.
+  is the preview branch: it carries every other feature. Move to your own branch before any work,
+  as `docs/contributing/orchestration.md` → "Worktree branching" says (a new branch from fresh
+  `origin/main`; an existing local branch with `git checkout <branch>`). Work only in this
+  worktree; never touch the primary or another worktree.
 - Load the skills and scoped context the task needs, as any session would.
 - Commit locally once a unit of work passes its checks: the preview can only merge commits. Do not
   push or open a PR unless the coordinator says the user asked. Clear a conflict with `main` by
@@ -70,22 +71,29 @@ issue work still runs under an epic; the features a preview worker builds are ad
 ## Sync the preview
 
 After a worker commits, merge its branch in the primary: `git merge --no-edit <branch>`. The
-worktrees share one repository, so the worker's local commits are already visible here. Resolve a
+worktrees share one repository, so the worker's local commits are already visible here. A first
+merge may fast-forward the preview onto the feature's tip; `.husky/pre-push` still lets that feature
+push, because it refuses a preview tip only when the push would carry preview-only work. Resolve a
 conflict between two features in the primary. If the feature itself is wrong, fix it through its
 worker and merge again. A commit made on the preview by mistake goes to its feature branch through
 that feature's worker (`git cherry-pick <sha>` there), then rebuild.
 
 ## Rebuild
 
-Rebuild when `origin/main` has moved, a branch was reworked, or the preview carries work that was
-dropped. First confirm the preview has no commits of its own:
-`git log --no-merges preview/<user> --not origin/main $(git config --get-all preview.branch)` must
-print nothing. Then `git fetch origin main`, `git reset --keep origin/main`, and merge each listed
-branch.
+Rebuild when `origin/main` has moved, a branch was reworked, or the user dropped a feature. In this
+order:
 
-`--keep`, not `--hard`: it moves the branch and keeps the standing local edits, and it stops rather
-than overwrite one when `origin/main` changed the same file. If it stops, tell the user which file;
-never fall back to `--hard`.
+1. Confirm the preview has no commits of its own, with the list as it stands, a branch being
+   dropped included: `git log --no-merges preview/<user> --not origin/main $(git config --get-all
+   preview.branch)` must print nothing. Run it before unsetting a dropped branch, or that branch's
+   commits print and look like the preview's own.
+2. Unset any dropped branch (Clean up, step 1).
+3. `git fetch origin main`, then `git reset --keep FETCH_HEAD`, and merge each listed branch.
+
+`FETCH_HEAD`, not the name `origin/main`: it is the commit this fetch just wrote, in this checkout,
+while `origin/main` is shared with every worktree. `--keep`, not `--hard`: it moves the branch and
+keeps the local edits, and it stops rather than overwrite one when `origin/main` changed the same
+file. If it stops, tell the user which file; never fall back to `--hard`.
 
 ## Clean up
 
@@ -93,11 +101,9 @@ At every sync and rebuild, and when a feature's PR merges:
 
 1. Drop a branch from the list only once its PR has merged or been closed, or the user drops the
    feature: `git config --unset preview.branch '^<branch>$'`. Never drop one whose worker is running.
-2. `pnpm wt:prune` lists the worktrees under `.claude/worktrees/` whose work is already in
-   `origin/main`; `pnpm wt:prune --yes` removes them and their branches, and forgets worktrees whose
-   folder is gone. It keeps a locked worktree (an agent is running in it), one with uncommitted
-   changes or commits not in `origin/main`, a branch listed in `preview.branch`, and a branch named
-   in an `.orchestration/` handle cache (a lifecycle's to reclaim). It never looks at worktrees
-   outside `.claude/worktrees/`: the run checkouts apps create under `.fsdev/` belong to those apps.
+2. `pnpm wt:prune` lists the agent worktrees whose work is already in `origin/main`;
+   `pnpm wt:prune --yes` removes them and their branches. What it keeps, and why, is in
+   `docs/contributing/orchestration.md` → "Reclaiming agent worktrees". For the preview, the rule
+   that matters is that it never removes a worktree on a branch listed in `preview.branch`.
 3. Report what was removed, the space freed, and what was kept and why. Removing a kept worktree
    needs the user's yes.

@@ -70,8 +70,10 @@ function fixture(t) {
   const bin = join(dir, "bin");
   const log = join(dir, "hook.log");
   mkdirSync(bin);
+  // The node stand-in also logs the stdin the preview guard receives.
   for (const name of ["pnpm", "node"]) {
-    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\n`);
+    const stdin = name === "node" ? `case "$1" in *check-preview-push*) cat >> "${log}" ;; esac\n` : "";
+    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\n${stdin}`);
     chmodSync(join(bin, name), 0o755);
   }
   const prePush = (lines) => {
@@ -82,7 +84,9 @@ function fixture(t) {
     });
     return { ...out, log: existsSync(log) ? readFileSync(log, "utf8") : "" };
   };
-  return { primary, git, worktree, prune, prePush };
+  const guard = (lines) =>
+    run(primary, process.execPath, [join(ROOT, "scripts/check-preview-push.mjs")], { input: `${lines.join("\n")}\n` });
+  return { primary, git, worktree, prune, prePush, guard };
 }
 
 /** One worktree per rule: only clean work already in origin/main may go. */
@@ -103,6 +107,14 @@ function layout(f) {
   const detached = f.worktree("detached", { commit: true });
   f.git(detached, "switch", "-q", "--detach");
   f.git(f.primary, "branch", "-q", "-D", "detached");
+  // Detached at a commit that is on a remote branch, but not in origin/main.
+  const pushed = f.worktree("pushed-detached", { commit: true });
+  f.git(pushed, "push", "-q", "origin", "HEAD:refs/heads/wip");
+  f.git(pushed, "switch", "-q", "--detach");
+  f.git(f.primary, "branch", "-q", "-D", "pushed-detached");
+  // A handle cache that records the worktree path but no branch.
+  const claimed = f.worktree("claimed", { branch: "fix/fix-2" });
+  writeFileSync(join(f.primary, ".orchestration", "FIX-2.md"), `issue: FIX-2\nbranch: -\nworktree: ${claimed}\n`);
   // An app-owned run checkout: landed and clean, but outside .claude/worktrees/.
   const app = f.worktree("run", { at: "labs/teammates/.fsdev/runs", branch: "conductor/run" });
   const gone = f.worktree("gone");
@@ -116,7 +128,9 @@ const KEPT = [
   ["locked", "locked"],
   ["live", "listed in preview.branch"],
   ["issue", "named in an .orchestration handle cache"],
-  ["detached", "detached with commits on no remote"],
+  ["detached", "detached with commits not in origin/main"],
+  ["pushed-detached", "detached with commits not in origin/main"],
+  ["claimed", "named in an .orchestration handle cache"],
 ];
 
 test("prune lists what it would remove and removes nothing without --yes", (t) => {
@@ -155,31 +169,75 @@ test("prune --yes removes only landed worktrees under .claude/worktrees, and the
   }
 });
 
-test("pre-push refuses a preview branch by name or by its tip, and passes other pushes to the checks", (t) => {
+test("prune --yes removes nothing when origin main can't be fetched", (t) => {
   const f = fixture(t);
-  f.git(f.primary, "switch", "-q", "-c", "preview/dev");
-  f.git(f.primary, "commit", "-q", "--allow-empty", "-m", "merge features");
-  const tip = f.git(f.primary, "rev-parse", "HEAD");
+  const { merged, fresh } = layout(f);
+  f.git(f.primary, "remote", "set-url", "origin", join(f.primary, "no-such-origin.git"));
+
+  const out = f.prune("--yes");
+
+  assert.notEqual(out.status, 0, out.text);
+  assert.match(out.text, /removed nothing/);
+  assert.ok(existsSync(merged) && existsSync(fresh), out.text);
+});
+
+/** A preview branch with one preview-only commit, and a feature branch off origin/main. */
+function previewSetup(f) {
   const base = f.git(f.primary, "rev-parse", "origin/main");
-  const zero = "0".repeat(40);
+  f.git(f.primary, "switch", "-q", "-c", "adhoc/example", "origin/main");
+  f.git(f.primary, "commit", "-q", "--allow-empty", "-m", "feature");
+  const feature = f.git(f.primary, "rev-parse", "HEAD");
+  f.git(f.primary, "config", "--add", "preview.branch", "adhoc/example");
+  return { base, feature, zero: "0".repeat(40) };
+}
+
+test("the preview guard refuses a preview branch by name or by its tip", (t) => {
+  const f = fixture(t);
+  const { base, zero } = previewSetup(f);
+  f.git(f.primary, "switch", "-q", "--no-track", "-c", "preview/dev", "origin/main");
+  f.git(f.primary, "merge", "-q", "--no-ff", "--no-edit", "adhoc/example");
+  const tip = f.git(f.primary, "rev-parse", "HEAD");
+  // A branch cut from the preview carries its merge commit, which no feature branch has.
+  f.git(f.primary, "branch", "copy", "preview/dev");
 
   for (const line of [
     `refs/heads/preview/dev ${tip} refs/heads/preview/dev ${zero}`,
     `refs/heads/adhoc/x ${base} refs/heads/preview/dev ${zero}`,
     `HEAD ${tip} refs/heads/adhoc/example ${zero}`,
+    `refs/heads/copy ${tip} refs/heads/copy ${zero}`,
   ]) {
-    const out = f.prePush([line]);
-    assert.equal(out.status, 1, line);
+    const out = f.guard([line]);
+    assert.equal(out.status, 1, `${line}\n${out.text}`);
     assert.match(out.text, /preview\/\* branches are local-only/, line);
-    assert.equal(out.log, "", `${line}: no check ran after the refusal`);
   }
+  // Deleting a remote ref passes.
+  assert.equal(f.guard([`(delete) ${zero} refs/heads/preview/dev ${tip}`]).status, 0);
+});
 
-  // A normal push passes, and the retired-terms loop still reads the ref the guard read.
-  f.git(f.primary, "switch", "-q", "-c", "adhoc/example", "origin/main");
-  f.git(f.primary, "commit", "-q", "--allow-empty", "-m", "feature");
-  const feature = f.git(f.primary, "rev-parse", "HEAD");
-  const out = f.prePush([`refs/heads/adhoc/example ${feature} refs/heads/adhoc/example ${zero}`]);
+test("the preview guard passes a feature whose tip the preview shares", (t) => {
+  const f = fixture(t);
+  const { base, feature, zero } = previewSetup(f);
+  // Right after turn-on the preview sits at origin/main.
+  f.git(f.primary, "switch", "-q", "--no-track", "-c", "preview/dev", "origin/main");
+  const fresh = f.guard([`HEAD ${base} refs/heads/adhoc/new ${zero}`]);
+  assert.equal(fresh.status, 0, fresh.text);
+  // The first merge fast-forwards the preview onto the feature's tip.
+  f.git(f.primary, "merge", "-q", "--no-edit", "adhoc/example");
+  assert.equal(f.git(f.primary, "rev-parse", "HEAD"), feature);
+  const out = f.guard([`refs/heads/adhoc/example ${feature} refs/heads/adhoc/example ${zero}`]);
   assert.equal(out.status, 0, out.text);
+});
+
+test("pre-push reads the pushed refs once and feeds the guard and the retired-terms loop", (t) => {
+  const f = fixture(t);
+  const { base, feature, zero } = previewSetup(f);
+  const line = `refs/heads/adhoc/example ${feature} refs/heads/adhoc/example ${zero}`;
+
+  const out = f.prePush([line]);
+
+  assert.equal(out.status, 0, out.text);
+  assert.match(out.log, /^node scripts\/check-preview-push\.mjs$/m);
+  assert.ok(out.log.includes(`${line}\n`), out.log);
   assert.match(out.log, /^pnpm lint$/m);
   assert.match(out.log, new RegExp(`check-retired-terms\\.mjs --added-since ${base} --head ${feature}`));
   assert.match(out.log, /one-word-per-thing\/sweep\.mjs/);

@@ -15,14 +15,23 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 
 const BASE = "origin/main";
 
 /** Run git and return its trimmed stdout; throws on a non-zero exit. */
 function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+/** The real path of `path` (symlinks resolved), or `path` itself when it does not exist. */
+function realPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }
 
 /** True when git exits 0. */
@@ -64,13 +73,16 @@ function previewBranches(primary) {
 }
 
 /**
- * Branches a lifecycle coordinator's handle cache names. The cache is gitignored working memory
- * under `<primary>/.orchestration/` (`<ISSUE>.md`, or `<EPIC>/epic.md`), with lines such as
- * `branch: fix/fix-123` or `- branch: spec/FIX-1`. A lifecycle reclaims its own worktrees, so
- * any branch it names stays. Over-matching only keeps more, which is the safe direction.
+ * Branches and worktree paths a lifecycle coordinator's handle cache names. The cache is
+ * gitignored working memory under `<primary>/.orchestration/` (`<ISSUE>.md`, or
+ * `<EPIC>/epic.md`); `issue-lifecycle` → "Handle cache" lists its branch and worktree path, as
+ * lines such as `branch: fix/fix-123`, `- branch: spec/FIX-1` and `worktree: <path>`. Issue and
+ * epic lifecycles reclaim their own worktrees, so prune leaves anything they name to them.
+ * Over-matching only keeps more, which is the safe direction.
  */
-function lifecycleBranches(primary) {
+function lifecycleClaims(primary) {
   const branches = new Set();
+  const paths = new Set();
   const walk = (dir) => {
     let entries;
     try {
@@ -82,30 +94,34 @@ function lifecycleBranches(primary) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (entry.name.endsWith(".md")) {
-        for (const match of readFileSync(path, "utf8").matchAll(/\bbranch:?\s+([\w./-]+)/g)) {
+        const text = readFileSync(path, "utf8");
+        for (const match of text.matchAll(/\bbranch:?\s+([\w./-]+)/g)) {
           if (match[1] !== "-") branches.add(match[1]);
+        }
+        for (const match of text.matchAll(/\bworktree:\s+(\S+)/g)) {
+          if (match[1] !== "-") paths.add(realPath(resolve(primary, match[1])));
         }
       }
     }
   };
   walk(join(primary, ".orchestration"));
-  return branches;
+  return { branches, paths };
 }
 
 /**
  * Why a worktree must stay, or null when it is safe to remove: nothing uncommitted, and its
- * commits already in origin/main (or, detached, on some remote).
+ * commits already in `keep.base`, the origin/main commit this run fetched.
  */
 function keepReason(row, keep) {
   if (row.path === keep.current) return "the checkout this ran from";
   if (row.locked) return "locked (an agent session is running in it)";
   if (row.branch && keep.preview.has(row.branch)) return "listed in preview.branch";
-  if (row.branch && keep.lifecycle.has(row.branch)) return "named in an .orchestration handle cache";
-  if (git(["status", "--porcelain"], row.path) !== "") return "uncommitted changes";
-  if (row.branch === null) {
-    return git(["rev-list", "-n1", row.head, "--not", "--remotes"]) === "" ? null : "detached with commits on no remote";
+  if ((row.branch && keep.lifecycle.branches.has(row.branch)) || keep.lifecycle.paths.has(realPath(row.path))) {
+    return "named in an .orchestration handle cache";
   }
-  return gitOk(["merge-base", "--is-ancestor", row.head, BASE]) ? null : `commits not in ${BASE}`;
+  if (git(["status", "--porcelain"], row.path) !== "") return "uncommitted changes";
+  if (gitOk(["merge-base", "--is-ancestor", row.head, keep.base])) return null;
+  return row.branch === null ? `detached with commits not in ${BASE}` : `commits not in ${BASE}`;
 }
 
 /** Size of a directory tree in KiB (`du -sk`), or 0 when it can't be read. */
@@ -125,16 +141,30 @@ function formatKiB(kib) {
 
 function cmdPrune(args) {
   const remove = args.includes("--yes");
-  if (!gitOk(["fetch", "--quiet", "origin", "main"])) {
+  // Judge against the commit this fetch wrote to FETCH_HEAD (which is per worktree), not the
+  // shared origin/main name another worktree could move between the fetch and the check.
+  let base;
+  if (gitOk(["fetch", "--quiet", "origin", "main"])) {
+    base = git(["rev-parse", "FETCH_HEAD"]);
+  } else if (remove) {
+    console.error("could not fetch origin main, so nothing is proven landed; removed nothing");
+    process.exit(1);
+  } else {
     console.log(`warning: could not fetch origin main; judging against the local ${BASE}`);
+    base = git(["rev-parse", BASE]);
   }
   const rows = worktreeRows();
+  if (rows.length === 0) {
+    console.error("git listed no worktrees; run this inside the repository");
+    process.exit(1);
+  }
   const primary = rows[0].path;
   const root = join(primary, ".claude", "worktrees") + sep;
   const keep = {
     current: git(["rev-parse", "--show-toplevel"]),
     preview: previewBranches(primary),
-    lifecycle: lifecycleBranches(primary),
+    lifecycle: lifecycleClaims(primary),
+    base,
   };
   const label = (row) => `${row.path.slice(root.length)} (${row.branch ?? "detached"})`;
 
@@ -172,9 +202,17 @@ function cmdPrune(args) {
         continue;
       }
       if (row.branch !== null) {
-        // -D, not -d: keepReason already found the tip in origin/main, while -d judges against
-        // this checkout's HEAD or the branch's upstream and refuses branches that have landed.
-        git(["branch", "-D", row.branch]);
+        const tip = gitOk(["rev-parse", "--verify", "--quiet", `refs/heads/${row.branch}`])
+          ? git(["rev-parse", `refs/heads/${row.branch}`])
+          : row.head;
+        if (tip !== row.head) {
+          // The branch moved after it was judged landed; its new tip is unjudged, so it stays.
+          console.log(`keep    branch ${row.branch}: moved since it was checked`);
+        } else {
+          // -D, not -d: keepReason already found the tip in origin/main, while -d judges against
+          // this checkout's HEAD or the branch's upstream and refuses branches that have landed.
+          git(["branch", "-D", row.branch]);
+        }
       }
     }
     candidates += 1;

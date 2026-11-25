@@ -193,16 +193,18 @@ half-solving it.
 ### Reclaiming agent worktrees
 
 Agent worktrees pile up under `.claude/worktrees/`, each a full checkout. `pnpm wt:prune` lists the
-ones whose work has landed (the tip is in `origin/main`, which holds because PRs merge with merge
-commits); `pnpm wt:prune --yes` removes them and their branches and forgets worktrees whose folder
-is gone. It keeps a locked worktree (a running agent), anything with uncommitted changes or commits
-not in `origin/main`, a branch listed in `git config preview.branch`, and a branch named in an
-`.orchestration/` handle cache, since a lifecycle reclaims its own. It never considers a worktree
-outside `.claude/worktrees/`: the run checkouts apps create under `.fsdev/` belong to those apps.
-A squash-merged branch reads as unlanded and is kept, which is the safe direction.
+ones whose work has landed (the tip, branch or detached, is in the `origin/main` commit the run just
+fetched, which holds because PRs merge with merge commits); `pnpm wt:prune --yes` removes them and
+their branches and forgets worktrees whose folder is gone. If the fetch fails, `--yes` removes
+nothing. It keeps a locked worktree (a running agent), anything with uncommitted changes or commits
+not in `origin/main`, a branch listed in `git config preview.branch`, and a branch or worktree path
+named in an `.orchestration/` handle cache, since a lifecycle reclaims its own. It never considers a
+worktree outside `.claude/worktrees/`: the run checkouts apps create under `.fsdev/` belong to those
+apps. A squash-merged branch reads as unlanded and is kept, which is the safe direction.
 
 The `preview-mode` skill runs it while working on several features at once from a local-only
-`preview/<user>` branch, which `.husky/pre-push` refuses to push, by name or by its tip.
+`preview/<user>` branch. `.husky/pre-push` runs `scripts/check-preview-push.mjs`, which refuses to
+push a preview by name, or by its tip when that tip carries work no feature branch has.
 
 ## The epic-spec (canonical artifact)
 
