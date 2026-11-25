@@ -23,7 +23,7 @@ export function useReviewAccept(sessionId: string, task: CodingBoardTask, work: 
   const [answered, setAnswered] = useState<string | null>(null);
   const awaitingReview = task.asks[0]?.ask.kind === "review";
   const submit = useSubmit(async (land?: ReviewLand) => {
-    await lab.resolve(sessionId, task, land);
+    await lab.resolve(sessionId, task, land, work?.reviewStop);
     setAnswered(round);
   });
   return {

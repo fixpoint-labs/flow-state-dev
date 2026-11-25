@@ -71,6 +71,7 @@ export async function openTeammates(options: TeammatesOptions) {
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
   const checks = { commands: options.checks ?? [], timeoutMs: 10 * 60_000 };
   const harness = options.harness ?? "cursor";
+  const models = [...new Set([options.model, ...(options.models ?? [])])];
   const folderProblem = workspace.checkRepository!(workdir, { ignored: ASK_MARKER_IGNORED }).then(
     (answer) => (answer.usable ? null : answer.problem),
     (error: unknown) => `couldn't check the folder: ${error instanceof Error ? error.message : String(error)}`,
@@ -96,12 +97,13 @@ export async function openTeammates(options: TeammatesOptions) {
           maxSteps: 100,
         },
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
+        hire: { models },
         github: { provider: github, poll: true },
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [claudeCodeHarness(), codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models: [...new Set([options.model, ...(options.models ?? [])])], harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

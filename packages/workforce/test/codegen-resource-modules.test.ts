@@ -224,6 +224,16 @@ describe("where the modules are found", () => {
     ]);
   });
 
+  it("finds a .mts module, imported as the .mjs it compiles to", async () => {
+    const root = tree({ "teams/engineering/resources/digest.mts": MODULE });
+
+    const { resourceModules } = await discoverWorkforceCode(root);
+
+    expect(resourceModules.map((module) => [module.ref, module.importPath])).toEqual([
+      ["teams/engineering/digest", "./teams/engineering/resources/digest.mjs"],
+    ]);
+  });
+
   it("passes over everything in the folder that is not a module", async () => {
     // BR-5, proved beside a module that must still be found — a walk that
     // bailed on the first unrecognised entry fails here. The directory is the

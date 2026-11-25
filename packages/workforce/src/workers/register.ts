@@ -14,7 +14,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";
 import { checkWorkerFlows } from "../hire";
 import type { InventoryWorker } from "../inventory/open-inventory";
-import { createWorkerHireBlocks } from "./hire-blocks";
+import { createWorkerHireBlocks, type HireChecks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import { messageReceivedProblem } from "../messages/message-received-entry";
@@ -63,6 +63,8 @@ export interface HireWorkforceOptions {
    * schedule index of its own and the default cadence.
    */
   routines?: RoutinesOptions;
+  /** What the roster's hire and edit check beyond the worker's flow: the models a worker may run on. */
+  hire?: HireChecks;
 }
 
 /**
@@ -139,7 +141,7 @@ function hire(installation: WorkerInstallation, options: HireWorkforceOptions): 
         problems.map((problem) => `  - ${problem}`).join("\n")
     );
   }
-  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation);
+  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation, options.hire);
   const schedules = defineScheduledWork(installation, options.routines?.index);
   const routines = defineRoutineActions(installation, options.routines ?? {});
   const roster = defineWorkerRosterFlow(
