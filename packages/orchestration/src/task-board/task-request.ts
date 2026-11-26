@@ -73,6 +73,7 @@ import {
 import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
+import { requestStates } from "../tasks/helpers/request-states";
 import { readFor, untakenBy, untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
@@ -253,11 +254,13 @@ export async function admitClaimedTask(
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
   const askedTurn = options.own && row.askedInTurn === ticket.turn;
-  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setKeptOpenBy !== undefined) {
+  // The run's own resume closes the mirror of its stop (FIX-2133), also on a
+  // row whose wait a later request's admission cleared (FIX-2898). A later
+  // request (a notice, a steer's turn) keeps it: the task's own run is still
+  // parked on it, and a cancel meanwhile owes that run its resume.
+  const closesMirror = options.own && suspensionHoldOf(row) !== undefined;
+  if (!askedTurn && (prior !== undefined || row.turnOwed === true || closesMirror) && ref.setKeptOpenBy !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
-    // The run's own resume closes the mirror of its stop (FIX-2133). A later
-    // request (a notice, a steer's turn) keeps it: the task's own run is
-    // still parked on it, and a cancel meanwhile owes that run its resume.
     const outcome = await ref.setKeptOpenBy(row.id, null, {
       claim: ticket,
       leaseUntil: ref.now() + span,
@@ -480,7 +483,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   // request, and keeps an answer this one gave that counts. One a person
   // stopped keeps no answer (below).
   if (!record.own && waitsOnItsOwnRequest(record.prior) && ending.status !== "aborted") {
-    await waitOn(record, row, record.prior!, record.answer);
+    if (await ownRequestParked(record, row)) await waitOn(record, row, record.prior!, record.answer);
     return undefined;
   }
   if (ending.status === "suspended") {
@@ -613,7 +616,7 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
     return undefined;
   }
   if (record.prior === "suspended") {
-    parked(await waitOn(record, row, "suspended", undefined));
+    if (await ownRequestParked(record, row)) parked(await waitOn(record, row, "suspended", undefined));
     return undefined;
   }
   // As stored, with the steers this request took untaken, as the write below leaves them.
@@ -632,6 +635,27 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
  */
 function tookSteers(task: Task, requestId: string): boolean {
   return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId));
+}
+
+// FIX-2898.
+/**
+ * Whether the task's own request (the one its stop's mirror names, else the
+ * row's run link) is still parked, as
+ * the engine records it ({@link requestStates}). A later request's admission
+ * clears the row's wait, and the task's own entry admits that request's
+ * resume on a row showing none, so a person can answer the stop while the
+ * later request runs. Then the row is left as it stands: the own request,
+ * running, checks the task at its end, and one that ended has checked it
+ * already. A host that records neither state, or a row with no run link,
+ * answers parked, as the row last recorded.
+ */
+async function ownRequestParked(record: Admitted, task: Task): Promise<boolean> {
+  // A stop for a person names its request on the row: a steer's turn that
+  // stopped is not the request the run link names.
+  const requestId = suspensionHoldOf(task)?.source.requestId ?? task.run?.requestId;
+  if (requestId === undefined) return true;
+  const standing = (await requestStates(record.ctx, [requestId]))?.[requestId];
+  return standing !== "running" && standing !== "ended";
 }
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
@@ -960,7 +984,12 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
         const found = await options.find(ctx);
         if (found === undefined) return;
         const { ref, row } = found;
-        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true)) return;
+        // The resume of the stop the row waits on is that stop's own request, whichever entry
+        // started it (a steer's turn, after an answered question): its admission closes the
+        // mirror, and its end settles the task. Admitted on a row a later request cleared too
+        // (FIX-2898). Any other request admitted meanwhile is a later one.
+        const own = suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id;
+        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true && !own)) return;
         let admittedAs: Awaited<ReturnType<typeof admitClaimedTask>>;
         try {
           admittedAs = await admitClaimedTask(ctx, {
@@ -968,10 +997,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
             row,
             ticket: ticketForClaim(ref.collectionId, row, ref.partition),
             answerCounts: options.answerCounts,
-            // The resume of the stop the row waits on is that stop's own request, whichever entry
-            // started it (a steer's turn, after an answered question): its admission closes the
-            // mirror, and its end settles the task. Any other request admitted meanwhile is a later one.
-            own: suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id,
+            own,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
           });
         } catch (error) {
