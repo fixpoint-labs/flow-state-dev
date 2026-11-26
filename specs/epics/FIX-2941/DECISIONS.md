@@ -140,8 +140,8 @@ the owner's discussion before this spec. Each became a rule below.
   session works tasks routed from several conversations. ER-9, ER-10.
 - **Screens see across sessions only through a user-scope view** calling one read: one SQL query
   joined to sessions on the full owner, one change topic per definition per owner, filesystem
-  parity. ER-7, ER-8. Today's topic (FIX-2750) spans the user's orgs, which "per owner"
-  contradicts; FIX-2945 settles which it is. A lookup that is no view, such as a task's session
+  parity. ER-7, ER-8. Today's topic (FIX-2750) spans the user's orgs; FIX-2945 narrows it to one
+  owner, since a session key on it would tell one org the other's session ids. A lookup that is no view, such as a task's session
   from its id, uses the same read, filtered by the id (ER-7).
 - **Every varying key segment is filterable without a scan;** no encoded prefixes. ER-6.
 
@@ -154,11 +154,11 @@ settles its own and says so; a child that wants a different answer comments up.
 |---|---|---|
 | Turns started by writes from other sessions | Coalesce per session, as a board's notices do; the spec checks fan-out before building | FIX-2942 ([ER-2](#who-owns-what)) |
 | Writes from a turn woken by untrusted content (fenced, [FIX-2689](https://linear.app/fixpoint-labs/issue/FIX-2689)) | No writes into other sessions by default | FIX-2942 |
-| What "owner" means for the system principal (`{ userId: "system" }`, `core/src/types/schedules.ts`) and for the gateway fallback a schedule runs as when it names none | No default: the spec defines both before reach ships | FIX-2942 ([ER-1](#who-owns-what)) |
+| What "owner" means for the system principal (`{ userId: "system" }`, `core/src/types/schedules.ts`) and for the gateway fallback a schedule runs as when it names none | Neither is an owner reach applies to: a schedule on either sees only its own sessions ([ER-1](#who-owns-what)). A schedule that names a real person, org and tenant reaches within that owner | FIX-2942 ([ER-1](#who-owns-what)) |
 | The task tools when one worker can file on two boards | Find the real cases first; no `board` argument until one exists | FIX-2946 |
-| Cost of the read across sessions | Paged from the start; measure session count and row count on a seeded store before settling indexes | FIX-2945 |
+| Cost of the read across sessions | Paged from the start, on `userSuspensions`' paging contract (the cursor is the last store row, not the last shown). A hard gate in FIX-2945's spec: measure session and row counts on a seeded store against a stated threshold before accepting the join without a kept index. FIX-2946's lookup by task id filters at the store (`findBy`, FIX-2532), never loads every copy and discards | FIX-2945 |
 | Paging when ER-1's admission drops rows after the query (an own-resolver verdict can't run in SQL) | No default: the spec says how a page and its cursor work, and a short page never ends the listing early | FIX-2945 |
-| The change topic's shape | Extend FIX-2750's topic, whose narrowing by partition already shipped; the partition key becomes a session key ([ER-8](#who-owns-what)). The spec settles per user (today, spanning orgs) or per owner | FIX-2945 |
+| The change topic's shape | Extend FIX-2750's topic, whose narrowing by partition already shipped; the partition key becomes a session key ([ER-8](#who-owns-what)). Narrowed to one owner, not today's per-user topic that spans orgs ([ER-8](#who-owns-what)) | FIX-2945 |
 | Which session-keyed per-user records move, and where | Decided one by one: per session, or per user keyed by subject | FIX-2948 |
 | Tenants inside per-user data | Not in this epic | — |
 
@@ -170,14 +170,14 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | **The routes' owner rule, extended.** A named session, a cross-session write and the read across sessions are admitted by the functions HTTP routes use today, extended to a block's caller, not by a new owner check: the tenant and `isOrgAttributed`, then `admitListedSession` / `ownResolverVerdict` (an instance with its own caller resolver decides; a write session is never listed), and `ownsRecord` with the instance's `ownerPin`. A block never reaches a session a browser can't. A miss reads as missing, on every verb. Refusal tests for another user, org and tenant, a no-org session and an own-resolver refusal | FIX-2942 | FIX-2945's spec review; the closure's leg b |
+| ER-1 | **The routes' owner rule, extended.** A named session, a cross-session write and the read across sessions are admitted by the functions HTTP routes use today, extended to a block's caller, not by a new owner check: the tenant and `isOrgAttributed`, then `admitListedSession` / `ownResolverVerdict` (an instance with its own caller resolver decides; a write session is never listed), and `ownsRecord` with the instance's `ownerPin`. A block never reaches a session a browser can't. A miss reads as missing, on every verb. The system principal (`{ userId: "system" }`) and a principal filled from a schedule's gateway fallback are not an owner reach applies to: each such schedule's sessions answer as missing to every other. Refusal tests for another user, org and tenant, a no-org session, an own-resolver refusal, and two schedules on the gateway principal | FIX-2942 | FIX-2945's spec review; the closure's leg b |
 | ER-2 | A write from another session runs the definition's checks and notifies the owning session as a local write would, through the change bus and, for a task's ending, the task notice to its filer. No new delivery path. Starting a turn is the definition's call, and turns started this way coalesce per session | FIX-2942 | FIX-2946's spec review; the closure's leg a |
 | ER-3 | An operation over a whole copy (list, count, claim the next task, hear its changes) acts on one copy: your own or the one named. Nothing sweeps every session by accident; a read across sessions is deliberate, through ER-7's read | FIX-2942 | FIX-2946's spec review |
 | ER-4 | Reach by name from another flow is opt-in (`shared`); a board is always shared; everything else keeps flow isolation | FIX-2943 | FIX-2946's and FIX-2948's spec review |
 | ER-5 | One registered shape per name, declared on blocks; a clash refuses start. No second place to register | FIX-2943 | Each child's spec review |
 | ER-6 | Every varying key segment is filterable by the SQL stores without a scan; no prefix read by `LEFT` or `substr` | FIX-2944 | The closure's leg c |
 | ER-7 | Code sees across sessions only through the one read across sessions, which is one SQL query, paged, with filesystem parity: a screen through a user-scope view, and a lookup that is no view (a task's session from its id) through the same read, filtered by that id | FIX-2945 | FIX-2946's spec review; the closure's leg a |
-| ER-8 | That read records the change topic: FIX-2750's topic, extended so its partition key is a session key, on the change bus. Every write to any session's copy publishes on it | FIX-2945 | The closure's leg a and its control |
+| ER-8 | That read records the change topic: FIX-2750's topic, extended so its partition key is a session key and narrowed to one owner (user, org and tenant), on the change bus. Every write to any session's copy publishes on it. A session id or task id never rides a topic wider than one owner | FIX-2945 | The closure's leg a and its control |
 | ER-9 | A board in another session is reached through a thin layer over `ctx.resources.at({ session })`, in the shape [Q2](#q2) settles, and a task's board through `ctx.task.session`. `defineTaskCollection` stays the one board definer | FIX-2946 | FIX-2947's spec review |
 | ER-10 | A child is given its work; values fixed at filing ride on the task row; nothing else is copied into child state, and no lineage survives | FIX-2947 | The closure's leg c |
 | ER-11 | Per-user data is keyed by what it is about, never by a session's id or a value derived from one | FIX-2948 | The closure's gap sweep |
