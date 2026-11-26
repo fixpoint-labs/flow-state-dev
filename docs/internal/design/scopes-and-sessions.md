@@ -110,15 +110,16 @@ So looking across sessions is always allowed, and the way to look is by a regist
 A board is the example used throughout:
 
 ```ts
-// Anywhere in the app. Registering it is what makes "work" exist.
-// A board is always a shared definition: other flows reach it by name.
-defineBoard({ name: "work", scope: "session" });
+// Anywhere in the app. Defining it is what makes "work" exist.
+// A board is always a shared definition: any flow may install it.
+export const work = taskBoard<WorkInput, WorkResult>({ name: "work", backing: "resource" });
 
-// Any flow, by name: the common board API.
-const work = boards(ctx, "work");
+// A flow installs it on a block, and the block uses it typed by name.
+const em = generator({ name: "em", uses: [work.capability], /* … */ });
+await ctx.cap.work.createTask({ input });
 ```
 
-* **Who owns it:** the installation's registry. The module that calls `defineBoard` is where it's written, not who may use it.
+* **Who owns it:** the installation's registry. The module that calls `taskBoard` is where it's written, not who may use it.
 * **Where it's stored:** under its name, in each scope copy: `work/<task id>` inside a session's space.
 * **How many exist:** one definition per name. Its copies are one per session that uses it.
 
@@ -148,8 +149,8 @@ So "the flow a board lives on" stops being a useful idea. The coder flow doesn't
 A block reaches its own copy without naming anything: the copy for the session it runs in, for the user it runs as, or for the org.
 
 ```ts
-const mine = boards(ctx, "work");       // the work board in this session
-await mine.create({ goal: "Add CSV export", assignee: "coder" });
+// the work board in this session
+await ctx.cap.work.createTask({ input: { goal: "Add CSV export" }, assignee: "coder" });
 ```
 
 Every operation that goes over a whole copy acts on this copy unless the block names another: listing it, counting it, claiming the next task from it, and hearing about its changes. Nothing goes over every session's copy as a side effect.
@@ -162,13 +163,13 @@ A block reaches another session's copy by naming the session. This works the sam
 ctx.resources.notes                              // my session's notes
 ctx.resources.at({ session: launchChatId }).notes // the launch chat's notes, by name
 
-// A board is reached the same way. boards() is a thin wrapper that gives
-// the copy a task-board API: create, get, list, claim, settle.
-const launch = boards(ctx, "work", { session: launchChatId });
-const row = launch.get(taskId);
+// A board is reached the same way, through its own capability: .at() returns
+// the same typed task API (create, get, list, the full collection) on that copy.
+const launch = ctx.cap.work.at({ session: launchChatId });
+const row = await launch.getTask(taskId);
 ```
 
-`boards(ctx, name, { session })` adds nothing to the reach. It resolves the board through `ctx.resources.at({ session })` and wraps the copy it gets. So rule 5 is a promise about resources in general, and the next feature that needs another session's data uses the same call instead of building its own way around.
+`ctx.cap.work.at({ session })` adds nothing to the reach. It resolves the board through `ctx.resources.at({ session })` and wraps the copy it gets. Only a board with a per-session copy (a durable, resource-backed one) offers `.at`; a board that lives in one run has no other copy to reach. So rule 5 is a promise about resources in general, and the next feature that needs another session's data uses the same call instead of building its own way around.
 
 The server checks one thing: the named session has the same owner as this request, meaning the same user, the same org and the same tenant, each compared against what the session record stores. Session ids are chosen by callers, so the id proves nothing by itself. A session that fails the check gets nothing, in the same way as one that doesn't exist, so a caller can't learn which ids are taken. That includes Alice's own session in another org: it is answered as missing, not refused. No other permission is involved. Within one owner, reaching another session is always allowed. A child run inherits the org and tenant of the request that started it.
 
@@ -192,8 +193,8 @@ The spec for this check needs a refusal test for each way it can fail: another u
 A session may write to another session's copy the same way it writes to its own:
 
 ```ts
-const theirs = boards(ctx, "work", { session: launchChatId });
-await theirs.create({ goal: "Write the release note", assignee: "writer" });
+const theirs = ctx.cap.work.at({ session: launchChatId });
+await theirs.createTask({ input: { goal: "Write the release note" }, assignee: "writer" });
 ```
 
 Three things hold for every such write:
@@ -218,7 +219,7 @@ A child carries two things: the id of the session that started it, and the work 
 
 ```ts
 // In the CSV task session, on the coder flow
-const filedOn = boards(ctx, "work", { session: ctx.task.session });
+const filedOn = ctx.cap.work.at({ session: ctx.task.session });
 ```
 
 The two usually match, but not always. A workstream's lead session is opened once and then takes tasks routed to it from several conversations. Its parent is the session that opened it, while each task it works sits on the board of the conversation that routed it. So "which board is my task on" is answered by the task, every time, and "who started me" by the parent.
@@ -249,7 +250,7 @@ Some screens need everything at once: an Inbox of everything waiting on Alice, o
 A screen asks that question through a **view**, as [Reading, Writing and Installing](reading-writing-installing.md#views) defines it: a read-only question the server answers fresh, here at user scope, with no session opened. That doc's board is exactly this case. This section adds only what the view's block calls to get its rows, a read of a definition's copies across all of the owner's sessions in one call:
 
 ```ts
-const open = await boards.acrossSessions(ctx, "work").list({ status: "open" });
+const open = await ctx.cap.work.acrossSessions().listTasks({ status: "open" });
 // each row comes back with the session it belongs to
 ```
 
@@ -274,9 +275,9 @@ Today each cross-session view builds its own path. Shift Manager reads the user'
 Alice asks em, in the launch chat, to add CSV export.
 
 1. **Alice posts in the launch chat.** Her request runs as Alice, in the launch chat.
-2. **em files a task.** `boards(ctx, "work").create(...)` writes to the launch chat's own copy of the work board.
+2. **em files a task.** `ctx.cap.work.createTask(...)` writes to the launch chat's own copy of the work board.
 3. **The board hands the task to coder.** The engine starts the CSV task session on the coder flow, as a child of the launch chat. It is given the launch chat's id and the task.
-4. **coder reads its task.** The task names its board: `boards(ctx, "work", { session: ctx.task.session }).get(taskId)`. The server checks that the launch chat is Alice's, and it is.
+4. **coder reads its task.** The task names its board: `ctx.cap.work.at({ session: ctx.task.session }).getTask(taskId)`. The server checks that the launch chat is Alice's, and it is.
 5. **coder splits the work.** It files two pieces on its own copy of the work board, in the CSV task session. A task filed while working another task is its sub-task, so these two are sub-tasks of the CSV task.
 6. **Alice opens her task view.** It reads the work board across all her sessions in one query: the CSV task on the launch chat's board, and its two sub-tasks on the task session's board, all running.
 7. **The sub-tasks finish, and then coder finishes.** It settles its task on the launch chat's copy. The claim checks that this session holds the task. The CSV task session's request records the settle.
@@ -308,19 +309,19 @@ Bob never appears. Even if coder were handed the id of one of Bob's sessions, bo
 | Instance | One realization of a definition | Matches "definition" | Programming | Already used for flow instances |
 | Namespace | A space names live in | Says why it exists | Programming | Describes the space, not the data |
 
-**Recommend copy** in docs and prose, with "a session's copy of the work board". Nothing in the API needs the noun: `boards(ctx, "work")` and `{ session }` say it. This changes if users read "copy" as "duplicate that can go stale".
+**Recommend copy** in docs and prose, with "a session's copy of the work board". Nothing in the API needs the noun: `ctx.cap.work` and `{ session }` say it. This changes if users read "copy" as "duplicate that can go stale".
 
 ### How to reach a board, and another session's copy
 
 | Shape | Example | Fits | Risk |
 | -- | -- | -- | -- |
-| Reach on every resource, boards as a thin wrapper | `ctx.resources.at({ session }).notes`, `boards(ctx, "work", { session })` | One rule for all per-session data; boards get a friendly API on top | Two spellings for a board's copy, the raw resource and the wrapper |
-| A board-only lookup | `boards(ctx, "work", { session })` and nothing else | Small surface | Every other resource needs its own way across, the pattern this doc ends |
+| Reach on every resource, boards through their capability | `ctx.resources.at({ session }).notes`, `ctx.cap.work.at({ session })` | One rule for all per-session data; boards get a friendly API on top | Two spellings for a board's copy, the raw resource and the wrapper |
+| A board-only lookup | `ctx.cap.work.at({ session })` and nothing else | Small surface | Every other resource needs its own way across, the pattern this doc ends |
 | A sessions handle | `ctx.sessions.get(id).boards("work")` | One place for everything about a session | A second way to reach the same copy |
 
 The sessions handle exists today: a block can ask the engine about its user's other sessions, meaning their flow, the state fields their flow marks readable, their history, and a list of them. It reaches no resources.
 
-**Decided: reach on every resource, with `boards()` as a thin wrapper.** Board names are typed from the registry the way flow names are, so a typo fails when the app is built. The raw resource is there for code that needs the rows as stored; everything that works tasks uses `boards()`. The sessions handle stays for what isn't a resource.
+**Decided: reach on every resource, with a board reached through its own capability.** `ctx.cap.work` is typed by the board's name and its task shape, so a typo fails when the app is built, and `.at({ session })` and `.acrossSessions()` extend it. A `boards(ctx, name)` helper was weighed and held back: it would be a second way to use a board that already has one. It comes back only if a real caller has to pick a board by name at run time, such as a generic admin screen. The raw resource is there for code that needs the rows as stored. The sessions handle stays for what isn't a resource.
 
 ## The rules
 
@@ -367,7 +368,7 @@ One term, one thing. Retired: lineage (say child session, and name the parent), 
 | Your own copy | The copy a block reaches without naming anything | |
 | Another session's copy | A copy reached by naming another session of the same user | Read and write, under the definition's checks |
 | Action | A named write a definition offers, such as a board's settle | Open: whether cross-session writes must use one |
-| Board | A task list registered with `defineBoard`, usually kept per session | |
+| Board | A task list defined with `taskBoard`, usually kept per session, used through `ctx.cap.<name>` | |
 
 ### Retired terms
 
@@ -383,9 +384,9 @@ The terms this model retires, where each lives in code and docs today, and how m
 - [ ] **Lineage sharing goes.** Leaning yes. It was meant to let two sessions act on one resource, and a child reaching its parent by name covers that. On `main` its only real user is a Kitchen Sink demo board.
 - [ ] **The server stops copying parent values into child state.** Recommend yes, with lineage: a child reads its parent by name. Would change: a value the child needs on every turn where reading the parent adds measurable cost.
 - [X] **Key parts are indexed, not prefixed.** Every part of a resource key that varies can be filtered on by the SQL stores without a scan, as its own refactor. This retires the prefix reads everywhere, not only for tasks.
-- [ ] **Reading across sessions in one query.** Recommend `boards.acrossSessions(ctx, "work")`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
+- [ ] **Reading across sessions in one query.** Recommend `ctx.cap.work.acrossSessions()`, answered by the SQL stores as one query that joins rows to the sessions table by owner, with indexed key parts and declared field indexes. No separately kept per-user index, which would have to be updated on every write. Would change: the join turns out slow for users with many thousands of sessions, where a kept index pays for itself.
 - [X] **Definitions are declared on blocks and rise into flows, and the registry is their union.** Agreed: option (a).
-- [X] **Reaching another session is a resource feature.** `ctx.resources.at({ session })` works for every per-session resource; `boards(ctx, name, { session })` is a thin wrapper over it that gives a board's copy its task API.
+- [X] **Reaching another session is a resource feature.** `ctx.resources.at({ session })` works for every per-session resource; a board's capability gains `.at({ session })` over it, which gives that copy its typed task API. A `boards()` helper is the fallback if a caller needs a board by name at run time.
 - [X] **Screens see across sessions through a user-scope view.** Agreed in direction: the across-sessions read is what a view's block calls, not a second way for screens to read. It follows [Reading, Writing and Installing](reading-writing-installing.md).
 - [ ] **The change topic for a read across sessions.** Open. Recommend one topic per definition per owner, published by every write to any session's copy, so a view hears copies made after it last ran. Would change: that topic is too noisy for an owner with many busy sessions, where a narrower topic per filter would pay off.
 - [ ] **Turns started by writes from other sessions.** Open. Rule 8 lets a definition start a turn when another session writes. A burst of endings (fifty sub-tasks settling at once) must not start fifty turns. Recommend that turns started this way coalesce per session, as a board's notices already do, and that the spec checks fan-out before it is built.

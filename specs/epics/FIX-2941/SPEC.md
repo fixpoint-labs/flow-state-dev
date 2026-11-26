@@ -139,7 +139,7 @@ follows it.
 | `shared` and the registry · FIX-2943 | The resource-address path (`engine/src/resources/scope-address.ts`: `declarationsOf` finds definitions across flows under `flowIsolation`, `resolveAddress` checks they agree, `admitAddress` applies every declarer's resolver and owner pin); `defineFlow`'s merge of block resources; the start-up clash check; the manifest registry (`createManifestRegistry`) | Extends the resource-address path, the one cross-flow lookup and admission: `shared` widens `declarationsOf`, and a shared name keeps `admitAddress`'s rule that every declarer's resolver and owner pin admits the caller. Also extends the clash check (`validateScope` in `engine/src/registry/flow-registry.ts`): the union the merge computes, taken across flows. The manifest registry stays unchanged. It is a model's discovery door, a different job; FIX-2943 says how the two relate and adds no second public "registry" noun beside it. The `shared` flag itself is new: if FIX-2943's spec finds no consumer but boards, it waits and boards are reached by their own rule |
 | `acrossSessions` · FIX-2945 | `userSuspensions`; views | Extends the store's read with an owner join; no kept index |
 | The change topic · FIX-2945 | FIX-2750's user topic with HMAC-keyed partitions; the change bus (`change-bus`: a scope's topic, optionally one resource) | Extends the FIX-2750 topic: its partition key becomes a session key, published on the bus's one write path. FIX-2946 retires the old partition key with partitions. The topic narrows to one owner (user, org and tenant), so no session id reaches another org |
-| Board reach by session, `ctx.task.session` · FIX-2946 | The board's typed capability (`TaskBoardHandle.capability`, `ctx.cap.<name>`); `defineTaskCollection`'s handle; the board-above helper | Per [Q2](DECISIONS.md#q2): extend the capability (`ctx.cap.work.at({ session })`, recommended) or a thin `boards()` wrapper over `ctx.resources.at`. No second definer ([ER-9](DECISIONS.md#who-owns-what)); `ctx.task.session` replaces the helper |
+| Board reach by session, `ctx.task.session` · FIX-2946 | The board's typed capability (`TaskBoardHandle.capability`, `ctx.cap.<name>`); `defineTaskCollection`'s handle; the board-above helper | Extends the capability ([Q2](DECISIONS.md#q2), decided): `ctx.cap.work.at({ session })` and `.acrossSessions()` over `ctx.resources.at`, on boards with a per-session copy. FIX-2946's spec says whether a factory-backed board offers them. No `boards()` helper unless a caller needs a board by runtime name. No second definer ([ER-9](DECISIONS.md#who-owns-what)); `ctx.task.session` replaces the helper |
 | Values fixed at filing · FIX-2947 | FIX-2894's typed task input | Extends it: the fixed values are fields of the declared input on the task row, not a second record |
 
 **The set's debt: net down.** It removes about 1,500 to 1,800 lines of package source
@@ -162,7 +162,7 @@ an owner with many sessions, and a kept per-user index comes back.
    board waits.** If wrong: plan rows move twice.
 
 **Open: [Q1](DECISIONS.md#q1)**, whether a write from another session must go through a named
-action. It gates FIX-2942's and FIX-2946's specs. **[Q2](DECISIONS.md#q2)**, whether a board is
-reached through its typed capability or a new `boards()` helper. It gates FIX-2946's spec.
+action. It gates FIX-2942's and FIX-2946's specs. [Q2](DECISIONS.md#q2) is decided: a board is
+reached through its typed capability, with a `boards()` helper as the fallback.
 
 Epic · 8 issues · Framework simplification & cleanup · the kill line and goal 4
