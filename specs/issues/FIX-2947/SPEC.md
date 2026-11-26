@@ -41,7 +41,7 @@ The check reads where the task's work happened and which board each settle lande
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/work-not-copies/` · no model (scripted workers) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | A task filed under project A is worked in A after its conversation switches to B. Two conversations route tasks to one workstream lead session; each settle lands on its own router's board, and each router's turn starts once. A sixth level of splitting is refused, and the 101st task under one top task, filed after the other hundred, is refused. The retired names are absent from `packages/*/src`. A session and a task written by today's `main` are worked after the upgrade |
+| **Signal** | A task filed under project A is worked in A after its conversation switches to B. Two conversations route tasks to one workstream lead session; each settle lands on its own router's board, and each router's turn starts once. A sixth level of splitting is refused, and the 101st task under one top task, filed after the other hundred, is refused. The identifiers of its retired terms, matched whole as FIX-2949's leg c sweeps them, are absent from `packages/*/src`. A session and a task written by today's `main` are worked after the upgrade |
 | **Input** | Scripted em and coder workers on two flows. Other depths and limits configured through `taskChainLimit` must pass too |
 | **Anti-game** | Assert on the row's settled state on each board and on the workspace the work ran in, never on the child's own state |
 | **Control that must fail** | `GOAL_CONTROL=project-live` must FAIL *works in project A*. `GOAL_CONTROL=board-from-parent` must FAIL *each settle lands on its router's board* |

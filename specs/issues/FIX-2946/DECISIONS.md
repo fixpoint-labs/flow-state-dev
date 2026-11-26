@@ -42,9 +42,9 @@ grows a session argument, and the owner check runs before it is called.
 |---|---|
 | **Instead of** | Read the old partitions on every board read until nothing is left in them · or move each conversation's rows the first time it is opened, with a background sweep for the rest |
 | **Because** | Reading old partitions keeps `partition.ts`, its index and the forced `flowIsolation: false` alive, which is what the epic deletes ([epic D2](../../epics/FIX-2941/DECISIONS.md#d2)). Moving on first open puts that same partition check in every board read until the sweep ends, so the code still can't go; and the sweep needs a scheduler not every host has, or runs at start, which is this choice. A pass at start moves everything, and a key parser lives only in the mover. It follows `upgrade-kept-turns.ts`, the existing run-at-start upgrade step |
-| **Locks in** | Each start walks the old rows, so a large store's first start is slow; once moved, a start finds none. **Resumable:** a row is written into its copy before the old one is removed, and a row already in its copy is skipped, so a pass stopped midway is re-run safely. **Rolling deploy:** a new instance never writes a partitioned row. One an old instance writes during the deploy is moved by the next start and unseen by new instances until then; the upgrade note asks hosts to drain old workers first. A row found in both places keeps its later update and reports the other. A row whose partition names no session stays where it is and is reported, never dropped (BP-030) |
+| **Locks in** | Each start walks the old rows, so a large store's first start is slow; once moved, a start finds none. **Resumable:** a row is written into its copy before the old one is removed, and a row already in its copy is skipped, so a pass stopped midway is re-run safely. **Rolling deploy:** a new instance never writes a partitioned row. One an old instance writes during the deploy is moved by the next start and unseen by new instances until then; the upgrade note asks hosts to drain old workers first. **Nothing stays unseen silently:** FIX-2950 removes the mover but leaves a start check that refuses to serve while any partitioned row remains, naming the release whose start moves it. That also catches a host that skips the mover's release. A row found in both places keeps its later update and reports the other. **Placement:** a row moves only into a session that exists, whose user, org and tenant are the cell the row was read from, and whose current lineage is the one in the partition's filing id. Session ids are reusable after a delete, by another user of the tenant or by a recreate with a new lineage, so the id alone would hand the old tasks to the new session. Any other row stays where it is and is reported, never dropped (BP-030). The same rule holds for every row the pass places, FIX-2947's and FIX-2948's included |
 
-![D2: move old rows at start before serving, chosen, beside reading old partitions on every read. Decides it: whether partition code can be deleted. Price: a slow first start on a large store, and a row an old instance writes mid-deploy waits for the next start. Locks in a resumable mover run at each start for one release; flips if a deployment can't afford the pass at start](figures/d2-move-once.svg)
+![D2: move old rows at start before serving, chosen, beside reading old partitions on every read. Decides it: whether partition code can be deleted. Price: a slow first start on a large store, and a row an old instance writes mid-deploy waits for the next start. Locks in a resumable mover run at each start for one release, then a start check that refuses to serve while a partitioned row remains; flips if a deployment can't afford the pass at start](figures/d2-move-once.svg)
 
 It comes down to deleting partitions: reading them, now or until a sweep ends, keeps their code.
 
@@ -103,5 +103,11 @@ These are inputs, not instructions.
   offer the reach (D1).
 - **Review round 1 (Nov 26)** said what D2 does on a crash mid-pass and on a rolling deploy, and
   answered the lazy move with a sweep. The direction held: move before serving, no dual read.
+- **Set review round 2 (Nov 26):** D2 gained a placement rule and a start check. The Cursor
+  security review showed a session id is reusable after a delete, by another user of the tenant
+  (`tenant:sessionId` storage keys) or by a recreate with a new lineage, so a row now moves only
+  into the session, owner and lineage that filed it. Codex showed a late row from an old instance
+  could stay unseen if no later start came, and a host skipping the mover's release would lose
+  every row; FIX-2950 now leaves a start check behind.
 
 **Open: none.**

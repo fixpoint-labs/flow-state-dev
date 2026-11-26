@@ -50,8 +50,9 @@ It comes down to a store difference: the collation and the join differ by store.
 - **Controls are load-time module patches** (`goals/lib/`), never written to the checkout.
 - **Leg b's owners are made through the real sign-in path**, never by writing session records,
   so the owner rule meets what a host would really store.
-- **The sweep's names come from the gaps file's retired-terms table**, so a term retired later is
-  swept too.
+- **The sweep's identifiers come from the gaps file's retired-terms table**, so a term retired
+  later is swept too. Each term is swept as the code identifiers it names, matched whole, never as
+  a plain word: *carrier* and *partition* keep meanings outside this epic.
 
 ## Analysis
 

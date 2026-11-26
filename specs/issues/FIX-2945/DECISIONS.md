@@ -48,17 +48,24 @@ It comes down to rows read: an in-memory filter reads the owner's whole store fo
 
 ## Decided, not asked
 
-- **Paging is `userSuspensions`' contract.** The cursor is the last store row read, not the last
-  row shown. A page can be short, even empty, while `next` is set, because per-row admission
+- **Paging is `userSuspensions`' contract.** The cursor marks the last store row read, not the last
+  row shown, and is sealed (below). A page can be short, even empty, while `next` is set, because per-row admission
   drops rows after the query. A listing ends only when `next` is absent.
 - **The owner rule is ER-1's, split at the query.** SQL applies tenant, org (with
   `isOrgAttributed`) and user; `ownResolverVerdict` and the owner pin run per row after. One
   conformance test asserts that this read and FIX-2942's named reach refuse the same cases.
 - **The public name is `ctx.resources.acrossSessions().<name>`**, read-only, each row with its
-  session. It is callable from any block, and records its topic when the block is a view's.
+  session. It is callable from any block but a webhook-started turn's ([FIX-2942 D1](../FIX-2942/DECISIONS.md#d1)),
+  and records its topic when the block is a view's.
 - **The change topic is one per definition per owner** (user, org, tenant). FIX-2750's partition
-  key becomes a session key on it. A write to any session's copy publishes there through the
-  change bus's one write path, so no second publish is added (the epic's write-notice seam).
+  key becomes a session key on it, hashed as the partition key is today. A write to any session's
+  copy publishes there through the change bus's one write path, so no second publish is added (the
+  epic's write-notice seam).
+- **Nothing names a row the per-row check dropped.** Admission runs after the query, so a session
+  an own-resolver flow refuses to this caller is in the rows read. The cursor is sealed by the
+  engine, opaque to the caller, so `next` never carries a dropped row's session or task id. A
+  notice carries no raw session id, so a view re-reads rather than learning which session
+  changed. An empty page with `next` set then answers as an unknown id does.
 - **The filesystem store walks the owner's session folders**, sorted as the SQL stores sort, and
   the store conformance suite holds the three to one answer.
 
@@ -96,5 +103,8 @@ These are inputs, not instructions.
 
 - **Draft (Nov 26)** in the epic's spec set. Paging took `userSuspensions`' contract as is,
   which settles the epic's open paging default.
+- **Set review round 2 (Nov 26):** the cursor is sealed and the topic's session key hashed, after
+  the Cursor security review found that `userSuspensions`' cursor and a raw session key would name
+  a session the per-row check had dropped. Amends ER-8.
 
 **Open: none.**

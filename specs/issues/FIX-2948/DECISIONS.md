@@ -23,8 +23,8 @@ Solid edges are what you sign. Dashed edges lost.
 | | |
 |---|---|
 | **Instead of** | Stay per user, keyed by provider and thread, with the session as a field |
-| **Because** | A subscription is one session's interest in a thread: two conversations on one thread are two subscriptions, so a per-user key must name the session, which ER-11 forbids. In the session's copy, the key is provider and thread. A delivery comes from a webhook turn, which FIX-2942 refuses a plain write into another session; the cursor's advance is already one fixed write, so it becomes the definition's named action, which carries its own check (the delivery's verdict) |
-| **Locks in** | A screen of a user's subscriptions reads across sessions (FIX-2945). The delivery action is the only way a webhook turn writes a subscription. Existing rows move in FIX-2946's pass |
+| **Because** | A subscription is one session's interest in a thread: two conversations on one thread are two subscriptions, so a per-user key must name the session, which ER-11 forbids. In the session's copy, the key is provider and thread. A delivery comes from a webhook-started turn, which FIX-2942 refuses any reach into another session. The cursor's advance is already one fixed write, so it becomes the definition's named action, on the session the thread index row names (never one from the payload), with its own check (the delivery's verdict). FIX-2942 admits exactly that as one of its two exceptions |
+| **Locks in** | A screen of a user's subscriptions reads across sessions (FIX-2945). The delivery action is the only way a webhook-started turn writes a subscription, and it takes its session from the index row. Existing rows move in FIX-2946's pass, under its placement rule |
 
 ![D1: subscriptions in the session's copy with delivery by action, chosen, beside staying per user keyed by provider and thread. Decides it: whether the key must name a session. Price: delivery writes through a named action. Locks in reads across sessions for a per-user list; flips if no two sessions ever follow one thread](figures/d1-subscriptions.svg)
 

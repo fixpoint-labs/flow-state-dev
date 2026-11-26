@@ -8,7 +8,7 @@
 | **settles a task from its own session** (coder) | Finds the board through `boardAboveOf` (the filing session, or the conversation that routed it) and a partition | Reaches it through the task: `ctx.cap.work.at({ session: ctx.task.session })`. The claim still guards the settle, and the filer's turn starts once |
 | **opens Shift Manager's board, the coding board or the Inbox** | Each reads across conversations its own way | Each is a user-scope view reading `ctx.cap.<name>.acrossSessions()`, and hears a sub-task filed in a session made after it opened |
 | **sends a worker message to a task by id** | Workforce asks a partition index which conversation holds the task | Workforce reads across sessions, filtered at the store by the row's key, which is the task id |
-| **had boards and plans before the upgrade** | Rows under user scope, keyed by partition | Every row is in its conversation's copy, moved at start before the first request is served. A row an old instance writes during a rolling deploy is moved by the next start |
+| **had boards and plans before the upgrade** | Rows under user scope, keyed by partition | Every row is in its conversation's copy, moved at start before the first request is served, and only into the session, owner and lineage that filed it. A row an old instance writes during a rolling deploy is moved by the next start; after the mover goes, a start that finds one refuses to serve |
 | **defines a board backed by a factory, or by one run** | n/a | Gets no `.at` or `.acrossSessions`: such a board has no other session's copy the board can find |
 
 ## The goal, and how we'll know it's met
@@ -22,7 +22,7 @@ opened, with no partition left in the code.**
 | **The real need** | The epic's leg a, and its *learns task boards* team: a board has a copy per session, reached by naming the session ([FIX-2941](../../epics/FIX-2941/SPEC.md)) |
 | **Smaller, and rejected** | "The conversation board moves to session scope." Leaves the plan ledger partitioned, so `partition.ts` stays ([epic D2](../../epics/FIX-2941/DECISIONS.md#d2)), and the three screens on their own paths |
 | **Bigger, and not this issue's** | Merging the plan and delegation boards, task lifecycles, verdict templates, one person-wait tool: the follow-on task-API epic ([D1](../../epics/FIX-2941/DECISIONS.md#d1)) |
-| **Not done if** | `partitionBy`, `findTaskPartitions`, `boardAboveOf` or the `byTaskId` index remain · a screen reads a board through a session · an old row is unreadable after the move · em's turn starts twice · the goal passed only on SQLite |
+| **Not done if** | A task board's `partitionBy`, `findTaskPartitions`, `boardAboveOf` or the `byTaskId` index remain (the skills library's `partitionBy` is FIX-2948's) · a screen reads a board through a session · an old row is unreadable after the move · an old row lands in a session that didn't file it · em's turn starts twice · the goal passed only on SQLite |
 
 ```mermaid
 flowchart LR
@@ -40,7 +40,7 @@ The check reads what Shift Manager shows and em's turn count, never the board's 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/boards-per-session/` · real model for em · SQLite and Postgres · run by the implementer at completion, after FIX-2777 merges · verdict in the implementation PR |
-| **Signal** | The task and coder's sub-task, filed in a session made after the board opened, appear on Shift Manager's board within 2 s of filing. em's turn after the settle starts exactly once. The coding board and the Inbox show the same task. A fixture of rows written by today's `main` reads the same after the move, and after a pass stopped midway and run again. `partitionBy` is absent from `packages/*/src` |
+| **Signal** | The task and coder's sub-task, filed in a session made after the board opened, appear on Shift Manager's board within 2 s of filing. em's turn after the settle starts exactly once. The coding board and the Inbox show the same task. A fixture of rows written by today's `main` reads the same after the move, and after a pass stopped midway and run again. A session id deleted and then reused, by another user of the tenant or by a recreate with a new lineage, still has its old rows only in the old cell, reported. `partitionBy` is absent from `orchestration/src/tasks`, `orchestration/src/task-board` and workforce's ledgers; the skills library's goes in FIX-2948 |
 | **Input** | The concept doc's CSV export story. Another task wording must pass, 2 of 3 runs on the real model |
 | **Anti-game** | Assert on Shift Manager's view answer and em's request count, never on `createTask`'s or the settle's return |
 | **Control that must fail** | `GOAL_CONTROL=topic-off` must FAIL *late sub-task shown*. Today's `main` fails *no partition left* |
@@ -107,7 +107,7 @@ naming the session", in this PR's changeset. Its PR retires *partition*, *board 
 | The debt | |
 |---|---|
 | **Removes** | `partition.ts` (206 lines), `find-task-partitions.ts` (60), `board-above.ts` (26), 52 `partitionBy` lines, three cross-session screen paths, the parent-row read and settle, the forced `flowIsolation: false`, the `byTaskId` index, FIX-2750's partition key |
-| **Adds** | The mover, kept for one release: [FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950) · remove the board-row mover |
+| **Adds** | The mover, kept for one release: [FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950) · remove the board-row mover, leaving a start check that refuses to serve while a partitioned row remains |
 | **Leaves** | Two board stores (epic D2), for the task-API epic |
 
 **Net: down.** Several hundred lines go; one mover is added for a release.
@@ -124,8 +124,10 @@ release.
    `.acrossSessions`; a factory-backed board doesn't.** If wrong: an app with a factory board has
    no reach until it declares its collection.
 2. **[D2](DECISIONS.md#d2) · Old rows move at start, before the first request, on every start of
-   one release, by a resumable mover workforce owns.** If wrong: a large store's first start is
-   slow, or a row an old instance writes mid-deploy is unseen until the next start.
+   one release, by a resumable mover workforce owns, only into the session, owner and lineage
+   that filed them; after it goes, a start check refuses to serve while one is left.** If wrong:
+   a large store's first start is slow, a row an old instance writes mid-deploy is unseen until
+   the next start, or a reused session id receives another conversation's tasks.
 
 **Open: none.** D2 is the one to weigh: it is the riskiest step in the epic.
 

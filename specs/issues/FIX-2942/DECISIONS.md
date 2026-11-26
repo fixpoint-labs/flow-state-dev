@@ -10,9 +10,9 @@ Two calls are this issue's own.
 
 ```mermaid
 flowchart TD
-  I["FIX-2942"] --> D1["D1 · a webhook turn makes no plain write into another session"]
-  D1 -.->|"rejected"| X1["every turn writes freely until FIX-2686"]
-  D1 -.->|"rejected"| X2["a webhook turn reads nothing either"]
+  I["FIX-2942"] --> D1["D1 · a webhook-started turn reaches no other session · two server-bound exceptions"]
+  D1 -.->|"rejected"| X1["every turn reaches freely until FIX-2686"]
+  D1 -.->|"rejected"| X2["refuse only plain writes from the webhook source"]
   I --> D2["D2 · a turn started by a write is a wake on the owner's entry"]
   D2 -.->|"rejected"| X3["start a turn per write"]
 ```
@@ -20,20 +20,21 @@ flowchart TD
 Solid edges are what you sign. Dashed edges lost.
 
 <a name="d1"></a>
-## D1 · A turn that a webhook started can read other sessions but can't make a plain write into one; a definition's named action still runs
+## D1 · A turn a webhook delivery started, directly or through the runs it fires, reaches no other session; a board's settle on the claimed task's session and a subscription delivery are the two exceptions
 
 | | |
 |---|---|
-| **Instead of** | Let every turn write into other sessions until [FIX-2686](https://linear.app/fixpoint-labs/issue/FIX-2686) marks untrusted turns · or refuse reads as well |
-| **Because** | A webhook turn reads text a stranger wrote (a PR comment). Reach turns that text into a way to change another conversation's data. The dispatch type `webhook` is server-set, so the refusal reads a trusted source (BP-031). A named action, such as a board's settle, carries its own check (the claim), which a stranger can't satisfy, so it stays open and the task flow keeps working |
-| **Locks in** | Until FIX-2686 lands, an app whose webhook-woken worker must write into another session offers that write as a named action. FIX-2686 widens the same refusal from `webhook` to every untrusted turn, with no new rule |
+| **Instead of** | Let every turn reach other sessions until [FIX-2686](https://linear.app/fixpoint-labs/issue/FIX-2686) marks untrusted turns · or refuse only plain writes from the `webhook` source and let any named action run |
+| **Because** | A webhook turn reads text a stranger wrote (a PR comment). The narrower rule has two holes. A service delivery's routing and the owner runs it fires are dispatched as `internal` (`dispatchInternalAs` in `owner-runs.ts`), so the `webhook` source never reaches the worker a PR comment wakes. And a named action is history, not a check: an action that takes a session id lets the text pick the session, and a read brings another conversation's data into a turn that can reply with it. So the delivery's origin rides the dispatch envelope beside the source, set by the server (`routeServiceEvent` passes it to every run it fires), never read from metadata (BP-031). The two exceptions take their session from a server-held record, the claimed row (`ctx.task.session`) and the thread index row, never from the model or the payload, and each keeps its own check: the claim, the delivery's verdict |
+| **Locks in** | Until FIX-2686, a webhook-started turn can't read, list, write or call `acrossSessions()` on another session; each is refused alike, naming the rule and never the target. An app whose webhook worker needs more waits for FIX-2686. The mark follows dispatches, not data: a task the turn files in its own session, or the filer's wake after a settle, is not marked, and carrying it through data is FIX-2686's. FIX-2686 widens the same refusal to every untrusted turn |
 
-![D1: a webhook turn makes no plain write into another session, chosen, beside every turn writing freely until FIX-2686. Decides it: a stranger's text steering a write into another conversation. Price: such a write must be a named action. Reads are a tie. Locks in that FIX-2686 widens the rule; flips if no webhook-started flow writes across sessions](figures/d1-webhook-writes.svg)
+![D1: a webhook-started turn reaches no other session except two server-bound operations, chosen, beside refusing only plain writes from the webhook source. Decides it: a stranger's text choosing which conversation is read or changed. Price: a webhook worker that needs any other reach waits for FIX-2686. Locks in that the origin rides every run a delivery fires; flips if FIX-2686 lands first](figures/d1-webhook-writes.svg)
 
-It comes down to a stranger's text: with free writes, a PR comment can change another conversation.
+It comes down to a stranger's text: if the turn can name a session, the text can choose it.
 
-**What would change my mind:** FIX-2686 landing first. Then the refusal keys on its marking from
-the start, and `webhook` is not named at all.
+**What would change my mind:** FIX-2686 landing first. Then the refusal keys on its marking, and
+the delivery origin is not added. Or a webhook worker in real use that must read another session:
+that read becomes a third exception, bound to a server-held session the same way.
 
 <a name="d2"></a>
 ## D2 · A turn started by another session's write is a wake on the owning session's entry; wakes already coalesce per session
@@ -81,14 +82,15 @@ spec set, in the epic agent's own context: this dispatch had no sub-agent to giv
 1. **Reuse:** both Adds extend existing pieces (the resource accessor, the routes' admission). The
    wake store and the change bus carry the notice. See [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 2. **Prior art:** Temporal routes a write into another workflow through a signal its history
-   records; the owner chose plain writes (Q1), and D1 keeps named actions for the one case where a
-   stranger's text is near.
+   records; the owner chose plain writes (Q1), and where a stranger's text is near, D1
+   keeps only two named actions, each bound to a server-held session.
 3. **Other shapes:** a sessions-handle door, recorded under *considered and dropped*.
 4. **New factors:** FIX-2686 is open and Todo; D1 is its stop-gap. No other issue since the
    watermark touches resource resolution.
 5. **Necessity:** every later child builds on it.
 6. **Ergonomics:** one method; the docs line separates it from `ctx.sessions`.
-7. **Concerns:** D1's refusal must not block a board's settle. Folded: named actions stay open.
+7. **Concerns:** D1's refusal must not block a board's settle or a subscription delivery. Both
+   stay open as server-bound exceptions; no other named action is exempt.
 
 ## Notes from review
 
@@ -104,5 +106,10 @@ These are inputs, not instructions.
 - **Draft (Nov 26)** in the epic's spec set, after the owner decided Q1 (plain writes) and Q2.
 - **Set review:** D1 narrowed to plain writes after the set review found that a task session
   woken by a service delivery settles on its filer's board.
+- **Set review round 2 (Nov 26):** D1 widened from plain writes to every reach, with two
+  server-bound exceptions, and its origin carried through the routing and owner runs a delivery
+  fires. The Cursor security review showed a named action lets the text pick the session; Codex
+  showed owner runs are dispatched as `internal`, so the `webhook` source alone fenced nothing on
+  the service-delivery path (checked in `owner-runs.ts`).
 
 **Open: none.**

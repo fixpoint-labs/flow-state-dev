@@ -6,7 +6,7 @@
 |---|---|---|
 | **subscribes a conversation to a GitHub thread** | The subscription and its cursor sit in the user's pile, under an id hashed from the session, the provider and the thread | They sit in the conversation's own copy. Two conversations on one thread are two copies, not two hashes |
 | **cancels a task that had subscriptions** | Every subscription in the user's pile is read, and the task's are picked out | Only the task session's copy is read |
-| **gets a webhook delivered to a subscription** | The delivery writes the cursor in the user's pile | The delivery advances the subscription through its named action, which FIX-2942 admits from a webhook turn |
+| **gets a webhook delivered to a subscription** | The delivery writes the cursor in the user's pile | The delivery advances the subscription through its named action, on the session the thread index names. FIX-2942 admits it from a webhook-started turn as one of two server-bound exceptions |
 | **runs workers that each keep skills** | Each worker's catalog is a partition, an encoded segment in one per-user collection | Each skill row carries its worker, and a worker's catalog is read through a declared index |
 | **upgrades with subscriptions and skills already stored** | n/a | Every row reads the same after the upgrade |
 

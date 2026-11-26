@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, how rows stored under today's partitions reach their session copies. Chosen: moved at start, before the first request is served, on every start of the release that carries the mover. Instead of: read the old partitions on every board read. It comes down to partition code: chosen, it is deleted and a key parser lives only in the mover; instead, partition.ts, its index and the forced isolation stay for every read. The price: a start walks the old rows, slowly the first time on a large store. A row an old instance writes during a rolling deploy is moved by the next start and unseen by new instances until then. Locks in: a resumable mover, run at each start for one release, that keeps and reports a row it can't place. Flips if: a store is too large to walk at start."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, how rows stored under today's partitions reach their session copies. Chosen: moved at start, before the first request is served, on every start of the release that carries the mover. Instead of: read the old partitions on every board read. It comes down to partition code: chosen, it is deleted and a key parser lives only in the mover; instead, partition.ts, its index and the forced isolation stay for every read. The price: a start walks the old rows, slowly the first time on a large store. A row an old instance writes during a rolling deploy is moved by the next start and unseen by new instances until then. Locks in: a resumable mover, run at each start for one release, that keeps and reports a row it can't place, then a start check that refuses to serve while a partitioned row remains. Flips if: a store is too large to walk at start."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
     <text class="t-b" x="32" y="369">A resumable mover, at each start, one release</text>
-    <text class="t-s" x="32" y="387">a row it can't place stays and is reported</text>
+    <text class="t-s" x="32" y="387">then a start check refuses to serve while a row is left</text>
   </g>
 
   <g id="flips-if">
