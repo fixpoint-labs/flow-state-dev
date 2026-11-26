@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, how rows stored under today's partitions reach their session copies. Chosen: moved once, before the first request is served. Instead of: read the old partitions on every board read. It comes down to partition code: chosen, it is deleted and a key parser lives only in the mover; instead, partition.ts, its index and the forced isolation stay for every read. The price: the first start after the upgrade walks every board row once. A row with no session is kept and reported. Locks in: an idempotent mover kept for one release. Flips if: a store is too large to walk at start."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, how rows stored under today's partitions reach their session copies. Chosen: moved at start, before the first request is served, on every start of the release that carries the mover. Instead of: read the old partitions on every board read. It comes down to partition code: chosen, it is deleted and a key parser lives only in the mover; instead, partition.ts, its index and the forced isolation stay for every read. The price: a start walks the old rows, slowly the first time on a large store. A row an old instance writes during a rolling deploy is moved by the next start and unseen by new instances until then. Locks in: a resumable mover, run at each start for one release, that keeps and reports a row it can't place. Flips if: a store is too large to walk at start."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Moved once, before serving</text>
+    <text class="t-h c-code" x="228" y="112">Moved at start, before serving</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Read old partitions on each read</text>
@@ -63,11 +63,11 @@
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="226">THE FIRST START</text>
-    <text class="t-lbl" x="32" y="239">AFTER UPGRADE</text>
+    <text class="t-lbl" x="32" y="226">EACH START</text>
+    <text class="t-lbl" x="32" y="239">THIS RELEASE</text>
     <text class="mark minus" x="228" y="228">−</text>
-    <text class="t-b" x="248" y="227">Walks every board row once</text>
-    <text class="t-s" x="248" y="245">slow on a large store, one time</text>
+    <text class="t-b" x="248" y="227">Walks the old rows</text>
+    <text class="t-s" x="248" y="245">slow the first time on a large store</text>
     <text class="mark plus" x="592" y="228">+</text>
     <text class="t-b" x="612" y="227">No pass at start</text>
     <text class="t-s" x="612" y="245">old rows read where they are</text>
@@ -75,21 +75,21 @@
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="284">A ROW WITH</text>
-    <text class="t-lbl" x="32" y="297">NO SESSION</text>
-    <text class="mark plus" x="228" y="286">+</text>
-    <text class="t-b" x="248" y="285">Kept and reported</text>
-    <text class="t-s" x="248" y="303">never dropped</text>
-    <text class="mark tie" x="592" y="286">=</text>
-    <text class="t-b" x="612" y="285">Read as today</text>
-    <text class="t-s" x="612" y="303">nothing moves</text>
+    <text class="t-lbl" x="32" y="284">A ROLLING</text>
+    <text class="t-lbl" x="32" y="297">DEPLOY</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">A late old row waits</text>
+    <text class="t-s" x="248" y="303">moved by the next start, unseen till then</text>
+    <text class="mark plus" x="592" y="286">+</text>
+    <text class="t-b" x="612" y="285">Read where it is</text>
+    <text class="t-s" x="612" y="303">no gap between versions</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">An idempotent mover, kept for one release</text>
+    <text class="t-b" x="32" y="369">A resumable mover, at each start, one release</text>
     <text class="t-s" x="32" y="387">a row it can't place stays and is reported</text>
   </g>
 

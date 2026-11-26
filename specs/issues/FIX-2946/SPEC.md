@@ -8,7 +8,7 @@
 | **settles a task from its own session** (coder) | Finds the board through `boardAboveOf` (the filing session, or the conversation that routed it) and a partition | Reaches it through the task: `ctx.cap.work.at({ session: ctx.task.session })`. The claim still guards the settle, and the filer's turn starts once |
 | **opens Shift Manager's board, the coding board or the Inbox** | Each reads across conversations its own way | Each is a user-scope view reading `ctx.cap.<name>.acrossSessions()`, and hears a sub-task filed in a session made after it opened |
 | **sends a worker message to a task by id** | Workforce asks a partition index which conversation holds the task | Workforce reads across sessions, filtered at the store by the row's key, which is the task id |
-| **had boards and plans before the upgrade** | Rows under user scope, keyed by partition | Every row is in its conversation's copy, moved once before the first request is served |
+| **had boards and plans before the upgrade** | Rows under user scope, keyed by partition | Every row is in its conversation's copy, moved at start before the first request is served. A row an old instance writes during a rolling deploy is moved by the next start |
 | **defines a board backed by a factory, or by one run** | n/a | Gets no `.at` or `.acrossSessions`: such a board has no other session's copy the board can find |
 
 ## The goal, and how we'll know it's met
@@ -40,7 +40,7 @@ The check reads what Shift Manager shows and em's turn count, never the board's 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/boards-per-session/` · real model for em · SQLite and Postgres · run by the implementer at completion, after FIX-2777 merges · verdict in the implementation PR |
-| **Signal** | The task and coder's sub-task, filed in a session made after the board opened, appear on Shift Manager's board within 2 s of filing. em's turn after the settle starts exactly once. The coding board and the Inbox show the same task. A fixture of rows written by today's `main` reads the same after the move. `partitionBy` is absent from `packages/*/src` |
+| **Signal** | The task and coder's sub-task, filed in a session made after the board opened, appear on Shift Manager's board within 2 s of filing. em's turn after the settle starts exactly once. The coding board and the Inbox show the same task. A fixture of rows written by today's `main` reads the same after the move, and after a pass stopped midway and run again. `partitionBy` is absent from `packages/*/src` |
 | **Input** | The concept doc's CSV export story. Another task wording must pass, 2 of 3 runs on the real model |
 | **Anti-game** | Assert on Shift Manager's view answer and em's request count, never on `createTask`'s or the settle's return |
 | **Control that must fail** | `GOAL_CONTROL=topic-off` must FAIL *late sub-task shown*. Today's `main` fails *no partition left* |
@@ -107,7 +107,7 @@ naming the session", in this PR's changeset. Its PR retires *partition*, *board 
 | The debt | |
 |---|---|
 | **Removes** | `partition.ts` (206 lines), `find-task-partitions.ts` (60), `board-above.ts` (26), 52 `partitionBy` lines, three cross-session screen paths, the parent-row read and settle, the forced `flowIsolation: false`, the `byTaskId` index, FIX-2750's partition key |
-| **Adds** | The mover, kept for one release: FIX-XXX · remove the board-row mover, filed when this merges |
+| **Adds** | The mover, kept for one release: [FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950) · remove the board-row mover |
 | **Leaves** | Two board stores (epic D2), for the task-API epic |
 
 **Net: down.** Several hundred lines go; one mover is added for a release.
@@ -123,8 +123,9 @@ release.
 1. **[D1](DECISIONS.md#d1) · Only a board on a durable session-scoped collection offers `.at` and
    `.acrossSessions`; a factory-backed board doesn't.** If wrong: an app with a factory board has
    no reach until it declares its collection.
-2. **[D2](DECISIONS.md#d2) · Old rows move once, before the first request, by a mover workforce
-   owns.** If wrong: a large store's first start is slow, or a row the mover misses is lost.
+2. **[D2](DECISIONS.md#d2) · Old rows move at start, before the first request, on every start of
+   one release, by a resumable mover workforce owns.** If wrong: a large store's first start is
+   slow, or a row an old instance writes mid-deploy is unseen until the next start.
 
 **Open: none.** D2 is the one to weigh: it is the riskiest step in the epic.
 

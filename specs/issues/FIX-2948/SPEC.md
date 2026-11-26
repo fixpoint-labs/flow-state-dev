@@ -98,12 +98,12 @@ retired by FIX-2946; this PR adds the skills library to its sweep.
 | Adds | Existing piece considered | How composed |
 |---|---|---|
 | A delivery action on the subscriptions definition | A plain write from the delivery | The write the delivery makes today, named, so a webhook turn may make it (FIX-2942 D1) |
-| A `worker` index on skill rows | The partition; FIX-2944's range read over the encoded segment | A declared index; the range read would keep the encoded prefix |
+| A `worker` index on skill rows | The partition; FIX-2944's range read over the encoded segment | A declared index ([FIX-2532](https://linear.app/fixpoint-labs/issue/FIX-2532)); the range read would keep the encoded prefix |
 
 | The debt | |
 |---|---|
 | **Removes** | `skills/partition.ts`, the hashed subscription id, the list-then-discard in `endTaskSubscriptions` |
-| **Adds** | Moves in FIX-2946's mover, gone under the same follow-up |
+| **Adds** | Moves in FIX-2946's mover, gone under the same follow-up ([FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950)) |
 | **Leaves** | Tenants in per-user data (FIX-2065) |
 
 **Net: down.**

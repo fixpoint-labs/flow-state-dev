@@ -8,28 +8,28 @@ One call. The rest is mechanism.
 
 ```mermaid
 flowchart TD
-  I["FIX-2944"] --> D1["D1 · the Postgres key column compares in byte order"]
-  D1 -.->|"rejected"| X1["a second index in byte order beside the primary key"]
+  I["FIX-2944"] --> D1["D1 · a byte-order index on the key, built concurrently"]
+  D1 -.->|"rejected"| X1["the key column compares in byte order"]
   D1 -.->|"rejected"| X2["a range in the database's collation"]
 ```
 
 Solid edges are what you sign. Dashed edges lost.
 
 <a name="d1"></a>
-## D1 · Postgres's `resource_key` column compares in byte order (`COLLATE "C"`), so the primary key serves the range
+## D1 · Postgres answers the range from a byte-order index, `(scope_type, scope_id, resource_key COLLATE "C")`, built concurrently in place of the scope index
 
 | | |
 |---|---|
-| **Instead of** | A second index, `(scope_type, scope_id, resource_key COLLATE "C")`, beside the primary key · or a range in the database's default collation |
-| **Because** | A prefix's upper bound (its successor) is only right in byte order: in a language collation, keys under one prefix need not sort together. A second index makes every resource write update two indexes. SQLite already compares keys in byte order (`BINARY`), and the Postgres stores already compare ids that way (`COLLATE "C"`) |
-| **Locks in** | A migration rebuilds each resource table's primary key once, locking it while it runs. Any `ORDER BY resource_key` in Postgres sorts in byte order after it, as SQLite does and as the filesystem store's tests expect |
+| **Instead of** | Change the `resource_key` column to byte order, so the primary key serves the range · or a range in the database's default collation |
+| **Because** | A prefix's upper bound (its successor) is only right in byte order: in a language collation, keys under one prefix need not sort together. Changing the key column's collation rebuilds each primary key under a lock that blocks writes. An index built `CONCURRENTLY` doesn't, which is how `store-postgres/src/schema.ts` already adds indexes to populated tables. The new index replaces `idx_resource_state_scope` and `idx_resource_content_scope`, which only repeat the primary key's leading columns, so a resource write still updates two indexes |
+| **Locks in** | The range read names byte order (`resource_key COLLATE "C"`) to use its index. The column, the primary key and every `ORDER BY resource_key` keep today's collation, so no read's order changes. No column changes collation, so `resource_index.resource_key` joins as today. SQLite needs nothing: it already compares keys in byte order (`BINARY`) |
 
-![D1: the key column in byte order, chosen, beside a second byte-order index. Decides it: what every resource write costs. Price: a one-time rebuild that locks the table. Locks in byte order for every key sort; flips if a deployment can't take the rebuild lock](figures/d1-byte-order.svg)
+![D1: a byte-order index built concurrently, chosen, beside changing the key column to byte order. Decides it: the one-time migration. Price: none on writes, since the new index replaces the scope index. Locks in a range read that names byte order; flips if the planner won't use that index for the range](figures/d1-byte-order.svg)
 
-It comes down to write cost: a second index is a second write on every resource change.
+It comes down to the migration: a concurrent build takes no lock on writes, and a column change does.
 
-**What would change my mind:** a deployment that can't take the rebuild lock. Then the second
-index is built concurrently, and the primary key keeps its collation.
+**What would change my mind:** the planner not using the byte-order index for the range on a
+seeded store. Then the key column moves to byte order, and the rebuild lock is the price.
 
 ## Decided, not asked
 
@@ -54,17 +54,22 @@ index is built concurrently, and the primary key keeps its collation.
 2026-11-26 · watermark 2026-11-25 · **Right approach.** Run over the whole set in the epic agent's
 own context.
 
-1. **Reuse:** the primary key and the existing byte-order compares. One store-private helper.
+1. **Reuse:** the existing byte-order compares and the concurrent-index path in `schema.ts`. One
+   store-private helper.
 2. **Prior art:** a byte-order range for a prefix is the standard btree prefix scan; Postgres
    documents that `LIKE` uses an index only under the C collation or a pattern operator class.
-3. **Other shapes:** a second index; rejected in D1.
+3. **Other shapes:** the key column in byte order; rejected in D1.
 4. **New factors:** none since the watermark.
 5. **Necessity:** FIX-2945's join depends on it.
 6. **Ergonomics:** invisible to apps.
-7. **Concerns:** the rebuild lock on a large table. Recorded in D1's *flips*.
+7. **Concerns:** whether the planner uses the byte-order index for the range. The goal check's
+   query plan answers it; D1's *flips* names the fallback.
 
 ## How it got here
 
 - **Draft (Nov 26)** in the epic's spec set.
+- **Review round 1 (Nov 26)** flipped D1 from changing the key column's collation to a byte-order
+  index built concurrently: the review showed the new index replaces the scope index, so the
+  write-cost reason for the column change didn't hold, and the column change locks writes.
 
 **Open: none.**

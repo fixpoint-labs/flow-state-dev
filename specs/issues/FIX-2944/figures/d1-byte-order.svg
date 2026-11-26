@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, how Postgres answers a key range from an index. Chosen: the resource_key column compares in byte order, so the primary key serves the range. Instead of: a second byte-order index. It comes down to every resource write: chosen, one index is updated; instead, two. The price: the migration rebuilds the primary key and locks the table once, where a second index is built concurrently. Sort order: byte order everywhere, matching SQLite, against unchanged in Postgres. Locks in: byte order for every Postgres key sort. Flips if: a deployment can't take the rebuild lock."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, how Postgres answers a key range from an index. Chosen: a byte-order index on the key, built concurrently, replacing the scope index. Instead of: changing the key column to byte order, so the primary key serves the range. It comes down to the one-time migration: chosen, an index is built concurrently with no lock on writes; instead, the primary key is rebuilt under a lock. Every resource write: two indexes either way. Sort order of keys: unchanged in Postgres, against byte order for every Postgres key sort. Locks in: the range read names byte order and uses its own index. Flips if: the planner won't use that index for the range."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,35 +43,35 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">The key column in byte order</text>
+    <text class="t-h c-code" x="228" y="112">A byte-order index, built concurrently</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">A second byte-order index</text>
+    <text class="t-h c-lost" x="592" y="112">The key column in byte order</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">EVERY RESOURCE</text>
-    <text class="t-lbl" x="32" y="169">WRITE</text>
+    <text class="t-lbl" x="32" y="156">ONE-TIME</text>
+    <text class="t-lbl" x="32" y="169">MIGRATION</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Updates one index</text>
-    <text class="t-s" x="248" y="179">the primary key serves the range</text>
+    <text class="t-b" x="248" y="161">Builds an index concurrently</text>
+    <text class="t-s" x="248" y="179">no lock on writes, as schema.ts does</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Updates two indexes</text>
-    <text class="t-s" x="612" y="179">the key and its byte-order copy</text>
+    <text class="t-b" x="612" y="161">Rebuilds the primary key</text>
+    <text class="t-s" x="612" y="179">locks the table while it runs</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="226">ONE-TIME</text>
-    <text class="t-lbl" x="32" y="239">MIGRATION</text>
-    <text class="mark minus" x="228" y="228">−</text>
-    <text class="t-b" x="248" y="227">Rebuilds the primary key</text>
-    <text class="t-s" x="248" y="245">locks the table while it runs</text>
-    <text class="mark plus" x="592" y="228">+</text>
-    <text class="t-b" x="612" y="227">Builds an index concurrently</text>
-    <text class="t-s" x="612" y="245">no lock on writes</text>
+    <text class="t-lbl" x="32" y="226">EVERY RESOURCE</text>
+    <text class="t-lbl" x="32" y="239">WRITE</text>
+    <text class="mark tie" x="228" y="228">=</text>
+    <text class="t-b" x="248" y="227">Two indexes, as today</text>
+    <text class="t-s" x="248" y="245">the new index replaces the scope index</text>
+    <text class="mark tie" x="592" y="228">=</text>
+    <text class="t-b" x="612" y="227">Two indexes, as today</text>
+    <text class="t-s" x="612" y="245">the primary key and the scope index</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
@@ -79,26 +79,26 @@
     <text class="t-lbl" x="32" y="284">SORT ORDER</text>
     <text class="t-lbl" x="32" y="297">OF KEYS</text>
     <text class="mark plus" x="228" y="286">+</text>
-    <text class="t-b" x="248" y="285">Byte order everywhere</text>
-    <text class="t-s" x="248" y="303">as SQLite and the file store</text>
-    <text class="mark tie" x="592" y="286">=</text>
-    <text class="t-b" x="612" y="285">Unchanged in Postgres</text>
-    <text class="t-s" x="612" y="303">differs from SQLite</text>
+    <text class="t-b" x="248" y="285">Unchanged in Postgres</text>
+    <text class="t-s" x="248" y="303">only the range names byte order</text>
+    <text class="mark minus" x="592" y="286">−</text>
+    <text class="t-b" x="612" y="285">Byte order for every key sort</text>
+    <text class="t-s" x="612" y="303">an ORDER BY on the key can change</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">Byte order for every Postgres key sort</text>
-    <text class="t-s" x="32" y="387">the primary key is rebuilt once</text>
+    <text class="t-b" x="32" y="369">The range read names byte order</text>
+    <text class="t-s" x="32" y="387">and is answered by its own index</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">A deployment can't take the rebuild lock</text>
-    <text class="t-s" x="494" y="387">then the second index is built concurrently</text>
+    <text class="t-b" x="494" y="369">The planner won't use that index</text>
+    <text class="t-s" x="494" y="387">then the key column moves to byte order</text>
   </g>
 
 </svg>

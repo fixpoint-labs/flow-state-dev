@@ -6,7 +6,7 @@
 |---|---|---|
 | **reaches another session's copy from a flow of another kind** (coder settling on em's board) | Can't. A per-session copy is read only by its own session's flow, so the board was moved to user scope | Reaches it, because the coder flow includes the board's task entry, and that block declares the board. One shape per name guarantees both flows read the same rows |
 | **declares two different shapes under one session-scoped name in two flows** | Starts. The two never met, since nothing crossed sessions | Is refused at start, naming both flows and the name. Today's user- and org-scope refusal now covers session scope too |
-| **runs two copies of one flow with flow isolation** | The start-up check can refuse them as a clash (FIX-2563) | Starts. Isolated copies are separate data, so they are never compared |
+| **declares one index name at two versions in two flows whose collections are isolated** | Refused at start, though the two never share a cell: the index-version check ignores isolation (FIX-2563) | Starts. Isolated declarations are separate data, so they are never compared |
 | **types a definition's name wrong** | A run-time `undefined` | A build error: a block reaches only names it declares, typed from its own declarations |
 | **wants a flow's private state kept away from other flows' models** | Flow isolation | The same: a flow that doesn't declare a definition can't reach it, by name or otherwise |
 
@@ -25,7 +25,7 @@ it.**
 | **The real need** | Rule 6 of [the concept doc](../../../docs/internal/design/scopes-and-sessions.md#the-rules) and the epic's ER-4 and ER-5: one shape per name, and reach that never hands a flow's private data to another |
 | **Smaller, and rejected** | "The clash check covers session scope." Safe, but says nothing about which flows may reach what |
 | **Bigger, and not this issue's** | Reach by a name the flow doesn't declare (a `shared` flag), and a board picked by a runtime name. Both wait for a real caller ([D1](DECISIONS.md#d1)) |
-| **Not done if** | Two flows start with two shapes under one session-scoped name · two isolated copies of one flow are refused · a block reaches a definition its flow doesn't declare · a typo compiles |
+| **Not done if** | Two flows start with two shapes under one session-scoped name · two flows' isolated declarations of one index name are refused · a block reaches a definition its flow doesn't declare · a typo compiles |
 
 ```mermaid
 flowchart LR
@@ -43,10 +43,10 @@ registry's internals.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/one-definition-per-name/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | A write by the coder flow into em's session copy is read back by em's flow, and the reverse. Two flows with different `work` shapes at session scope: start refused, the error naming both flows and `work`. Two isolated copies of one flow: start succeeds. A type test: `ctx.resources.at({ session }).worke` fails to compile |
+| **Signal** | A write by the coder flow into em's session copy is read back by em's flow, and the reverse. Two flows with different `work` shapes at session scope: start refused, the error naming both flows and `work`. Two flows declaring one index name at two versions on isolated collections: start succeeds. A type test: `ctx.resources.at({ session }).worke` fails to compile |
 | **Input** | The concept doc's em and coder flows on `work`. Any pair of flows sharing a declaring block must pass |
 | **Anti-game** | Assert on rows read back and on the start error, never on a registry method's return |
-| **Control that must fail** | `GOAL_CONTROL=skip-session-scope` must FAIL *two shapes refuse start*. Today's `main` fails *coder writes em's copy* |
+| **Control that must fail** | `GOAL_CONTROL=skip-session-scope` must FAIL *two shapes refuse start*. Today's `main` fails *coder writes em's copy* and *isolated index declarations start* |
 
 ## What changes
 
@@ -82,11 +82,11 @@ glossary term is coined: "shared definition" is not added ([D1](DECISIONS.md#d1)
 
 | Already here | What this does with it |
 |---|---|
-| The start-up clash check, `validateScope` in `engine/src/registry/flow-registry.ts`: user and org only, exact refs, same kind skipped | **Extends** to session scope, keyed by name, isolated declarations skipped ([D2](DECISIONS.md#d2)) |
+| The start-up clash check, `validateScope` in `engine/src/registry/flow-registry.ts`: user and org only, exact refs, same kind skipped. Its index-version half, `admitIndexedCollections` (`engine/src/resources/resource-indexes.ts`), compares isolated declarations too | **Extends** to session scope, keyed by name, isolated declarations skipped ([D2](DECISIONS.md#d2)) |
 | `declarationsOf` and `resolveAddress` (`engine/src/resources/scope-address.ts`), which find every flow's declaration of one address and refuse when they disagree | **Builds on.** The same comparison, `sameClientConfig`, is the clash rule |
 | `defineFlow`'s merge of block resources | **Builds on.** Including a block is declaring its definitions |
 | Typed `ctx.resources` from a block's declarations ([FIX-1580](https://linear.app/fixpoint-labs/issue/FIX-1580)) | **Builds on.** `.at({ session })` returns the same typed accessors |
-| [FIX-2563](https://linear.app/fixpoint-labs/issue/FIX-2563) (the check over-refuses isolated flows) and [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) (it keys on exact refs) | **Closed** by D2, each with that reason |
+| [FIX-2563](https://linear.app/fixpoint-labs/issue/FIX-2563) (the index-version check refuses isolated declarations that never share a cell, and session cells don't record their flow) and [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) (it keys on exact refs) | **Closed** by D2, each with that reason |
 | A cross-flow lookup by a name a flow doesn't declare | **None.** Searched `registry.list()` callers and `declarationsOf`: only the address path, which reads, never reaches into sessions |
 
 | Adds | Existing piece considered | How composed |

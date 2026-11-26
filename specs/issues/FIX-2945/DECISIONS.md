@@ -85,6 +85,13 @@ own context.
 7. **Concerns:** the gate's numbers are a guess at a busy owner. Recorded in D1; the gate is
    measured, not assumed.
 
+## Notes from review
+
+- "**FIX-2945 admission:** post-query `ownResolverVerdict` may N× `sessions.get` per page—document the same bound as `userSuspensions` or add a conformance cap." — Cursor bot, round 1
+- "**FIX-2945 D1 (join, no kept index, measured gate):** good shape, but also record the gate's failure path: what ships if 5,000 sessions misses 50 ms (a kept index, or a narrower page)? Today the answer is "a kept index comes back", which the epic otherwise rejects. Naming the fallback now avoids a re-gate." — jhoffner, set review round 1
+
+These are inputs, not instructions.
+
 ## How it got here
 
 - **Draft (Nov 26)** in the epic's spec set. Paging took `userSuspensions`' contract as is,

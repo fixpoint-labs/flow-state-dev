@@ -104,6 +104,7 @@ flowchart LR
   A -->|"reach by session"| G["FIX-2948 · per-user keys"]
   E -->|"the one mover"| G
   X -.-> G
+  X -.-> F
   A & B & C & D & E & F & G --> H["FIX-2949 · closure"]
 ```
 

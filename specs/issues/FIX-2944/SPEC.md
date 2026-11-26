@@ -4,15 +4,15 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **runs on Postgres with a busy user** | Every read of a collection, such as a board's rows, scans every row in that user's scope and compares a prefix with `LEFT(...)` | The read walks the primary key's index to the collection's first row and stops after its last |
-| **runs on SQLite** | The same scan, with `substr(...)` | The same index walk |
+| **runs on Postgres with a busy user** | Every read of a collection, such as a board's rows, scans every row in that user's scope and compares a prefix with `LEFT(...)` | The read walks a byte-order index on the key to the collection's first row and stops after its last |
+| **runs on SQLite** | The same scan, with `substr(...)` | The same walk, on the primary key |
 | **reads a collection whose keys hold `%` or `_`** | Correct: the function compare sidesteps `LIKE`'s wildcards | Still correct: a range compare has no wildcards |
 | **runs the filesystem store in development** | Returns the rows under a prefix | Returns the same rows; the conformance suite now asserts both SQL stores match it |
 | **builds a read across sessions** (FIX-2945) | Would scan every session's scope | Gets a per-session read that is an index range, so the join stays cheap |
 
 ## The goal, and how we'll know it's met
 
-**Every prefix read in both SQL stores is answered from the primary key's index, on the same rows
+**Every prefix read in both SQL stores is answered from an index range on the key, on the same rows
 it returns today.**
 
 | Is it the right goal? | |
@@ -25,7 +25,7 @@ it returns today.**
 ```mermaid
 flowchart LR
   S["seeded store · 1 scope · 200,000 rows · 40 collections"] --> Q["each prefix read · both SQL stores"]
-  Q -->|"plan uses the primary key · rows equal the filesystem store's"| P["PASS"]
+  Q -->|"plan is an index range on the key · rows equal the filesystem store's"| P["PASS"]
   C["control · today's LEFT and substr"] -.-> Q
   Q -.->|"under the control"| F["must FAIL · plan shows a scan"]
 ```
@@ -35,10 +35,10 @@ The check reads the database's own query plan and the returned rows, not the SQL
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/indexed-key-segments/` · no model · Postgres and SQLite · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | For every prefix read (resource state and content, in both stores), `EXPLAIN` shows an index range on the primary key and no scan of the scope's rows. The row sets equal today's and the filesystem store's, for prefixes that are empty, end in a multi-byte character, or hold `%` and `_` |
+| **Signal** | For every prefix read (resource state and content, in both stores), `EXPLAIN` shows an index range on the key (the primary key in SQLite, the byte-order index in Postgres) and no scan of the scope's rows. The row sets equal today's and the filesystem store's, for prefixes that are empty, end in a multi-byte character, or hold `%` and `_` |
 | **Input** | One scope with 200,000 rows across 40 collection prefixes. A seed with other prefix lengths must pass too |
 | **Anti-game** | Don't assert on the SQL text. A query that names no function can still scan |
-| **Control that must fail** | Today's `main` must FAIL *plan uses the primary key* on both stores |
+| **Control that must fail** | Today's `main` must FAIL *plan is an index range on the key* on both stores. No `ORDER BY resource_key` result changes in Postgres |
 
 ## What changes
 
@@ -54,16 +54,16 @@ flowchart LR
   end
 ```
 
-The predicate moves from a function over the key to a range on it, which the primary key's
-index answers.
+The predicate moves from a function over the key to a range on it, which an index on the key
+answers: the primary key in SQLite, a byte-order index in Postgres.
 
 ```diff
 - AND LEFT(resource_key, char_length($3)) = $3
-+ AND resource_key >= $3 AND resource_key < $4      -- $4: the prefix's successor, in byte order
++ AND resource_key COLLATE "C" >= $3 AND resource_key COLLATE "C" < $4   -- Postgres; $4: the prefix's successor, in byte order
 ```
 
-**Docs:** no user documentation impact; a store's query shape isn't documented. The store
-package changelogs say the Postgres key column moves to byte order ([D1](DECISIONS.md#d1)).
+**Docs:** no user documentation impact; a store's query shape isn't documented. The Postgres
+store's changelog says an upgrade builds one index concurrently and drops the two scope indexes ([D1](DECISIONS.md#d1)).
 
 ## What stays as it is
 
@@ -76,35 +76,36 @@ package changelogs say the Postgres key column moves to byte order ([D1](DECISIO
 | Already here | What this does with it |
 |---|---|
 | Prefix reads by `LEFT` in `store-postgres/src/resource-state-store.ts` and `content-store.ts`, by `substr` in the SQLite pair | **Replaces** with a range on the key |
-| The primary key `(scope_type, scope_id, resource_key)` in both schemas | **Builds on.** It is the index the range uses |
-| Byte-order compares of ids in Postgres (`COLLATE "C"` in `store-postgres/src/suspension-store.ts`) | **Builds on** for the key column ([D1](DECISIONS.md#d1)) |
-| `idx_resource_state_scope`, `idx_resource_content_scope` | **Leaves alone.** The primary key covers them; dropping them is not this issue's |
+| The primary key `(scope_type, scope_id, resource_key)` in both schemas | **Builds on** in SQLite, where it is the index the range uses. **Leaves alone** in Postgres: its collation is unchanged |
+| Byte-order compares of ids in Postgres (`COLLATE "C"` in `store-postgres/src/suspension-store.ts`) and its concurrent index builds (`CONCURRENT_INDEXES` in `schema.ts`) | **Builds on** for the range's index ([D1](DECISIONS.md#d1)) |
+| `idx_resource_state_scope`, `idx_resource_content_scope` | **Replaces** with the byte-order index in Postgres: they repeat the primary key's leading columns ([D1](DECISIONS.md#d1)) |
 | Declared field indexes ([FIX-2532](https://linear.app/fixpoint-labs/issue/FIX-2532)) | **Leaves alone.** They filter on a row's fields; this filters on its key |
 | Encoded prefixes features build (partitions, the skills catalog's partition) | **Leaves** to FIX-2946 and FIX-2948. This issue makes a prefix fast; it doesn't decide who may build one |
 
 | Adds | Existing piece considered | How composed |
 |---|---|---|
 | A successor helper for a prefix's upper bound | `getPatternPrefix` in core | A store-private helper beside each query; nothing public |
+| A byte-order key index per Postgres resource table | Changing the key column's collation | Built `CONCURRENTLY` beside the existing concurrent indexes, replacing the scope index |
 
 | The debt | |
 |---|---|
 | **Removes** | Four function-over-key predicates and their scans |
-| **Adds** | A Postgres migration that changes the key column's collation and rebuilds its primary key ([D1](DECISIONS.md#d1)) |
-| **Leaves** | The two scope indexes the primary key now covers |
+| **Adds** | A byte-order key index on each Postgres resource table, built concurrently ([D1](DECISIONS.md#d1)) |
+| **Leaves** | Nothing it found |
 
-**Net: down.** Four scans go; one migration runs once.
+**Net: down.** Four scans go; two scope indexes become two key indexes.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every prefix read from the
-index, the same rows. If wrong: the read across sessions sits on a scan per session.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every prefix read from an
+index range, the same rows. If wrong: the read across sessions sits on a scan per session.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** four scans go, one migration runs.
-If wrong: a large deployment pays a long lock once.
+**[The debt](#whats-already-here-and-the-debt), net down:** four scans go, the scope indexes
+become key indexes. If wrong: the range reads miss their index and scan, as today.
 
-1. **[D1](DECISIONS.md#d1) · Postgres's key column compares in byte order (`COLLATE "C"`), so the
-   primary key serves the range.** If wrong: a migration that locks a large table, or a second
-   index on every write.
+1. **[D1](DECISIONS.md#d1) · Postgres answers the range from a byte-order index built concurrently,
+   in place of the scope index.** If wrong: the planner skips it, and the key column moves to byte
+   order under a lock.
 
 **Open: none.**
 

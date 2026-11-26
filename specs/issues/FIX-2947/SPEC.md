@@ -7,7 +7,7 @@
 | **starts a child session on the same flow** | Shares its parent's lineage: resources marked `sharedToLineage` are one copy for both | Gets its own copies. It reads or writes the parent's by naming it (`ctx.resources.at({ session: parent })`) |
 | **files a task in a conversation, then switches the conversation's project** | The task keeps its project because the project was stamped into the task session's state at birth, "however many hops down" | The task keeps its project because the project rides on the task row, fixed at filing, and arrives with the work |
 | **works a routed task in a workstream's lead session** | A per-user routed-session record says which conversation's board the session is serving | The task names its board (`ctx.task.session`); the routing lock is the lead session's own record, written by name |
-| **splits a task into pieces, and pieces into pieces** | Depth comes from stamped child state; breadth is counted in a per-user chain record keyed by a hash of the partition | Depth rides on each task row, fixed at filing; breadth is a count on the top task's own row |
+| **splits a task into pieces, and pieces into pieces** | Depth comes from stamped child state; breadth is counted in a per-user chain record keyed by a hash of the partition | Depth and the top task's id ride on each task row, fixed at filing; breadth is a bounded count of the rows under that top, through a declared index |
 | **reads the Kitchen Sink's background-work demo** | Its board is lineage-shared | Its board is the parent's copy, reached by naming the parent |
 
 Lineage and copies at birth stood in for one missing ability: a child reading its parent. FIX-2942
@@ -41,7 +41,7 @@ The check reads where the task's work happened and which board each settle lande
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/work-not-copies/` · no model (scripted workers) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | A task filed under project A is worked in A after its conversation switches to B. Two conversations route tasks to one workstream lead session; each settle lands on its own router's board, and each router's turn starts once. A sixth level of splitting is refused, and the 101st task under one top task is refused. The retired names are absent from `packages/*/src`. A session and a task written by today's `main` are worked after the upgrade |
+| **Signal** | A task filed under project A is worked in A after its conversation switches to B. Two conversations route tasks to one workstream lead session; each settle lands on its own router's board, and each router's turn starts once. A sixth level of splitting is refused, and the 101st task under one top task, filed after the other hundred, is refused. The retired names are absent from `packages/*/src`. A session and a task written by today's `main` are worked after the upgrade |
 | **Input** | Scripted em and coder workers on two flows. Other depths and limits configured through `taskChainLimit` must pass too |
 | **Anti-game** | Assert on the row's settled state on each board and on the workspace the work ran in, never on the child's own state |
 | **Control that must fail** | `GOAL_CONTROL=project-live` must FAIL *works in project A*. `GOAL_CONTROL=board-from-parent` must FAIL *each settle lands on its router's board* |
@@ -57,7 +57,7 @@ flowchart LR
   end
   subgraph after["After"]
     P2["parent"] -->|"started"| C2["child · its work"]
-    W2["task row · fixed values · depth"] --> C2
+    W2["task row · fixed values · depth · top"] --> C2
     C2 -->|"by name"| P2
   end
 ```
@@ -73,6 +73,8 @@ and *routed session* in this PR. The changeset says what replaced each. The task
 
 - **The parent link** on a session record. A child knows who started it.
 - **The chain's limits**: depth 5 (`MAX_TASK_DEPTH`) and 100 tasks under one top (`DEFAULT_TASK_CHAIN_LIMIT`, `taskChainLimit`).
+  Breadth stays a guard against runaway splitting; pieces filing at the same moment can pass it by
+  their number ([D2](DECISIONS.md#d2)).
 - **FIX-2894's typed task input** and its claim check.
 - **Session state**: never shared, and readable fields only from another session.
 
@@ -91,14 +93,14 @@ and *routed session* in this PR. The changeset says what replaced each. The task
 
 | Adds | Existing piece considered | How composed |
 |---|---|---|
-| Depth and the fixed project as fields on a task row | FIX-2894's typed input; `filedProjectOf` | Fields written at filing, server-side, beside the existing project stamp |
-| A breadth count on the top task's row | The chain record | The same versioned count, kept on the row it is about |
+| Depth, the top task's id and the fixed project as fields on a task row | FIX-2894's typed input; `filedProjectOf` | Fields written at filing, server-side, beside the existing project stamp |
+| A declared `top` index on task rows, counted at filing | The chain record; a count kept on the top's row | A [FIX-2532](https://linear.app/fixpoint-labs/issue/FIX-2532) index read through FIX-2945's read across sessions, stopping at the limit plus one ([D2](DECISIONS.md#d2)) |
 | The lead session's routing lock as its own per-session record | The per-user routed-session record | The same lock, in the session it locks, written by name through FIX-2942 |
 
 | The debt | |
 |---|---|
 | **Removes** | `lineage-scope.ts` (306 lines) and about 244 lineage lines in the engine, `session-fields.ts`'s hand-over half, `filing-session.ts` (115), `routed-session.ts` (143), `chain.ts` (229), the carried-hop parts of `hop.ts`, five retired terms, and the tests that only prove them |
-| **Adds** | A fallback for rows written before the upgrade, which carry no depth or count (BP-030): such a row's depth is its filer's task row's plus one, and a top's count starts at the pieces under it. It goes with FIX-2946's mover, under the same follow-up (FIX-XXX · remove the board-row mover). Old sessions' stamped state is ignored, not read |
+| **Adds** | Rows written before the upgrade carry no depth or top (BP-030): FIX-2946's mover writes both onto each, from the chain record that counted it. It goes with that mover, under the same follow-up ([FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950)). Old sessions' stamped state is ignored, not read |
 | **Leaves** | The two board stores (epic D2) |
 
 **Net: down**, by roughly a thousand lines.
@@ -113,8 +115,9 @@ reader nobody found, and it reads `undefined`.
 
 1. **[D1](DECISIONS.md#d1) · Values fixed at filing ride on the task row; nothing is stamped into
    child state.** If wrong: a hot per-turn read of the row.
-2. **[D2](DECISIONS.md#d2) · Depth rides on each row; breadth is counted on the top task's row.**
-   If wrong: the top row is contended when many pieces file at once.
+2. **[D2](DECISIONS.md#d2) · Depth and the top's id ride on each row; breadth is a bounded count
+   through a declared index.** If wrong: pieces filing at the same moment pass the limit by their
+   number.
 
 **Open: none.** D2 is the one to weigh.
 

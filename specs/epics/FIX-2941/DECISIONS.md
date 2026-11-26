@@ -206,7 +206,7 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 | Resource resolution in `engine/src/context/createExecutionContext.ts` | FIX-2942, FIX-2943, FIX-2947 | FIX-2942 merges first; FIX-2943 builds its lookup on that resolver; FIX-2947 deletes the lineage branch last |
 | The owner rule in SQL | FIX-2942 and FIX-2945 | FIX-2945's join applies the parts of ER-1's rule SQL can (tenant, org, user) and runs the rest per row after the query, as a route's listing does. One conformance test asserts both refuse the same cases |
 | Store key layout and prefix reads | FIX-2944, FIX-2945, FIX-2948 | FIX-2944 merges first. FIX-2948 changes no key layout before it does |
-| The one-time mover of stored rows | FIX-2946 (board and plan rows), FIX-2947 (rows with no depth or count), FIX-2948 (subscriptions, cursors, skills index entries) | FIX-2946 builds the mover and its follow-up issue; FIX-2947 and FIX-2948 add their rows to it, not a second mover |
+| The one-time mover of stored rows | FIX-2946 (board and plan rows), FIX-2947 (rows with no depth or top), FIX-2948 (subscriptions, cursors, skills index entries) | FIX-2946 builds the mover; its removal is [FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950); FIX-2947 and FIX-2948 add their rows to it, not a second mover |
 | The write notice | FIX-2942 (the owning session hears it) and FIX-2945 (the change topic) | One publish on write serves both; neither adds a second |
 | `workforce/src/conversation-board/` | FIX-2946 (ledger, plan, board above) and FIX-2947 (filing session, routed sessions, chains, `handedProjectOf`) | FIX-2946 merges first; FIX-2947 rebases |
 | Shift Manager's board read | FIX-2946 and [FIX-2683](https://linear.app/fixpoint-labs/issue/FIX-2683) (outside; FIX-2777, #5526, deletes `reads.ts`) | FIX-2777 merges first. FIX-2946 moves the kit view's board read and rebuilds nothing in `reads.ts` |
@@ -291,5 +291,8 @@ may follow from the coordinator; if it does, it is recorded as its own entry her
 - **Spec set (Nov 26)**, amending the epic: ER-4 drops the `shared` flag until a caller needs it
   (found by FIX-2943); the one mover gets a seam, and FIX-2946 hands it to FIX-2948 (found by
   FIX-2946 and FIX-2948); FIX-2948's collapse trigger did not fire.
+- **Set review round 1 (Nov 26)**, amending the epic: FIX-2947 counts breadth through a declared
+  `top` index, so FIX-2532 becomes an input of FIX-2947 too; the mover's removal is filed as
+  [FIX-2950](https://linear.app/fixpoint-labs/issue/FIX-2950).
 
 **Open: none.** Decided 2026-11-26 by the owner: [Q1](#q1), plain writes by default with a board's settle kept as an action; [Q2](#q2), the capability first, `boards()` as the fallback.

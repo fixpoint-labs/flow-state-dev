@@ -36,7 +36,7 @@ It comes down to what changed: the answer and the notice, which HTTP reads exact
 | | |
 |---|---|
 | **Instead of** | Run the legs on SQLite only, and trust the stores' own tests for Postgres |
-| **Because** | FIX-2944 changes Postgres's key collation and FIX-2945's join is one query per store: a difference between the stores is exactly what the *runs on Postgres or SQLite* team would hit, and a store's own tests don't run a real flow. The filesystem store is development only, and FIX-2945's conformance suite holds it to the SQL stores' answers |
+| **Because** | FIX-2944 reads Postgres's key ranges in byte order through a new index, and FIX-2945's join is one query per store: a difference between the stores is exactly what the *runs on Postgres or SQLite* team would hit, and a store's own tests don't run a real flow. The filesystem store is development only, and FIX-2945's conformance suite holds it to the SQL stores' answers |
 | **Locks in** | A closure run needs a Postgres, so it runs where the integration suite does. Each leg's verdict names its store |
 
 ![D2: legs a and b on both SQL stores, chosen, beside SQLite only. Decides it: a store difference reaching a team. Price: each run needs a Postgres and takes longer. Locks in a Postgres for the closure run; flips if the stores' own suites ran a real flow](figures/d2-both-stores.svg)
@@ -65,6 +65,13 @@ own context.
 5. **Necessity:** required for every epic.
 6. **Ergonomics:** one command, `GOAL_LEG` to pick a leg.
 7. **Concerns:** leg a on a real model flakes; 2 of 3 runs is the threshold, as the children use.
+
+## Notes from review
+
+- "FIX-2949's leg c asserts the retired names and `LEFT(`/`substr(` prefix reads are 'absent from `packages/*/src`'. After FIX-2944, the explanatory comments in the four store files will likely still mention `LEFT(...)`/`substr(...)`, and `engine/src/stores/testing/resource-store-conformance.ts` lives under `src` too. The sweep needs to say it matches SQL string literals in store query code, not comments or test helpers." Suggested: "c: no `LEFT(`/`substr(` prefix predicate in a SQL string literal under `packages/store-*/src` (comments and `engine/src/stores/testing` excluded); retired names absent from `packages/*/src`" — Gitar bot, round 1
+- "**FIX-2949** re-runs all seven child goal checks plus a gap sweep on one commit, with a real model, on two stores, plus a browser check. The re-run of child goals duplicates CI if those goals run there. Keep legs a/b/c (the cross-child proof); fold the re-run into "CI green on that commit" unless the goals are not in CI." — jhoffner, set review round 1
+
+These are inputs, not instructions.
 
 ## How it got here
 

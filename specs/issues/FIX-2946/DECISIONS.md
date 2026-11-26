@@ -12,9 +12,9 @@ them. That is D1. D2 is how the rows already stored get to their new home.
 flowchart TD
   I["FIX-2946"] --> D1["D1 · only a durable session-scoped board offers at and acrossSessions"]
   D1 -.->|"rejected"| X1["a factory board offers them through its factory"]
-  I --> D2["D2 · old rows move once, before the first request"]
+  I --> D2["D2 · old rows move at each start, before the first request"]
   D2 -.->|"rejected"| X2["read old partitions on every board read"]
-  D2 -.->|"rejected"| X3["move each conversation on its first open"]
+  D2 -.->|"rejected"| X3["move each conversation on its first open, sweep the rest"]
 ```
 
 Solid edges are what you sign. Dashed edges lost.
@@ -36,17 +36,17 @@ It comes down to the owner check: through a factory, nothing proves the rows rea
 grows a session argument, and the owner check runs before it is called.
 
 <a name="d2"></a>
-## D2 · Rows stored by today's partitioned ledgers move once, into their conversation's copy, before the first request is served; the mover is workforce's and goes after one release
+## D2 · Rows stored by today's partitioned ledgers move into their conversation's copy at start, before the first request is served, on every start of the release that carries the mover; the mover is workforce's and goes after that release
 
 | | |
 |---|---|
-| **Instead of** | Read the old partitions on every board read until nothing is left in them · or move each conversation's rows the first time it is opened |
-| **Because** | Reading old partitions keeps `partition.ts`, its index and the forced `flowIsolation: false` alive, which is what the epic deletes ([epic D2](../../epics/FIX-2941/DECISIONS.md#d2)). Moving on first open leaves rows of conversations nobody opens in the old place forever, and a screen across sessions would miss them. One pass before serving moves everything, and a key parser lives only in the mover |
-| **Locks in** | The first start after the upgrade walks every user's board and plan rows once, so a large store starts slowly that one time. The mover is idempotent: a row already in its copy is skipped. A row whose partition names no session is kept where it is and reported, never dropped (BP-030) |
+| **Instead of** | Read the old partitions on every board read until nothing is left in them · or move each conversation's rows the first time it is opened, with a background sweep for the rest |
+| **Because** | Reading old partitions keeps `partition.ts`, its index and the forced `flowIsolation: false` alive, which is what the epic deletes ([epic D2](../../epics/FIX-2941/DECISIONS.md#d2)). Moving on first open puts that same partition check in every board read until the sweep ends, so the code still can't go; and the sweep needs a scheduler not every host has, or runs at start, which is this choice. A pass at start moves everything, and a key parser lives only in the mover. It follows `upgrade-kept-turns.ts`, the existing run-at-start upgrade step |
+| **Locks in** | Each start walks the old rows, so a large store's first start is slow; once moved, a start finds none. **Resumable:** a row is written into its copy before the old one is removed, and a row already in its copy is skipped, so a pass stopped midway is re-run safely. **Rolling deploy:** a new instance never writes a partitioned row. One an old instance writes during the deploy is moved by the next start and unseen by new instances until then; the upgrade note asks hosts to drain old workers first. A row found in both places keeps its later update and reports the other. A row whose partition names no session stays where it is and is reported, never dropped (BP-030) |
 
-![D2: move old rows once before serving, chosen, beside reading old partitions on every read. Decides it: whether partition code can be deleted. Price: a slow first start on a large store. Locks in an idempotent mover that loses nothing; flips if a deployment can't afford the first-start pass](figures/d2-move-once.svg)
+![D2: move old rows at start before serving, chosen, beside reading old partitions on every read. Decides it: whether partition code can be deleted. Price: a slow first start on a large store, and a row an old instance writes mid-deploy waits for the next start. Locks in a resumable mover run at each start for one release; flips if a deployment can't afford the pass at start](figures/d2-move-once.svg)
 
-It comes down to deleting partitions: reading them forever keeps their code forever.
+It comes down to deleting partitions: reading them, now or until a sweep ends, keeps their code.
 
 **What would change my mind:** a deployment whose store is too large to walk at start. Then the
 mover runs as a command the operator starts, and serving waits for it.
@@ -87,11 +87,21 @@ own context.
 4. **New factors:** FIX-2777 is in review, and this issue waits for it.
 5. **Necessity:** the epic's long pole.
 6. **Ergonomics:** one door per board, typed; `ctx.task.session` replaces two state keys.
-7. **Concerns:** moving stored rows. D2's mover loses nothing and reports what it can't place.
+7. **Concerns:** moving stored rows. D2's mover is resumable, loses nothing, reports what it can't
+   place, and catches a rolling deploy's late rows at the next start.
+
+## Notes from review
+
+- "Perf contract: "filters at the store by the row's key" should explicitly mean a **point lookup** (key filter + limit 1), not a paged `acrossSessions` walk—otherwise task resolution can inherit FIX-2945's worst-case join cost." — Cursor bot, round 1
+- "Strong seam: one workforce mover with 2947/2948 only adding rows avoids the classic "three migrations drift" smell. Implementer should resist a second mover script even if 2948 lands in a later PR." — Cursor bot, round 1
+
+These are inputs, not instructions.
 
 ## How it got here
 
 - **Draft (Nov 26)** in the epic's spec set, after the owner decided Q2 and asked which boards
   offer the reach (D1).
+- **Review round 1 (Nov 26)** said what D2 does on a crash mid-pass and on a rolling deploy, and
+  answered the lazy move with a sweep. The direction held: move before serving, no dual read.
 
 **Open: none.**
