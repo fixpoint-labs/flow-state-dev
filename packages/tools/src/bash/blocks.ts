@@ -379,9 +379,22 @@ export function resolveWorkspaceCwdForTest(
   return workspaceFolder(scope, identity as ScopeIdentity);
 }
 
+/**
+ * The scope a provider actually works in.
+ *
+ * Only `local` takes a `scope`; every other provider gets one sandbox per
+ * session. Read in three places — the registry key, the cold-path predicate,
+ * and cleanup — and they have to agree: a cleanup that resolved a different
+ * scope than the lookup did would release nothing and leak the sandbox.
+ */
+function effectiveScope(provider: SandboxProvider): WorkspaceScope {
+  return provider.type === "local" ? (provider.scope ?? "session") : "session";
+}
+
 // BP-031.
 /**
- * The registry key and workspace directory a scope resolves to.
+ * The registry key a scope resolves to. Its folder comes from the same
+ * components through `scopeFolder` (see `workspaceFolder`).
  *
  * Which identities namespace a scope is not a free choice — the framework
  * already answers it. `tenantId` "namespaces session storage … so two tenants
@@ -412,18 +425,6 @@ export function resolveWorkspaceCwdForTest(
  * directory. Presence is its own component in the key, and the directory uses
  * a segment the folder encoder can never emit (`scopeFolder` in workspace).
  */
-/**
- * The scope a provider actually works in.
- *
- * Only `local` takes a `scope`; every other provider gets one sandbox per
- * session. Read in three places — the registry key, the cold-path predicate,
- * and cleanup — and they have to agree: a cleanup that resolved a different
- * scope than the lookup did would release nothing and leak the sandbox.
- */
-function effectiveScope(provider: SandboxProvider): WorkspaceScope {
-  return provider.type === "local" ? (provider.scope ?? "session") : "session";
-}
-
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string } {
   // The components come from core's own rule rather than a second copy of it
   // here — the tenant boundary was wrong once already because two derivations
