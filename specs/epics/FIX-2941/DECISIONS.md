@@ -6,7 +6,7 @@ The calls above any single issue, and what each locks in for the seven children 
 The model itself was agreed with the owner in
 [the concept doc](../../../docs/internal/design/scopes-and-sessions.md) and is recorded under
 [Decided by the owner](#decided-by-the-owner-recorded-so-no-child-reopens-them), not reopened. D1
-and D2 are this epic's own calls. Q1 and Q2 are open and the owner's.
+and D2 are this epic's own calls. Q1 and Q2 were the owner's and are decided.
 
 ## The tree
 
@@ -17,10 +17,10 @@ flowchart TD
   D1 -.->|"rejected"| X2["one epic with the task-API redesign"]
   E --> D2["D2 · the plan ledger moves to session scope"]
   D2 -.->|"rejected"| X3["merge it into one board here"]
-  E --> Q1["Q1 · open · plain writes across sessions"]
-  Q1 -.->|"recommended against"| X4["every such write through a named action"]
-  E --> Q2["Q2 · open · board reach through its typed capability"]
-  Q2 -.->|"recommended against"| X5["a new boards() helper"]
+  E --> Q1["Q1 · decided · plain writes across sessions"]
+  Q1 -.->|"rejected"| X4["every such write through a named action"]
+  E --> Q2["Q2 · decided · board reach through its typed capability"]
+  Q2 -.->|"held back as the fallback"| X5["a new boards() helper"]
 ```
 
 <a name="d1"></a>
@@ -56,7 +56,13 @@ moving it first is wasted, and FIX-2946 leaves it to that epic, with `partition.
 It comes down to deleting partitions: a ledger left partitioned keeps `partition.ts` alive.
 
 <a name="q1"></a>
-## Q1 · Open · Does a write from another session have to go through a named action?
+## Q1 · Decided · Does a write from another session have to go through a named action?
+
+**Decided by the owner, 2026-11-26: plain writes by default.** A write into another session's
+copy is a plain write, recorded by the writing request and heard by the owning session (ER-2). A
+definition may still offer a named action where its own history matters; a board's settle stays
+one. FIX-2942 and FIX-2946 specify against this. The analysis below is kept as it was put to the
+owner.
 
 **In plain terms.** When coder's session settles a task on the launch chat's board, the write is
 recorded in coder's session history. The question is whether the launch chat's own history must
@@ -86,7 +92,13 @@ then don't appear in the owning session's history, and that can't be backfilled.
 It comes down to cost per definition: actions-only makes each shared definition declare its writes.
 
 <a name="q2"></a>
-## Q2 · Open · Is a board reached through its own typed handle, or through a new `boards()` helper?
+## Q2 · Decided · Is a board reached through its own typed handle, or through a new `boards()` helper?
+
+**Decided by the owner, 2026-11-26: the capability first.** `ctx.cap.<name>.at({ session })` and
+`.acrossSessions()` are built in FIX-2946; no `boards()` helper is built. `boards()` stays the
+fallback, added only when a real caller has to pick a board by name at run time (a generic admin
+or devtool screen), which the capability can't serve because it is keyed by a name in the code.
+The analysis below is kept as it was put to the owner.
 
 **In plain terms.** Today a block uses a board through the board's capability:
 `ctx.cap.work.createTask(...)`, typed by the board's name and its task input
@@ -132,9 +144,9 @@ the owner's discussion before this spec. Each became a rule below.
 - **Reach by name from any flow is opt-in through shared definitions;** boards are always shared,
   the rest keep flow isolation. Definitions are declared on blocks, the registry is their union,
   a clash refuses start, names are typed. ER-4, ER-5.
-- **Board reach is a thin layer over that reach**, with no second definer. The owner chose
-  `boards(ctx, name, { session })` before the typed board capability was compared with it; its
-  shape is reopened as [Q2](#q2), and ER-9 follows the answer.
+- **Board reach is a thin layer over that reach**, with no second definer. The owner first chose
+  `boards(ctx, name, { session })`, then, with the typed board capability beside it, decided
+  [Q2](#q2) for the capability, with `boards()` as the fallback. ER-9.
 - **Lineage and copies into child state go,** except values fixed at filing, which ride on the
   task row. The task names its own board (`ctx.task.session`), because a workstream's lead
   session works tasks routed from several conversations. ER-9, ER-10.
@@ -178,7 +190,7 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 | ER-6 | Every varying key segment is filterable by the SQL stores without a scan; no prefix read by `LEFT` or `substr` | FIX-2944 | The closure's leg c |
 | ER-7 | Code sees across sessions only through the one read across sessions, which is one SQL query, paged, with filesystem parity: a screen through a user-scope view, and a lookup that is no view (a task's session from its id) through the same read, filtered by that id | FIX-2945 | FIX-2946's spec review; the closure's leg a |
 | ER-8 | That read records the change topic: FIX-2750's topic, extended so its partition key is a session key and narrowed to one owner (user, org and tenant), on the change bus. Every write to any session's copy publishes on it. A session id or task id never rides a topic wider than one owner | FIX-2945 | The closure's leg a and its control |
-| ER-9 | A board in another session is reached through a thin layer over `ctx.resources.at({ session })`, in the shape [Q2](#q2) settles, and a task's board through `ctx.task.session`. `defineTaskCollection` stays the one board definer | FIX-2946 | FIX-2947's spec review |
+| ER-9 | A board in another session is reached through its capability, `ctx.cap.<name>.at({ session })` and `.acrossSessions()`, a thin layer over `ctx.resources.at({ session })` offered only by boards with a per-session copy ([Q2](#q2)); no `boards()` helper until a caller needs a board by runtime name; and a task's board through `ctx.task.session`. `defineTaskCollection` stays the one board definer | FIX-2946 | FIX-2947's spec review |
 | ER-10 | A child is given its work; values fixed at filing ride on the task row; nothing else is copied into child state, and no lineage survives | FIX-2947 | The closure's leg c |
 | ER-11 | Per-user data is keyed by what it is about, never by a session's id or a value derived from one | FIX-2948 | The closure's gap sweep |
 | ER-12 | A child that moves a persisted record keeps existing records readable (BP-030), and a child that removes a term retires it in `docs/contributing/glossary.mjs` in the same PR | Each child | Each child's PR; the closure's gap sweep |
@@ -273,4 +285,4 @@ may follow from the coordinator; if it does, it is recorded as its own entry her
   board reach reopened as Q2; two defaults recorded for FIX-2942; ER-13 gained FIX-2689 and
   FIX-1580.
 
-**Open: [Q1](#q1), [Q2](#q2).**
+**Open: none.** Decided 2026-11-26 by the owner: [Q1](#q1), plain writes by default with a board's settle kept as an action; [Q2](#q2), the capability first, `boards()` as the fallback.
