@@ -37,7 +37,7 @@ const inputSchema = z.object({
   /** The worker whose open messages are read, sent or received. */
   worker: z.string().min(1),
   /** The messages on screen: each one's row and its answer come back, open or not. */
-  ids: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/)).max(MAX_IDS).optional()
+  ids: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/)).max(MAX_IDS).default([])
 });
 const outputSchema = z.array(workerMessageResourceStateSchema);
 
@@ -55,7 +55,7 @@ export async function readWorkerMessages(log: WorkerMessageLog, input: z.infer<t
   const [open, onScreen] = await Promise.all([
     log.findBy(OPEN_MESSAGES_INDEX, input.worker),
     Promise.all(
-      (input.ids ?? []).map(async (id) => {
+      input.ids.map(async (id) => {
         const [message, answers] = await Promise.all([log.getOptional(id), log.findBy(IN_REPLY_TO_INDEX, id)]);
         return [...(message === undefined ? [] : [message]), ...answers];
       })
