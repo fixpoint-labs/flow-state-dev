@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 500" role="img" aria-label="What's in the box. In the box, the engine: a block reaches another session's copy by naming it, ctx.resources.at with a session, read and write, FIX-2942; shared definitions reachable by name from any flow, FIX-2943; one read across an owner's sessions, one query and one change topic, FIX-2945. In the box, the stores: every varying key segment read through an index, FIX-2944. In the box, orchestration and workforce: the conversation board and plan ledger as per-session copies, reached through boards and ctx.task.session, FIX-2946; a child given its work, with values fixed at filing on the task row, FIX-2947; per-user records keyed by their subject, FIX-2948. A fence across the box: the owner, user, org and tenant, is the only access boundary, and a session outside it reads as missing. Composed in by the app: which definitions it marks shared, and the views its screens ask. Deleted by the set: lineage and sharedToLineage, partitions and the task-id partition index, copies at birth, the board-above helper, the routed-session and task-chain records, each view's own cross-session path, prefix reads by LEFT or substr. Not built: the task-API redesign, tenants inside per-user data, a kept per-user index, a second board definer."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .gonebox { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="336" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WITHIN ONE OWNER</text>
+    <text class="t-lbl" x="32" y="62">THE ENGINE</text>
+    <rect class="chip" x="32" y="70" width="282" height="46" rx="4"/>
+    <text class="t-b" x="44" y="89">Name a session, reach its copy</text>
+    <text class="t-s" x="44" y="106">ctx.resources.at({ session }) · 2942</text>
+    <rect class="chip" x="32" y="124" width="282" height="46" rx="4"/>
+    <text class="t-b" x="44" y="143">Shared definitions, by name</text>
+    <text class="t-s" x="44" y="160">opt-in; the rest stay isolated · 2943</text>
+    <rect class="chip" x="32" y="178" width="282" height="46" rx="4"/>
+    <text class="t-b" x="44" y="197">One read across sessions</text>
+    <text class="t-s" x="44" y="214">one query, one change topic · 2945</text>
+    <text class="t-lbl" x="330" y="62">ORCHESTRATION AND WORKFORCE</text>
+    <rect class="chip" x="330" y="70" width="282" height="46" rx="4"/>
+    <text class="t-b" x="342" y="89">Boards are per-session copies</text>
+    <text class="t-s" x="342" y="106">reach by session, ctx.task.session · 2946</text>
+    <rect class="chip" x="330" y="124" width="282" height="46" rx="4"/>
+    <text class="t-b" x="342" y="143">A child gets its work</text>
+    <text class="t-s" x="342" y="160">fixed values on the task row · 2947</text>
+    <rect class="chip" x="330" y="178" width="282" height="46" rx="4"/>
+    <text class="t-b" x="342" y="197">Per-user keyed by subject</text>
+    <text class="t-s" x="342" y="214">never by a session's id · 2948</text>
+    <text class="t-lbl" x="32" y="252">THE STORES</text>
+    <rect class="chip" x="32" y="260" width="580" height="30" rx="4"/>
+    <text class="t-b" x="44" y="280">Every varying key segment read through an index, not a scan</text>
+    <text class="t-s" x="570" y="280">2944</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="304" x2="628" y2="304"/>
+    <text class="t-tag c-gone" x="32" y="322">FENCE · ER-1</text>
+    <text class="t-b" x="124" y="322">The owner (user, org, tenant) is the only access boundary</text>
+    <text class="t-s" x="32" y="340">a session outside it reads as missing, on every verb</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="110" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="64">Which definitions it marks shared</text>
+    <text class="t-s" x="660" y="80">a board always is</text>
+    <text class="t-b" x="660" y="104">The views its screens ask</text>
+    <text class="t-s" x="660" y="118">at user scope, with no session</text>
+  </g>
+
+  <g id="deleted">
+    <rect class="gonebox" x="644" y="140" width="280" height="212" rx="8"/>
+    <text class="t-tag c-gone" x="660" y="162">DELETED BY THE SET</text>
+    <text class="t-b" x="660" y="186">Lineage and sharedToLineage</text>
+    <text class="t-b" x="660" y="209">Partitions and the task-id index</text>
+    <text class="t-b" x="660" y="232">Copies into child state</text>
+    <text class="t-b" x="660" y="255">The board-above helper</text>
+    <text class="t-b" x="660" y="278">Routed-session and chain records</text>
+    <text class="t-b" x="660" y="301">Each view's own cross-session path</text>
+    <text class="t-b" x="660" y="324">Prefix reads by LEFT or substr</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="368" width="908" height="116" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="390">NOT BUILT</text>
+    <text class="t-b" x="32" y="420">The task-API redesign</text>
+    <text class="t-s" x="32" y="438">one board, lifecycles, verdicts</text>
+    <text class="t-b" x="262" y="420">Tenants in per-user data</text>
+    <text class="t-s" x="262" y="438">punted; FIX-2065 is apart</text>
+    <text class="t-b" x="492" y="420">A kept per-user index</text>
+    <text class="t-s" x="492" y="438">the join reads the sessions table</text>
+    <text class="t-b" x="722" y="420">A second board definer</text>
+    <text class="t-s" x="722" y="438">defineTaskCollection stays</text>
+    <text class="t-s" x="32" y="468">each is its own decision; the first is the follow-on epic</text>
+  </g>
+</svg>
