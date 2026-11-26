@@ -9,6 +9,7 @@
  * Small real windows here; the 20-minute default is graded with a fake clock
  * in `session-turn-deadline.spec.ts`, through the same stop.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
@@ -22,7 +23,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
-import { harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { heard } from "./heard";
 import { seedRepo } from "./fixtures";

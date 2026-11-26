@@ -1154,8 +1154,8 @@ describe("createFlowApiRouter", () => {
   // resolver and carried only on that dispatch envelope — `resolveActionCore`
   // can re-resolve only a *static* schedule from `flow.schedules.static` on
   // recovery. The DevTool already hides Continue for these rows
-  // (`request-separator.tsx`); the route itself must also reject them so a
-  // direct API client can't reach the same dead end.
+  // (`request-separator.tsx`); the route itself must also refuse them, with the
+  // same not-found shape as any request it won't re-enter (`public-reentry.ts`).
   describe("dynamic scheduled requests cannot be continued", () => {
     function makeFlow(kind: string): FlowInstance {
       return defineFlow({
@@ -1172,7 +1172,7 @@ describe("createFlowApiRouter", () => {
       })({ id: kind });
     }
 
-    it("returns 409 when continuing an interrupted dynamic-schedule request", async () => {
+    it("returns 404 when continuing an interrupted dynamic-schedule request", async () => {
       const registry = createFlowRegistry();
       registry.register(makeFlow("sched-flow"));
       const stores = createInMemoryStores();
@@ -1207,7 +1207,7 @@ describe("createFlowApiRouter", () => {
         ),
         { params: { path: ["sched-flow", "sessions", "sess_sched1", "requests", "req_sched1", "continue"] } }
       );
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(404);
     });
 
     it("allows continuing an interrupted static-schedule request (source check passes)", async () => {
@@ -1245,10 +1245,10 @@ describe("createFlowApiRouter", () => {
         ),
         { params: { path: ["sched-flow2", "sessions", "sess_sched2", "requests", "req_sched2", "continue"] } }
       );
-      // Not rejected by the dynamic-schedule gate — falls through to
+      // Not refused as a dynamic fire — falls through to
       // `ctx.host.continueRequest`, which 500s here since this router has no
-      // real transport host wired up. The point under test is that it's not 409.
-      expect(response.status).not.toBe(409);
+      // real transport host wired up. The point under test is that it's not 404.
+      expect(response.status).not.toBe(404);
     });
   });
 });

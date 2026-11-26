@@ -5,6 +5,7 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { heard } from "./heard";
@@ -41,7 +42,6 @@ import {
   HarnessRunChangesRefused,
   harnessTaskInputSchema,
   runOwnerClaimOrder,
-  type HarnessFeeds,
   type HarnessJudgeVerdict,
 } from "../src";
 import { harnessTaskId } from "../src/workspace";

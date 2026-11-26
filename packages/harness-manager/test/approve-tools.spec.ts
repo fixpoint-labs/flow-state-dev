@@ -6,6 +6,7 @@
  * package's scripted stub, making scripted tool calls; what ran is its own
  * record and the marker files the calls write.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
@@ -24,7 +25,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessStubOptions, type StubToolCall } from "../src";
+import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessStubOptions, type StubToolCall } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 

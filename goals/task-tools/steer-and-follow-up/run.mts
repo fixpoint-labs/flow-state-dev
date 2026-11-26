@@ -1,5 +1,6 @@
 /** Goal check. Contract, controls, and the verdict log: `goal.md`. */
 
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, taskIssueSegment } from "@flow-state-dev/harness-manager";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,

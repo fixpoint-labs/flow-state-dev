@@ -59,6 +59,7 @@
  * against a strict grammar before they reach a path, so a task filed by some
  * future caller that skips the schema still cannot escape the root.
  */
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { createHash } from "node:crypto";
 import { resolve, sep } from "node:path";
 import {
@@ -66,8 +67,10 @@ import {
   refreshLock,
   releaseLock,
   WorkspaceRefusedError,
+  WORKTREES,
   worktreeLockPath,
   type IgnoredDirectory,
+  type WorktreeCollection,
   type WorkspaceHost,
   type RunSourceAnswer,
 } from "@flow-state-dev/workspace";
@@ -846,6 +849,12 @@ export interface CheckoutLease {
    * and what stops a displaced holder from releasing its replacement's lock.
    */
   token: string;
+}
+
+/** The user's worktree collection when the host registered it on this flow. */
+export function worktreesOf(ctx: Pick<BlockContext, "resources">): WorktreeCollection | undefined {
+  const collection = ctx.resources?.[WORKTREES] as WorktreeCollection | undefined;
+  return typeof collection?.upsert === "function" ? collection : undefined;
 }
 
 /** Read the lock and its ownership token from the state persisted by a manager run or a talk turn. */

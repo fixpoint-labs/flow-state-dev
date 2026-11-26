@@ -1,14 +1,15 @@
 // fallow-ignore-file duplicate-export -- each starter is its own app, and its host exposes the same checkCommands as the others on purpose.
 /** The lab's server, from package pieces: the README's "The host" says what each piece is for and what each option sets. */
+import type { Harness } from "@flow-state-dev/core/harness";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { claudeCode } from "@flow-state-dev/claude-code";
+import { claudeCodeHarness } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
 import { utility } from "@flow-state-dev/core";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, scriptedHarness } from "@flow-state-dev/harness-manager";
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { operatorGitHub, projectSourceCapability } from "@flow-state-dev/workforce";
@@ -66,7 +67,6 @@ export async function openClaudeCodeStyle(options: ClaudeCodeStyleOptions): Prom
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as FlowInstance[]);
   // Set, every harness a worker names is harness-manager's scripted coder under its own id.
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
-  const claude = claudeCode({ plan: true });
 
   const flowState = createFlowState({
     kits: [
@@ -80,12 +80,11 @@ export async function openClaudeCodeStyle(options: ClaudeCodeStyleOptions): Prom
         sessionFields,
       }),
       harnesses({ workspace, checks, branchPrefix: "claude-code-style/", logReadiness: true }),
-      scripted === undefined ? claude : claude.without(harnesses.slots.harnesses, "claude-code").without(harnesses.slots.harnesses, "claude-code-plan"),
     ],
     fill: {
       [harnesses.slots.harnesses]:
         scripted === undefined
-          ? [codexHarness(), cursorHarness()]
+          ? [claudeCodeHarness(), claudeCodeHarness({ plan: true }), codexHarness(), cursorHarness()]
           : [stub("claude-code", "Claude Code"), stub("claude-code-plan", "Claude Code (plan)"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
     flows: [defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }), ...goalFlows],

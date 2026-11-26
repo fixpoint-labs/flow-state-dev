@@ -26,6 +26,7 @@
  * Input:    GOAL_CHECKOUT (default this repository's root), GOAL_BUILD (default
  *           `pnpm --filter @flow-state-dev/workspace... build`)
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -40,7 +41,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
 import { hashContent, localWorkspaceHost } from "@flow-state-dev/workspace";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";

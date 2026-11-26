@@ -32,6 +32,7 @@
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 delete process.env.FSDEV_DEFAULT_MODEL;
 
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -54,7 +55,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   runTopic,
-  type HarnessFeeds,
   type HarnessSessionState,
   type ModeSpec,
 } from "@flow-state-dev/harness-manager";

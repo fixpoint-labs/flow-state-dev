@@ -4,6 +4,7 @@
  * check commands. Only the harness is a stub. The check, `node check.mjs`, is
  * red until a run writes "ok" into `state.txt`.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
@@ -25,7 +26,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type ModeSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type ModeSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";

@@ -9,6 +9,7 @@
  * `seed` does not interrogate a row it finds at its id. A third goal that needs
  * any of those should say so here rather than copy this host as if it had them.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { z } from "zod";
@@ -34,7 +35,6 @@ import {
   runRecordStateSchema,
   RUNS,
   runTopic,
-  type HarnessFeeds,
   type ModeSpec,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";

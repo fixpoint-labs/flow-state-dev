@@ -7,13 +7,14 @@
  * Controls: GOAL_CONTROL=no-record (must FAIL a:recorded) · GOAL_CONTROL=no-base (must FAIL b:log)
  *           GOAL_CONTROL=no-viewer (must FAIL a:attached)
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
-import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type ModeSpec } from "@flow-state-dev/harness-manager";
+import { harnessSessionFlow, harnessStub, workPlace, type ModeSpec } from "@flow-state-dev/harness-manager";
 import { localRepoWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -153,7 +154,7 @@ await runGoal(async (failures) => {
         attach: async (owner, request) => await host.attach!({ place: [owner.flowKind, owner.sessionId] }, request),
         recordCheckout: async (place, request) => await host.recordCheckout!({ place: [place.flowKind, place.sessionId] }, request),
       },
-      agent: (feeds: HarnessSessionFeeds) =>
+      agent: (feeds: HarnessFeeds) =>
         handler({
           name: "committing-harness",
           inputSchema: z.object({ prompt: z.string() }),
