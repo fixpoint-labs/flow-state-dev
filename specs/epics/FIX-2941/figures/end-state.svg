@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 500" role="img" aria-label="What's in the box. In the box, the engine: a block reaches another session's copy by naming it, ctx.resources.at with a session, read and write, FIX-2942; shared definitions reachable by name from any flow, FIX-2943; one read across an owner's sessions, one query and one change topic, FIX-2945. In the box, the stores: every varying key segment read through an index, FIX-2944. In the box, orchestration and workforce: the conversation board and plan ledger as per-session copies, reached through boards and ctx.task.session, FIX-2946; a child given its work, with values fixed at filing on the task row, FIX-2947; per-user records keyed by their subject, FIX-2948. A fence across the box: the owner, user, org and tenant, is the only access boundary, and a session outside it reads as missing. Composed in by the app: which definitions it marks shared, and the views its screens ask. Deleted by the set: lineage and sharedToLineage, partitions and the task-id partition index, copies at birth, the board-above helper, the routed-session and task-chain records, each view's own cross-session path, prefix reads by LEFT or substr. Not built: the task-API redesign, tenants inside per-user data, a kept per-user index, a second board definer."
+<svg viewBox="0 0 940 500" role="img" aria-label="What's in the box. In the box, the engine: a block reaches another session's copy by naming it, ctx.resources.at with a session, read and write, FIX-2942; one definition per name, reached from any flow that declares it, FIX-2943; one read across an owner's sessions, one query and one change topic, FIX-2945. In the box, the stores: every varying key segment read through an index, FIX-2944. In the box, orchestration and workforce: the conversation board and plan ledger as per-session copies, reached through boards and ctx.task.session, FIX-2946; a child given its work, with values fixed at filing on the task row, FIX-2947; per-user records keyed by their subject, FIX-2948. A fence across the box: the owner, user, org and tenant, is the only access boundary, and a session outside it reads as missing. Composed in by the app: which blocks its flows include, and the views its screens ask. Deleted by the set: lineage and sharedToLineage, partitions and the task-id partition index, copies at birth, the board-above helper, the routed-session and task-chain records, each view's own cross-session path, prefix reads by LEFT or substr. Not built: the task-API redesign, tenants inside per-user data, a kept per-user index, a second board definer."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,8 +37,8 @@
     <text class="t-b" x="44" y="89">Name a session, reach its copy</text>
     <text class="t-s" x="44" y="106">ctx.resources.at({ session }) · 2942</text>
     <rect class="chip" x="32" y="124" width="282" height="46" rx="4"/>
-    <text class="t-b" x="44" y="143">Shared definitions, by name</text>
-    <text class="t-s" x="44" y="160">opt-in; the rest stay isolated · 2943</text>
+    <text class="t-b" x="44" y="143">One definition per name</text>
+    <text class="t-s" x="44" y="160">reach by declaring; a clash refuses start · 2943</text>
     <rect class="chip" x="32" y="178" width="282" height="46" rx="4"/>
     <text class="t-b" x="44" y="197">One read across sessions</text>
     <text class="t-s" x="44" y="214">one query, one change topic · 2945</text>
@@ -68,8 +68,8 @@
   <g id="composed-in">
     <rect class="app" x="644" y="16" width="280" height="110" rx="8"/>
     <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
-    <text class="t-b" x="660" y="64">Which definitions it marks shared</text>
-    <text class="t-s" x="660" y="80">a board always is</text>
+    <text class="t-b" x="660" y="64">Which blocks its flows include</text>
+    <text class="t-s" x="660" y="80">a block that uses data declares it</text>
     <text class="t-b" x="660" y="104">The views its screens ask</text>
     <text class="t-s" x="660" y="118">at user scope, with no session</text>
   </g>

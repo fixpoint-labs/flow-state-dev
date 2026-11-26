@@ -55,7 +55,7 @@ nothing.
 
 ## What's in the box
 
-![What's in the box. In the box: a block reaches another session's copy by naming it, under one owner check; shared definitions reachable by name; one read across an owner's sessions with one change topic; task boards and the plan ledger as per-session copies; children given their work, with values fixed at filing on the task row; per-user records keyed by subject; indexed key segments. A fence: the owner (user, org, tenant) is the only access boundary, and a miss reads as missing. Composed in by the app: which definitions it marks shared, and its views. Deleted by the set: lineage, partitions, copies at birth, the board-above helper, the routed-session and chain records, each view's own cross-session path, prefix reads by function. Not built: the task-API redesign, tenants in per-user data, a kept per-user index, a second board definer](figures/end-state.svg)
+![What's in the box. In the box: a block reaches another session's copy by naming it, under one owner check; one definition per name, reached from any flow that declares it; one read across an owner's sessions with one change topic; task boards and the plan ledger as per-session copies; children given their work, with values fixed at filing on the task row; per-user records keyed by subject; indexed key segments. A fence: the owner (user, org, tenant) is the only access boundary, and a miss reads as missing. Composed in by the app: which blocks its flows include, and its views. Deleted by the set: lineage, partitions, copies at birth, the board-above helper, the routed-session and chain records, each view's own cross-session path, prefix reads by function. Not built: the task-API redesign, tenants in per-user data, a kept per-user index, a second board definer](figures/end-state.svg)
 
 The box is what an app gets by naming things. The fence is [ER-1](DECISIONS.md#who-owns-what);
 the right column is what the set deletes.
@@ -75,7 +75,7 @@ spec route, in one spec-set PR.
 | Issue | What it delivers | Status |
 |---|---|---|
 | [FIX-2942](https://linear.app/fixpoint-labs/issue/FIX-2942) | `ctx.resources.at({ session })`: read and write another session's copy, under the owner check | Ready to spec |
-| [FIX-2943](https://linear.app/fixpoint-labs/issue/FIX-2943) | Shared definitions, registered by name; the rest keep flow isolation | Ready to spec |
+| [FIX-2943](https://linear.app/fixpoint-labs/issue/FIX-2943) | One definition per name in every scope; a flow reaches what its blocks declare, and a clash refuses start | Ready to spec |
 | [FIX-2944](https://linear.app/fixpoint-labs/issue/FIX-2944) | Range reads over indexed key segments in both SQL stores | Ready to spec |
 | [FIX-2945](https://linear.app/fixpoint-labs/issue/FIX-2945) | One read across an owner's sessions: one query, one change topic | Ready to spec |
 | [FIX-2946](https://linear.app/fixpoint-labs/issue/FIX-2946) | The conversation board and plan ledger as per-session copies; partitions go; three screens read one view, and the task-id lookup reads across sessions by id | Ready to spec |
@@ -83,10 +83,10 @@ spec route, in one spec-set PR.
 | [FIX-2948](https://linear.app/fixpoint-labs/issue/FIX-2948) | Per-user records keyed by a session value move to session scope or to their subject | Ready to spec |
 | [FIX-2949](https://linear.app/fixpoint-labs/issue/FIX-2949) | The QA run on one `main` commit | **closure · required** · blocked by all seven |
 
-0 done · 8 to spec. FIX-2948 is the one I'd cut: two of the six records the concept doc counts go
-with FIX-2947. Its collapse trigger: if its spec finds the rest already keyed by subject, it
-closes with a note and no code. FIX-2944 and FIX-2945 can't go: without them every per-session
-read scans, and each screen keeps its own path across sessions.
+0 done · 8 to spec. FIX-2948 was the one I'd cut, and its collapse trigger did not fire: its spec
+found the subscriptions keyed by a hash of the session and the skills catalog partitioned, beside
+the four records FIX-2946 and FIX-2947 take. FIX-2944 and FIX-2945 can't go: without them every
+per-session read scans, and each screen keeps its own path across sessions.
 
 ## How the issues flow into each other
 
@@ -95,13 +95,15 @@ flowchart LR
   X["FIX-2532 · declared field indexes · consumed"] -.-> D
   Y["FIX-2777 · Shift Manager's reads.ts goes · consumed"] -.-> E
   A["FIX-2942 · named reach"] -->|"the owner check"| D["FIX-2945 · read across sessions"]
-  B["FIX-2943 · shared definitions"] -->|"names"| D
+  B["FIX-2943 · one definition per name"] -->|"one shape per name"| D
   C["FIX-2944 · indexed key segments"] -->|"range reads"| D
   A -->|"reach by session"| E["FIX-2946 · boards per session"]
-  B -->|"a shared board"| E
+  B -->|"one board shape across flows"| E
   D -->|"the view's read"| E
   E -->|"the task names its board"| F["FIX-2947 · work, not copies"]
   A -->|"reach by session"| G["FIX-2948 · per-user keys"]
+  E -->|"the one mover"| G
+  X -.-> G
   A & B & C & D & E & F & G --> H["FIX-2949 · closure"]
 ```
 
@@ -111,7 +113,7 @@ follows it.
 
 ## What stays as it is
 
-- **Flow isolation** for every definition not marked shared.
+- **Flow isolation** for every definition, as today: a flow reaches only what its blocks declare.
 - **The sessions handle** (`ctx.sessions`), for what isn't a resource; another session's state
   stays readable-fields-only.
 - **Per-row owners inside an org copy**, and **the coding run record** (per user, keyed by subject).
@@ -136,7 +138,7 @@ follows it.
 | Adds | Existing piece considered | How composed |
 |---|---|---|
 | `ctx.resources.at({ session })` · FIX-2942 | The sessions handle; the parent-row read | Extends the resource accessor. The handle reaches no resources and stays for what isn't one |
-| `shared` and the registry · FIX-2943 | The resource-address path (`engine/src/resources/scope-address.ts`: `declarationsOf` finds definitions across flows under `flowIsolation`, `resolveAddress` checks they agree, `admitAddress` applies every declarer's resolver and owner pin); `defineFlow`'s merge of block resources; the start-up clash check; the manifest registry (`createManifestRegistry`) | Extends the resource-address path, the one cross-flow lookup and admission: `shared` widens `declarationsOf`, and a shared name keeps `admitAddress`'s rule that every declarer's resolver and owner pin admits the caller. Also extends the clash check (`validateScope` in `engine/src/registry/flow-registry.ts`): the union the merge computes, taken across flows. The manifest registry stays unchanged. It is a model's discovery door, a different job; FIX-2943 says how the two relate and adds no second public "registry" noun beside it. The `shared` flag itself is new: if FIX-2943's spec finds no consumer but boards, it waits and boards are reached by their own rule |
+| One shape per name, reach by declaring · FIX-2943 | The resource-address path (`engine/src/resources/scope-address.ts`: `declarationsOf` finds definitions across flows under `flowIsolation`, `resolveAddress` checks they agree with `sameClientConfig`, `admitAddress` applies every declarer's resolver and owner pin); `defineFlow`'s merge of block resources; the start-up clash check; the manifest registry (`createManifestRegistry`) | Extends the clash check (`validateScope` in `engine/src/registry/flow-registry.ts`) to session scope, keyed by name, with isolated copies never compared, using the address path's comparison. The manifest registry stays unchanged: it is a model's discovery door, a different job, and no public "registry" noun is added. **No `shared` flag** (amended by the spec set, under this row's own condition): every reach in the set comes from a flow whose blocks declare the definition, so the flag waits for a caller that must reach one it can't declare, with `boards()` ([FIX-2943 D1](../../issues/FIX-2943/DECISIONS.md#d1)) |
 | `acrossSessions` · FIX-2945 | `userSuspensions`; views | Extends the store's read with an owner join; no kept index |
 | The change topic · FIX-2945 | FIX-2750's user topic with HMAC-keyed partitions; the change bus (`change-bus`: a scope's topic, optionally one resource) | Extends the FIX-2750 topic: its partition key becomes a session key, published on the bus's one write path. FIX-2946 retires the old partition key with partitions. The topic narrows to one owner (user, org and tenant), so no session id reaches another org |
 | Board reach by session, `ctx.task.session` · FIX-2946 | The board's typed capability (`TaskBoardHandle.capability`, `ctx.cap.<name>`); `defineTaskCollection`'s handle; the board-above helper | Extends the capability ([Q2](DECISIONS.md#q2), decided): `ctx.cap.work.at({ session })` and `.acrossSessions()` over `ctx.resources.at`, on boards with a per-session copy. FIX-2946's spec says whether a factory-backed board offers them. No `boards()` helper unless a caller needs a board by runtime name. No second definer ([ER-9](DECISIONS.md#who-owns-what)); `ctx.task.session` replaces the helper |
