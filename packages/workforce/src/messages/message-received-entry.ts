@@ -63,7 +63,7 @@ import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
-import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
+import { MAX_MESSAGE_CHARS, MESSAGE_CHAINS_RESOURCE, workerMessagesResources } from "./message-log";
 import { answerExternalWait, queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
@@ -227,14 +227,14 @@ export function messageReceivedEntry(options: {
       const { budget } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
       // branch, or a queue behind a busy recipient) have spent it too.
-      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx).getOptional(row.chain))?.state.sent.length ?? 0);
+      const chain = row.chain == null ? undefined : await ctx.resources[MESSAGE_CHAINS_RESOURCE].getOptional(row.chain);
       const received: MessageReceived = {
         id: row.id,
         from: row.from,
         text: row.text,
         ...(wantsReply(row) ? { replyRequested: true } : {}),
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
-        budget: Math.max(0, budget - Math.max(row.hop, chainSent))
+        budget: Math.max(0, budget - Math.max(row.hop, chain?.state.sent.length ?? 0))
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.

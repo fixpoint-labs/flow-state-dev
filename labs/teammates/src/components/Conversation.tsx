@@ -6,7 +6,7 @@ import type { AppContext } from "../../flows/lab-context.mts";
 import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { BotStatus, Look } from "../lib/looks";
-import { displayName, roleOf, useWorkforce } from "../lib/roster";
+import { displayName, settingOf, useWorkforce } from "../lib/roster";
 import { dayLabel } from "../lib/day-label";
 import { answeringStep, PLAIN, useStatus } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
@@ -46,12 +46,6 @@ const PILL: Record<BotStatus, string> = {
   idle: "bg-muted text-text-2",
 };
 const DOT: Record<BotStatus, string> = { running: "bg-brand", needs: "bg-attention-foreground", done: "bg-success", queued: "border border-dashed border-current", idle: "bg-presence-idle" };
-
-/** A teammate's own string setting (`model`), or `undefined` when it follows the lab's. */
-const settingOf = (worker: RosterEntry, key: string): string | undefined => {
-  const value = worker.settings[key];
-  return typeof value === "string" ? value : undefined;
-};
 
 /** The ids of the messages the worker's sent lines sent. */
 const sentIds = (lines: readonly ItemLine[]) =>
@@ -167,6 +161,7 @@ export function Conversation({
   // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
   const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
   const workerName = displayName(worker);
+  const model = settingOf(worker, "model") ?? context?.model;
   const backgroundRunning = view?.backgroundRunning ?? undefined;
   const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
   const names = useLinesNames(nameOf, lookOf, isCoding);
@@ -279,17 +274,17 @@ export function Conversation({
               </div>
             )}
           </div>
-          {roleOf(worker) === "" ? null : (
-            <p className="truncate text-sm text-text-2" title={roleOf(worker)}>
-              {roleOf(worker)}
+          {worker.description ? (
+            <p className="truncate text-sm text-text-2" title={worker.description}>
+              {worker.description}
             </p>
-          )}
+          ) : null}
           {onRecheck === undefined ? null : (
             <ContextStrip
               context={context}
               harnesses={harnesses}
               onRecheck={onRecheck}
-              model={settingOf(worker, "model") ?? context?.model}
+              model={model}
               harness={context?.harness}
             />
           )}
@@ -304,7 +299,7 @@ export function Conversation({
         <EditForm
           name={displayName(worker)}
           choices={{ models: context?.models }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
+          current={{ model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
@@ -422,7 +417,7 @@ export function Conversation({
         harnesses={harnesses}
         // The lab's default coder, where Lead starts coding work; the teammate's own model when it has one set (in Edit teammate), else the lab's.
         defaultHarness={context?.harness}
-        replyModel={settingOf(worker, "model") ?? context?.model}
+        replyModel={model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();

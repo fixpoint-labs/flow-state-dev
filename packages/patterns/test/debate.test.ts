@@ -535,6 +535,10 @@ describe("debate", () => {
       ],
       maxRounds: 2,
       synthesizer: false,
+      context: {
+        priorTurns: (_input, ctx) => `Recorded turns: ${ctx.resources.transcript.state.entries.length}`,
+      },
+      instructions: async (_input, ctx) => `Use the notes for round ${ctx.sequencer?.state.round}.`,
     });
 
     const result = await testBlock(pattern, {
@@ -552,6 +556,9 @@ describe("debate", () => {
     // Inspect debater B's round-2 prompt: it should reference stances
     // [for] / [against] but not the debater names "a" / "b".
     const round2BMessages = JSON.stringify(debaterMockB.calls[1]?.input ?? "");
+    expect(round2BMessages).toContain("Recorded turns: 3");
+    expect(round2BMessages).toContain("Use the notes for round 2.");
+    expect(JSON.stringify(judgeMock.calls[0]?.input)).toContain("Recorded turns: 4");
     expect(round2BMessages).toContain("[for]");
     expect(round2BMessages).toContain("[against]");
     // Not super-strict — names are stable identifiers and could appear

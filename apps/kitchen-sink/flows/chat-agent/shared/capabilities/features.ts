@@ -115,9 +115,9 @@ export const skillActivatorBlock = createSkillActivator({
 // under a mount's directory route back to that collection; files under
 // /workspace/tmp/ are scratch; anything else is dropped with a warning.
 //
-// Provider is environment-selected (VERCEL → vercel sandbox,
-// STORE_TYPE=filesystem → local shell, else → just-bash WASM with
-// python + javascript). The just-bash default keeps preview environments
+// Provider is environment-selected (BASH_PROVIDER wins, then VERCEL with
+// sandbox credentials → vercel sandbox, else → just-bash WASM with
+// python + javascript; the host shell only via BASH_PROVIDER=local). The just-bash default keeps preview environments
 // self-contained so skills that exercise bash are testable without
 // touching the host filesystem.
 export const bashCap = createBashCapability({

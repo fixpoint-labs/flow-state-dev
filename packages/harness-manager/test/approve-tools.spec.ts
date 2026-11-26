@@ -6,6 +6,8 @@
  * package's scripted stub, making scripted tool calls; what ran is its own
  * record and the marker files the calls write.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +25,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessStubOptions, type StubToolCall } from "../src";
+import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessStubOptions, type StubToolCall } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -68,7 +70,7 @@ function host(options: {
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, doneWhen: { check: async () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: (feeds) => {

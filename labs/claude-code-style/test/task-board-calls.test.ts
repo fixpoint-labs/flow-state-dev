@@ -93,6 +93,19 @@ describe("the lab's task actions", () => {
     expect(lab.answered).toEqual([]);
   });
 
+  it("refuses a verdict when the drawn task has reached a newer round than the review stop on screen", async () => {
+    // The task was read after the run stopped for round 2, but the run's feed still draws round 1's changes.
+    // The drawn task and the board agree, so only the stop on screen can tell: a verdict on round 2 is one nobody saw.
+    const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
+    const drawn = codingBoardTask({ asks: [reviewHold("stop-2")] });
+    await expect(appCalls(lab.client).resolve("s1", drawn, undefined, "stop-1")).rejects.toThrow(/newer review/);
+    await expect(appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.", "stop-1")).rejects.toThrow(/newer review/);
+    expect(lab.answered).toEqual([]);
+    // Once the feed draws round 2, the verdict goes to it.
+    await appCalls(lab.client).resolve("s1", drawn, undefined, "stop-2");
+    expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-2"]);
+  });
+
   it("answers the review round it drew while the board still holds it", async () => {
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-1")] }]);
     const drawn = codingBoardTask({ asks: [reviewHold("stop-1")] });

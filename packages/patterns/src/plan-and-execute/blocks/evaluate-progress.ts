@@ -115,8 +115,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
     outputSchema: iterationOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous = ctx.sequencer!.state.iteration ?? 0;
-      const iteration = previous + 1;
+      const iteration = ctx.sequencer!.state.iteration + 1;
       await ctx.sequencer!.patchState({ iteration });
 
       if (iteration >= maxIterations) {
@@ -243,8 +242,7 @@ export function createEvaluateProgress(
     outputSchema: evaluatorPreflightSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous = ctx.sequencer!.state.iteration ?? 0;
-      const iteration = previous + 1;
+      const iteration = ctx.sequencer!.state.iteration + 1;
       await ctx.sequencer!.patchState({ iteration });
 
       if (iteration >= options.maxIterations) {

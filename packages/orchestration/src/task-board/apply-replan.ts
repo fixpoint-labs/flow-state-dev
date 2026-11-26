@@ -41,6 +41,7 @@ import {
   type TaskCollectionRef,
   type TaskInit,
 } from "../tasks";
+import type { TaskBoardCapabilityAccessor } from "./capability";
 import { SKIPPED_LABEL } from "../tasks/collection/cascade";
 import { skippedFor } from "../tasks/collection/cascade";
 import { generateId } from "../tasks/generate-id";
@@ -110,9 +111,10 @@ export function createApplyReplan(options: ApplyReplanOptions) {
     name,
     maxAttemptsPerTask,
     taskContext = "goal",
-    capability,
     sequencerStateSchema = defaultApplyReplanStateSchema,
   } = options;
+  const capability: DefinedCapability<string, Pick<TaskBoardCapabilityAccessor, "tasks">> | undefined =
+    options.capability;
   const collectionId = name;
 
   return handler({
@@ -143,14 +145,9 @@ export function createApplyReplan(options: ApplyReplanOptions) {
     execute: async (input, ctx) => {
       // Backing-aware resolution: route through the board's own accessor when a
       // capability is supplied, else reconstruct the request-backed ref by name.
-      const collection: TaskCollectionRef =
+      const collection =
         capability !== undefined
-          ? await (
-              ctx.cap as Record<
-                string,
-                { tasks: () => Promise<TaskCollectionRef> }
-              >
-            )[capability.name].tasks()
+          ? await ctx.cap[capability.name].tasks()
           : await getOrCreateTaskCollection({
               ctx,
               backing: "state",
@@ -195,7 +192,7 @@ export function createApplyReplan(options: ApplyReplanOptions) {
         const remappedId = finalIds[i];
         const rawDeps = t.deps ?? t.dependencies ?? [];
         const remappedDeps = rawDeps.map((d) => idRemap.get(d) ?? d);
-        const emittedContext = (t as { context?: unknown }).context;
+        const emittedContext = t.context;
         const context =
           typeof emittedContext === "string" && emittedContext.length > 0
             ? emittedContext
@@ -205,7 +202,7 @@ export function createApplyReplan(options: ApplyReplanOptions) {
         // Preserve a passthrough `title` the same way createSeedTasksFromPlan
         // does, so a custom replanner/evaluator emitting one doesn't silently
         // lose it (the default replanner schema still omits title — Non-Goal).
-        const emittedTitle = (t as { title?: unknown }).title;
+        const emittedTitle = t.title;
         return {
           ...(remappedId !== undefined ? { id: remappedId } : {}),
           goal: t.goal,

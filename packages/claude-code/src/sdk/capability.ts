@@ -98,8 +98,7 @@ function promotedResources(
   const out: Record<string, DeclaredResourceEntry> = {};
   for (const entry of uses ?? []) {
     if (typeof entry === "function") continue;
-    const declared = (entry as { resources?: Record<string, DeclaredResourceEntry> }).resources;
-    Object.assign(out, declared ?? {});
+    Object.assign(out, entry.resources);
   }
   return out;
 }
