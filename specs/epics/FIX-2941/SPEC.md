@@ -161,8 +161,8 @@ an owner with many sessions, and a kept per-user index comes back.
 2. **[D2](DECISIONS.md#d2) · The plan ledger moves to session scope here; merging it into one
    board waits.** If wrong: plan rows move twice.
 
-**Open: [Q1](DECISIONS.md#q1)**, whether a write from another session must go through a named
-action. It gates FIX-2942's and FIX-2946's specs. [Q2](DECISIONS.md#q2) is decided: a board is
-reached through its typed capability, with a `boards()` helper as the fallback.
+**Decided by the owner:** [Q1](DECISIONS.md#q1), a write from another session is a plain write
+by default, and a board's settle stays an action. [Q2](DECISIONS.md#q2), a board is reached
+through its typed capability, with a `boards()` helper as the fallback.
 
 Epic · 8 issues · Framework simplification & cleanup · the kill line and goal 4

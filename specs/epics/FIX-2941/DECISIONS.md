@@ -6,7 +6,7 @@ The calls above any single issue, and what each locks in for the seven children 
 The model itself was agreed with the owner in
 [the concept doc](../../../docs/internal/design/scopes-and-sessions.md) and is recorded under
 [Decided by the owner](#decided-by-the-owner-recorded-so-no-child-reopens-them), not reopened. D1
-and D2 are this epic's own calls. Q2 was the owner's and is decided; Q1 is open and the owner's.
+and D2 are this epic's own calls. Q1 and Q2 were the owner's and are decided.
 
 ## The tree
 
@@ -17,8 +17,8 @@ flowchart TD
   D1 -.->|"rejected"| X2["one epic with the task-API redesign"]
   E --> D2["D2 · the plan ledger moves to session scope"]
   D2 -.->|"rejected"| X3["merge it into one board here"]
-  E --> Q1["Q1 · open · plain writes across sessions"]
-  Q1 -.->|"recommended against"| X4["every such write through a named action"]
+  E --> Q1["Q1 · decided · plain writes across sessions"]
+  Q1 -.->|"rejected"| X4["every such write through a named action"]
   E --> Q2["Q2 · decided · board reach through its typed capability"]
   Q2 -.->|"held back as the fallback"| X5["a new boards() helper"]
 ```
@@ -56,7 +56,13 @@ moving it first is wasted, and FIX-2946 leaves it to that epic, with `partition.
 It comes down to deleting partitions: a ledger left partitioned keeps `partition.ts` alive.
 
 <a name="q1"></a>
-## Q1 · Open · Does a write from another session have to go through a named action?
+## Q1 · Decided · Does a write from another session have to go through a named action?
+
+**Decided by the owner, 2026-11-26: plain writes by default.** A write into another session's
+copy is a plain write, recorded by the writing request and heard by the owning session (ER-2). A
+definition may still offer a named action where its own history matters; a board's settle stays
+one. FIX-2942 and FIX-2946 specify against this. The analysis below is kept as it was put to the
+owner.
 
 **In plain terms.** When coder's session settles a task on the launch chat's board, the write is
 recorded in coder's session history. The question is whether the launch chat's own history must
@@ -279,4 +285,4 @@ may follow from the coordinator; if it does, it is recorded as its own entry her
   board reach reopened as Q2; two defaults recorded for FIX-2942; ER-13 gained FIX-2689 and
   FIX-1580.
 
-**Open: [Q1](#q1).** Q2 decided 2026-11-26: the capability first, `boards()` as the fallback.
+**Open: none.** Decided 2026-11-26 by the owner: [Q1](#q1), plain writes by default with a board's settle kept as an action; [Q2](#q2), the capability first, `boards()` as the fallback.

@@ -203,7 +203,7 @@ Three things hold for every such write:
 * **The owning session hears it.** A write from another session notifies the owning session exactly as a write from inside it would. Whether that starts a turn is the definition's call, not the write's. A board's task ending starts its filer's turn.
 * **The writing request records it.** A write is part of the request that made it, so the CSV task session's own history shows that it settled a task in the launch chat.
 
-What the owning session's own history shows of a write that came from elsewhere is open. One option is that the write goes through a named action of the definition, such as a board's settle. An action can record itself in the owning session's history too, so the launch chat shows "the CSV task session settled this". The other is that a plain write is enough, and the owning session's history shows only what it heard. See *Decisions*.
+A plain write is enough. The owning session's history shows what it heard, and the writing request records the rest. A definition may still offer a named action where its own history matters: a board's settle is one, so the launch chat's history shows "the CSV task session settled this". See *Decisions*.
 
 ### Why writes aren't locked
 
@@ -378,7 +378,7 @@ The terms this model retires, where each lives in code and docs today, and how m
 
 - [X] **Scopes are copies, and the user is the boundary.** Agreed in discussion.
 - [ ] **Sessions of one user can write to each other's copies.** Leaning yes: `theirs.create(...)` is fine. The definition's checks guard the write, and the writing request records it.
-- [ ] **Do cross-session writes go through named actions?** Open, to explore. Actions let the owning session's history show who changed what from where. Plain writes are simpler and are already recorded by the writing request. Recommend plain writes by default, with a definition free to offer actions where its history matters, such as a board's settle. Would change: a support or audit need to answer "who changed this conversation's data" from the conversation alone.
+- [X] **Do cross-session writes go through named actions?** Decided: plain writes by default. Actions let the owning session's history show who changed what from where. Plain writes are simpler and are already recorded by the writing request. Plain writes by default, with a definition free to offer actions where its history matters, such as a board's settle. Would change: a support or audit need to answer "who changed this conversation's data" from the conversation alone.
 - [X] **Definitions are registered by name.** Agreed in direction: one registry for resource definitions, and later blocks, so flows reach a board by name without a shared import. Recommend typing names from the registry so a typo fails at build time.
 - [ ] **What a model's task tools look like with several boards.** Open, to explore. A `board` argument on one set of tools, or tools per board. Needs the real use cases first: when does one worker file on two boards in one turn?
 - [ ] **Lineage sharing goes.** Leaning yes. It was meant to let two sessions act on one resource, and a child reaching its parent by name covers that. On `main` its only real user is a Kitchen Sink demo board.
