@@ -81,11 +81,11 @@ import {
 import { compareZodSchemas } from "./schema-compat";
 import {
   admitOwnerPrivateCollections,
+  patternsReach,
   refuseOwnerMarkedSingleResources,
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
 import { admitIndexedCollections, type IndexedCollection } from "../resources/resource-indexes";
-import { patternsReach } from "../resources/owner-private";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -372,7 +372,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
   /**
    * Compares an incoming declaration against every other registered kind.
    *
-   * **What the resource half compares, and the two overlaps it deliberately
+   * **What the resource half compares, and the one overlap it deliberately
    * does NOT catch.** Effective `flowIsolation` is a *participation filter*,
    * not part of the index: `collectScopeDeclaration` has already dropped the
    * isolated entries, since a flow-namespaced resource cannot collide with
@@ -384,14 +384,12 @@ class InMemoryFlowRegistry implements FlowRegistry {
    * cells. A session copy has no isolation, so every session declaration
    * reaches here.
    *
-   * **The overlap it deliberately does NOT catch:**
-   *
-   *   2. **Same-kind instances with differing resource overrides.**
-   *      `FlowInstanceOptions` lets each instance override `resources`, but
-   *      participants are retained per `flowKind` (first instance wins — see
-   *      `indexParticipant`) and same-kind pairs are skipped just below. Two
-   *      instances of one definition are therefore never compared, even when
-   *      their overrides disagree over a shared cell.
+   * **The overlap it deliberately does NOT catch: same-kind instances with
+   * differing resource overrides.** `FlowInstanceOptions` lets each instance
+   * override `resources`, but participants are retained per `flowKind` (first
+   * instance wins — see `indexParticipant`) and same-kind pairs are skipped
+   * just below. Two instances of one definition are therefore never compared,
+   * even when their overrides disagree over a shared cell.
    *
    * Excluded **by design, not by oversight**: closing it changes what identity
    * the check keys on (the kind, not the instance), which is a separate change.
@@ -421,7 +419,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
       // the one they were checked against.
       for (const [ref, incomingDecls] of Object.entries(incoming.resourceSchemas)) {
         for (const [existingRef, existingDecls] of Object.entries(existing.resourceSchemas)) {
-          if (existingRef !== ref && !patternsReach(existingRef, ref)) continue;
+          if (!patternsReach(existingRef, ref)) continue;
           for (const existingDecl of existingDecls) {
             for (const incomingDecl of incomingDecls) {
               checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
@@ -572,12 +570,10 @@ function collectScopeDeclaration(
 ): ScopeDeclaration | undefined {
   // A session's state record belongs to the session's own flow, so only its
   // resources are compared there; and a session copy has no isolation.
-  const stateSchema =
-    scope === "session"
-      ? undefined
-      : (scope === "user" ? flow.isolateUserState : flow.isolateOrgState)
-        ? undefined
-        : scopeStateSchema(flow, scope);
+  const flowIsolatesScope =
+    scope === "session" || (scope === "user" ? flow.isolateUserState : flow.isolateOrgState);
+
+  const stateSchema = flowIsolatesScope ? undefined : scopeStateSchema(flow, scope);
 
   const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate

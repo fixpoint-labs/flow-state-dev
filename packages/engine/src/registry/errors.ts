@@ -136,7 +136,9 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
-    const flag = details.scope === "user" ? "isolateUserState" : "isolateOrgState";
+    // A session copy has no flow-level isolation flag to point at.
+    const flag =
+      details.scope === "user" ? "isolateUserState" : details.scope === "org" ? "isolateOrgState" : undefined;
     const isResource = details.field.startsWith("resources.");
     const kind = details.collection === true ? "collection" : "resource";
     // A collection keys on its `pattern` and has no `ref` to change, so the
@@ -163,7 +165,9 @@ export class CrossFlowSchemaConflictError extends Error {
     } else {
       const remedy = isResource
         ? `Set flowIsolation: true on that ${kind} in one of the flows to opt out of cross-flow sharing, ${identityRemedy}, or reconcile the schemas.`
-        : `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`;
+        : flag === undefined
+          ? `Reconcile the schemas.`
+          : `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`;
       message =
         `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas ` +
         `(${details.reason}: ${details.detail}). ${remedy}`;
