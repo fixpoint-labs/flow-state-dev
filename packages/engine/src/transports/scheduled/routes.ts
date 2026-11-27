@@ -47,6 +47,9 @@ interface DispatchBody {
   idempotencyKey?: unknown;
 }
 
+/** The system principal's user (`ScheduleConfig.principal`): a machine, which owns nothing. */
+const SYSTEM_USER_ID = "system";
+
 export async function handleDispatch(
   req: Request,
   ctx: { params: Record<string, string> },
@@ -200,6 +203,11 @@ export async function handleDispatch(
           ...schedule.principal,
           orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
         };
+  // FIX-2942: decided here, beside the one fallback, so it cannot diverge from
+  // the principal the run actually gets. The gateway fallback and the system
+  // principal are machines, not owners: such a run owns no session but its own
+  // (`context/named-session.ts`). A schedule naming a person reaches as that person.
+  const machinePrincipal = schedule.principal === undefined || effectivePrincipal.userId === SYSTEM_USER_ID;
 
   // The scheduled time this fire counts against, claimed once in the store.
   const timezone = schedule.timezone ?? "UTC";
@@ -271,9 +279,7 @@ export async function handleDispatch(
         nominalFireTime,
         dispatchedAt: new Date().toISOString(),
         timezone,
-        // FIX-2942: the run is the gateway's, not a user's, so it owns no
-        // session but its own (`context/named-session.ts`).
-        ...(schedule.principal === undefined ? { gatewayPrincipal: true } : {})
+        ...(machinePrincipal ? { machinePrincipal: true } : {})
       }
     },
     // A dynamic schedule's core is produced by the resolver at dispatch time

@@ -459,6 +459,28 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
     expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "u_7", orgId: "org_sys" });
+    // A schedule naming a person runs as that person: not a machine that owns nothing.
+    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBeUndefined();
+  });
+
+  it("stamps a schedule naming the system principal as a machine's, whatever the gateway is", async () => {
+    const adapter = createScheduledEndpointAdapter();
+    const flow = defineFlow({
+      kind: "reminders",
+      actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
+      schedules: { static: { sweep: { cron: "0 9 * * MON", block: noopBlock, principal: { userId: "system" } } } }
+    });
+    const host = withFlow(
+      withActiveRegistry(
+        createMockTransportHost({ resolvePrincipal: () => ({ userId: "cron-gateway", orgId: "org_sys" }) }),
+        makeStubActiveRegistry()
+      ),
+      flow
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("reminders", "sweep");
+    expect((await route.handler(request, ctx)).status).toBe(202);
+    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
   });
 
   it("static schedule with no principal falls back to the gateway principal", async () => {
@@ -475,6 +497,8 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
     expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "system", orgId: "org_sys" });
+    // The gateway fallback is a machine's principal: it owns no session but its own.
+    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
   });
 
   it("disabled static schedule responds 404", async () => {

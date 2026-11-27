@@ -116,6 +116,21 @@ describe("admitNamedSession", () => {
     });
   }
 
+  it("admits, for each refusal above, the twin that differs only in the refused fact", async () => {
+    // Pins every refusal to its own reason: the same fixture shape, with the
+    // one fact flipped, is admitted.
+    const { put, admit } = await boot();
+    await put("own-user", { flow: "notes", userId: "alice", orgId: ORG });
+    await put("own-tenant", { flow: "notes", userId: "alice", orgId: ORG, tenantId: "t1" });
+    await put("own-pin", { flow: "locked", userId: "bob", orgId: ORG });
+    await put("own-person", { flow: "notes", userId: "carol", orgId: ORG });
+    expect(await admit(alice(), "own-user")).toBeDefined();
+    expect(await admit(alice("chat", { tenantId: "t1" }), "own-tenant")).toBeDefined();
+    expect(await admit({ ...alice("locked"), userId: "bob" }, "own-pin")).toBeDefined();
+    // A schedule naming a person (not a machine) reaches that person's sessions.
+    expect(await admit({ userId: "carol", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: false }, "own-person")).toBeDefined();
+  });
+
   it("still gives a caller that owns nothing its own session", async () => {
     const { put, admit } = await boot();
     await put("a", { flow: "chat", userId: "gateway", orgId: ORG });
@@ -125,11 +140,12 @@ describe("admitNamedSession", () => {
 });
 
 describe("principalOwnsNothing", () => {
-  it("marks a schedule's gateway fallback and a static schedule's principal, read only under the scheduled source", () => {
-    expect(principalOwnsNothing("scheduled", { schedule: { origin: "dynamic", gatewayPrincipal: true } })).toBe(true);
-    expect(principalOwnsNothing("scheduled", { schedule: { origin: "static" } })).toBe(true);
+  it("marks only a run the scheduled route stamped as a machine's, read only under the scheduled source", () => {
+    expect(principalOwnsNothing("scheduled", { schedule: { origin: "static", machinePrincipal: true } })).toBe(true);
+    // A static schedule that names a person is that person's: it owns what they own.
+    expect(principalOwnsNothing("scheduled", { schedule: { origin: "static" } })).toBe(false);
     expect(principalOwnsNothing("scheduled", { schedule: { origin: "dynamic" } })).toBe(false);
     // A caller's metadata on a caller-facing source claims nothing.
-    expect(principalOwnsNothing("http", { schedule: { origin: "static", gatewayPrincipal: true } })).toBe(false);
+    expect(principalOwnsNothing("http", { schedule: { origin: "static", machinePrincipal: true } })).toBe(false);
   });
 });

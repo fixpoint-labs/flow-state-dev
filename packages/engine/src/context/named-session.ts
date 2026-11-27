@@ -12,9 +12,9 @@
  * with the organization required), then the target instance's pin.
  *
  * Two principals own nothing but their own session: the gateway a schedule
- * fell back to, and a static schedule's configured principal. Both name a
+ * fell back to, and the system principal (`{ userId: "system" }`). Both name a
  * machine, not a person, so two schedules on one of them never reach each
- * other's sessions.
+ * other's sessions. A schedule that names a person reaches as that person.
  *
  * Every refusal reads as a missing session: {@link admitNamedSession} answers
  * `undefined`, exactly as it does for an id nobody holds, so a caller cannot
@@ -38,21 +38,21 @@ export interface BlockCaller {
   readonly flowId: string;
   /** The block's own session: the one session a caller that owns nothing still holds. */
   readonly sessionId: string;
-  /** A machine principal (a schedule's gateway or static principal): owns no other session. */
+  /** A machine principal (a schedule's gateway fallback or the system principal): owns no other session. */
   readonly ownsNothing: boolean;
 }
 
 /**
  * Whether a run's principal is a machine's that owns nothing: a scheduled run
- * whose principal is the gateway's fallback, or a static schedule's. Read only
- * under the scheduled source, whose metadata the scheduled route sets, so a
- * caller's metadata can't claim or shed it.
+ * the scheduled route stamped `machinePrincipal` (the gateway's fallback, or
+ * the system principal). Read only under the scheduled source, whose metadata
+ * the scheduled route sets, so a caller's metadata can't claim or shed it.
  */
 export function principalOwnsNothing(source: string | undefined, metadata: unknown): boolean {
   if (source !== SCHEDULED_SOURCE) return false;
-  const schedule = (metadata as { schedule?: { gatewayPrincipal?: unknown; origin?: unknown } } | undefined)?.schedule;
+  const schedule = (metadata as { schedule?: { machinePrincipal?: unknown } } | undefined)?.schedule;
   if (schedule === undefined || schedule === null || typeof schedule !== "object") return false;
-  return schedule.gatewayPrincipal === true || schedule.origin === "static";
+  return schedule.machinePrincipal === true;
 }
 
 /**
@@ -60,7 +60,7 @@ export function principalOwnsNothing(source: string | undefined, metadata: unkno
  * its own resolves the run's principal only for a block of that same
  * instance. Every other flow's resolver refuses it.
  */
-export function createBlockCallerResolver(caller: BlockCaller): InstanceCallerResolver {
+function createBlockCallerResolver(caller: BlockCaller): InstanceCallerResolver {
   return async (flow) =>
     flowAuthenticates(flow) && flow.id === caller.flowId && !caller.ownsNothing
       ? { userId: caller.userId, orgId: caller.orgId }
@@ -75,6 +75,8 @@ export function createBlockCallerResolver(caller: BlockCaller): InstanceCallerRe
 function blockHostRule(registry: Pick<FlowRegistry, "get" | "list">, caller: BlockCaller) {
   return (session: SessionRecord): boolean => {
     if (caller.ownsNothing) return false;
+    // What makes the organization required: `principalOwnsRequest` alone
+    // treats a session with no org as owned.
     if (session.orgId !== caller.orgId) return false;
     if (!principalOwnsRequest(session, caller)) return false;
     const owner = resolveRecordOwner(registry, session);
@@ -99,6 +101,8 @@ export async function admitNamedSession(
   const { caller, registry } = inputs;
   const record = await inputs.sessions.get(resolveSessionStorageKey(sessionId, caller.tenantId));
   if (record === undefined) return undefined;
+  // The run's own session, unchecked: `caller.sessionId` comes from the run,
+  // never a payload, so it names the session this run already holds.
   if (sessionId === caller.sessionId) return record;
   const admitted = await admitSession(
     { registry, callerFor: createBlockCallerResolver(caller), tenantId: caller.tenantId, hostRule: blockHostRule(registry, caller) },
