@@ -33,6 +33,7 @@ import { effectiveConfidence } from '../../janitor'
 import { graphExpandCandidates } from './graph-expand'
 import { extractExactPhrases } from './query-phrases'
 import { edgesOf } from '../../internal/helpers'
+import { prepareEnvelopeSchema } from '../types'
 import type {
   MemoryItem,
   PrepareEnvelope,
@@ -193,17 +194,6 @@ function readStores(ctx: any): {
 // Stage 1: prepareBlock — intrinsic pre-rank + exact-phrase pass-through.
 // ---------------------------------------------------------------------------
 
-/** Output schema for the prepare block. */
-const prepareOutputSchema = z.object({
-  query: z.string(),
-  limit: z.number(),
-  candidates: z.array(z.any()),
-  shouldFilter: z.boolean(),
-  strategyName: z.string(),
-  sinceTurn: z.number().optional(),
-  perItemCharCap: z.number(),
-})
-
 /**
  * Build the prepare handler. Reads stores and produces the candidate set
  * fed into the LLM filter, using two independent gates:
@@ -228,7 +218,7 @@ const prepareOutputSchema = z.object({
 function buildPrepareBlock(includeExactPhrase: boolean) {
   return handler({
     name: 'memory/recall.prepare',
-    outputSchema: prepareOutputSchema,
+    outputSchema: prepareEnvelopeSchema,
     execute: async (input: PrepareInput, ctx): Promise<PrepareEnvelope> => {
       const { semantic, episodic, currentTurn } = readStores(ctx)
 
