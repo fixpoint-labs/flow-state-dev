@@ -62,11 +62,16 @@ It comes down to a burst: a turn per write is fifty turns for fifty endings.
   `principalOwnsRequest`'s compare, which counts a record with no org as owned, the org check a
   block-side rule added to make up for that, and the user and org compares in
   `ownResolverVerdict` and the view host rule. A no-org session is refused before it, by
-  `isOrgAttributed`, as the routes already do.
+  `isOrgAttributed`, as the routes already do. The request-id claim (`resolveCallerRequestId`,
+  `claimRequestRecord`) keeps its BP-030 tolerance by normalising at read: a request record from
+  before orgs takes its session's org, then meets the same exact comparison, so an owner's retry
+  of a pre-org id reuses it.
 - **An own-resolver target matches on the resolver.** It admits a run when its resolver's identity
   equals the principal's `resolvedBy`: the resolver plus the host settings applied to its answer,
   the key the HTTP list already resolves once per. That is the HTTP list's answer, on a value that
-  rides a runner's envelope. No match by flow id.
+  rides a runner's envelope. No match by flow id. The settings are in the value, so two
+  configurations of one resolver never collide, and an absent `resolvedBy` on either side never
+  matches.
 - **`kind` is the one machine marker.** The scheduled route (gateway fallback, system principal)
   and the webhook route (a delivery's service principal) set `kind: "machine"` at the door. A
   machine owns nothing: a run whose principal or session is a machine's reaches no other session,
@@ -76,11 +81,21 @@ It comes down to a burst: a turn per write is fifty turns for fifty endings.
   write path, so a stale whole-record write can't turn a machine's session into a person's.
 - **Existing sessions are backfilled from their first request's `source`** (BP-030), with no new
   config. `http`, `mcp`, `cli` and pre-`source` records (read as `http`) are a person's;
-  `scheduled`, `webhook` and a `"system"` user are a machine's; `internal` and `task` take the
-  kind of the session that dispatched them (`parentSessionId`). Only a session with no readable
-  request fails closed: nothing says who made it, and reading it as a person's would give a
-  webhook's or schedule's session a person's reach. Stored wake and owner-run records from before
-  carry no `resolvedBy` and so admit no own-resolver target.
+  `scheduled`, `webhook`, `notification` and a `"system"` user are a machine's, and so is any
+  source not listed (fail closed; the known set is `RequestRecord.source` in `stores/types.ts`).
+  `internal` and `task` take their parent's kind through one parent walk: `parentSessionId` counts
+  only on a record the dispatch seam wrote, never the public session-create route; the child is
+  bound to its parent's incarnation recorded at dispatch (or, from before that, the lineage it
+  inherited), not the reusable bare id; the walk stops at `MAX_LINEAGE_DEPTH` (32). A missing,
+  deleted, recreated, cyclic or over-deep chain, a top-level internal, owner-run or service-route
+  session with no parent, and any parent whose identity can't be proven read as machine, as does
+  a session with no readable request: nothing says who made it, and reading it as a person's
+  would give a webhook's or schedule's session a person's reach. Stored wake and owner-run
+  records from before carry no `resolvedBy` and so admit no own-resolver target.
+- **`mcp` and `cli` are a person's** (coordinator call, Nov 27). Their doors resolve a principal
+  through `host.resolvePrincipal`, as `http` does, so the caller is whoever the credentials name.
+  An agent holding a person's token acts as that person over `http` too; classing `mcp` apart
+  would be a second answer to the same credentials, not a safer one.
 - **One convergence point.** Every named reach goes through one function that runs the admission
   chain, so a resource read, write, list and a claim can't disagree. Tested by the seven refusal
   cases on every verb.
@@ -144,5 +159,11 @@ These are inputs, not instructions.
   matching for own-resolver targets, and a backfill for existing sessions (#5787). This
   amendment folds that into the two "Decided, not asked" entries above, and ER-1's wording in the
   epic with it.
+- **Amendment review (Nov 27).** Gitar's five findings and Codex's P1 on the amendment folded as
+  spec text, none changing direction: the parent walk is bounded, trusts only the dispatch seam's
+  `parentSessionId`, binds to the parent's incarnation and fails closed; `notification` and any
+  unlisted source read as machine; the request-id claim normalises a pre-org record before the
+  exact compare; an absent `resolvedBy` never matches; and the new mechanisms each got a Signal
+  row with a control that must fail it. `mcp` and `cli` stay a person's (entry above).
 
 **Open: none.**
