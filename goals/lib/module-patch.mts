@@ -10,7 +10,10 @@
  * Each patch's `from` is a regular expression that reads the same in the
  * TypeScript source and in tsx's JavaScript output. A module that has nothing
  * matching fails here, before the run, and again at load, so a control that
- * no longer applies can't pass by running unpatched.
+ * no longer applies can't pass by running unpatched. Here it is its own
+ * verdict, `control patch target not found`, with its own exit code
+ * ({@link PATCH_TARGET_MISSING_EXIT}), so it can't read as the control failing
+ * its row.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,15 +29,26 @@ export interface ModulePatch {
 const HOOK = fileURLToPath(new URL("./module-patch.mjs", import.meta.url));
 
 /**
+ * The exit code when a patch's target is missing from its module. Neither 0,
+ * 1 (FAIL), nor 3 (CAN'T TELL): the control never ran, so it neither failed
+ * its row nor passed it.
+ */
+export const PATCH_TARGET_MISSING_EXIT = 4;
+
+/**
  * The environment that applies `patches` to a process serving the checkout at
  * `root`. When `mark` is set, each patched file is appended to it as it loads.
  *
- * @throws When a module at the checkout has nothing a patch's `from` matches.
+ * Exits with {@link PATCH_TARGET_MISSING_EXIT} when a module at the checkout
+ * has nothing a patch's `from` matches.
  */
 export function modulePatchEnv(patches: readonly ModulePatch[], root: string, mark?: string): Record<string, string> {
   for (const patch of patches) {
     const source = readFileSync(join(root, patch.module), "utf8");
-    if (!new RegExp(patch.from).test(source)) throw new Error(`${patch.module} has nothing matching /${patch.from}/ to patch`);
+    if (!new RegExp(patch.from).test(source)) {
+      console.error(`control patch target not found: ${patch.module} /${patch.from}/`);
+      process.exit(PATCH_TARGET_MISSING_EXIT);
+    }
   }
   return {
     NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${pathToFileURL(HOOK).href}`.trim(),

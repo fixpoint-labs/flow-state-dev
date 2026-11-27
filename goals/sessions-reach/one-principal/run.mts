@@ -75,7 +75,11 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   ],
   // The session store writes whatever kind a whole-record write carries.
   "kind-not-sticky": [
-    { module: SHARED, from: String.raw`if \(kept === undefined \|\| value\.principalKind === kept\) return value;`, to: "return value;" }
+    {
+      module: SHARED,
+      from: String.raw`if \(was !== undefined && kept\[field\] !== was\)`,
+      to: `if (field !== "principalKind" && was !== undefined && kept[field] !== was)`
+    }
   ],
   // A session with no readable birth request reads as a person's.
   "backfill-as-person": [
