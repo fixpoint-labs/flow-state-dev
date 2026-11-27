@@ -49,7 +49,7 @@ It comes down to who writes it: a model's field can be steered by the review its
 **What would change my mind:** the operator never needing replies to unlisted authors or to a pull request the task didn't open. Then drop the exception and the stamp; listed reviewers on the task's own pull requests only.
 
 <a name="d3"></a>
-## D3 · The shell keeps the operator's GitHub login; only the recipe goes, and containing the credential is a follow-up
+## D3 · The shell keeps the operator's GitHub login; only the recipe goes, and containing the credential is FIX-2963
 
 | | |
 |---|---|
@@ -92,7 +92,7 @@ It comes down to what still works: cutting `gh` breaks reading and contains noth
 4. **New factors** — FIX-2900 (read-only turns) and FIX-2873 (one reviewer list) landed since; both are composed, not crossed.
 5. **Necessity** — earns its place: the reply path posts as the operator.
 6. **Ergonomics** — the coder writes a file instead of a `gh` command; the operator pastes a link to widen.
-7. **Concerns** — the run's ambient GitHub login (D3). Recorded as the follow-up, not folded.
+7. **Concerns** — the run's ambient GitHub login (D3). Recorded as FIX-2963, not folded.
 
 ## How it got here
 

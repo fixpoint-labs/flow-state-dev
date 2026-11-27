@@ -23,7 +23,7 @@ Cursor's security review on #5390 found that the reply recipe in the coder's ins
 |---|---|
 | **The real need** | The issue: "one reply tool (or code path) that takes the body as a field… posts only on the pull request recorded for this run; replies only to a comment id read from that pull request; uses the operator token only when the session user is the operator; ignores comment authors outside `githubReviewers` unless the operator named the comment. Test the refusals: another reviewer, another user, another repository" |
 | **Smaller, and rejected** | Tighter wording in `WORKER.md`. That is #5390's second commit, and the issue exists because it is still the model's word. Also rejected: a tool for Claude Code only, which leaves Codex and Cursor on `gh` |
-| **Bigger, and not this issue's** | A coding run that holds no GitHub credential at all, so a run that ignores its instructions can't post with `gh`. Today the run pushes with the operator's login, so this is a change to every run's push ([D3](DECISIONS.md#d3), follow-up to file). A check for prompt injection in a review: FIX-2880 |
+| **Bigger, and not this issue's** | A coding run that holds no GitHub credential at all, so a run that ignores its instructions can't post with `gh`. Today the run pushes with the operator's login, so this is a change to every run's push ([D3](DECISIONS.md#d3), FIX-2963). A check for prompt injection in a review: FIX-2880 |
 | **Not done if** | The checks run only in a unit test of the poster · a refusal is counted where the poster returns, not where GitHub would receive it · the coder's instructions still tell it to post with `gh` · Codex or Cursor drafts are never read · a refused draft disappears with no line in the session |
 
 ```mermaid
@@ -122,7 +122,7 @@ The manager reads the drafts from the run's checkout with no harness involved, w
 |---|---|
 | **Removes** | The `gh` reply recipe in `WORKER.md`, and its test's pins |
 | **Adds** | A second host-side GitHub write beside landing. Permanent by design: a reply is not a push |
-| **Leaves** | **The run still holds the operator's GitHub login.** A run that ignores its instructions can post with `gh`, or push to any repository the login reaches. The follow-up is to file ([D3](DECISIONS.md#d3)). A project's GitHub MCP server posts on the owner's key, unchecked by the poster. Where GitHub code lives: FIX-2931 |
+| **Leaves** | **The run still holds the operator's GitHub login.** A run that ignores its instructions can post with `gh`, or push to any repository the login reaches. FIX-2963 pays it ([D3](DECISIONS.md#d3)). A project's GitHub MCP server posts on the owner's key, unchecked by the poster. Where GitHub code lives: FIX-2931 |
 
 **Net: flat.** One instruction path goes; one checked path and one file channel come. Until the follow-up lands, the unchecked path is reachable but no longer the one the coder is told to use.
 
@@ -134,7 +134,7 @@ The manager reads the drafts from the run's checkout with no harness involved, w
 
 1. **[D1](DECISIONS.md#d1) · The run drafts its replies in a file; the harness manager posts them when the turn ends.** If wrong: replies arrive after the turn, and a run can't react to a refusal.
 2. **[D2](DECISIONS.md#d2) · "The operator named it" means a link in a message the operator wrote: the one that filed the task, or one they sent the task.** If wrong: the operator can't open a reply to an outsider without pasting its link.
-3. **[D3](DECISIONS.md#d3) · The shell keeps the operator's GitHub login; only the recipe goes. Containing the credential is a follow-up.** If wrong: a disobeying run can still post as the operator, unchecked.
+3. **[D3](DECISIONS.md#d3) · The shell keeps the operator's GitHub login; only the recipe goes. Containing the credential is FIX-2963.** If wrong: a disobeying run can still post as the operator, unchecked.
 
 **Open: none.** D3 is the one to weigh: it decides whether "enforced" covers a run that disobeys. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
