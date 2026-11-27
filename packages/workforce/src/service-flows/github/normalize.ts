@@ -48,7 +48,9 @@
  * checked against GitHub's form, and its url the run's page on the event's own repository
  * (`https://github.com/<owner>/<repo>/runs/<id>`, or `/actions/runs/<id>[/job/<id>]`), else empty. Never the run's `output` (title,
  * summary, text, annotations) or logs: the workflow writes those, and a pull request can change
- * the workflow, so no subscriber of any kind hears them.
+ * the workflow, so no subscriber of any kind hears them. A check run is on a pull request only when
+ * its entry in `pull_requests` is headed on this repository at the branch of the run's suite
+ * (`check_suite.head_branch`); otherwise it is on the repository's thread alone.
  *
  * **`addressed`.** `true` when the event mentions one of the app's agent
  * handles (outside quoted lines and code), assigns one, or requests its review.
@@ -73,6 +75,18 @@ const UNNAMED_CHECK = "a CI check";
 
 /** The path of a check run's page on its repository: `runs/<id>`, or an Actions run, or one job of it. */
 const CHECK_RUN_PATH = /^\/(?:runs\/\d+|actions\/runs\/\d+(?:\/job\/\d+)?)$/;
+
+/**
+ * Whether a pull-request entry GitHub lists on a check run or suite is headed on `repository`: its
+ * head repository's id is the repository's, or its API url is `fullName`'s. GitHub's entry names no
+ * `full_name`.
+ */
+export function githubHeadedOn(entry: Record<string, unknown> | undefined, fullName: string, repositoryId?: unknown): boolean {
+  const repo = obj(obj(entry?.head)?.repo);
+  if (repo === undefined) return false;
+  if (typeof repositoryId === "number" && repo.id === repositoryId) return true;
+  return typeof repo.url === "string" && repo.url.toLowerCase() === `https://api.github.com/repos/${fullName.toLowerCase()}`;
+}
 
 /** A check run's `html_url` when it is a run page on `fullName` (`owner/repo`, any case), else `""`. */
 function checkRunUrl(value: string | undefined, fullName: string): string {
@@ -375,11 +389,16 @@ export function normalizeGitHubEvent(input: GitHubEventInput, options: GitHubNor
         labels: [],
         url: checkRunUrl(str(run.html_url), fullName)
       };
+      // A pull request the run is on only when its entry is headed on this repository at the branch the
+      // run's suite ran for: a fork's pull request at the same commit stays off it, the run the repository's alone.
+      const suiteBranch = str(obj(run.check_suite)?.head_branch);
       const numbers = [
         ...new Set(
           (Array.isArray(run.pull_requests) ? run.pull_requests : []).flatMap((pr) => {
-            const n = num(obj(pr)?.number);
-            return n === undefined ? [] : [n];
+            const entry = obj(pr);
+            const n = num(entry?.number);
+            const ours = suiteBranch !== undefined && str(obj(entry?.head)?.ref) === suiteBranch && githubHeadedOn(entry, fullName, repository?.id);
+            return n === undefined || !ours ? [] : [n];
           })
         )
       ];

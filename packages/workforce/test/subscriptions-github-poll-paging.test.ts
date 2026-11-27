@@ -61,7 +61,10 @@ function prApi(): Record<string, unknown> {
     "/repos/acme/api/pulls/412/reviews": [],
     "/repos/acme/api/pulls/412/comments": [],
     "/repos/acme/api/commits/abc/check-runs": { check_runs: [] },
-    "/repos/acme/api/commits/abc/check-suites": { check_suites: [{ id: 1, head_branch: "rename" }] }
+    "/repos/acme/api/commits/abc/check-suites": {
+      check_suites: [{ id: 1, head_branch: "rename", pull_requests: [{ number: 412, head: { ref: "rename", repo: { url: "https://api.github.com/repos/acme/api" } } }] }]
+    },
+    "/repos/acme/api/actions/runs": { workflow_runs: [{ check_suite_id: 1, head_repository: { full_name: "acme/api" } }] }
   };
 }
 

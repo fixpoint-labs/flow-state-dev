@@ -26,9 +26,13 @@
  * **Whose checks.** A pull request hears check runs only from its own branch on
  * this repository. A head on a fork hears none, and isn't asked for them: anyone
  * can open a fork's pull request at the same commit, and its workflow reports on
- * that commit here. A run at the head commit is kept only when its suite ran for
- * the pull request's branch (`check_suite.head_branch`). A check run's own object
- * names only its suite's id, so the head's suites are read once, in full, on a
+ * that commit here. A run at the head commit is kept only when its suite lists
+ * this pull request headed on this repository (`check_suite.pull_requests`), not
+ * by a branch name a fork can copy. A GitHub Actions run is also kept only when
+ * the workflow run that made its suite is headed on this repository
+ * (`workflow_run.head_repository`); when that can't be read, it is dropped. A
+ * check run's own object names only its suite's id, so the head's suites (and,
+ * for an Actions run, the head's workflow runs) are read once, in full, on a
  * poll that found a finished run; a quiet poll costs nothing more. The head's
  * branch, or the fork mark, is kept beside the ETags, so a `304` on the pull
  * request still knows it.
@@ -47,7 +51,7 @@
  */
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import type { SubscriptionPollCursor, SubscriptionPollResult } from "../../subscriptions/subscribe";
-import { normalizeGitHubEvent, type GitHubNormalizeOptions } from "./normalize";
+import { githubHeadedOn, normalizeGitHubEvent, type GitHubNormalizeOptions } from "./normalize";
 
 type Json = Record<string, unknown>;
 
@@ -82,6 +86,9 @@ const HEAD_KEY = "#head";
  */
 const HEAD_REF_KEY = "#head-ref";
 const HEAD_FORK_KEY = "#head-fork";
+
+/** The GitHub Actions app's slug: its check suites are bound to a workflow run as well. */
+const ACTIONS_APP = "github-actions";
 
 /** Where a list's last page and its count are kept between polls, beside the ETags. */
 const LAST_PREFIX = "#last:";
@@ -399,18 +406,42 @@ export async function pollGitHubThread(
   }
   for (const comment of reviewComments) push("pull_request_review_comment", { action: "created", comment, pull_request: subject, repository: repoPayload, sender: comment.user });
   const finished = runs.filter((run) => run.status === "completed" && after(ms(run.completed_at)));
-  // A check run names only its suite; the suite names the branch it ran for. Asked only when a run finished since the mark.
+  const fullName = `${owner}/${name}`;
+  // A check run names only its suite. A suite is this pull request's when GitHub lists the pull request on it,
+  // headed on this repository. Asked only when a run finished since the mark.
   const ours = new Set<number>();
   if (finished.length > 0 && "ref" in head) {
     for (const suite of list(obj((await get(`${repo}/commits/${sha}/check-suites?per_page=100`, true))?.body)?.check_suites)) {
-      if (typeof suite.id === "number" && suite.head_branch === head.ref) ours.add(suite.id);
+      const listed = list(suite.pull_requests).some((pr) => pr.number === Number(n) && githubHeadedOn(pr, fullName));
+      if (typeof suite.id === "number" && listed) ours.add(suite.id);
     }
   }
-  for (const run of finished) {
-    // A run at this commit from another branch's suite (a fork's pull request at the same commit) isn't this pull request's.
-    if (ours.has(obj(run.check_suite)?.id as number)) {
-      push("check_run", { action: "completed", check_run: { ...run, pull_requests: [{ number: Number(n) }] }, repository: repoPayload, sender: obj(run.app) });
+  const suiteOf = (run: Json) => obj(run.check_suite)?.id as number;
+  const isActions = (run: Json) => obj(run.app)?.slug === ACTIONS_APP;
+  // An Actions suite is also bound to the workflow run that made it, whose head repository GitHub names:
+  // a fork's workflow can't pass as ours by its branch's name. Unread or unnamed: its runs are dropped.
+  const actionsHere = new Set<number>();
+  if (finished.some((run) => isActions(run) && ours.has(suiteOf(run)))) {
+    try {
+      for (const workflow of list(obj((await get(`${repo}/actions/runs?head_sha=${sha}&per_page=100`, true))?.body)?.workflow_runs)) {
+        const from = obj(workflow.head_repository)?.full_name;
+        if (typeof workflow.check_suite_id === "number" && typeof from === "string" && from.toLowerCase() === fullName.toLowerCase()) actionsHere.add(workflow.check_suite_id);
+      }
+    } catch {
+      // Fails closed: the Actions runs on this commit aren't delivered by this poll.
     }
+  }
+  const headRef = "ref" in head ? head.ref : undefined;
+  for (const run of finished) {
+    if (!ours.has(suiteOf(run)) || (isActions(run) && !actionsHere.has(suiteOf(run)))) continue;
+    // What the poll established, as a webhook payload carries it, so normalize puts the run on this pull request.
+    const entry = { number: Number(n), head: { ref: headRef, repo: { url: `https://api.github.com/repos/${fullName}` } } };
+    push("check_run", {
+      action: "completed",
+      check_run: { ...run, check_suite: { id: suiteOf(run), head_branch: headRef }, pull_requests: [entry] },
+      repository: repoPayload,
+      sender: obj(run.app)
+    });
   }
   // Only this thread's events: a repository-wide object (a check on no pull request) isn't this poll's.
   return result(events.filter((e) => e.threads.includes(thread.toLowerCase())));

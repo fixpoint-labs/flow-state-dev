@@ -20,6 +20,8 @@ const at = (minutes: number) => new Date(SINCE + minutes * 60_000).toISOString()
 const ctx = { session: { identity: { id: "s", userId: "alice", orgId: "acme" } } } as unknown as BlockContext;
 
 const user = (login: string) => ({ login, type: "User" });
+/** PR 412 as a check suite lists it: headed on this repository. */
+const OUR_PR = { number: 412, head: { ref: "rename", repo: { url: "https://api.github.com/repos/acme/api" } }, base: { repo: { url: "https://api.github.com/repos/acme/api" } } };
 const API: Record<string, unknown> = {
   "/repos/acme/api": { full_name: "acme/api", private: false },
   "/repos/acme/api/issues/412": { number: 412, title: "Rename the handler", pull_request: {}, user: user("alice"), created_at: at(-60), updated_at: at(3), labels: [] },
@@ -40,8 +42,10 @@ const API: Record<string, unknown> = {
       { id: 6, name: "lint", status: "in_progress", check_suite: { id: 1 }, app: { slug: "github-actions" } }
     ]
   },
-  // The suites on the head commit, each with the branch it ran for: what a check run's own object doesn't carry.
-  "/repos/acme/api/commits/abc/check-suites": { check_suites: [{ id: 1, head_branch: "rename" }, { id: 2, head_branch: "elsewhere" }] }
+  // The suites on the head commit, each with the pull requests GitHub matched it to: what a check run's own object doesn't carry.
+  "/repos/acme/api/commits/abc/check-suites": { check_suites: [{ id: 1, head_branch: "rename", pull_requests: [OUR_PR] }, { id: 2, head_branch: "elsewhere", pull_requests: [] }] },
+  // The Actions workflow runs on the head commit, each naming its suite and the repository its head came from.
+  "/repos/acme/api/actions/runs": { workflow_runs: [{ check_suite_id: 1, head_repository: { full_name: "Acme/API" } }] }
 };
 
 /** The repository's lists a repo-wide poll reads: PR 412 moved after the mark, and it has no new issue comments. */
@@ -135,6 +139,39 @@ describe("GitHub's poll", () => {
       expect(second.events.filter((e) => e.kind === "check").map((e) => e.object.id)).toEqual(["check_run:7"]);
       expect(asked.filter((a) => a.path === "/repos/acme/api/pulls/412").map((a) => a.ifNoneMatch)).toEqual([expect.any(String), null]);
       expect(second.etags!["#head-ref"]).toBe("rename");
+    });
+
+    // A fork can name its branch like ours. An Actions run counts only when its workflow run's head is this
+    // repository; any other app's only when its suite lists this pull request headed here. Unknown: dropped.
+    it("drops a github-actions run whose workflow run is headed on a fork, at a matching branch and commit", async () => {
+      const { checks } = await checksOf({
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] },
+        "/repos/acme/api/actions/runs": { workflow_runs: [{ check_suite_id: 1, head_repository: { full_name: "mallory/api" } }] }
+      });
+      expect(checks).toEqual([]);
+    });
+
+    it("drops a github-actions run when its workflow runs can't be read", async () => {
+      const { checks } = await checksOf({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }, "/repos/acme/api/actions/runs": FORBIDDEN });
+      expect(checks).toEqual([]);
+    });
+
+    it("binds another app's suite to this pull request, not to a branch name", async () => {
+      const vercel = (id: number, suite: number) => ({ ...failed(id, suite), app: { slug: "vercel", name: "Vercel" } });
+      const { checks, asked } = await checksOf({
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [vercel(7, 1), vercel(8, 4), vercel(9, 5)] },
+        "/repos/acme/api/commits/abc/check-suites": {
+          check_suites: [
+            { id: 1, head_branch: "rename", pull_requests: [OUR_PR] },
+            // On our branch name, with no entry for this pull request.
+            { id: 4, head_branch: "rename", pull_requests: [] },
+            // An entry for #412 headed elsewhere.
+            { id: 5, head_branch: "rename", pull_requests: [{ ...OUR_PR, head: { ref: "rename", repo: { url: "https://api.github.com/repos/mallory/api" } } }] }
+          ]
+        }
+      });
+      expect(checks).toEqual(["check_run:7"]);
+      expect(asked, "no workflow runs asked without an Actions run").not.toContain("/repos/acme/api/actions/runs");
     });
 
     it("delivers none when the head's repository is gone (a deleted fork)", async () => {

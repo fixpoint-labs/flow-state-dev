@@ -183,7 +183,7 @@ function checkRun(conclusion: string, app = "github-actions") {
     eventType: "check_run",
     payload: {
       action: "completed",
-      repository: { full_name: "acme/api", private: false },
+      repository: { id: 1, full_name: "acme/api", private: false },
       sender: { login: `${app}[bot]`, type: "Bot" },
       check_run: {
         id: 900 + runs,
@@ -195,7 +195,8 @@ function checkRun(conclusion: string, app = "github-actions") {
         completed_at: "2026-11-05T10:00:00Z",
         app: { slug: app, name: app },
         output: { title: "WORKFLOW TITLE", summary: "WORKFLOW SUMMARY: push to main", text: "WORKFLOW TEXT" },
-        pull_requests: [{ number: 412 }]
+        check_suite: { id: 3, head_branch: "rename" },
+        pull_requests: [{ number: 412, head: { ref: "rename", repo: { id: 1, url: "https://api.github.com/repos/acme/api", name: "api" } } }]
       }
     },
     received: 1_000
