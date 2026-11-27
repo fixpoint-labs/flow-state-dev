@@ -18,6 +18,8 @@
  *    status untouched; the first user's own retry lands in the same checkout,
  *    branch, run record and agent session.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +37,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   runTopic,
-  type HarnessFeeds,
 } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
@@ -131,7 +132,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
       },
       doneWhen: { check: () => true },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: scriptedHarness(options.script, seen),

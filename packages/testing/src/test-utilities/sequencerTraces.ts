@@ -2,7 +2,7 @@
  * A sequencer's step and side-chain traces, read from the items its run
  * emitted. `testBlock` attaches them to a sequencer's result.
  */
-import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { StepTrace, SideChainTrace, TestBlockResult } from "./types";
 
@@ -12,17 +12,8 @@ type SequencerTraces = Pick<
   "steps" | "sideChainResults" | "loopIterations"
 >;
 
-type StepAccumulator = {
-  stepName: string;
-  blockName: string;
-  phase: "main" | "sideChain";
-  items: Array<OutputItem | BlockTraceItem>;
-  output: unknown;
-  error: Error | null;
-};
-
-function buildStepTraces(items: Array<OutputItem | BlockTraceItem>): StepTrace[] {
-  const map = new Map<string, StepAccumulator>();
+function buildStepTraces(items: RuntimeItem[]): StepTrace[] {
+  const map = new Map<string, StepTrace>();
 
   for (const item of items) {
     const stepIndex = item.provenance.stepIndex ?? -1;
@@ -30,44 +21,31 @@ function buildStepTraces(items: Array<OutputItem | BlockTraceItem>): StepTrace[]
     const phase = item.provenance.phase;
     const key = `${phase}:${stepIndex}:${blockName}`;
 
-    const current = map.get(key) ?? {
+    const current: StepTrace = map.get(key) ?? {
       stepName: stepIndex < 0 ? blockName : `step-${stepIndex}`,
       blockName,
-      phase,
-      items: [],
+      input: undefined,
       output: undefined,
-      error: null
+      error: null,
+      items: [],
+      durationMs: 0,
+      phase,
+      skipped: false
     };
 
     current.items.push(item);
 
-    if ((item as { type: string }).type === "block_trace") {
-      const blockOutput = item as unknown as BlockTraceItem;
-      current.output = blockOutput.output;
-      if (blockOutput.error !== undefined) {
-        current.error = new Error(blockOutput.error.message);
+    if (item.type === "block_trace") {
+      current.output = item.output;
+      if (item.error !== undefined) {
+        current.error = new Error(item.error.message);
       }
     }
 
     map.set(key, current);
   }
 
-  const traces: StepTrace[] = [];
-  for (const entry of map.values()) {
-    traces.push({
-      stepName: entry.stepName,
-      blockName: entry.blockName,
-      input: undefined,
-      output: entry.output,
-      error: entry.error,
-      items: entry.items,
-      durationMs: 0,
-      phase: entry.phase,
-      skipped: false
-    });
-  }
-
-  return traces;
+  return Array.from(map.values());
 }
 
 function buildSideChainTraces(steps: StepTrace[]): SideChainTrace[] {
@@ -81,7 +59,7 @@ function buildSideChainTraces(steps: StepTrace[]): SideChainTrace[] {
     }));
 }
 
-function inferLoopIterations(items: Array<OutputItem | BlockTraceItem>): number {
+function inferLoopIterations(items: RuntimeItem[]): number {
   const maxStep = items.reduce((max, item) => {
     if (item.provenance.stepIndex === undefined) {
       return max;
@@ -94,7 +72,7 @@ function inferLoopIterations(items: Array<OutputItem | BlockTraceItem>): number 
 }
 
 /** The step, side-chain and loop traces of a sequencer's items. */
-export function sequencerTraces(items: Array<OutputItem | BlockTraceItem>): SequencerTraces {
+export function sequencerTraces(items: RuntimeItem[]): SequencerTraces {
   const steps = buildStepTraces(items);
   return {
     steps,

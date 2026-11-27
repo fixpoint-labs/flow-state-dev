@@ -42,7 +42,7 @@ import {
   scheduledTaskInputSchema,
   type StoredSchedule
 } from "../schedules/scheduled-work";
-import { subscriptionResources, subscriptionsOf, type SubscriptionResourceState } from "../subscriptions/rows";
+import { subscriptionsOf, type SubscriptionResourceState } from "../subscriptions/rows";
 import {
   customScreensLine,
   isPaused,
@@ -66,8 +66,8 @@ import {
 } from "./keys";
 import { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./listed-routine";
 import { routineProvidersOf } from "./routines-options";
-import { routineResourcesOf } from "./routine-resources";
-import { installationPolling, pollingOn, type SubscriptionPolling } from "../subscriptions/poll";
+import { routineResourcesOf, type RoutineResources } from "./routine-resources";
+import { pollingOn, type SubscriptionPolling } from "../subscriptions/poll";
 
 // ---- inputs ------------------------------------------------------------------
 
@@ -328,7 +328,7 @@ async function listWithDeclared(
           metadata: { madeBy },
           ...(trigger.clock.timezone === undefined ? {} : { timezone: trigger.clock.timezone }),
           ...(entry.description === undefined ? {} : { description: entry.description })
-        } as StoredSchedule)
+        })
       );
       continue;
     }
@@ -353,12 +353,6 @@ const routinesViewOutputSchema = z.object({ routines: z.array(listedRoutineSchem
 
 /** The `routines` view, as the roster flow serves it. Import as a type in client code. */
 export type RoutinesViewDefinition = ViewDefinition<BlockDefinition<z.ZodObject<Record<string, never>>, typeof routinesViewOutputSchema>, "user">;
-
-/** The caller a user-scope view runs for: its verified user and the org the request was admitted under. */
-function viewCaller(ctx: BlockContext): { userId?: string; orgId?: string } {
-  const identity = (ctx.request as { identity?: { userId?: string; orgId?: string } } | undefined)?.identity;
-  return { userId: identity?.userId, orgId: identity?.orgId };
-}
 
 /** A routine id's trigger and key, or `undefined` when it names neither. */
 function parseRoutineId(id: string): { clock: string } | { event: string } | undefined {
@@ -429,11 +423,11 @@ async function declaredEventRefusal(
 async function conversationWith(ctx: BlockContext, installation: WorkerInstallation, worker: string): Promise<SubscribeTarget | { refused: string }> {
   const found = await rosterHearer(ctx, installation, worker);
   if ("refused" in found) return found;
-  const identity = ctx.session.identity as { userId?: string; orgId?: string };
+  const identity = ctx.session.identity;
   if (identity.userId === undefined || identity.orgId === undefined) return { refused: "no_identity: a routine needs a user and an organization." };
   const sessionId = await deriveWorkerSessionId({ userId: identity.userId, orgId: identity.orgId, flow: found.flow, criteria: { worker } });
   // The conversation is in the tenant the user is working in now: the roster session's.
-  const tenantId = (identity as { tenantId?: string }).tenantId;
+  const tenantId = identity.tenantId;
   return { sessionId, flow: found.flow, worker, ...(tenantId === undefined || tenantId.length === 0 ? {} : { tenantId }) };
 }
 
@@ -579,7 +573,7 @@ export async function seedDeclaredRoutines(
   options: Pick<RoutinesOptions, "providers" | "declared">
 ): Promise<SeedOutcome> {
   const outcome: SeedOutcome = { written: [], unchanged: [], refused: [] };
-  const identity = ctx.session.identity as { userId?: string; orgId?: string };
+  const identity = ctx.session.identity;
   if (identity.userId === undefined || identity.orgId === undefined) return outcome;
   const entries = entriesFor(options.declared ?? [], identity);
   const keys = new Set<string>();
@@ -670,8 +664,8 @@ function withoutUndefined<T extends Record<string, unknown>>(value: T): Partial<
 
 
 /** The four verbs as handlers, run by `callerOf`. */
-function verbBlocks<TResources extends Record<string, unknown>>(
-  resources: TResources,
+function verbBlocks(
+  resources: RoutineResources,
   deps: VerbDeps,
   callerOf: (ctx: BlockContext) => Caller | { refused: string },
   describe: { list: string; save: string; pause: string; delete: string }
@@ -681,7 +675,7 @@ function verbBlocks<TResources extends Record<string, unknown>>(
     description: describe.list,
     inputSchema: z.object({}).strict(),
     outputSchema: z.object({ routines: z.array(listedRoutineSchema) }),
-    resources: resources as never,
+    resources,
     execute: async (_input, ctx) => {
       const caller = callerOf(ctx);
       return { routines: "refused" in caller ? [] : await listRoutinesOf(ctx, caller) };
@@ -692,7 +686,7 @@ function verbBlocks<TResources extends Record<string, unknown>>(
     description: describe.save,
     inputSchema: saveRoutineInputSchema,
     outputSchema: routineOutcomeSchema,
-    resources: resources as never,
+    resources,
     execute: async (input, ctx) => {
       const caller = callerOf(ctx);
       return "refused" in caller ? refused(caller.refused) : saveRoutine(ctx, caller, deps, input);
@@ -703,7 +697,7 @@ function verbBlocks<TResources extends Record<string, unknown>>(
     description: describe.pause,
     inputSchema: pauseRoutineInputSchema,
     outputSchema: routineOutcomeSchema,
-    resources: resources as never,
+    resources,
     execute: async (input, ctx) => {
       const caller = callerOf(ctx);
       return "refused" in caller ? refused(caller.refused) : pauseRoutine(ctx, caller, deps, input);
@@ -714,24 +708,18 @@ function verbBlocks<TResources extends Record<string, unknown>>(
     description: describe.delete,
     inputSchema: deleteRoutineInputSchema,
     outputSchema: deletedSchema,
-    resources: resources as never,
+    resources,
     execute: async (input, ctx) => {
       const caller = callerOf(ctx);
       return "refused" in caller ? refused(caller.refused) : deleteRoutine(ctx, caller, input);
     }
   });
-  return { [ROUTINE_VERBS.list]: list, [ROUTINE_VERBS.save]: save, [ROUTINE_VERBS.pause]: pause, [ROUTINE_VERBS.delete]: remove, resources } as {
-    listRoutines: typeof list;
-    saveRoutine: typeof save;
-    pauseRoutine: typeof pause;
-    deleteRoutine: typeof remove;
-    resources: typeof resources;
-  };
+  return { [ROUTINE_VERBS.list]: list, [ROUTINE_VERBS.save]: save, [ROUTINE_VERBS.pause]: pause, [ROUTINE_VERBS.delete]: remove, resources };
 }
 
 /** The worker a turn runs, from its session's server-written state. */
 function workerCaller(ctx: BlockContext): Caller | { refused: string } {
-  const worker = ((ctx.session.state ?? {}) as Record<string, unknown>)[WORKER_ID_STATE_KEY];
+  const worker = ctx.session.state[WORKER_ID_STATE_KEY];
   return typeof worker === "string" && worker.length > 0 ? { by: "worker", worker } : { refused: "not_a_worker: this session runs no worker, so it keeps no routines." };
 }
 
@@ -744,14 +732,14 @@ function workerCaller(ctx: BlockContext): Caller | { refused: string } {
 export function workerRoutineVerbs(installation: WorkerInstallation) {
   // One set per installation: a flow that declares the verbs and the capability declares one collection.
   const known = workerVerbsByInstallation.get(installation);
-  if (known !== undefined) return known as ReturnType<typeof buildWorkerRoutineVerbs>;
+  if (known !== undefined) return known;
   const built = buildWorkerRoutineVerbs(installation);
   workerVerbsByInstallation.set(installation, built);
   return built;
 }
 
-const workerVerbsByInstallation = new WeakMap<object, unknown>();
-const capabilityByInstallation = new WeakMap<object, unknown>();
+const workerVerbsByInstallation = new WeakMap<WorkerInstallation, ReturnType<typeof buildWorkerRoutineVerbs>>();
+const capabilityByInstallation = new WeakMap<WorkerInstallation, ReturnType<typeof buildRoutinesCapability>>();
 
 function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
   // The poll schedules are declared whether or not the app polls: a worker flow is built before `hireWorkforce` says.
@@ -792,7 +780,7 @@ function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
  */
 export function createRoutinesCapability(installation: WorkerInstallation) {
   const known = capabilityByInstallation.get(installation);
-  if (known !== undefined) return known as ReturnType<typeof buildRoutinesCapability>;
+  if (known !== undefined) return known;
   const built = buildRoutinesCapability(installation);
   capabilityByInstallation.set(installation, built);
   return built;
@@ -815,9 +803,9 @@ function buildRoutinesCapability(installation: WorkerInstallation) {
  * Routines on the roster flow: the four verbs as actions the user runs over
  * all their routines, and the seed of the app's declared ones.
  */
-export function defineRoutineActions(installation: WorkerInstallation, options: RoutinesOptions, resources: Record<string, unknown>) {
-  const all = { ...installation.resources, ...resources, ...subscriptionResources, ...installationPolling(installation).resources };
-  const blocks = verbBlocks(all, { providers: options.providers ?? [], installation, ...pollingWrite(pollingOn(installation)) }, () => ({ by: "user" }), {
+export function defineRoutineActions(installation: WorkerInstallation, options: RoutinesOptions) {
+  const { resources } = installation;
+  const blocks = verbBlocks(resources, { providers: options.providers ?? [], installation, ...pollingWrite(pollingOn(installation)) }, () => ({ by: "user" }), {
     list: "The user's routines, clock and event, each with who made it, its trigger, whether it is paused, and a clock routine's next run.",
     save:
       "Save a routine: a clock trigger that files a task each time it is due, or an event trigger a worker's conversation hears. Saving a clock routine's name again replaces it." +
@@ -833,7 +821,7 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
     name: "workforce-seed-declared-routines",
     inputSchema: z.unknown(),
     outputSchema: z.object({ written: z.array(z.string()), unchanged: z.array(z.string()), refused: z.array(z.string()) }),
-    resources: all as never,
+    resources,
     execute: async (_input, ctx) => seedDeclaredRoutines(ctx, installation, options)
   });
   // FIX-2624: the list, as a view with no session, the app's declared routines joined in.
@@ -844,9 +832,9 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
       name: "workforce-routines",
       inputSchema: z.object({}),
       outputSchema: routinesViewOutputSchema,
-      resources: all as never,
-      execute: async (_input, ctx) => ({ routines: await listWithDeclared(ctx, installation, options, viewCaller(ctx)) })
+      resources,
+      execute: async (_input, ctx) => ({ routines: await listWithDeclared(ctx, installation, options, ctx.request.identity) })
     })
   }) as RoutinesViewDefinition;
-  return { actions, seed, view, resources: all };
+  return { actions, seed, view, resources };
 }

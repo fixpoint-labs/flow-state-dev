@@ -123,8 +123,8 @@ describe("the inventory module, on its fixture app", () => {
       const app = copy();
       appendFileSync(at(app, "host.mts"), "// configuration\n".repeat(400));
       expect(checkInventory(app, AT_HEAD)).toEqual([
-        expect.stringMatching(/^configuration \d+ lines, cap 300 .* \(L2: not on the allowlist\)$/),
-        expect.stringMatching(/^configuration: \d+ lines, past its merge-base total of \d+, while over its cap of 300$/),
+        expect.stringMatching(/^configuration \d+ lines, cap 310 .* \(L2: not on the allowlist\)$/),
+        expect.stringMatching(/^configuration: \d+ lines, past its merge-base total of \d+, while over its cap of 310$/),
       ]);
     });
 

@@ -22,6 +22,7 @@
  *
  * Run: pnpm tsx goals/attachments/read-a-document/run.mts
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -34,7 +35,7 @@ import { checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claud
 import { checkCodexReadiness, codexAgent } from "@flow-state-dev/codex";
 import { checkCursorReadiness, cursorAgent } from "@flow-state-dev/cursor";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import { harnessSessionFlow, type HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import { harnessSessionFlow } from "@flow-state-dev/harness-manager";
 import { makePdf } from "../../../packages/engine/test/blobs/pdf-fixture.ts";
 import {
   REPO_ROOT,
@@ -122,7 +123,7 @@ interface Harness {
   kind: string;
   model: string;
   ready: () => Promise<HarnessReadiness>;
-  agent: (feeds: HarnessSessionFeeds) => HarnessBlock;
+  agent: (feeds: HarnessFeeds) => HarnessBlock;
 }
 
 const HARNESSES: Harness[] = [

@@ -161,8 +161,8 @@ describe('memory/episodicMemory', () => {
       expect(episodeSchema.safeParse(episode).success).toBe(false)
     })
 
-    it('episodicMemoryStateSchema validates default empty state', () => {
-      expect(episodicMemoryStateSchema.safeParse({ episodes: [], totalEncoded: 0 }).success).toBe(true)
+    it('episodicMemoryStateSchema initializes empty state', () => {
+      expect(episodicMemoryStateSchema.parse({})).toEqual({ episodes: [], totalEncoded: 0 })
     })
 
     it('createEpisodicMemoryResource returns a valid resource definition', () => {

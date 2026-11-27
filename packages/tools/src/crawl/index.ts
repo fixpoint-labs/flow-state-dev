@@ -23,15 +23,21 @@ export function crawl(config: CrawlConfig = {}) {
       "Returns markdown content for each page found. Use this for site-wide content ingestion.",
     inputSchema: crawlInputSchema,
     outputSchema: crawlResultSchema,
-    execute: async (input: CrawlInput): Promise<CrawlResult> => {
+    execute: async (input: CrawlInput, ctx): Promise<CrawlResult> => {
       const { adapter, apiKey } = resolveProvider(config);
+      // The app's limits are ceilings: the model's value comes from tool input,
+      // which a crawled page can steer, so it may only ask for less.
+      const pageLimit = config.maxPages ?? 20;
+      const depthLimit = config.maxDepth ?? 2;
       return adapter.crawl(input.url, {
-        maxPages: input.maxPages ?? config.maxPages ?? 20,
-        maxDepth: input.maxDepth ?? config.maxDepth ?? 2,
+        maxPages: Math.min(input.maxPages ?? pageLimit, pageLimit),
+        maxDepth: Math.min(input.maxDepth ?? depthLimit, depthLimit),
         includePatterns: config.includePatterns ?? [],
         excludePatterns: config.excludePatterns ?? [],
         waitForJS: config.waitForJS ?? false,
         apiKey,
+        signal: ctx.signal,
+        allowedHosts: config.allowedHosts,
       });
     },
   });

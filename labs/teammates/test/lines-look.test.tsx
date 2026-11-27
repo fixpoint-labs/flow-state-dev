@@ -108,6 +108,11 @@ describe("a worker waiting for your yes", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
+  it("is the same card when a store kept it from core 0.2.0, under its old reason", () => {
+    drawLines(linesOf([approval("s1", "r1", "sus_1", "Publish the draft?", "human_approval")]), { who: "writer", canAnswer: true }); // retired-name-refusal: a stop core 0.2.0 stored
+    expect(within(screen.getByRole("region", { name: "writer asks" })).getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
   // A popup has no flow to answer through: buttons there would do nothing.
   it("offers no Approve or Reject on a screen that can't answer it (a popup), and says it waits", () => {
     drawLines(linesOf([approval("s1", "r1", "sus_1", "Publish the draft?")]), { who: "writer" });

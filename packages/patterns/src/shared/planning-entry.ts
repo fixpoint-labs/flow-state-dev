@@ -281,8 +281,9 @@ function createDefaultGoalSynthesizer<TInput extends { goal: string }>(
     name: `${name}-synthesize-goal-fallback`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ goal: z.string() }),
+    parentInputSchema: inputSchema,
     execute: async (_error, ctx) => ({
-      goal: (ctx.parent?.input as { goal?: string } | undefined)?.goal ?? "",
+      goal: ctx.parent?.input.goal ?? "",
     }),
   });
 
