@@ -1,33 +1,22 @@
 // FIX-2942.
 /**
- * The principal's mechanisms, one Signal row each: who a named reach admits
- * once `kind` and `resolvedBy` are set at the door and carried unchanged.
+ * The principal's mechanisms: who a named reach admits once `kind` and
+ * `resolvedBy` are set at the door and carried unchanged. Each describe is one
+ * mechanism, with the case it admits and the cases it refuses.
  *
- * Why these matter: each row is a way a run could reach a session a browser
- * can't (an own-resolver flow on another resolver's word, a schedule's
- * machine, a session that lost its machine mark to a stale write, a session
- * from before kinds), or a way the one exact owner comparison could refuse an
- * owner it must not (a retry of a request id from before orgs). Sessions are
- * born through real hosts where the row is about a run; rows about records
- * from before a field plant those records as they were stored.
+ * Why these matter: each is a way a run could reach a session a browser can't
+ * (an own-resolver flow on another resolver's word, a schedule's machine, a
+ * session that lost its machine mark to a stale write, a session from before
+ * kinds), or a way the one exact owner comparison could refuse an owner it
+ * must not (a retry of a request id from before orgs). Sessions are born
+ * through real hosts where the case is about a run; cases about records from
+ * before a field plant those records as they were stored.
  *
- * Anti-game: every refusal is compared with the answer for an id nobody
- * holds. The reach itself (`ctx.resources.at`) lands beside this admission,
- * and its goal check reads these rows through a block.
- *
- * Controls (`GOAL_CONTROL`), each of which must FAIL the row it names:
- *   own-resolver-closed       every own-resolver target refused: fails "own-resolver admit".
- *   resolved-by-loose         absent `resolvedBy` on both sides compares equal: fails "absent resolvedBy".
- *   schedule-as-machine       every scheduled fire is a machine: fails the first half of "a schedule naming a person".
- *   schedule-person-unscoped  a principal no resolver produced matches own-resolver targets: fails its second half.
- *   kind-not-sticky           the session store writes a stale snapshot's kind: fails "sticky kind".
- *   backfill-as-person        a session with no readable request reads as a person's: fails "backfill".
- *   parent-by-bare-id         a child inherits from whatever record holds its parent's id: fails "backfill".
- *   claim-exact-raw           the request-id claim compares a pre-org record without normalising it: fails "pre-org request retry".
- *
- * Run one: GOAL_CONTROL=<name> pnpm vitest run test/context/principal-signals.test.ts
+ * Every refusal is compared with the answer for an id nobody holds. The goal
+ * check `goals/sessions-reach/one-principal/` runs the same mechanisms and
+ * shows each one's broken stand-in failing.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler, type ScheduleConfig } from "@flow-state-dev/core";
 import {
@@ -46,58 +35,6 @@ import { claimRequestRecord, resolveCallerRequestId } from "../../src/context/re
 import { createInitialRequestRecord } from "../../src/context/initial-request-record";
 import { RequestOwnerMismatchError } from "../../src/context/binding-errors";
 import { recentTimes } from "../transports/scheduled/recent-times";
-
-const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = [
-  "",
-  "own-resolver-closed",
-  "resolved-by-loose",
-  "schedule-as-machine",
-  "schedule-person-unscoped",
-  "kind-not-sticky",
-  "backfill-as-person",
-  "parent-by-bare-id",
-  "claim-exact-raw"
-];
-if (!CONTROLS.includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL ${JSON.stringify(CONTROL)}`);
-
-// ── the controls: each swaps one rule for the wrong one ─────────────────────
-
-vi.mock("../../src/context/principal", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../src/context/principal")>();
-  const control = process.env.GOAL_CONTROL ?? "";
-  return {
-    ...real,
-    resolvedByMatches:
-      control === "own-resolver-closed"
-        ? () => false
-        : control === "resolved-by-loose"
-          ? (a: string | undefined, b: string | undefined) => a === b
-          : control === "schedule-person-unscoped"
-            ? (a: string | undefined, b: string | undefined) => a === undefined || real.resolvedByMatches(a, b)
-            : real.resolvedByMatches,
-    scheduledFireKind: control === "schedule-as-machine" ? () => "machine" : real.scheduledFireKind,
-    firstRequestKind:
-      control === "backfill-as-person"
-        ? (request: Parameters<typeof real.firstRequestKind>[0]) => (request === undefined ? "person" : real.firstRequestKind(request))
-        : real.firstRequestKind,
-    withRequestOrg: control === "claim-exact-raw" ? async (_stores: unknown, record: unknown) => record : real.withRequestOrg
-  };
-});
-vi.mock("../../src/stores/shared", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../src/stores/shared")>();
-  return process.env.GOAL_CONTROL === "kind-not-sticky" ? { ...real, withStoredPrincipalKind: (value: unknown) => value } : real;
-});
-vi.mock("../../src/stores/scope-keys", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../src/stores/scope-keys")>();
-  return process.env.GOAL_CONTROL === "parent-by-bare-id"
-    ? {
-        ...real,
-        provesDispatchingParent: (child: { userId: string; orgId?: string }, parent: { userId: string; orgId?: string }) =>
-          child.userId === parent.userId && child.orgId === parent.orgId
-      }
-    : real;
-});
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -248,7 +185,12 @@ async function plantSession(
 }
 
 /** Plant a request record in `sessionId`, as stored by a release before `principalKind`. */
-async function plantRequest(stores: StoreRegistry, id: string, sessionId: string, fields: { source?: string; userId?: string; orgId?: string | null } = {}) {
+async function plantRequest(
+  stores: StoreRegistry,
+  id: string,
+  sessionId: string,
+  fields: { source?: string; userId?: string; orgId?: string | null; at?: number } = {}
+) {
   const record = createInitialRequestRecord(
     {
       requestId: id,
@@ -260,7 +202,7 @@ async function plantRequest(stores: StoreRegistry, id: string, sessionId: string
       ...(fields.orgId === null ? {} : { orgId: fields.orgId ?? ORG }),
       ...(fields.source !== undefined ? { source: fields.source } : {})
     },
-    Date.now()
+    fields.at ?? Date.now()
   );
   await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now() }, "absent");
 }
@@ -357,7 +299,7 @@ describe("sticky kind", () => {
 });
 
 describe("backfill", () => {
-  it("reads a session from before kinds as its first request's kind", async () => {
+  it("reads a session from before kinds as its birth request's kind", async () => {
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
     registry.register(notes);
@@ -366,10 +308,10 @@ describe("backfill", () => {
     await plantSession(stores, "target", { principalKind: "person" });
     // Person: an HTTP start, and one from before `source` (read as `http`).
     await plantSession(stores, "l-http", { lineageId: "lin_http" });
-    await plantRequest(stores, "r-http-2", "l-http", { source: "internal" });
-    await plantRequest(stores, "r-http", "l-http", { source: "http" });
-    // Newest first in the store: the earliest request is the one that counts.
-    await stores.request.set("r-http", { ...(await stores.request.get("r-http"))!, startedAtMs: 1 }, "any");
+    // The birth request is written just before the session; a later turn's doesn't count.
+    const born = (await stores.session.get("l-http"))!.createdAt;
+    await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 5 });
+    await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5 });
     await plantSession(stores, "l-legacy");
     await plantRequest(stores, "r-legacy", "l-legacy");
     expect(await admit(personIn("l-http"), "target")).toBeDefined();
