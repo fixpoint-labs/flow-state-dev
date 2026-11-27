@@ -36,6 +36,7 @@ describe("the host's Claude Code harness", () => {
     dirs.push(dir);
     const repo = join(dir, "repo");
     execFileSync("git", ["init", "-q", repo]);
+    execFileSync("git", ["-C", repo, "commit", "--allow-empty", "-q", "-m", "init"]);
     vi.stubEnv("LAB_SERVER_ONLY_SECRET", "server-only");
     await openTeammates({
       store: join(dir, "store.sqlite"), model: "test/scripted", userId,
