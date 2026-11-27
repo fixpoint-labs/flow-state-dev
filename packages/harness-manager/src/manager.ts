@@ -202,6 +202,7 @@ import {
   worktreeNameFor,
   runIdentityKey,
   taskIssueSegment,
+  followUpRootId,
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
@@ -2580,9 +2581,25 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const payload = taskPayload(input, claim === null, trackerIssueOf);
       // A legacy feature payload's own `phase` names the segment its run is keyed by.
       const segment = payload?.phase ?? mode.name;
-      const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
+      // **A follow-up continues its root's run**: the same checkout, branch,
+      // run record and coding session, so it works on what the root did. Its
+      // run is keyed by its follow-up root, as every reader keys it.
+      const rootOf = (id: string) => followUpRootId({ id, followUpOf: board.get(id)?.followUpOf }, (other) => board.get(other));
+      const rootId = rootOf(input.taskId);
+      // **One task of a chain runs at a time**: two would share one checkout and
+      // one coding session. A board's one-open-task start test keeps a follow-up
+      // waiting while its root runs; on a board without one, this attempt fails
+      // and the board's retry tries again later.
+      const running = board.list().find((task) => task.id !== input.taskId && task.status === "in_progress" && rootOf(task.id) === rootId);
+      if (running !== undefined) {
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} continues the run of ${rootId}, and ${running.id} is still running ` +
+            `in it. Refusing: the two would share one checkout and one coding session.`,
+        );
+      }
+      const issue = payload === undefined || claim !== null ? taskIssueSegment(rootId) : payload.issue;
       if (payload !== undefined) {
-        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode, claim === null);
+        assertFeatureRowIdentity(input.taskId, rootId, payload.issue, segment, mode, claim === null);
       }
       // The issue the task is for, when it names one. On a board read from
       // the claim it also leads the branch (see `branchFor`), checked as an
@@ -2685,7 +2702,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         sameSegment(segment, mode.name)
           ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
           : { name: keyed },
-        input.taskId,
+        // A follow-up's run is its chain's: a record of an earlier task of the chain is this run.
+        (recordedTaskId) => recordedTaskId === input.taskId || rootOf(recordedTaskId) === rootId,
         // BP-030: before the key folded, the payload's own spelling was the key.
         segment,
       );
@@ -2807,7 +2825,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         : undefined;
       // The pull requests an accept on this task landed on (FIX-2781), kept the same
       // way whether or not this manager waits on pull requests.
-      const landedPullRequests = sameTask ? (recorded.landedPullRequests ?? []) : [];
+      // A follow-up continues its root's branch, so a pull request an accept on an
+      // earlier task of its chain landed on (the root, or an earlier follow-up) is open
+      // from its branch too, and is the work's: kept as well. Only the pull requests:
+      // the requests stay this task's own, and so do the attempt and turn fences.
+      const sameChain = recorded?.taskId != null && rootOf(recorded.taskId) === rootId;
+      const landedPullRequests = sameTask || sameChain ? (recorded.landedPullRequests ?? []) : [];
       await fenced(
         openRunRecord(
           ctx,
@@ -4860,13 +4883,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 /**
  * A feature row's identity checks: the row's segment is the manager's mode, by
  * its name or its former name (a row filed before the rename), and, on a
- * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
- * with no payload (a task a conversation filed) has neither to check. A row on
+ * fixed board, its id (a follow-up's root's id) is the one its
+ * `{ issue, phase }` payload derives. A row with no payload (a task a
+ * conversation filed) has neither to check. A row on
  * a board read from the claim is keyed by its own task id, so it has no
  * derived id to match.
  */
 function assertFeatureRowIdentity(
   taskId: string,
+  // A follow-up continues its root's run, so its root's id is the one checked.
+  rootId: string,
   issue: string,
   phaseName: string,
   mode: Pick<ModeSpec, "name" | "formerName">,
@@ -4902,8 +4928,10 @@ function assertFeatureRowIdentity(
   }
 
   // **And the row's ID must be the one its payload derives**, for the same
-  // reason and by the same route. The board capability this flow returns
-  // lets a sibling or outer block add a row with an ID of its choosing, and
+  // reason and by the same route. A follow-up's own id is not: it continues
+  // its root's run, so its root's id is the one compared. The board
+  // capability this flow returns lets a sibling or outer block add a row
+  // with an ID of its choosing, and
   // every partition below — checkout, branch, run topic — is built from the
   // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
   // IDs therefore both pass every guard here and land on one tree, one
@@ -4916,9 +4944,9 @@ function assertFeatureRowIdentity(
   // payload, so the collapse can't happen there, and its ids are minted.
   if (!fixedBoard) return;
   const canonicalId = harnessTaskId(issue, phaseName);
-  if (taskId !== canonicalId) {
+  if (rootId !== canonicalId) {
     throw new HarnessAttemptFailed(
-      `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
+      `[harness-manager] task ${taskId}${rootId === taskId ? "" : ` (a follow-up of ${rootId})`} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +
         `that payload, so a second task under a different id would run the same work ` +
         `in the same tree.`,
