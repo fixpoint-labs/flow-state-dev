@@ -50,14 +50,14 @@ const inbox = defineResourceCollection({
   reactTo: { created: react }
 });
 /** Each turn `inboxChanged` ran, with the resolver identity it ran under. */
-const woken: Array<{ session: string; rows: number }> = [];
+const woken: Array<{ session: string; entries: number }> = [];
 const inboxChanged = handler({
   name: "inbox-changed",
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
-    const rows = await (ctx.resources as any).inbox.list();
-    woken.push({ session: ctx.session.identity.id, rows: rows.length });
+    const entries = await (ctx.resources as any).inbox.list();
+    woken.push({ session: ctx.session.identity.id, entries: entries.length });
     return {};
   }
 });
@@ -166,7 +166,7 @@ async function boot() {
   return { stores, seedIn, reachFrom, reachFromDelivery, as, hear, fireDue };
 }
 
-const texts = (rows: Array<{ state: { text: string } }>) => rows.map((row) => row.state.text).sort();
+const texts = (entries: Array<{ state: { text: string } }>) => entries.map((entry) => entry.state.text).sort();
 
 describe("ctx.resources.at({ session })", () => {
   it("reads, lists and writes the named session's copy, with the calling flow's definition", async () => {
@@ -281,7 +281,7 @@ describe("ctx.resources.at({ session })", () => {
     const due = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100);
     expect(due.map((w) => [w.sessionId, w.entry, w.resolvedBy])).toEqual([["b", "inboxChanged", "host:test"]]);
     await env.fireDue(Number.MAX_SAFE_INTEGER);
-    expect(woken).toEqual([{ session: "b", rows: 20 }]);
+    expect(woken).toEqual([{ session: "b", entries: 20 }]);
   });
 
   it("naming the run's own session is its own copy: one cache, its reactTo, no wake", async () => {
