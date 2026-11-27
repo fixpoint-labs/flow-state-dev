@@ -98,6 +98,7 @@ import { isWriteSessionId } from "../resources/write-session-id";
 import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { ServiceRouteOperation } from "../durability/owner-runs";
+import { deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
 import {
   birthSession,
   SessionCreateRefusedError,
@@ -155,6 +156,13 @@ export type RequestHostInputs = {
   // FIX-2630 D1.
   /** Routes a dispatch to a `service` entry (see the seam's step 1); absent, such a dispatch refuses `no-dispatch-operation`. */
   serviceRoute?: ServiceRouteOperation;
+  // FIX-2942 D1.
+  /**
+   * The outside delivery that started this request (`readDeliveryOrigin`), if
+   * one did. Every request this one dispatches, and a service routing it
+   * starts, carries it: the mark follows dispatches.
+   */
+  deliveryOrigin?: DeliveryOrigin;
   /**
    * Resolve another flow instance registered in this process, by its exact
    * address — the flow registry, narrowed to the one question the seam asks.
@@ -697,7 +705,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
           sessionId: identity.sessionId,
           name: typeof named === "string" && named.length > 0 ? named : flow.kind
-        }
+        },
+        ...(inputs.deliveryOrigin !== undefined ? { origin: inputs.deliveryOrigin } : {})
       });
       if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
       return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };
@@ -740,6 +749,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // the facts the sender supplied through `provenance` — a channel whose
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
+        // Server-set beside the stamp: a request an outside delivery started passes its origin on.
+        ...deliveryOriginMetadata(inputs.deliveryOrigin),
         dispatch: {
           // The sender's facts, without any key the seam owns: a provenance
           // never moves the address, the reply route, the approved recipient
