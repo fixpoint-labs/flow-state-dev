@@ -11,7 +11,7 @@ import { REPO_ROOT } from "./paths.mts";
 const say = (s: string) => console.error(`[checkout ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
-export function checkoutFor(commit: string | undefined, cache: "coordinators" | "workers" | "messages"): { root: string; commit: string; describe: string } {
+export function checkoutFor(commit: string | undefined, cache: "closure" | "coordinators" | "workers" | "messages"): { root: string; commit: string; describe: string } {
   const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
   if (commit === undefined || commit === "") {
     const head = git("rev-parse", "HEAD");

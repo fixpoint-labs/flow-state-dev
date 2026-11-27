@@ -57,7 +57,6 @@ for (const l of legs) if (!(ALL_LEGS as readonly string[]).includes(l)) throw ne
 
 const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as Asks;
 
-/** The tree a run serves: this checkout, or another commit's own tree and install. */
 /** Run leg e's host in `root`'s goals, with `env`, and read its one `__GOAL__` line. */
 async function runLegE(root: string, env: Record<string, string>): Promise<any> {
   let dir = HERE;
