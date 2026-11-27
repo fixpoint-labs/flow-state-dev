@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, type ScheduleConfig } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, type ScheduleConfig } from "@flow-state-dev/core";
 import {
   createBearerSecretPrincipalResolver,
   createFlowApiRouter,
@@ -34,6 +34,26 @@ const GATEWAY = { userId: "cron-gateway", orgId: ORG };
 
 const tick = handler({ name: "tick", inputSchema: z.object({}).passthrough(), execute: async () => ({ ok: true }) });
 
+/** Children the `spawn` schedule's dispatch started: request ids, in order. */
+const spawned: string[] = [];
+const child = handler({
+  name: "child",
+  inputSchema: z.object({}).passthrough(),
+  execute: async (_input, ctx) => {
+    spawned.push(ctx.request.identity.id);
+    return {};
+  }
+});
+/** A gateway schedule whose turn dispatches into a keyed child session, which the child is born in. */
+const spawn = dispatcher({
+  name: "spawn",
+  type: "internal",
+  action: "child",
+  inputSchema: z.object({}).passthrough(),
+  session: { key: () => "spawned" },
+  payload: () => ({})
+});
+
 const schedule = (extra: Partial<ScheduleConfig>): ScheduleConfig => ({ cron: HOURLY, block: tick, session: "per-schedule", onOverlap: "allow", ...extra });
 
 // The host's resolver, not the flow's: a flow with a resolver of its own admits a
@@ -48,12 +68,13 @@ const polls = defineFlow({
       explicit: schedule({ principal: { ...GATEWAY } }),
       // Name a person: these run as carol.
       carol: schedule({ principal: { userId: "u_carol", orgId: ORG } }),
-      "carol-two": schedule({ principal: { userId: "u_carol", orgId: ORG } })
+      "carol-two": schedule({ principal: { userId: "u_carol", orgId: ORG } }),
+      spawn: schedule({ block: spawn })
     }
   },
   actions: {},
   // A later run in a fire's session: what a wake or internal dispatch replays.
-  internal: { actions: { wake: { block: tick } } }
+  internal: { actions: { wake: { block: tick }, child: { block: child } } }
 })();
 
 const routers: ReturnType<typeof createFlowApiRouter>[] = [];
@@ -139,6 +160,22 @@ describe("a gateway schedule's session", () => {
     });
     expect((await settled(env.stores, woke.requestId!)).status).toBe("completed");
     expect(await reach(env, fallback, explicit.sessionId)).toBeUndefined();
+  });
+
+  it("makes the child session it dispatches into a machine's too, refused the other schedule's session", async () => {
+    const env = build();
+    spawned.length = 0;
+    const fallback = await fire(env, "fallback");
+    await fire(env, "spawn");
+    for (let i = 0; i < 300 && spawned.length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(spawned).toHaveLength(1);
+    const childRun = await settled(env.stores, spawned[0]!);
+    const childSession = { sessionId: childRun.sessionId!, userId: childRun.userId, orgId: childRun.orgId! };
+    // The child runs as the machine, under the dispatch's source and metadata: no schedule stamp at all.
+    expect(childSession.userId).toBe(GATEWAY.userId);
+    expect(childRun.source).not.toBe("scheduled");
+    expect(childSession.sessionId).not.toBe(fallback.sessionId);
+    expect(await reach(env, childSession, fallback.sessionId)).toBeUndefined();
   });
 
   it("is a person's when the schedule names a person, and reaches that person's other sessions", async () => {
