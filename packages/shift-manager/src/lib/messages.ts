@@ -1,9 +1,12 @@
-// FIX-1989; FIX-2624.
+// FIX-1989; FIX-2624; FIX-2845.
 /**
- * The user's message log: Workforce's `workforce/messages/*`, read whole by
- * user scope with no session through `react`'s `useResource`, and kept
- * current by its notices: a new message is one entry read, never the whole
- * log again. Another user's messages are not in it.
+ * The user's message log: Workforce's `workforce/messages/*`, read by user
+ * scope with no session through `react`'s `useResource`. Another user's
+ * messages are not in it.
+ *
+ * The screen reads the newest page and asks for older pages as it scrolls.
+ * A notice that names messages merges those messages in: a new message is
+ * one entry read, never the whole log again.
  */
 import { useMemo } from "react";
 import { useResource } from "@flow-state-dev/react";
@@ -54,17 +57,40 @@ export function firstLine(text: string): string {
 }
 
 /**
- * The log, read whole when the view opens and kept current by its notices.
- * A later read that fails keeps the rows already drawn; only a failed first
- * read shows. `rows` is `null` when no flow of the Lab declares the log (a
- * 404): it keeps no roster for the user.
+ * The log, read when the view opens, kept current by its notices, and read
+ * again on R. The newest page comes first. `loadOlder()` fetches the next
+ * older page. A notice that names messages merges those messages in. A later
+ * read keeps the last rows until it lands, and a failed later read keeps
+ * them; only a failed first read shows. `rows` is `null` when no flow of the
+ * Lab declares the log (a 404): it keeps no roster for the user.
  */
-export function useMessages(): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
+export function useMessages(): {
+  rows: WorkerMessageResourceState[] | null | undefined;
+  failure: Failure | undefined;
+  reread: () => void;
+  /** Whether an older page of the log can be loaded. */
+  hasOlder: boolean;
+  /** Fetch the next older page. No-op when `hasOlder` is false. */
+  loadOlder: () => void;
+} {
   const { client } = useLab();
-  const { value, failure, refresh } = useResource(workerMessagesResource, { client, all: true });
-  useReadAgainOnR(refresh);
-  const rows = useMemo(() => (value === null ? undefined : toMessages(value.map((entry) => entry.value))), [value]);
-  if (rows !== undefined) return { rows, failure: undefined, reread: refresh };
-  if (failure?.httpStatus === 404) return { rows: null, failure: undefined, reread: refresh };
-  return { rows: undefined, failure, reread: refresh };
+  // The log is the user's: a message sent from any session writes its row under the user's scope.
+  const log = useResource(workerMessagesResource, { newest: true, client });
+  useReadAgainOnR(log.refresh);
+  const rows = useMemo(
+    () =>
+      log.value === null
+        ? log.failure?.httpStatus === 404
+          ? null
+          : undefined
+        : toMessages(log.value.map((entry) => entry.value)),
+    [log.value, log.failure]
+  );
+  return {
+    rows,
+    failure: rows === undefined ? log.failure : undefined,
+    reread: log.refresh,
+    hasOlder: log.hasOlder,
+    loadOlder: log.loadOlder
+  };
 }

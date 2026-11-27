@@ -2,16 +2,53 @@
 /** Messages: both sides, newest first, grouped by exchange; a sent message is its own line in the conversation. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ClientHttpError } from "@flow-state-dev/client";
+import { ClientHttpError, createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
-// FIX-2775: the log is read whole through react's `useResource`, by `listAll()` on the client's direct read.
-const readAll = vi.fn();
-const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn(), listAll: (...a: unknown[]) => readAll(...a), entry: vi.fn() }));
+// FIX-2775, FIX-2845: the log is read through react's `useResource`, its newest page on the client's direct read.
+/** The log the screen reads, and a failure the next list throws. */
+const held: { messages: WorkerMessageResourceState[]; fail?: Error; lists: string[] } = { messages: [], lists: [] };
+
+const fetcher: ClientFetch = async (input) => {
+  const url = new URL(String(input), "http://x");
+  if (held.fail !== undefined) throw held.fail;
+  if (!url.pathname.endsWith("/entries")) throw new Error(`unrouted ${url.pathname}`);
+  held.lists.push(url.search);
+  const limit = Number(url.searchParams.get("limit") ?? 50);
+  const cursor = url.searchParams.get("cursor");
+  const newest = url.searchParams.get("order") === "newest";
+  const ranked = [...held.messages].sort((a, b) => (newest ? b.at - a.at || a.id.localeCompare(b.id) : a.id.localeCompare(b.id)));
+  const start =
+    cursor === null
+      ? 0
+      : ranked.findIndex((message) =>
+          newest
+            ? JSON.stringify([message.at, `workforce/messages/${message.id}`]) === cursor
+            : `workforce/messages/${message.id}` === cursor
+        ) + 1;
+  const page = ranked.slice(Math.max(start, 0), Math.max(start, 0) + limit);
+  const last = page.at(-1);
+  const nextCursor =
+    start + limit < ranked.length && last !== undefined
+      ? newest
+        ? JSON.stringify([last.at, `workforce/messages/${last.id}`])
+        : `workforce/messages/${last.id}`
+      : undefined;
+  return new Response(
+    JSON.stringify({
+      items: page.map((message) => ({ topic: message.id, storageKey: `workforce/messages/${message.id}`, value: message, version: 1 })),
+      ...(nextCursor === undefined ? {} : { nextCursor })
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+};
+
+const real = createClient({ userId: "u_1", baseUrl: "", fetcher });
+const resource = vi.fn(real.resource.bind(real));
 // A subscription that hears nothing: each view reads once on open.
-const lab = { client: { userId: "u_1", resources: {}, resource, subscribe: () => ({ close: () => {} }) }, refresh: vi.fn() };
+const lab = { client: { userId: "u_1", resource, subscribe: () => ({ close() {} }) }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
@@ -20,7 +57,7 @@ import { ToolGroup } from "../src/components/flow-state/tool";
 import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
 import type { DataItem } from "@flow-state-dev/core/items";
 
-const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
+const message = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
   text: "hello",
   exchange: over.id,
   fromSession: `s_${over.from}`,
@@ -32,16 +69,14 @@ const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResou
   ...over,
 });
 
-const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
-const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
-const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
-
-/** The log's entries as the direct read answers them. */
-const entries = (stored: WorkerMessageResourceState[]) =>
-  stored.map((r) => ({ topic: r.id, storageKey: `workforce/messages/${r.id}`, value: r, version: 1 }));
+const ask = message({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
+const answer = message({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
+const other = message({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 beforeEach(() => {
-  readAll.mockReset();
+  held.messages = [];
+  held.fail = undefined;
+  held.lists = [];
   resource.mockClear();
   window.history.replaceState(null, "", "/messages");
 });
@@ -65,12 +100,13 @@ describe("the message log, as exchanges", () => {
 
 describe("the Messages view", () => {
   it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
-    readAll.mockResolvedValue(entries([ask, answer, other]));
+    held.messages = [ask, answer, other];
     render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     expect(resource).toHaveBeenCalledWith(expect.objectContaining({ scope: "user", pattern: "workforce/messages/*" }), undefined);
-    // Every page, not the first: the log is read whole.
-    expect(readAll).toHaveBeenCalledTimes(1);
+    // The newest page, one list: the log is never read whole.
+    expect(held.lists).toHaveLength(1);
+    expect(held.lists[0]).toContain("order=newest");
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
       "coordinator>researcher",
       "researcher>coordinator",
@@ -86,9 +122,9 @@ describe("the Messages view", () => {
   });
 
   it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
-    const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
-    const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
-    readAll.mockResolvedValue(entries([onItsWay, gaveUp]));
+    const onItsWay = message({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
+    const gaveUp = message({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
+    held.messages = [onItsWay, gaveUp];
     render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
@@ -97,11 +133,11 @@ describe("the Messages view", () => {
   });
 
   it("says where a reply request's answer is: waiting, waiting on the user, answered, or answered after its sender's wait ended (FIX-2318)", async () => {
-    const waiting = row({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", replyRequested: true, deadlineAt: 66_000 });
-    const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
-    const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
-    const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
-    readAll.mockResolvedValue(entries([waiting, onPerson, answered, late, ask]));
+    const waiting = message({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", replyRequested: true, deadlineAt: 66_000 });
+    const onPerson = message({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
+    const answered = message({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
+    const late = message({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
+    held.messages = [waiting, onPerson, answered, late, ask];
     render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const replyState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-reply-state")?.textContent;
@@ -114,21 +150,89 @@ describe("the Messages view", () => {
   });
 
   it("says so when there are none", async () => {
-    readAll.mockResolvedValue([]);
+    held.messages = [];
     render(<Messages />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
 
   it("says this Lab keeps no log when no flow declares it", async () => {
-    readAll.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
+    held.fail = new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } });
     render(<Messages />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("keeps no roster");
   });
 
   it("says what the Lab answered when the log didn't load", async () => {
-    readAll.mockRejectedValue(new Error("store offline"));
+    held.fail = new Error("store offline");
     render(<Messages />);
     await waitFor(() => expect(screen.getByTestId("messages-failure").textContent).toContain("store offline"));
+  });
+
+  it("shows the newest page of a log past one page, and loads older messages on scroll", async () => {
+    held.messages = Array.from({ length: 250 }, (_, i) =>
+      message({ id: `msg_${String(i).padStart(3, "0")}`, from: "researcher", to: "coordinator", at: 1_000 + i, text: `line ${i}` })
+    );
+    render(<Messages />);
+    const first = await screen.findAllByTestId("message");
+    expect(first).toHaveLength(200);
+    expect(first[0]!.getAttribute("data-message-id")).toBe("msg_249");
+    expect(first[199]!.getAttribute("data-message-id")).toBe("msg_050");
+    expect(screen.queryByTestId("messages-failure")).toBeNull();
+    expect(held.lists.every((search) => search.includes("order=newest"))).toBe(true);
+    expect(held.lists.some((search) => search.includes("manifest=1"))).toBe(false);
+
+    const scroller = screen.getByTestId("messages-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
+    scroller.scrollTop = 3600;
+    act(() => fireEvent.scroll(scroller));
+    await waitFor(() => expect(screen.getAllByTestId("message")).toHaveLength(250));
+    const shown = screen.getAllByTestId("message").map((line) => line.getAttribute("data-message-id"));
+    expect(shown[0]).toBe("msg_249");
+    expect(shown[249]).toBe("msg_000");
+  });
+
+  it("shows an answer before its older request, and the request says it was answered once it loads", async () => {
+    const fillers = Array.from({ length: 199 }, (_, i) =>
+      message({ id: `msg_${String(i + 1).padStart(3, "0")}`, from: "helper-a", to: "helper-b", at: 100 + i, text: `note ${i}` })
+    );
+    const ask = message({
+      id: "msg_000",
+      from: "researcher",
+      to: "coordinator",
+      at: 1,
+      text: "What is the codename?",
+      replyRequested: true,
+      answeredBy: "msg_answer"
+    });
+    const answer = message({
+      id: "msg_answer",
+      from: "coordinator",
+      to: "researcher",
+      at: 10_000,
+      exchange: "msg_000",
+      inReplyTo: "msg_000",
+      text: "BLUE-HERON",
+      hop: 2
+    });
+    held.messages = [ask, answer, ...fillers];
+    render(<Messages />);
+    const first = await screen.findAllByTestId("message");
+    expect(first).toHaveLength(200);
+    expect(first[0]!.getAttribute("data-message-id")).toBe("msg_answer");
+    expect(screen.queryByText("reply · waiting")).toBeNull();
+    expect(screen.queryByTestId("message-reply-state")).toBeNull();
+
+    const scroller = screen.getByTestId("messages-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
+    scroller.scrollTop = 3600;
+    act(() => fireEvent.scroll(scroller));
+    await waitFor(() => expect(screen.getAllByTestId("message")).toHaveLength(201));
+    const request = screen.getAllByTestId("message").find((line) => line.getAttribute("data-message-id") === "msg_000");
+    expect(request).toBeDefined();
+    expect(within(request!).getByTestId("message-reply-state").textContent).toBe("reply · answered");
+    const exchange = request!.closest("[data-testid='message-exchange']");
+    expect(exchange?.querySelector("[data-message-id='msg_answer']")).not.toBeNull();
   });
 
   it("is at /messages, and a session at /s/<id>", () => {

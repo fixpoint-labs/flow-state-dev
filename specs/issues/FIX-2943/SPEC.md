@@ -96,7 +96,7 @@ glossary term is coined: "shared definition" is not added ([D1](DECISIONS.md#d1)
 | The debt | |
 |---|---|
 | **Removes** | The exact-ref key and the session-scope gap in the clash check, and the over-refusal of isolated copies |
-| **Adds** | A start-up refusal for apps that today start with two shapes under one session-scoped name. Permanent by design: those apps would read each other's rows wrong |
+| **Adds** | A start-up refusal for apps that today start with two shapes under one session-scoped name. Permanent by design: those apps would read each other's rows wrong. And a start-up refusal for two flows declaring one user or org address with different client, `runBy` or `canWrite` settings ([One comparison](DECISIONS.md)): today such an app starts and every addressed read or write of it answers 409. Checked at the build: every app, example and lab config, and every goal config that loads outside its goal run, starts with the refusal in place |
 | **Leaves** | The same-kind skip, whose stale-schema gap `unregister`'s note describes. A restart fixes it, and changing what identity the check keys on is its own change |
 
 **Net: down.** One check covers every scope, two issues close, and no flag is added.
