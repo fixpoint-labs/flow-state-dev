@@ -67,6 +67,17 @@ describe("the environment a Claude Code run's process inherits", () => {
     expect(seen.PATH).toBe(process.env.PATH);
   });
 
+  it("holds no ANTHROPIC_API_KEY under FSD_CLAUDE_CODE_AUTH=login-only, so the run signs in instead", async () => {
+    // A server keeps the key for direct model calls; the harness must not bill it.
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-for-direct-calls");
+    vi.stubEnv("FSD_CLAUDE_CODE_AUTH", "login-only");
+
+    const seen = await envSeenByRun();
+
+    expect("ANTHROPIC_API_KEY" in seen).toBe(false);
+    expect(seen.PATH).toBe(process.env.PATH);
+  });
+
   it("is the server's whole process.env when the host passes it, secrets included", async () => {
     // The way back to the old behaviour is explicit, never the default.
     vi.stubEnv(SECRET, "server-only");

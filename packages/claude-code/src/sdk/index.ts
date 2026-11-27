@@ -40,6 +40,13 @@ export {
 } from "./account-probe";
 export { CLAUDE_CODE_PASS } from "./env-pass";
 export {
+  applyClaudeCodeAuthPreference,
+  type ApplyClaudeCodeAuthPreferenceOptions,
+  CLAUDE_CODE_AUTH_VAR,
+  type ClaudeCodeAuthPreference,
+  readClaudeCodeAuthPreference,
+} from "./auth-preference";
+export {
   listClaudeCodeModels,
   type ListClaudeCodeModelsOptions,
 } from "./model-list";
