@@ -14,6 +14,18 @@ export function resolveProvider(config: CrawlConfig): {
   adapter: CrawlProviderAdapter;
   apiKey?: string;
 } {
+  if (config.allowedHosts !== undefined) {
+    // Firecrawl follows redirects on its own servers, where no hop can be
+    // checked, so an allowlist is only kept by the built-in provider.
+    if (config.provider !== undefined && config.provider !== "builtin") {
+      throw new Error(
+        `Crawl provider "${config.provider}" cannot enforce allowedHosts; ` +
+          `use the builtin provider or remove allowedHosts`
+      );
+    }
+    return { adapter: getAdapter("builtin") };
+  }
+
   if (config.provider) {
     if (config.provider === "builtin") {
       return { adapter: getAdapter("builtin") };
