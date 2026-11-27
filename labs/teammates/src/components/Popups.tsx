@@ -30,6 +30,7 @@ import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
+import { RunningChanges } from "./RunningChanges";
 import { Steps } from "./Steps";
 import { Fold, ReviewBody, ReviewFooter, RunAnswer, RunMeta, SteerCompose } from "./TaskReview";
 import { runsOn, taskLine } from "./TaskCard";
@@ -197,6 +198,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const { client } = useAppClient();
   // A changed file's diff, read when the review's Files list opens it; one reader per run.
   const loadPatch = useMemo(() => runPatchReader(client, task), [client, task?.id, task?.run?.sessionId, task?.runFlow]);
+  // "Changes so far" open while the run works, kept here so it survives re-renders and opens the review's Files list.
+  const [changesOpen, setChangesOpen] = useState(false);
   const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
@@ -389,11 +392,16 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       {task && review ? (
         <>
           <ReviewLead key={hold?.id}>
-            <ReviewBody review={review} onDraft={setWords} {...(loadPatch ? { loadPatch } : {})} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
+            <ReviewBody review={review} onDraft={setWords} filesOpen={changesOpen} {...(loadPatch ? { loadPatch } : {})} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
           </ReviewLead>
           <Fold data-run-steps label="How it got there">
             <div className="flex flex-col gap-3">{feed}</div>
           </Fold>
+        </>
+      ) : task && coding ? (
+        <>
+          <RunningChanges task={task} open={changesOpen} onOpenChange={setChangesOpen} />
+          {feed}
         </>
       ) : (
         feed

@@ -472,10 +472,17 @@ describe("a coding run that made changes waits for a person's review", () => {
         taskId: TASK_ID,
         diff: { files: [{ path: "change-1.txt", added: 1, removed: 0 }], verified: true },
         patch: null,
+        // The run's commits, read live beside the files, for a screen that shows them while it runs.
+        commits: { count: 1, verified: true },
       });
       const opened = await h.readChanges({ path: "change-1.txt" });
       expect(opened.body.output).toMatchObject({ diff: null, patch: { path: "change-1.txt", truncated: false, verified: true } });
       expect(opened.body.output.patch.patch).toContain("+change 1");
+      // While it runs, the working tree's files count too, marked uncommitted.
+      writeFileSync(join(h.seen[0]!.cwd, "scratch.txt"), "wip\n");
+      const live = await h.readChanges({ uncommitted: true });
+      expect(live.body.output.diff.files).toContainEqual({ path: "scratch.txt", added: 1, removed: 0, uncommitted: true });
+      expect((await h.readChanges({ path: "scratch.txt", uncommitted: true })).body.output.patch.patch).toContain("+wip");
       // Only a file the run changed opens: any other path is refused, never read.
       expect(await h.readChanges({ path: "README.md" })).toMatchObject({ status: 422, body: { message: new RunFileNotChanged("README.md").message } });
     } finally {

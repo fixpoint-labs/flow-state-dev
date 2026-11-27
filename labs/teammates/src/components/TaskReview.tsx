@@ -185,6 +185,19 @@ export function Fold({ label, children, ...data }: { label: ReactNode; children:
   );
 }
 
+/** A run's commit subjects, newest first: the list under a commits fold, in the review and while the run works. */
+export function CommitList({ subjects }: { subjects: readonly string[] }) {
+  return (
+    <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
+      {subjects.map((subject, i) => (
+        <li key={i}>
+          <MarkdownText inline text={subject} className={WRAP} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * A check's detail as two parts: a lead of "·"-joined facts ("vitest · labs/x · 310 / 310"), set in
  * mono, and the prose after it. A detail whose first sentence has no "·" is all prose. A sentence ends
@@ -350,18 +363,21 @@ export function RunAnswer({ answer, report: asReport }: { answer: string; report
  * the original request. `onDraft` puts words in the compose box; `onFollowUp`
  * asks the task's filer to follow up on a note. Either absent: no button.
  * `loadPatch` reads one changed file's diff, so a file in Files opens to it;
- * absent, the files list their lines and don't open.
+ * absent, the files list their lines and don't open. `filesOpen` starts the
+ * Files list open (it was open while the run worked).
  */
 export function ReviewBody({
   review,
   onDraft,
   onFollowUp,
   loadPatch,
+  filesOpen = false,
 }: {
   review: ReviewDetail;
   onDraft?: (text: string) => void;
   onFollowUp?: (note: string) => void;
   loadPatch?: (path: string) => Promise<RunChangesPatch>;
+  filesOpen?: boolean;
 }) {
   // Parsed once per answer, not on each keystroke in the compose box.
   const report = useMemo(() => wholeReport(review.answer), [review.answer]);
@@ -390,6 +406,7 @@ export function ReviewBody({
               {...(review.added != null ? { added: review.added } : {})}
               {...(review.removed != null ? { removed: review.removed } : {})}
               {...(loadPatch ? { loadPatch } : {})}
+              defaultOpen={filesOpen}
               className="rounded-lg border-border bg-card [&>button]:px-3.5 [&>button]:py-2.5"
             />
           </Section>
@@ -399,13 +416,7 @@ export function ReviewBody({
             data-review-commits
             label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
           >
-            <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
-              {subjects.map((subject, i) => (
-                <li key={i}>
-                  <MarkdownText inline text={subject} className={WRAP} />
-                </li>
-              ))}
-            </ul>
+            <CommitList subjects={subjects} />
           </Fold>
         ) : null}
         {review.goal ? (

@@ -8,7 +8,9 @@
  * stop data carries the files (harness-manager's `files`, `added`, `removed`),
  * and `loadPatch` is the app's call to the `changes` view for one file
  * (harness-manager's `harnessRunChangesView`, or a session turn's `changes`).
- * A patch is read when its file is opened, never before, and kept once read.
+ * A patch is read when its file is opened, never before, and kept once read,
+ * until the file's counts change (a run still working): an open file then
+ * reads its patch again, keeping the old one on screen until the new lands.
  * Several files can be open at once. A binary, deleted or renamed file opens
  * to one line saying so; a cut patch says how long the whole one is.
  *
@@ -17,11 +19,14 @@
  */
 
 import { ChevronRightIcon, FileIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
-/** One file a run changed. `added`/`removed` are `null` for a binary file. */
-export type RunChangesFile = { path: string; added: number | null; removed: number | null };
+/**
+ * One file a run changed. `added`/`removed` are `null` for a binary file.
+ * `uncommitted`: some of its change is only in the working tree so far.
+ */
+export type RunChangesFile = { path: string; added: number | null; removed: number | null; uncommitted?: boolean };
 
 /**
  * One file's patch, as the app's read answered it. `verified: false` means
@@ -119,16 +124,29 @@ type PatchState =
 function FileRow({ file, loadPatch }: { file: RunChangesFile; loadPatch?: RunChangesProps["loadPatch"] }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PatchState | null>(null);
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    // Read once per file: a patch that was read is kept; one that failed or was gone reads again.
-    if (!next || loadPatch === undefined || (state !== null && (state.status === "loading" || state.status === "ready"))) return;
-    setState({ status: "loading" });
+  // The counts the patch on screen was read at: when they move, an open file reads again.
+  const counts = `${file.added}:${file.removed}:${file.uncommitted === true}`;
+  const readAt = useRef<string | null>(null);
+  const read = (quiet: boolean) => {
+    if (loadPatch === undefined) return;
+    readAt.current = counts;
+    if (!quiet) setState({ status: "loading" });
     loadPatch(file.path).then(
       (patch) => setState(patch.verified === false ? { status: "gone" } : { status: "ready", patch }),
       (error: unknown) => setState({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
+  };
+  useEffect(() => {
+    if (open && state?.status === "ready" && readAt.current !== counts) read(true);
+    // Only a change of counts while open reads again; opening reads in `toggle`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [counts]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    // Read once per file: a patch that was read is kept, unless its counts moved; one that failed or was gone reads again.
+    if (!next || (state !== null && (state.status === "loading" || (state.status === "ready" && readAt.current === counts)))) return;
+    read(state?.status === "ready");
   };
   const opens = loadPatch !== undefined;
   return (
@@ -146,6 +164,7 @@ function FileRow({ file, loadPatch }: { file: RunChangesFile; loadPatch?: RunCha
           <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
+        {file.uncommitted ? <span className="shrink-0 text-muted-foreground text-xs">uncommitted</span> : null}
         <span className="shrink-0 text-xs">
           <LineCounts added={file.added} removed={file.removed} />
         </span>

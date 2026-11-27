@@ -11,13 +11,18 @@ import type { RunChangesPatch } from "../components/flow-state/run-changes";
 /**
  * The reader of `task`'s file diffs, or `undefined` for a task with no run
  * session, or one not run on the coding worker flow (whose view this is).
+ * `uncommitted` reads the working tree's diff, for a run still working.
  */
-export function runPatchReader(client: Pick<Client, "view">, task: CodingBoardTask | undefined): ((path: string) => Promise<RunChangesPatch>) | undefined {
+export function runPatchReader(
+  client: Pick<Client, "view">,
+  task: CodingBoardTask | undefined,
+  options: { uncommitted?: boolean } = {},
+): ((path: string) => Promise<RunChangesPatch>) | undefined {
   const taskId = task?.id;
   const sessionId = task?.run?.sessionId;
   if (taskId === undefined || sessionId === undefined || task?.runFlow !== CODER_FLOW) return undefined;
   return async (path) => {
-    const { patch } = (await client.view(runChangesViewRef(), { taskId, path }, { sessionId })).value;
+    const { patch } = (await client.view(runChangesViewRef(), { taskId, path, ...(options.uncommitted === true ? { uncommitted: true } : {}) }, { sessionId })).value;
     if (patch === null) throw new Error("The run's changes view answered no patch.");
     return patch;
   };

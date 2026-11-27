@@ -121,6 +121,23 @@ describe("a run's changes", () => {
     expect(loadPatch).toHaveBeenCalledTimes(2);
   });
 
+  it("marks a file whose change is only in the working tree, and reads an open file again when its counts move", async () => {
+    // A run still working: the list is read again as it goes, and an open diff follows it without closing.
+    let body = "@@ -1 +1 @@\n+first";
+    const loadPatch = vi.fn(async () => ({ patch: body, truncated: false }));
+    const at = (added: number) => [{ path: "src/a.ts", added, removed: 0, uncommitted: true }];
+    const { rerender } = render(<RunChanges files={at(1)} loadPatch={loadPatch} defaultOpen />);
+    expect(screen.getByText("uncommitted")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /src\/a\.ts/ }));
+    expect(await screen.findByText("+first")).toBeTruthy();
+    rerender(<RunChanges files={at(1)} loadPatch={loadPatch} defaultOpen />);
+    expect(loadPatch).toHaveBeenCalledTimes(1);
+    body = "@@ -1 +1,2 @@\n+first\n+second";
+    rerender(<RunChanges files={at(2)} loadPatch={loadPatch} defaultOpen />);
+    expect(await screen.findByText("+second")).toBeTruthy();
+    expect(loadPatch).toHaveBeenCalledTimes(2);
+  });
+
   it("draws nothing when the run's changes couldn't be read", () => {
     const { container } = render(<RunChanges files={null} />);
     expect(container.innerHTML).toBe("");

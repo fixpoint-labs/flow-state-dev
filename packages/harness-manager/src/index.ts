@@ -201,6 +201,7 @@ export {
 export {
   MAX_DIFF_FILES,
   MAX_PATCH_CHARS,
+  MAX_UNTRACKED_FILES,
   RunFileNotChanged,
   runChangesSchema,
   runDiffSchema,
