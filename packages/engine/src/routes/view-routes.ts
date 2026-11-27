@@ -148,6 +148,11 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       runtimeConfig: ctx.runtimeConfig,
       signal: request.signal,
       resolveFlow: (address) => ctx.registry.get(address),
+      // The door's kind and resolver, kept for the run, as an action's are: a
+      // read across the caller's sessions admits each as a named reach would.
+      ...(principal.kind !== undefined ? { principalKind: principal.kind } : {}),
+      ...(principal.resolvedBy !== undefined ? { resolvedBy: principal.resolvedBy } : {}),
+      flows: ctx.registry,
       admitSession: viewSessionAdmission(ctx, flow, tenantId),
       admitSuspension: (entry) => viewSuspensionAdmission(ctx, flow, entry)
     });

@@ -30,6 +30,7 @@ import {
 } from "../src/host";
 import { openPushSocket, PUSH_SOCKET_TIMINGS } from "../src/push/socket-session";
 import { signPushTicket } from "../src/push/ticket";
+import { ownerTopic } from "../src/bus/owner-topic";
 
 const SECRET = "test-secret";
 
@@ -790,5 +791,48 @@ describe("enablePushDelivery", () => {
     await bus.publish({ topic: { scope: "org", id: DEFAULT_ORG_ID, tenantId: "" }, kind: "request" });
     await flush();
     expect(ws.notices()).toHaveLength(1);
+  });
+});
+
+describe("the socket session · an owner's change topic", () => {
+  // The topic a read across the owner's sessions is heard on: the user topic
+  // narrowed to `/sessions/<root>` on the wire, the owner's own on the bus.
+  const changeTopic = topic.user({ resource: "/sessions/notes" });
+  async function ticketFor(router: FlowApiRouter, headers = ALICE) {
+    const { answer } = await mint(router, [changeTopic, topic.user()], headers);
+    if (answer.transport !== "websocket") throw new Error("expected a websocket answer");
+    return answer.ticket;
+  }
+  /** A change-topic notice for `notes`, as a session write publishes it. */
+  const ownerNotice = (userId: string, orgId: string, tenantId?: string) => ({
+    topic: ownerTopic({ userId, orgId, tenantId }, "notes"),
+    kind: "resource" as const
+  });
+
+  it("hears its own organization's change, naming the session only as a keyed digest, and no ids", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router) });
+    await bus.publish({ ...ownerNotice("alice", "acme"), partition: "s-new" });
+    await flush();
+    const notices = ws.notices() as Array<{ topic: unknown; kind: string; partition?: string; ids?: unknown }>;
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ topic: changeTopic, kind: "resource" });
+    expect(notices[0]!.ids).toBeUndefined();
+    expect(notices[0]!.partition).toBeTypeOf("string");
+    expect(JSON.stringify(notices[0])).not.toContain("s-new");
+  });
+
+  it("never hears the same user's change in another organization, nor any other owner's, on either topic it holds", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router) });
+    await bus.publish({ ...ownerNotice("alice", "globex"), partition: "s-other-org" });
+    await bus.publish({ ...ownerNotice("bob", "acme"), partition: "s-bob" });
+    await bus.publish({ ...ownerNotice("alice", "acme", "t9"), partition: "s-other-tenant" });
+    await flush();
+    expect(ws.notices()).toEqual([]);
   });
 });

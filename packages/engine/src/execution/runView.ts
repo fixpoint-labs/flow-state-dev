@@ -47,6 +47,8 @@ import { executeBlock } from "./executeBlock";
 import { requestEndRegistryOf } from "./request-end-hooks";
 import { drainRequestSideChainPool } from "./runAction";
 import type { SessionAdmission, SuspensionAdmission } from "../context/request-sessions";
+import type { PrincipalKind } from "../context/principal";
+import type { FlowRegistry } from "../registry/flow-registry";
 
 /** What {@link runView} needs: the flow, the view, the caller, and the session for a session view. */
 export type RunViewOptions = {
@@ -59,7 +61,7 @@ export type RunViewOptions = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver">;
   signal?: AbortSignal;
   // FIX-2625 D1.
   /** The change the caller asks the view to answer for: `ctx.view.changed`. A view with no `key` ignores it. */
@@ -80,6 +82,17 @@ export type RunViewOptions = {
   admitSuspension?: SuspensionAdmission;
   /** Another registered flow by its address: what a session read needs to cut a session's state to its flow's readonly fields. */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  /**
+   * The caller as the view route's door resolved them: a person or a
+   * machine, and which resolver produced them. With `flows`, what admits each
+   * session a read across the caller's sessions joins, as a block's named
+   * reach admits it (`namedRecordAdmission`). Absent (a direct call), the
+   * caller is a machine's, which reaches no session.
+   */
+  principalKind?: PrincipalKind;
+  resolvedBy?: string;
+  /** The host's flow registry, for that admission. Absent, a read across sessions refuses. */
+  flows?: Pick<FlowRegistry, "get" | "list">;
 };
 
 /** A view's answer: its block's output, and the topics a change to what it read publishes on. */
@@ -136,6 +149,8 @@ const READ_VERBS = new Set([
   "listRequestIds",
   // FIX-2770: the pending-asks read.
   "listPendingForUser",
+  // The read across an owner's sessions.
+  "listAcrossSessions",
   "listStale",
   "listAll",
   "listDue",
@@ -280,7 +295,7 @@ type ReadOnlyRun = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver">;
   signal?: AbortSignal;
   /** The run's source label. */
   source: "view";
@@ -289,6 +304,9 @@ type ReadOnlyRun = {
   admitSession?: SessionAdmission;
   admitSuspension?: SuspensionAdmission;
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  principalKind?: PrincipalKind;
+  resolvedBy?: string;
+  flows?: Pick<FlowRegistry, "get" | "list">;
 };
 
 /**
@@ -330,6 +348,10 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     logger: run.runtimeConfig?.logger,
     tracingLevel: run.runtimeConfig?.tracingLevel,
     durabilityEnabled: false,
+    ...(run.principalKind !== undefined ? { principalKind: run.principalKind } : {}),
+    ...(run.resolvedBy !== undefined ? { resolvedBy: run.resolvedBy } : {}),
+    // The host's resolver, which a read across sessions names in a resolver identity.
+    ...(run.runtimeConfig?.hostResolver !== undefined ? { effectiveRuntimeConfig: { hostResolver: run.runtimeConfig.hostResolver } } : {}),
     // A dispatch into an existing session reaches this operation; one into a
     // child is refused earlier, at the child session's write.
     requestHost: {
@@ -337,6 +359,7 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
         throw readOnlyRefusal("start a request");
       },
       ...(run.resolveFlow !== undefined ? { resolveFlow: run.resolveFlow } : {}),
+      ...(run.flows !== undefined ? { flows: run.flows } : {}),
       ...(run.admitSession !== undefined ? { sessionAdmission: run.admitSession } : {}),
       ...(run.admitSuspension !== undefined ? { suspensionAdmission: run.admitSuspension } : {}),
       // A turn's `retryable` is the retry route's answer, with the host's sources (FIX-2848 D3).
@@ -405,7 +428,10 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     view: partial.context,
     ...(options.admitSession !== undefined ? { admitSession: options.admitSession } : {}),
     ...(options.admitSuspension !== undefined ? { admitSuspension: options.admitSuspension } : {}),
-    ...(options.resolveFlow !== undefined ? { resolveFlow: options.resolveFlow } : {})
+    ...(options.resolveFlow !== undefined ? { resolveFlow: options.resolveFlow } : {}),
+    ...(options.principalKind !== undefined ? { principalKind: options.principalKind } : {}),
+    ...(options.resolvedBy !== undefined ? { resolvedBy: options.resolvedBy } : {}),
+    ...(options.flows !== undefined ? { flows: options.flows } : {})
   });
   if (view.key === undefined) return answer;
   const keyed = { ...answer, keys: keysOf(options.viewName, view.key, answer.output) };

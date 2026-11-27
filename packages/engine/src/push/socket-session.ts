@@ -67,10 +67,15 @@ export type OpenPushSocketOptions = {
   noticeIds?: NoticeIdScopes;
 };
 
-/** A bus topic as the wire names it: no tenant, and no user or org id. */
+/**
+ * A bus topic as the wire names it: no tenant, and no user or org id. An
+ * owner's change topic is the user topic narrowed to its resource
+ * (`bus/owner-topic.ts`).
+ */
 function toWire(topic: Omit<BusTopic, "resource"> & { resource?: string | undefined }): WireTopic {
   const resource = topic.resource !== undefined ? { resource: topic.resource } : {};
-  return topic.scope === "session" ? { scope: "session", id: topic.id, ...resource } : { scope: topic.scope, ...resource };
+  if (topic.scope === "session") return { scope: "session", id: topic.id, ...resource };
+  return { scope: topic.scope === "owner" ? "user" : topic.scope, ...resource };
 }
 
 /** The key two equal bus topics share. */
@@ -128,7 +133,7 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   // tell an entry's path from a single resource's name (BP-030). A single
   // resource's watchers read once more for it. A subscription narrowed to the
   // resource keeps the path its client named.
-  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope] === false;
+  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope === "owner" ? "user" : scope] === false;
   const hear = (notice: ChangeNotice, subscribed: BusTopic): void => {
     const off = idsOff(notice.topic.scope);
     const bare = off && notice.kind === "resource" && subscribed.resource === undefined;

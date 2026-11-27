@@ -125,8 +125,10 @@ function isNamedReachable(config: ResourceConfig | ResourceCollectionConfig): co
 type NamedCopyTarget = {
   /** The session written, by its id. */
   readonly sessionId: string;
-  /** Its owner, for a lineage-shared key's user-topic notice. */
+  /** Its owner, for a lineage-shared key's user-topic notice and its owner's change topic. */
   readonly ownerUserId: string;
+  /** Its owner's organization, for its owner's change topic. */
+  readonly ownerOrgId: string | undefined;
 };
 
 /**
@@ -2992,9 +2994,12 @@ export async function createExecutionContext<
     const publishChange = (resourcePath: string): void => {
       // The session notice, or none, by the scope's published resources.
       let notice: { resource?: string; ids?: string[] } | undefined;
+      // The collections the row is in, by static prefix: the owner's change topics it publishes on.
+      let changeTopics: string[] | undefined;
       if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+        changeTopics = holders.map((cfg) => getPatternPrefix(cfg.pattern));
         if (holders.length > 0) {
           // An entry names its key beside its path, when the path may be named (FIX-2625).
           // On the user topic each holder names its root: the deepest is under
@@ -3021,6 +3026,8 @@ export async function createExecutionContext<
         notice,
         lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
         hostHasViews,
+        ownerOrgId: named !== undefined ? named.ownerOrgId : sessionRef.current.orgId,
+        ...(changeTopics !== undefined ? { changeTopics } : {}),
         requestId: requestRef.current.id
       });
     };
@@ -3822,7 +3829,7 @@ export async function createExecutionContext<
         if (!contentDeletesOwed.delete(storageKey)) await oweTurnBeforeWrite(storageKey);
         return persisters.deleteResourceContentKey(storageKey);
       },
-      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId }),
+      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId, ownerOrgId: record.orgId }),
       lazyLoad: makeLazyLoad(cell),
       recordResourceLoad,
       templateResolverRef,
@@ -3907,7 +3914,10 @@ export async function createExecutionContext<
       owner: { userId, orgId: resolvedOrgId, tenantId: options.tenantId },
       actorUserId: userId,
       origin: namedFence.origin,
-      sharesLineage: (prefix) => sharesLineageRef.current({ prefix })
+      sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
+      ...(viewDependencies !== undefined
+        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(getPatternPrefix(config.pattern)) }
+        : {})
     });
     return acrossSessionsHandles;
   };

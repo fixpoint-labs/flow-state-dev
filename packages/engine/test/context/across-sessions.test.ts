@@ -67,7 +67,7 @@ async function boot() {
   const runtimeConfig = { requestHost: { flows: registry }, hostResolver: defaultBodyUserIdPrincipalResolver };
   const as = (userId: string, orgId = ORG) => ({ userId, orgId, principalKind: "person" as const, source: "http" });
   const seedIn = async (
-    flow: typeof alpha,
+    flow: typeof alpha | typeof vault,
     sessionId: string,
     rows: Array<{ key: string; text: string; status?: string }>,
     who: Record<string, unknown> = as("alice")

@@ -121,7 +121,7 @@ export function createAcrossSessionsConformanceTests(options: CreateAcrossSessio
         await session(store, "t1:a", { tenantId: "t1" });
         await row(store, "t1:a", "notes/1");
         const rows = await list(store, query({ owner: { ...ALICE, tenantId: "t1" } }));
-        expect(rows.map((r) => r.session)).toEqual([
+        expect(rows.map((r: { session: unknown }) => r.session)).toEqual([
           { flowKind: "notes-flow", flowId: "notes-flow", userId: "alice", orgId: "acme", tenantId: "t1" }
         ]);
       });

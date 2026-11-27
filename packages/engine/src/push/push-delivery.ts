@@ -23,6 +23,7 @@ import { authorizeManagementRoute, type RouteAuthContext } from "../routes/route
 import { jsonResponse, loadCheckedSession } from "../routes/route-utils";
 import { isWireTopic, openPushSocket, type PushSocket, type PushSocketIO } from "./socket-session";
 import { PUSH_TICKET_TTL_MS, signPushTicket, type GrantedTopic } from "./ticket";
+import { isChangeTopicResource, ownerTopicFor } from "../bus/owner-topic";
 
 /** Options for {@link enablePushDelivery}. */
 export type EnablePushDeliveryOptions = {
@@ -162,6 +163,13 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
     // principal (BP-031). An anonymous caller in an app that authenticates
     // anything has none to claim.
     if (ctx.anonymous) continue;
+    // An owner's change topic: the caller's own user and organization, so the
+    // same user in another organization never hears it (`bus/owner-topic.ts`).
+    if (wire.scope === "user" && isChangeTopicResource(wire.resource)) {
+      const owner = { userId: ctx.principal?.userId ?? userId, orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID, tenantId: ctx.tenantId };
+      granted.push({ wire, bus: ownerTopicFor(owner, wire.resource) });
+      continue;
+    }
     const id = wire.scope === "user" ? ctx.principal?.userId ?? userId : ctx.principal?.orgId ?? DEFAULT_ORG_ID;
     granted.push({ wire, bus: { scope: wire.scope, id, tenantId, ...resource } });
   }
