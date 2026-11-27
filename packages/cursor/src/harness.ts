@@ -5,7 +5,7 @@
  * Each run, readiness check and model list gets only Cursor's own
  * environment (`harnessEnv` over `CURSOR_PASS`). A local Cursor run must
  * name its model: `"default"`, Cursor's own pick, unless the options name
- * one. Its sandbox is off: a coding run already works in its own worktree.
+ * one. Its sandbox is on by default; a worktree is not a filesystem boundary.
  */
 import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { cursorAgent, type CursorAgentOptions } from "./agent";
@@ -19,10 +19,13 @@ export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "
 /**
  * Cursor as a harness value.
  *
- * @param options The Cursor block's options. Its environment is always Cursor's own.
+ * @param options The Cursor block's options. Its environment is always
+ * Cursor's own. Setting `agent.local.sandboxOptions.enabled` to `false`
+ * explicitly opts out of filesystem confinement.
  */
 export function cursorHarness(options: CursorHarnessOptions = {}): Harness {
   const env = () => harnessEnv({ pass: CURSOR_PASS });
+  const sandboxEnabled = options.agent?.local?.sandboxOptions?.enabled !== false;
   return {
     id: "cursor",
     label: "Cursor",
@@ -31,7 +34,11 @@ export function cursorHarness(options: CursorHarnessOptions = {}): Harness {
         name: "cursor",
         model: "default",
         ...options,
-        agent: { mode: "agent", ...options.agent, local: { sandboxOptions: { enabled: false }, ...options.agent?.local } },
+        agent: {
+          mode: "agent",
+          ...options.agent,
+          local: { ...options.agent?.local, sandboxOptions: { enabled: sandboxEnabled } },
+        },
         env: env(),
         cwd: feeds.cwd,
         resume: feeds.resume,
