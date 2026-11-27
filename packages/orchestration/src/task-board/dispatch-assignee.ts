@@ -45,7 +45,7 @@ import { type DispatchHandle } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core/capability";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
 import type { DefinedTaskCollection, TaskWorker } from "../tasks";
-import type { TaskWorkerRegistry } from "../tasks/workers/types";
+import type { TaskWorkerInput, TaskWorkerRegistry } from "../tasks/workers/types";
 import type { TaskBoardBacking } from "./index";
 
 /** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */
@@ -61,15 +61,17 @@ export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> 
  * Any one assignee, whatever its worker's payload and output: what a registry
  * value or a board's `defaultWorker` may hold.
  *
- * Not `TaskAssignee`: a block's input and output types sit in both parameter
- * and return positions of its config (`connectInput`, `onCompleted(output)`),
- * so under `strictFunctionTypes` (any app on `strict: true`) a worker with a
- * typed payload or output is assignable to no single concrete worker type, and
- * every typed worker was refused (TS2322). Registry workers are heterogeneous,
- * so the block's types are `any`, as for any other heterogeneous block list;
- * a value that is not a block is still refused.
+ * Not `TaskAssignee`: under `strictFunctionTypes` (any app on `strict: true`) a
+ * block's input and output types are invariant, so a typed worker fits no
+ * `unknown`-typed one (`task-board-workers-strict.test-d.ts`). The payload and
+ * output are `any`; the rest of the task envelope stays checked. A worker that
+ * requires its payload needs the second member, since an optional `input` and a
+ * required one are not interchangeable.
  */
-export type AnyTaskAssignee = BlockDefinition<any, any, any, any> | TaskDispatcherBlock;
+export type AnyTaskAssignee =
+  | TaskWorker<any, any>
+  | BlockDefinition<any, any, TaskWorkerInput<any> & { input: any }, any>
+  | TaskDispatcherBlock;
 
 /**
  * A worker registry whose values may also be task dispatchers.

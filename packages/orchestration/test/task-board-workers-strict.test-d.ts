@@ -49,3 +49,15 @@ taskBoard({
 // @ts-expect-error -- an assignee is a block
 taskBoard({ name: "not-a-block", workers: { summarize, bad: { name: "bad" } } });
 
+
+// Nor is a block whose input is not the task envelope: the board always hands
+// a worker a `TaskWorkerInput`, so this one would fail every task it ran.
+const notAWorker = handler({
+  name: "not-a-worker",
+  inputSchema: z.string(),
+  execute: (input) => input,
+});
+// @ts-expect-error -- a worker takes `TaskWorkerInput`
+taskBoard({ name: "wrong-input", workers: { summarize, notAWorker } });
+// @ts-expect-error -- so does the floor
+taskBoard({ name: "wrong-floor", workers: { summarize }, defaultWorker: notAWorker });
