@@ -130,7 +130,7 @@ describe("a running task's feed ends in a live working line", () => {
     expect(popup.querySelector("[data-run-total]")?.textContent).toBe("2d 3h");
     expect(popup.querySelector("[data-run-total]")?.getAttribute("title")).toBe("Time on this attempt, waits included");
     act(() => vi.advanceTimersByTime(2_000));
-    expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 32s)");
+    await waitFor(() => expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 32s)"));
   });
 
   it("uses the request start even when the reply begins before the newest page", async () => {
