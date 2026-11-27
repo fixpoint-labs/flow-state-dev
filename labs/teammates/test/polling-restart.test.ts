@@ -16,11 +16,13 @@ import { createInProcessFetch } from "@flow-state-dev/engine";
 import { sqliteScheduleIndex } from "@flow-state-dev/store-sqlite";
 import { scriptedModels } from "../../test-support/contract";
 import { appContextView } from "../flows/lab-context-ref.mts";
-import { GITHUB_NO_TOKEN, openTeammates } from "../host.mts";
+import { GITHUB_NO_TOKEN } from "../flows/lab-context.mts";
+import { openTeammates } from "../host.mts";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -105,7 +107,7 @@ describe("the poll index across a restart", () => {
     input: { key: "github-acme-app", provider: "github", thread: "github:acme/app", everyMinutes: 1, polledThrough: 1_234 },
   };
 
-  it("is rebuilt from the stored schedules when its file was deleted, once, with the cursor untouched", async () => {
+  it("is rebuilt with its cursor untouched, and the local cron dispatches its real poll handler", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { data, repo } = dataFolder();
     const before = await openApp(data, repo, { token: "ghp_test", answers: 200 });
@@ -120,11 +122,18 @@ describe("the poll index across a restart", () => {
     rmSync(join(data, "teammates-poll.sqlite"), { force: true });
 
     const after = await openApp(data, repo, { token: "ghp_test", answers: 200 });
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     await after.ready();
     // The workforce kit's start-up work runs once the app serves, without holding start-up: wait for its line.
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith("[workforce] schedule indexes checked at start: 0 clock routines, 1 polls"));
     const due = await sqliteScheduleIndex({ filename: join(data, "teammates-poll.sqlite") }).claimDue(Date.now() + 2 * 60_000, 10);
     expect(due).toEqual([expect.objectContaining({ cell: CELL, key: "github-acme-app", userId: "you", orgId: "teammates-lab", cron: "* * * * *" })]);
     expect((await (await after.getRuntime()).stores.resourceState.get("user", CELL, KEY))?.state).toEqual(schedule);
+    // No subscription needs this stored poll any more. Its real handler must run and turn it off;
+    // an index row alone (or a row naming an unknown handler) cannot make that happen.
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await vi.waitFor(async () => {
+      expect((await (await after.getRuntime()).stores.resourceState.get("user", CELL, KEY))?.state).toMatchObject({ enabled: false, input: { polledThrough: 1_234 } });
+    });
   });
 });

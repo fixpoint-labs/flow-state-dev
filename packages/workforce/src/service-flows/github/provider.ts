@@ -9,6 +9,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { SubscriptionScreens } from "../../subscriptions/screens";
 import type { SubscriptionProvider } from "../../subscriptions/subscribe";
+import { redact } from "../../error-reporter/redact";
 import { GITHUB_PROVIDER, githubLoginId } from "./normalize";
 import { pollGitHubThread } from "./poll";
 
@@ -51,14 +52,21 @@ export function githubSubscriptionProvider(options: GitHubSubscriptionProviderOp
   const call = async (ctx: BlockContext, path: string, etag?: string): Promise<Response | undefined> => {
     const token = await options.token(ctx);
     if (token === undefined || token.length === 0) return undefined;
-    return (options.fetch ?? fetch)(`${api}${path}`, {
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: "application/vnd.github+json",
-        "x-github-api-version": "2022-11-28",
-        ...(etag === undefined ? {} : { "if-none-match": etag })
-      }
-    });
+    try {
+      return await (options.fetch ?? fetch)(`${api}${path}`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2022-11-28",
+          ...(etag === undefined ? {} : { "if-none-match": etag })
+        }
+      });
+    } catch (error) {
+      // Fetch failures may carry request headers; neither poll diagnostics nor stored errors may keep the bearer.
+      const safe = new Error(redact(error instanceof Error ? error.message : String(error), [token]));
+      safe.name = error instanceof Error ? error.name : "Error";
+      throw safe;
+    }
   };
   const agentHandles = options.appBotLogin === undefined ? [] : [githubLoginId(options.appBotLogin)];
   return {

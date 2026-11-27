@@ -95,7 +95,7 @@ import {
 import { screenChain } from "../subscriptions/chain";
 import { customScreensRefusal, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "../subscriptions/screens";
 import { SCREEN_KINDS } from "../subscriptions/rows";
-import { dropFromIndex, indexEntryOf, syncIndex, unsubscribe, type SubscriptionProvider } from "../subscriptions/subscribe";
+import { dropFromIndex, indexEntryOf, syncIndex, unsubscribe, type SubscriptionPollResult, type SubscriptionProvider } from "../subscriptions/subscribe";
 import { declaredRoutineKey } from "../routines/routines";
 import { DECLARED_ROUTINE_KEY_PREFIX } from "../routines/keys";
 import {
@@ -696,9 +696,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       }
       const input = pollScheduleInputSchema.parse(poll.input);
       const owed = input.owed ?? [];
-      const failureKey = `${(ctx.session.identity as { userId?: string }).userId ?? ""}\n${thread}`;
-      const result = await provider
-        .poll!(
+      const failureKey = JSON.stringify([ctx.session.identity.orgId, ctx.session.identity.userId, thread]);
+      let result: SubscriptionPollResult;
+      try {
+        result = await provider.poll!(
           thread,
           {
             ...(input.polledThrough === undefined ? {} : { since: input.polledThrough }),
@@ -706,14 +707,14 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             ...(owed.length === 0 && input.etags !== undefined ? { etags: input.etags } : {})
           },
           ctx
-        )
-        .catch((error: unknown) => {
-          // The fire fails after its dispatch was accepted, so nothing else says why. Said once per reason, not every poll.
-          const reason = error instanceof Error ? error.message : String(error);
-          if (pollFailures.get(failureKey) !== reason) console.warn(`[workforce] polling ${thread} failed, and each poll tries again: ${reason}`);
-          pollFailures.set(failureKey, reason);
-          throw error;
-        });
+        );
+      } catch (error) {
+        // The fire fails after its dispatch was accepted, so nothing else says why. Said once per reason, not every poll.
+        const reason = error instanceof Error ? error.message : String(error);
+        if (pollFailures.get(failureKey) !== reason) console.warn(`[workforce] polling ${thread} failed, and each poll tries again: ${reason}`);
+        pollFailures.set(failureKey, reason);
+        throw error;
+      }
       if (pollFailures.delete(failureKey)) console.warn(`[workforce] polling ${thread} works again`);
       const { fetched: _previous, ...rest } = input;
       if ("unchanged" in result) {

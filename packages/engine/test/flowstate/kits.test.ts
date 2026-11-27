@@ -408,6 +408,32 @@ describe("a kit's folder", () => {
 // A kit's start-up work (re-deriving what its stores mirror, say) has to run once the app serves, and
 // never in a process that only resolves the runtime, where nothing it heals would ever fire.
 describe("a kit's onStarted", () => {
+  it("lets start-up work finish before disposing its stores", async () => {
+    const order: string[] = [];
+    let finish!: () => void;
+    const work = new Promise<void>((resolve) => (finish = resolve));
+    const k = defineKit({
+      name: "starts",
+      install: () => ({
+        flows: [flowOf("starts-flow")],
+        onStarted: async () => {
+          await work;
+          order.push("kit finished");
+        },
+      }),
+    });
+    const state = track(createFlowState({
+      kits: [k()],
+      stores: { dev: { primary: { ...inMemoryStores(), dispose: async () => { order.push("stores closed"); } } } },
+    }));
+    await state.ready();
+    const disposing = state.dispose();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    finish();
+    await disposing;
+    expect(order).toEqual(["kit finished", "stores closed"]);
+  });
+
   it("runs once when the app first serves, not on getRuntime alone, and reads every user cell", async () => {
     const seen: Array<{ cells: unknown; read: unknown }> = [];
     let done!: () => void;

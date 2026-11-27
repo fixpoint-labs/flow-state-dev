@@ -53,9 +53,30 @@ describe("checking the operator's token at start", () => {
     const offline = (async () => { throw new Error("getaddrinfo ENOTFOUND"); }) as unknown as typeof fetch;
     expect(await checkGitHubToken("ghp_ok", { fetch: offline })).toEqual({ ok: false, reason: expect.stringMatching(/couldn't reach GitHub/) });
   });
+
+  it("redacts the token when a failed fetch includes its request headers", async () => {
+    const token = "ghp_private_token_in_request";
+    const failed = (async () => { throw new Error(`getaddrinfo ENOTFOUND; authorization: Bearer ${token}`); }) as typeof fetch;
+    const check = await checkGitHubToken(token, { fetch: failed });
+    expect(check).toMatchObject({ ok: false, reason: expect.stringContaining("ENOTFOUND") });
+    expect(JSON.stringify(check)).not.toContain(token);
+  });
 });
 
 describe("GitHub on the operator's token", () => {
+  it("keeps a failed poll's token out of the error the scheduler logs", async () => {
+    const token = "ghp_private_token_in_request";
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error(`getaddrinfo ENOTFOUND; authorization: Bearer ${token}`); }) as typeof fetch;
+    try {
+      const poll = operatorGitHub({ operator: "u_op", token }).poll!("github:acme/app#1", {}, as("u_op"));
+      await expect(poll).rejects.toThrow("ENOTFOUND");
+      await expect(poll).rejects.not.toThrow(token);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
   it("reads GitHub with the token for the operator", async () => {
     const calls = github();
     const real = globalThis.fetch;

@@ -65,6 +65,10 @@ All of these throw one `FlowStateConfigError` naming every problem, as a duplica
 
 **At start-up** (`#buildRuntime`, shared by `ready()`, `getRouter()` and `getRuntime()`). `installKits` opens every kit's folder, runs its reader and then the claim pass, across all kits, before any install runs. Any refusal rejects start-up with every entry named; the stores never open. Then each install runs in order and its flows are registered. `meta.flowKeys` lists a kit's flows only after start-up.
 
+**When the app serves.** An install may also return `onStarted(host)`. The engine invokes each hook once when it builds the router, or starts a process-only worker, alongside scheduler startup. Resolving the runtime alone does not invoke it. Hooks run without delaying startup; a rejection is logged with the kit's name and retried on the next app start. Disposal gives outstanding hooks and the recovery sweep a shared five-second drain before closing stores.
+
+The hook's `KitStartedHost` lists shared user cells with `userCells()` and reads their stored resources with `readUserResources(cell, keyPrefix)`. The workforce kit uses those reads to restore missing routine and poll index entries with `ScheduleIndex.ensure`: existing due times and stored poll cursors stay unchanged.
+
 ## Slots
 
 A slot key is `<kit>.<slot>`, read from the owning factory (`workforce.slots.workerFlows`), never spelled. A kit name refuses `.` so a key always splits back.

@@ -13,6 +13,7 @@
  */
 import { execFileSync } from "node:child_process";
 import type { BlockContext, EvaluationModel } from "@flow-state-dev/core/types";
+import { redact } from "../../error-reporter/redact";
 import { githubSubscriptionProvider, type GitHubSubscriptionProvider } from "./provider";
 import { GITHUB_REVIEWERS_SCREEN, githubTrustedReviewersScreen, type GitHubTrustedReviewers } from "./trusted-reviewers";
 
@@ -85,7 +86,7 @@ export async function checkGitHubToken(
     const login = ((await res.json()) as { login?: unknown }).login;
     return typeof login === "string" ? { ok: true, login } : { ok: false, reason: "GitHub named no login" };
   } catch (error) {
-    return { ok: false, reason: `couldn't reach GitHub: ${error instanceof Error ? error.message : String(error)}` };
+    return { ok: false, reason: redact(`couldn't reach GitHub: ${error instanceof Error ? error.message : String(error)}`, [token]) };
   }
 }
 

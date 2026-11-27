@@ -100,6 +100,7 @@ export interface KitInstallation {
    * job-queue worker starts processing. Never in a process that only resolves
    * the runtime (`fsdev run`, chat). Not awaited by start-up: a rejection is
    * logged with the kit's name, and the next start runs it again.
+   * Disposal gives outstanding start-up work up to five seconds before closing stores.
    */
   readonly onStarted?: (host: KitStartedHost) => Promise<void> | void;
 }

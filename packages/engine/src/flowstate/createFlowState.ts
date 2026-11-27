@@ -151,16 +151,15 @@ const DETACHED_UNWIND_BUDGET_SHARE = 4;
 const DEFAULT_DETACHED_DRAIN_TIMEOUT_MS = 30_000;
 
 /**
- * How long `dispose()` gives the startup recovery sweep to finish before it
+ * How long `dispose()` gives the startup recovery sweep and kit hooks to finish before it
  * closes the stores out from under it.
  *
  * Bounded rather than awaited outright, for the same reason the detached drain
  * is: a store that has stopped answering must not be able to wedge shutdown.
- * Fixed rather than configurable — the sweep is one indexed query plus a write
- * per stale row, so a host with an opinion about this number has a much larger
- * problem than this bound.
+ * Fixed rather than configurable: startup work is best-effort and can run again
+ * at the next start; it must not hold shutdown indefinitely.
  */
-const RECOVERY_SWEEP_DRAIN_MS = 5_000;
+const STARTUP_WORK_DRAIN_MS = 5_000;
 
 /**
  * Resolve the drain budget, rejecting values that cannot bound anything.
@@ -276,6 +275,8 @@ class InternalFlowState<TSettings extends object>
   readonly #kitPlan: KitPlan;
   /** Each installed kit's `onStarted`, run once when the app first serves (`#startKits`); emptied as it runs. */
   #kitStarts: InstalledKits["started"] = [];
+  /** In-flight start-up hooks use the stores too; drain them before the adapters close. */
+  #kitStartWork: Promise<void> | undefined;
   readonly #profileKeys: string[];
   readonly #allAdapters: StoreAdapter[];
   #resolvedProfile: string | undefined;
@@ -541,13 +542,13 @@ class InternalFlowState<TSettings extends object>
       console.error("[flowstate] detached drain failed", err);
     }
 
-    // The startup recovery sweep writes through these same adapters, and on a
+    // The startup recovery sweep and kit hooks write through these same adapters, and on a
     // short-lived process it is entirely normal for shutdown to arrive while it
     // is still running. Bounded, so a store that has stopped answering cannot
     // wedge shutdown — the sweep is best-effort by design, and a later start
     // sweeps whatever this one did not reach.
-    if (this.#recoverySweep !== undefined) {
-      await settledWithin(this.#recoverySweep, RECOVERY_SWEEP_DRAIN_MS);
+    if (this.#recoverySweep !== undefined || this.#kitStartWork !== undefined) {
+      await settledWithin(Promise.all([this.#recoverySweep, this.#kitStartWork]), STARTUP_WORK_DRAIN_MS);
     }
 
     // Stop the execution backend before the stores close: job processing drains
@@ -1496,15 +1497,15 @@ class InternalFlowState<TSettings extends object>
     if (starts.length === 0) return;
     this.#kitStarts = [];
     const host = kitStartedHost(stores);
-    for (const { kitName, onStarted } of starts) {
-      void Promise.resolve()
+    this.#kitStartWork = Promise.all(starts.map(({ kitName, onStarted }) =>
+      Promise.resolve()
         .then(() => onStarted(host))
         .catch((err: unknown) => {
           this.#logVia("warn", `[flowstate] kit "${kitName}" failed its start-up work; the next start runs it again`, {
             error: err instanceof Error ? err.message : String(err)
           });
-        });
-    }
+        })
+    )).then(() => undefined);
   }
 }
 

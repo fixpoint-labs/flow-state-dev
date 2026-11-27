@@ -14,12 +14,12 @@ import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/
 import { system } from "@flow-state-dev/memory";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { fetch, search } from "@flow-state-dev/tools";
-import { checkGitHubToken, githubTrustedReviewers, operatorGitHub, projectSourceTools, type OperatorGitHubTokenRead } from "@flow-state-dev/workforce";
+import { githubTrustedReviewers, operatorGitHub, projectSourceTools, type OperatorGitHubTokenRead } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
-import { appContextFlow } from "./flows/lab-context.mts";
+import { appContextFlow, gitHubProblem } from "./flows/lab-context.mts";
 
 /** What {@link openTeammates} builds the host from; the README's "The host" says what each sets. */
 export interface TeammatesOptions {
@@ -62,9 +62,6 @@ export const checkCommands = (value: string | undefined) => checkCommandsFrom(va
 /** Where a lab run keeps its store by default: `.fsdev/` beside this file. */
 export const defaultStore = () => fileURLToPath(new URL("./.fsdev/teammates.sqlite", import.meta.url));
 
-/** What the lab says, at start and on its context strip, when it has no GitHub token to poll with. */
-export const GITHUB_NO_TOKEN = "GitHub polling is disabled: no token. Set GITHUB_TOKEN, or sign in with `gh auth login`, and restart.";
-
 /** The lab's host. @throws When the working folder is unset, missing or not a checkout, or the workers' tree doesn't load. */
 export async function openTeammates(options: TeammatesOptions) {
   const workdir = workingFolder(options.workdir);
@@ -88,17 +85,7 @@ export async function openTeammates(options: TeammatesOptions) {
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
   const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, , c]) => Object.hasOwn((c ?? {}) as object, "githubReviewers")).map(([id]) => id) });
   const token = options.github?.token;
-  // One start-up diagnosis, said in the log and on the context strip: no token, or a token GitHub refuses, fails every poll.
-  let githubProblem: string | null = token === undefined ? GITHUB_NO_TOKEN : null;
-  if (token === undefined) console.warn(`teammates: ${GITHUB_NO_TOKEN}${options.github?.problem === undefined ? "" : ` (${options.github.problem})`}`);
-  else {
-    const source = options.github?.source ?? "the host";
-    void checkGitHubToken(token, { ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }), ...(options.githubFetch === undefined ? {} : { fetch: options.githubFetch }) }).then((check) => {
-      if (check.ok) return console.warn(`teammates: GitHub token from ${source} works, as ${check.login}`);
-      githubProblem = `GitHub polling will fail: GitHub refused the token from ${source} (${check.reason}).`;
-      console.warn(`teammates: ${githubProblem}`);
-    });
-  }
+  const githubProblem = gitHubProblem(options.github, { ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }), ...(options.githubFetch === undefined ? {} : { fetch: options.githubFetch }) });
   const github = operatorGitHub({ operator: options.userId, token, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [
@@ -126,7 +113,7 @@ export async function openTeammates(options: TeammatesOptions) {
           ? [claudeCodeHarness(), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
           : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, githubProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, githubProblem: await githubProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

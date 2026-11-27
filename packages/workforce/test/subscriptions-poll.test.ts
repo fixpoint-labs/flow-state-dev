@@ -13,7 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { declaredRoutineKey, type DeclaredRoutine } from "../src/routines";
-import { bootSubscriptionsHost, event, pollTimeline, type SubscriptionsHost, type SubscriptionsHostOptions } from "./subscriptions-harness";
+import { bootSubscriptionsHost, event, github, pollTimeline, type SubscriptionsHost, type SubscriptionsHostOptions } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
 const T0 = Date.parse("2026-11-09T10:00:00Z");
@@ -406,6 +406,47 @@ describe("declared routines on a polled thread", () => {
 // A poll that fails after its dispatch was accepted leaves nothing behind but a failed request: a token
 // GitHub refuses would stop every poll in silence. A failure says which thread and why, once per reason.
 describe("a poll that fails", () => {
+  it("reports a provider that throws before returning its promise", () =>
+    withPolling(async (host) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const poll = vi.spyOn(github, "poll").mockImplementation(() => { throw new Error("provider could not start"); });
+      try {
+        const session = await host.follower("alice");
+        await host.subscribe("alice", session, { thread: PR });
+        await run(host, 5);
+        expect(poll).toHaveBeenCalledOnce();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(`polling ${PR} failed, and each poll tries again: provider could not start`));
+      } finally {
+        poll.mockRestore();
+        warn.mockRestore();
+      }
+    }));
+
+  it("reports the same user's failing thread separately in each organization", () =>
+    withPolling(async (host) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const first = await host.follower("alice");
+        await host.subscribe("alice", first, { thread: PR });
+        const path = ["follower", "sessions"];
+        const response = await (await host.router()).POST(new Request(`http://localhost/api/flows/${path.join("/")}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-user": "alice", "x-org": "other-org" },
+          body: JSON.stringify({ userId: "alice", state: { workerId: "eng.follower" } }),
+        }), { params: { path } });
+        expect(response.status).toBe(201);
+        const second = (await response.json()).session.id;
+        const saved = await host.act("alice", second, "saveRoutine", { trigger: { event: { provider: "github", interest: "what happens on it", thread: PR } } }, "follower", "other-org");
+        expect(saved.output).toMatchObject({ ok: true });
+        pollTimeline.failWith = "GitHub answered 401";
+        await run(host, 5);
+        expect(pollTimeline.calls).toHaveLength(2);
+        expect(warn.mock.calls.filter(([line]) => String(line).startsWith(`[workforce] polling ${PR} failed`))).toHaveLength(2);
+      } finally {
+        warn.mockRestore();
+      }
+    }));
+
   it("says which thread failed and why, once per reason, keeps its mark, and says when it works again", () =>
     withPolling(async (host) => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
