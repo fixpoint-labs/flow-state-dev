@@ -28,13 +28,15 @@ import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/
 import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
-  HARNESS_FEATURE_KEY,
   harnessSessionFlow,
   runBoardSegment,
   runTopic,
   type HarnessSessionPlace,
 } from "@flow-state-dev/harness-manager";
 import { z } from "zod";
+
+// BP-030: the key a manager given no `trackerIssueOf` reads on a board read from the claim. No longer published.
+const HARNESS_FEATURE_KEY = "harnessFeature";
 
 import { goalTmpDir, runGoal } from "../../lib/index.mts";
 import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "../../../packages/harness-manager/test/claim-host.ts";

@@ -23,6 +23,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { withRequestOrg } from "../context/principal";
 import {
   isOrgAttributed,
   UnattributedOrgError,
@@ -351,6 +352,21 @@ function ownerFlowOf(
   return denied === undefined ? {} : { denied };
 }
 
+// BR-14; BP-030.
+/**
+ * The request routes that run stored work again: a retry, a continue, a
+ * resume and an answer. Each is held to the organization the stored record
+ * itself names. Its session's organization makes a record from before
+ * organizations visible to its owner (`withRequestOrg`), and nothing more:
+ * that owner is refused `migration-required` here until it is migrated.
+ */
+const RUNS_STORED_WORK: ReadonlySet<ParsedFlowRoute["kind"]> = new Set([
+  "retry_request",
+  "continue_request",
+  "resume_suspension",
+  "answer_suspension"
+]);
+
 /** Whether any registered flow configures a resolver that is not the framework default. */
 function anyFlowAuthenticates(ctx: RouteAuthContext): boolean {
   return ctx.registry.list().some(flowAuthenticates);
@@ -478,10 +494,17 @@ export async function authorizeManagementRoute(
       break;
     }
     case "request": {
-      const record = await ctx.stores.request.get(effective.requestId);
-      if (record !== undefined) {
-        checked = { request: record };
-        const resolved = ownerFlowOf(ctx, record, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
+      const stored = await ctx.stores.request.get(effective.requestId);
+      if (stored !== undefined) {
+        checked = { request: stored };
+        // BP-030: a record written before organizations were stamped is read
+        // with its session's organization, as every request door reads it
+        // (`withRequestOrg`), so its owner keeps it; one that read can't
+        // attribute is still refused below as unattributed, and so is any such
+        // record a route would run again (`RUNS_STORED_WORK`).
+        const record = await withRequestOrg(ctx.stores, stored);
+        const admitted = RUNS_STORED_WORK.has(route.kind) ? stored : record;
+        const resolved = ownerFlowOf(ctx, admitted, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
         owner = record.userId;
@@ -509,12 +532,15 @@ export async function authorizeManagementRoute(
         }
         return ALLOWED;
       }
-      const resolved = ownerFlowOf(ctx, active, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
+      const entry = await withRequestOrg(ctx.stores, active);
+      const resolved = ownerFlowOf(ctx, RUNS_STORED_WORK.has(route.kind) ? active : entry, () =>
+        hiddenRequestResponse(request, route, ctx.registry, effective.requestId)
+      );
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
-      owner = active.userId;
-      ownerOrgId = active.orgId;
-      sessionId = active.sessionId;
+      owner = entry.userId;
+      ownerOrgId = entry.orgId;
+      sessionId = entry.sessionId;
       break;
     }
     case "flow":

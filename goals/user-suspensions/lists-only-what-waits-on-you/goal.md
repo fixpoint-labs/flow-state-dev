@@ -12,7 +12,7 @@
 **Model:** n/a (no model call)
 **Run:** `pnpm tsx goals/user-suspensions/lists-only-what-waits-on-you/run.mts`
 **Controls:**
-- `GOAL_CONTROL=owns-request` — the SQL organization match also takes a request with no organization, as `principalOwnsRequest` does: `a:scope` must FAIL (the null-org row is listed).
+- `GOAL_CONTROL=owns-request` — the SQL organization match also takes a request with no organization, as a request owner check that tolerates a missing organization would: `a:scope` must FAIL (the null-org row is listed).
 - `GOAL_CONTROL=hear-run` — the read hears `run` on the user topic instead of `suspension`: `c:quiet` must FAIL.
 
 ## Verdict log

@@ -1,0 +1,82 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes in the closure check. Today: journey j2 grades Shift Manager alone on Postgres, and the Teammates and claude-code-style labs are graded only by checks on one process, their hooks over happy-dom on the in-memory bus. After: j2 adds one scene per lab. Each lab runs as two processes over one Postgres on the real bus, with its workers on the scripted model and the scripted coder; process 1 writes a reply, a turn and a task, and the lab&#x27;s own page in Chromium on process 2 shows each within a second and reads nothing while idle."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arrow-n{ stroke:var(--code); stroke-width:1.6; fill:none; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <rect class="box" x="16" y="42" width="430" height="92" rx="6"/>
+    <text class="t-lbl" x="32" y="64">CLOSURE · J2</text>
+    <text class="t-h" x="32" y="86" style="fill:var(--ink)">Shift Manager only</text>
+    <text class="t-s" x="32" y="106">one process on Postgres · a line and an idle window</text>
+    <text class="t-s" x="32" y="122">the labs moved out on Nov 19</text>
+    <rect class="box" x="16" y="148" width="430" height="196" rx="6"/>
+    <text class="t-lbl" x="32" y="170">THE LABS · ELSEWHERE</text>
+    <text class="t-h" x="32" y="192" style="fill:var(--ink)">One process, hooks over happy-dom</text>
+    <text class="t-s" x="32" y="214">FIX-2466 · FIX-2412 · FIX-2551</text>
+    <text class="t-s" x="32" y="232">in-memory bus or the crossing double</text>
+    <text class="t-s" x="32" y="250">never the lab&#x27;s own page, never two processes</text>
+    <text class="t-b" x="32" y="290" style="fill:var(--gone)">A notice that never reaches process 2</text>
+    <text class="t-b" x="32" y="308" style="fill:var(--gone)">passes every one of them</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="502" y="30">AFTER · ONE SCENE PER LAB</text>
+    <rect class="new" x="494" y="42" width="430" height="302" rx="6"/>
+    <text class="t-lbl" x="510" y="64">TEAMMATES · CLAUDE-CODE-STYLE</text>
+    <rect class="box" x="510" y="78" width="180" height="58" rx="5"/>
+    <text class="t-b" x="522" y="100">process 1</text>
+    <text class="t-s" x="522" y="118">scripted model · coder</text>
+    <rect class="box" x="728" y="78" width="180" height="58" rx="5"/>
+    <text class="t-b" x="740" y="100">process 2</text>
+    <text class="t-s" x="740" y="118">serves the page</text>
+    <rect class="box" x="580" y="166" width="258" height="44" rx="5"/>
+    <text class="t-b" x="596" y="186">one Postgres · the real bus</text>
+    <text class="t-s" x="596" y="202">statements logged by process</text>
+    <path class="arrow-n" d="M600 136 L640 166"/>
+    <path class="arrow-n" d="M778 166 L818 136"/>
+    <rect class="box" x="728" y="236" width="180" height="58" rx="5"/>
+    <text class="t-b" x="740" y="258">the lab&#x27;s page</text>
+    <text class="t-s" x="740" y="276">Chromium · fronted</text>
+    <path class="arrow-n" d="M818 136 L818 236"/>
+    <text class="t-s" x="510" y="246">reply · turn · activity · task</text>
+    <text class="t-b" x="510" y="264" style="fill:var(--code)">each within 1 s</text>
+    <text class="t-s" x="510" y="290">10 s idle</text>
+    <text class="t-b" x="510" y="308" style="fill:var(--code)">0 requests · 0 timed reads</text>
+    <text class="t-s" x="510" y="332">memory-bus · no-request-publish · never-crosses must FAIL</text>
+  </g>
+</svg>

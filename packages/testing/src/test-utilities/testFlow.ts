@@ -131,7 +131,10 @@ async function seedFlowStores(options: {
         version: 0,
         createdAt: now,
         updatedAt: now,
-        journal: []
+        journal: [],
+        // The kind a real session gets from the run that creates it: this
+        // helper runs as an HTTP caller would, a person.
+        principalKind: "person"
       }, "any");
     }
     await seedResourceState("session", options.sessionId, options.seed?.session?.resources);
@@ -219,6 +222,8 @@ export async function testFlow<TInput = unknown>(
     sessionId,
     orgId: orgId ?? DEFAULT_ORG_ID,
     userId: options.userId,
+    // Run as an HTTP caller's door would set it: a person.
+    principalKind: "person",
     requestId,
     stores,
     runtimeConfig
