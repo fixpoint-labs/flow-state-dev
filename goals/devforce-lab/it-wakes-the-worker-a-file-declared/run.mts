@@ -26,7 +26,7 @@
  *   b  BR-3 BR-4      — each seat's own view of itself; the EM kind has no task entry
  *   c  BR-5 BR-6 BR-8 BR-9 — one row, claimed once, to the seat the board named
  *   d  BR-10 BR-11 BR-13   — the prompt, the checkout, and the settled row
- *   e  BR-7           — a hand-off to an instance nobody minted
+ *   e  BR-7           — a filing for an instance nobody minted is refused
  *   f  BR-12 BR-14    — the done-condition is the authority, and the budget is spent
  *   g  BR-16 BR-17    — an unwalked folder loads as nothing; an org-less read is refused
  *
@@ -611,26 +611,38 @@ await runGoal(async (failures) => {
     await lab.dispose();
   }
 
-  // ---- (e) BR-7 — a hand-off to an instance nobody minted -----------------
+  // ---- (e) BR-7 — a filing for an instance nobody minted ------------------
   {
     const missing = await open("noseat", { coderWorkerId: fixture.unknownSeat });
     try {
-      await missing.lab.file(fixture.coordinatorSeat, filing);
-      await missing.lab.drain(fixture.coordinatorSeat);
-      const row = await terminal(missing.lab);
-      if (row.status !== "errored") {
-        note(`a hand-off to an unminted instance settled "${row.status}", wanted "errored"`);
+      // Refused at filing, by name: a task's input is checked against the
+      // worker it is for, and a worker this session can't read can't be
+      // checked, so no row is written for a hand-off to reach.
+      const filed = await missing.lab.file(fixture.coordinatorSeat, filing);
+      if (filed.error === undefined) {
+        note(`a filing for an unminted instance was accepted, wanted it refused`);
+      } else {
+        // The code, not the sentence: any other refusal (`no_project`, a misfit)
+        // also names the id and ends "Nothing was filed".
+        if (filed.code !== "input_unchecked") {
+          note(`the filing was refused as "${filed.code}", wanted "input_unchecked" (an unreadable worker): ${filed.error}`);
+        }
+        if (!filed.error.includes(`"${fixture.unknownSeat}"`)) {
+          note(`the refusal does not name the id it could not file for: ${filed.error}`);
+        }
       }
-      // Refused at the hand-off, by name: no worker of that id is one the EM's session hands to.
-      const reason = `${row.error ?? ""} ${row.feedback ?? ""}`;
-      if (!reason.includes(`"${fixture.unknownSeat}"`) || !reason.includes("delegates")) {
-        note(`the refusal does not name the id it could not hand to: ${reason}`);
+      const drained = await missing.lab.drain(fixture.coordinatorSeat);
+      if (drained.error !== undefined) note(`the drain after a refused filing failed: ${drained.error}`);
+      // The lab is fresh, so any row at all was written by this filing.
+      const rows = Object.values(await missing.lab.rows());
+      if (rows.length !== 0) {
+        note(`a refused filing left ${rows.length} row(s) on the board: ${JSON.stringify(rows.map((r) => [r.id, r.status]))}`);
       }
       if (missing.runs.length !== 0) {
         note(`a checkout was provisioned for a hand-off that could not be delivered`);
       }
       evidence.push(
-        `a hand-off naming an instance no seat minted errors the row by name (not one of the session's delegates) ` +
+        `a filing naming an instance no seat minted is refused by that id, leaves no row, ` +
           `and provisions nothing`,
       );
     } finally {
