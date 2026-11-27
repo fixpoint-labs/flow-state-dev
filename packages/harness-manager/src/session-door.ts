@@ -61,13 +61,16 @@ export const harnessTalkOutputSchema = z.object({ reply: z.string().nullable(), 
  * `task-running` is a talk turn's alone: a message about a task still open,
  * which never steers it.
  */
-export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | "task-running" | LineSteerRefusal;
+export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | "task-running" | "before-run-settings" | LineSteerRefusal;
 
 /** What a person reads for each refusal. */
 const REFUSAL_TEXT: Record<SessionDoorRefusalReason, string> = {
   "not-started": "This task hasn't started here, so there's no session to write into.",
   "cannot-continue": "This run's harness confirmed no coding session, so it can't take a message once finished.",
   "task-running": "This task is still running, so a message can't reach its coding session until it finishes.",
+  // FIX-2878 D2.
+  "before-run-settings":
+    "This task ran before its coder was recorded with it, so its coding session can't be continued safely. File a new task to go on with the work.",
   ...LINE_STEER_REFUSALS,
 };
 

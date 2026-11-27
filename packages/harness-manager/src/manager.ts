@@ -122,6 +122,8 @@ import {
   heldSchema,
   placeStatusSchema,
   openRunRecord,
+  frozenRunSettingsOf,
+  frozenRunSettingsSchema,
   readConfirmedSession,
   readModeRunRecord,
   readRunRecord,
@@ -899,6 +901,14 @@ export const harnessClaimSchema = z.object({
 /** The manager's input: the board's worker input, plus the claim a board read from the claim names. */
 export const harnessManagerInputSchema = taskWorkerInputSchema.extend({
   claim: harnessClaimSchema.optional(),
+  // FIX-2878 D1.
+  /**
+   * The run settings the host resolved for this task, from its run record's
+   * frozen ones or, on its first claim, its own order. An attempt whose record
+   * froze none writes these, and a session the record held from before is not
+   * resumed (D2). Absent: nothing is frozen, as before.
+   */
+  runSettings: frozenRunSettingsSchema.optional(),
 });
 
 /** A board read from the claim, as the manager records it on its state. */
@@ -2774,7 +2784,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // harness never confirmed a session — it was never sent one, or it was
       // sent one the vendor could not honour — so this attempt starts fresh
       // rather than asking for a dead id again.
-      const previousSessionId = recorded?.sessionId ?? null;
+      // **The first claim freezes the run settings** (FIX-2878 D1). A record that froze none and still
+      // names a session is from before the freeze: that session may be another harness's, so this
+      // attempt starts fresh, once (D2).
+      const freezing = input.runSettings !== undefined && frozenRunSettingsOf(recorded) === undefined;
+      const previousSessionId = freezing ? null : (recorded?.sessionId ?? null);
       // **Which run this is**, counted on the record and never reset: the
       // second number of the ask marker, so this run is never pointed at a
       // question an earlier turn already asked (`./ask`). A replay of this
@@ -2819,6 +2833,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             runKey,
             landedPullRequests,
             ...(requestIds !== undefined ? { requestIds } : {}),
+            ...(freezing ? { frozen: input.runSettings! } : {}),
           },
         ),
         "the run record was opened",
@@ -3253,7 +3268,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
         writeRunRecord(ctx, identity, {
-        source: handle.source,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
         costUsd: handle.cost?.usd ?? null,

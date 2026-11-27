@@ -4,8 +4,11 @@
  * `workerFlows` slot, built over every harness the app filled.
  *
  * A task handed to a worker on it becomes a supervised coding run through the
- * harness the worker's own `WORKER.md` names in `harness:` (the kit's
- * `defaultHarness` when it names none). What a task takes is declared on the
+ * harness its run settings name: the one the server filled on the task at
+ * filing, else the worker's own `harness:`, else the kit's `defaultHarness`.
+ * The first claim freezes them on the run record, with the review mode and
+ * the task's mode, and every later attempt, steer, message and line in the
+ * run's session reads them there. What a task takes is declared on the
  * flow's `work` entry (`./coding-task-input`): the mode it runs in and the
  * issue it works on, which the filer writes and the filing check checks, and
  * the run settings, which only the server writes. A worker's `lock:` refuses a
@@ -44,10 +47,10 @@
 import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
@@ -75,8 +78,9 @@ import type { Harness } from "@flow-state-dev/core/harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type ModeSpec } from "../manager";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
-import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
-import { taskIssueSegment } from "../workspace";
+import { harnessSessionDoor, harnessTalkTurn, SessionDoorRefused, sessionTask } from "../session-door";
+import { frozenRunSettingsOf, readModeRunRecord, RUNS, runRecordCollection, type FrozenRunSettings } from "../run-record";
+import { runBoardSegment, taskIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
@@ -436,42 +440,93 @@ export function coderWorkerFlow(
       );
       type Built = (typeof built)[string];
 
-      /** The harness the session's worker names, read from the worker as this turn resolves it, and its manager. */
-      const harnessOf = async (ctx: Parameters<WorkerInstallation["resolveWorker"]>[0]) => {
-        const worker = await installation.resolveWorker(ctx, CODER_FLOW);
-        const id = (worker.config.harness as string | undefined) ?? options.defaultHarness;
-        const found = id === undefined ? undefined : built[id];
-        if (id === undefined || found === undefined) {
+      type Worker = Awaited<ReturnType<WorkerInstallation["resolveWorker"]>>;
+      type Ctx = BlockContext;
+      // FIX-2878 D1.
+      /**
+       * The run settings a task runs with when its run record froze none: its own (the filler's),
+       * then its worker's `harness:`, then the kit's default. The review mode is the worker's, with
+       * the kit's `review` a floor: a worker can turn it on, never off, so a worker anyone can hire
+       * never settles a change no user saw.
+       */
+      const resolveSettings = (input: Record<string, unknown>, worker: Worker): FrozenRunSettings => {
+        const harness = (input.harness as string | undefined) ?? (worker.config.harness as string | undefined) ?? options.defaultHarness;
+        if (harness === undefined) {
           throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md, and the harness kit sets no \`defaultHarness\`.`);
         }
-        // The kit's review is a floor: a worker's `review:` can turn it on, never off, so a worker anyone
-        // can hire never settles a change no user saw.
-        const review = options.review === true || worker.config.review === true;
-        return { ...found, id, manager: review ? found.reviewed : found.manager, worker };
+        return {
+          harness,
+          model: (input.model as FrozenRunSettings["model"] | undefined) ?? null,
+          plan: (input.plan as boolean | undefined) ?? null,
+          review: options.review === true || worker.config.review === true,
+          mode: modeOfTask(input, resolved),
+        };
+      };
+      // BP-030.
+      /**
+       * The run settings the task's run record froze, under any of the app's modes (a row stored
+       * before this change keys its run by the mode its first claim read), or `undefined` for a task
+       * whose record froze none.
+       */
+      const frozenFor = async (ctx: Ctx, collectionId: string, partition: string | undefined, taskId: string): Promise<FrozenRunSettings | undefined> => {
+        const epic = runBoardSegment(collectionId, partition);
+        for (const { spec } of Object.values(resolved.modes)) {
+          const mode = spec.formerName === undefined ? { name: spec.name } : { name: spec.name, formerName: spec.formerName };
+          const frozen = frozenRunSettingsOf((await readModeRunRecord(ctx, epic, taskIssueSegment(taskId), mode, taskId)).record);
+          if (frozen !== undefined) return frozen;
+        }
+        return undefined;
+      };
+      /** The built harness a run settings' harness names, and its manager by their review mode. */
+      const builtFor = (settings: FrozenRunSettings) => {
+        const found = built[settings.harness];
+        // A harness removed from the app fails its claimed tasks by name.
+        if (found === undefined) throw new Error(`harness_removed: this task runs on harness "${settings.harness}", which this app no longer has. Nothing ran.`);
+        return { ...found, id: settings.harness, manager: settings.review ? found.reviewed : found.manager };
       };
       /**
-       * Route by the session's worker; a run that starts work first checks the mode its task's checked
-       * input names, then asks whether its harness can run here. The harness chosen is noted for the
-       * request, so a task its coding session files carries it.
+       * The run settings a line or a message in this session reaches: those its task's run froze.
+       * A finished task that froze none ran before this change, so its session may be another
+       * harness's: talk to it is refused by name (D2). Any other session's are its worker's.
+       */
+      const sessionSettings = async (ctx: Ctx, talks: boolean): Promise<FrozenRunSettings> => {
+        const worker = await installation.resolveWorker(ctx, CODER_FLOW);
+        const filed = await board(ctx);
+        const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
+        if (filed !== undefined && task !== undefined) {
+          const frozen = await frozenFor(ctx, filed.tasks.collectionId, filed.tasks.partition, task.id);
+          if (frozen !== undefined) return frozen;
+          if (talks && isTerminalStatus(task.status)) throw new SessionDoorRefused("before-run-settings");
+        }
+        return resolveSettings({}, worker);
+      };
+      /**
+       * Route a turn to the harness its run settings name: a task's work and steer by the settings
+       * the read step resolved, a line or a message by its session's. A run that starts work first
+       * checks the mode and the worker's lock against them, then asks whether its harness can run
+       * here. The harness is noted for the request, so a task its coding session files carries it.
        */
       const byHarness = (name: string, inputSchema: z.ZodTypeAny, pick: (b: Built) => BlockDefinition<any, any>, ready: boolean) =>
         router({
           name,
           inputSchema,
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
-          resources: installation.resources,
+          resources: { ...installation.resources, [RUNS]: runRecordCollection },
           execute: async (input, ctx) => {
-            const task = ((input as { input?: unknown }).input ?? {}) as Record<string, unknown>;
+            const given = input as { input?: unknown; runSettings?: FrozenRunSettings };
+            const settings = given.runSettings ?? (await sessionSettings(ctx, !ready));
             if (ready) {
+              const task = (given.input ?? {}) as Record<string, unknown>;
               // The claim re-checks what the filing did: the app's modes or a mode's `requires` may have changed.
               const problem = modeProblem(task, resolved);
               if (problem !== undefined) throw new Error(`${problem.code}: ${problem.text} Nothing ran.`);
-            }
-            const chosen = await harnessOf(ctx);
-            if (ready) {
-              // And the worker's lock, read as this claim resolves the worker: one set after the filing refuses it here.
-              const locked = taskLockProblem(chosen.worker, task, { modes: resolved, harnesses: ids, ...(options.defaultHarness === undefined ? {} : { defaultHarness: options.defaultHarness }) });
+              // And the worker's lock, read as this claim resolves the worker, against the settings the run takes.
+              const worker = await installation.resolveWorker(ctx, CODER_FLOW);
+              const locked = taskLockProblem(worker, { ...task, harness: settings.harness, mode: settings.mode }, { modes: resolved, harnesses: ids, ...(options.defaultHarness === undefined ? {} : { defaultHarness: options.defaultHarness }) });
               if (locked !== undefined) throw new Error(`${locked.code}: ${locked.text} Nothing ran.`);
+            }
+            const chosen = builtFor(settings);
+            if (ready) {
               const missing = await refusal(chosen.id);
               if (missing !== undefined) throw new Error(missing);
             }
@@ -480,9 +535,11 @@ export function coderWorkerFlow(
           },
         });
       /**
-       * The task as a coding route reads it: its input as stored, trusted as far as the row's stamp
-       * says (`trustedCodingInput`). The row is read from the board the claim names, never from the
-       * input the route was handed, so a field a filer wrote on a row the check never stamped decides nothing.
+       * The task as a work or steer turn runs it. Its input as stored, trusted as far as the row's
+       * stamp says (`trustedCodingInput`), the row read from the board the claim names, never from
+       * the input the route was handed. Then its run settings: those its run record froze, or, on
+       * its first claim, resolved now and handed to the manager, which freezes them.
+       * The mode the settings name is the one the run takes.
        */
       const trusted = (name: string, block: BlockDefinition<any, any>) =>
         sequencer({ name, inputSchema: taskWorkerInputSchema.passthrough() }).step(
@@ -491,7 +548,10 @@ export function coderWorkerFlow(
             const ledger = claim === undefined ? undefined : await conversationLedgers(claim.collectionId, ctx, claim.partition, task.taskId);
             const stored = ledger?.get(task.taskId);
             const stamped = stored !== undefined && stampMatches(stored, CODER_FLOW, declaration);
-            return { ...task, input: trustedCodingInput((task.input ?? {}) as Record<string, unknown>, stamped, resolved) };
+            const input = trustedCodingInput((task.input ?? {}) as Record<string, unknown>, stamped, resolved);
+            const frozen = claim === undefined ? undefined : await frozenFor(ctx, claim.collectionId, claim.partition, task.taskId);
+            const runSettings = frozen ?? resolveSettings(input, await installation.resolveWorker(ctx, CODER_FLOW));
+            return { ...task, input: { ...input, mode: runSettings.mode }, runSettings };
           },
           block,
         ) as BlockDefinition<any, any>;
@@ -523,8 +583,8 @@ export function coderWorkerFlow(
               name: `${CODER_FLOW}-harness`,
               inputSchema: z.object({}),
               outputSchema: z.object({ harness: z.string() }),
-              resources: installation.resources,
-              execute: async (_input, ctx) => ({ harness: (await harnessOf(ctx)).id }),
+              resources: { ...installation.resources, [RUNS]: runRecordCollection },
+              execute: async (_input, ctx) => ({ harness: (await sessionSettings(ctx, false)).harness }),
             }),
           },
         },
