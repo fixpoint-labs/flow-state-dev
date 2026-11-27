@@ -15,7 +15,7 @@
  * Internal-only — not re-exported from the package index.
  */
 
-import { DEFAULT_WORKING_MEMORY_CONFIG } from '../working-memory-helpers'
+import { resolveWorkingMemoryConfig } from '../working-memory-helpers'
 import type { WorkingMemoryHelperConfig } from '../working-memory-helpers'
 import {
   DEFAULT_EPISODIC_CONFIG,
@@ -144,18 +144,7 @@ function digestFlowIsolation(
  * semantic).
  */
 export function resolveMemoryConfigs(config: MemoryTierOptions): ResolvedMemoryConfigs {
-  const workingConfig: WorkingMemorySystemConfig = config.working === true
-    ? {}
-    : config.working
-
-  const resolvedWorking: WorkingMemoryHelperConfig = {
-    capacity: workingConfig.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
-    maxPinnedSlots: workingConfig.maxPinnedSlots ?? DEFAULT_WORKING_MEMORY_CONFIG.maxPinnedSlots,
-    decay: {
-      strategy: workingConfig.decay?.strategy ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.strategy,
-      rate: workingConfig.decay?.rate ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.rate,
-    },
-  }
+  const resolvedWorking = resolveWorkingMemoryConfig(config.working === true ? undefined : config.working)
 
   const episodicConfig: ResolvedEpisodicConfig | undefined = config.episodic
     ? {

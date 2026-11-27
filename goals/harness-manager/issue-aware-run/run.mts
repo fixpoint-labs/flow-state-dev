@@ -18,6 +18,7 @@
  *
  * Run: pnpm tsx goals/harness-manager/issue-aware-run/run.mts
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -27,14 +28,15 @@ import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/
 import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
-  HARNESS_FEATURE_KEY,
   harnessSessionFlow,
   runBoardSegment,
   runTopic,
-  type HarnessSessionFeeds,
   type HarnessSessionPlace,
 } from "@flow-state-dev/harness-manager";
 import { z } from "zod";
+
+// BP-030: the key a manager given no `trackerIssueOf` reads on a board read from the claim. No longer published.
+const HARNESS_FEATURE_KEY = "harnessFeature";
 
 import { goalTmpDir, runGoal } from "../../lib/index.mts";
 import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "../../../packages/harness-manager/test/claim-host.ts";
@@ -73,7 +75,7 @@ function sessionHost(checkout: string) {
       locate: () => checkout,
       branch: () => null,
     },
-    agent: (feeds: HarnessSessionFeeds) =>
+    agent: (feeds: HarnessFeeds) =>
       handler({
         name: "recording-harness",
         inputSchema: z.object({ prompt: z.string() }),

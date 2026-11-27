@@ -103,7 +103,7 @@ describe("what each session's header says about the repository", () => {
   it("Claude Code: the line follows the options the run gets, so `hooks-on` says hooks on", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     vi.stubEnv("GOAL_CONTROL", "hooks-on");
-    expect(claudeCodeRepoOptions(TRUSTED)).toEqual({ settingSources: ["project"] });
+    expect(claudeCodeRepoOptions(TRUSTED)).toEqual({ settingSources: ["project"], settings: { disableAllHooks: false } });
     expect(claudeCodeRepoLine(TRUSTED).conventions).toBe("loaded, hooks on");
   });
 

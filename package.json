@@ -33,7 +33,8 @@
     "release:ci": "pnpm release:build && bash -eo pipefail -c 'if [ -n \"${NPM_TOKEN:-}\" ]; then changeset publish --provenance; else echo \"Skipping npm publish in CI: NPM_TOKEN is not set\"; fi'",
     "release:snapshot": "changeset version --snapshot && pnpm release:build && changeset publish --tag canary --no-git-tag --provenance",
     "fsdev": "tsx packages/fsdev/bin/fsdev.ts",
-    "goal:all": "pnpm --filter @flow-state-dev/goals goal:all"
+    "goal:all": "pnpm --filter @flow-state-dev/goals goal:all",
+    "wt:prune": "node scripts/worktree.mjs prune"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.5",

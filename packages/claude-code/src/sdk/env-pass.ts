@@ -3,9 +3,10 @@ import { HARNESS_BASE_PASS } from "@flow-state-dev/core/harness";
 
 /**
  * The only variables of the server's environment a Claude Code run needs, for
- * `harnessEnv({ pass: CLAUDE_CODE_PASS })` from `@flow-state-dev/core/harness`.
- * Without a list, a run inherits the server's whole `process.env` — every key,
- * token and connection string in it — and its model has a shell.
+ * `harnessEnv({ pass: CLAUDE_CODE_PASS })` from `@flow-state-dev/core/harness`,
+ * and what `claudeCodeAgent` hands a run whose host sets no `env`. A run given
+ * the server's whole `process.env` would hold every key, token and connection
+ * string in it, and its model has a shell.
  *
  * Core's `HARNESS_BASE_PASS` and this harness's own names: `PATH` (its shell commands and git are found through it), `HOME`, `USER`
  * and `SHELL` (its sign-in, git identity and Bash tool), `TMPDIR`, the two

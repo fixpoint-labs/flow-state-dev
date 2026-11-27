@@ -104,7 +104,7 @@ import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskCollectionRef, TaskWorker, TaskWorkerInput } from "../../tasks";
 import { checkWait, waitOnTask, type CheckedWait, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
-import { taskBoardWorkerBodyStateSchema } from "../schemas";
+import { taskBoardWorkerBodyStateSchema, type TaskBoardWorkerBodyContext } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
 import { HandedOverTaskError } from "./recorder-failure";
 
@@ -141,8 +141,8 @@ export interface CreateTaskDispatchOptions {
 export function createTaskDispatch(options: CreateTaskDispatchOptions): TaskWorker {
   const { name, boardId, assignee: named, address, binding, wait } = options;
 
-  const handOver = async (payload: TaskWorkerInput, ctx: BlockContext) => {
-    const claim = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim;
+  const handOver = async (payload: TaskWorkerInput, ctx: TaskBoardWorkerBodyContext) => {
+    const claim = ctx.sequencer!.state.currentClaim;
     if (claim === undefined) {
       // Unreachable through the drain, which mints the ticket in the tap
       // before any route runs. Named because reaching here would otherwise
@@ -305,7 +305,7 @@ export function createTaskDispatch(options: CreateTaskDispatchOptions): TaskWork
    * the claim held, the hand-over once, then the wait until the row ends. Any
    * failure past the hand-over is the plan's.
    */
-  const handOverAndWait = async (payload: TaskWorkerInput, ctx: BlockContext) => {
+  const handOverAndWait = async (payload: TaskWorkerInput, ctx: TaskBoardWorkerBodyContext) => {
     const collection = await wait!.collection(ctx);
     const taskId = payload.taskId;
     const key = `fsd.plan.dispatch:${boardId}:${taskId}:${payload.attempts}`;
@@ -355,7 +355,7 @@ export function createTaskDispatch(options: CreateTaskDispatchOptions): TaskWork
       // reads the first run's answer off the state, so it holds only while
       // `handOver` keeps the claim on every throw before its release and
       // hands it back on a refusal: change either and fix this with it.
-      const released = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim === undefined;
+      const released = ctx.sequencer!.state.currentClaim === undefined;
       if (!replayed && !released) throw error;
       throw new HandedOverTaskError(boardId, taskId, error);
     }

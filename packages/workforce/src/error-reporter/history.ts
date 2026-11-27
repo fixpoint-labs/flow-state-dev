@@ -133,18 +133,18 @@ export async function appendHistory(reports: ResourceCollectionRef, entry: Histo
       }
       ref = await reports.getOrCreate(key, { hour: utcHour(entry.at), entries: [], cut: 0 });
     }
-    await updateStateWith(ref as never, (current: unknown) => {
+    await updateStateWith(ref, (current) => {
       const parsed = historyHourSchema.safeParse(current);
       const record: HistoryHour = parsed.success ? parsed.data : { hour: utcHour(entry.at), entries: [], cut: 0 };
       if (entry.key !== undefined && (record.entries.some((e) => e.key === entry.key) || record.cutKeys?.includes(entry.key) === true)) {
-        return { state: current as never, result: undefined };
+        return { state: current, result: undefined };
       }
       const cutKeys = entry.key === undefined ? record.cutKeys : [...(record.cutKeys ?? []), entry.key].slice(-HISTORY_ENTRY_CAP);
       const next: HistoryHour =
         record.entries.length >= HISTORY_ENTRY_CAP
           ? { ...record, cut: record.cut + 1, ...(cutKeys === undefined ? {} : { cutKeys }) }
           : { ...record, entries: [...record.entries, entry] };
-      return { state: next as never, result: undefined };
+      return { state: next, result: undefined };
     });
   } catch (error) {
     log?.(`couldn't keep a history entry for ${entry.reportId ?? entry.taskId ?? "an occurrence"}: ${String(error)}`);

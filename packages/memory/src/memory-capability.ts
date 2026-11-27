@@ -261,12 +261,7 @@ export function buildMemoryCapability(
   const relationsEnabled = !!semanticConfig?.relations
   const connectToolBlock = relationsEnabled ? createConnectTool() : undefined
 
-  // Build the recall helper (ranking decay derived from hygiene).
-  const recallFn = buildRecall(
-    episodicConfig ? { scope: episodicConfig.scope } : undefined,
-    semanticConfig ? { scope: semanticConfig.scope } : undefined,
-    hygiene,
-  )
+  const recall = buildRecall(resolved, hygiene)
 
   // Compose the unified memory capability
   const capUses: CapabilityRef[] = [wmCapability]
@@ -286,7 +281,7 @@ export function buildMemoryCapability(
       const edges = edgesOf(ctx)
       return {
         /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
-        recall: (cue?: string) => recallFn(ctx, cue),
+        recall: (cue?: string) => recall(ctx, cue),
         // FIX-745.
         /**
          * Direct neighbour edges around `entity` — exactly 1 hop (relations
@@ -403,7 +398,7 @@ export function buildMemoryCapability(
     ...(connectToolBlock ? { connectToolBlock } : {}),
   }) as MemoryCapability
 
-  return { capability, resolved, hygiene, recall: recallFn }
+  return { capability, resolved, hygiene, recall }
 }
 
 /**

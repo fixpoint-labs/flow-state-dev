@@ -56,6 +56,7 @@ export { isWindowsReservedName } from "./windows-reserved-name";
 export { ONE_OFF_SESSION_PREFIX, isOneOffSessionId, oneOffSessionId } from "@flow-state-dev/contracts/helpers";
 export { MAX_SEGMENT_LENGTH, segmentNameProblem, type SegmentNameProblem } from "./segment-name";
 export { withTimeout } from "./with-timeout";
+export { keyPrefixSuccessor } from "./key-prefix-successor";
 export {
   assertSetExpectedVersion,
   assertDeleteExpectedVersion,

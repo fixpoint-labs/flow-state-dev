@@ -56,15 +56,18 @@ export const standingRulesCollection = defineResourceCollection({
   }
 });
 
-/** The running request's record, or `undefined` on a flow that doesn't declare it. */
-function collectionOf(ctx: BlockContext): ResourceCollectionRef | undefined {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[STANDING_RULES_RESOURCE];
-  return typeof ref === "object" && ref !== null && "getOrCreate" in ref ? (ref as ResourceCollectionRef) : undefined;
+/** The rules collection declared by the running flow. */
+function collectionOf(ctx: BlockContext): ResourceCollectionRef {
+  const ref = ctx.resources[STANDING_RULES_RESOURCE];
+  if (typeof ref !== "object" || ref === null || !("getOrCreate" in ref)) {
+    throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
+  }
+  return ref;
 }
 
 /** The record's key for this request: its verified worker, or the copy's own on a copy minted for one worker. */
 function keyOf(ctx: BlockContext): string {
-  const worker = verifiedWorkerOf(ctx.session as object);
+  const worker = verifiedWorkerOf(ctx.session);
   return worker === undefined ? OWN_COPY_KEY : encodeUserSegment(worker);
 }
 
@@ -80,9 +83,7 @@ function parsed(state: unknown): StandingRules {
  * when the record can't be read; a turn catches that and runs without rules.
  */
 export async function readStandingRules(ctx: BlockContext): Promise<StandingRules> {
-  const collection = collectionOf(ctx);
-  if (collection === undefined) throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
-  const ref = await collection.getOptional(keyOf(ctx));
+  const ref = await collectionOf(ctx).getOptional(keyOf(ctx));
   return ref === undefined ? EMPTY_RULES : parsed(ref.state);
 }
 
@@ -100,11 +101,9 @@ export async function writeStandingRules(
   edit: RuleEdit,
   sessionId: string | null
 ): Promise<RuleEditOutcome> {
-  const collection = collectionOf(ctx);
-  if (collection === undefined) throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
-  const ref = await collection.getOrCreate(keyOf(ctx), EMPTY_RULES);
+  const ref = await collectionOf(ctx).getOrCreate(keyOf(ctx));
   const now = Date.now();
-  const outcome = await updateStateWith(ref as never, (current: unknown) => {
+  const outcome = await updateStateWith(ref, (current) => {
     const result = applyRuleEdit(parsed(current), version, edit, { sessionId, now });
     return { state: result.ok ? result.list : current, result };
   });

@@ -15,7 +15,6 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { SLASH_COMMAND_PATTERN } from "@flow-state-dev/core/internal";
-import type { SkillState } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";
@@ -64,8 +63,7 @@ export function createSkillSlashMatch(opts: SlashMatchOptions) {
       const manifest = await collection.getOptional(skillManifestKey(skillName));
       if (!manifest) return { matched: false };
 
-      const state = manifest.state as unknown as SkillState;
-      if (state.disableModelInvocation) return { matched: false };
+      if (manifest.state.disableModelInvocation) return { matched: false };
 
       await ctx.sequencer!.patchState({
         resolved: true,
