@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { boardTaskOf, type InboxBoardTask, type InboxSuspensionDetail, type InboxViewValue } from "@flow-state-dev/workforce/browser";
-import type { InboxHold, InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { pickedTeam, workerStates, shiftCounts, teamsOf } from "../src/lib/shift";
 import { parseRoute, pathFor } from "../src/lib/routes";
 import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
@@ -79,7 +79,7 @@ const waiting = (id: string, assignee: string | null): InboxBoardTask =>
 /** A pending approval the view lists, its detail naming the worker its session names (or none). */
 const ask = (workerId: string | null, suspensionId: string, openedAt = 0): InboxHold<InboxSuspensionDetail> =>
   ({
-    id: suspensionId,
+    id: suspensionHoldId(`r_${suspensionId}`, suspensionId),
     source: { kind: "suspension", flowId: workerId, sessionId: `s_${suspensionId}`, requestId: `r_${suspensionId}`, suspensionId },
     ask: { kind: "approval", prompt: "May I?" },
     openedAt,
@@ -109,7 +109,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
     const state = states.workers.get("eng.coder")!;
     expect(state.status).toBe("on shift");
     expect(state.held.map((r) => r.id)).toEqual(["a", "b"]);
-    expect(state.asks.map((a) => a.id)).toEqual(["q1"]);
+    expect(state.asks.map((a) => a.id)).toEqual([suspensionHoldId("r_q1", "q1")]);
   });
 
   it("BR-2: a task held on a question for you alone, or an ask alone, is on shift: the worker is mid-task, waiting on you", () => {
@@ -148,7 +148,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
   // from that same answer; when the answer drops it, the worker is off shift again. Nothing else is read.
   it("one answer: a worker is on shift for exactly as long as the Inbox view lists its ask", () => {
     const listed = viewOf([], [ask("eng.reviewer", "q1")]);
-    expect(listed.items.map((item) => item.id)).toEqual(["q1"]);
+    expect(listed.items.map((item) => item.id)).toEqual([suspensionHoldId("r_q1", "q1")]);
     expect(workerStates([coder, reviewer], listed).workers.get("eng.reviewer")).toMatchObject({ status: "on shift", held: [] });
     const answered = viewOf([], []);
     expect(workerStates([coder, reviewer], answered).workers.get("eng.reviewer")!.status).toBe("off shift");
@@ -162,7 +162,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
     expect(state.held.map((t) => t.id)).toEqual(["a"]);
     // A run's stop for you is an ask, never a question the task holds: it waits on you once.
     expect(state.waitsOnYou).toEqual([]);
-    expect(state.asks.map((hold) => hold.id)).toEqual(["r1"]);
+    expect(state.asks.map((hold) => hold.id)).toEqual([suspensionHoldId("r_r1", "r1")]);
   });
 });
 

@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { readEveryCollectionPage, type Client } from "@flow-state-dev/client";
-import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
@@ -83,7 +83,7 @@ describe("the Inbox against a real Lab", () => {
       expect(item.id).toBe(taskItemId(item.task!.board, item.task!.taskId));
       expect(item).toMatchObject({ answerable: true, unanswerable: null, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
       // Drawn with the pending ask the run's session holds, though it lists from the row.
-      expect(item.holds[0]!.detail?.item.suspensionId).toBe(item.holds[0]!.id);
+      expect(item.holds[0]!.id).toBe(suspensionHoldId(item.holds[0]!.detail!.item.requestId, item.holds[0]!.detail!.item.suspensionId));
     }
     const rows = await boardRows(client, "ops.desk");
     const truth = await readTruth(client, rows);

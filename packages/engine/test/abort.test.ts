@@ -1425,6 +1425,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-preset",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now
@@ -1501,6 +1502,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-prereg",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now
@@ -1836,6 +1838,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-admission-await",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now

@@ -49,6 +49,7 @@ import type {
   VersionedResourceState
 } from "@flow-state-dev/engine/host";
 import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import { keyPrefixRange } from "./key-prefix-range";
 import type { QueryExecutor } from "./types";
 import { collectionKeyRegex } from "./collection-key-regex";
 
@@ -465,14 +466,12 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, VersionedResourceState>> {
-      // Prefix match via LEFT(...) = prefix rather than LIKE — sidesteps
-      // LIKE wildcard escaping (`%`/`_` are legal in resource keys). An
-      // empty prefix matches every key (LEFT(key, 0) = '').
+      const range = keyPrefixRange(keyPrefix, 3);
       const result = await executor.query(
         "SELECT resource_key, state, version FROM resource_state " +
           "WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'live' " +
-          "AND LEFT(resource_key, char_length($3)) = $3",
-        [scopeType, scopeId, keyPrefix]
+          `AND ${range.sql}`,
+        [scopeType, scopeId, ...range.values]
       );
       const entries: Record<string, VersionedResourceState> = {};
       for (const row of result.rows) {

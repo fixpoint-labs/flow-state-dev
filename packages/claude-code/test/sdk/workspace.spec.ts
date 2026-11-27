@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineFlow, defineResourceCollection, generator } from "@flow-state-dev/core";
 import { z, type ZodType } from "zod";
 import {
@@ -32,6 +32,7 @@ import { CLAUDE_CODE_WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collecti
 import {
   claimKey,
   collectionIdFor,
+  hashContent,
   principalFromContext,
   sharedClaimRegistry,
 } from "@flow-state-dev/workspace";
@@ -124,7 +125,7 @@ describe("what auto-discovery will and will not mount", () => {
       resources,
       session: { identity: { id: "s1" } },
       request: { identity: { id: "r1" } },
-    } as never).map((m) => m.prefix);
+    }).map((m) => m.prefix);
 
   const ordinary = {
     pattern: "artifacts/**",
@@ -529,6 +530,55 @@ describe("createClaudeCodeWorkspaceCapability", () => {
     discard(base);
   });
 
+  it.each([
+    { recordsOutcomes: true, expected: "records the hydrated, stored and local hashes" },
+    { recordsOutcomes: false, expected: "names the missing outcomes collection" },
+  ])("$expected when both writers edit the same file", async ({ recordsOutcomes }) => {
+    const base = scratch();
+    const cap = createClaudeCodeWorkspaceCapability({
+      root: async (ctx) => {
+        // Seed the file before hydrate records its baseline.
+        const artifacts = ctx.resources.artifacts;
+        if (artifacts == null || !("getOrCreate" in artifacts)) throw new Error("Missing artifacts collection");
+        const shared = await artifacts.getOrCreate("shared.md");
+        await shared.writeContent("original");
+        return base;
+      },
+      resolveClaudeAgent: (ctx) => ({
+        query: async function* () {
+          const shared = await ctx.resources.artifacts.get("shared.md");
+          await shared.writeContent("stored edit");
+          writeFileSync(join(base, "artifacts", "shared.md"), "local edit");
+          yield RESULT_OK;
+        },
+      }),
+    });
+
+    try {
+      const flow = recordsOutcomes
+        ? flowWith(cap)
+        : defineFlow({ kind: "without-outcomes", actions: {}, resources: { artifacts: artifactsCollection } })();
+      const result = await testBlock(toolOf(cap), { input: { prompt: "go" }, flow });
+      if (!recordsOutcomes) {
+        expect(result.error?.message).toContain(`The flow must declare the "${CLAUDE_CODE_WORKSPACE_OUTCOMES}" collection`);
+        return;
+      }
+      expect(result.error).toBeFalsy();
+      const log = result.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES] as ResourceCollectionRef;
+      const outcomes = await log.list();
+      expect(outcomes).toHaveLength(1);
+      expect(outcomes[0]!.state).toMatchObject({
+        kind: "conflict",
+        path: "artifacts/shared.md",
+        base: hashContent("original"),
+        theirs: hashContent("stored edit"),
+        ours: hashContent("local edit"),
+      });
+    } finally {
+      discard(base);
+    }
+  });
+
   it("stands off a path another run is holding, and records which one", async () => {
     // The baseline stops a writer who already wrote. It says nothing about a
     // writer working right now: a second run holds no baseline for the path,
@@ -571,8 +621,13 @@ describe("createClaudeCodeWorkspaceCapability", () => {
       // is to stop two runs sharing it, which needs its name.
       const rows = await result.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.list();
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.state.kind).toBe("contested");
-      expect(rows[0]!.state.path).toBe("artifacts/shared.md");
+      expect(rows[0]!.state).toMatchObject({
+        kind: "contested",
+        path: "artifacts/shared.md",
+        base: null,
+        theirs: null,
+        ours: null,
+      });
     } finally {
       sharedClaimRegistry.releaseAll(otherRun);
       discard(base);

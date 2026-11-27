@@ -18,7 +18,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { HARNESS_FEATURE_KEY, runTopic } from "../src";
+import { runTopic } from "../src";
+// The legacy key a manager given no `trackerIssueOf` reads (BP-030): internal, no longer published.
+import { HARNESS_FEATURE_KEY } from "../src/manager";
 import { runBoardSegment } from "../src/workspace";
 import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 

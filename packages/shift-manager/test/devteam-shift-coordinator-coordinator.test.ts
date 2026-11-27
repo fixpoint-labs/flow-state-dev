@@ -218,14 +218,26 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     expect(listed.error).toBeUndefined();
     // What each one does (its WORKER.md description) and takes: both flows take a conversation's
     // tasks (FIX-1866, FIX-2083). What the Shift Coordinator picks a routed task and a filing by.
-    // On this projects workspace a coding task needs a project, which the coder's input schema says (FIX-2894).
+    // On this projects workspace a coding task needs a project, which the coder's input schema says (FIX-2894),
+    // beside the mode and issue a filer writes and none of the run settings only the server writes (FIX-2878).
     expect(listed.output.delegates).toEqual([
       { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks", inputSchema: null },
       {
         worker: "eng.coder",
         description: "Does the work a filed row names, in a checkout of its own.",
         takes: "tasks",
-        inputSchema: { project: "required", jsonSchema: { $schema: "http://json-schema.org/draft-07/schema#", type: "object", additionalProperties: {} } },
+        inputSchema: {
+          project: "required",
+          jsonSchema: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            type: "object",
+            properties: {
+              mode: { type: "string", minLength: 1, description: expect.stringContaining("one of this app's modes") },
+              issue: { type: "string", description: expect.stringContaining("tracker issue") },
+            },
+            additionalProperties: true,
+          },
+        },
       },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
@@ -279,7 +291,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
         toolName: "createTask",
-        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } },
+        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { mode: PHASE, issue, project: STOREFRONT } },
       },
     ]);
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
@@ -304,11 +316,11 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     expect(items.filter((item) => item.type === "message" && item.role === "assistant").map((item) => item.agentName)).toEqual(["eng.em"]);
     const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
     expect(record.value).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
-    // The coder's task, on the board of the EM session the post reached: feature work, naming the issue
-    // and the phase, for the coder.
-    const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);
+    // The coder's task, on the board of the EM session the post reached: feature work, in the implement
+    // mode on its issue, for the coder, carrying the lab's default harness, which the server wrote (FIX-2878).
+    const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.issue === issue);
     expect(filed).toEqual([
-      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } }),
+      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { mode: PHASE, issue, project: STOREFRONT, harness: "stub" } }),
     ]);
     // The EM's answer lands under its name, once.
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
@@ -358,7 +370,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], undefined, [
-      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } } },
+      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { mode: PHASE, issue, project: STOREFRONT } } },
     ]);
     expect((await act(lab, id, "respond", { message: `${issue}: the release notes` })).error).toBeUndefined();
 

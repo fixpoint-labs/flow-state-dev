@@ -16,8 +16,9 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { settledRecordFields } from "./request-action-result";
-import { runAction } from "./runAction";
+import { runFrameworkAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
+import { principalKindOf } from "../context/principal";
 import { bringSessionWakesForward } from "../durability/request-wakes";
 
 /**
@@ -333,8 +334,15 @@ export async function retryRequest(
   // RequestRecord chain is consistent. Falls back to "http" for records
   // persisted before FIX-438.
   const retrySource = entry?.source ?? originalRecord?.source ?? "http";
+  // FIX-2942: who the retry runs as is who the original ran as, read from its
+  // record, never a payload. The new id has no record of its own to say it,
+  // and its session's kind is not the request's (a machine's request can run
+  // in a person's session). A record from before the fields is a machine's,
+  // with no resolver (fail closed).
+  const retryPrincipalKind = principalKindOf(originalRecord?.principalKind);
+  const retryResolvedBy = originalRecord?.resolvedBy ?? undefined;
 
-  void runAction({
+  void runFrameworkAction({
     flow,
     actionName: actionName as keyof typeof flow.actions & string,
     input,
@@ -344,6 +352,8 @@ export async function retryRequest(
     orgId: attributedOrgId,
     tenantId,
     source: retrySource,
+    principalKind: retryPrincipalKind,
+    ...(retryResolvedBy !== undefined ? { resolvedBy: retryResolvedBy } : {}),
     // The person's files: the retry is their turn again, so its line, its
     // record and the model get the same references. Already the session's;
     // nothing is claimed again.

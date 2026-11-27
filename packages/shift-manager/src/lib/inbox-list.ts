@@ -13,9 +13,8 @@ type InboxViewItem = InboxItem<InboxAsk>;
 type InboxViewHold = InboxHold<InboxAsk>;
 
 /**
- * The Inbox item a route names: by its id; else, for a link written when an
- * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
- * whose holds that suspension is; else, for a link written before its ask
+ * The Inbox item a route names: by its id; else the item one of whose holds
+ * it names (a stop's hold id, `suspensionHoldId`); else, for a link written before its ask
  * existed (`/inbox/<sessionId>`, an error report's), the lone ask waiting in
  * that session. Only the user's own items are searched, so any other id,
  * another user's session included, is `null`, as an unknown one is.
@@ -61,6 +60,11 @@ export function groupedByWorker(items: readonly InboxViewItem[]): InboxListEntry
 /** The session a stop waits in, or `null` for a run with no conversation (or a task's own hold). */
 export function sessionOfHold(hold: InboxViewHold): string | null {
   return hold.source.kind === "suspension" ? hold.source.sessionId : null;
+}
+
+/** The suspension a stop is, as its request names it; `undefined` for a task's own hold. */
+export function suspensionIdOfHold(hold: InboxViewHold): string | undefined {
+  return hold.source.kind === "suspension" ? hold.source.suspensionId : undefined;
 }
 
 /** The worker a stop asks for: its ask's, when its session names one. */

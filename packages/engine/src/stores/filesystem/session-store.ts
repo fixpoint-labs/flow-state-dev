@@ -16,6 +16,7 @@ import {
   matchesTenantFilter
 } from "../scope-keys";
 import { compareSessionsForListing } from "../list-order";
+import { withStoredPrincipalKind } from "../shared";
 
 export type FilesystemSessionStoreOptions = {
   rootDir: string;
@@ -84,7 +85,8 @@ export class FilesystemSessionStore implements SessionStore {
     value: SessionRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<SessionRecord>> {
-    return this.store.set(id, value, expectedVersion);
+    // Under the write lock, from the record on disk right then (FIX-2942).
+    return this.store.set(id, value, expectedVersion, async (current) => withStoredPrincipalKind(value, current));
   }
 
   /**
