@@ -51,6 +51,7 @@ import type { SessionAdmission, SuspensionAdmission } from "../context/request-s
 import { isOrgAttributed } from "../context/org-attribution";
 import { resolveRecordOwner } from "../context/record-owner";
 import { admitSession, flowAuthenticates, ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { principalOwns } from "../context/principal";
 
 type ViewRoute = Extract<ParsedFlowRoute, { kind: "run_view" }>;
 
@@ -179,7 +180,7 @@ function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantI
     const owner = resolveRecordOwner(ctx.registry, session);
     if (!owner.ok) return false;
     const caller = await ctx.callerFor(owner.flow);
-    return caller !== undefined && caller.userId === session.userId && caller.orgId === session.orgId;
+    return caller !== undefined && principalOwns(session, caller);
   };
   return (session) => admitSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, session);
 }
@@ -209,7 +210,7 @@ async function viewSuspensionAdmission(
   if (!owner.ok || !isOrgAttributed(entry)) return false;
   if (!flowAuthenticates(flow)) return true;
   const caller = await ctx.callerFor(owner.flow);
-  return caller !== undefined && caller.userId === entry.userId && caller.orgId === entry.orgId;
+  return caller !== undefined && principalOwns(entry, caller);
 }
 
 // FIX-2625 D1.

@@ -23,7 +23,8 @@ import {
   type StoreRegistry
 } from "../../../src";
 import { createInMemoryStores } from "../../../src/host";
-import { admitNamedSession, type BlockCaller } from "../../../src/context/named-session";
+import { admitNamedSession } from "../../../src/context/named-session";
+import type { Principal } from "../../../src/context/principal";
 import { recentTimes } from "./recent-times";
 
 const SECRET = "scheduler-secret";
@@ -77,6 +78,8 @@ const polls = defineFlow({
   internal: { actions: { wake: { block: tick }, child: { block: child } } }
 })();
 
+const HOST_RESOLVER = createBearerSecretPrincipalResolver({ secret: SECRET, principal: GATEWAY });
+
 const routers: ReturnType<typeof createFlowApiRouter>[] = [];
 afterEach(async () => {
   await Promise.all(routers.splice(0).map((router) => disposeFlowApiRouter(router)));
@@ -90,7 +93,7 @@ function build() {
     registry,
     stores,
     staleSweepIntervalMs: 0,
-    resolvePrincipal: createBearerSecretPrincipalResolver({ secret: SECRET, principal: GATEWAY })
+    resolvePrincipal: HOST_RESOLVER
   });
   routers.push(router);
   return { router, stores, registry };
@@ -119,13 +122,26 @@ async function fire(env: ReturnType<typeof build>, scheduleId: string) {
   expect(fired.status).toBe("accepted");
   const record = await settled(env.stores, fired.requestId);
   expect(record.status).toBe("completed");
-  return { sessionId: record.sessionId!, userId: record.userId, orgId: record.orgId! };
+  return runOf(record);
 }
 
-/** A block of `polls` running in `from`'s session, naming `target`. */
-function reach(env: ReturnType<typeof build>, from: { sessionId: string; userId: string; orgId: string }, target: string) {
-  const caller: BlockCaller = { userId: from.userId, orgId: from.orgId, flowId: "polls", sessionId: from.sessionId };
-  return admitNamedSession({ sessions: env.stores.session, registry: env.registry, caller }, target);
+/** The run a request record stored: its session, and the principal its door set. */
+function runOf(record: { sessionId?: string; userId: string; orgId?: string; principalKind?: Principal["kind"]; resolvedBy?: string }) {
+  const principal: Principal = {
+    userId: record.userId,
+    orgId: record.orgId!,
+    kind: record.principalKind ?? "machine",
+    ...(record.resolvedBy !== undefined ? { resolvedBy: record.resolvedBy } : {})
+  };
+  return { sessionId: record.sessionId!, userId: record.userId, orgId: record.orgId!, principal };
+}
+
+/** A block of `polls` running in `from`'s session, as its principal, naming `target`. */
+function reach(env: ReturnType<typeof build>, from: ReturnType<typeof runOf>, target: string) {
+  return admitNamedSession(
+    { stores: env.stores, registry: env.registry, hostResolver: HOST_RESOLVER, principal: from.principal, sessionId: from.sessionId },
+    target
+  );
 }
 
 describe("a gateway schedule's session", () => {
@@ -158,8 +174,9 @@ describe("a gateway schedule's session", () => {
       stores: env.stores,
       runtimeConfig: {}
     });
-    expect((await settled(env.stores, woke.requestId!)).status).toBe("completed");
-    expect(await reach(env, fallback, explicit.sessionId)).toBeUndefined();
+    const later = runOf(await settled(env.stores, woke.requestId!));
+    expect(later.principal.kind).toBe("machine");
+    expect(await reach(env, later, explicit.sessionId)).toBeUndefined();
   });
 
   it("makes the child session it dispatches into a machine's too, refused the other schedule's session", async () => {
@@ -170,7 +187,10 @@ describe("a gateway schedule's session", () => {
     for (let i = 0; i < 300 && spawned.length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
     expect(spawned).toHaveLength(1);
     const childRun = await settled(env.stores, spawned[0]!);
-    const childSession = { sessionId: childRun.sessionId!, userId: childRun.userId, orgId: childRun.orgId! };
+    const childSession = runOf(childRun);
+    // Born a machine's, and run as one: the dispatch carried the fire's principal.
+    expect((await env.stores.session.get(childSession.sessionId))?.principalKind).toBe("machine");
+    expect(childSession.principal.kind).toBe("machine");
     // The child runs as the machine, under the dispatch's source and metadata: no schedule stamp at all.
     expect(childSession.userId).toBe(GATEWAY.userId);
     expect(childRun.source).not.toBe("scheduled");

@@ -21,6 +21,7 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
 import type { BlobStore } from "../blobs/types";
+import type { PrincipalKind } from "../context/principal";
 
 export type { RequestStatus };
 
@@ -94,18 +95,26 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   lineageId?: string;
   // FIX-2942; BP-030; BP-031.
   /**
-   * Whether the principal that created this session is a machine's: the
-   * gateway a schedule fires as, the system user, or a webhook delivery's
-   * principal. Every run in such a session owns no session but its own, so a
-   * later wake, task or internal run there is fenced as its first run was
-   * (`context/machine-principal.ts`). Written once, by the birth
-   * (`birthSession`), from the run that creates the session, never from a
-   * caller's input, and never changed after.
+   * The kind of the principal that created this session (`context/principal.ts`):
+   * a person's, or a machine's (a schedule's gateway, the system user, a
+   * delivery). A run in a machine's session reaches no session but its own.
+   * Written once, by the birth (`birthSession`), from the creating run's
+   * principal, never from a caller's input. `set` keeps the stored value
+   * whatever a later write carries, so a stale whole-record write can't
+   * change it.
    *
-   * `== null` on a record written before the field existed: read as a
-   * machine's, so an unclassified session owns nothing (fail closed).
+   * `== null` on a record written before the field existed: classified from
+   * its first request record instead (`context/session-kind.ts`).
    */
-  machineOwned?: boolean;
+  principalKind?: PrincipalKind;
+  // FIX-2942; BP-030.
+  /**
+   * The incarnation of the session that dispatched this one
+   * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
+   * Binds the child to that parent record, not to its reusable bare id.
+   * `== null` on a top-level session and on a child born before the field.
+   */
+  parentIncarnation?: string;
   // FIX-1010; BP-030.
   /**
    * Human-readable name for the body of work a child session was
@@ -169,6 +178,20 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
+  // FIX-2942; BP-030.
+  /**
+   * The kind of the principal this request runs as, as its door set it
+   * (`context/principal.ts`). A run started from this record (a continuation,
+   * a queued job, a recovery) reads it, never a payload. `== null` on a
+   * record written before the field.
+   */
+  principalKind?: PrincipalKind;
+  /**
+   * The resolver identity that produced the request's principal
+   * (`Principal.resolvedBy`). `== null` → none: a run from this record
+   * reaches no target whose flow has a resolver of its own.
+   */
+  resolvedBy?: string;
   // BP-030.
   /**
    * Which request this record is, among every request that has held its id.

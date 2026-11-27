@@ -97,7 +97,8 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
-import { principalOwnsNothing, sessionOwnsNothing } from "./machine-principal";
+import { principalOwns, withRequestOrg, type Principal } from "./principal";
+import { resolveSessionKind } from "./session-kind";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -162,11 +163,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import {
-  claimRequestRecord,
-  principalOwnsRequest,
-  type RequestPrincipal
-} from "./request-principal";
+import { claimRequestRecord } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
@@ -856,14 +853,23 @@ export async function createExecutionContext<
   }
   // A request id is an address: another user's record under it is never
   // adopted, however the id reached this run.
-  const requestPrincipal: RequestPrincipal = {
-    userId,
-    orgId: options.orgId,
-    tenantId: options.tenantId
-  };
-  if (loadedRequest !== undefined && !principalOwnsRequest(loadedRequest, requestPrincipal)) {
+  if (
+    loadedRequest !== undefined &&
+    !principalOwns(await withRequestOrg(stores, loadedRequest), { userId, orgId: options.orgId, tenantId: options.tenantId })
+  ) {
     throw new RequestOwnerMismatchError(requestId);
   }
+
+  // FIX-2942: who this run is, as its door set it and carried unchanged: the
+  // options' principal, else the request record's (a continuation, a queued
+  // job), else its session's own kind (a wake or an owner run, started from
+  // a stored record with no principal kind of its own). A run that has none
+  // and creates its session is a machine's.
+  const runKind =
+    options.principalKind ??
+    loadedRequest?.principalKind ??
+    (loadedSession !== undefined ? await resolveSessionKind(stores, loadedSession) : "machine");
+  const runResolvedBy = options.resolvedBy ?? loadedRequest?.resolvedBy ?? undefined;
 
   // The same filter as the session's reads; see `sessionRequestScope`.
   const turnScope = sessionRequestScope(
@@ -1028,8 +1034,7 @@ export async function createExecutionContext<
         state: options.sessionState,
         fromCaller: true,
         via: "action",
-        // A scheduled fire as the gateway or the system user: server-set by the scheduled route.
-        machine: principalOwnsNothing(options.source, options.metadata)
+        principalKind: runKind
       },
       () => ({
       id: sessionKey,
@@ -1241,7 +1246,13 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
-          machineOwned: sessionOwnsNothing(noSession ? undefined : sessionRecord),
+          principal: {
+            userId,
+            orgId: resolvedOrgId,
+            ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+            kind: runKind,
+            ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+          } satisfies Principal,
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
@@ -1773,6 +1784,8 @@ export async function createExecutionContext<
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
+        principalKind: runKind,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {}),
         metadata: options.metadata,
         input: options.input,
         requestState: options.requestState

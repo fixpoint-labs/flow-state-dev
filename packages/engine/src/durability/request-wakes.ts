@@ -24,6 +24,7 @@ import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
+import { resolveSessionKind } from "../context/session-kind";
 import type { InboundTransportHost } from "../transports/types";
 
 type Listener = (dueAt: number) => void;
@@ -57,17 +58,22 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * wait for it, for a while.
  */
 export async function fireWakeThrough(
-  host: Pick<InboundTransportHost, "dispatch">,
+  host: Pick<InboundTransportHost, "dispatch" | "stores">,
   wake: WakeRecord,
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
   const controller = new AbortController();
+  // FIX-2942: a wake stores no principal kind of its own; it runs as its
+  // session's owner, with the kind that session was born with (a machine's
+  // when the session is gone), and no resolver identity.
+  const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
+  const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session);
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,
     input: {},
     sessionId: wake.sessionId,
-    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}) },
+    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}), kind },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal
   });

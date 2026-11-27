@@ -28,6 +28,7 @@ import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 import { ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { principalOwns } from "../context/principal";
 
 type RecoveryRouteContext = {
   registry: FlowRegistry;
@@ -327,7 +328,7 @@ async function listingAdmits(ctx: ListingRouteContext, row: ListedRecord): Promi
   // `row.orgId === callerOrgId` does that by construction, since an
   // authenticated caller's org is never undefined.
   if (callerId !== undefined) {
-    return row.userId === callerId && row.orgId === ctx.principal?.orgId;
+    return principalOwns(row, { userId: callerId, orgId: ctx.principal?.orgId, tenantId: ctx.tenantId });
   }
   const allowed = ctx.anonymousFlowIds;
   if (allowed === undefined) return true;

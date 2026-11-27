@@ -502,7 +502,9 @@ export async function handleCreateSession(
         principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
         ...(callerState !== undefined ? { state: callerState } : {}),
         fromCaller: true,
-        via: "create"
+        via: "create",
+        // FIX-2942: this door is a person's, whoever its resolver names.
+        principalKind: "person"
       },
       build
     );

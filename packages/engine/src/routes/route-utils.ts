@@ -20,7 +20,7 @@ import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
-import { principalOwnsRequest } from "../context/request-principal";
+import { principalOwns } from "../context/principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownerKeyAdmits } from "../resources/owner-private";
@@ -198,8 +198,8 @@ export function unknownRequestStreamResponse(
 /**
  * Whether the caller may act on `record` through a request-control route
  * (retry, continue, resume, abort). With a principal, the record must be that
- * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
- * and organization when the record carries one). Without one, nothing in the
+ * principal's in the caller's tenant (`principalOwns`: user, organization
+ * and tenant, exact, so a record with no organization is no one's). Without one, nothing in the
  * app authenticates, so there is no user to compare and the tenant is the only
  * boundary.
  *
@@ -220,7 +220,7 @@ export function callerReachesRequest(
   principal: ResolvedPrincipal | undefined
 ): boolean {
   if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
-  return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
+  return principalOwns(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
 }
 
 /**

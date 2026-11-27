@@ -526,6 +526,43 @@ export function resolveLineageId(session: {
 }
 
 /**
+ * How far any walk up a session's `parentSessionId` chain goes: the request
+ * host's descendant check, and a session's kind backfill. A corrupted parent
+ * cycle cannot hang a read.
+ */
+export const MAX_LINEAGE_DEPTH = 32;
+
+// FIX-2942.
+/**
+ * The value that names one incarnation of a session record: the moment it
+ * was born and the lineage it was born into, both written once. A session id
+ * deleted and taken again names another incarnation, so a child that records
+ * its parent's (`SessionRecord.parentIncarnation`) is bound to that record,
+ * not to the reusable id.
+ */
+export function sessionIncarnation(session: Pick<SessionRecord, "id" | "createdAt" | "lineageId">): string {
+  return JSON.stringify([session.createdAt, resolveLineageId(session)]);
+}
+
+// FIX-2942; BP-030.
+/**
+ * Whether `parent`, the record `child.parentSessionId` names now, is provably
+ * the session that dispatched `child`: the same owner, organization and
+ * tenant, as the dispatch seam requires of a child it adopts, and the same
+ * incarnation. A child records its parent's incarnation at birth
+ * (`parentIncarnation`); one born before that field proves it by the lineage
+ * it inherited at spawn, which a recreated parent never has. Anything else is
+ * no proof.
+ */
+export function provesDispatchingParent(child: SessionRecord, parent: SessionRecord): boolean {
+  if (parent.userId !== child.userId) return false;
+  if (parent.orgId == null || parent.orgId !== child.orgId) return false;
+  if (!scopeValueMatches(parent.tenantId, child.tenantId)) return false;
+  if (child.parentIncarnation != null) return child.parentIncarnation === sessionIncarnation(parent);
+  return child.lineageId != null && child.lineageId === resolveLineageId(parent);
+}
+
+/**
  * Whether `current`, read again by the same key, is still the session
  * `earlier` was: the same tenant, owner, organization and flow instance, born
  * at the same moment.

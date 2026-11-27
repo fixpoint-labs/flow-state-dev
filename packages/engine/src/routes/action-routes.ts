@@ -20,6 +20,8 @@ import {
   UserBindingMismatchError
 } from "../context/binding-errors";
 import { resolveCallerRequestId } from "../context/request-principal";
+import type { Principal } from "../context/principal";
+import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
 import { UnknownFlowError } from "../context/instance-pin";
 import {
   asObject,
@@ -67,6 +69,19 @@ type ActionRouteContext = {
 };
 
 // FIX-2624: `resourceSend`.
+// FIX-2942.
+/** The door's `kind` and `resolvedBy`, kept for the run; the identity is kept only while the seam left the caller as resolved. */
+function doorPrincipalFields(
+  door: ResolvedPrincipal & Partial<Pick<Principal, "kind" | "resolvedBy">>,
+  run: { userId: string; orgId: string }
+): Partial<Pick<Principal, "kind" | "resolvedBy">> {
+  const same = door.userId === run.userId && door.orgId === run.orgId;
+  return {
+    ...(door.kind !== undefined ? { kind: door.kind } : {}),
+    ...(same && door.resolvedBy !== undefined ? { resolvedBy: door.resolvedBy } : {})
+  };
+}
+
 /**
  * Run an action. `resourceSend` is a send addressed to a user or org resource
  * (`scope-routes.ts`): the writing flow, the writer's session and the caller,
@@ -215,7 +230,14 @@ export async function handleExecuteAction(
     requestId: resolvedActionInput.requestId,
     orgId: resolvedActionInput.orgId,
     tenantId: resolvedActionInput.tenantId,
-    principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
+    // FIX-2942: the door's principal, carried unchanged. A seam that moves the
+    // run to another user or org keeps the kind but not the resolver identity,
+    // which named the caller the door resolved.
+    principal: {
+      userId: resolvedActionInput.userId,
+      orgId: resolvedActionInput.orgId,
+      ...doorPrincipalFields(principal, resolvedActionInput)
+    },
     metadata: resolvedActionInput.metadata,
     signal: resolvedActionInput.signal
   };

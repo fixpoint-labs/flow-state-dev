@@ -24,34 +24,13 @@
 import { createHash } from "node:crypto";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ActiveRequestEntry, RequestRecord, StoreRegistry } from "../stores/types";
-import { resolveRequestIncarnation, tenantMatches } from "../stores/scope-keys";
+import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { FlowInstanceBindingMismatchError, RequestOwnerMismatchError } from "./binding-errors";
+import { principalOwns, withRequestOrg, type Principal } from "./principal";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 
-/** The identity a dispatch runs under, as the host resolved it. */
-export type RequestPrincipal = {
-  userId: string;
-  orgId?: string;
-  tenantId?: string;
-};
-
-/** The identity facts a request record or an in-flight entry carries. */
-type PrincipalOwnedRecord = Pick<RequestRecord, "userId" | "orgId" | "tenantId">;
-
-// BP-030.
-/**
- * Whether `record` belongs to `principal`: the same user, in the same tenant
- * and, when the record carries one, the same organization. A record written
- * before organizations were stamped is decided by user and tenant.
- */
-export function principalOwnsRequest(
-  record: PrincipalOwnedRecord,
-  principal: RequestPrincipal
-): boolean {
-  if (record.userId !== principal.userId) return false;
-  if (!tenantMatches(record.tenantId ?? undefined, principal.tenantId)) return false;
-  return record.orgId == null || record.orgId === principal.orgId;
-}
+/** Who a request id is resolved for: the identity half of the run's principal. */
+type RequestCaller = Pick<Principal, "userId" | "orgId" | "tenantId">;
 
 /**
  * The request id `principal` gets for a `suppliedId` another principal holds.
@@ -59,7 +38,7 @@ export function principalOwnsRequest(
  * the same request, and distinct per principal, so two callers reusing one id
  * never meet.
  */
-function principalRequestId(suppliedId: string, principal: RequestPrincipal): string {
+function principalRequestId(suppliedId: string, principal: RequestCaller): string {
   const digest = createHash("sha256")
     .update([principal.tenantId ?? "", principal.orgId ?? "", principal.userId, suppliedId].join("\u0000"))
     .digest("hex")
@@ -78,16 +57,17 @@ function principalRequestId(suppliedId: string, principal: RequestPrincipal): st
  * owner fences in the host and the execution context, never overwritten.
  */
 export async function resolveCallerRequestId(
-  stores: Pick<StoreRegistry, "request" | "activeRequests">,
+  stores: Pick<StoreRegistry, "request" | "activeRequests" | "session">,
   suppliedId: string,
-  principal: RequestPrincipal
+  principal: RequestCaller
 ): Promise<string> {
   const [record, active] = await Promise.all([
     stores.request.get(suppliedId),
     stores.activeRequests.get(suppliedId)
   ]);
-  const holder: PrincipalOwnedRecord | ActiveRequestEntry | undefined = record ?? active;
-  if (holder === undefined || principalOwnsRequest(holder, principal)) return suppliedId;
+  const holder: RequestRecord | ActiveRequestEntry | undefined =
+    record === undefined ? active : await withRequestOrg(stores, record);
+  if (holder === undefined || principalOwns(holder, principal)) return suppliedId;
   return principalRequestId(suppliedId, principal);
 }
 
@@ -110,7 +90,7 @@ export async function resolveCallerRequestId(
  * kept. A caller that goes on to run the request uses this, never `record`.
  */
 export async function claimRequestRecord<T extends RequestRecord>(
-  stores: Pick<StoreRegistry, "request">,
+  stores: Pick<StoreRegistry, "request" | "session">,
   flow: FlowInstance,
   record: T
 ): Promise<T> {
@@ -129,7 +109,7 @@ export async function claimRequestRecord<T extends RequestRecord>(
       refusal?.reason
     );
   }
-  if (!principalOwnsRequest(holder, record)) {
+  if (!principalOwns(await withRequestOrg(stores, holder), record)) {
     throw new RequestOwnerMismatchError(record.id);
   }
   const claimed: T = { ...record, incarnation: resolveRequestIncarnation(holder) };

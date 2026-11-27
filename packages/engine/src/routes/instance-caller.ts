@@ -15,7 +15,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { PrincipalResolutionError } from "../transports/errors";
-import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
+import { principalResolverIdentity } from "../transports/auth/pickPrincipalResolver";
+import { principalOwns, type Principal } from "../context/principal";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -24,14 +25,11 @@ import { isWriteRecord, isWriteSessionId } from "../resources/default-write-flow
 import { tenantMatches } from "../stores/scope-keys";
 import type { SessionRecord } from "../stores/types";
 
-/** A caller one instance's resolver accepted. */
-export type InstanceCaller = { userId: string; orgId: string };
-
 /**
- * The caller as `flow`'s doors resolve them, or `undefined` when that
- * instance's resolver refuses them.
+ * The caller as `flow`'s doors resolve them (`Principal`), or `undefined`
+ * when that instance's resolver refuses them.
  */
-export type InstanceCallerResolver = (flow: FlowInstance) => Promise<InstanceCaller | undefined>;
+export type InstanceCallerResolver = (flow: FlowInstance) => Promise<Principal | undefined>;
 
 /**
  * Build the per-request {@link InstanceCallerResolver}.
@@ -41,11 +39,14 @@ export type InstanceCallerResolver = (flow: FlowInstance) => Promise<InstanceCal
  * answers 401 on that instance's account. Any other error propagates.
  *
  * Resolution is per instance: a credential one instance's resolver accepts
- * says nothing about another's. Instances that share a resolver and the
- * settings the host applies to its answer (`requireUser`, `defaultUserId`) are
- * resolved once per request, at the first such instance's address.
+ * says nothing about another's. Instances that share a resolver identity
+ * (`principalResolverIdentity`: the resolver and the settings the host
+ * applies to its answer) are resolved once per request, at the first such
+ * instance's address. That identity is what the principal carries as
+ * `resolvedBy`.
  *
  * @param action The route kind, carried on the envelope as the doors carry theirs.
+ * @param tenantId The request's tenant, stamped on each principal so the owner comparison sees it.
  */
 export function createInstanceCallerResolver(options: {
   registry: FlowRegistry;
@@ -53,17 +54,19 @@ export function createInstanceCallerResolver(options: {
   request: Request;
   hostResolver: PrincipalResolver;
   action: string;
+  tenantId?: string;
 }): InstanceCallerResolver {
-  const { registry, host, request, hostResolver, action } = options;
-  const resolved = new Map<PrincipalResolver, Map<string, Promise<InstanceCaller | undefined>>>();
+  const { registry, host, request, hostResolver, action, tenantId } = options;
+  const resolved = new Map<string | undefined, Promise<Principal | undefined>>();
 
-  const resolveAt = async (address: string): Promise<InstanceCaller | undefined> => {
+  const resolveAt = async (address: string): Promise<Principal | undefined> => {
     try {
-      return await host.resolvePrincipal({
+      const principal = await host.resolvePrincipal({
         source: "http",
         request,
         envelope: { flowKind: address, action, metadata: {}, input: undefined }
       });
+      return tenantId === undefined ? principal : { ...principal, tenantId };
     } catch (error) {
       if (error instanceof PrincipalResolutionError) return undefined;
       throw error;
@@ -71,20 +74,11 @@ export function createInstanceCallerResolver(options: {
   };
 
   return (flow) => {
-    const resolver = pickPrincipalResolver(registry, flow.id, hostResolver);
-    const settings = JSON.stringify([
-      flow.requireUser ?? true,
-      flow.authentication?.defaultUserId ?? null
-    ]);
-    let byResolver = resolved.get(resolver);
-    if (byResolver === undefined) {
-      byResolver = new Map();
-      resolved.set(resolver, byResolver);
-    }
-    let caller = byResolver.get(settings);
+    const identity = principalResolverIdentity(registry, flow.id, hostResolver);
+    let caller = resolved.get(identity);
     if (caller === undefined) {
       caller = resolveAt(flow.id);
-      byResolver.set(settings, caller);
+      resolved.set(identity, caller);
     }
     return caller;
   };
@@ -111,7 +105,7 @@ export function flowAuthenticates(flow: {
 export async function ownResolverVerdict(
   registry: Pick<FlowRegistry, "get" | "list">,
   callerFor: InstanceCallerResolver,
-  row: OwnedRecord & { userId: string; orgId?: string | null }
+  row: OwnedRecord & { userId: string; orgId?: string | null; tenantId?: string | null }
 ): Promise<boolean | undefined> {
   // FIX-2624: a write record is no conversation and no run a listing shows,
   // whoever asks; decided from the record's own fields (`isWriteRecord`).
@@ -120,7 +114,7 @@ export async function ownResolverVerdict(
   if (!owner.ok || !flowAuthenticates(owner.flow)) return undefined;
   const caller = await callerFor(owner.flow);
   if (caller === undefined) return false;
-  if (row.userId !== caller.userId || row.orgId !== caller.orgId) return false;
+  if (!principalOwns(row, caller)) return false;
   return !pinRejectsCaller(owner.flow.ownerPin, caller);
 }
 

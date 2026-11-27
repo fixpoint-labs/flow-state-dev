@@ -126,6 +126,8 @@ export function createInProcessRunner(
       requestId: envelope.requestId,
       orgId: envelope.orgId,
       tenantId: envelope.tenantId,
+      ...(envelope.principalKind != null ? { principalKind: envelope.principalKind } : {}),
+      ...(envelope.resolvedBy != null ? { resolvedBy: envelope.resolvedBy } : {}),
       source: envelope.source,
       metadata: envelope.metadata,
       resolvedActionCore: envelope.resolvedActionCore,

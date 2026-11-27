@@ -10,20 +10,15 @@
  */
 import { INTERNAL_SOURCE } from "../execution/transport-sources";
 import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
-
-/** Who an internal run is, as its caller resolved it. */
-export interface InternalPrincipal {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly tenantId?: string;
-}
+import type { Principal } from "../context/principal";
 
 /** What to start: the flow's internal entry, its input, and the session it runs in. */
 export interface InternalDispatch {
   readonly flowKind: string;
   readonly entry: string;
   readonly input: unknown;
-  readonly as: InternalPrincipal;
+  /** Who the run is: the one principal, read from the trusted record the run starts from. */
+  readonly as: Principal;
   /** The session to run in. Required: every run names its session. */
   readonly sessionId: string;
   readonly metadata: Record<string, unknown>;
@@ -32,14 +27,14 @@ export interface InternalDispatch {
 
 /** Start `run` through `host` as `run.as`, fire-and-forget. */
 export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): InboundDispatchHandle {
-  const { userId, orgId, tenantId } = run.as;
+  const { userId, orgId, tenantId, kind, resolvedBy } = run.as;
   return host.dispatch({
     source: INTERNAL_SOURCE,
     flowKind: run.flowKind,
     action: run.entry,
     input: run.input,
     sessionId: run.sessionId,
-    principal: { userId, orgId },
+    principal: { userId, orgId, kind, ...(resolvedBy !== undefined ? { resolvedBy } : {}) },
     orgId,
     ...(tenantId !== undefined ? { tenantId } : {}),
     metadata: run.metadata,

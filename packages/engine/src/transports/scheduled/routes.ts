@@ -23,7 +23,7 @@ import {
   type SchedulesConfig
 } from "@flow-state-dev/core/types";
 import { SCHEDULED_SOURCE as SCHEDULED_TRANSPORT_SOURCE } from "../../execution/transport-sources";
-import { SYSTEM_USER_ID } from "../../context/machine-principal";
+import { scheduledFireKind, type Principal } from "../../context/principal";
 import { resolveSharedUserCellKey } from "../../stores";
 import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../types";
@@ -201,15 +201,18 @@ export async function handleDispatch(
           ...schedule.principal,
           orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
         };
-  // FIX-2942: decided here, beside the one fallback, so it cannot diverge from
-  // the principal the run actually gets. A fire whose effective principal is
-  // the gateway's (the fallback, or a schedule naming the same user in the same
-  // org) or the system user's is a machine's, not an owner's: the session it
-  // creates is born owning nothing but itself (`context/machine-principal.ts`).
-  // A schedule naming a person reaches as that person.
-  const machinePrincipal =
-    (effectivePrincipal.userId === gatewayPrincipal.userId && effectivePrincipal.orgId === gatewayPrincipal.orgId) ||
-    effectivePrincipal.userId === SYSTEM_USER_ID;
+  // FIX-2942: the fire's kind, decided here beside the one fallback, so it
+  // cannot diverge from the principal the run actually gets. The gateway (the
+  // fallback, or a schedule naming its own user and org) and the system user
+  // are machines, which reach no session but their own; a schedule naming a
+  // person runs as that person. No resolver produced a schedule's principal,
+  // so it carries no `resolvedBy` and reaches no target with a resolver of
+  // its own.
+  const firePrincipal: Principal = {
+    userId: effectivePrincipal.userId,
+    orgId: effectivePrincipal.orgId,
+    kind: scheduledFireKind(effectivePrincipal, gatewayPrincipal)
+  };
 
   // The scheduled time this fire counts against, claimed once in the store.
   const timezone = schedule.timezone ?? "UTC";
@@ -272,7 +275,7 @@ export async function handleDispatch(
     // or from the carried core below (dynamic), never this name.
     action: schedule.block.name,
     input,
-    principal: effectivePrincipal,
+    principal: firePrincipal,
     metadata: {
       schedule: {
         scheduleId,
@@ -280,8 +283,7 @@ export async function handleDispatch(
         cron: schedule.cron,
         nominalFireTime,
         dispatchedAt: new Date().toISOString(),
-        timezone,
-        ...(machinePrincipal ? { machinePrincipal: true } : {})
+        timezone
       }
     },
     // A dynamic schedule's core is produced by the resolver at dispatch time

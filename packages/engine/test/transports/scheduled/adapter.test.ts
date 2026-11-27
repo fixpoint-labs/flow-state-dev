@@ -220,7 +220,8 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     // principal. BR-19's stored-binding requirement is enforced in the
     // RESOURCE-BACKED resolver, where the principal comes from data rather
     // than from the flow definition — see resource-collection-resolver.test.ts.
-    expect(envelope?.principal).toEqual({ userId: "u_1", orgId: "org_test" });
+    // A person the resolver named, so a person's fire; no resolver produced it, so no `resolvedBy`.
+    expect(envelope?.principal).toEqual({ userId: "u_1", orgId: "org_test", kind: "person" });
     expect(schedMeta(envelope).origin).toBe("dynamic");
   });
 
@@ -458,9 +459,9 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const { request, ctx } = postRequest("reminders", "for-u-7");
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
-    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "u_7", orgId: "org_sys" });
     // A schedule naming a person runs as that person: not a machine that owns nothing.
-    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBeUndefined();
+    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "u_7", orgId: "org_sys", kind: "person" });
+    expect(schedMeta(host.dispatchCalls[0]?.envelope)).not.toHaveProperty("machinePrincipal");
   });
 
   it("stamps a schedule naming the system principal as a machine's, whatever the gateway is", async () => {
@@ -480,7 +481,7 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("reminders", "sweep");
     expect((await route.handler(request, ctx)).status).toBe(202);
-    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
+    expect(host.dispatchCalls[0]?.envelope.principal.kind).toBe("machine");
   });
 
   it("stamps a schedule naming the gateway's own user and org as a machine's, as the fallback is", async () => {
@@ -502,7 +503,7 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("reminders", "sweep");
     expect((await route.handler(request, ctx)).status).toBe(202);
-    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
+    expect(host.dispatchCalls[0]?.envelope.principal.kind).toBe("machine");
   });
 
   it("static schedule with no principal falls back to the gateway principal", async () => {
@@ -518,9 +519,8 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     const { request, ctx } = postRequest("billing", "monthly-invoices");
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
-    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "system", orgId: "org_sys" });
     // The gateway fallback is a machine's principal: it owns no session but its own.
-    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
+    expect(host.dispatchCalls[0]?.envelope.principal).toEqual({ userId: "system", orgId: "org_sys", kind: "machine" });
   });
 
   it("disabled static schedule responds 404", async () => {

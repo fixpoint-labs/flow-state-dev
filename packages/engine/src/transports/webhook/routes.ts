@@ -198,7 +198,9 @@ export async function handleWebhook(
     action,
     input,
     sessionId,
-    principal,
+    // FIX-2942: a delivery runs as the provider's principal, a machine's,
+    // whoever its resolver names.
+    principal: { ...principal, kind: "machine" },
     rawBody,
     responseEmitter: null,
     metadata,
