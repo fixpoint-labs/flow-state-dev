@@ -15,7 +15,16 @@ import type { DataItem, FileContent, MessageItem, SuspensionItem } from "@flow-s
 import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { codingBoardViewRef, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { ItemsRenderer, useFlowContext, useView, type ItemLine, type RendererRegistry } from "@flow-state-dev/react";
-import { FILED_TASK_DATA_TYPE, RECEIVED_MESSAGE_DATA_TYPE, rosterView, type FiledTaskValue, type ReceivedMessageValue, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import {
+  FILED_TASK_DATA_TYPE,
+  RECEIVED_MESSAGE_DATA_TYPE,
+  TASK_RESULT_DATA_TYPE,
+  rosterView,
+  type FiledTaskValue,
+  type ReceivedMessageValue,
+  type RosterEntry,
+  type TaskResultValue,
+} from "@flow-state-dev/workforce/browser";
 import { ChevronRightIcon } from "lucide-react";
 // The provider and not the app's index: the read model draws its lines with this registry.
 import { useAppClient } from "../app/provider";
@@ -28,7 +37,9 @@ import { MessageFiles } from "./flow-state/message";
 import { MarkdownText } from "./flow-state/message-response";
 import { withBrief, workforceLineRenderers } from "./flow-state/workforce-lines";
 import { TaskCard } from "./TaskCard";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { WorkerReplyCollapsibleBody, WorkerReplyStaticBody, fitsWorkerReplyPreview } from "./worker-reply-body";
+import { cn } from "../lib/utils";
+import { Collapsible, CollapsibleTrigger } from "./ui/collapsible";
 
 /**
  * The names and avatars the lines show: a teammate's own, and the worker
@@ -104,40 +115,134 @@ function ReportLine({ item }: { item: DataItem }) {
   const { nameOf = (id: string) => id, avatarOf } = useLineContext();
   const value = item.value as Partial<ReceivedMessageValue>;
   const from = value.from ?? "";
+  const text = value.text ?? "";
   const notes = [value.noAnswer ? "no answer" : value.inReplyTo !== undefined ? "reply" : null, value.replyRequested ? "asks for a reply" : null].filter((n) => n !== null);
   const at = clockTime(item.ts);
-  return (
-    <Collapsible
-      defaultOpen
-      asChild
-      aria-label={`From ${nameOf(from)}`}
-      data-line="received"
-      data-from={from}
-      data-message-id={value.id ?? ""}
-      data-reply-requested={String(value.replyRequested === true)}
-      className="group/report w-full overflow-hidden rounded-lg border border-border bg-card shadow-(--shadow-card)"
+  const collapsed = !fitsWorkerReplyPreview(text);
+  const sectionProps = {
+    "aria-label": `From ${nameOf(from)}`,
+    "data-line": "received",
+    "data-from": from,
+    "data-message-id": value.id ?? "",
+    "data-reply-requested": String(value.replyRequested === true),
+    "data-collapsed-default": String(collapsed),
+    className: "group/report relative w-full overflow-hidden rounded-lg border border-border bg-card shadow-(--shadow-card)",
+  };
+
+  const header = (
+    <div
+      className={cn(
+        "flex items-center gap-2 px-4 py-2.5 text-sm",
+        collapsed ? "border-b border-border group-data-[state=closed]/report:border-b-0" : "border-b border-border",
+      )}
+      data-part="label"
     >
-      <section>
-        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm group-data-[state=closed]/report:border-b-0" data-part="label">
-          {avatarOf?.(from) ?? null}
-          <span className="font-semibold text-foreground">{nameOf(from)}</span>
-          {notes.length === 0 ? null : <span className="truncate rounded-full bg-muted px-2 py-px text-xs text-text-2">{notes.join(" · ")}</span>}
-          <span className="flex-1" />
-          {at === undefined ? null : (
-            <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
-              {at}
-            </time>
-          )}
-          <CollapsibleTrigger
-            aria-label={`Fold ${nameOf(from)}'s message`}
-            className="shrink-0 rounded-sm p-1 text-text-3 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            <ChevronRightIcon aria-hidden className="size-3.5 -rotate-90 transition-transform group-data-[state=closed]/report:rotate-90" />
-          </CollapsibleTrigger>
-        </div>
-        <CollapsibleContent className="px-4 py-3 outline-none">
-          <MarkdownText className="text-sm leading-[1.6]" text={value.text ?? ""} />
-        </CollapsibleContent>
+      {avatarOf?.(from) ?? null}
+      <span className="font-semibold text-foreground">{nameOf(from)}</span>
+      {notes.length === 0 ? null : <span className="truncate rounded-full bg-muted px-2 py-px text-xs text-text-2">{notes.join(" · ")}</span>}
+      <span className="flex-1" />
+      {at === undefined ? null : (
+        <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
+          {at}
+        </time>
+      )}
+      {collapsed ? (
+        <CollapsibleTrigger
+          aria-label={`Show full message from ${nameOf(from)}`}
+          className="shrink-0 rounded-sm p-1 text-text-3 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-data-[state=closed]/report:rotate-0 group-data-[state=open]/report:-rotate-90" />
+        </CollapsibleTrigger>
+      ) : null}
+    </div>
+  );
+
+  if (!collapsed) {
+    return (
+      <section {...sectionProps}>
+        {header}
+        <WorkerReplyStaticBody text={text} />
+      </section>
+    );
+  }
+
+  return (
+    <Collapsible defaultOpen={false} asChild>
+      <section {...sectionProps}>
+        {header}
+        <WorkerReplyCollapsibleBody text={text} hideWhenOpenClass="group-data-[state=open]/report:hidden" />
+      </section>
+    </Collapsible>
+  );
+}
+
+/**
+ * A filed task's ending (`workforce:result`), as the lab's card: the worker's
+ * name and how it ended in the header, its text collapsed when long.
+ */
+function ResultReportLine({ item }: { item: DataItem }) {
+  const { nameOf = (id: string) => id, avatarOf, openTask } = useLineContext();
+  const value = item.value as Partial<TaskResultValue>;
+  const from = value.from ?? "";
+  const failed = value.ending === "errored";
+  const cancelled = value.ending === "cancelled";
+  const said = `${from === "" ? "The task" : nameOf(from)} ${failed ? "couldn't finish" : cancelled ? "was cancelled" : "finished"}: ${value.title ?? ""}`;
+  const taskId = value.taskId;
+  const text = value.text ?? "";
+  const at = clockTime(item.ts);
+  const collapsed = !fitsWorkerReplyPreview(text);
+  const opens = taskId !== undefined && openTask !== undefined ? () => openTask(taskId) : undefined;
+
+  const header = (
+    <div className={cn("flex items-center gap-2 px-4 py-2.5 text-sm", collapsed ? "border-b border-border group-data-[state=closed]/result:border-b-0" : "border-b border-border")} data-part="label">
+      {from === "" ? null : avatarOf?.(from) ?? null}
+      {opens === undefined ? (
+        <span className={cn("min-w-0 font-semibold", failed && "text-destructive")}>{said}</span>
+      ) : (
+        <button type="button" aria-label={said} onClick={opens} className={cn("min-w-0 truncate text-left font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-ring", failed && "text-destructive")}>
+          {said}
+        </button>
+      )}
+      <span className="flex-1" />
+      {at === undefined ? null : (
+        <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
+          {at}
+        </time>
+      )}
+      {collapsed ? (
+        <CollapsibleTrigger
+          aria-label={`Show full result from ${from === "" ? "task" : nameOf(from)}`}
+          className="shrink-0 rounded-sm p-1 text-text-3 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-data-[state=closed]/result:rotate-0 group-data-[state=open]/result:-rotate-90" />
+        </CollapsibleTrigger>
+      ) : null}
+    </div>
+  );
+
+  const sectionProps = {
+    "aria-label": said,
+    "data-line": "result",
+    "data-task-id": taskId ?? "",
+    "data-status": failed ? "failed" : cancelled ? "cancelled" : "done",
+    "data-collapsed-default": String(collapsed),
+    className: "group/result relative w-full overflow-hidden rounded-lg border border-dashed border-success/60 bg-success/5 shadow-(--shadow-card)",
+  };
+
+  if (!collapsed) {
+    return (
+      <section {...sectionProps}>
+        {header}
+        {text === "" ? null : <WorkerReplyStaticBody text={text} />}
+      </section>
+    );
+  }
+
+  return (
+    <Collapsible defaultOpen={false} asChild>
+      <section {...sectionProps}>
+        {header}
+        {text === "" ? null : <WorkerReplyCollapsibleBody text={text} hideWhenOpenClass="group-data-[state=open]/result:hidden" />}
       </section>
     </Collapsible>
   );
@@ -225,7 +330,7 @@ export const teammatesRenderers: RendererRegistry = {
   status: false,
   source: false,
   block_trace: false,
-  data: { ...workforceLineRenderers, [FILED_TASK_DATA_TYPE]: TaskLine, [RECEIVED_MESSAGE_DATA_TYPE]: ReportLine },
+  data: { ...workforceLineRenderers, [FILED_TASK_DATA_TYPE]: TaskLine, [RECEIVED_MESSAGE_DATA_TYPE]: ReportLine, [TASK_RESULT_DATA_TYPE]: ResultReportLine },
 };
 
 /**
