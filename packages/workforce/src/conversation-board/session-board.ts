@@ -62,7 +62,7 @@ import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-r
 import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
-import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
+import { ROUTED_FROM_STATE_KEY, TASK_TITLE_STATE_KEY, WORKER_NAME_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
@@ -115,7 +115,10 @@ export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   PLAN_WAITING_STATE,
   // Not the board's: the work-project action writes it after a membership check (FIX-2161). Here so
   // every flow declaring this list, with a board or without, refuses it on a caller's create.
-  WORK_PROJECT_STATE_KEY
+  WORK_PROJECT_STATE_KEY,
+  // Not the board's either: the create check and the hand-over write them as a session is born (FIX-2881).
+  WORKER_NAME_STATE_KEY,
+  TASK_TITLE_STATE_KEY
 ];
 
 /** What a session board is built from. */

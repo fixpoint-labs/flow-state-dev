@@ -64,7 +64,7 @@ import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.t
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
 import { AppProvider as TeammatesProvider } from "../../../labs/teammates/src/app/index.ts";
-import { roleOf, useWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
+import { useWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-roster-follows");
@@ -241,7 +241,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   // Teammates: the list's roster watch (workforce's, over the client under its provider), read off the rows it reports.
   function TmProbe() {
     const workforce = useWorkforce();
-    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => record(tm, new Map(rows.map((row) => [row.id, roleOf(row) === "" ? null : roleOf(row)])))), [workforce]);
+    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => record(tm, new Map(rows.map((row) => [row.id, row.description || null])))), [workforce]);
     return null;
   }
   const tmClient = clientOf(on, tokens.tm);

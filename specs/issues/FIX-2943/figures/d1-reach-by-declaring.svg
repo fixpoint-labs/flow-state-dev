@@ -1,0 +1,116 @@
+<svg viewBox="0 0 940 476" role="img" aria-label="D1, how a flow gets to reach a definition in another session. Chosen: its blocks declare it. Instead of: a shared flag with reach by name. It comes down to a caller that can't declare the definition: there is none in the set, so the flag has no consumer. The price: a flow must include a block that declares the definition, where a flag would let it just name it. Private state stays out of reach either way. The surface to learn: nothing new, against a flag and a public term. Locks in: no shared term ships. Flips if: a caller must reach a definition it can't declare."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .rec    { fill:var(--surface); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="476"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a flow get to reach a definition in another session?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Its blocks declare it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A shared flag, reach by name</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A CALLER THAT</text>
+    <text class="t-lbl" x="32" y="169">CAN'T DECLARE IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">No caller is left without reach</text>
+    <text class="t-s" x="248" y="179">every reach in the set declares</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Ships a flag nobody uses</text>
+    <text class="t-s" x="612" y="179">a public term with no consumer</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="226">WHAT A FLOW</text>
+    <text class="t-lbl" x="32" y="239">MUST DO</text>
+    <text class="mark minus" x="228" y="228">−</text>
+    <text class="t-b" x="248" y="227">Include a block that declares it</text>
+    <text class="t-s" x="248" y="245">the board's task entry does</text>
+    <text class="mark plus" x="592" y="228">+</text>
+    <text class="t-b" x="612" y="227">Name it, nothing else</text>
+    <text class="t-s" x="612" y="245">any flow, any shared definition</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="284">PRIVATE STATE</text>
+    <text class="t-lbl" x="32" y="297">OF A FLOW</text>
+    <text class="mark plus" x="228" y="286">+</text>
+    <text class="t-b" x="248" y="285">Out of reach unless declared</text>
+    <text class="t-s" x="248" y="303">no flag to forget</text>
+    <text class="mark plus" x="592" y="286">+</text>
+    <text class="t-b" x="612" y="285">Out of reach unless shared</text>
+    <text class="t-s" x="612" y="303">opt-in per definition</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="342">SURFACE</text>
+    <text class="t-lbl" x="32" y="355">TO LEARN</text>
+    <text class="mark plus" x="228" y="344">+</text>
+    <text class="t-b" x="248" y="343">Nothing new</text>
+    <text class="t-s" x="248" y="361">declaring a block declares its data</text>
+    <text class="mark minus" x="592" y="344">−</text>
+    <text class="t-b" x="612" y="343">A flag and a public term</text>
+    <text class="t-s" x="612" y="361">shared definition</text>
+    <line class="row" x1="16" y1="370" x2="924" y2="370"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="386" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="407">LOCKS IN</text>
+    <text class="t-b" x="32" y="427">No shared term ships; a flow reaches what it declares</text>
+    <text class="t-s" x="32" y="445">adding the flag later only widens reach</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="386" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="407">FLIPS IF</text>
+    <text class="t-b" x="494" y="427">A caller must reach a definition it can't declare</text>
+    <text class="t-s" x="494" y="445">then the flag ships with boards(), as one change</text>
+  </g>
+
+</svg>

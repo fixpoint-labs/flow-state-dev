@@ -32,6 +32,8 @@
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 delete process.env.FSDEV_DEFAULT_MODEL;
 
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -53,7 +55,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   runTopic,
-  type HarnessFeeds,
   type HarnessSessionState,
   type ModeSpec,
 } from "@flow-state-dev/harness-manager";
@@ -196,7 +197,7 @@ async function open(options: { label: string; script: Step[]; commands: string[]
     boardCollection: ledger,
     tenant: undefined,
     mode: commandCheck(base, { commands: options.commands, timeoutMs: options.timeoutMs }),
-    workspace: { root: join(repo, "..", "checkouts"), sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
+    workspace: localRepoWorkspaceHost({ root: join(repo, "..", "checkouts"), repo, baseRef: "main", provisionTimeoutMs: 20_000 }),
     runTimeoutMs: 30_000,
     ownership: { pollMs: 25 },
     harness: stub(options.script, prompts),

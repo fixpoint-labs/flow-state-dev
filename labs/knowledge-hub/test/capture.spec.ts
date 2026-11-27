@@ -50,6 +50,9 @@ describe("logActivity", () => {
       kind: "task",
       content: "Book dentist appointment",
       situation: "Mentioned while planning the week in a Claude conversation",
+      // The action input schema strips these server-owned fields.
+      status: "swept",
+      fingerprint: "caller-supplied",
     });
 
     expect(result.status).toBe("completed");

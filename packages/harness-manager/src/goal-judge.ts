@@ -104,7 +104,6 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     name,
     model,
     inputSchema: harnessJudgeInputSchema,
-    state: (input: HarnessJudgeInput) => ({ goal: input.goal, answer: input.answer, commits: input.commits, diff: input.diff }),
     questions: () => ({
       [GOAL_JUDGE_QUESTION]: choice(
         "A coding agent was given the goal and ended with the answer, having made the commits listed, " +
@@ -116,31 +115,28 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     }),
   });
 
-  // The model's answers, read beside the run the judge was handed (this
-  // sequencer's own input), since an ask quotes it.
+  // Read the model's answers alongside the judge input on this step's parent,
+  // since an ask quotes the run the judge was handed.
   const decide = handler({
     name: `${name}-verdict`,
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
     outputSchema: harnessJudgeVerdictSchema,
+    parentInputSchema: harnessJudgeInputSchema,
     execute: async ({ answers }, ctx) => {
-      const input = harnessJudgeInputSchema.parse(ctx.sequencer?.input);
       const answer = answers[GOAL_JUDGE_QUESTION] as { choice?: string; confidence?: number } | undefined;
       if (typeof answer?.choice !== "string") throw new Error("the judge answered no outcome");
       const why = (answers[GOAL_JUDGE_WHY_QUESTION] as { choice?: string } | undefined)?.choice;
-      return verdictOf(input, answer.choice, answer.confidence, why);
+      return verdictOf(ctx.parent!.input, answer.choice, answer.confidence, why);
     },
   });
 
-  // Stateful, so its steps' `ctx.sequencer` is this sequencer and its input
-  // the run as the judge was handed it, not the manager's.
   const block = sequencer({
     name: `${name}-run`,
     inputSchema: harnessJudgeInputSchema,
     outputSchema: harnessJudgeVerdictSchema,
-    stateSchema: z.object({}),
   })
     .step(read)
     .step(decide);
 
-  return { block: block as never, floor };
+  return { block, floor };
 }

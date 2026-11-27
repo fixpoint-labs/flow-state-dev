@@ -22,12 +22,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument } from "@flow-state-dev/workforce";
+import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { openTeammates } from "../host.mts";
 import { oneOffSessionId } from "@flow-state-dev/core/helpers";
@@ -137,9 +137,13 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
   return { post, stored, say, loopback };
 }
 
-/** The planted regression: a save action on a flow the host serves over HTTP, writing the list's row. */
+/**
+ * The planted regression: a save action on a flow the host serves over HTTP, writing the list's row.
+ * It declares the list from the factory the lab's host uses, so its client and write settings match
+ * the lab's and the host starts with it: a mismatched declaration is refused at start-up.
+ */
 function publicSaveAction(): FlowInstance {
-  const document = defineResource({ ref: GITHUB_REVIEWERS_DOC, scope: "org", stateSchema: z.object({}).passthrough(), default: {}, content: "" } as never);
+  const { document } = githubTrustedReviewers({ operator: "alice", judgeModel: "test/reviewers-judge", holders: [] });
   const save = handler({
     name: "set-github-reviewers",
     inputSchema: z.object({ logins: z.array(z.string()) }),
@@ -221,7 +225,9 @@ describe("the trusted GitHub reviewers on the lab's host", () => {
       "consultSessionHistory",
       "createTask",
       "deleteRoutine",
+      "fire",
       "getTask",
+      "hire",
       "listDelegates",
       "listRoutines",
       "listTasks",

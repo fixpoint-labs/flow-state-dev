@@ -81,7 +81,7 @@ import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
-import { routedTaskHistory } from "./coordinator/routed-brief";
+import { routedLinesStateSchema, routedTaskHistory } from "./coordinator/routed-brief";
 import { taskEndingReadsStateSchema, withTaskEndingReads } from "./conversation-board/task-ending-read";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
@@ -1124,7 +1124,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       name,
       inputSchema,
       flowConfigSchema: settings,
-      requestStateSchema: taskEndingReadsStateSchema,
+      requestStateSchema: taskEndingReadsStateSchema.merge(routedLinesStateSchema),
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
       // subject. A conversation is one session: a worker has one per

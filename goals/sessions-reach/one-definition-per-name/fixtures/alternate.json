@@ -1,0 +1,7 @@
+{
+  "definition": "ledger",
+  "reachers": { "owner": "planner", "visitor": "builder" },
+  "clashing": "auditor",
+  "index": { "pattern": "entries/*", "name": "byStatus" },
+  "notes": { "fromVisitor": "builder closed entry 9", "fromOwner": "planner opened entry 10" }
+}

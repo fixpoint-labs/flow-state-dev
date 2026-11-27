@@ -357,9 +357,22 @@ export async function retryRequest(
     // Override the router-level provider with the per-flow effective value for
     // this retry; everything else forwards verbatim.
     runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
-  }).finally(() => {
-    liveStream.close();
-  });
+  })
+    // The run is started here and nothing awaits it, so a failure before it
+    // records anything (its setup throws) ends here. Left uncaught it is an
+    // unhandled rejection, which ends a Node host's process (FIX-2895).
+    .catch((error: unknown) => {
+      logRuntimeEvent(logger, "error", "[flow-state] retried request failed to start", {
+        originalRequestId: options.originalRequestId,
+        newRequestId,
+        flowKind,
+        actionName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    })
+    .finally(() => {
+      liveStream.close();
+    });
 
   logRuntimeEvent(logger, "info", "[flow-state] retrying interrupted request", {
     originalRequestId: options.originalRequestId,

@@ -13,7 +13,7 @@ import type {
   ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
-import type { DefinedResource } from "@flow-state-dev/core/types";
+import type { DefinedResource, ResourceRef } from "@flow-state-dev/core/types";
 import {
   roundRobinStateSchema,
   type RoundRobinContributionsState,
@@ -98,8 +98,8 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
     itemVisibility: opts.itemVisibility ?? { client: true, history: false },
     agentName: opts.agentName,
     ...(opts.context !== undefined ? { context: opts.context } : {}),
-    ...(opts.uses ? { uses: opts.uses as any } : {}),
-    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
+    ...(opts.uses ? { uses: opts.uses } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
     prompt: async (input, ctx) => {
       const resolved = opts.instructions
         ? typeof opts.instructions === "function"
@@ -121,21 +121,19 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
     },
     user: (_input, ctx) => {
       const state = ctx.sequencer!.state;
-      // TODO: computed-key resource accessor — see round-robin follow-up
-      const contribState = (ctx.resources as any)[accessor]
-        ?.state as RoundRobinContributionsState | undefined;
-      const entries = contribState?.entries ?? [];
+      const contributions = ctx.resources[accessor] as ResourceRef<RoundRobinContributionsState> | undefined;
+      const entries = contributions?.state?.entries ?? [];
       const priorBlock =
         entries.length > 0
           ? `\nPrior contributions:\n${formatPrior(entries)}\n`
           : "";
-      const critiques = state.refereeCritiques ?? [];
+      const critiques = state.refereeCritiques;
       const refereeBlock =
         critiques.length > 0
           ? `\nReferee critiques so far:\n${formatRefereeCritiques(critiques)}\n`
           : "";
       return [
-        `Goal: ${state.goal ?? ""}`,
+        `Goal: ${state.goal}`,
         `Round: ${state.round}`,
         priorBlock,
         refereeBlock,
