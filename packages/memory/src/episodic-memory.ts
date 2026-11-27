@@ -58,7 +58,7 @@ export type Episode = z.infer<typeof episodeSchema>
 /** Schema for the full episodic memory state. */
 export const episodicMemoryStateSchema = z.object({
   /** All stored episodes. */
-  episodes: z.array(episodeSchema),
+  episodes: z.array(episodeSchema).default([]),
   /** Total number of episodes ever encoded (including evicted). */
   totalEncoded: z.number().int().min(0).default(0),
 })
@@ -86,7 +86,7 @@ export function createEpisodicMemoryResource(scope: 'user' | 'org', options?: Me
   return defineResource({
     scope,
     stateSchema: episodicMemoryStateSchema,
-    default: { episodes: [], totalEncoded: 0 },
+    default: episodicMemoryStateSchema.parse({}),
     writable: true,
     ...flowIsolationEntry(options),
   })

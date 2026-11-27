@@ -574,7 +574,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -655,7 +655,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: REVIEWER_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -716,7 +716,7 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
@@ -795,7 +795,7 @@ await runGoal(async (failures) => {
 
   const lab = await openLab({
     stores,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
@@ -880,8 +880,8 @@ await runGoal(async (failures) => {
     if (filedRow.assignee !== ASSIGNED_SEAT) {
       failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted ${ASSIGNED_SEAT}`);
     }
-    const payload = (filedRow.input as { harnessFeature?: { issue?: unknown; phase?: unknown } } | undefined)?.harnessFeature;
-    if (payload?.issue !== ISSUE || payload?.phase !== "implement") {
+    const payload = filedRow.input as { issue?: unknown; mode?: unknown } | undefined;
+    if (payload?.issue !== ISSUE || payload?.mode !== "implement") {
       failures.push(`the row names ${JSON.stringify(payload)}; wanted the feature "${ISSUE}" at implement`);
     }
     if (failures.length > 0) return { failures, evidence: "" };

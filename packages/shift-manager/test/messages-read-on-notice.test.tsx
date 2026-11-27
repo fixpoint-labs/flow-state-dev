@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * The message log reads on a change, not on a clock (FIX-2775): read whole when
- * the view opens through react's `useResource`, and then only on a notice of a
- * message under the user's scope (`workforce/messages`). A notice that names a
- * new message reads that one entry, never the whole log again; one that names
- * none reads it whole. Nothing reads it on a Lab read. A failed later read
+ * The message log reads on a change, not on a clock (FIX-2775): its newest page
+ * when the view opens through react's `useResource` (FIX-2845), and then only on
+ * a notice of a message under the user's scope (`workforce/messages`). A notice
+ * that names a new message reads that one entry, never the page again; one that
+ * names none reads the newest page again. The log is never read whole, and
+ * nothing reads it on a Lab read. A failed later read
  * keeps the last messages; only a failed first read shows, and a Lab that
  * declares no log (404) reads as none.
  *
@@ -45,11 +46,16 @@ const entryReads: string[] = [];
 const handle = {
   scope: "user",
   key: "workforce/messages/*",
-  list: async () => ({ items: [] }),
-  listAll: async () => {
+  // The newest page: the only list read the log makes.
+  list: async (options: { order?: string }) => {
     logReads += 1;
+    if (options.order !== "newest") throw new Error(`the log lists its newest page, not ${JSON.stringify(options)}`);
     if (failWith !== undefined) throw failWith;
-    return logged.map((m) => ({ topic: m.id, storageKey: keyOf(m.id), value: m, version: 1 }));
+    const ranked = [...logged].sort((a, b) => b.at - a.at);
+    return { items: ranked.map((m) => ({ topic: m.id, storageKey: keyOf(m.id), value: m, version: 1 })) };
+  },
+  listAll: async () => {
+    throw new Error("the log is never read whole");
   },
   entry: (storageKey: string) => ({
     read: async () => {
@@ -106,14 +112,14 @@ describe("the message log", () => {
     // A new message, named: that one entry is read and placed, and the log isn't listed again.
     logged = [message("msg_1", 1), message("msg_2", 2)];
     hear(resource("workforce/messages", [keyOf("msg_2")]));
-    await waitFor(() => expect(ids()).toEqual(["msg_1", "msg_2"]));
+    await waitFor(() => expect(ids()).toEqual(["msg_2", "msg_1"]));
     expect(entryReads).toEqual([keyOf("msg_2")]);
     expect(logReads).toBe(1);
 
-    // A notice that names nothing under the log reads it whole.
+    // A notice that names nothing under the log reads the newest page again.
     logged = [...logged, message("msg_3", 3)];
     hear(resource("workforce/messages"));
-    await waitFor(() => expect(ids()).toEqual(["msg_1", "msg_2", "msg_3"]));
+    await waitFor(() => expect(ids()).toEqual(["msg_3", "msg_2", "msg_1"]));
     expect(logReads).toBe(2);
   });
 

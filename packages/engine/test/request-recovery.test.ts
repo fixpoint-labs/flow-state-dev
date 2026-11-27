@@ -11,7 +11,8 @@ import type { runAction } from "../src/execution/runAction";
 type RunActionOptions = Parameters<typeof runAction>[0];
 const runActionMock = vi.fn((_options: RunActionOptions) => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
-  runAction: (options: RunActionOptions) => runActionMock(options)
+  runAction: (options: RunActionOptions) => runActionMock(options),
+  runFrameworkAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 function makeVoiceProvider(id: string): VoiceProvider {
@@ -345,6 +346,45 @@ describe("detectInterruptedRequests", () => {
     expect(runActionMock.mock.calls[0]![0].orgId).toBe("org-acme");
   });
 
+  // FIX-2942: a retry mints a new request id, and a new id has no record a
+  // successor run could read who it is from. Its principal is the original's,
+  // forwarded: else a machine's request in a person's session would recover as
+  // the session's person and reach their other sessions.
+  it("forwards the original record's principal kind and resolver to the retried run", async () => {
+    runActionMock.mockClear();
+    await stores.request.set(
+      "req_machine",
+      makeRequestRecord("req_machine", { principalKind: "machine", resolvedBy: "host:webhook" }),
+      "any"
+    );
+    await stores.request.set(
+      "req_person",
+      makeRequestRecord("req_person", { principalKind: "person", resolvedBy: "flow:chat" }),
+      "any"
+    );
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_machine", stores, flowRegistry, runtimeConfig: {} });
+    await retryRequest({ originalRequestId: "req_person", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(2);
+    expect(runActionMock.mock.calls[0]![0]).toMatchObject({ principalKind: "machine", resolvedBy: "host:webhook" });
+    expect(runActionMock.mock.calls[1]![0]).toMatchObject({ principalKind: "person", resolvedBy: "flow:chat" });
+  });
+
+  it("recovers a record from before the principal fields as a machine's, with no resolver", async () => {
+    runActionMock.mockClear();
+    await stores.request.set("req_legacy_kind", makeRequestRecord("req_legacy_kind"), "any");
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_legacy_kind", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    const options = runActionMock.mock.calls[0]![0];
+    expect(options.principalKind).toBe("machine");
+    expect(options.resolvedBy).toBeUndefined();
+  });
+
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
     // Regression: retry used to forward only the router-level provider, so a
     // flow that overrides TTS would synthesize with the wrong backend after
@@ -402,6 +442,41 @@ describe("detectInterruptedRequests", () => {
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
     expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(routerProvider);
+  });
+
+  it("logs a retried run that fails to start instead of leaving its rejection unhandled", async () => {
+    // FIX-2895. The route answers 202 and nothing awaits the run, so a failure
+    // in its setup (a store write, an action it can't find) has no caller to
+    // reach. Unhandled, it ends a Node host's process.
+    runActionMock.mockClear();
+    runActionMock.mockImplementationOnce(() => Promise.reject(new Error("store unavailable")));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await stores.request.set("req_setup_fail", makeRequestRecord("req_setup_fail"), "any");
+      const flow = { kind: "chat", actions: { run: {} } } as never;
+      const flowRegistry = { get: vi.fn(() => flow) } as never;
+      const error = vi.fn();
+
+      const { newRequestId } = await retryRequest({
+        originalRequestId: "req_setup_fail",
+        stores,
+        flowRegistry,
+        runtimeConfig: { logger: { error } }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      expect(error).toHaveBeenCalledWith(
+        "[flow-state] retried request failed to start",
+        expect.objectContaining({ originalRequestId: "req_setup_fail", newRequestId, error: "store unavailable" })
+      );
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   it("skips entries with recent heartbeats", async () => {

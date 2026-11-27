@@ -95,6 +95,21 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
    * never caller input.
    */
   preserveJsonKeys?: string[];
+  // FIX-2942.
+  /**
+   * Top-level `data` keys that `set` writes once: while the stored row has
+   * none, the incoming value is written as it is; once it has one, the stored
+   * value wins in both directions, as for {@link preserveJsonKeys}. Enforced
+   * inside the UPDATE itself, for the same reason.
+   *
+   * Used by the session store for `principalKind`: a birth writes it, a
+   * session from before the field gets its backfilled kind once, and no
+   * later whole-record write changes either.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  writeOnceJsonKeys?: string[];
 };
 
 /**
@@ -167,7 +182,8 @@ export function createPgRecordStore<
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
   const preserveJsonKeys = config.preserveJsonKeys ?? [];
-  for (const key of preserveJsonKeys) {
+  const writeOnceJsonKeys = config.writeOnceJsonKeys ?? [];
+  for (const key of [...preserveJsonKeys, ...writeOnceJsonKeys]) {
     // These are interpolated into SQL, so refuse anything that isn't a plain
     // identifier rather than trusting the caller's discipline.
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
@@ -182,7 +198,7 @@ export function createPgRecordStore<
    * rather than the `?` operator so no driver can mistake it for a placeholder.
    */
   function dataAssignment(source: string): string {
-    if (preserveJsonKeys.length === 0) return source;
+    if (preserveJsonKeys.length === 0 && writeOnceJsonKeys.length === 0) return source;
     const stripped = preserveJsonKeys.reduce(
       (acc, key) => `(${acc} - '${key}')`,
       `${source}::jsonb`
@@ -195,7 +211,17 @@ export function createPgRecordStore<
           ` ELSE '{}'::jsonb END)`
       )
       .join("");
-    return `${stripped}${restored}`;
+    // A write-once key: the incoming value while the stored row has none, the
+    // stored one after. `||` on the right replaces the incoming key.
+    const keptOnce = writeOnceJsonKeys
+      .map(
+        (key) =>
+          ` || (CASE WHEN jsonb_exists(${tableName}.data, '${key}')` +
+          ` THEN jsonb_build_object('${key}', ${tableName}.data -> '${key}')` +
+          ` ELSE '{}'::jsonb END)`
+      )
+      .join("");
+    return `(${stripped}${restored})${keptOnce}`;
   }
 
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];

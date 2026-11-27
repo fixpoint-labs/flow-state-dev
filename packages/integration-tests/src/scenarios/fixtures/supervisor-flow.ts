@@ -8,6 +8,7 @@
  * here reproduces the same composition that ships in apps.
  */
 import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
 
@@ -16,15 +17,7 @@ const inputSchema = z.object({ goal: z.string() });
 const worker = generator({
   name: "test-worker",
   model: "intent/synthesize",
-  inputSchema: z.object({
-    taskId: z.string(),
-    goal: z.string(),
-    input: z.unknown().optional(),
-    deps: z.record(z.unknown()).optional(),
-    attempts: z.number().int().nonnegative().default(0),
-    feedback: z.string().optional(),
-    metadata: z.record(z.unknown()).optional()
-  }),
+  inputSchema: taskWorkerInputSchema,
   outputSchema: z.string(),
   itemVisibility: { client: true, history: false },
   prompt: "You are a focused task executor. Complete the assigned task concisely.",

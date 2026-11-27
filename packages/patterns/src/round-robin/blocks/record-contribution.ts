@@ -28,7 +28,7 @@ export function createRecordContribution(opts: {
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
     inputSchema: z.any(),
-    resources: { [accessor]: opts.contributions },
+    resources: { [accessor]: opts.contributions as DefinedResource<RoundRobinContributionsState> },
     sequencerStateSchema: roundRobinStateSchema,
     execute: async (input, ctx) => {
       const text = coerceText(input, opts.agentName, opts.warnedAgents, {
@@ -38,12 +38,10 @@ export function createRecordContribution(opts: {
       const state = ctx.sequencer!.state;
       const round = state.round;
 
-      // TODO: computed-key resource accessor — see round-robin follow-up
-      const contribRef = (ctx.resources as any)[accessor];
-      const current = contribRef.state as RoundRobinContributionsState;
+      const contribRef = ctx.resources[accessor];
       await contribRef.setState({
         entries: [
-          ...(current.entries ?? []),
+          ...(contribRef.state.entries ?? []),
           { round, agentName: opts.agentName, text },
         ],
       });

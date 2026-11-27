@@ -44,6 +44,8 @@ export {
 // A board's task-list view, as `taskListViewRef` types it (FIX-2623).
 export type { TaskListView } from "../skills/views/task-list-view";
 export { inboxItems } from "./list";
+// A suspension hold's id: its request and its suspension (FIX-2850).
+export { suspensionHoldId } from "./holds";
 // One task as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).

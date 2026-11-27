@@ -25,8 +25,8 @@ function looksLikeCollectionRef(value: unknown): value is ResourceCollectionRef 
   return (
     typeof value === "object" &&
     value !== null &&
-    "pattern" in (value as object) &&
-    "create" in (value as object)
+    "pattern" in value &&
+    "create" in value
   );
 }
 
@@ -35,12 +35,7 @@ export function resolveResourceCollection(
   ctx: BlockContext,
   key: string
 ): ResourceCollectionRef | undefined {
-  const registry = ctx.resources as
-    | (Record<string, unknown> & {
-        get?: (k: string) => unknown;
-        list?: () => unknown[];
-      })
-    | undefined;
+  const registry = ctx.resources;
   if (!registry) return undefined;
 
   // 1. Direct property lookup — accessor keys are exposed on the registry.
@@ -48,16 +43,14 @@ export function resolveResourceCollection(
   if (looksLikeCollectionRef(direct)) return direct;
 
   // 2. Typed `get(key)` if the registry exposes one.
-  const get = registry.get;
-  if (typeof get === "function") {
-    const ref = get.call(registry, key);
+  if (typeof registry.get === "function") {
+    const ref = registry.get(key);
     if (looksLikeCollectionRef(ref)) return ref;
   }
 
   // 3. Pattern-prefix scan via list().
-  const list = registry.list;
-  if (typeof list === "function") {
-    for (const entry of list.call(registry)) {
+  if (typeof registry.list === "function") {
+    for (const entry of registry.list()) {
       if (looksLikeCollectionRef(entry) && entry.pattern.startsWith(`${key}/`)) {
         return entry;
       }

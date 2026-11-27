@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="D1, what this epic takes on. Chosen: the scope model and the removal of its workarounds, now. Instead of: reach only, or one epic with the task-API redesign. It comes down to the first row: reach only leaves lineage and partitions beside the new reach, two ways for each job; the chosen option and the bigger epic leave none. The price is the second row: seven issues and a closure, and the board moves before its redesign; reach only is three issues; the bigger epic is about twice the set and ties a decided model to an open one. Third row: the task API builds on the finished model, on both models, or on itself mid-flight. Locks in: the board keeps the delegation and plan stores until the next epic. Flips if: the task-API direction lands first and moves the board elsewhere."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recd   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does this epic take on: reach alone, reach and removal, or the task API too?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Reach and removal now</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">Reach only</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">With the task-API redesign</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A SECOND WAY</text>
+    <text class="t-lbl" x="32" y="169">ACROSS SESSIONS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="246" y="161">None left</text>
+    <text class="t-s" x="246" y="179">lineage and partitions go</text>
+    <text class="mark minus" x="466" y="162">−</text>
+    <text class="t-b" x="486" y="161">Two ways per job</text>
+    <text class="t-s" x="486" y="179">the old paths stay beside it</text>
+    <text class="mark plus" x="706" y="162">+</text>
+    <text class="t-b" x="726" y="161">None left</text>
+    <text class="t-s" x="726" y="179">deleted with the rest</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="230">SIZE</text>
+    <text class="mark minus" x="226" y="236">−</text>
+    <text class="t-b" x="246" y="235">Seven issues and a closure</text>
+    <text class="t-s" x="246" y="253">the board moves before its redesign</text>
+    <text class="mark plus" x="466" y="236">+</text>
+    <text class="t-b" x="486" y="235">Three issues</text>
+    <text class="t-s" x="486" y="253">the smallest change</text>
+    <text class="mark minus" x="706" y="236">−</text>
+    <text class="t-b" x="726" y="235">About twice the set</text>
+    <text class="t-s" x="726" y="253">a decided model tied to an open one</text>
+    <line class="row" x1="16" y1="264" x2="924" y2="264"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="288">WHAT THE TASK API</text>
+    <text class="t-lbl" x="32" y="301">BUILDS ON</text>
+    <text class="mark plus" x="226" y="294">+</text>
+    <text class="t-b" x="246" y="293">The finished model</text>
+    <text class="t-s" x="246" y="311">one way to reach</text>
+    <text class="mark minus" x="466" y="294">−</text>
+    <text class="t-b" x="486" y="293">Both models</text>
+    <text class="t-s" x="486" y="311">and must pick one</text>
+    <text class="mark minus" x="706" y="294">−</text>
+    <text class="t-b" x="726" y="293">Itself, mid-flight</text>
+    <text class="t-s" x="726" y="311">both designs move at once</text>
+    <line class="row" x1="16" y1="322" x2="924" y2="322"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
+    <text class="t-b" x="32" y="367">The board keeps two stores until the next epic</text>
+    <text class="t-s" x="32" y="385">this epic moves boards; it doesn't change what a task is</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
+    <text class="t-b" x="494" y="367">The task-API direction lands first</text>
+    <text class="t-s" x="494" y="385">and moves the board somewhere this epic doesn't</text>
+  </g>
+</svg>

@@ -286,9 +286,9 @@ export function defineProjectedResourceCollection<
 >(
   config: TConfig
 ): DefinedProjectedResourceCollection<
-  AsStateObject<TStateSchema["_output"]>,
-  TStateSchema,
-  ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+  AsStateObject<TConfig["stateSchema"]["_output"]>,
+  TConfig["stateSchema"],
+  ProjectedClient<AsStateObject<TConfig["stateSchema"]["_output"]>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
 
@@ -357,9 +357,9 @@ export function defineProjectedResourceCollection<
     __brand: "ResourceCollection" as const,
     projected: true as const,
   }) as unknown as DefinedProjectedResourceCollection<
-    AsStateObject<TStateSchema["_output"]>,
-    TStateSchema,
-    ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+    AsStateObject<TConfig["stateSchema"]["_output"]>,
+    TConfig["stateSchema"],
+    ProjectedClient<AsStateObject<TConfig["stateSchema"]["_output"]>, TConfig["client"]>
   >;
 }
 
