@@ -269,6 +269,22 @@ export function toolOutcome(toolName: string, output: unknown): ToolOutcome {
  * count, a task's title. Without one (a call still running) it says what its
  * args say.
  */
+const PLAN_TOOL_NAMES = new Set(["todo_list", "updatetodos", "taskcreate", "taskupdate"]);
+
+function planItemCount(record: Fields): number | undefined {
+  const items = record.items ?? record.todos;
+  return Array.isArray(items) ? items.length : undefined;
+}
+
+/** Names a harness plan update, not the wire tool. */
+function planToolSubject(toolName: string, args: unknown): ToolSubject | undefined {
+  const lower = toolName.toLowerCase();
+  if (!PLAN_TOOL_NAMES.has(lower)) return undefined;
+  const count = planItemCount(asFields(args));
+  if (count === undefined) return { text: "Update the plan", code: false };
+  return { text: count === 0 ? "Clear the plan" : `Update the plan (${count} steps)`, code: false };
+}
+
 export function toolSubject(toolName: string, args: unknown, output?: unknown): ToolSubject | undefined {
   const base = toolBaseName(toolName);
   const work = Object.hasOwn(WORK_TOOLS, base) ? WORK_TOOLS[base] : undefined;
@@ -276,6 +292,8 @@ export function toolSubject(toolName: string, args: unknown, output?: unknown): 
     const result = output === undefined || output === null ? undefined : asFields(output);
     return { text: clip(work(asFields(args), result)), code: false };
   }
+  const plan = planToolSubject(toolName, args);
+  if (plan !== undefined) return plan;
   if (args === null || typeof args !== "object") return undefined;
   const record = args as Record<string, unknown>;
   const lower = toolName.toLowerCase();

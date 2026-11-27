@@ -21,21 +21,35 @@
  * starts core's recorder, which reads Codex's command and MCP calls as they
  * settle. It is a session resource, not session state, so a task board still
  * dispatches the block.
+ *
+ * Two opt-in options change what the block touches, and both are off by
+ * default except pull requests: `recordPlan` writes Codex's confirmed to-do
+ * list into core's plan record.
  */
 import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { randomUUID } from "node:crypto";
 import { handler } from "@flow-state-dev/core";
+import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
+  harnessConversationNamespace,
   harnessRunInputSchema,
+  harnessRunNamespace,
+  observedPlanCollection,
+  observedPlanListCollection,
   observedPullRequestsCollection,
   promptWithTurnText,
   readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
+  replacePlanList,
   reportHarnessActivity,
   reportHarnessEvent,
   reportHarnessSpend,
+  type PlanListCollection,
+  type PlanListItem,
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessActivityHook,
@@ -168,6 +182,17 @@ export interface CodexAgentOptions {
    * `gh pr view` is not. `false` declares nothing and records nothing.
    */
   recordPullRequests?: boolean;
+  /**
+   * Record Codex's to-do list in the run's plan record, core's
+   * `observed-plan` collection, with its `observed-plan-list` marker. Default
+   * `false`.
+   *
+   * On, the block declares both collections and, each time Codex confirms an
+   * update to its list, writes the whole list it confirmed through core's
+   * `replacePlanList` under the thread's conversation namespace
+   * (`harnessConversationNamespace(threadId)`). Off, the block writes no plan.
+   */
+  recordPlan?: boolean;
   /** Capabilities forwarded to the underlying handler. */
   uses?: UsesSlot;
   /** Block name. Default `"codex-agent"`. */
@@ -195,6 +220,14 @@ interface InternalTestSeams {
 /** Option-group keys the block owns and therefore refuses to forward. */
 const REFUSED_THREAD_KEYS = ["workingDirectory", "signal"] as const;
 const REFUSED_CLIENT_KEYS = ["signal"] as const;
+
+const planRecordResources: Record<string, DeclaredResourceEntry> = {
+  [OBSERVED_PLAN]: observedPlanCollection,
+  [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+};
+
+/** Writes one confirmed list into this thread's plan record. */
+type PlanWriter = (items: PlanListItem[]) => Promise<void>;
 
 // BP-031.
 /**
@@ -240,6 +273,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     client: clientOptions,
     resolveCodexClient = createDefaultResolveCodexClient(clientOptions ?? {}),
     recordPullRequests = true,
+    recordPlan = false,
     uses,
     name = "codex-agent",
   } = options;
@@ -286,7 +320,14 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     // silent if the contract's input ever grew.
     inputSchema: harnessRunInputSchema,
     outputSchema: codexAgentHandleSchema,
-    ...(recordPullRequests ? { resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } } : {}),
+    ...((recordPullRequests || recordPlan)
+      ? {
+          resources: {
+            ...(recordPlan ? planRecordResources : {}),
+            ...(recordPullRequests ? { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } : {}),
+          },
+        }
+      : {}),
     ...(uses !== undefined ? { uses } : {}),
     execute: async (input, ctx: HarnessCallbackContext): Promise<CodexAgentHandle> => {
       const prompt = input.prompt?.trim();
@@ -336,6 +377,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           : client.resumeThread(resumeId, threadArgs);
 
       const emitState = createEmitState();
+      let writePlan: PlanWriter | null =
+        recordPlan && resumeId !== null ? await openPlanWriter(ctx, resumeId) : null;
       let sessionId: string | null = resumeId;
       let hookFired = false;
       let usage: CodexRunUsage | null = null;
@@ -412,8 +455,12 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                     hookFired = true;
                     await onSession?.(event.threadId, ctx);
                   }
+                  if (recordPlan) writePlan = await openPlanWriter(ctx, event.threadId);
                   ctx.emit.status(`Codex thread ${event.threadId}`);
                   continue;
+                }
+                if (event.kind === "plan_list") {
+                  await writePlan?.(event.items);
                 }
                 if (event.kind === "turn_completed") {
                   outcome = "finished";
@@ -511,6 +558,35 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       }
     },
   }), { accepts: CODEX_ACCEPTS });
+}
+
+async function openPlanWriter(ctx: HarnessCallbackContext, threadId: string): Promise<PlanWriter | null> {
+  const plan = ctx.resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
+  const marker = ctx.resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
+  if (typeof plan?.upsert !== "function" || typeof marker?.upsert !== "function") {
+    ctx.emit.status(
+      `Codex agent is not recording this run's plan: the "${OBSERVED_PLAN}" and ` +
+        `"${OBSERVED_PLAN_LIST}" collections are not registered on this flow.`,
+      { transient: false },
+    );
+    return null;
+  }
+  const namespace = harnessConversationNamespace(threadId);
+  const requestId = ctx.request.identity.id;
+  try {
+    await marker.upsert(harnessRunNamespace(ctx), { conversation: namespace });
+  } catch (err) {
+    ctx.emit.status(
+      `Codex's plan pointer was not recorded: ${err instanceof Error ? err.message : String(err)}`,
+      { transient: false },
+    );
+  }
+  return async (items) => {
+    const written = await replacePlanList(plan, marker, namespace, items, { requestId });
+    if (written.status === "incomplete") {
+      ctx.emit.status(`Codex's plan was not recorded in full: ${written.reason}`, { transient: false });
+    }
+  };
 }
 
 /**

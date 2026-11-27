@@ -302,4 +302,5 @@ export type CodexTranslatedEvent =
   | { kind: "notice"; message: string }
   | { kind: "error"; message: string; code?: string; details?: Record<string, unknown> }
   | { kind: "turn_completed"; usage: CodexRunUsage | null }
-  | { kind: "turn_failed"; message: string };
+  | { kind: "turn_failed"; message: string }
+  | { kind: "plan_list"; items: Array<{ title: string | null; status: string | null }> };

@@ -55,6 +55,22 @@ function open(task: CodingBoardTask = RUNNING, extra: Omit<StubData, "board"> = 
 const line = (popup: HTMLElement) => within(popup).queryByTestId("streaming-indicator");
 
 describe("a running task's feed ends in a live working line", () => {
+  it("shows the harness plan checklist while the task runs and after it ends", async () => {
+    const { popup, setTask } = open(RUNNING, {
+      plan: {
+        "req-1": [
+          { title: "Read", status: "completed" },
+          { title: "Fix", status: "in_progress" },
+        ],
+      },
+    });
+    await waitFor(() => expect(popup.querySelector("[data-plan-checklist]")).not.toBeNull());
+    setTask({ status: "completed", completedAt: STARTED + 120_000, detail: { answer: "Done.", answerCut: false } });
+    await waitFor(() => expect(line(popup)).toBeNull());
+    await waitFor(() => expect(popup.querySelector("[data-plan-checklist]")).not.toBeNull());
+    expect(within(popup).getByText("Fix")).toBeTruthy();
+  });
+
   it("names the tool call in flight, then the plan step, then falls back to Working...", async () => {
     const { popup, server, data, setTask } = open(RUNNING, { plan: { "req-1": [{ title: "Add regression test", status: "in_progress" }] } });
     await waitFor(() => expect(line(popup)?.textContent).toContain("Running pnpm test"));

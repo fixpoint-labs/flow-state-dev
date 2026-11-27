@@ -198,6 +198,18 @@ describe("toolSubject for workforce and task tools", () => {
   });
 });
 
+describe("harness plan tool subjects", () => {
+  it("names plan updates instead of the wire tool", () => {
+    expect(toolSubject("todo_list", { items: [{ text: "a", completed: false }, { text: "b", completed: true }] })).toEqual({
+      text: "Update the plan (2 steps)",
+      code: false,
+    });
+    expect(toolSubject("updateTodos", { todos: [] })).toEqual({ text: "Clear the plan", code: false });
+    expect(toolSubject("TaskCreate", {})).toEqual({ text: "Update the plan", code: false });
+    expect(toolSubject("TaskUpdate", {})).toEqual({ text: "Update the plan", code: false });
+  });
+});
+
 describe("toolOutcome", () => {
   it("is failed for each shape a tool refuses in", () => {
     expect(toolOutcome("createTask", { ok: false, error: "nope" })).toBe("failed");
