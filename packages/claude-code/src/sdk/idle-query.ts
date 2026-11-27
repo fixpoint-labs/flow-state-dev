@@ -7,6 +7,7 @@
  * (`./model-list`) are both this, with a different question and their own
  * words for each outcome.
  */
+import { applyClaudeCodeAuthPreference } from "./auth-preference";
 import { defaultSdkImporter, type ClaudeCodeSdkImporter } from "./sdk-client";
 
 /** What {@link runIdleQuery} got. Never a throw. */
@@ -63,7 +64,8 @@ export async function runIdleQuery<H extends { close?: () => void }, T>(
   let handle: H | undefined;
   try {
     if (options.signal?.aborted) return { status: "timeout" };
-    handle = query({ prompt: noMessages(), options: { env: options.env } });
+    const env = await applyClaudeCodeAuthPreference(options.env, options.importSdk === undefined ? {} : { importSdk: options.importSdk });
+    handle = query({ prompt: noMessages(), options: { env } });
     const timedOut = new Promise<typeof TIMEOUT>((resolve) => {
       timer = setTimeout(() => resolve(TIMEOUT), options.timeoutMs);
       onAbort = () => resolve(TIMEOUT);

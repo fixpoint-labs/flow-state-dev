@@ -82,6 +82,7 @@ import {
 import { defaultResolveClaudeCodeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
+import { applyClaudeCodeAuthPreference } from "./auth-preference";
 import { CLAUDE_CODE_PASS } from "./env-pass";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
@@ -1131,7 +1132,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // nothing for the others.
         ...(settingSources !== undefined ? { settingSources } : {}),
         settings: runSettings,
-        env: env ?? harnessEnv({ pass: CLAUDE_CODE_PASS }),
+        // `FSD_CLAUDE_CODE_AUTH` may hold the key back so a sign-in is used.
+        env: await applyClaudeCodeAuthPreference(env ?? harnessEnv({ pass: CLAUDE_CODE_PASS })),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         // In-session, from the block's own conversation state; detached, from
         // the host's resolver. Never both — construction refused that pairing
