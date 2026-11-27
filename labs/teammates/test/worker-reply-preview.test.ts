@@ -36,7 +36,9 @@ describe("fitsWorkerReplyPreview", () => {
   });
 
   it("pins the two-line character threshold", () => {
-    const twoLines = `${"a".repeat(39)}\n${"b".repeat(40)}`;
+    const firstLine = "a".repeat(Math.floor(WORKER_REPLY_PREVIEW_TWO_LINE_MAX_CHARS / 2));
+    const secondLine = "b".repeat(WORKER_REPLY_PREVIEW_TWO_LINE_MAX_CHARS - firstLine.length - 1);
+    const twoLines = `${firstLine}\n${secondLine}`;
     expect(fitsWorkerReplyPreview(twoLines)).toBe(true);
     expect(fitsWorkerReplyPreview(`${twoLines}x`)).toBe(false);
   });

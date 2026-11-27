@@ -13,8 +13,7 @@ import { CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 export const WORKER_REPLY_PREVIEW_MAX_CHARS = 120;
 /** Plain-text length above which a two-line reply gets a collapse control. */
 export const WORKER_REPLY_PREVIEW_TWO_LINE_MAX_CHARS = 80;
-/** Newline count above which a reply always gets a collapse control. */
-export const WORKER_REPLY_PREVIEW_MAX_LINES = 2;
+const WORKER_REPLY_PREVIEW_MAX_LINES = 2;
 
 const PREVIEW_CLAMP = "line-clamp-2 text-sm leading-[1.6]";
 const PREVIEW_FADE_BASE =
