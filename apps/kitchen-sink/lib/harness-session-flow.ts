@@ -26,7 +26,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 
 import { goalControl } from "./goal-control";
 import { readHarnessCommands, readHarnessWorkspace } from "./harness-workspace";
-import { locateSessionWorktree, provisionSessionWorktree, sessionBranch } from "./harness-worktree";
+import { locateSessionWorktree, provisionSessionWorktree, sessionBranch, sessionPullRequestRepository } from "./harness-worktree";
 
 /** The repository harness sessions work on. The flow is registered only while there is one. */
 function repository(): string {
@@ -48,6 +48,7 @@ const workspace: HarnessSessionWorkspace = {
   locate: (place) => locateSessionWorktree(repository(), place),
   // No branch leaves the turn-end check out, so goal leg **b** can be seen to fail.
   branch: (place) => (goalControl() === "no-backstop" || !readHarnessWorkspace().ok ? null : sessionBranch(place)),
+  pullRequestRepository: (place) => sessionPullRequestRepository(repository(), place),
 };
 
 /** `feeds` with the goal control in force applied. */

@@ -1456,7 +1456,7 @@ describe("a coding run's review carries what was asked, the run's summary and it
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const listed = [{ number: 41, html_url: ${JSON.stringify(PR_URL)}, state: "closed", title: "Tidy the task list", created_at: new Date().toISOString(), head: { ref: "x" } }];
-process.stdout.write(args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "") ? JSON.stringify(listed) : "[]");
+process.stdout.write(args[0] === "api" && args.some((arg) => /pulls\\?head=/.test(arg)) ? JSON.stringify(listed) : "[]");
 `,
     );
     chmodSync(join(bin, "gh"), 0o755);

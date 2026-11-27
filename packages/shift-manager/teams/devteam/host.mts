@@ -626,6 +626,13 @@ export interface LabWorkspaceHost {
    * they need. Answer runs change nothing and get none. Absent: nothing runs.
    */
   setup?: WorkspaceSetup;
+  /**
+   * The GitHub repository (`host/owner/name`) a project's remote URL names,
+   * for the turn-end pull-request check and landing. Default: read from a
+   * GitHub URL. A check whose projects live on `file://` remotes passes one
+   * that stands those remotes for GitHub repositories.
+   */
+  pullRequestRepo?: (url: string) => string | undefined;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -770,11 +777,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const remotes = lab?.remotes.allow ?? [];
   const saveNothing = options.saveNothing === true;
   const workspaceHost: WorkspaceHost | undefined =
-    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing, lab.setup);
+    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing, lab.setup, lab.pullRequestRepo);
   // An answer task works in its project too, in places of its own. A lab on
   // one fixed repository reaches no remote here: only a project with no
   // repository can answer there.
-  const answerHost = workspaceHostOf(join(options.workspace.root, "answers"), remotes, lab?.checkouts, saveNothing);
+  const answerHost = workspaceHostOf(join(options.workspace.root, "answers"), remotes, lab?.checkouts, saveNothing, undefined, lab?.pullRequestRepo);
   if (saveNothing && workspaceHost === undefined) {
     throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
   }
@@ -1753,12 +1760,14 @@ function workspaceHostOf(
   checkouts: LabWorkspaceHost["checkouts"],
   saveNothing: boolean,
   setup?: WorkspaceSetup,
+  pullRequestRepo?: (url: string) => string | undefined,
 ): WorkspaceHost {
   const host = localWorkspaceHost({
     root,
     remotes: { allow: [...remotes] },
     ...checkoutSource(checkouts),
     ...(setup === undefined ? {} : { setup }),
+    ...(pullRequestRepo === undefined ? {} : { pullRequestRepo }),
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };

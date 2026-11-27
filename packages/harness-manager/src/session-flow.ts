@@ -371,6 +371,14 @@ export interface HarnessSessionWorkspace {
    */
   branch(place: HarnessSessionPlace): string | null;
   /**
+   * The GitHub repository (`host/owner/name`) the turn-end check asks about
+   * the branch: the one the host pinned for the session's checkout
+   * (`WorkspaceHost.pullRequestRepository`), never read from the checkout,
+   * which the run can configure. Optional: without it, or with `undefined`,
+   * the check is skipped with a note.
+   */
+  pullRequestRepository?(place: HarnessSessionPlace): Promise<string | undefined>;
+  /**
    * Remove the session's worktree, and with `deleteBranch` its branch, through
    * the host's one removal path (`WorkspaceHost.remove`). Optional: without
    * it, `removeWorktree` is refused.
@@ -912,9 +920,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         const cwd = options.workspace.locate(place);
         if (!existsSync(cwd)) return;
         // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
+        const repository = await options.workspace.pullRequestRepository?.(place).catch(() => undefined);
         const result = await recordBranchPullRequests(ctx, {
           cwd,
           branches: [branch],
+          ...(repository === undefined ? {} : { repository }),
           openedSince: turnRecord.at ?? undefined,
           ...(key !== null && worktrees !== undefined
             ? {

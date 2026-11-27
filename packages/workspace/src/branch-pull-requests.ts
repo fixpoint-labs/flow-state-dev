@@ -21,9 +21,15 @@
  * request merged, a fork's included.
  *
  * Host-side only: this is where the framework talks to GitHub. It never throws.
- * A missing or signed-out `gh`, a checkout with no GitHub remote, or a store
- * that fails comes back as `unavailable` with the reason, for the host to show
- * as a note; it never fails the turn it runs after.
+ * A missing or signed-out `gh`, no repository to ask, or a store that fails
+ * comes back as `unavailable` with the reason, for the host to show as a note;
+ * it never fails the turn it runs after.
+ *
+ * The turn-end check's `gh` holds the host's credentials, so it never runs in
+ * the run's checkout, whose remotes and config the run can write: it runs in
+ * an empty directory and is told the repository (`repository`, from the
+ * host's pinned remote, `WorkspaceHost.pullRequestRepository`), as `land`
+ * does.
  */
 import {
   OBSERVED_PULL_REQUESTS,
@@ -34,8 +40,11 @@ import {
   type PullRequestCollection,
   type PullRequestRef,
 } from "@flow-state-dev/core/harness";
+import { rmSync } from "node:fs";
+import { dirname } from "node:path";
 import { HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
 import { run } from "./exec";
+import { scratchDir } from "./held-work";
 import { addWorktreePullRequests, type WorktreeCollection } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
 
@@ -44,8 +53,15 @@ export const BRANCH_PULL_REQUESTS_TIMEOUT_MS = 30_000;
 
 /** Options for {@link recordBranchPullRequests}. */
 export interface RecordBranchPullRequestsOptions {
-  /** The checkout whose current branch is checked. */
+  /** The checkout whose current branch is checked. Only git reads it; `gh` never runs there. */
   readonly cwd: string;
+  /**
+   * The GitHub repository to ask, as `host/owner/name` (the slug `gh --repo` takes; `gh api` gets it as `--hostname` and the path): the
+   * one the host pinned for the checkout (`WorkspaceHost.pullRequestRepository`),
+   * never read from the checkout. Absent, nothing is asked and the check is
+   * `unavailable`.
+   */
+  readonly repository?: string;
   /**
    * More branches to check beside the checkout's current one: the branch the
    * host made for the session, which an agent may have left with
@@ -109,6 +125,14 @@ function reasonOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** `host/owner/name` split, or `null` when it is absent or not that shape. */
+function repositoryParts(repository: string | undefined): { host: string; owner: string; name: string } | null {
+  const parts = repository?.split("/") ?? [];
+  if (parts.length !== 3 || parts.some((part) => part === "")) return null;
+  const [host, owner, name] = parts as [string, string, string];
+  return { host, owner, name };
+}
+
 /** A listed pull request as a ref, or `null` when its link is not a pull request's. */
 function refOf(listed: ListedPullRequest): PullRequestRef | null {
   const link = typeof listed.html_url === "string" ? pullRequestRefFromUrl(listed.html_url) : null;
@@ -129,13 +153,14 @@ function refOf(listed: ListedPullRequest): PullRequestRef | null {
  *
  * The branches are the checkout's current one (unless it is detached) and
  * `options.branches`. Each is asked of GitHub's REST API through `gh api`,
- * in the repository `gh` resolves from the checkout's remote, open or closed,
- * all at once. Before writing, it waits for the request's in-turn recorder to
+ * in `options.repository`, open or closed, all at once, from an empty
+ * directory. Before writing, it waits for the request's in-turn recorder to
  * finish its writes, so a pull request seen in a create call keeps
  * `source: "tool"`.
  *
  * ```ts
- * const result = await recordBranchPullRequests(ctx, { cwd: worktree, branches: [sessionBranch] });
+ * const repository = await host.pullRequestRepository?.({ cwd: worktree, baseRef });
+ * const result = await recordBranchPullRequests(ctx, { cwd: worktree, branches: [sessionBranch], repository });
  * if (result.status === "unavailable") ctx.emit.status(`Pull requests on the branch were not checked: ${result.reason}`);
  * ```
  */
@@ -164,21 +189,39 @@ export async function recordBranchPullRequests(
   for (const branch of options.branches ?? []) if (branch !== "") branches.add(branch);
   if (branches.size === 0) return { status: "recorded", branches: [], pullRequests: [] };
 
-  const asked = await Promise.all(
-    [...branches].map(async (branch) => {
-      try {
-        const { stdout } = await run(
-          gh,
-          // `gh` fills `{owner}` and `{repo}` from the checkout's remote.
-          ["api", `repos/{owner}/{repo}/pulls?head={owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
-          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" }, pass: HOST_REMOTE_PASS, gitCredentials: true },
-        );
-        return { branch, listed: JSON.parse(stdout) as unknown };
-      } catch (err) {
-        return { branch, error: reasonOf(err) };
-      }
-    }),
-  );
+  const repo = repositoryParts(options.repository);
+  if (repo === null) {
+    return { status: "unavailable", reason: "no GitHub repository is pinned for this checkout, so GitHub was not asked" };
+  }
+  // An empty directory, so `gh` reads no repository the run can configure; the ceiling keeps it from climbing out.
+  let ghDir: string;
+  try {
+    ghDir = scratchDir();
+  } catch (err) {
+    return { status: "unavailable", reason: `no empty directory could be made to run gh in: ${reasonOf(err)}` };
+  }
+  const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
+  let asked: Array<{ branch: string; listed: unknown } | { branch: string; error: string }>;
+  try {
+    asked = await Promise.all(
+      [...branches].map(async (branch) => {
+        try {
+          const { stdout } = await run(
+            gh,
+            ["api", "--hostname", repo.host, `repos/${repo.owner}/${repo.name}/pulls?head=${repo.owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
+            { cwd: ghDir, timeoutMs: left(), env: ghEnv, pass: HOST_REMOTE_PASS, gitCredentials: true },
+          );
+          return { branch, listed: JSON.parse(stdout) as unknown };
+        } catch (err) {
+          return { branch, error: reasonOf(err) };
+        }
+      }),
+    );
+  } finally {
+    try {
+      rmSync(ghDir, { recursive: true, force: true });
+    } catch {}
+  }
   const found: PullRequestRef[] = [];
   // Every pull request GitHub listed, before the turn cutoff: the row's known
   // ones are refreshed from it, so a merge or close a later turn sees lands.

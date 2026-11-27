@@ -35,6 +35,8 @@ beforeAll(() => {
   writeFileSync(join(repo, "README.md"), "hello\n");
   execFileSync("git", ["-C", repo, "add", "."]);
   execFileSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+  // The remote the host pins at start, which names the repository the branch check asks.
+  execFileSync("git", ["-C", repo, "remote", "add", "origin", "https://github.com/acme/app.git"]);
   // A `gh` that knows two pull requests on every branch: #95, opened outside any create call the recorder
   // reads, and #30, merged before the turn began, which is not the turn's.
   ghDir = join(scratch, "bin");
