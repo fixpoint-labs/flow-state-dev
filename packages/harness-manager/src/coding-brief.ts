@@ -95,6 +95,13 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
     ...(issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : []),
     run.branch === "" ? `Work in ${run.workspacePath}.` : `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     ...(parts.terms ?? []),
+    ...(run.replyFolder === undefined
+      ? []
+      : [
+          `Never post on GitHub yourself. Write each reply to a review comment as its own .md file in ${run.replyFolder}: ` +
+            `the link to the comment it answers on the first line, then what you would say. When your turn ends, your replies ` +
+            `are checked and posted for you, and your session shows each one's link or why it was not posted.`,
+        ]),
     ``,
     ...(run.answers.length === 0
       ? []

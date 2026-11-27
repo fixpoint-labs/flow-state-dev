@@ -31,6 +31,8 @@
  * path of its own.
  */
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import {
   SuspensionTimeoutError,
@@ -142,6 +144,7 @@ import {
   withHoldRetries,
 } from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
+import { readReplyDrafts, replyFolderPath, type ReviewReplyPoster } from "./replies";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import {
   CLOSED_WITHOUT_MERGING,
@@ -297,6 +300,11 @@ export interface PromptRunContext extends ModeRunContext {
   answers: readonly AnsweredQuestion[];
   /** Where THIS run must write a question if it has one: a new path for every run. */
   askMarkerPath: string;
+  /**
+   * Where THIS run writes its replies to review comments, one file each
+   * (`./replies`): set only when the manager has a poster (`replies`).
+   */
+  replyFolder?: string;
 }
 
 /**
@@ -666,6 +674,17 @@ export interface ManagerOptions {
    * nothing follows a pull request. A follower that throws is a status note.
    */
   onPullRequestRecorded?: PullRequestFollower;
+  // FIX-2831 D1.
+  /**
+   * The host's poster for a run's replies to review comments. Set, a run's
+   * brief names its reply folder, and when its turn ends (after its push or
+   * landing, before the settle) the manager reads the drafts there and hands
+   * them to it, with the pull requests recorded for the task's run and the
+   * task itself. Each draft ends as a line in the run's session: its reply's
+   * link, or why it wasn't posted. A turn that only answers on a merged or
+   * closed pull request posts nothing. Unset, nothing is read or posted.
+   */
+  replies?: ReviewReplyPoster;
   /**
    * Open the brief of a task that names an issue with the issue's spec, read
    * from the run's checkout once it is provisioned (`./issue-spec`). Off by
@@ -1851,6 +1870,8 @@ function createManagerCapability(options: {
   name: string;
   /** What the follower writes, declared beside the run's own collections. */
   followerResources?: Readonly<Record<string, DeclaredResourceEntry>>;
+  /** What the reply poster reads. */
+  replyResources?: Readonly<Record<string, DeclaredResourceEntry>>;
   /** The fixed board's ledger collection id — also the accessor the fence reads it under. */
   boardCollectionId: string | undefined;
   /** The fixed board's ledger declaration — the same object the board itself registers. */
@@ -1885,6 +1906,7 @@ function createManagerCapability(options: {
         ? { [boardCollectionId]: boardCollection }
         : {}),
       ...(options.followerResources ?? {}),
+      ...(options.replyResources ?? {}),
     },
   });
 }
@@ -1940,6 +1962,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     landAttempts = 3,
     awaitPullRequests = false,
     onPullRequestRecorded,
+    replies,
     issueSpec,
     trackerIssueOf,
     approveTools = false,
@@ -2130,6 +2153,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     boardCollectionId,
     boardCollection,
     ...(onPullRequestRecorded?.resources !== undefined ? { followerResources: onPullRequestRecorded.resources } : {}),
+    ...(replies?.resources !== undefined ? { replyResources: replies.resources } : {}),
   });
 
   /**
@@ -2954,6 +2978,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // the ask FORCED rather than spontaneous — the harness offers no seam
         // for a question to leave through (see `./ask`).
         askMarkerPath: askMarkerPath(state.workspacePath, input.attempts, state.run!),
+        ...(replies === undefined ? {} : { replyFolder: replyFolderPath(state.workspacePath, input.attempts, state.run!) }),
       };
 
       // **Bounded for the same reason the completion check is.** This await
@@ -4819,6 +4844,59 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     maxIterations: MAX_STEERS + MAX_APPROVAL_STEPS + 1,
   };
 
+  // FIX-2831 D1.
+  /**
+   * **The run's replies, when its turn ends**: after its push or landing,
+   * before the settle. A pass-through unless the host hands a poster
+   * (`replies`). The drafts this run wrote are read from its checkout
+   * (`readReplyDrafts`: a link out, or an oversized file, is refused unread),
+   * removed so a replay never posts one twice, and handed to the poster with
+   * the pull requests recorded for the task's run (its requests' and the ones
+   * it landed on) and the task itself. Each ends as a line in the session. A
+   * turn that only answers on a merged or closed pull request (`wakeNews`)
+   * posts nothing, and says so. Never fails the run.
+   */
+  const postReplies = handler({
+    name: `${name}-post-replies`,
+    inputSchema: z.unknown(),
+    outputSchema: z.void(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (_input, ctx) => {
+      if (replies === undefined) return;
+      const state = managerState(ctx.sequencer?.state);
+      if (state.decided?.reviewed === "cancelled" || state.run == null || state.attempt == null) return;
+      const say = (line: string) => ctx.emit.status(line, { transient: false });
+      try {
+        const { attempt, run } = state;
+        const read = await readReplyDrafts(state.workspacePath, attempt, run);
+        for (const { file, reason } of read.refused) say(`Reply ${file} was not posted: ${reason}.`);
+        if (read.drafts.length === 0) return;
+        // Taken before it is posted: a replay of this step finds nothing left to post twice.
+        await Promise.all(read.drafts.map((draft) => rm(join(replyFolderPath(state.workspacePath, attempt, run), draft.file), { force: true })));
+        if (state.wakeNews !== null) {
+          for (const draft of read.drafts) say(`Reply to ${draft.link} was not posted: this turn only answers on a pull request that merged or closed, so it can't change GitHub.`);
+          return;
+        }
+        const recorded = await readRunRecord(ctx, state.topic!);
+        const prs = [
+          ...(await taskPullRequests(ctx, recorded?.requestIds ?? [ctx.request.identity.id])),
+          ...(await waitedPullRequests(ctx, recorded?.landedPullRequests ?? [])),
+        ];
+        const task = await committedRow(ctx);
+        const outcomes = await replies.post(ctx, read.drafts, {
+          pullRequests: prs.map((pr) => ({ repository: pr.repository, number: pr.number })),
+          ...(task === undefined ? {} : { task: { metadata: task.metadata ?? null, steers: task.steers ?? null } }),
+        });
+        for (const outcome of outcomes) {
+          say(outcome.posted !== undefined ? `Replied to ${outcome.link}: ${outcome.posted}` : `Reply to ${outcome.link} was not posted: ${outcome.refused ?? "no reason given"}.`);
+        }
+      } catch (error) {
+        say(`The run's replies were not posted: ${error instanceof Error ? error.message : String(error)}.`);
+      }
+    },
+  });
+
   const chain = sequencer({
     name,
     inputSchema: harnessManagerInputSchema,
@@ -4849,6 +4927,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(reviewStep)
     .step(steerBeforeSettle)
     .loopBack(harnessStep.name, steerLoop)
+    .tap(postReplies)
     .step(settle)
     .rescue([{ when: [SettledOnPullRequests], block: settledOnPullRequests }, { block: recordFailure }]);
 

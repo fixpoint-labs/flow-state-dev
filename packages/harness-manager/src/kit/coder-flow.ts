@@ -80,6 +80,7 @@ import { taskIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
+import type { ReviewReplyPoster } from "../replies";
 
 import { CODER_FLOW } from "../coder-flow-name";
 import { RECORDED_WORK_VIEW, RUN_CHANGES_VIEW } from "../coding-board-ref";
@@ -136,6 +137,13 @@ export interface CoderFlowOptions {
    * nothing follows a pull request a run opens.
    */
   onPullRequestRecorded?: (installation: WorkerInstallation) => PullRequestFollower;
+  /**
+   * The poster a run's replies to review comments go through (workforce's
+   * `operatorGitHub(…).reviewReplies`): a run's brief names its reply folder,
+   * and the drafts it writes there are posted, or refused with a line in its
+   * session, when its turn ends. Absent: no folder is named and nothing is posted.
+   */
+  replies?: ReviewReplyPoster;
   /**
    * The ways a run can work, by name. Absent: the kit's one mode, `default`
    * (the coding brief; done when the harness finished). A `default` entry is
@@ -399,6 +407,7 @@ export function coderWorkerFlow(
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
+          ...(options.replies === undefined ? {} : { replies: options.replies }),
           ...(options.approveTools === true ? { approveTools: true } : {}),
           // A mode may work in its task's project when the kit doesn't, or not when it does.
           ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),

@@ -24,7 +24,7 @@
 import { boolean, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isUserTurn } from "../../standing-rules/user-turn";
+import { isUserTurn, typedMessageOf } from "../../standing-rules/user-turn";
 import { WORKER_ID_STATE_KEY } from "../../workers/keys";
 import { GITHUB_REVIEWERS_DOC, githubLoginsListed, reviewersDocumentOf } from "./reviewers-document";
 
@@ -44,19 +44,6 @@ const githubReviewersInputSchema = z.object({ logins: z.array(githubLoginSchema)
 /** Logins as the document keeps them, each once: read back through the parser the screen reads with, so the two can't disagree. */
 // Keep this going through `githubLoginsListed`: a normalizer of its own would let the tool save what the screen reads differently.
 const reviewerLogins = (logins: readonly string[]) => [...new Set(githubLoginsListed(logins.map((login) => `- ${login}`).join("\n")))];
-
-/** The text of the message the user typed to start this request, or `undefined` when no user's message started it. */
-function typedMessageOf(ctx: BlockContext): string | undefined {
-  const item = ctx.session.items
-    .all()
-    .find((candidate) => candidate.type === "message" && candidate.role === "user" && candidate.requestId === ctx.request.identity.id);
-  // Recorded as the text itself, or as a message whose content is text or text parts.
-  const payload = item?.payload;
-  const content = typeof payload === "string" ? payload : (payload as { content?: unknown } | undefined)?.content;
-  const parts = typeof content === "string" ? [content] : Array.isArray(content) ? content.map((part) => (part as { text?: unknown }).text) : [];
-  const text = parts.filter((part): part is string => typeof part === "string").join("\n");
-  return text.trim() === "" ? undefined : text;
-}
 
 /** A finite probability in [0, 1]; NaN or a value outside it reads as no answer, never a pass. */
 const isProbability = (value: unknown): value is number => typeof value === "number" && value >= 0 && value <= 1;

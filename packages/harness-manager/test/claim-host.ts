@@ -78,6 +78,8 @@ export interface HarnessStep {
   throws?: string;
   /** Run while the harness holds the checkout, before it reports, on the harness's own context. */
   during?: (ctx: BlockContext) => Promise<unknown>;
+  /** Write these files, by name, to the reply folder the prompt names (`REPLIES:`); a function writes its own. */
+  replies?: Record<string, string> | ((folder: string) => void);
 }
 
 /** What the stub harness saw on one call. */
@@ -115,6 +117,13 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlo
         await feeds.onSession(sessionId, ctx as never);
         if (step.commits !== undefined) commitIn(cwd, step.commits, `call${seen.length}`);
         if (step.during !== undefined) await step.during(ctx as unknown as BlockContext);
+        if (step.replies !== undefined) {
+          const folder = /REPLIES: (\S+)/.exec(input.prompt)?.[1];
+          if (folder === undefined) throw new Error("the prompt names no reply folder");
+          mkdirSync(folder, { recursive: true });
+          if (typeof step.replies === "function") step.replies(folder);
+          else for (const [name, text] of Object.entries(step.replies)) writeFileSync(join(folder, name), text);
+        }
         if (step.ask !== undefined) {
           const marker = /ASK: (\S+)/.exec(input.prompt)?.[1];
           if (marker === undefined) throw new Error("the prompt names no ask marker");
@@ -242,6 +251,7 @@ export function claimHost(options: HostOptions) {
           ...(run.feedback !== undefined ? [`FEEDBACK: ${run.feedback}`] : []),
           ...run.answers.map((a) => `ANSWERED: ${a.question} => ${a.answer}`),
           `ASK: ${run.askMarkerPath}`,
+          ...(run.replyFolder === undefined ? [] : [`REPLIES: ${run.replyFolder}`]),
         ].join("\n");
       },
       doneWhen: {

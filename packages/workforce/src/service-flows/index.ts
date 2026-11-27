@@ -16,7 +16,17 @@ export {
   type GitHubSubscriptionProvider,
   type GitHubSubscriptionProviderOptions
 } from "./github/provider";
-export { operatorGitHub, operatorGitHubToken, type OperatorGitHubOptions } from "./github/operator";
+export { operatorGitHub, operatorGitHubToken, type OperatorGitHub, type OperatorGitHubOptions } from "./github/operator";
+export {
+  parseCommentLink,
+  reviewReplies,
+  type ReviewReplies,
+  type ReviewRepliesOptions,
+  type ReviewReplyDraft,
+  type ReviewReplyOutcome,
+  type ReviewReplyPullRequest,
+  type ReviewReplyTask
+} from "./github/review-replies";
 export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
 export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
 export {

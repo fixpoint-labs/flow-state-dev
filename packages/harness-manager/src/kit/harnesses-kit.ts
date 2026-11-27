@@ -77,6 +77,11 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
         message: "`onPullRequestRecorded` builds a follower on the installation: `(installation) => followPullRequest({ providers, installation })`",
       })
       .optional(),
+    replies: z
+      .custom<HarnessesConfig["replies"]>((value) => typeof value === "object" && value !== null && typeof (value as { post?: unknown }).post === "function", {
+        message: "`replies` is the poster a run's review replies go through: `operatorGitHub(…).reviewReplies`",
+      })
+      .optional(),
     // Checked in full when the coding flow is built (`codingModes`), naming the mode.
     modes: z.record(z.string(), z.object({}).passthrough()).optional(),
     defaultMode: z.string().min(1).optional(),

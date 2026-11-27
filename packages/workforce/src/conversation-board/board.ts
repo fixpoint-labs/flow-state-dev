@@ -145,6 +145,7 @@ import {
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
 import { FILED_HOP, FILED_PROJECT, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
+import { operatorLinksStamp } from "./operator-links";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -1427,6 +1428,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
         [FILED_HOP]: heldFromFiling(init) ? freshHopMark(ctx) : turnHopMark(ctx),
         [FILED_PROJECT]: project,
+        // The links the user typed on this turn, for a coding run's replies (FIX-2831 D2).
+        ...operatorLinksStamp(ctx),
         ...(checked === undefined ? {} : { [FILLED_FOR]: checked.filledFor })
       };
       // A checked input had the session's project written over a named one before its parse.
@@ -2165,6 +2168,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       ...heldMarker(options.holdsFiling, ctx, filing),
       [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx),
       [FILED_PROJECT]: stamp,
+      ...operatorLinksStamp(ctx),
       ...(checked === undefined ? {} : { [FILLED_FOR]: checked.filledFor })
     };
     const input = checked === undefined ? ownProjectIn(filing.input, own) : checked.input;

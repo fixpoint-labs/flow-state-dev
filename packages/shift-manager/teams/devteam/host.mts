@@ -796,6 +796,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The trusted GitHub reviewers: workforce's one stored list, `GITHUB_REVIEWERS` its default until the
   // operator first saves it, read now, at open. The Shift Coordinator's tool is its only writer.
   const reviewers = githubTrustedReviewers({ operator: LAB_USER_ID, judgeModel: GOAL_JUDGE_MODEL, holders: ["shift-coordinator"] });
+  // GitHub for routines, on the operator's token and for the operator alone. A routine's `interest` is judged on the
+  // model the coder's judge and best fit run on, and the trusted reviewers' list screen is declared on it. Its
+  // `reviewReplies` is the one poster a coder's review replies go through, on the same token, for the same user.
+  const github = operatorGitHub({
+    operator: LAB_USER_ID,
+    token: options.githubToken,
+    ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }),
+    reviewers,
+    interestModel: GOAL_JUDGE_MODEL,
+  });
 
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the Shift Coordinator calls the same ones as tools. The
@@ -981,6 +991,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // Only a trusted reviewer is heard (workforce's one stored list: a listed bot, or a listed user who can write):
     // what a run hears it acts on, with Bash and a push.
     onPullRequestRecorded: (on: WorkerInstallation) => reviewers.follow(github)(on),
+    // Reads a run's reply drafts when its turn ends; posts only what passes the checks (FIX-2831).
+    replies: github.reviewReplies,
     // Keyed by the phases' own names, `implement` and `answer`, which every run so far was keyed by (BP-030).
     modes: {
       // In the kit's workspace: the project's checkout on a branch, or the fixed repository's.
@@ -1161,15 +1173,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // Clock routines and GitHub's polls tick from two files beside the store (`serve()` ticks both).
   const clockDb = options.scheduleIndexes?.clock ?? ":memory:";
   const pollDb = options.scheduleIndexes?.poll ?? ":memory:";
-  // GitHub for routines, on the operator's token and for the operator alone. A routine's `interest` is judged on the
-  // model the coder's judge and best fit run on, and the trusted reviewers' list screen is declared on it.
-  const github = operatorGitHub({
-    operator: LAB_USER_ID,
-    token: options.githubToken,
-    ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }),
-    reviewers,
-    interestModel: GOAL_JUDGE_MODEL,
-  });
   // `serve()`'s tick sends `CRON_SECRET` as its bearer: a Lab started without one makes one for this process.
   if (process.env.CRON_SECRET === undefined || process.env.CRON_SECRET === "") process.env.CRON_SECRET = randomBytes(32).toString("hex");
 

@@ -6,7 +6,9 @@
  * GitHub routine asked for with no token, or by any other user, naming
  * `GITHUB_TOKEN`, so the token is never lent. With `reviewers`, it declares
  * the trusted reviewers' list screen, asked of GitHub with the
- * operator's token for the operator's own subscriptions only.
+ * operator's token for the operator's own subscriptions only. Its
+ * `reviewReplies` is the one poster a coding run's review replies go through
+ * (`./review-replies`), on the same token, for the same user.
  *
  * Node-only (`operatorGitHubToken` asks `gh`): the server entry exports it,
  * the browser entry doesn't.
@@ -14,6 +16,7 @@
 import { execFileSync } from "node:child_process";
 import type { BlockContext, EvaluationModel } from "@flow-state-dev/core/types";
 import { githubSubscriptionProvider, type GitHubSubscriptionProvider } from "./provider";
+import { reviewReplies, type ReviewReplies } from "./review-replies";
 import { GITHUB_REVIEWERS_SCREEN, githubTrustedReviewersScreen, type GitHubTrustedReviewers } from "./trusted-reviewers";
 
 /** How long `gh auth token` may take before the host starts with no token. */
@@ -52,13 +55,19 @@ export interface OperatorGitHubOptions {
   interestModel?: string | EvaluationModel;
 }
 
+/** What {@link operatorGitHub} builds: the routines' provider, and the review replies' poster. */
+export type OperatorGitHub = GitHubSubscriptionProvider & {
+  /** The poster a coding run's review replies go through: hand it to `harnessManager({ replies })`. */
+  readonly reviewReplies: ReviewReplies;
+};
+
 /**
  * GitHub's subscription provider, reading GitHub with the operator's token
  * for the operator alone. A GitHub routine asked for with no token, or by any
  * user but the operator, is refused at subscribe, naming `GITHUB_TOKEN`, and
  * saves nothing; a poll for anyone else reads nothing.
  */
-export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscriptionProvider {
+export function operatorGitHub(options: OperatorGitHubOptions): OperatorGitHub {
   const { operator, token, apiUrl, reviewers, interestModel } = options;
   const reads = (ctx: BlockContext) => ctx.session.identity.userId === operator;
   const custom =
@@ -86,6 +95,12 @@ export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscripti
   });
   return {
     ...github,
+    reviewReplies: reviewReplies({
+      operator,
+      token,
+      ...(apiUrl === undefined ? {} : { apiUrl }),
+      ...(reviewers === undefined ? {} : { reviewers: reviewers.read, resources: reviewers.resources })
+    }),
     async canRead(key: string, ctx: BlockContext) {
       if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the lab again. Nothing was saved.");
       if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this lab's GITHUB_TOKEN, which serves only ${operator}. Nothing was saved.`);
