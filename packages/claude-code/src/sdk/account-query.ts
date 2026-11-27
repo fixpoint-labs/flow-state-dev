@@ -1,6 +1,6 @@
 /**
  * The account question behind `probeClaudeCodeAccount()`, asked of the
- * environment exactly as given: `askClaudeCodeAccount()`.
+ * environment exactly as given: `queryClaudeCodeAccount()`.
  *
  * Kept apart from `./account-probe` so `./auth-preference` can ask it for
  * `prefer-login` without importing the module that applies the preference.
@@ -24,7 +24,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * @param options The environment to start Claude Code with, and how long to wait.
  * @returns `account`, `none` with a reason, or `sdk-missing`. Never throws for any of those.
  */
-export async function askClaudeCodeAccount(options: ProbeClaudeCodeAccountOptions): Promise<ClaudeCodeAccountProbe> {
+export async function queryClaudeCodeAccount(options: ProbeClaudeCodeAccountOptions): Promise<ClaudeCodeAccountProbe> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
     {

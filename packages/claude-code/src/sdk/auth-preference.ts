@@ -18,7 +18,7 @@
  * Applied wherever a Claude Code process starts (a run, the account probe, the
  * model list), so readiness reports the account the run will use.
  */
-import { askClaudeCodeAccount } from "./account-query";
+import { queryClaudeCodeAccount } from "./account-query";
 import type { ClaudeCodeSdkImporter } from "./sdk-client";
 
 /** The values of {@link CLAUDE_CODE_AUTH_VAR}. */
@@ -102,7 +102,7 @@ export function resetClaudeCodeAuthPreferenceCache(): void {
 
 async function probeLogin(env: Record<string, string>, importSdk?: ClaudeCodeSdkImporter): Promise<boolean | undefined> {
   // Asked of the key-less environment as is: the preference is not applied again.
-  const probe = await askClaudeCodeAccount({ env, ...(importSdk === undefined ? {} : { importSdk }) });
+  const probe = await queryClaudeCodeAccount({ env, ...(importSdk === undefined ? {} : { importSdk }) });
   if (probe.status === "account") return true;
   if (probe.status === "none" && probe.unanswered !== true) return false;
   return undefined;

@@ -19,7 +19,7 @@
  */
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
-import { askClaudeCodeAccount } from "./account-query";
+import { queryClaudeCodeAccount } from "./account-query";
 import { applyClaudeCodeAuthPreference } from "./auth-preference";
 import { readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK, type ClaudeCodeSdkImporter } from "./sdk-client";
 
@@ -67,7 +67,7 @@ export interface ProbeClaudeCodeAccountOptions {
  */
 export async function probeClaudeCodeAccount(options: ProbeClaudeCodeAccountOptions): Promise<ClaudeCodeAccountProbe> {
   const env = await applyClaudeCodeAuthPreference(options.env, options.importSdk === undefined ? {} : { importSdk: options.importSdk });
-  return askClaudeCodeAccount({ ...options, env });
+  return queryClaudeCodeAccount({ ...options, env });
 }
 
 /** What the user does when Claude Code has no credential. */
