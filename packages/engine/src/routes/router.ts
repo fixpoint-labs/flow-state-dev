@@ -329,6 +329,7 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
   ],
 
   // --- Debug endpoints (gated; see debug-routes.ts) ---
+  debug_storage: [entry("GET", "/debug/storage", () => ({ kind: "debug_storage" }))],
   debug_list_resources: [
     entry("GET", "/sessions/:sessionId/debug/resources", (p) => ({
       kind: "debug_list_resources",

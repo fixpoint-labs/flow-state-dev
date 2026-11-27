@@ -153,6 +153,8 @@ export { create<Name>ContentStore } from "./content-store";
 export { initializeSchema } from "./schema";
 ```
 
+**Optional: `storageSize()`.** If the store keeps its data somewhere it can measure, add `storageSize: () => Promise<StorageSize>` to the registry (`{ kind, bytes, location? }`, type from `@flow-state-dev/engine/host`). The DevTool header shows it through `GET /api/flows/debug/storage`. Count everything the store keeps and nothing it doesn't: SQLite sums the file and its `-wal`/`-shm` files; Postgres sums `pg_total_relation_size` over its own tables, not the whole database; the filesystem store sums its root folder. `location` names a path or database, never a credential. A store that can't measure (in memory) leaves the method out, and the readout stays hidden.
+
 ### Step 5: Implement the 6 Store Interfaces
 
 Each store must implement its interface from `@flow-state-dev/engine`:

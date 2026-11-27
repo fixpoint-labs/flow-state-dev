@@ -616,6 +616,22 @@ export type DebugResourcesResponse = {
   resources: DebugResourceEntry[];
 };
 
+/**
+ * Response shape for the debug store-size endpoint. `storage` is `null` when
+ * the host's store can't measure itself (an in-memory store, or an adapter
+ * that doesn't report a size).
+ */
+export type DebugStorageResponse = {
+  storage: {
+    /** The backend: `"sqlite"`, `"filesystem"`, `"postgres"`, or an adapter's own name. */
+    kind: string;
+    /** Bytes the store's files or tables take. */
+    bytes: number;
+    /** What was measured: a file or folder path, or a database name. */
+    location?: string;
+  } | null;
+};
+
 /** Response shape for the debug suspensions listing endpoint. */
 export type DebugSuspensionsResponse = {
   suspensions: SuspensionRecord[];

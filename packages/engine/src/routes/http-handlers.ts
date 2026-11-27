@@ -75,6 +75,7 @@ import {
   handleDebugListCollectionResources,
   handleDebugGetResourceContent,
   handleDebugGetCollectionResourceContent,
+  handleDebugStorage,
   assertDebugAllowed,
   resolveDebugConfig,
   type ResolvedDebugConfig
@@ -244,7 +245,9 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {}),
     // Attachment bytes (FIX-824), on the same rule: kept when given, in memory
     // only for a host given no stores at all.
-    ...(partial === undefined ? { blobs: createMemoryBlobStore() } : partial.blobs !== undefined ? { blobs: partial.blobs } : {})
+    ...(partial === undefined ? { blobs: createMemoryBlobStore() } : partial.blobs !== undefined ? { blobs: partial.blobs } : {}),
+    // The given store's own size reading; an in-memory stand-in has none.
+    ...(partial?.storageSize !== undefined ? { storageSize: partial.storageSize } : {})
   });
 }
 
@@ -923,6 +926,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           tenantId,
           checkedSession: auth.session
         });
+      }
+
+      if (route.kind === "debug_storage") {
+        return await handleDebugStorage(request, { stores, debug: debugConfig });
       }
 
       if (route.kind === "debug_list_resources") {

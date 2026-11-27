@@ -132,6 +132,7 @@ export type {
   DebugResourceClientConfig,
   DebugResourceEntry,
   DebugResourcesResponse,
+  DebugStorageResponse,
   DebugSuspensionsResponse,
   ListDebugCollectionResourcesOptions,
   ListDebugSuspensionsOptions,

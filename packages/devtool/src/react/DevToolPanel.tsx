@@ -39,6 +39,7 @@ import { SessionContextPanel } from "./components/detail/session-context";
 import { TokenUsageSummary } from "./components/detail/token-usage-summary";
 import { ItemDetail } from "./components/detail/item-detail";
 import { FlowStateMark } from "./components/shared/flow-state-mark";
+import { StorageSizeReadout } from "./components/shared/storage-size";
 import { shortSessionId } from "./lib/utils";
 import { DEVTOOL_THEMES, THEME_ATTRIBUTE, useDevtoolTheme, type DevtoolTheme } from "./hooks/use-devtool-theme";
 
@@ -857,6 +858,7 @@ function PanelContent({ className }: { className?: string }) {
               {sessionAddressError}
             </p>
           )}
+          <StorageSizeReadout />
           <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
       </header>

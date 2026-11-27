@@ -168,6 +168,7 @@ Gated. Read-only inspection of a session's resources, for the DevTool.
 
 | Method | Path | Answers | Source |
 |---|---|---|---|
+| GET | `/api/flows/debug/storage` | `200 { storage: { kind, bytes, location? } \| null }`: the store's own size reading (`StoreRegistry.storageSize`); `null` for a store that can't measure itself (in memory). Host route: authentication only, no session | `dbr:` `handleDebugStorage`; `test/debug-storage-route.test.ts` [test] |
 | GET | `/api/flows/sessions/:sessionId/debug/resources` | the resource tree | `dbr:` `handleDebugListResources`; `rt:` debug entries |
 | GET | `/api/flows/sessions/:sessionId/debug/suspensions` | `200 { suspensions }`; query `status`, `flowKind`, `userId`, `limit` | `dbr:200-225`; `cl:684-690` |
 | GET | `/api/flows/sessions/:sessionId/debug/resources/:ref/items` | a collection's items; query `limit`, `cursor`, `topic` | `cl:692-697` |

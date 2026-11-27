@@ -51,6 +51,7 @@ export {
   type SessionStore,
   type SetResult,
   type StorageScopeType,
+  type StorageSize,
   type SubscribeToEventsOptions,
   type SuspensionStore,
   type TraceEvent,

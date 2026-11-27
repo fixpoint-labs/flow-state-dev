@@ -857,6 +857,19 @@ function getSchemaDDL(): {
 }
 
 /**
+ * The names of the tables this store creates, read off its own DDL so a table
+ * added there is counted without a second list to keep. What
+ * `storageSize` sums.
+ */
+export function storeTableNames(): string[] {
+  return getSchemaDDL().tables.map((ddl) => {
+    const name = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(ddl)?.[1];
+    if (name === undefined) throw new Error(`store-postgres: table DDL names no table: ${ddl.trim().slice(0, 60)}`);
+    return name;
+  });
+}
+
+/**
  * Initialize the schema using a QueryExecutor. Each query may run on a
  * different pool connection, so the advisory lock may leak onto an
  * unknown connection. Prefer `initializeSchemaWithDedicatedClient` when
