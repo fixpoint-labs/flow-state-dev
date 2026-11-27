@@ -66,10 +66,10 @@ It comes down to what still works: cutting `gh` breaks reading and contains noth
 ## Decided, not asked
 
 - **The convergence point is one poster in `workforce/service-flows/github`**, built from what `operatorGitHub` holds (operator, token, reviewers). Every reply a coder posts goes through it; the harness manager only reads drafts and hands them over. Names in the spec's diff (`replies`, `reviewReplies`) are the implementer's.
-- **Five checks, in this order, each with a session line on refusal:** the session user is the operator (else no token); the pull request is one of the task's (`taskPullRequests` over `requestIds`, and `landedPullRequests`) or one the operator linked; the comment id is read from that pull request on GitHub at post time; its author passes the trusted-reviewers rule (a listed bot, or a listed user who can push), or the operator linked it; the body goes as a JSON field, never through a shell.
+- **Five checks, in this order, each with a session line on refusal:** the session user is the operator (else no token); the pull request is one of the task's (`taskPullRequests(requestIds)` ∪ `waitedPullRequests(landedPullRequests)`) or one the operator linked; the comment id is read from that pull request on GitHub at post time; its author passes the trusted-reviewers rule (a listed bot, or a listed user who can push), or the operator linked it; the body goes as a JSON field, never through a shell.
 - **A draft names its comment by link.** Repository, pull request and id are parsed from it and then checked; nothing else in the draft is believed.
 - **An inline review comment gets a reply in its thread.** A conversation comment or a review's summary has no thread on GitHub, so it gets one comment on the same pull request that links the one it answers.
-- **The reply file sits beside the ask marker** under `.fsdev/`, and the check provisioning runs that git ignores the ask marker covers it too. Its path carries the attempt and the run, so a stale file is never read.
+- **One file per reply, in a folder per run beside the ask marker:** `<checkout>/.fsdev/replies/<attempt>-<run>/<any name>.md`, the path rule of `askMarkerPath`. The first line is the comment's link; the rest is the body, as written. No delimiter to parse, and the ignore rule that covers the ask marker (`**/.fsdev/`) covers it. The path carries the attempt and the run, so a stale draft is never read.
 - **A turn FIX-2900 holds read-only posts nothing,** and says so.
 - **The operator's links are stamped on the task at filing,** like the project stamp, and read from steers from the user later.
 
@@ -96,6 +96,12 @@ It comes down to what still works: cutting `gh` breaks reading and contains noth
 
 ## How it got here
 
-- **Draft** — framed as one checked path for a coder's review replies; drafts in a file posted by the harness manager over a relayed tool, so all three harnesses share it; builds on the ask marker, `reads(ctx)` and the trusted-reviewers rule.
+- **Draft** — framed as one checked path for a coder's review replies; drafts in a file the harness manager posts when the turn ends, so all three harnesses share it; builds on the ask marker, `reads(ctx)` and the trusted-reviewers rule.
+
+## Notes from review
+
+For the implementer; none changes the design.
+
+- Cursor, PR #5820: "workforce has no Octokit — stay on `fetch` + `apiUrl` like `operator-github.test.ts`. For perf, prefer one paged `pulls/{n}/comments` hydrate per PR per poster invocation and memoize `collaborators/{login}/permission` across drafts; the flowchart reads per-draft GET." The goal's fake API should extend the existing `fetch` stub style, not add a third.
 
 **Open: none.**
