@@ -263,7 +263,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const footer =
     task && waiting === "review" ? (
       <ReviewFooter
-        key={`${task.id}:${hold?.id}`}
+        key={task.id}
         review={review}
         {...(review === undefined && hold?.ask.prompt ? { prompt: hold.ask.prompt } : {})}
         words={words}
