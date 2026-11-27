@@ -9,7 +9,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { INTAKE_SESSION_ID } from "@flow-state-dev/workforce";
 import { harnessStub } from "@flow-state-dev/harness-manager";
-import { errorReporterHarness } from "../teams/devteam/harness.mts";
+import { errorReporterHarness, readyHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../teams/devteam/host.mts";
 
 type Seen = {
@@ -133,7 +133,7 @@ async function openWatchedLab({ untilCancelled = false } = {}) {
   const report = untilCancelled ? runsUntilCancelled(armWrite) : undefined;
   const lab = await openLab({
     stores: adapter,
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root: join(dir, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     errorReporter: { harness: report?.harness ?? errorReporterHarness, cwd: dir },

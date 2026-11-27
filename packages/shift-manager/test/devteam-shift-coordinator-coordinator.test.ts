@@ -144,7 +144,7 @@ async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()
       resolveEvaluationModel: (...args: unknown[]) => (model as any).resolveEvaluationModel(...args),
     }),
     stores,
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-coordinator-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

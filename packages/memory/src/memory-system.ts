@@ -110,13 +110,7 @@ export const memorySystemResource = defineResource({
   ref: 'memorySystem',
   scope: 'session',
   stateSchema: memorySystemStateSchema,
-  default: {
-    lastProcessedIndex: -1,
-    readMessages: null,
-    episodicWritesSinceLastConsolidation: 0,
-    evictedPersistentSinceLastConsolidation: 0,
-    lastConsolidationTurn: 0,
-  },
+  default: memorySystemStateSchema.parse({}),
   writable: true,
 })
 
@@ -860,9 +854,6 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? memorySystemPrune(blocksConfig)
     : undefined
 
-  // Standalone recall helper exposed as `mem.recall` — the same instance the
-  // capability wired into `fns.recall`.
-  const recallFn = built.recall
   // The bundled formatter retains the previous default behaviour (digest +
   // working) for direct consumers of `mem.contextFormatter`. Capability
   // presets register their own per-section entries below so each toggle is
@@ -880,7 +871,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const result: MemorySystem = {
     capture,
     captureFromItems,
-    recall: recallFn,
+    recall: built.recall,
     contextFormatter: contextFormatterFn,
     formatContext: contextFormatterFn,
     working: {

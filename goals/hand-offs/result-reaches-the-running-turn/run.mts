@@ -25,7 +25,7 @@
 import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { createModelResolver, handler } from "@flow-state-dev/core";
-import type { BlockContext, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { defineFlow } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { isTerminalStatus, noticeText, type Task } from "@flow-state-dev/orchestration/tasks";
@@ -117,9 +117,10 @@ function lookupFlow(installation: WorkerInstallation, timing: Timing) {
   const turn = handler({
     name: "lookup-turn",
     inputSchema: z.object({ message: z.string() }),
+    sessionStateSchema: z.object(installation.sessionStateShape),
     resources: { ...installation.resources },
     execute: async (_input, ctx) => {
-      const taskId = String((ctx.session.state as Record<string, unknown>).taskId);
+      const taskId = String(ctx.session.state.taskId);
       await timing.gate(taskId);
       return `The code is ${timing.answered.get(taskId)}.`;
     }
@@ -145,11 +146,11 @@ const readOnlySource = handler({
   name: "lab-read-finished",
   inputSchema: z.unknown(),
   outputSchema: z.object({ message: z.string().optional() }),
-  execute: async (_input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+  requestStateSchema: z.object({ labSaid: z.array(z.string()).optional() }),
+  execute: async (_input, ctx) => {
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return {};
-    const said = new Set(((ctx.request.state as Record<string, unknown> | undefined)?.labSaid ?? []) as string[]);
+    const said = new Set(ctx.request.state.labSaid);
     const lines: string[] = [];
     for (const seen of ref.list()) {
       if (said.has(seen.id)) continue;
@@ -161,7 +162,7 @@ const readOnlySource = handler({
       said.add(row.id);
     }
     if (lines.length === 0) return {};
-    await ctx.request.patchState({ labSaid: [...said] } as never);
+    await ctx.request.patchState({ labSaid: [...said] });
     return { message: `These tasks you handed out ${ANSWERING_AGAIN}:\n\n${lines.map((line) => `- ${line}`).join("\n")}` };
   }
 });

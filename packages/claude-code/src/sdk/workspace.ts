@@ -20,12 +20,10 @@ import type { HarnessResolver } from "@flow-state-dev/core/harness";
 import {
   collectionIdFor,
   createHostPlace,
-  createProjection,
-  PlaceUnreadableError,
   principalFromContext,
-  type FlushOutcome,
+  projectionSession,
   type Mount,
-  type Projection,
+  type ProjectionSession,
 } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -122,7 +120,7 @@ export interface ClaudeCodeWorkspaceCapabilityOptions
  * this as a tool can call it several times in one request, and each call is a
  * separate workspace.
  */
-const openWorkspaces = new Map<string, Projection>();
+const openWorkspaces = new Map<string, ProjectionSession>();
 
 /** State the chain carries so its three steps address one workspace. */
 const workspaceSequencerState = z.object({
@@ -311,7 +309,7 @@ export function createClaudeCodeWorkspaceCapability(
     execute: async (input, ctx) => {
       // Resolved ONCE, here, and read from the chain's state everywhere else.
       const root = physicalPath(await resolveRoot(ctx));
-      const projection = createProjection({
+      const session = projectionSession({
         place: createHostPlace(root),
         mounts: discoverMounts(ctx, collections, exclude),
       });
@@ -320,14 +318,14 @@ export function createClaudeCodeWorkspaceCapability(
         workspaceId,
         root,
       });
-      await projection.hydrate();
+      await session.hydrate();
       // Registered only once hydrate has succeeded. `reconcile` is reached
       // through the agent's `onErrored` and through the tap after it, and this
       // step runs BEFORE both — so a projection registered ahead of a hydrate
       // that throws is one nothing will ever come back for. On a long-lived
       // server that is a projection and a baseline retained per failed
       // attempt.
-      openWorkspaces.set(workspaceId, projection);
+      openWorkspaces.set(workspaceId, session);
     },
   });
 
@@ -347,32 +345,25 @@ export function createClaudeCodeWorkspaceCapability(
   const reconcile = async (ctx: Pick<BlockContext, "sequencer" | "resources" | "emit">): Promise<void> => {
       const key = ctx.sequencer?.state.workspaceId;
       if (typeof key !== "string") return;
-      const projection = openWorkspaces.get(key);
-      if (projection === undefined) return;
+      const session = openWorkspaces.get(key);
+      if (session === undefined) return;
       // Removed before the flush, not after. A flush that throws still ends
       // this run's ownership of the directory; leaving the entry would let a
       // later block in the same run flush a projection whose place is gone.
       openWorkspaces.delete(key);
 
-      let outcomes: readonly FlushOutcome[];
-      try {
-        outcomes = (await projection.flush()).outcomes;
-      } catch (err) {
-        // One failure is reported rather than rethrown into a run that has
-        // otherwise finished its work: the projection refused to decide
-        // anything because it could not read the directory, which is the whole
-        // point of it throwing, and the run's files are still on disk.
-        //
-        // Every other rejection is the opposite and must reach the caller. A
-        // collection read, write or delete that failed is the run's work NOT
-        // reaching the store, and swallowing it hands back a successful run
-        // whose new file exists only in a directory about to be thrown away.
-        if (!(err instanceof PlaceUnreadableError)) throw err;
+      // A directory that could not be read is reported rather than rethrown
+      // into a run that has otherwise finished its work: nothing was decided,
+      // and the run's files are still on disk. Any other failure is the run's
+      // work NOT reaching the store, and `flush` rethrows it.
+      const settled = await session.flush();
+      if (!settled.readable) {
         await ctx.emit.status(
-          `Workspace could not be read at the end of this run, so nothing was saved back: ${err.message}`,
+          `Workspace could not be read at the end of this run, so nothing was saved back: ${settled.error.message}`,
         );
         return;
       }
+      const { outcomes } = settled;
 
       const unsettled = outcomes.filter(
         (o) => o.kind === "orphan" || o.kind === "conflict" || o.kind === "contested",

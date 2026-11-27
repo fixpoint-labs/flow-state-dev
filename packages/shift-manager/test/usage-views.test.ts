@@ -20,6 +20,7 @@ import { workerUsageView } from "@flow-state-dev/workforce/browser";
 import { connect } from "../src/lib/connection";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 // FIX-2775: the reads Usage makes, made once: Re-check, then the usage view; the worker usage view.
 async function readHarnessUsageView(client: Client) {
@@ -40,7 +41,7 @@ async function servedLab(usage?: Record<string, HarnessUsageReader>) {
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const lab: Lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     ...(usage === undefined ? {} : { usage }),

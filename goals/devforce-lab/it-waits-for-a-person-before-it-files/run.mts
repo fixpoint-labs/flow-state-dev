@@ -55,6 +55,7 @@ import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-
 import { RAISE_ASK_STEP, raiseAsk, workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/worker-config.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -104,8 +105,8 @@ async function open(
   const stub = harnessStub({ duringRun: commitWork });
   const lab = await openLab({
     stores,
-    harness: stub.slot,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    harnesses: [readyHarness(stub.slot)],
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     ask: feature,

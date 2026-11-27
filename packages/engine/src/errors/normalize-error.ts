@@ -2,6 +2,7 @@
  * Normalizes unknown thrown values into a consistent FlowError shape.
  */
 import { stripAnsi, toError } from "@flow-state-dev/core/helpers";
+import { serializeError } from "@flow-state-dev/core/internal";
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
 import { classifyProviderError } from "./classify-provider-error";
@@ -100,38 +101,71 @@ export function normalizeError(
 }
 
 /**
- * The FlowErrors that `normalizeError` built around a raw throw, each with the
- * message it gave them. Kept out of band, so nothing on the error itself
+ * What `normalizeError` built a wrapper from: the message it gave the wrapper,
+ * the cause it wrapped, and that cause's own layer as a failed item would show
+ * it (name, message, code, status; see {@link causeLayer}).
+ */
+type WrapperRecord = { message: string; cause: unknown; causeLayer: string };
+
+/**
+ * The FlowErrors that `normalizeError` built around a raw throw, each with
+ * what it was built from. Kept out of band, so nothing on the error itself
  * (fields, `details`, symbols) changes. Keyed by the wrapper object, so each
  * error's entry is its own.
  *
- * An error counts as the engine's wrapper only while it still carries that
- * message. One that was rebuilt without an entry here (see
- * {@link copyWrapperMarker}), or whose message was changed in place or by a
- * rebuild, says something its cause may not, so it is treated as an author's
- * error and its cause is shown. That fails safe: more information, never less.
+ * An error counts as the engine's wrapper only while its message, its cause
+ * and that cause's shown layer are all as they were built. One that was
+ * rebuilt without an entry here (see {@link copyWrapperMarker}), or whose
+ * message or cause was changed or replaced, in place or by a rebuild, says
+ * something the raw throw did not, so it is treated as an author's error and
+ * its cause is shown. That fails safe: more information, never less.
  */
-const NORMALIZED_WRAPPERS = new WeakMap<FlowError, string>();
+const NORMALIZED_WRAPPERS = new WeakMap<FlowError, WrapperRecord>();
+
+/**
+ * The cause's own layer as `serializeError` shows it, without the chain below
+ * it. The layer is read through a view whose own `cause` is hidden, so the
+ * chain below is never visited (serializing it can throw, for example on an
+ * object with no prototype).
+ */
+function causeLayer(cause: unknown): string {
+  const layer =
+    cause !== null && typeof cause === "object"
+      ? Object.create(cause, { cause: { value: undefined } })
+      : cause;
+  return JSON.stringify(serializeError(layer, 0));
+}
 
 function markWrapper(error: FlowError): FlowError {
-  NORMALIZED_WRAPPERS.set(error, error.message);
+  NORMALIZED_WRAPPERS.set(error, {
+    message: error.message,
+    cause: error.cause,
+    causeLayer: causeLayer(error.cause)
+  });
   return error;
 }
 
 function isNormalizedWrapper(error: FlowError): boolean {
-  return NORMALIZED_WRAPPERS.get(error) === error.message;
+  const record = NORMALIZED_WRAPPERS.get(error);
+  return (
+    record !== undefined &&
+    record.message === error.message &&
+    record.cause === error.cause &&
+    record.causeLayer === causeLayer(error.cause)
+  );
 }
 
 /**
  * Give `to` the entry `from` has, when `to` is a rebuild of the same failure
- * (it keeps `from`'s cause). The message recorded is `from`'s, so a rebuild
- * with a new message does not count as the engine's wrapper. The engine's
- * normalized-error seam calls this on the error its interceptor returns.
+ * (it keeps `from`'s cause). The entry recorded is `from`'s, as built, so a
+ * rebuild with a new message, or a cause changed since, does not count as the
+ * engine's wrapper. The engine's normalized-error seam calls this on the error
+ * its interceptor returns.
  */
 export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
-  const message = NORMALIZED_WRAPPERS.get(from);
-  if (message !== undefined && to !== from && to.cause === from.cause) {
-    NORMALIZED_WRAPPERS.set(to, message);
+  const record = NORMALIZED_WRAPPERS.get(from);
+  if (record !== undefined && to !== from && to.cause === from.cause) {
+    NORMALIZED_WRAPPERS.set(to, record);
   }
   return to;
 }

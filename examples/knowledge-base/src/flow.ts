@@ -40,7 +40,7 @@ const listConceptsHandler = handler({
   inputSchema: z.object({}),
   outputSchema: z.object({ ids: z.array(z.string()) }),
   uses: [noGeneratorPresets],
-  execute: async (_input, ctx: any) => ({ ids: await ctx.cap.knowledgeBase.listConcepts() }),
+  execute: async (_input, ctx) => ({ ids: await ctx.cap.knowledgeBase.listConcepts() }),
 });
 
 const readConceptHandler = handler({
@@ -54,7 +54,7 @@ const readConceptHandler = handler({
     body: z.string().nullable(),
   }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const result = await ctx.cap.knowledgeBase.readConcept(conceptIdFromUri(input.id));
     return result ? { found: true, state: result.state, body: result.body } : { found: false, state: null, body: null };
   },
@@ -62,19 +62,16 @@ const readConceptHandler = handler({
 
 const createConceptHandler = handler({
   name: "createConcept",
-  inputSchema: z.object({
+  inputSchema: conceptStateSchema.pick({ title: true, description: true, tags: true }).extend({
     id: z.string().describe("New concept id, e.g. 'topics/react'"),
     type: z.string().describe("Concept type — OKF's one required frontmatter field"),
-    title: z.string().nullable().default(null),
-    description: z.string().nullable().default(null),
-    tags: z.array(z.string()).default([]),
     body: z.string().describe("Markdown body"),
   }),
   outputSchema: z.object({ id: z.string() }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
-    const { id, type, title, description, tags, body } = input;
-    await ctx.cap.knowledgeBase.createConcept(id, { type, title, description, tags }, body);
+  execute: async (input, ctx) => {
+    const { id, body, ...state } = input;
+    await ctx.cap.knowledgeBase.createConcept(id, state, body);
     return { id };
   },
 });
@@ -88,7 +85,7 @@ const updateConceptHandler = handler({
   }),
   outputSchema: z.object({ id: z.string() }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const id = conceptIdFromUri(input.id);
     await ctx.cap.knowledgeBase.updateConcept(id, {
       state: input.state ?? undefined,
@@ -103,7 +100,7 @@ const deleteConceptHandler = handler({
   inputSchema: z.object({ id: z.string() }),
   outputSchema: z.object({ id: z.string() }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const id = conceptIdFromUri(input.id);
     await ctx.cap.knowledgeBase.deleteConcept(id);
     return { id };
@@ -119,7 +116,7 @@ const relateConceptsHandler = handler({
   }),
   outputSchema: z.object({ from: z.string(), to: z.string(), type: z.string() }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const from = conceptIdFromUri(input.from);
     const to = conceptIdFromUri(input.to);
     const type = input.type ?? DEFAULT_EDGE_TYPE;
@@ -138,7 +135,7 @@ const importBundleHandler = handler({
   inputSchema: z.object({ dir: z.string().describe("OKF bundle directory to mount") }),
   outputSchema: z.object({ imported: z.number(), warnings: z.array(z.string()) }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const { imported, warnings } = await ctx.cap.knowledgeBase.importBundle(input.dir);
     return { imported, warnings };
   },
@@ -149,7 +146,7 @@ const exportBundleHandler = handler({
   inputSchema: z.object({ dir: z.string().describe("Directory to write the OKF bundle to") }),
   outputSchema: z.object({ exported: z.number() }),
   uses: [noGeneratorPresets],
-  execute: async (input, ctx: any) => {
+  execute: async (input, ctx) => {
     const { exported } = await ctx.cap.knowledgeBase.exportBundle(input.dir);
     return { exported };
   },

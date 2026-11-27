@@ -8,6 +8,7 @@
  * principal's org and tenant on the envelope. The caller decides who the
  * principal is, from a trusted record, never from a request's input.
  */
+import { asFrameworkDispatch, deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
 import { INTERNAL_SOURCE } from "../execution/transport-sources";
 import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 
@@ -27,13 +28,19 @@ export interface InternalDispatch {
   /** The session to run in. Required: every run names its session. */
   readonly sessionId: string;
   readonly metadata: Record<string, unknown>;
+  /**
+   * The outside delivery this run was fired by, stamped on its metadata so the
+   * run reads it (`readDeliveryOrigin`). Server-set by the caller, never taken
+   * from an event or a request's input.
+   */
+  readonly origin?: DeliveryOrigin;
   readonly signal?: AbortSignal;
 }
 
 /** Start `run` through `host` as `run.as`, fire-and-forget. */
 export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): InboundDispatchHandle {
   const { userId, orgId, tenantId } = run.as;
-  return host.dispatch({
+  return host.dispatch(asFrameworkDispatch({
     source: INTERNAL_SOURCE,
     flowKind: run.flowKind,
     action: run.entry,
@@ -42,8 +49,8 @@ export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">,
     principal: { userId, orgId },
     orgId,
     ...(tenantId !== undefined ? { tenantId } : {}),
-    metadata: run.metadata,
+    metadata: { ...run.metadata, ...deliveryOriginMetadata(run.origin) },
     responseEmitter: null,
     ...(run.signal !== undefined ? { signal: run.signal } : {})
-  });
+  }));
 }

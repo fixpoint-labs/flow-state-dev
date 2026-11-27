@@ -30,7 +30,7 @@ export function defineCallerAgent(installation: WorkerInstallation) {
     outputSchema: inputSchema,
     sessionStateSchema: seatState,
     execute: async (input, ctx) => {
-      await ctx.session.patchState({ runs: (ctx.session.state.runs ?? 0) + 1 });
+      await ctx.session.incState({ runs: 1 });
       return input;
     }
   });

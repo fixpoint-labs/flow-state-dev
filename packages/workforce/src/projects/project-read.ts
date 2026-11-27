@@ -26,9 +26,9 @@
 
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { projectAddressSchema, projectResourceStateSchema, projectVisibilitySchema, type ProjectAddress, type ProjectVisibility } from "./collections";
+import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE, projectAddressSchema, projectResourceStateSchema, projectVisibilitySchema, type ProjectAddress } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectAt, projectResourcesAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
@@ -127,34 +127,28 @@ export const listProjectsOutputSchema = z.object({ projects: z.array(listedProje
 /** @see listProjectsOutputSchema */
 export type ListProjectsOutput = z.infer<typeof listProjectsOutputSchema>;
 
-/**
- * The projects `userId` is a member of: every shared row whose `members` hold
- * them, and every private row in their own scope. The calling block declares
- * the project entries at both visibilities.
- */
-export async function listProjectsOf(ctx: ResourcesContext, userId: string | undefined): Promise<ListProjectsOutput> {
-  const projects: ListProjectsOutput["projects"] = [];
-  for (const visibility of ["shared", "private"] as const satisfies readonly ProjectVisibility[]) {
-    const listed: ListProjectsOutput["projects"] = [];
-    for (const ref of await projectResourcesAt(ctx, visibility).list()) {
-      // A row that lost its id, title or owner is no project anyone can address: left
-      // out of the list, where `readProjectAt` refuses the one address loudly.
-      const parsed = projectResourceStateSchema.safeParse(ref.state);
-      if (!parsed.success) continue;
-      const row = parsed.data;
-      if (visibility === "shared" && !isMember(row, userId)) continue;
-      listed.push({ visibility, id: row.id, title: row.title, repository: row.repository, brief: row.brief ?? null });
-    }
-    projects.push(...listed.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
-  }
-  return { projects };
-}
-
 /** List the projects the session's owner is a member of: each one's address, title, repository and brief. */
 export const listProjects = handler({
   name: "project-list",
   inputSchema: listProjectsInputSchema,
   outputSchema: listProjectsOutputSchema,
-  resources: { ...PROJECT_ENTRY_RESOURCES },
-  execute: (_input, ctx): Promise<ListProjectsOutput> => listProjectsOf(ctx, ctx.session.identity.userId)
+  resources: PROJECT_ENTRY_RESOURCES,
+  execute: async (_input, ctx): Promise<ListProjectsOutput> => {
+    const { userId } = ctx.session.identity;
+    const projects: ListProjectsOutput["projects"] = [];
+    for (const visibility of ["shared", "private"] as const) {
+      const collection = ctx.resources[visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE];
+      const listed: ListProjectsOutput["projects"] = [];
+      for (const ref of await collection.list()) {
+        // A malformed entry is omitted from the list. Reading it by address reports the validation error.
+        const parsed = projectResourceStateSchema.safeParse(ref.state);
+        if (!parsed.success) continue;
+        const { id, title, repository, brief } = parsed.data;
+        if (visibility === "shared" && !isMember(parsed.data, userId)) continue;
+        listed.push({ visibility, id, title, repository, brief });
+      }
+      projects.push(...listed.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
+    }
+    return { projects };
+  }
 });

@@ -25,9 +25,9 @@ import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readTree } from "../../../lib/workers.mts";
-import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS, readyHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
-import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { EM_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 
 const STORE = process.env.CLAUDE_USAGE_GOAL_STORE;
@@ -80,7 +80,7 @@ type Setup = { reader: { home: string; apiKey?: string } };
 
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
-  harness: claudeCodeHarness,
+  harnesses: [readyHarness(claudeCodeHarness, "claude-code", "Claude Code")],
   runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS,
   workspace: { root: join(STORE, "..", "runs"), remotes: { allow: [] } },
   coderWorkerId,

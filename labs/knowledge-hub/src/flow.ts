@@ -27,7 +27,6 @@ import {
   inboxCollection,
   inboxIdFromPath,
   inboxKey,
-  type InboxRecord,
 } from "./inbox";
 import { computeFingerprint } from "./mailroom";
 
@@ -118,15 +117,15 @@ const logActivity = handler({
   resources: { inbox: inboxCollection },
   execute: async (input, ctx) => {
     const fingerprint = computeFingerprint(input);
-    const key = inboxKey(input.kind, fingerprint);
+    const id = inboxKey(input.kind, fingerprint);
 
     // Point lookup on the fingerprint-derived key (lazy collection → loads only
     // this key, no prefix scan). A still-pending record with the same tuple is a
     // transport retry: return its id, write nothing.
-    const existing = await ctx.resources.inbox.getOptional(key);
+    const existing = await ctx.resources.inbox.getOptional(id);
     if (existing && existing.state.status === "pending") {
       return {
-        id: inboxIdFromPath(existing.path),
+        id,
         capturedAt: existing.state.capturedAt,
         deduplicated: true,
       };
@@ -142,19 +141,8 @@ const logActivity = handler({
     // accepted — no locking or CAS (BP-038). The retry guarantee is deliberately
     // bounded to the pending window.
     const capturedAt = new Date().toISOString();
-    const record: InboxRecord = {
-      kind: input.kind,
-      content: input.content,
-      situation: input.situation,
-      conversationId: input.conversationId,
-      capturedAt,
-      occurredAt: input.occurredAt,
-      source: input.source,
-      status: "pending",
-      fingerprint,
-    };
-    const ref = await ctx.resources.inbox.create(key, record, { replace: true });
-    return { id: inboxIdFromPath(ref.path), capturedAt, deduplicated: false };
+    await ctx.resources.inbox.create(id, { ...input, capturedAt, fingerprint }, { replace: true });
+    return { id, capturedAt, deduplicated: false };
   },
 });
 

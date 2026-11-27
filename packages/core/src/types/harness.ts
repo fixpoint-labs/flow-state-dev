@@ -667,3 +667,143 @@ export type HarnessActivityHook = (activity: HarnessActivity, ctx: HarnessCallba
  * run. A harness that never calls it looks silent to such a host.
  */
 export type HarnessEventHook = (ctx: HarnessCallbackContext) => void;
+
+// FIX-2928.
+/** One tool call a harness asks about, before it runs. */
+export interface HarnessToolApprovalRequest {
+  /** The tool's name as the harness calls it (`Bash`, `Edit`, `mcp__<server>__<tool>`). */
+  toolName: string;
+  /** The call's arguments, as the model issued them. */
+  input: unknown;
+  /** The harness's abort signal for this one call, when it has one. */
+  signal?: AbortSignal;
+}
+
+/**
+ * What the `onToolApproval` feed answers for one call.
+ *
+ * - `allow`: the call runs (with `updatedInput`, when given).
+ * - `deny`: it doesn't, the model is told with `message`, and the turn goes on.
+ * - `held`: it doesn't run now, and the turn stops: a person decides it
+ *   outside this run, and the session resumes with the answer.
+ */
+export type HarnessToolApprovalDecision =
+  | { decision: "allow"; updatedInput?: unknown }
+  | { decision: "deny"; message?: string }
+  | { decision: "held"; message?: string };
+
+/**
+ * The `onToolApproval` feed: called by a harness that can ask about each tool
+ * call before it runs (Claude Code). A harness that can't ignores it.
+ */
+export type HarnessToolApprovalHook = (
+  request: HarnessToolApprovalRequest,
+  ctx: HarnessCallbackContext,
+) => HarnessToolApprovalDecision | Promise<HarnessToolApprovalDecision>;
+
+/**
+ * The feeds a runner hands a harness when it builds the block one run or turn
+ * runs: where it works, which conversation it continues, and the hooks it
+ * reports through.
+ *
+ * One type for every runner: a task run (the harness manager) and a session
+ * turn (the session flow) both build it. A field only one of them fills is
+ * optional and says so. A harness ignores a hook it cannot call.
+ *
+ * Why `onSession` and not only `cwd` and `resume`: a harness stopped on a
+ * deadline returns no handle at all, so unless it hands the session id to
+ * runner-owned durable state the moment its vendor names it, the next attempt
+ * has nothing to resume.
+ */
+export interface HarnessFeeds {
+  /** Where this run works. Provisioned by the runner, then handed back. */
+  readonly cwd: HarnessResolver<string>;
+  /**
+   * Which conversation this run continues, or `null` to start fresh: the
+   * first attempt or turn, and any after one whose harness never confirmed a
+   * session, so a dead id is asked for once rather than forever.
+   */
+  readonly resume: HarnessResolver<string | null>;
+  /** Called the moment the vendor names the session. The runner's only writer of that id. */
+  readonly onSession: HarnessSessionHook;
+  /**
+   * Called with each subscription usage window the vendor reports during the
+   * run, writing it into the run owner's usage record. A harness that reports
+   * no usage ignores it.
+   */
+  readonly onUsage: HarnessUsageHook;
+  /**
+   * Where the run's working directory is, for a fence that names it (a
+   * sandbox's writable paths). Its real path once `cwd` has provisioned it.
+   */
+  readonly worktree: HarnessResolver<string>;
+  /**
+   * The model this run uses, or `undefined` for the harness's own default.
+   * Filled by the session runner (the session's pick); a task run leaves it
+   * unset.
+   */
+  readonly model?: HarnessResolver<string | undefined>;
+  /**
+   * Called by a harness whose run can take a line into its turn in flight,
+   * with the steer that does it, and with `null` once it can't. Both runners
+   * fill it; optional so a host wrapping the feeds in a slot of its own keeps
+   * compiling.
+   */
+  readonly onSteerable?: HarnessSteerHook;
+  /**
+   * Called with each assistant message and tool call of the run. Filled by
+   * the task runner, which keeps the task's status note from it.
+   */
+  readonly onActivity?: HarnessActivityHook;
+  /**
+   * Called on every event the run sends: each one starts the run's silence
+   * window again (and, on a task run, marks its checkout lock live). A harness
+   * that never calls it is stopped once that window has passed.
+   */
+  readonly onEvent?: HarnessEventHook;
+  /**
+   * Called by a harness that asks about each tool call before it runs. Handed
+   * only when the runner is built with `approveTools`; absent otherwise. A
+   * held call stops the run, waits for a person, and the conversation resumes
+   * with the answer.
+   */
+  readonly onToolApproval?: HarnessToolApprovalHook;
+}
+
+/**
+ * One coding harness, as a plain value: what a harness package (Claude Code,
+ * Codex, Cursor, one of your own) exports and the harness kit's `harnesses`
+ * slot holds. A scripted stand-in under the same `id` is a harness value too.
+ */
+export interface Harness {
+  /** The harness's key: what a worker's `harness:` line names, and what readiness rows are keyed by. */
+  readonly id: string;
+  /** The name a person sees (`Codex`). Defaults to {@link id}. */
+  readonly label?: string;
+  /** The block one run runs, built from the feeds its runner hands it. */
+  readonly agent: (feeds: HarnessFeeds) => HarnessBlock;
+  /** Whether this machine can run it, over the environment its runs get. */
+  readonly readiness: HarnessReadinessCheck;
+  /** The environment variable names a run of it is given, beside the base ones. */
+  readonly pass: readonly string[];
+  /** How much of its subscription the machine has used, when the harness reports it. */
+  readonly usage?: HarnessUsageReader;
+  /** The models it offers, when it can list them. */
+  readonly models?: (options?: { signal?: AbortSignal }) => Promise<HarnessModelList>;
+}
+
+const harnessFunction = (message: string) =>
+  z.custom<(...args: never[]) => unknown>((value) => typeof value === "function", { message });
+
+/** What a `harnesses` slot checks each entry against. */
+export const harnessSchema: z.ZodType<Harness, z.ZodTypeDef, unknown> = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1).optional(),
+    agent: harnessFunction("a harness's `agent` builds the block a run runs"),
+    readiness: harnessFunction("a harness's `readiness` checks whether this machine can run it"),
+    pass: z.array(z.string()).readonly(),
+    usage: harnessFunction("a harness's `usage` reads its subscription usage").optional(),
+    models: harnessFunction("a harness's `models` lists its models").optional(),
+  })
+  .passthrough() as never;

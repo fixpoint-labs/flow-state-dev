@@ -38,6 +38,7 @@ import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const STOREFRONT: ProjectAddress = { visibility: "shared", id: "storefront" };
 const ALICE = LAB_USERS.owner;
@@ -167,7 +168,7 @@ describe("the EM files from the workstream it leads", () => {
     lab = await openLab({
       modelResolver: scripted(emTurns, emPrompts),
       stores: inMemoryStores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
       coderWorkerId: CODER,

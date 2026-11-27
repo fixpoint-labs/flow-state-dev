@@ -7,19 +7,16 @@
  * conversational output.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
 import {
   inputSchema,
-  modeSchema,
-  featuresSchema,
-  thinkingStyleSessionStateSchema,
+  sessionStateSchema,
 } from "../shared/schemas";
 
 /** Persist the caller's requested mode to session state. */
 export const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema,
-  sessionStateSchema: z.object({ mode: modeSchema.default("ask") }),
+  sessionStateSchema: sessionStateSchema.pick({ mode: true }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
   },
@@ -29,7 +26,7 @@ export const applyRequestedMode = handler({
 export const applyFeatures = handler({
   name: "apply-features",
   inputSchema,
-  sessionStateSchema: z.object({ features: featuresSchema.default({}) }),
+  sessionStateSchema: sessionStateSchema.pick({ features: true }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ features: input.features });
   },
@@ -51,7 +48,7 @@ export const resolveThinkingStyle = sequencer({
   handler({
     name: "apply-manual-style",
     inputSchema,
-    sessionStateSchema: thinkingStyleSessionStateSchema,
+    sessionStateSchema: sessionStateSchema.pick({ thinkingStyle: true }),
     execute: async (input, ctx) => {
       if (input.thinkingStyle !== ctx.session.state.thinkingStyle) {
         await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
@@ -63,14 +60,10 @@ export const resolveThinkingStyle = sequencer({
 /** Bump the per-session request counter and record the last action. */
 export const incrementRequestCount = handler({
   name: "increment-request-count",
-  sessionStateSchema: z.object({
-    requestCount: z.number().default(0),
-    lastAction: z.string().optional(),
-  }),
+  sessionStateSchema: sessionStateSchema.pick({ requestCount: true, lastAction: true }),
   execute: async (_input, ctx) => {
-    const count = ctx.session.state.requestCount;
     await ctx.session.patchState({
-      requestCount: count + 1,
+      requestCount: ctx.session.state.requestCount + 1,
       lastAction: "run",
     });
   },

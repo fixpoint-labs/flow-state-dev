@@ -14,8 +14,9 @@
  * Its policy is the kit's config, not code an app copies:
  *
  * - **Review.** A run that committed waits for your review before its task
- *   completes when the worker's `review:` line says so, else when the kit's
- *   `review` does. Either way `goalJudge` reads a run first (`judge`).
+ *   completes when the kit's `review` says so, or the worker's `review:` line
+ *   does; a worker can turn review on, never off. Either way `goalJudge`
+ *   reads a run first (`judge`).
  * - **Pull requests.** A task whose run opened a pull request is done when it
  *   merges, cancelled when it closes unmerged (`pullRequests`, on by default).
  * - **Checks.** A run that changed files is done only when the kit's `checks`
@@ -40,6 +41,7 @@ import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type De
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -65,7 +67,7 @@ import { z } from "zod";
 import { codingBrief } from "../coding-brief";
 import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
-import type { Harness } from "../harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type ModeSpec } from "../manager";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
@@ -99,7 +101,7 @@ export interface CoderFlowOptions {
   workspace: WorkspaceHost;
   /** The harness a worker whose file names none runs on. Absent: such a worker's task is refused. */
   defaultHarness?: string;
-  /** A run that committed waits for your review before its task completes, unless the worker's `review:` line says otherwise. Default false. */
+  /** A run that committed waits for your review before its task completes, whatever the worker's `review:` line says; a worker's `review: true` turns it on alone. Default false. */
   review?: boolean;
   /** A task whose run opened a pull request waits for it to merge or close. Default true. */
   pullRequests?: boolean;
@@ -107,7 +109,7 @@ export interface CoderFlowOptions {
   judge?: boolean;
   /** The commands a run that changed files must pass in its worktree, and how long they may take together. */
   checks?: { readonly commands: readonly string[]; readonly timeoutMs?: number };
-  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. */
+  /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. A mode's own `project` overrides the last two for its runs. */
   project?: boolean;
   /** How long a run's harness may send nothing before the run is stopped and fails. Default 20 minutes. */
   idleTimeoutMs?: number;
@@ -176,7 +178,7 @@ function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefi
   const buildable = Object.fromEntries(
     Object.entries(own).map(([key, setting]) => [key, setting.safeParse(undefined).success ? setting : setting.optional()]),
   );
-  return builtIn.extend(buildable) as unknown as typeof builtIn;
+  return builtIn.extend(buildable);
 }
 
 /**
@@ -284,7 +286,7 @@ export function codingModes(options: Pick<CoderFlowOptions, "checks" | "project"
   const resolved = resolveCoderModes(options, DEFAULT_MODE, CODER_FLOW);
   return {
     defaultMode: resolved.defaultMode,
-    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, options) }])),
+    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, { ...options, project: mode.project ?? options.project }) }])),
   };
 }
 
@@ -357,7 +359,7 @@ export function coderWorkerFlow(
         const name = `${CODER_FLOW}-${id}${modeName === KIT_MODE ? "" : `-${modeName}`}${reviewChanges ? "-reviewed" : ""}`;
         const mode = resolved.modes[modeName]!;
         const workspace = mode.workspace ?? options.workspace;
-        return harnessManager({
+        const built = harnessManager({
           name,
           ledgers: conversationLedgers,
           tenant: undefined,
@@ -373,8 +375,13 @@ export function coderWorkerFlow(
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
           ...(options.approveTools === true ? { approveTools: true } : {}),
-          ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
-        } as never) as unknown as BlockDefinition<any, any>;
+          // A mode may work in its task's project when the kit doesn't, or not when it does.
+          ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),
+        });
+        // The claim gate shares a task's child session between tasks, so a harness that authors
+        // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.
+        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built });
+        return built;
       };
       const modeNames = Object.keys(resolved.modes);
       /**
@@ -389,8 +396,8 @@ export function coderWorkerFlow(
           name: `${CODER_FLOW}-${id}-by-mode${reviewChanges ? "-reviewed" : ""}`,
           inputSchema: taskWorkerInputSchema.passthrough(),
           routes: Object.values(managers),
-          execute: (task: { input?: unknown }) => managers[modeOfTask(task.input, resolved)]!,
-        } as never) as BlockDefinition<any, any>;
+          execute: (task) => managers[modeOfTask(task.input, resolved)]!,
+        });
       };
       const built = Object.fromEntries(
         Object.entries(harnesses).map(([id, harness]) => [
@@ -413,17 +420,19 @@ export function coderWorkerFlow(
         if (id === undefined || found === undefined) {
           throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md, and the harness kit sets no \`defaultHarness\`.`);
         }
-        const review = (worker.config.review as boolean | undefined) ?? options.review === true;
+        // The kit's review is a floor: a worker's `review:` can turn it on, never off, so a worker anyone
+        // can hire never settles a change no user saw.
+        const review = options.review === true || worker.config.review === true;
         return { ...found, id, manager: review ? found.reviewed : found.manager };
       };
       /** Route by the session's worker; a run that starts work first asks whether its harness can run here. */
-      const byHarness = (name: string, inputSchema: unknown, pick: (b: Built) => unknown, ready: boolean) =>
+      const byHarness = (name: string, inputSchema: z.ZodTypeAny, pick: (b: Built) => BlockDefinition<any, any>, ready: boolean) =>
         router({
           name,
           inputSchema,
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
           resources: installation.resources,
-          execute: async (_input: unknown, ctx: never) => {
+          execute: async (_input, ctx) => {
             const chosen = await harnessOf(ctx);
             if (ready) {
               const missing = await refusal(chosen.id);
@@ -431,7 +440,7 @@ export function coderWorkerFlow(
             }
             return pick(chosen);
           },
-        } as never) as BlockDefinition<any, any>;
+        });
       const anyDoor = Object.values(built)[0]!.door;
       // The app's documents meet the installation's by the flow-build rule: a shared accessor must be the same resource.
       const flowResources = mergeDeclaredResources(options.worker?.resources, { ...installation.resources, ...workerMessagesResources });
@@ -461,8 +470,8 @@ export function coderWorkerFlow(
               inputSchema: z.object({}),
               outputSchema: z.object({ harness: z.string() }),
               resources: installation.resources,
-              execute: async (_input: unknown, ctx: never) => ({ harness: (await harnessOf(ctx)).id }),
-            } as never),
+              execute: async (_input, ctx) => ({ harness: (await harnessOf(ctx)).id }),
+            }),
           },
         },
         internal: {
@@ -493,7 +502,7 @@ export function coderWorkerFlow(
             }),
           },
         },
-      } as never), options.worker?.settings);
+      }), options.worker?.settings);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
     { roles: ["contributor"], showSettings: ["harness"] },
