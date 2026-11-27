@@ -27,12 +27,11 @@ import {
 import {
   createPostgresContentStore,
   createPostgresResourceStateStore,
-  initializeSchema,
-  type QueryExecutor
+  initializeSchema
 } from "@flow-state-dev/store-postgres/host";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { goalTmpDir, loadFixture, runGoal, type Tell } from "../../lib/index.mts";
-import { startPostgres } from "../../lib/postgres.mts";
+import { flattenPlan, recordingExecutor, startPostgres, type PlanNode } from "../../lib/postgres.mts";
 
 type Fixture = {
   rows: number;
@@ -86,23 +85,6 @@ type Backend = {
 
 // --- Postgres --------------------------------------------------------------
 
-type PlanNode = {
-  "Node Type": string;
-  "Index Name"?: string;
-  "Index Cond"?: string;
-  "Actual Rows"?: number;
-  "Actual Loops"?: number;
-  "Rows Removed by Filter"?: number;
-  "Rows Removed by Index Recheck"?: number;
-  Plans?: PlanNode[];
-};
-
-function flatten(node: PlanNode, out: PlanNode[] = []): PlanNode[] {
-  out.push(node);
-  for (const child of node.Plans ?? []) flatten(child, out);
-  return out;
-}
-
 async function postgresBackend(collationNote: string[]): Promise<Backend> {
   const server = await startPostgres({ slug: "indexed-key-segments" });
   // A database in a language collation, as production runs: there the primary
@@ -122,14 +104,8 @@ async function postgresBackend(collationNote: string[]): Promise<Backend> {
     collationNote.push(`no ICU database (${(err as Error).message}); ran on the server default`);
   }
   const pool = new pg.Pool({ connectionString: url, max: 2 });
-  const sent: Array<{ text: string; values: unknown[] }> = [];
-  const executor: QueryExecutor = {
-    async query(text: string, values?: unknown[]) {
-      sent.push({ text, values: values ?? [] });
-      const result = await pool.query(text, values);
-      return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
-    }
-  };
+  const executor = recordingExecutor(pool);
+  const { sent } = executor;
   await initializeSchema(executor);
   const collation = await pool.query<{ datcollate: string; datlocprovider: string; daticulocale: string | null }>(
     "SELECT datcollate, datlocprovider, daticulocale FROM pg_database WHERE datname = current_database()"
@@ -161,7 +137,7 @@ async function postgresBackend(collationNote: string[]): Promise<Backend> {
       sent.length = 0;
       const explained = await pool.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${read.text}`, read.values);
       const root = (explained.rows[0]?.["QUERY PLAN"] as Array<{ Plan: PlanNode }>)[0]!.Plan;
-      const nodes = flatten(root);
+      const nodes = flattenPlan(root);
       const shape = nodes.map((n) => `${n["Node Type"]}${n["Index Name"] ? `(${n["Index Name"]})` : ""}`).join(" > ");
       const failures: string[] = [];
       if (nodes.some((n) => n["Node Type"] === "Seq Scan")) failures.push(`scans the table: ${shape}`);

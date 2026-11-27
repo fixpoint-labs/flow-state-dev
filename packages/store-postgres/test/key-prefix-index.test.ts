@@ -21,6 +21,7 @@ import {
   type QueryExecutor
 } from "../src/host";
 
+// The canonical plan helper is `flattenPlan` / `recordingExecutor` in goals/lib/postgres.mts; this PGlite copy stays because goals depends on this package.
 type PlanNode = {
   "Node Type": string;
   "Index Name"?: string;
