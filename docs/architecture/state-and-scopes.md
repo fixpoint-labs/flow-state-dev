@@ -824,6 +824,25 @@ ctx.resources.at({ session: launchChatId }).notes  // the launch chat's copy, re
 
 **When to use `ctx.sessions` instead.** `ctx.resources.at` is for another session's *resources*. For what isn't a resource (another session's flow, its readable state fields, its history and turns, the owner's session list) use `ctx.sessions`, which reaches no resources. A view reads its own copies: `at` throws in a view.
 
+## Looking across sessions
+
+A screen of every task in a user's sessions reads one collection across all of them, in one call:
+
+```ts
+const page = await ctx.resources.acrossSessions().notes.list({ after })
+// page.rows: [{ session, key, value }] · page.next: a cursor, while more may remain
+```
+
+`acrossSessions()` returns the same session-scoped, stored collections `at()` does, each with one verb, `list`. Each row carries the bare id of the session it belongs to (what `at({ session })` takes) and its storage path there (`key`, as `ResourceRef.path` names it). It is callable from any block, a view's included; a turn a webhook delivery started is refused with `UntrustedReachError`, as `at` is. The module is `context/across-sessions.ts`.
+
+**One query a page, split owner rule.** The store answers a page with `ResourceStateStore.listAcrossSessions`: the collection's live rows under its prefix, in every session the owner holds (any parentage), joined to the sessions table on user, tenant and organization, ordered by the session's storage key and then the row's key, both in byte order. SQLite and Postgres answer it in one statement over an owner index on `sessions` (`idx_sessions_owner`, plus `idx_sessions_tenant_owner` on Postgres, where `IS NULL` is no equality for sort order) and the primary key's range on `resource_state`; memory and filesystem walk the owner's sessions. The rows also carry each session's owner and flow columns, and the engine then admits every session the page holds with the very admission `at` makes (`namedRecordAdmission` in `named-session.ts`), on those columns, so a page costs no session read. A session it refuses is left out exactly as one holding nothing. A view's run has no session of its own; its principal's kind and resolver come from the view route's door, as an action's do.
+
+**Paging is the pending-suspensions read's.** A page reads one row past its 50, and `next` marks the last row the store returned, never the last one shown. A page can be short, even empty, while `next` is set; a listing ends only when `next` is absent. Because the last row read may be a dropped session's, `next` is sealed: AES-GCM under a key this process holds, bound to the owner, the collection and the filter. It names no row, and opens only in the process that sealed it; any other `after` is refused with `AcrossSessionsCursorError`.
+
+**A filter is the row's key or a declared index.** `where: { key }` reads one row a session by the primary key; `where: { index, value }` reads a declared index's entries in the same statement. A field with no declared index is refused, naming it, never filtered after the read. Every row an index filter returns is re-checked against the index, as `findBy` re-checks its hits; a session whose index isn't built yet (the index builds on that session's first `findBy`) answers every row of the collection as a candidate. A collection whose rows are lineage-shared can't be read this way and throws.
+
+**The change topic.** A view's read is heard on one change topic per collection per owner (`bus/owner-topic.ts`). Every write to any session's copy publishes a `resource` notice there, through the one session publish surface (`publishSessionResourceChange`), once the host has a view, so the view hears a row filed in a session made after it ran. On the wire it is the user topic narrowed to `/sessions/<root>`, `<root>` the collection's static prefix; a storage path never begins with `/`. The mint grants it from the verified principal's user and organization. On the bus it has its own scope, `owner`, whose id names the user and the organization, so the user topic, which spans the user's organizations, never carries it. The notice names the session only as its `partition`, which the socket sends as a keyed digest, and carries no ids: a view reads again rather than learning which session changed.
+
 ## Streaming Integration
 
 State and resource mutations emit streaming events:

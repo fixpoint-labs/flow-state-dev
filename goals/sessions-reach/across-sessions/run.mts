@@ -326,7 +326,7 @@ async function boot(leg: Leg) {
     const deadline = Date.now() + 10_000;
     for (;;) {
       const record = await leg.stores.request.get(sentRequest.id);
-      if (record !== undefined && record.status !== "in_progress" && record.status !== "queued") {
+      if (record !== undefined && record.status !== "in_progress") {
         if (record.status !== "completed") throw new Error(`setup: ${flow}/file in ${sessionId} ended ${record.status}`);
         return;
       }

@@ -112,6 +112,12 @@ read (below).
 **In code:** `defineView`, with `scope`, `block`, an optional `inputSchema` and `key`; on the
 client (proposed), `useView(view, input)`, and the answer's type is `ViewOutput<typeof view>`.
 
+**Reading across sessions.** A user-scope view that shows every session's copy of one
+definition, such as board, reads it with `ctx.resources.acrossSessions().<name>.list()`: one
+query a page, each row with its session, and heard on one change topic for the definition and
+the owner, so a session made after the view ran is heard too. It is the one way to see across
+sessions ([`state-and-scopes.md`](../../architecture/state-and-scopes.md#looking-across-sessions)).
+
 ### What this replaces
 
 A flow's read is today's version of a view: a block a client runs to watch something the flow
