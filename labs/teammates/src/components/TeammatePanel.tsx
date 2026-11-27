@@ -15,6 +15,9 @@ import { costAmount, tokenCount, tokenTotal } from "./flow-state/spend";
 import { taskSignal } from "./flow-state/task-signals";
 import { reasonLine, type Popup } from "./Popups";
 import { taskLabel, taskLine } from "./TaskCard";
+import { PullRequestsList } from "./PullRequestsList";
+import { PANEL_TABS, usePanelTab, type PanelTab } from "../lib/panel-tab";
+import { isOpenPullRequest, useTeammatePullRequests } from "../lib/pull-requests";
 
 /**
  * How many of *Failed*'s and *Done*'s rows show before *Show all*: the newest
@@ -31,6 +34,9 @@ const FILTERS = [
   { status: "done", label: "Done" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["status"];
+
+/** The panel's own tabs' names, in {@link PANEL_TABS}' order. */
+const PANEL_LABELS: Record<PanelTab, string> = { tasks: "Tasks", routines: "Routines", "pull-requests": "Pull Requests" };
 
 /** What an empty tab says. */
 const EMPTY: Record<Filter, string> = { running: "No running tasks.", idle: "No idle tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
@@ -80,8 +86,13 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
 }
 
 /**
- * The right pane: the selected teammate's tasks. Its heading gives the total.
- * Under it, a segmented bar of four counted tabs, *Running*, *Idle*, *Failed* and *Done*, which
+ * The right pane: three tabs, *Tasks*, *Routines* and *Pull Requests*, each
+ * counted (all tasks, the routines, the open pull requests), the open one kept
+ * per teammate in this browser. A tab you are not on carries a dot when
+ * something in it waits on you. *Pull Requests* lists what the runs of this
+ * conversation's tasks recorded opening (`PullRequestsList`).
+ *
+ * *Tasks*: a segmented bar of four counted tabs, *Running*, *Idle*, *Failed* and *Done*, which
  * pick which tasks show: the selected one lists its tasks as cards, newest first
  * (running ones waiting on you first). *Failed* and *Done* show their newest
  * five, with *Show all* / *Show fewer*. *Failed* has *Clear*, which moves its
@@ -91,9 +102,9 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * active one's clock on this attempt, with a thin bar while its run answers,
  * and *Long-running* once it has been open a day; an idle one's time since it
  * last moved; an ended one's age. Then
- * what this conversation's coding tasks spent, and at the foot its routines:
- * each clock routine it files and event routine it hears, with when it next
- * runs or what it follows, and *Paused* on a paused one.
+ * what this conversation's coding tasks spent. *Routines*: each clock routine
+ * it files and event routine it hears, with when it next runs or what it
+ * follows, and *Paused* on a paused one.
  * The teammate's own description and *Edit* live in the conversation's header.
  */
 export function TeammatePanel({
@@ -135,6 +146,25 @@ export function TeammatePanel({
   const showAll = expanded === filter;
   const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, idle: null, failed: null, done: null });
   const name = displayName(worker);
+  // The panel's own tabs, the open one kept per teammate; the pull requests its tasks' runs recorded, newest task first.
+  const [panelTab, setPanelTab] = usePanelTab(worker.id);
+  const panelTabs = useRef<Record<PanelTab, HTMLButtonElement | null>>({ tasks: null, routines: null, "pull-requests": null });
+  const pullRequests = useTeammatePullRequests(useMemo(() => newestFirst(tasks), [tasks]));
+  const panelCounts: Record<PanelTab, number> = { tasks: tasks.length, routines: routines.length, "pull-requests": pullRequests?.filter(isOpenPullRequest).length ?? 0 };
+  // Something in the tab waits on you: a running task's hold, or a pull request whose task holds one.
+  const panelAttention: Record<PanelTab, boolean> = {
+    tasks: tasks.some((t) => taskStatus(t) === "running" && holdOf(t) !== undefined),
+    routines: false,
+    "pull-requests": pullRequests?.some((pr) => pr.attention) ?? false,
+  };
+  const onPanelTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const next = PANEL_TABS[(PANEL_TABS.indexOf(panelTab) + step + PANEL_TABS.length) % PANEL_TABS.length]!;
+    setPanelTab(next);
+    panelTabs.current[next]?.focus();
+  };
 
   const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
 
@@ -220,103 +250,133 @@ export function TeammatePanel({
 
   return (
     <aside aria-label={`${name}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4">
-        <section aria-labelledby="tasks-heading" className="flex flex-col gap-3">
-          <h2 id="tasks-heading" className="text-sm font-semibold">
-            Tasks <span className="font-mono font-normal text-text-3 tabular-nums">{tasks.length}</span>
-          </h2>
-          <div role="tablist" aria-label="Task status" className="grid grid-cols-4 gap-0.5 rounded-lg bg-muted p-0.5" onKeyDown={onTabKey}>
-            {FILTERS.map(({ status, label }) => {
-              const selected = filter === status;
-              return (
+      <div role="tablist" aria-label="Panel" className="flex shrink-0 gap-5 border-b border-border px-4" onKeyDown={onPanelTabKey}>
+        {PANEL_TABS.map((id) => {
+          const selected = panelTab === id;
+          return (
+            <button
+              key={id}
+              ref={(el) => {
+                panelTabs.current[id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`panel-tab-${id}`}
+              aria-selected={selected}
+              aria-controls="panel-tabpanel"
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setPanelTab(id)}
+              className={cn(
+                "relative -mb-px flex items-center gap-1.5 border-b-2 pt-3.5 pb-2.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                selected ? "border-brand font-semibold text-foreground" : "border-transparent text-text-2 hover:text-foreground",
+              )}
+            >
+              {PANEL_LABELS[id]}{" "}
+              <span className="font-mono text-xs font-normal text-text-3 tabular-nums">{panelCounts[id]}</span>
+              {/* A tab you are not on holds something waiting on you: the highlighter's dot. */}
+              {!selected && panelAttention[id] ? (
+                <span data-attention role="img" aria-label="needs you" className="absolute top-2.5 -right-2 size-1.5 rounded-full bg-attention ring-2 ring-inspector" />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" id="panel-tabpanel" aria-labelledby={`panel-tab-${panelTab}`} className="flex-1 overflow-y-auto px-4 pt-4 pb-4">
+        {panelTab === "tasks" ? (
+          <section aria-label="Tasks" className="flex flex-col gap-3">
+            <div role="tablist" aria-label="Task status" className="grid grid-cols-4 gap-0.5 rounded-lg bg-muted p-0.5" onKeyDown={onTabKey}>
+              {FILTERS.map(({ status, label }) => {
+                const selected = filter === status;
+                return (
+                  <button
+                    key={status}
+                    ref={(el) => {
+                      tabs.current[status] = el;
+                    }}
+                    type="button"
+                    role="tab"
+                    id={`tasks-tab-${status}`}
+                    aria-selected={selected}
+                    aria-controls="tasks-tabpanel"
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => setFilter(status)}
+                    className={cn(
+                      "flex min-w-0 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                      selected ? "bg-card font-medium text-brand shadow-(--shadow-card)" : "text-text-2 hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                    <span className="font-mono tabular-nums">{groups[status].length}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <CodingSpend tasks={tasks.filter((t) => isCoding(workerOf(t)))} />
+            <div role="tabpanel" id="tasks-tabpanel" aria-labelledby={`tasks-tab-${filter}`} className="flex flex-col gap-2">
+              {filter === "failed" && groups.failed.length > 0 ? (
                 <button
-                  key={status}
-                  ref={(el) => {
-                    tabs.current[status] = el;
-                  }}
                   type="button"
-                  role="tab"
-                  id={`tasks-tab-${status}`}
-                  aria-selected={selected}
-                  aria-controls="tasks-tabpanel"
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => setFilter(status)}
-                  className={cn(
-                    "flex min-w-0 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                    selected ? "bg-card font-medium text-brand shadow-(--shadow-card)" : "text-text-2 hover:text-foreground",
-                  )}
+                  aria-label={`Clear failed (${groups.failed.length})`}
+                  title="Move these to Done, in this browser. The tasks themselves stay."
+                  onClick={() => clearFailed(groups.failed.map(clearMark))}
+                  className="self-end text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
                 >
-                  {label}
-                  <span className="font-mono tabular-nums">{groups[status].length}</span>
+                  Clear
                 </button>
-              );
-            })}
-          </div>
-          <CodingSpend tasks={tasks.filter((t) => isCoding(workerOf(t)))} />
-          <div role="tabpanel" id="tasks-tabpanel" aria-labelledby={`tasks-tab-${filter}`} className="flex flex-col gap-2">
-            {filter === "failed" && groups.failed.length > 0 ? (
-              <button
-                type="button"
-                aria-label={`Clear failed (${groups.failed.length})`}
-                title="Move these to Done, in this browser. The tasks themselves stay."
-                onClick={() => clearFailed(groups.failed.map(clearMark))}
-                className="self-end text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
-              >
-                Clear
-              </button>
-            ) : null}
-            {shown.length === 0 ? (
-              <p className="text-xs text-text-3">{tasks.length === 0 ? `${name} hasn't started any tasks yet.` : EMPTY[filter]}</p>
-            ) : (
-              <ul aria-label={FILTERS.find((f) => f.status === filter)!.label} className="flex flex-col gap-2">
-                {shown.map(card)}
+              ) : null}
+              {shown.length === 0 ? (
+                <p className="text-xs text-text-3">{tasks.length === 0 ? `${name} hasn't started any tasks yet.` : EMPTY[filter]}</p>
+              ) : (
+                <ul aria-label={FILTERS.find((f) => f.status === filter)!.label} className="flex flex-col gap-2">
+                  {shown.map(card)}
+                </ul>
+              )}
+              {CAPPED.has(filter) && groups[filter].length > NEWEST_SHOWN ? (
+                <button
+                  type="button"
+                  aria-expanded={showAll}
+                  onClick={() => setExpanded(showAll ? undefined : filter)}
+                  className="self-start text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {showAll ? "Show fewer" : `Show all ${groups[filter].length}`}
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+        {panelTab === "routines" ? (
+          <section aria-label="Routines" className="flex flex-col gap-3">
+            {routines.length > 0 ? (
+              <ul aria-label={`${name}'s routines`} className="flex flex-col gap-2">
+                {routines.map((r) => (
+                  <li key={r.id} data-routine={r.id} className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 text-xs">
+                    <span className="flex items-center gap-2 font-medium">
+                      <ClockIcon aria-hidden className="size-3.5 shrink-0 text-text-3" />
+                      <span className="min-w-0 truncate">{r.name}</span>
+                      {r.paused ? <span className="ml-auto rounded-sm bg-muted px-1.5 text-text-3">Paused</span> : null}
+                    </span>
+                    <span className="text-text-2">{routineWhen(r)}</span>
+                    {r.description === undefined ? null : <span className="line-clamp-2 text-text-3">{r.description}</span>}
+                  </li>
+                ))}
               </ul>
-            )}
-            {CAPPED.has(filter) && groups[filter].length > NEWEST_SHOWN ? (
-              <button
-                type="button"
-                aria-expanded={showAll}
-                onClick={() => setExpanded(showAll ? undefined : filter)}
-                className="self-start text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
-              >
-                {showAll ? "Show fewer" : `Show all ${groups[filter].length}`}
-              </button>
             ) : null}
-          </div>
-        </section>
-        <section aria-labelledby="routines-heading" className="mt-6 flex flex-col gap-3 border-t border-border pt-5">
-          <h2 id="routines-heading" className="text-sm font-semibold">
-            Routines
-          </h2>
-          {routines.length > 0 ? (
-            <ul aria-label={`${name}'s routines`} className="flex flex-col gap-2">
-              {routines.map((r) => (
-                <li key={r.id} data-routine={r.id} className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 text-xs">
-                  <span className="flex items-center gap-2 font-medium">
-                    <ClockIcon aria-hidden className="size-3.5 shrink-0 text-text-3" />
-                    <span className="min-w-0 truncate">{r.name}</span>
-                    {r.paused ? <span className="ml-auto rounded-sm bg-muted px-1.5 text-text-3">Paused</span> : null}
-                  </span>
-                  <span className="text-text-2">{routineWhen(r)}</span>
-                  {r.description === undefined ? null : <span className="line-clamp-2 text-text-3">{r.description}</span>}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-3">
-            <p className="flex items-start gap-2.5 text-xs text-text-2">
-              <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-text-3">
-                <ClockIcon className="size-3.5" />
-              </span>
-              Schedule a routine for {name}.
-            </p>
-            {onNewRoutine === undefined ? null : (
-              <button type="button" onClick={onNewRoutine} aria-label="New routine" className="rounded-md border border-border-strong px-3 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-                + New routine
-              </button>
-            )}
-          </div>
-        </section>
+            <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-3">
+              <p className="flex items-start gap-2.5 text-xs text-text-2">
+                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-text-3">
+                  <ClockIcon className="size-3.5" />
+                </span>
+                Schedule a routine for {name}.
+              </p>
+              {onNewRoutine === undefined ? null : (
+                <button type="button" onClick={onNewRoutine} aria-label="New routine" className="rounded-md border border-border-strong px-3 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
+                  + New routine
+                </button>
+              )}
+            </div>
+          </section>
+        ) : null}
+        {panelTab === "pull-requests" ? <PullRequestsList rows={pullRequests} sessionId={sessionId} onOpen={onOpen} /> : null}
       </div>
     </aside>
   );

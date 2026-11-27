@@ -6,13 +6,16 @@
  * "Schedule a routine" prompt that read nothing, so a routine that fired every
  * morning never showed anywhere in the app.
  */
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { rosterEntry } from "./scripted-server";
 import { POPUP_READ, stubServer, TestProvider } from "./stub-server";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const ROUTINES = [
   {
@@ -48,6 +51,7 @@ describe("a teammate's routines in its panel", () => {
         <TeammatePanel worker={rosterEntry({ id: "chief", name: "Lead", description: "Routes work" })} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => false} onOpen={() => {}} />
       </TestProvider>,
     );
+    fireEvent.click(screen.getByRole("tab", { name: /^Routines/ }));
     const list = await screen.findByRole("list", { name: "Lead's routines" }, POPUP_READ);
     const items = within(list).getAllByRole("listitem");
     expect(items.map((li) => li.getAttribute("data-routine"))).toEqual(["clock:daily-tweet-draft", "event:sub_1"]);
@@ -65,6 +69,7 @@ describe("a teammate's routines in its panel", () => {
         <TeammatePanel worker={rosterEntry({ id: "chief", name: "Lead", description: "Routes work" })} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => false} onOpen={() => {}} />
       </TestProvider>,
     );
+    fireEvent.click(screen.getByRole("tab", { name: /^Routines/ }));
     expect(await screen.findByText(/Schedule a routine for Lead/)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Lead's routines" })).toBeNull();
   });

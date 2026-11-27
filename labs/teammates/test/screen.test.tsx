@@ -312,7 +312,9 @@ describe("the teammates screen", () => {
     await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
-    // Its tasks and a place for its routines; who it is lives in the conversation's header.
+    // Its tasks, its routines and its pull requests, each a tab; who it is lives in the conversation's header.
+    expect(within(panel("Lead")).getByRole("region", { name: "Tasks" })).toBeTruthy();
+    fireEvent.click(within(panel("Lead")).getByRole("tab", { name: /^Routines/ }));
     expect(within(panel("Lead")).getByRole("region", { name: "Routines" })).toBeTruthy();
     expect(within(panel("Lead")).getByText("Schedule a routine for Lead.")).toBeTruthy();
   });
@@ -347,7 +349,7 @@ describe("the teammates screen", () => {
       [LEAD]: [ended("t-1", "Look up the launch date", "completed"), ended("t-2", "Check the beta numbers", "errored"), ended("t-3", "Find a customer quote", "completed"), ended("t-4", "Pull the survey", "cancelled")],
     });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    const tiles = () => within(side).getAllByRole("tab").map((t) => t.textContent);
+    const tiles = () => within(within(side).getByRole("tablist", { name: "Task status" })).getAllByRole("tab").map((t) => t.textContent);
     await waitFor(() => expect(tiles()).toEqual(["Running0", "Idle0", "Failed1", "Done3"]));
     // A failure is one click away, on its tile.
     fireEvent.click(within(side).getByRole("tab", { name: /Failed/ }));

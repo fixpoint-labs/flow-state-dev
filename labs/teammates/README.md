@@ -48,16 +48,23 @@ page follows the system's light or dark setting. Yellow marks only the user need
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
-- **Right:** the open teammate's panel. At the top, *Tasks* and their count: the tasks its
-  conversation started, coding tasks and teammates' jobs alike. Under it, three count tiles,
-  *Running*, *Failed* and *Done*, which are the panel's tabs; the selected one lists its tasks
+- **Right:** the open teammate's panel, in three tabs, each with its count: *Tasks*,
+  *Routines* and *Pull Requests*. The tab you last picked for a teammate stays picked in this
+  browser. A tab you are not on shows a yellow dot when something in it waits on you.
+  *Pull Requests* lists the pull requests the runs of this teammate's tasks opened, so Chief of
+  Staff's are those of the coding tasks it handed out: open ones first, then merged or closed,
+  each linked to GitHub with its state as its run last saw it and its task, which opens in the
+  popup. *Tasks* counts the tasks its
+  conversation started, coding tasks and teammates' jobs alike. In it, four count tiles,
+  *Running*, *Idle*, *Failed* and *Done*, which pick the tasks shown; the selected one lists its tasks
   as cards, newest first. A running task waiting on you leads, and every running task shows,
   however many there are. *Failed* gives each task the first line of its reason. *Failed* and
   *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
   to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
   holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
   its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
-  uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
+  uses the same word and colour as its card. *Routines* lists the routines that act through
+  the teammate.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired

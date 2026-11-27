@@ -52,7 +52,7 @@ async function panel(rows: CodingBoardTask[], connection: SessionConnectionStatu
     </TestProvider>,
   );
   const shown = screen.getByRole("complementary", { name: "Lead's panel" });
-  await within(shown).findByRole("heading", { name: /^Tasks/ });
+  await within(shown).findByRole("tab", { name: /^Tasks/ });
   return shown;
 }
 

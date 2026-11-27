@@ -41,7 +41,7 @@ export interface StubData {
    * requests, as harness-manager's direct reads read them. A section left out is one the run's
    * harness records none of.
    */
-  recorded?: Record<string, { files?: (string | { path: string; applied: number })[]; pullRequests?: { number: number; url: string; title: string | null }[] }>;
+  recorded?: Record<string, { files?: (string | { path: string; applied: number })[]; pullRequests?: { number: number; url: string; title: string | null; state?: string | null }[] }>;
   /** Every coding board read fails, as a server that lost the board does: the screen keeps its last rows, stale. */
   boardFails?: boolean;
   /** The user's routines, as Workforce's routines view answers them (every teammate's). Absent: none. */
