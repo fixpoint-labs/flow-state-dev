@@ -64,8 +64,10 @@ import { createHash } from "node:crypto";
 import { resolve, sep } from "node:path";
 import {
   acquireLock,
+  encodeSegment,
   refreshLock,
   releaseLock,
+  tenantSegment,
   WorkspaceRefusedError,
   WORKTREES,
   worktreeLockPath,
@@ -312,92 +314,9 @@ function principalSegments(location: RunLocation): string[] {
     : [tenantSegment(principal.tenantId), encodeSegment(principal.orgId), encodeSegment(principal.userId)];
 }
 
-/**
- * One tenant, as one identity component. **Presence is tagged, never
- * defaulted.**
- *
- * `t0` for an untenanted request, `t1<digest>` for a tenanted one — so an
- * absent tenant and a tenant *named* like whatever placeholder someone picks
- * can never produce the same component.
- *
- * This exists as a shared function because collapsing absence into a value is a
- * bug that was fixed here and then reintroduced one file away: the board's
- * identity used `?? "single-tenant"`, which made a real tenant called
- * `single-tenant` indistinguishable from no tenant at all. Same user id, same
- * user-scoped board, each able to claim the other's rows — while THIS function
- * kept them in different checkouts, so a task could execute and report against
- * a tree that was not its own.
- *
- * Absent and `"single-tenant"` are different facts. The type carries that
- * (`string | undefined`), and every derivation reads it through here.
- */
-export function tenantSegment(tenantId: string | undefined): string {
-  return tenantId === undefined ? "t0" : `t1${encodeSegment(tenantId)}`;
-}
-
-/**
- * Encode an identifier into one path segment. **Encode, never validate.**
- *
- * The framework's user and tenant ids are unrestricted strings — `auth0|abc`
- * and `alice@example.com` are ordinary values, and neither matches a filesystem
- * grammar. Validating them would fail every attempt during workspace derivation
- * and burn the retry budget on a configuration mismatch the run cannot fix.
- *
- * Worse, a grammar is a rule someone else's identifier space never agreed to,
- * and enforcing it is a list that is never finished: separators, `..`, trailing
- * dots (Windows strips them, so `acme` and `acme.` are one directory), reserved
- * device names, case folding. Encoding removes the list — the output is
- * injective, so two distinct ids can never share a directory, and its alphabet
- * contains nothing any filesystem treats specially.
- *
- * A SHA-256 digest in hex, behind a literal `h`: `h[0-9a-f]{64}`, which cannot
- * spell a reserved device name, cannot end in a dot, and cannot contain a
- * separator or the identity frame.
- *
- * **A digest and not a reversible encoding, because the output has to be
- * bounded.** Hex of the input doubles it, so a 128-character id — an ordinary
- * length for an opaque subject claim — produced a 257-character component.
- * Measured: a filesystem name is refused at 256, and `ENAMETOOLONG` arrives
- * from `worktree add`, which is to say *after* the row is claimed. Every retry
- * would then be spent on a length no retry can change. A fixed 65 characters
- * cannot do that.
- *
- * The cost is honest: the path no longer says which user it belongs to. What it
- * keeps is the property the derivation actually needs — distinct ids give
- * distinct components — since a SHA-256 collision is not a failure mode this
- * system will meet.
- *
- * **The prefix is load-bearing, not decoration.** A bare digest of an empty id
- * is still a digest, but the prefix keeps the alphabet closed under `h[0-9a-f]`
- * for every input including the empty one, and it is what a reader recognises
- * as "this segment is derived, not typed".
- *
- * **The issue and phase segments stay validated.** Those identifiers are ours,
- * the grammar is one we set, and rejecting a malformed issue key is a real
- * signal rather than an imposition.
- */
-export function encodeSegment(value: string): string {
-  // **`utf16le`, and the encoding is the load-bearing part.**
-  //
-  // A JavaScript string is a sequence of UTF-16 code units, lone surrogates
-  // included. UTF-8 has no representation for a lone surrogate, so encoding
-  // through it substitutes U+FFFD BEFORE the hash runs — measured:
-  // `"\ud800"`, `"\ud801"`, `"\udfff"` and a literal `"\ufffd"` produce ONE
-  // digest, so four distinct caller-supplied identifiers share one checkout and
-  // one lock.
-  //
-  // This is not the collision the digest's safety argument covers. That
-  // argument is about SHA-256, and it holds. This is a collision in the
-  // TRANSCODING STEP UPSTREAM of the hash — deliberate, trivial to reproduce,
-  // and available to anyone who can supply an identifier. Collision resistance
-  // is simply not the property that was broken.
-  //
-  // `utf16le` is total over the domain: every JavaScript string has an exact
-  // representation, so there is no substitution left to collapse anything. The
-  // general rule, and the one worth carrying: **never transcode an identifier
-  // through an encoding that cannot represent it.**
-  return `h${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
-}
+// The checkout encoder (`encodeSegment`, `tenantSegment`) is workspace's, imported
+// above and re-exported here for `./checkout` and this package's tests.
+export { encodeSegment, tenantSegment };
 
 /**
  * Everything that makes one run's state distinct from another's.

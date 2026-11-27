@@ -18,7 +18,7 @@ import { FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY } from "../workers/keys
  * last started. `undefined` in a session that works no conversation's task.
  */
 export function boardAboveOf(ctx: Pick<BlockContext, "session">): string | undefined {
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const filing = state[FILING_SESSION_STATE_KEY];
   if (typeof filing === "string") return filing;
   const routedFrom = state[ROUTED_FROM_STATE_KEY];

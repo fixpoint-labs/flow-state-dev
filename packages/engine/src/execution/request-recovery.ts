@@ -16,7 +16,7 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { settledRecordFields } from "./request-action-result";
-import { runAction } from "./runAction";
+import { runFrameworkAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
 import { bringSessionWakesForward } from "../durability/request-wakes";
 
@@ -334,7 +334,7 @@ export async function retryRequest(
   // persisted before FIX-438.
   const retrySource = entry?.source ?? originalRecord?.source ?? "http";
 
-  void runAction({
+  void runFrameworkAction({
     flow,
     actionName: actionName as keyof typeof flow.actions & string,
     input,

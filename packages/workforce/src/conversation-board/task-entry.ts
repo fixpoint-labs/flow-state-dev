@@ -373,7 +373,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     if (source === undefined || runningFlow === undefined) {
       throw new Error(`input_refused: the flow this entry runs task "${task.taskId}" for can't be read, so its worker can't be checked. Nothing ran.`);
     }
-    const sessionState = (ctx.session.state ?? {}) as Record<string, unknown>;
+    const sessionState = ctx.session.state;
     const recorded = sessionState[TASK_FLOW_STATE_KEY];
     const assignee = stored.assignee ?? "";
     const read = assignee === "" ? undefined : await source.workerOf(ctx, assignee);

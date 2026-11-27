@@ -101,7 +101,7 @@ export async function writeStandingRules(
   edit: RuleEdit,
   sessionId: string | null
 ): Promise<RuleEditOutcome> {
-  const ref = await collectionOf(ctx).getOrCreate(keyOf(ctx), EMPTY_RULES);
+  const ref = await collectionOf(ctx).getOrCreate(keyOf(ctx));
   const now = Date.now();
   const outcome = await updateStateWith(ref, (current) => {
     const result = applyRuleEdit(parsed(current), version, edit, { sessionId, now });

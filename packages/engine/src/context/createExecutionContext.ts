@@ -97,6 +97,7 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -1238,6 +1239,7 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
+          deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),

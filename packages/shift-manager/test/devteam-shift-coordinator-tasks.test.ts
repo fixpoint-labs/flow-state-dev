@@ -333,6 +333,19 @@ async function fileAndSettle(lab: Lab, message = "the coder should take a look a
   return { id, task, taskId: task.id as string };
 }
 
+/** Say `message` in a new conversation whose filing is refused: what each `createTask` call answered, once nothing runs. */
+async function fileRefused(lab: Lab, message = "the coder should take a look at our repo"): Promise<Array<{ ok: boolean; error?: string }>> {
+  const id = await conversation(lab);
+  expect((await act(lab, id, "respond", { message })).error).toBeUndefined();
+  await quiet(lab);
+  expect(((await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: unknown[] }).tasks).toEqual([]);
+  const runtime = await lab.state.getRuntime();
+  return (await runtime.stores.request.list({ sessionId: id, withItems: true }))
+    .flatMap((r) => ((r as unknown as { items?: any[] }).items ?? []))
+    .filter((item) => item.type === "tool_output" && item.toolCall?.name === "createTask")
+    .map((item) => item.output);
+}
+
 /** The conversation's lines under the coder's name that name the task. */
 async function coderLines(lab: Lab, id: string, taskId: string) {
   return (await messages(lab, id)).filter((m) => m.agentName === CODER && m.text.includes(`(${taskId})`));
@@ -463,26 +476,45 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("visibility and id");
   });
 
-  // A phase with no issue says what kind of work but not which; an issue alone is enough (FIX-2388).
-  it("refuses a task naming a phase but no issue after the claim, without running it as an answer", async () => {
+  // The implement mode says what work it is but not on which issue; it needs one (FIX-2878), refused at filing.
+  it("refuses an implement task naming no issue at filing, and never runs it as an answer", async () => {
     const stub = readsMarker();
-    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { phase: "implement" } })]), stub);
-    const { id, task, taskId } = await fileAndSettle(lab);
-    expect(task).toMatchObject({ status: "errored", attempts: 1 });
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, mode: "implement" })]), stub);
+    const outputs = await fileRefused(lab);
+    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^mode_needs_input: mode "implement" needs "issue"/) }]);
+    expect(outputs[0]!.error).toContain('or file it in mode "answer"');
     expect(stub.runs).toHaveLength(0);
-    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names an issue");
   });
 
-  it("runs a task whose own fields include a plain `issue` as an answer, never as half a feature", async () => {
-    // What a model filing from a conversation wrote: `issue` there means "the problem".
-    // Only `harnessFeature` names feature work, so this goes to the answer manager and runs.
+  it("refuses a filing that still sends the old feature marker, by name, and files nothing", async () => {
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { issue: "greeting" } })]), stub);
+    const outputs = await fileRefused(lab);
+    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^legacy_marker: harnessFeature is no longer accepted; file mode: "implement" with issue instead/) }]);
+    expect(stub.runs).toHaveLength(0);
+  });
+
+  it("refuses a plain `issue` that isn't a tracker issue at filing, rather than running it on a branch named for it", async () => {
+    // What a model filing from a conversation might write: `issue` there meaning "the problem". The task's
+    // `issue` is a tracker issue, so the filer is told what one is, and nothing is filed.
     const stub = readsMarker();
     const input = { project: STOREFRONT, file: "README.md", location: "line 1", issue: "Typo in first line", requestedChange: "Fix the typo" };
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("fix the README typo", input)]), stub);
+    const outputs = await fileRefused(lab);
+    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^issue_malformed: issue "Typo in first line" isn't a tracker issue/) }]);
+    expect(stub.runs).toHaveLength(0);
+  });
+
+  it("runs a task in the default mode as an answer when it names none", async () => {
+    const stub = readsMarker();
+    const input = { project: STOREFRONT, file: "README.md", location: "line 1", requestedChange: "Fix the typo" };
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("fix the README typo", input)]), stub);
     const { task } = await fileAndSettle(lab);
     expect(task).toMatchObject({ status: "completed", attempts: 1 });
+    // The default mode was written in at filing.
+    expect((await storedTask(lab, task.id as string))?.input).toMatchObject({ mode: "answer" });
     expect(stub.runs).toHaveLength(1);
-    expect(stub.runs[0]!.prompt).not.toMatch(/phase implement/);
+    expect(stub.runs[0]!.prompt).not.toMatch(/mode implement/);
   });
 
   it("fails a run that stopped at its limit, and one that ended with no answer", async () => {
@@ -587,12 +619,12 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
   });
 
   it("holds a conversation's feature task to feature work's rules: it runs, and never closes as an answer", async () => {
-    // A task naming an issue and a phase under `harnessFeature` is feature work wherever it was filed: the implement
+    // A task filed in mode `implement` with its issue is feature work wherever it was filed: the implement
     // manager runs it under the id its board minted, and it is done only on a commit. This run
     // answers and commits nothing, so the task fails rather than closing as an answer task.
     const stub = readsMarker();
     const { lab } = await openCoderLab(
-      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, harnessFeature: { issue: "greeting", phase: "implement" } })]),
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, mode: "implement", issue: "greeting" })]),
       stub,
     );
     const { task } = await fileAndSettle(lab);
@@ -613,7 +645,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
       },
     });
     const { lab } = await openCoderLab(
-      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, harnessFeature: { issue: "greeting", phase: "implement" } })]),
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, mode: "implement", issue: "greeting" })]),
       stub,
     );
     const { task } = await fileAndSettle(lab);
