@@ -294,7 +294,7 @@ out of this page's job; see "Left out" below).
   page. `S/branch-pull-requests.ts`; `S/index.ts:63-72`. The page plan's "Keep, trim" and its two
   topics (projection, one file) leave it out; if it stays, its facts are on the existing page and the
   source above, and a separate sheet row is needed. FLAG for the caller.
-- `@flow-state-dev/workspace/internal` subpath. `packages/workspace/package.json` exports; `S/internal.ts`.
+- `refreshLock` and `privateTempRoot`: on the root export (`S/index.ts`), for harness packages (a held checkout's lock heartbeat; a per-account private temp folder). The package has one export.
 
 ## Contradictions and corrections found
 

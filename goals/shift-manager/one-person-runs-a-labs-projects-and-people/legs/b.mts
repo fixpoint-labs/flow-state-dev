@@ -30,6 +30,7 @@ import {
   type World,
 } from "../steps.mts";
 import type { StoredItem } from "../../../lib/shift-manager.mts";
+import { suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 
 /**
  * The ask for a coder, naming what the claim isn't about: the flow and the
@@ -172,7 +173,7 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
     const inbox = await inboxAsks(world);
     if (ask?.suspensionId === undefined || !inbox.includes(ask.suspensionId)) r.fail("b2", `Inbox doesn't list the ask ${ask?.suspensionId} (lists [${inbox.join(", ")}])`);
     else {
-      await world.open(`/inbox/${encodeURIComponent(ask.suspensionId)}`);
+      await world.open(`/inbox/${encodeURIComponent(suspensionHoldId(fire.requestId, ask.suspensionId))}`);
       const card = world.page.locator(`[data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
       const text = (await card.textContent({ timeout: 15_000 }).catch(() => "")) ?? "";
       if (!text.includes(seat)) r.fail("b2", `Inbox's card doesn't name "${seat}": "${text.slice(0, 200)}"`);
@@ -191,7 +192,7 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
 
   // ---- b3 · Approve (or Reject, under deny-fire) ----------------------------------
   if (ask?.suspensionId !== undefined && fire?.requestId != null) {
-    const answered = await answerInInbox(world, ask.suspensionId, deny ? "Reject" : "Approve");
+    const answered = await answerInInbox(world, { requestId: fire.requestId, suspensionId: ask.suspensionId }, deny ? "Reject" : "Approve");
     if (!answered.clicked) r.fail("b3", `Inbox draws no card for ${ask.suspensionId} to answer`);
     const settled = await world.routes.owner.settle(await shiftCoordinatorFlowOf(world), fire.requestId, 180_000, true);
     r.saw("b3", `${deny ? "Reject" : "Approve"} clicked in Inbox; the fire's turn ended ${settled}`);

@@ -69,7 +69,7 @@ import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, type BoardTaskView
 import { toProject, type Project, type ProjectVisibility } from "./project";
 import { toWorker, workerOf, type Worker } from "./workers";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskActionName, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, suspensionHoldId, taskActionName, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 
 /** The projects the user reads: the organization's, and their own private ones. */
 export type Projects = {
@@ -625,7 +625,7 @@ export function createLabReader(client: Client): LabReader {
           : { value: answer.data };
     await inbox.answerOne(
       {
-        id: ask.item.suspensionId,
+        id: suspensionHoldId(ask.item.requestId, ask.item.suspensionId),
         source: { kind: "suspension", flowId: ask.flowId, sessionId: ask.sessionId, requestId: ask.item.requestId, suspensionId: ask.item.suspensionId },
         ask: { kind: asks, prompt: ask.item.message },
         openedAt: ask.since,

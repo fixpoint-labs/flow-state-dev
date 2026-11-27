@@ -151,7 +151,7 @@ function chainsOf(ctx: BlockContext): ResourceCollectionRef<ChainRecord> {
 }
 
 async function recordOf(ctx: BlockContext, top: ChainTop): Promise<ResourceRef<ChainRecord>> {
-  return chainsOf(ctx).getOrCreate(await chainKey(top), { top, entries: {} });
+  return chainsOf(ctx).getOrCreate(await chainKey(top), { top });
 }
 
 /**

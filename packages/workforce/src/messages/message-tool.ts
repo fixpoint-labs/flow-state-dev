@@ -202,8 +202,8 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
     resources: { ...workerMessagesResources },
     presets: {
       tools: {
-        controlTools: async (ctx) => {
-          const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+        controlTools: async (ctx: BlockContext) => {
+          const self = ctx.session.state?.[WORKER_ID_STATE_KEY];
           if (typeof self !== "string") return [];
           const description = BASE_DESCRIPTION + (await recipientsLine(ctx, installation, self));
           let tool = built.get(description);

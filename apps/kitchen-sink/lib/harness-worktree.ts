@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
-import { localWorkspaceHost, type PlaceSetup, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { localRepoWorkspaceHost, type PlaceSetup, type WorkspaceSetup } from "@flow-state-dev/workspace";
 
 /** The environment the root is derived from. */
 export type WorktreeEnv = Readonly<Record<string, string | undefined>>;
@@ -173,11 +173,5 @@ function sourceFor(repository: string) {
 /** The host for one repository. The repository is the operator's allowance; no remote is reached. */
 function hostFor(repository: string, env: WorktreeEnv, setup?: WorkspaceSetup) {
   const repo = realpathSync(repository);
-  return localWorkspaceHost({
-    root: worktreeRoot(repo, env),
-    remotes: { allow: [] },
-    localRepositories: [repo],
-    source: () => sourceFor(repo),
-    ...(setup === undefined ? {} : { setup }),
-  });
+  return localRepoWorkspaceHost({ root: worktreeRoot(repo, env), repo, baseRef: "HEAD", ...(setup === undefined ? {} : { setup }) });
 }

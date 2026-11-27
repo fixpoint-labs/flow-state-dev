@@ -92,7 +92,7 @@ import {
 } from "../tasks/lease-renewal-scope";
 import { openWorkerClaimScope, stampCurrentClaim, stampCurrentTask } from "./flow-policy-wiring";
 import { createRecordError } from "./blocks/record-result";
-import { taskBoardWorkerBodyStateSchema } from "./schemas";
+import { taskBoardWorkerBodyStateSchema, type TaskBoardWorkerBodyContext } from "./schemas";
 import { admitClaimedTask, noteTaskAnswer, type TaskEndRules } from "./task-request";
 import { StaleTaskClaimError, adoptLapsedLease } from "./stale-claim";
 import {
@@ -339,23 +339,19 @@ function buildTaskGate(options: {
   // claim the tap put on state. A board's ledger is constant up to the
   // partition the claim names; a resolved one is re-resolved from the ledger
   // id the tap recorded beside the claim.
-  const collectionFactory = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
-    const claim = ctx.sequencer!.state.currentClaim as TaskClaimTicket | undefined;
+  const collectionFactory = async (ctx: TaskBoardWorkerBodyContext): Promise<TaskCollectionRef> => {
+    const { currentClaim: claim, currentLedger: ledgerId } = ctx.sequencer!.state;
     if (ledger.kind === "board") {
       return boardLedgerAt(ledger, ctx, claim?.taskId ?? "(no claim)", claim?.partition);
     }
-    const ledgerId = ctx.sequencer!.state.currentLedger as string | undefined;
-    const resolved =
-      ledgerId === undefined || claim === undefined
-        ? undefined
-        : await ledger.resolve(ledgerId, ctx, claim.partition, claim.taskId);
-    if (resolved === undefined) {
-      throw new Error(
-        `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
-          `(${ledgerId === undefined ? "none recorded" : `"${ledgerId}"`}) no longer resolves.`
-      );
+    if (ledgerId !== undefined && claim !== undefined) {
+      const resolved = await ledger.resolve(ledgerId, ctx, claim.partition, claim.taskId);
+      if (resolved !== undefined) return inPartition(resolved, claim.taskId, ledgerId, claim.partition);
     }
-    return inPartition(resolved, claim?.taskId ?? "(no claim)", ledgerId!, claim?.partition);
+    throw new Error(
+      `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
+        `(${ledgerId === undefined ? "none recorded" : `"${ledgerId}"`}) no longer resolves.`
+    );
   };
 
   // The error recorder the inline drain composes, bound to this board's

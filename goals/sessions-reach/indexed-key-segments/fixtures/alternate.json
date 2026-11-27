@@ -1,0 +1,20 @@
+{
+  "rows": 200000,
+  "collections": 40,
+  "collectionPrefix": "workspace/projects/ünï-{n}/items/",
+  "keyLeaf": "{i}",
+  "specialKeys": [
+    "a_b/1",
+    "a%b/1",
+    "aXb/1",
+    "ünï/x",
+    "ünï0",
+    "ünïcode",
+    "日本/語",
+    "日本語",
+    "日朝",
+    "􏿿􏿿",
+    "􏿿a"
+  ],
+  "specialPrefixes": ["", "a_b", "a%", "ünï/", "ünï", "日本", "日本/", "􏿿"]
+}

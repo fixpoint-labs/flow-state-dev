@@ -287,6 +287,7 @@ describe("a session belongs to one instance", () => {
         flowId: "review-east",
         actionName: "run",
         userId: "u_1",
+        orgId: DEFAULT_ORG_ID,
         sessionId: "s_held",
         source: "http",
         status: "in_progress",
@@ -304,6 +305,7 @@ describe("a session belongs to one instance", () => {
       flowId: "review-east",
       actionName: "run",
       userId: "u_1",
+      orgId: DEFAULT_ORG_ID,
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now

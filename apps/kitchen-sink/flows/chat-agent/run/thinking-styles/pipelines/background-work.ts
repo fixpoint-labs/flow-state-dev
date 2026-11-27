@@ -162,23 +162,9 @@ export const reportAcknowledgementSchema = z.object({
   reportedBackgroundTaskIds: z.array(z.string()).default([]),
 });
 
-/**
- * The rows this conversation has already told the user about, in EITHER
- * spelling.
- *
- * The union is the whole shim: a session that started before FIX-766 holds its
- * acknowledgements under `reportedBackgroundTaskIds`, and reading only the
- * current key would default to `[]` and re-announce every finished job. Never
- * written — the merged set is persisted under the current name on the next
- * acknowledgement, so a session converges after one report.
- */
-export function alreadyReportedTaskIds(
-  state: Partial<z.infer<typeof reportAcknowledgementSchema>> | undefined
-): Set<string> {
-  return new Set([
-    ...(state?.reportedSideChainTaskIds ?? []),
-    ...(state?.reportedBackgroundTaskIds ?? []),
-  ]);
+/** The tasks this conversation already reported, including pre-rename acknowledgements. */
+export function alreadyReportedTaskIds(state: z.infer<typeof reportAcknowledgementSchema>): Set<string> {
+  return new Set([...state.reportedSideChainTaskIds, ...state.reportedBackgroundTaskIds]);
 }
 
 /**

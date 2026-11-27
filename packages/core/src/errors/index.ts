@@ -21,7 +21,7 @@ export type { RouteUnavailableDetails } from "./route-unavailable-error";
 export { RecordedValueOmittedError, RECORDED_VALUE_OMITTED } from "./recorded-value-omitted-error";
 export type { RecordedValueOmittedDetails } from "./recorded-value-omitted-error";
 export { isAbortLike } from "./abort";
-export { errorDetailsWithCause } from "./serialize-error";
+export { containsSecret, errorDetailsWithCause } from "./serialize-error";
 export {
   SuspensionError,
   SuspensionRejectedError,

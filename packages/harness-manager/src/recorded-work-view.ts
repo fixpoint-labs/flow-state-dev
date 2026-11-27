@@ -22,7 +22,7 @@ import {
   readPlanTarget,
 } from "@flow-state-dev/core/harness";
 import { z } from "zod";
-import { openedPullRequestsOf, planStepsOf, type RecordedEntry } from "./recorded-work";
+import { openedPullRequestsOf, planStepsOf } from "./recorded-work";
 
 /** The most rows of each kind the view answers, as the browser reader reads a page. */
 const RECORDED_MAX = 200;
@@ -34,11 +34,8 @@ const recordedWorkSchema = z.object({
   pullRequests: z.object({ rows: z.array(z.object({ number: z.number().nullable(), url: z.string(), title: z.string().nullable() })), truncated: z.boolean() }),
 });
 
-type Stored = { path: string; state: unknown };
-type Listing = { list(prefix?: string): Promise<Stored[]>; findBy(index: string, value: string): Promise<Stored[]> };
-
-/** `stored`, keyed under its collection as a client reads it. */
-const entriesOf = (collection: string, stored: readonly Stored[]): RecordedEntry[] =>
+/** A collection row keyed as the browser reads it, preserving its declared state type. */
+const entriesOf = <TState>(collection: string, stored: readonly { path: string; state: TState }[]) =>
   stored.map((ref) => ({ topic: ref.path.startsWith(`${collection}/`) ? ref.path.slice(collection.length + 1) : ref.path, data: ref.state }));
 
 /**
@@ -59,15 +56,17 @@ export function recordedWorkView() {
         [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
       },
       execute: async (input, ctx) => {
-        const resources = ctx.resources as unknown as Record<string, Listing>;
-        const markers = entriesOf(OBSERVED_PLAN_LIST, await resources[OBSERVED_PLAN_LIST]!.list(`${planKeySegment(input.requestId)}/`));
+        const markers = entriesOf(OBSERVED_PLAN_LIST, await ctx.resources[OBSERVED_PLAN_LIST].list(`${planKeySegment(input.requestId)}/`));
         const target = readPlanTarget(
           input.requestId,
-          markers.map((marker) => ({ topic: marker.topic, conversation: (marker.data as { conversation?: string | null } | undefined)?.conversation })),
+          markers.map(({ topic, data }) => ({ topic, conversation: data?.conversation })),
         );
         const planPrefix = target.resourcesPrefix.slice(OBSERVED_PLAN.length + 1);
         // A plan is per run by its key's prefix; pull requests key by pull request, so this run's are found by its index.
-        const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.findBy("requestId", input.requestId)]);
+        const [plan, opened] = await Promise.all([
+          ctx.resources[OBSERVED_PLAN].list(planPrefix),
+          ctx.resources[OBSERVED_PULL_REQUESTS].findBy("requestId", input.requestId),
+        ]);
         // Only this run's rows are read, so earlier runs never use up its allowance.
         const runs = openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId);
         return {

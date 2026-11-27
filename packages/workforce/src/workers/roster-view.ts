@@ -13,7 +13,7 @@
  * The client's handle is `rosterView` (`roster-view-ref.ts`), which holds no block.
  */
 import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, ProjectedResourceCollectionRef, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { WorkerInstallation } from "./installation";
 import { STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
@@ -37,6 +37,10 @@ const rosterSchema = z.array(rosterEntrySchema);
 export type RosterView = ViewDefinition<BlockDefinition<z.ZodObject<Record<string, never>>, typeof rosterSchema>, "user">;
 
 type StoredEntry = { path: string; state: Record<string, unknown> };
+type RosterResources = {
+  [WORKERS_RESOURCE]: Pick<ResourceCollectionRef, "list">;
+  [STANDARD_WORKERS_RESOURCE]: Pick<ProjectedResourceCollectionRef, "list">;
+};
 
 const textOrNull = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const recordOf = (value: unknown): Record<string, unknown> =>
@@ -73,14 +77,11 @@ export function rosterResources(installation: WorkerInstallation) {
  * The running user's roster, as the roster view answers it, read through
  * `ctx`'s worker collections (a block that declares {@link rosterResources}).
  */
-export async function readRosterEntries(ctx: { resources: unknown }, installation: WorkerInstallation): Promise<z.infer<typeof rosterSchema>> {
-  const own = installation.resources[WORKERS_RESOURCE];
-  // What a browser reads of an own row: the collection's client projection.
-  const project = (own as { client?: { data?: (state: unknown) => unknown } }).client?.data ?? ((state: unknown) => state);
-  const resources = ctx.resources as unknown as {
-    [WORKERS_RESOURCE]: { list(): Promise<StoredEntry[]> };
-    [STANDARD_WORKERS_RESOURCE]: { list(query?: { cursor?: string }): Promise<{ items: StoredEntry[]; nextCursor?: string }> };
-  };
+export async function readRosterEntries(
+  { resources }: { resources: RosterResources },
+  installation: WorkerInstallation
+): Promise<z.infer<typeof rosterSchema>> {
+  const project = installation.resources[WORKERS_RESOURCE].client.data;
   // The standard projection answers in pages: read every one.
   const everyStandard = async (): Promise<StoredEntry[]> => {
     const all: StoredEntry[] = [];

@@ -85,7 +85,7 @@ describe("C1 · organization identity is resolved once, from a trusted source", 
         contextFor("plain", { userId: "u1" })
       );
 
-      expect(principal).toEqual({ userId: "u1", orgId: DEFAULT_ORG_ID });
+      expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "u1", orgId: DEFAULT_ORG_ID });
     });
 
     it("ignores a body-supplied orgId, so a browser cannot pick the organization", async () => {
@@ -124,7 +124,7 @@ describe("C1 · organization identity is resolved once, from a trusted source", 
         contextFor("plain", { userId: "spoofed", orgId: "attacker-org" })
       );
 
-      expect(principal).toEqual({ userId: "u1", orgId: "verified-org" });
+      expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "u1", orgId: "verified-org" });
     });
 
     it("prefers a per-flow resolver's organization over the host-level fallback", async () => {
@@ -139,7 +139,7 @@ describe("C1 · organization identity is resolved once, from a trusted source", 
 
       const principal = await host.resolvePrincipal(contextFor("scoped"));
 
-      expect(principal).toEqual({ userId: "flow-user", orgId: "flow-org" });
+      expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "flow-user", orgId: "flow-org" });
     });
   });
 
@@ -201,7 +201,7 @@ describe("C1 · organization identity is resolved once, from a trusted source", 
 
       const principal = await host.resolvePrincipal(contextFor("machine"));
 
-      expect(principal).toEqual({ userId: "system", orgId: "machine-org" });
+      expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "system", orgId: "machine-org" });
     });
 
     it("does not leak the org value into the refusal message", async () => {

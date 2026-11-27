@@ -61,6 +61,8 @@ const publishOutcomeSchema = z.union([z.object({ published: z.string() }), z.obj
 /** The request state a publish keeps beside the message counts. */
 const publishTurnStateSchema = messageTurnStateSchema.extend({ [TURN_PUBLISHED_STATE]: z.record(z.string(), z.string()).optional() });
 
+type PublishContext = BlockContext<z.infer<typeof publishTurnStateSchema>>;
+
 /** A new event id. */
 const newEventId = () => `evt_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 
@@ -72,16 +74,13 @@ async function publishKey(input: PublishEventInput, data: unknown): Promise<stri
 }
 
 /** The event's id for this publish in this request: the one kept for it, or a new one, kept. */
-async function eventIdFor(ctx: BlockContext, key: string): Promise<string> {
+async function eventIdFor(ctx: PublishContext, key: string): Promise<string> {
   const fresh = newEventId();
-  const kept = await withOutcome(
-    (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never),
-    (current: Readonly<Record<string, unknown>>) => {
-      const published = (current[TURN_PUBLISHED_STATE] ?? {}) as Record<string, string>;
-      const id = published[key];
-      return id !== undefined ? { state: {}, result: id } : { state: { [TURN_PUBLISHED_STATE]: { ...published, [key]: fresh } }, result: fresh };
-    }
-  );
+  const kept = await withOutcome(ctx.request.atomicState, (current) => {
+    const published = current[TURN_PUBLISHED_STATE];
+    const id = published?.[key];
+    return id !== undefined ? { state: {}, result: id } : { state: { [TURN_PUBLISHED_STATE]: { ...published, [key]: fresh } }, result: fresh };
+  });
   return typeof kept === "string" ? kept : fresh;
 }
 
@@ -105,15 +104,10 @@ export interface PublishingOptions {
 }
 
 /**
- * Publish `input` from the running session. See the file header for what is
+ * Publish the checked input from the running session. See the file header for what is
  * checked, and in what order.
  */
-async function publish(ctx: BlockContext, options: PublishingOptions, input: unknown): Promise<PublishOutcome> {
-  const parsed = publishEventInputSchema.safeParse(input);
-  if (!parsed.success) {
-    return { refused: `invalid_input: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; ")}. Nothing was published.` };
-  }
-  const given = parsed.data;
+async function publish(ctx: PublishContext, options: PublishingOptions, given: PublishEventInput): Promise<PublishOutcome> {
   const undeclaredTopic = undeclared(options.topics, given.topic, [given.kind], "publish");
   if (undeclaredTopic !== undefined) return { refused: `${undeclaredTopic} Nothing was published.` };
   const topic = options.topics[given.topic]!;
@@ -195,7 +189,13 @@ export function definePublishing(options: PublishingOptions) {
     presets: { tools: { tools: [tool] }, default: ["tools"] }
   });
   return {
-    publishEvent: (ctx: BlockContext, input: unknown) => publish(ctx, options, input),
+    publishEvent: async (ctx: BlockContext, input: unknown): Promise<PublishOutcome> => {
+      const parsed = publishEventInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return { refused: `invalid_input: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; ")}. Nothing was published.` };
+      }
+      return publish(ctx, options, parsed.data);
+    },
     capability,
     resources
   };

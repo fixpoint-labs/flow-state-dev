@@ -147,7 +147,7 @@ async function open(
   const lab = await openLab({
     stores: inMemoryStores(),
     harnesses: [readyHarness(harness)],
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     inventory: true,
@@ -195,7 +195,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { harnessFeature: { issue: line[1], phase: "implement" } } } }];
+            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { mode: "implement", issue: line[1] } } }];
       }
       const call = queue.shift();
       step += 1;

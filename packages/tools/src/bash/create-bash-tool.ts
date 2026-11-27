@@ -29,13 +29,12 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type {
   Sandbox,
   SandboxProvider,
-  FileEntryState,
   BashSessionState,
   CreateBashToolOptions,
   CreateBashToolResult,
 } from "./types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import { unscopedCollectionId } from "@flow-state-dev/workspace";
+import { unscopedCollectionId, type ProjectedEntryState } from "@flow-state-dev/workspace";
 import {
   TMP_DIR,
   createBashProjection,
@@ -124,14 +123,14 @@ export async function createBashTool(
       writable: true,
     });
   }
-  const projection = createBashProjection(sandbox, destination, mounts);
+  const session = createBashProjection(sandbox, destination, mounts);
 
   // 3. Hydrate: resources → sandbox. The markers go down FIRST, so an empty
   // collection still has a directory for the flush walk to find — without
   // them, `find` against a never-created prefix exits non-zero and takes an
   // otherwise successful command down with it.
   await seedWorkspaceMarkers(sandbox, destination, mounts);
-  await projection.hydrate();
+  await session.hydrate();
 
   // 4. Build file listing for LLM context.
   //
@@ -143,7 +142,7 @@ export async function createBashTool(
   const listed = await Promise.all(
     mounts.map(async (mount) => {
       const refs = await (
-        mount.collection as unknown as ResourceCollectionRef<FileEntryState>
+        mount.collection as unknown as ResourceCollectionRef<ProjectedEntryState>
       ).list();
       return refs.map((ref) => {
         const key = ref.state.path ?? "";
@@ -175,7 +174,7 @@ export async function createBashTool(
         // Read, not discarded, and never allowed to throw: a refused write
         // that nothing mentions is a write the caller believes landed, and a
         // failed walk must not fail a command that succeeded.
-        await flushWithDiagnostics(projection, mounts, sandbox.hostMountSource);
+        await flushWithDiagnostics(session, mounts, sandbox.hostMountSource);
 
         if (onAfterCommand) {
           const modified = onAfterCommand(cmd, result);
@@ -207,7 +206,7 @@ export async function createBashTool(
       execute: async ({ path: filePath, content }) => {
         const fullPath = `${destination}/${filePath}`;
         await sandbox.writeFile(fullPath, content);
-        const outcome = await projection.put(filePath, content);
+        const outcome = await session.projection.put(filePath, content);
         if (outcome !== undefined) warnUnsettled([outcome]);
         const refused = refusalReason(outcome);
         return { success: refused === null, refused };

@@ -15,7 +15,6 @@
  * to — the asymmetry the Claude Code capability documents at length.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { codexAgent, type CodexAgentOptions } from "./agent";
 
 /**
@@ -25,7 +24,9 @@ import { codexAgent, type CodexAgentOptions } from "./agent";
  */
 export function createCodexAgentCapability(options: CodexAgentOptions = {}) {
   const agent = codexAgent(options);
-  const resources = promotedResources(agent);
+  // Preset tools do not register their resources on the flow. The built handler has
+  // already resolved its own declarations and statically installed capabilities.
+  const resources = { ...agent.declaredResources };
 
   return defineCapability({
     name: "codex-agent",
@@ -35,32 +36,4 @@ export function createCodexAgentCapability(options: CodexAgentOptions = {}) {
       default: ["tools"],
     },
   });
-}
-
-/**
- * The resource declarations the built agent block ended up with.
- *
- * They cannot stay where they were installed. `uses` puts them on the agent
- * handler, the handler is a tool inside this capability's preset, and a tool's
- * resources reach no flow — `mergeSurfaceInto` never reads a surface's `tools`
- * for them, and `collectBlockResources` gathers declarations from ACTION blocks
- * only. So the capability would be live at runtime with `ctx.resources` entries
- * resolving to nothing, and the route would 404 on a build that succeeded.
- *
- * **Read off the CONSTRUCTED block, not off the `uses` list.** Walking the list
- * and taking each reference's top-level `resources` sees only what a capability
- * declares at its own root: it misses resources an active preset contributes,
- * ones an open-config capability resolves when it is applied, and ones a nested
- * capability declares. `handler()` has already resolved all of that into
- * `declaredResources`, so asking the block is both simpler and complete.
- *
- * Dynamic `uses` entries still contribute nothing here, and that is the
- * framework's constraint rather than this function's: they resolve per call, and
- * a resource has to exist before the block runs. Two capabilities claiming one
- * accessor name is already the framework's refusal to make, at construction.
- */
-function promotedResources(agent: {
-  declaredResources?: Record<string, DeclaredResourceEntry>;
-}): Record<string, DeclaredResourceEntry> {
-  return { ...(agent.declaredResources ?? {}) };
 }

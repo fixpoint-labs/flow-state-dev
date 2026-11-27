@@ -16,10 +16,10 @@
  *
  * Nothing here names a harness. A mode supplies only its block.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import {
   harnessSessionFeeds,
   harnessSessionFlow,
-  type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
@@ -52,14 +52,14 @@ const workspace: HarnessSessionWorkspace = {
 };
 
 /** `feeds` with the goal control in force applied. */
-function withGoalControls(feeds: HarnessSessionFeeds, defaultModel: string | undefined): HarnessSessionFeeds {
+function withGoalControls(feeds: HarnessFeeds, defaultModel: string | undefined): HarnessFeeds {
   return {
     ...feeds,
     // Never holds an offer under the control, so goal legs **k** and **w** can be seen to fail.
-    onSteerable: (steer, ctx) => feeds.onSteerable(goalControl() === "no-live-steer" ? null : steer, ctx),
+    onSteerable: (steer, ctx) => feeds.onSteerable?.(goalControl() === "no-live-steer" ? null : steer, ctx),
     // Hands the harness the mode's default whatever was picked, so the goal's
     // "the harness ran the picked model" leg can be seen to fail.
-    model: (ctx) => (goalControl() === "ignore-model" ? defaultModel : feeds.model(ctx)),
+    model: (ctx) => (goalControl() === "ignore-model" ? defaultModel : feeds.model?.(ctx)),
     // Hands the run the repository itself, so goal leg **w** can be seen to fail.
     cwd: (ctx) => (goalControl() === "main-checkout" ? repository() : feeds.cwd(ctx)),
     worktree: (ctx) => (goalControl() === "main-checkout" ? repository() : feeds.worktree(ctx)),
@@ -75,7 +75,7 @@ function withGoalControls(feeds: HarnessSessionFeeds, defaultModel: string | und
 const HARNESS_CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /** The feeds a mode's block gets, for a test that reads the block's options. */
-export function kitchenSinkHarnessFeeds(kind: string, defaultModel?: string): HarnessSessionFeeds {
+export function kitchenSinkHarnessFeeds(kind: string, defaultModel?: string): HarnessFeeds {
   return withGoalControls(harnessSessionFeeds(kind, workspace, defaultModel), defaultModel);
 }
 
@@ -84,7 +84,7 @@ export interface KitchenSinkHarnessFlowOptions {
   /** The flow kind, one per harness mode (`claude-code-session`). */
   readonly kind: string;
   /** Build the harness block from the feeds. */
-  readonly agent: (feeds: HarnessSessionFeeds) => HarnessBlock;
+  readonly agent: (feeds: HarnessFeeds) => HarnessBlock;
   /**
    * The model a session with none runs on, and the one the `ignore-model`
    * goal control hands the harness. Unset, the harness runs its own default.
