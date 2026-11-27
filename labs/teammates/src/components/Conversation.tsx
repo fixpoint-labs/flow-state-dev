@@ -11,6 +11,7 @@ import { dayLabel } from "../lib/day-label";
 import { answeringStep, PLAIN, useStatus } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { cn } from "../lib/utils";
+import { AnsweringLoader, useLoaderPerReply } from "./AnsweringLoader";
 import { BotFigure } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
@@ -150,6 +151,8 @@ export function Conversation({
   const answering = running && last?.kind !== "assistant";
   // What it is doing while it answers; a stale feed can't say, so the line falls back to "is answering".
   const step = answering && !stale ? answeringStep(drawn) : undefined;
+  // The bubble's loader, drawn once when the turn starts and kept until it ends, however often the bubble comes and goes.
+  const loader = useLoaderPerReply(running);
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -384,7 +387,9 @@ export function Conversation({
               </Fragment>,
             ]).concat(waiting.filter((w) => w.at === lines.length).map(card))}
             {answering ? (
-              <div role="status" data-chat-activity className={cn("w-fit rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
+              <div role="status" data-chat-activity className={cn("flex w-fit items-center gap-2 rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
+                {/* Blue means live: a turn waiting on you gets the highlighter and no loader. */}
+                {loader === undefined || step?.needsYou ? null : <AnsweringLoader variant={loader} />}
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
               </div>
             ) : null}
