@@ -71,7 +71,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: () => ({ userId: "devuser", orgId: "kitchen-sink" })
     });
-    await expect(app.resolveInProcessPrincipal(question("echo"))).resolves.toEqual({
+    await expect(app.resolveInProcessPrincipal(question("echo"))).resolves.toEqual({ kind: "person", resolvedBy: expect.any(String),
       userId: "devuser",
       orgId: "kitchen-sink",
       from: "resolver"
@@ -84,7 +84,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: () => ({ userId: "devuser", orgId: "kitchen-sink" })
     });
-    await expect(app.resolveInProcessPrincipal(question("own"))).resolves.toEqual({
+    await expect(app.resolveInProcessPrincipal(question("own"))).resolves.toEqual({ kind: "person", resolvedBy: expect.any(String),
       userId: "flow-user",
       orgId: "flow-org",
       from: "resolver"
@@ -96,7 +96,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
       flows: [flow("echo")],
       stores: { default: { primary: inMemoryStores() } }
     });
-    await expect(app.resolveInProcessPrincipal(question("echo", "alice"))).resolves.toEqual({
+    await expect(app.resolveInProcessPrincipal(question("echo", "alice"))).resolves.toEqual({ kind: "person", resolvedBy: expect.any(String),
       userId: "alice",
       orgId: DEFAULT_ORG_ID,
       from: "development-default"
@@ -110,7 +110,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
   it("answers a bare registry the same way (the discovery path)", async () => {
     const registry = createFlowRegistry();
     registry.register(flow("echo"));
-    await expect(resolveInProcessPrincipal({ registry }, question("echo"))).resolves.toEqual({
+    await expect(resolveInProcessPrincipal({ registry }, question("echo"))).resolves.toEqual({ kind: "person", resolvedBy: expect.any(String),
       userId: "cli-user",
       orgId: DEFAULT_ORG_ID,
       from: "development-default"
@@ -225,7 +225,7 @@ describe("source \"cli\" is reserved for the in-process entry point", () => {
       /^refused: source "cli" is reserved for the engine's in-process entry point/
     );
     // The same app still answers its own terminal.
-    await expect(app.resolveInProcessPrincipal(question("echo"))).resolves.toEqual({
+    await expect(app.resolveInProcessPrincipal(question("echo"))).resolves.toEqual({ kind: "person", resolvedBy: expect.any(String),
       userId: "local-dev",
       orgId: "acme",
       from: "resolver"

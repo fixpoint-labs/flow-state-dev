@@ -303,6 +303,39 @@ describe("what the walk refuses", () => {
     expect(files.map((file) => file.name)).toEqual(["lpt0", "com0"]);
   });
 
+  it("registers .mts files, imported as the .mjs they compile to", async () => {
+    // The kit claims `.mts`, so a file that starts the app must be in the
+    // generated map — an app wiring its `.mts` worker flows by hand is the same
+    // tree `fsdev gen` reads. An extensionless import does not resolve to
+    // `.mts`, so its specifier carries the output extension.
+    const root = tree({
+      "flows/workers/digest.mts": "export default {};",
+      "blocks/ledger.mts": "export default {};",
+      "flows/workers/intake.tsx": "export default {};",
+    });
+
+    const { files } = await discoverWorkforceCode(root);
+
+    expect(files.map((file) => [file.slot, file.name, file.importPath])).toEqual([
+      ["block", "ledger", "./blocks/ledger.mjs"],
+      ["worker", "digest", "./flows/workers/digest.mjs"],
+      ["worker", "intake", "./flows/workers/intake"],
+    ]);
+  });
+
+  it("refuses a .ts and a .mts claiming one basename", async () => {
+    const root = tree({
+      "flows/workers/standup.ts": "export default {};",
+      "flows/workers/standup.mts": "export default {};",
+    });
+
+    const problems = await refusalsOf(root);
+
+    expect(problems).toEqual([
+      expect.stringContaining('both declare "standup" — one basename, one worker flow'),
+    ]);
+  });
+
   it("refuses one basename claimed by two files in the flow folder", async () => {
     const root = tree({
       "flows/workers/standup.ts": "export default {};",

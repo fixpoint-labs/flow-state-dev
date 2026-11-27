@@ -151,15 +151,7 @@ async function waitingTasksOf(ctx: BlockContext, sessionId: string, lineageId: s
   const tasks = ledger?.list() ?? [];
   const held = new Set(
     inboxItems({
-      rows: tasks.map((task) => ({
-        board: sessionId,
-        id: task.id,
-        title: task.title ?? null,
-        status: task.status,
-        run: task.run ?? null,
-        holds: task.holds ?? [],
-        steers: task.steers ?? []
-      })),
+      rows: tasks.map((task) => ({ ...task, board: sessionId })),
       suspensions: [],
       // Only which tasks hold the user is read here, not where an answer goes.
       flowOf: () => null

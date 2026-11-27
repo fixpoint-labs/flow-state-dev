@@ -1,10 +1,11 @@
 /**
  * A Lab on in-memory stores holds an ask from a worker hired after it opened.
  *
- * The tree here gives no worker a tool that asks first: the Shift Coordinator can
- * hire but not fire, and the project writes are off. A worker hired with
- * `fire` in its settings still asks before it fires, so the Lab must hold that
- * ask on its in-memory stores, not fail it for want of durable execution.
+ * The tree here gives no worker a tool that asks first: the Shift Coordinator
+ * can neither hire nor fire, and the project writes are off. A worker the user
+ * hires on the roster with `fire` in its settings still asks before it fires,
+ * so the Lab must hold that ask on its in-memory stores, not fail it for want
+ * of durable execution.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,13 +24,13 @@ afterEach(async () => {
   opened = undefined;
 });
 
-/** The Lab's own tree, with the Shift Coordinator's `fire` taken away. */
-function treeWithoutFire(): string {
+/** The Lab's own tree, with the Shift Coordinator's `hire` and `fire` taken away. */
+function treeWithoutRosterTools(): string {
   const root = join(mkdtempSync(join(tmpdir(), "sm-hired-ask-tree-")), "workforce");
   cpSync(LAB_TREE, root, { recursive: true });
   const file = join(root, "org/workers/shift-coordinator/WORKER.md");
   const before = readFileSync(file, "utf8");
-  const after = before.replace(/^tools: \[hire, fire, /m, "tools: [hire, ");
+  const after = before.replace(/^tools: \[hire, fire, /m, "tools: [");
   if (after === before) throw new Error("the Shift Coordinator's tools line changed; update this test's tree");
   writeFileSync(file, after);
   return root;
@@ -83,7 +84,7 @@ describe("a worker hired after the Lab opened", () => {
     opened = await openLab({
       modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
       stores: inMemoryStores(),
-      root: treeWithoutFire(),
+      root: treeWithoutRosterTools(),
       withoutProjectTools: true,
       harnesses: [harness.value],
       runTimeoutMs: harness.runTimeoutMs,
@@ -92,16 +93,20 @@ describe("a worker hired after the Lab opened", () => {
     });
     const lab = opened;
 
-    const hired = await run(
-      lab,
-      "shift-coordinator",
-      { toolName: "hire", args: { id: "helper", flow: FLOW, settings: { tools: ["fire"] } } },
-      "hire a helper that can fire",
-    );
+    const runtime = await lab.state.getRuntime();
+    const hired = await runAction({
+      orgId: LAB_ORG_ID,
+      flow: runtime.registry.get("workforce-roster") as FlowInstance,
+      actionName: "hire",
+      input: { id: "helper", flow: FLOW, settings: { tools: ["fire"] } },
+      userId: LAB_USER_ID,
+      sessionId: "roster-hired-ask",
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never);
     expect(hired.error).toBeUndefined();
 
     const fired = await run(lab, "helper", { toolName: "fire", args: { id: "helper" } }, "fire yourself");
-    const runtime = await lab.state.getRuntime();
     expect((await runtime.stores.request.get(fired.requestId!))?.status).toBe("suspended");
     const pending = (await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[];
     expect(pending.map((record) => record.message)).toEqual(['Fire worker "helper"?']);

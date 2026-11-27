@@ -39,7 +39,7 @@ import {
 import { z } from "zod";
 import { CODER_FLOW } from "../coder-flow-name";
 import { landedOf, landedWorkSchema } from "../landed-work";
-import { pullRequestWait, type PullRequestWaitInput } from "../pull-request-wait";
+import { pullRequestWait } from "../pull-request-wait";
 
 /** The conversation board's ledger id and its `updateTask` action, where a task's own questions are answered. */
 const BOARD = "tasks";
@@ -120,14 +120,8 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
         const asks = new Map(
           inboxItems({
             rows: [...full.values()].map((task) => ({
+              ...task,
               board: input.sessionId,
-              id: task.id,
-              title: task.title ?? null,
-              assignee: task.assignee ?? null,
-              status: task.status,
-              run: task.run ?? null,
-              holds: task.holds ?? [],
-              steers: task.steers ?? [],
               holder: { sessionId: input.sessionId, action: UPDATE_TASK_ACTION },
             })),
             suspensions: [],
@@ -150,7 +144,7 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
           const harness = task === undefined ? null : harnessOf(entry, task);
           const output = (task?.output ?? {}) as Record<string, unknown>;
           const review = harness !== null && entry.status === "completed" && (output.review === "accepted" || output.review === "deadline") ? output.review : null;
-          const wait = task === undefined ? null : pullRequestWait({ status: task.status, holds: task.holds as unknown as PullRequestWaitInput["holds"], steers: task.steers ?? [] });
+          const wait = task === undefined ? null : pullRequestWait(task);
           const held = asks.get(entry.id) ?? [];
           // One `taskView` of the row with its asks gives both its title and its state: neither rule is copied here.
           const seen = taskView({ ...entry, board: input.sessionId }, held);

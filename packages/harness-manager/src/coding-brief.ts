@@ -19,7 +19,7 @@
  * );
  * ```
  */
-import { harnessFeatureOf, type PromptRunContext } from "./manager";
+import type { PromptRunContext } from "./manager";
 import { RUN_REPORT_ASK } from "./run-report";
 
 /** What an app puts in a coding brief beside the task. Every part is optional. */
@@ -74,7 +74,7 @@ function section(heading: string, body: string | undefined): string[] {
 export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): string {
   const { task } = run;
   // A board that mints its own row ids runs a feature row under the minted id, so name the issue too.
-  const issue = harnessFeatureOf(task.input)?.issue;
+  const issue = run.trackerIssue ?? undefined;
   return [
     `# Your task`,
     ``,

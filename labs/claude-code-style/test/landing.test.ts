@@ -4,6 +4,7 @@
  * an accepted run's work went is the coding board view's, read by harness-manager's one reader.
  */
 import { describe, expect, it } from "vitest";
+import { suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import { acceptOf, reviewStopIdOf } from "../src/lib/review-stop";
 
 describe("acceptOf", () => {
@@ -19,10 +20,11 @@ describe("acceptOf", () => {
 
 describe("reviewStopIdOf", () => {
   // Each review round is one stop: a run sent back, or a landing retried, stops under a new id.
-  it("names the latest review stop, so a new round is told apart from the one an accept answered", () => {
-    const stop = (id: string) => ({ id, type: "suspension", kind: "review", data: null }) as unknown as Parameters<typeof reviewStopIdOf>[0][number];
-    expect(reviewStopIdOf([stop("stop-1")])).toBe("stop-1");
-    expect(reviewStopIdOf([stop("stop-1"), stop("stop-2")])).toBe("stop-2");
+  // The id is the board's review hold id, so an answer can check the round on screen is the round the board holds.
+  it("names the latest review stop by its hold id, so a new round is told apart from the one an accept answered", () => {
+    const stop = (id: string) => ({ id: `item-${id}`, type: "suspension", requestId: "req_1", suspensionId: id, kind: "review", data: null }) as unknown as Parameters<typeof reviewStopIdOf>[0][number];
+    expect(reviewStopIdOf([stop("stop-1")])).toBe(suspensionHoldId("req_1", "stop-1"));
+    expect(reviewStopIdOf([stop("stop-1"), stop("stop-2")])).toBe(suspensionHoldId("req_1", "stop-2"));
     expect(reviewStopIdOf([])).toBeUndefined();
   });
 });

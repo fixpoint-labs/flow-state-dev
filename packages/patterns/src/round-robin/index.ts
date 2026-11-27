@@ -35,6 +35,7 @@ import type {
   BlockContext,
   BlockDefinition,
   DefinedResource,
+  ResourceRef,
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import {
@@ -45,7 +46,6 @@ import {
   type RoundRobinFinalShape,
   type RoundRobinInput,
   type RoundRobinRefereeOutput,
-  type RoundRobinState,
 } from "./schemas";
 import { createInitContributions } from "./blocks/init-contributions";
 import { createRecordContribution } from "./blocks/record-contribution";
@@ -263,7 +263,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // Build the pipeline. Start with init + stamp + increment, then chain
   // (roster[i] → record[i]) for each entry, optionally append the referee
   // + stash, then close the loop.
-  let pipeline: any = sequencer({
+  let pipeline = sequencer({
     name,
     inputSchema: roundRobinInputSchema,
     stateSchema: roundRobinStateSchema,
@@ -303,9 +303,9 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     pipeline = pipeline.step(config.referee).tap(stashRefereeCritique);
   }
 
-  pipeline = pipeline
+  const completed = pipeline
     .loopBack(incrementRound.name, {
-      when: (_value: unknown, ctx: any) => {
+      when: (_value, ctx) => {
         const state = ctx.sequencer!.state;
         if (state.round >= maxRounds) return false;
         if (terminateWhen !== undefined && terminateWhen(ctx)) {
@@ -315,20 +315,18 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       },
       maxIterations: Math.max(0, maxRounds - 1),
     })
-    .map((_value: unknown, ctx: any) => {
+    .map((_value, ctx): RoundRobinFinalShape => {
       const state = ctx.sequencer!.state;
-      const contribState = ctx.resources?.[accessorKey]
-        ?.state as RoundRobinContributionsState | undefined;
-      const final: RoundRobinFinalShape = {
+      const ref = ctx.resources?.[accessorKey] as ResourceRef<RoundRobinContributionsState> | undefined;
+      return {
         rounds: state.round,
-        contributions: contribState?.entries ?? [],
+        contributions: ref?.state?.entries ?? [],
         refereeCritiques: state.refereeCritiques,
       };
-      return final;
     });
 
   if (config.synthesizer === false) {
-    return pipeline as SequencerDefinition<any, any>;
+    return completed;
   }
 
   const synth =
@@ -346,5 +344,5 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         : {}),
     });
 
-  return pipeline.step(synth) as SequencerDefinition<any, any>;
+  return completed.step(synth);
 }

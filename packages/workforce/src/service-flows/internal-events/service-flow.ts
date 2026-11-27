@@ -58,7 +58,7 @@ function internalProvider(topics: InternalTopics, screens: SubscriptionScreens |
     ...(screens === undefined ? {} : { screens }),
     canRead(thread: string, ctx: BlockContext) {
       const topic = topicOf(thread);
-      const orgId = (ctx.session.identity as { orgId?: string }).orgId;
+      const orgId = ctx.session.identity.orgId;
       return topic !== undefined && Object.hasOwn(topics, topic) && typeof orgId === "string" && orgId.length > 0;
     },
     self: (_ctx, hearer) => hearer.sessionId,

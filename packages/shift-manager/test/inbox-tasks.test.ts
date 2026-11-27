@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
-import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { inboxItems, suspensionHoldId, taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { elapsed, isQueued, nothingWaitingSentence, summaryLine } from "../src/lib/tasks";
 import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
 import { itemAtRoute } from "../src/lib/inbox-list";
@@ -160,23 +160,25 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     expect(summaryLine({ ok: true, value: viewOf(tasks, [{ suspensionId: "a1", workerId: "eng.em" }]) }, workers)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
   });
 
-  it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
+  it("an Inbox link written with a stop's hold id opens the task's item that holds it, and a bare suspension id opens nothing", () => {
     const held = row("T", "in_progress", {
       run: { sessionId: "s_run", requestId: "req_1", attempt: 1 },
       holds: [
         {
-          id: "susp_legacy",
+          id: "susp_1",
           actor: "user",
           openedAt: 1,
-          source: { kind: "suspension", requestId: "req_1", suspensionId: "susp_legacy" },
+          source: { kind: "suspension", requestId: "req_1", suspensionId: "susp_1" },
           ask: { kind: "approval", prompt: "Ship it?" },
         },
       ],
     });
     const { items } = viewOf([held]);
-    const item = itemAtRoute(items, "susp_legacy");
+    const item = itemAtRoute(items, suspensionHoldId("req_1", "susp_1"));
     expect(item?.id).toBe(`task:${held.boardRef}:T`);
     expect(itemAtRoute(items, item!.id)).toBe(item);
+    // A suspension id is unique only within its request: alone it names no hold.
+    expect(itemAtRoute(items, "susp_1")).toBeNull();
     expect(itemAtRoute(items, "nothing")).toBeNull();
   });
 
@@ -188,7 +190,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { suspensionId: "sp_report", workerId: "error-reporter", sessionId: report },
       { suspensionId: "sp_task", workerId: "eng.coder", sessionId: "s_run" },
     ]);
-    expect(itemAtRoute(items, report)?.id).toBe("sp_report");
+    expect(itemAtRoute(items, report)?.id).toBe(suspensionHoldId("req_sp_report", "sp_report"));
     // Anything else opens what an unknown id opens: another user's report session, one whose ask was answered, a task's run.
     expect(itemAtRoute(items, "error-report~fp-fedcba9876543210")).toBeNull();
     expect(itemAtRoute(items, "s_run")).toBeNull();

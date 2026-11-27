@@ -50,7 +50,7 @@ import {
   type ProjectMcpToolsResolver,
 } from "@flow-state-dev/workforce";
 import type { HarnessBlock, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
-import type { Harness, HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
+import type { Harness, HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/core/harness";
 import { scriptedHarness as sharedScriptedHarness } from "@flow-state-dev/harness-manager";
 
 /** What the scripted run does where it works; harness-manager's, re-exported for this tree's checks. */

@@ -141,6 +141,7 @@ import {
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
+  TASK_TITLE_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
 import { FILED_HOP, FILED_PROJECT, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
@@ -496,6 +497,18 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
     ...(row?.session !== undefined ? { session: row.session } : {}),
     ...(row?.targetSessionId !== undefined ? { targetSessionId: row.targetSessionId } : {})
   };
+}
+
+// FIX-2881.
+/**
+ * The title a task's session is born with, so a reader names it by its task:
+ * the task's title, else its goal, read off its own board.
+ */
+async function handedTitleOf(ctx: BlockContext, taskId: string): Promise<Record<string, string>> {
+  const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
+  const task = ref?.get(taskId);
+  const title = task?.title ?? task?.goal;
+  return typeof title === "string" && title.length > 0 ? { [TASK_TITLE_STATE_KEY]: title } : {};
 }
 
 // FIX-2161.
@@ -1200,6 +1213,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [FILING_FLOW_STATE_KEY]: options.flowKind,
         ...filingWorkerOf(ctx.session.state),
         [TASK_ID_STATE_KEY]: taskId,
+        ...(await handedTitleOf(ctx, taskId)),
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
         // The filer's worker-message hop count and chain (FIX-1989): a
         // message from the task counts on in the exchange of the turn that
@@ -1286,7 +1300,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // which takes such a filing before it reaches here), never a child session
     // of itself (FIX-2076).
     const self = verifiedWorkerOf(ctx.session);
-    const fromTaskSession = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
+    const fromTaskSession = typeof ctx.session.state[TASK_ID_STATE_KEY] === "string";
     // FIX-2080.
     /**
      * Every check a row passes before anything is written: the

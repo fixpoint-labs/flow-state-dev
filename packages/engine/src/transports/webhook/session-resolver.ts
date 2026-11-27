@@ -46,7 +46,9 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       sessionId,
       principal: { userId: principal.userId, orgId: principal.orgId },
       fromCaller: false,
-      via: "webhook"
+      via: "webhook",
+      // FIX-2942: a delivery runs as the provider's principal, never a person's sign-in.
+      principalKind: "machine"
     },
     () => ({
       id: sessionId,

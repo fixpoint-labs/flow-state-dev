@@ -26,10 +26,17 @@ const memoryResource = defineResource({
 const memoryCapability = defineCapability({
   name: "memory",
   resources: { memories: memoryResource },
-  fns: (ctx: BlockContext) => ({
-    remember: (fact: string) => { void fact; void ctx; },
-    recall: (query: string): string[] => { void query; return []; },
-  }),
+  fns: (ctx) => {
+    const memories = ctx.resources.memories;
+    // @ts-expect-error The capability declares no holdings resource.
+    void ctx.resources.holdings;
+    // @ts-expect-error The resource declares string entries.
+    void memories.setState({ entries: [123] });
+    return {
+      remember: (fact: string) => { void fact; },
+      recall: (query: string): string[] => { void query; return memories.state.entries; },
+    };
+  },
 });
 
 const analyticsCapability = defineCapability({

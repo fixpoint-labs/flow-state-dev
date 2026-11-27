@@ -42,19 +42,18 @@ export function openTasks(snapshot: LoadedSnapshot): BoardTaskView[] {
 }
 
 /**
- * The Inbox item that shows suspension `suspensionId`: a task's item when its
- * task holds it, else the ask's own. Its id when the Inbox didn't load or
- * doesn't list it, so a link still opens the Inbox.
+ * The Inbox item that shows hold `holdId`: a task's item when its task holds
+ * it, else the ask's own. The hold's id when the Inbox didn't load or doesn't
+ * list it, so a link still opens the Inbox.
  */
-export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
+export function inboxItemIdOf(snapshot: LoadedSnapshot, holdId: string): string {
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+  return items.find((item) => item.holds.some((hold) => hold.id === holdId))?.id ?? holdId;
 }
 
 /**
- * The Inbox item a route names: by its id, else, for a link written when an
- * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
- * whose holds that suspension is. `null` when none.
+ * The Inbox item a route names: by its id, else the item one of whose holds
+ * it names (a stop's hold id, `suspensionHoldId`). `null` when none.
  */
 export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxItem<Ask> | null {
   if (id === null) return null;

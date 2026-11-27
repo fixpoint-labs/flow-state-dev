@@ -14,11 +14,11 @@
  * the base come from the task's run record, by the rule `readRunCommits`
  * documents, so the files a review's data lists are the files this reads.
  */
-import { defineCapability, defineView, handler, type DefinedCapability } from "@flow-state-dev/core";
+import { defineView, handler, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
-import { effectiveCut, readRunChanges, runChangesSchema, type RunChanges } from "./commits";
+import { effectiveCut, readRunChanges, runChangesSchema } from "./commits";
 import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
@@ -68,16 +68,13 @@ export class HarnessRunChangesRefused extends Error {
  */
 export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
   const name = options.name ?? "harness-manager";
-  const capability = defineCapability({
-    name: `harness-manager-changes:${name}`,
-    resources: { [RUNS]: runRecordCollection },
-  }) as unknown as DefinedCapability;
   const block = handler({
     name: `${name}-changes`,
     inputSchema: harnessRunChangesInputSchema,
     outputSchema: harnessRunChangesOutputSchema,
-    uses: [capability, ...(options.uses ?? [])],
-    execute: async (input, ctx: BlockContext): Promise<RunChanges & { taskId: string }> => {
+    resources: { [RUNS]: runRecordCollection },
+    uses: options.uses,
+    execute: async (input, ctx) => {
       const board = await options.board(ctx);
       if (board === undefined) throw new HarnessRunChangesRefused("not-started");
       const sessionId = ctx.session.identity.id;
@@ -92,16 +89,12 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? undefined
           : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       const at = input.path === undefined ? {} : { path: input.path };
-      if (record?.filesOnly === true) {
+      if (record?.filesOnly === true || record?.workspacePath == null) {
+        // A files-only run has no Git changes. A missing checkout leaves the changes unknown.
+        const verified = record?.filesOnly === true;
         return input.path === undefined
-          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: true }, patch: null }
-          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: true } };
-      }
-      // No checkout recorded: nothing to read, so the read answers unverified without running git.
-      if (record?.workspacePath == null) {
-        return input.path === undefined
-          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: false }, patch: null }
-          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: false } };
+          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified }, patch: null }
+          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified } };
       }
       // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
       const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);

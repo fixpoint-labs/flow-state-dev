@@ -26,7 +26,7 @@
  *
  * Controls (each runs this file again with a patch applied as it loads):
  *   GOAL_CONTROL=owns-request  the SQL org match also takes a request with no
- *                              organization, as `principalOwnsRequest` does: a:scope must FAIL.
+ *                              organization, as a request owner check that tolerates a missing organization would: a:scope must FAIL.
  *   GOAL_CONTROL=hear-run      the read hears `run` on the user topic instead
  *                              of `suspension`: c:quiet must FAIL.
  */

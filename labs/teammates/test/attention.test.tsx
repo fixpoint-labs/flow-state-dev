@@ -39,6 +39,12 @@ describe("the status line puts what needs you first", () => {
     expect(status({ lines: [approval("approved")] }).needsYou).toBe(false);
   });
 
+  it("an approval a store kept from core 0.2.0, under its old reason, still needs your OK", () => {
+    // A store written before the reason was renamed holds the stop under its old name; it is the same yes.
+    const stored = linesOf([approvalItem("ap", "q", "s", "Publish the draft?", "human_approval")])[0]!; // retired-name-refusal: a stop core 0.2.0 stored
+    expect(status({ lines: [stored] })).toMatchObject({ text: "Needs your OK: Publish the draft?", needsYou: true });
+  });
+
   it("a task that waits on you, above the same task running", () => {
     const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
     expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-text-2", needsYou: true, state: "needs" });

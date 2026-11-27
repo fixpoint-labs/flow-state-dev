@@ -13,7 +13,8 @@ import { createResponseEmitter, type ExecutionContext } from "@flow-state-dev/en
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   StateChange,
-  TestBlockOptions
+  TestBlockOptions,
+  TestStateSeed
 } from "../test-utilities/types";
 import {
   asRecord,
@@ -34,7 +35,7 @@ const STATE_OPERATIONS = [
   "atomicState"
 ] as const;
 
-type ScopeName = "request" | "session" | "user" | "org" | "block_instance";
+type ScopeName = StateChange["scope"];
 
 type ScopeOperation = (typeof STATE_OPERATIONS)[number];
 
@@ -49,7 +50,6 @@ export type CreateTestContextOptions<TInput = unknown> = Omit<
   TestBlockOptions<TInput>,
   "input"
 > & {
-  flow?: FlowInstance;
   actionName?: string;
   requestId?: string;
   sessionId?: string;
@@ -125,12 +125,7 @@ async function seedStores(options: {
   userId: string;
   /** The org the run uses: the caller's, or `DEFAULT_ORG_ID`. */
   orgId: string;
-  seed: {
-    request?: { state?: Record<string, unknown> };
-    session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-  };
+  seed: TestStateSeed;
 }): Promise<void> {
   const now = Date.now();
 
@@ -195,7 +190,10 @@ async function seedStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now,
-      journal: []
+      journal: [],
+      // The kind a real session gets from the run that creates it: this
+      // context runs as an HTTP caller would, a person.
+      principalKind: "person"
     }, "any");
     await seedResourceState("session", options.sessionId, options.seed.session?.resources);
   }
@@ -222,7 +220,7 @@ async function seedStores(options: {
 
 function wrapScopeStateOps(
   scope: ScopeName,
-  handle: Record<string, unknown> | undefined,
+  handle: Pick<StateRef, "state" | ScopeOperation> | undefined,
   stateChanges: StateChange[]
 ): void {
   if (handle === undefined) {
@@ -230,21 +228,14 @@ function wrapScopeStateOps(
   }
 
   for (const operation of STATE_OPERATIONS) {
-    const original = handle[operation];
-    if (typeof original !== "function") {
-      continue;
-    }
-
-    handle[operation] = async (...args: unknown[]): Promise<unknown> => {
-      const result = await (original as (...values: unknown[]) => Promise<unknown>)(
-        ...args
-      );
-
+    const original: (...args: unknown[]) => Promise<boolean> = handle[operation];
+    handle[operation] = async (...args: unknown[]) => {
+      const result = await original(...args);
       stateChanges.push({
         scope,
         operation,
         args,
-        resultingState: cloneValue(asRecord(handle.state))
+        resultingState: cloneValue(handle.state)
       });
 
       return result;
@@ -425,35 +416,7 @@ export async function createTestContext<TInput = unknown>(
     sessionId,
     userId,
     orgId,
-    seed: {
-      request:
-        options.request === undefined
-          ? undefined
-          : {
-              state: options.request.state
-            },
-      session:
-        options.session === undefined
-          ? undefined
-          : {
-              state: options.session.state,
-              resources: options.session.resources
-            },
-      user:
-        options.user === undefined
-          ? undefined
-          : {
-              state: options.user.state,
-              resources: options.user.resources
-            },
-      org:
-        options.org === undefined
-          ? undefined
-          : {
-              state: options.org.state,
-              resources: options.org.resources
-            }
-    }
+    seed: options
   });
 
   // A real resolver injected by the caller (e.g. the benchmark engine) wins over
@@ -485,16 +448,17 @@ export async function createTestContext<TInput = unknown>(
     sessionId,
     userId,
     orgId,
+    // As an HTTP caller's door would set it: a person.
+    principalKind: "person",
     response,
     stores,
     modelResolver,
     ...(options.signal === undefined ? {} : { signal: options.signal })
   });
 
-  wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("session", ctx.session as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("user", ctx.user as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("org", ctx.org as unknown as Record<string, unknown>, stateChanges);
+  for (const scope of ["request", "session", "user", "org"] as const) {
+    wrapScopeStateOps(scope, ctx[scope], stateChanges);
+  }
 
   const targetStateByName = new Map<string, MutableTargetState>();
 

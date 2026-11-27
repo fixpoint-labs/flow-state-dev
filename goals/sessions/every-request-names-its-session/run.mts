@@ -235,7 +235,8 @@ await runGoal(async (failures, tell) => {
     flowKind: "desk",
     entry: "sweep",
     input: {},
-    as: { userId: ALICE, orgId: ORG },
+    // An internal start from server code with no door: a machine's.
+    as: { userId: ALICE, orgId: ORG, kind: "machine" },
     sessionId: internalSession,
     metadata: {}
   });

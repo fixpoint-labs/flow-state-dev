@@ -11,14 +11,17 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-/** Every whole read made, by pattern. */
+/** Every list read made, by pattern: the message log's newest page, a project's values or its manifest. */
 const lists: string[] = [];
 const client = {
   userId: "u_1",
   resource: ({ scope, pattern }: { scope: string; pattern: string }) => ({
     scope,
     key: pattern,
-    list: async () => ({ items: [] }),
+    list: async () => {
+      lists.push(pattern);
+      return { items: [] };
+    },
     listAll: async () => {
       lists.push(pattern);
       return [];

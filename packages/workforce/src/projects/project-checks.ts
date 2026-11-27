@@ -34,6 +34,6 @@ export type ProjectChecksResolver = (run: { ctx: BlockContext }) => Promise<stri
 export function projectChecks(): ProjectChecksResolver {
   return async (run) => {
     const found = await runProjectOf(run.ctx);
-    return found.kind === "refused" ? [] : [...(found.project.checks ?? [])];
+    return found.kind === "refused" ? [] : [...found.project.checks];
   };
 }

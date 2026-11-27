@@ -1,7 +1,7 @@
 /**
  * Generators for the rich-text-component flow.
  *
- * Seven structurally identical generator blocks — schema + prompt → streamed
+ * Eight generator blocks — schema + prompt → streamed
  * text. Co-located in one file because the parallelism is the point: the
  * framework's primitives collapse cleanly to "input → one generator → output"
  * without the agentic scaffolding that powers chat-agent.
@@ -14,14 +14,12 @@ import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
 import {
-  copyeditInputSchema,
-  improveInputSchema,
+  textInputSchema,
   changeToneInputSchema,
   translateInputSchema,
   summarizeInputSchema,
   expandInputSchema,
   fixCodeInputSchema,
-  personalizeInputSchema,
 } from "./schemas";
 import {
   COPYEDIT_PROMPT,
@@ -40,7 +38,7 @@ export const copyeditGenerator = generator({
   name: "copyedit-generator",
   model: MODEL_ID,
   itemVisibility: { client: true, history: true },
-  inputSchema: copyeditInputSchema,
+  inputSchema: textInputSchema,
   prompt: COPYEDIT_PROMPT,
   user: (input) => input.text,
   outputSchema: z.string(),
@@ -51,7 +49,7 @@ export const improveGenerator = generator({
   name: "improve-generator",
   model: MODEL_ID,
   itemVisibility: { client: true, history: true },
-  inputSchema: improveInputSchema,
+  inputSchema: textInputSchema,
   prompt: IMPROVE_PROMPT,
   user: (input) => input.text,
   outputSchema: z.string(),
@@ -88,7 +86,7 @@ export const summarizeGenerator = generator({
   model: MODEL_ID,
   itemVisibility: { client: true, history: true },
   inputSchema: summarizeInputSchema,
-  prompt: (input) => summarizePrompt(input.length),
+  prompt: summarizePrompt,
   user: (input) => input.text,
   outputSchema: z.string(),
 });
@@ -113,7 +111,7 @@ export const fixCodeGenerator = generator({
   model: MODEL_ID,
   itemVisibility: { client: true, history: true },
   inputSchema: fixCodeInputSchema,
-  prompt: (input) => fixCodePrompt(input.language),
+  prompt: fixCodePrompt,
   user: (input) => input.text,
   outputSchema: z.string(),
 });
@@ -134,7 +132,7 @@ export const personalizeGenerator = generator({
   model: MODEL_ID,
   itemVisibility: { client: true, history: true },
   uses: [mem],
-  inputSchema: personalizeInputSchema,
+  inputSchema: textInputSchema,
   prompt: PERSONALIZE_PROMPT,
   user: (input) => input.text,
   outputSchema: z.string(),

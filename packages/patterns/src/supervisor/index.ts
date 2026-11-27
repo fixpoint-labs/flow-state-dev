@@ -423,17 +423,16 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // Loosely typed so the optional synthesis prefix can change the chain shape.
-  let pipeline: any = sequencer({
+  const start = sequencer({
     name,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
   });
-  if (synthesizeGoalStep !== undefined) pipeline = pipeline.step(synthesizeGoalStep);
+  const pipeline = synthesizeGoalStep === undefined ? start : start.step(synthesizeGoalStep);
   return pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
     .step(board.drain)
     .tap(labelFailedReviews)
-    .step(synthesize) as SequencerDefinition<any, any>;
+    .step(synthesize);
 }

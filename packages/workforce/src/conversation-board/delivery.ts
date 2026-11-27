@@ -42,7 +42,7 @@ export function conversationDelivery(ledgerId: string): DeclaredDelivery {
     noticeEntry: () => TASK_SETTLED_ENTRY,
     address: (ctx, filer) => {
       if (filer === ctx.session.identity.id) return { session: { id: filer } };
-      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      const { state } = ctx.session;
       const filing = state[FILING_SESSION_STATE_KEY];
       const flow = state[FILING_FLOW_STATE_KEY];
       if (typeof filing === "string" && typeof flow === "string" && sessionIdOfFiling(filing) === filer) {

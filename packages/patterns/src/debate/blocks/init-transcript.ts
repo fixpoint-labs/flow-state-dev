@@ -18,9 +18,7 @@ export function createInitTranscript(opts: {
     inputSchema: debateInputSchema,
     resources: { transcript: opts.transcript },
     execute: async (_input, ctx) => {
-      await ctx.resources.transcript.setState({
-        entries: [],
-      } as Parameters<typeof ctx.resources.transcript.setState>[0]);
+      await ctx.resources.transcript.setState({ entries: [] });
       getOrCreateTaskCollection({
         ctx,
         backing: "state",

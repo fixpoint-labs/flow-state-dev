@@ -33,7 +33,8 @@ import { ConversationScrollButton } from "../components/flow-state/conversation"
 import { LineContext, type LineContextValue } from "../components/flow-state/conversation-lines";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { askWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/inbox";
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionIdOfHold } from "../lib/inbox-list";
 import { useLab } from "../lib/lab-data";
 import { workerLabel } from "../lib/shift";
 import { useReportFeedState } from "../lib/feed-health";
@@ -226,7 +227,7 @@ function RunItems({ run }: { run: OpenRun }) {
                   {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
                 >
                   {line.kind === "suspension" ? (
-                    <PendingAsk ask={asks.find((ask) => ask.id === line.item.suspensionId)} />
+                    <PendingAsk ask={asks.find((ask) => ask.id === suspensionHoldId(line.item.requestId, line.item.suspensionId))} />
                   ) : (
                     <ItemsRenderer lines={[line]} toolGroupRenderer={ToolGroup} />
                   )}
@@ -235,7 +236,7 @@ function RunItems({ run }: { run: OpenRun }) {
             })}
             {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
             {asks
-              .filter((ask) => !shown.lines.some((line) => line.kind === "suspension" && line.item.suspensionId === ask.id))
+              .filter((ask) => !shown.lines.some((line) => line.kind === "suspension" && suspensionHoldId(line.item.requestId, line.item.suspensionId) === ask.id))
               .map((ask) => (
                 <li key={ask.id} data-testid="session-pending-ask">
                   <PendingAsk ask={ask} />
@@ -268,7 +269,7 @@ function PendingAsk({ ask }: { ask: InboxHold<InboxAsk> | undefined }) {
     );
   }
   return (
-    <div data-testid="session-ask" data-suspension-id={ask.id}>
+    <div data-testid="session-ask" data-suspension-id={suspensionIdOfHold(ask)}>
       <span className="bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
         {askWord(ask).toUpperCase()}
       </span>

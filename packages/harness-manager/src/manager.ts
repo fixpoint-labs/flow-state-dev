@@ -57,15 +57,11 @@ import {
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
-  HarnessActivityHook,
   HarnessBlock,
-  HarnessEventHook,
-  HarnessResolver,
+  HarnessFeeds,
   HarnessRunInput,
-  HarnessSessionHook,
   HarnessSteer,
-  HarnessSteerHook,
-  HarnessUsageHook,
+  HarnessToolApprovalHook,
 } from "@flow-state-dev/core/harness";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, StateRef } from "@flow-state-dev/core/types";
@@ -112,7 +108,6 @@ import {
   type HeldWork,
   type ExistingPullRequest,
   type Landed,
-  type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
@@ -173,7 +168,6 @@ import {
   toolApprovalOutcome,
   toolApprovalStop,
   toolApprovalStateSchema,
-  type HarnessToolApprovalHook,
   type HeldToolCall,
 } from "./tool-approval";
 import {
@@ -198,9 +192,9 @@ import {
   assertBranchPrefix,
   branchFor,
   checkoutLeaseFromState,
+  worktreesOf,
   freeRunLocation,
   locationFor,
-  hostForConfig,
   placeFor,
   refreshCheckout,
   releaseCheckout,
@@ -211,7 +205,6 @@ import {
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
-  type WorkspaceConfig,
 } from "./workspace";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
@@ -451,7 +444,7 @@ export interface ModeDone {
    * pin retained by a construction that then failed, and a comparison written
    * to paper over both.
    */
-  validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
+  validate?(workspace: WorkspaceHost): unknown;
 }
 
 /**
@@ -679,6 +672,16 @@ export interface ManagerOptions {
    * default: the brief is the phase's prompt alone.
    */
   issueSpec?: IssueSpecOption;
+  // FIX-2878; BP-030.
+  /**
+   * On a board read from the claim: the tracker issue a task's `input` names
+   * (`ENG-142`), or `undefined` for a task that names none. A task naming one
+   * works on that issue's branch, in this manager's mode. A host whose tasks
+   * declare their input reads its own field: the harness kit's coding flow
+   * reads its task input's `issue`. Absent: the `harnessFeature` key, read
+   * for a row stored before task input was declared.
+   */
+  trackerIssueOf?: (input: unknown) => string | undefined;
   // FIX-2389.
   /**
    * Ask a person before each tool call the harness hasn't pre-allowed.
@@ -714,14 +717,12 @@ export interface ManagerOptions {
   /**
    * Where each run's files come from, and where it works.
    *
-   * `{ root, sourceRepo, baseRef }` cuts every run a new branch of
-   * `sourceRepo`, kept in that repository, with the checkout under `root`.
-   * A workspace host (`localWorkspaceHost` from `@flow-state-dev/workspace`)
-   * answers per run from its run source instead: a branch of an allowed
-   * remote with kept files beside it, or kept files alone. Both go through
-   * one provisioning path; the first is a host whose source is constant.
+   * A workspace host from `@flow-state-dev/workspace`, which answers per run
+   * from its run source: a branch of one repository on this machine
+   * (`localRepoWorkspaceHost`), a branch of an allowed remote with kept files
+   * beside it, or kept files alone (`localWorkspaceHost`).
    */
-  workspace: WorkspaceConfig | WorkspaceHost;
+  workspace: WorkspaceHost;
   // FIX-2794.
   /**
    * How long the harness may send nothing, in ms, before its run is stopped
@@ -819,91 +820,6 @@ export interface ManagerOptions {
 }
 
 /**
- * The feeds a manager hands its harness, in one call.
- *
- * All of them are **declared in `@flow-state-dev/core`** and imported
- * here rather than restated: what this package picks is the slot that bundles
- * them, not the callbacks' names or their signatures.
- *
- * Why `onSession` and not only `cwd` and `resume`. A harness that throws on the manager's deadline
- * returns no handle at all, and a status item is transient by contract — so
- * neither can carry the session id to the next attempt in exactly the case
- * resume exists for. Unless the harness hands the id to manager-owned durable
- * state the MOMENT the run names it, the resume resolver reads nothing after a
- * deadline kill. `onSession` is that write side.
- */
-export interface HarnessFeeds {
-  /** Where this run works. Reads the checkout off the manager's own state. */
-  cwd: HarnessResolver<string>;
-  /**
-   * Which session this attempt continues, or `null` to start fresh.
-   *
-   * `null` on attempt 1, and on every attempt following one whose harness never
-   * confirmed a session — a resume the vendor refused, above all — so a dead id
-   * is asked for once rather than forever.
-   */
-  resume: HarnessResolver<string | null>;
-  /**
-   * Called by the harness the moment its vendor names the session, writing the
-   * id onto the run row. **The sole writer of that field.**
-   */
-  onSession: HarnessSessionHook;
-  /**
-   * Called by the harness with each subscription usage window its vendor
-   * reports during the run, writing it into the run owner's usage record
-   * (`harness-usage/**`, through `recordHarnessUsage`). A harness that reports
-   * no usage ignores it.
-   */
-  onUsage: HarnessUsageHook;
-  // FIX-2254.
-  /**
-   * Called by a harness whose run can take a line into its turn in flight,
-   * with the steer that does it, and with `null` once it can't.
-   * While a run offers one, the manager hands it each steer as it lands
-   * instead of stopping the step; a line the run refuses takes the step's
-   * end (or the stop, with `stopsOnAbort`). A harness that can't steer
-   * ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onSteerable?: HarnessSteerHook;
-  // FIX-2290.
-  /**
-   * Called by the harness with each assistant message and tool call of its
-   * run. The manager keeps the task's `statusNote` from it: the
-   * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
-   * fenced by the run's claim. A harness that reports none ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onActivity?: HarnessActivityHook;
-  // FIX-2794.
-  /**
-   * Called by the harness on every event its run sends. Each one starts the
-   * run's silence window (`idleTimeoutMs`) again and marks the run's checkout
-   * lock live. A harness that never calls it is stopped once that window has
-   * passed, however busy it is.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onEvent?: HarnessEventHook;
-  // FIX-2389.
-  /**
-   * Called by a harness that asks about each tool call before it runs,
-   * with the call; it answers allow, deny or held. Handed only
-   * when the manager is built with `approveTools`; absent otherwise. A held
-   * call stops the run, waits for a person, and the session resumes with the
-   * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
-   * slot that spreads `...feeds` passes it on. A harness that can't ask per
-   * call ignores it.
-   */
-  onToolApproval?: HarnessToolApprovalHook;
-}
-
-/**
  * The `harness` option: a factory the manager calls once with {@link HarnessFeeds}.
  *
  * Returns a block conforming to the harness contract — `HarnessBlock` is core's
@@ -932,10 +848,13 @@ export const harnessFeatureSchema = z.object({
   phase: z.string().optional(),
 });
 
-// FIX-2282.
+// FIX-2282; FIX-2878; BP-030.
 /**
- * The key a task's `input` names feature work under on a board read from the
- * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
+ * The key a task's `input` named feature work under on a board read from the
+ * claim, before task input was declared: `{ [HARNESS_FEATURE_KEY]: { issue,
+ * phase? } }`. **Internal, and read only as a legacy shape**: a manager given
+ * no `trackerIssueOf` reads it, and the harness kit's coding flow maps a
+ * stored row's onto its mode and issue. Nothing writes it any more.
  *
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
@@ -947,25 +866,15 @@ export const harnessFeatureSchema = z.object({
 export const HARNESS_FEATURE_KEY = "harnessFeature";
 
 /** True when a task's `input` names feature work, well formed or not. */
-export function namesHarnessFeature(input: unknown): boolean {
+function namesHarnessFeature(input: unknown): boolean {
   return typeof input === "object" && input !== null && HARNESS_FEATURE_KEY in input;
 }
 
-/** The parse of the key's value, or `undefined` when `input` doesn't name it: one parse for both readers below. */
+/** The parse of the key's value, or `undefined` when `input` doesn't name it. */
 function parseHarnessFeature(input: unknown) {
   return namesHarnessFeature(input)
     ? harnessFeatureSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY])
     : undefined;
-}
-
-/**
- * The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or
- * `undefined` for none or a malformed one. `phase` is absent when the task
- * names only its issue.
- */
-export function harnessFeatureOf(input: unknown): { issue: string; phase?: string } | undefined {
-  const parsed = parseHarnessFeature(input);
-  return parsed?.success === true ? parsed.data : undefined;
 }
 
 // BP-031.
@@ -1420,7 +1329,8 @@ export function describeTenant(tenantId: string | undefined): string {
  * feature row carries, or `undefined` for a row that names no feature work (a
  * task a conversation filed), whose task id then stands in for the issue.
  *
- * On a board read from the claim, feature work is named only under
+ * On a board read from the claim, feature work is named by the host's
+ * `trackerIssueOf` when it passes one, and otherwise only under
  * {@link HARNESS_FEATURE_KEY}; the rest of `input` is the filer's own, so a
  * plain `issue` or `phase` there says nothing. A row whose key holds anything
  * but both as strings is refused: such a row is never run as a task that
@@ -1434,7 +1344,12 @@ export function describeTenant(tenantId: string | undefined): string {
 function taskPayload(
   input: { input?: unknown; taskId: string },
   fixedBoard: boolean,
+  trackerIssueOf: ManagerOptions["trackerIssueOf"],
 ): { issue: string; phase?: string } | undefined {
+  if (!fixedBoard && trackerIssueOf !== undefined) {
+    const issue = trackerIssueOf(input.input);
+    return issue === undefined ? undefined : { issue };
+  }
   if (fixedBoard) {
     const parsed = harnessTaskInputSchema.safeParse(input.input);
     if (parsed.success) return parsed.data;
@@ -1629,7 +1544,7 @@ function pullRequestText(
  * it. Never throws: a record that can't be written is a status note.
  */
 async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
+  const collection = ctx.resources?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
   const link = pullRequestRefFromUrl(landed.url);
   if (typeof collection?.upsert !== "function" || link === null) return;
   try {
@@ -1673,7 +1588,7 @@ function managerState<TState extends Record<string, unknown>>(state: TState | un
  * 1. `waitMs` — the lock wait. A worker queued behind another attempt's tree is
  *    working, not stuck, and cancelling it is the same defect.
  * 2. the provisioning budget — one deadline for all of git, see
- *    `WorkspaceConfig.provisionTimeoutMs`.
+ *    the workspace host's `provisionTimeoutMs`.
  * 3. `runTimeoutMs` — the agent. A run capped on time by its host is waited
  *    out to its cap. The default cap (4 hours) and no cap (`0`) are not a
  *    length a shutdown should wait out, so the host names how long a
@@ -2000,12 +1915,6 @@ async function checkBranchPullRequests(ctx: ManagerContext, worktree?: string | 
   }
 }
 
-/** The user's worktree rows off a block's context, when the capability is installed. */
-function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
-  return typeof collection?.upsert === "function" ? collection : undefined;
-}
-
 /**
  * The issue a run's branch leads with: a task's tracker issue, on a board read
  * from the claim only. A fixed board's branch is already named for its issue.
@@ -2032,6 +1941,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     awaitPullRequests = false,
     onPullRequestRecorded,
     issueSpec,
+    trackerIssueOf,
     approveTools = false,
     tenant,
     mode: callerMode,
@@ -2117,10 +2027,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           doneWhen: Object.freeze({ ...mode.doneWhen, check: (run: CompletionRunContext) => mode.doneWhen.check({ ...run, validated }) }),
         });
 
-  // **One provisioning path.** A fixed repository is a host whose source is
-  // constant and whose repository is used as it stands, so its runs' branches
-  // stay in `sourceRepo` and their checkouts where they always were.
-  const host: WorkspaceHost = isWorkspaceHost(workspace) ? workspace : hostForConfig(workspace);
+  const host: WorkspaceHost = workspace;
 
   // FIX-2794.
   // Checked here, before anything is claimed: a timer handed a bad number
@@ -2669,7 +2576,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // its own task ids, unique in their partition, so there the task id
       // keeps two rows with one payload out of one tree, as the derived id
       // does on a fixed board.
-      const payload = taskPayload(input, claim === null);
+      const payload = taskPayload(input, claim === null, trackerIssueOf);
       // A legacy feature payload's own `phase` names the segment its run is keyed by.
       const segment = payload?.phase ?? mode.name;
       const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
@@ -2797,8 +2704,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **Where the run works, from the workspace host.** Its source is asked
       // now because the checkout's path is recorded on the row and named in
       // the prompt before anything is provisioned. A run already provisioned
-      // keeps the repository its record names (see `pinnedAnswer`). With a
-      // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
+      // keeps the repository its record names (see `pinnedAnswer`). On a
+      // `localRepoWorkspaceHost` this is the path `checkoutPathFor` derives.
       const recorded = found.record;
       try {
         assertPlaceAndHeld(recorded);
@@ -3711,6 +3618,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The run edits ITS checkout, and the record of what it touched is keyed
     // there too.
     cwd: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
+    // The fence's directory is the checkout itself.
+    worktree: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
     // Which session this attempt continues. `null` on attempt 1, and on every
     // attempt after one whose harness named no session — a resume the vendor
     // refused, above all — so a dead id is not re-sent forever.
@@ -5121,10 +5030,6 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   return answered;
 }
 
-/** Is the `workspace` option a host, rather than a fixed repository's config? */
-function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace is WorkspaceHost {
-  return typeof (workspace as WorkspaceHost).provision === "function";
-}
 
 // BR-19.
 /**

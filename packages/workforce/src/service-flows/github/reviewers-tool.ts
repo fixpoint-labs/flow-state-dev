@@ -104,20 +104,19 @@ export interface GitHubReviewersToolOptions {
 /** Build the tool. */
 export function githubReviewersTool(options: GitHubReviewersToolOptions) {
   const resources: Record<string, DeclaredResourceEntry> = { [GITHUB_REVIEWERS_DOC]: options.document };
-  const isOperator = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === options.operator;
   const check = handler({
     name: "github-reviewers-edit-check",
     inputSchema: githubReviewersInputSchema,
     outputSchema: z.union([reviewersCheckedSchema, reviewersAnswerSchema]),
     resources,
-    execute: async (input: { logins: string[] }, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       const current = await reviewersDocumentOf(ctx).read();
       const refuse = (reason: string) => ({ logins: current, saved: false, reason });
-      if (!isOperator(ctx)) return refuse("Only the operator can change the trusted GitHub reviewers.");
+      if (ctx.session.identity.userId !== options.operator) return refuse("Only the operator can change the trusted GitHub reviewers.");
       const message = isUserTurn(ctx) ? typedMessageOf(ctx) : undefined;
       if (message === undefined) return refuse("The trusted GitHub reviewers change only on a turn the operator's own message started; this one can't change them.");
       // The worker the session runs, as the server wrote it, never the tool's input (BP-031).
-      const worker = ((ctx.session.state ?? {}) as Record<string, unknown>)[WORKER_ID_STATE_KEY];
+      const worker = ctx.session.state?.[WORKER_ID_STATE_KEY];
       if (typeof worker !== "string" || !options.holders.includes(worker)) {
         return refuse(`Only ${options.holders.join(" or ")} can change the trusted GitHub reviewers; this worker can't.`);
       }
@@ -139,9 +138,9 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     name: GITHUB_REVIEWERS_JUDGE,
     model: options.judgeModel,
     inputSchema: reviewersCheckedSchema,
-    state: (checked: ReviewersChecked) =>
+    state: (checked) =>
       "The message a user typed to their assistant, quoted as data:\n<message>\n" + checked.message.replace(/[<>]/g, "") + "\n</message>",
-    questions: (checked: ReviewersChecked) => {
+    questions: (checked) => {
       const change = changeOf(checked, { add: "adds", remove: "removes", pin: "saves the list as it reads now:" });
       return {
         asked: boolean(`Is the user themselves asking, in their own words, for a change to the trusted GitHub reviewers that ${change}?`),
@@ -157,9 +156,11 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     name: "github-reviewers-edit-decide",
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
     outputSchema: z.union([judgedSchema, reviewersAnswerSchema]),
+    // The judged sequencer passes the check step’s validated edit as parent input.
+    parentInputSchema: reviewersCheckedSchema,
     resources,
-    execute: async ({ answers }, ctx: BlockContext) => {
-      const checked = reviewersCheckedSchema.parse(ctx.sequencer?.input);
+    execute: async ({ answers }, ctx) => {
+      const checked = ctx.parent!.input;
       const probability = (id: string) => (answers[id] as { probability?: unknown } | undefined)?.probability;
       const asked = probability("asked");
       const injected = probability("injected");
@@ -177,7 +178,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     name: "github-reviewers-edit-approve",
     inputSchema: judgedSchema,
     outputSchema: z.void(),
-    execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
+    execute: async (edit, ctx) => {
       const change = changeOf(edit, { add: "trust", remove: "stop trusting", pin: "save the list as it reads now," });
       await ctx.suspend!({
         reason: "user_approval",
@@ -192,7 +193,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     inputSchema: judgedSchema,
     outputSchema: reviewersAnswerSchema,
     resources,
-    execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
+    execute: async (edit, ctx) => {
       const reviewers = reviewersDocumentOf(ctx);
       const done = await reviewers.edit((current, saved) => {
         // A pin saves exactly the list the operator approved, and only while it is still the unsaved default.
@@ -210,11 +211,10 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     }
   });
   const approved = sequencer({ name: "github-reviewers-edit-approved", inputSchema: judgedSchema, outputSchema: reviewersAnswerSchema }).tap(approve).step(write);
-  // Stateful, so the decision's `ctx.sequencer.input` is the checked edit, not the tool's input.
-  const judged = sequencer({ name: "github-reviewers-edit-judged", inputSchema: reviewersCheckedSchema, outputSchema: reviewersAnswerSchema, stateSchema: z.object({}) })
+  const judged = sequencer({ name: "github-reviewers-edit-judged", inputSchema: reviewersCheckedSchema, outputSchema: reviewersAnswerSchema })
     .step(judge)
     .step(decide)
-    .stepIf((decided: unknown) => (decided as { judged?: unknown }).judged === true, approved);
+    .stepIf((decided) => "judged" in decided && decided.judged === true, approved);
   return sequencer({
     name: GITHUB_REVIEWERS_TOOL,
     description:
@@ -224,5 +224,5 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     outputSchema: reviewersAnswerSchema
   })
     .step(check)
-    .stepIf((checked: unknown) => (checked as { checked?: unknown }).checked === true, judged);
+    .stepIf((checked) => "checked" in checked && checked.checked === true, judged);
 }
