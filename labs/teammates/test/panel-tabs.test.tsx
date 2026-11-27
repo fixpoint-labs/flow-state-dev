@@ -58,13 +58,13 @@ const panelTabs = () => within(screen.getByRole("tablist", { name: "Panel" }));
 const top = (name: string) => panelTabs().getByRole("tab", { name: new RegExp(`^${name}`) });
 
 describe("a teammate's panel tabs", () => {
-  it("draws Tasks, Routines and Pull Requests, each with its count (Pull Requests counts the open ones), Tasks selected first", async () => {
+  it("draws Tasks, Pull Requests and Routines in that order, each with its count (Pull Requests counts the open ones), Tasks selected first", async () => {
     renderPanel();
     await waitFor(() => expect(top("Pull Requests").textContent).toMatch(/2$/), POPUP_READ);
     expect(panelTabs().getAllByRole("tab").map((t) => [t.textContent?.replace(/\s+/g, ""), t.getAttribute("aria-selected")])).toEqual([
       ["Tasks4", "true"],
-      ["Routines1", "false"],
       ["PullRequests2", "false"],
+      ["Routines1", "false"],
     ]);
     // The status filter is still there, a second, different tab list inside Tasks.
     expect(screen.getByRole("tablist", { name: "Task status" })).toBeTruthy();
@@ -76,13 +76,16 @@ describe("a teammate's panel tabs", () => {
     fireEvent.click(top("Routines"));
     expect(await screen.findByRole("list", { name: "Lead's routines" })).toBeTruthy();
     expect(screen.queryByRole("tablist", { name: "Task status" })).toBeNull();
-    fireEvent.keyDown(top("Routines"), { key: "ArrowRight" });
+    fireEvent.keyDown(top("Routines"), { key: "ArrowLeft" });
     expect(top("Pull Requests").getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(top("Pull Requests"));
     expect(await screen.findByRole("list", { name: "Open pull requests" }, POPUP_READ)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Lead's routines" })).toBeNull();
-    fireEvent.keyDown(top("Pull Requests"), { key: "ArrowRight" });
+    fireEvent.keyDown(top("Pull Requests"), { key: "ArrowLeft" });
     expect(top("Tasks").getAttribute("aria-selected")).toBe("true");
+    // Wraps over the visible tabs only.
+    fireEvent.keyDown(top("Tasks"), { key: "ArrowLeft" });
+    expect(top("Routines").getAttribute("aria-selected")).toBe("true");
   });
 
   it("marks a tab you are not on when something in it waits on you, and not the one you are on", async () => {
@@ -128,11 +131,54 @@ describe("a teammate's panel tabs", () => {
     expect(onOpen).toHaveBeenCalledWith({ kind: "task", sessionId: "s1", taskId: "t-open" });
   });
 
-  it("says so when its tasks have opened no pull request", async () => {
+  it("hides Pull Requests while its tasks have opened none", async () => {
     renderPanel({ board: { s1: [TASKS[3]!] }, recorded: {}, routines: [] });
+    await waitFor(() => expect(panelTabs().queryByRole("tab", { name: /^Pull Requests/ })).toBeNull(), POPUP_READ);
+    expect(panelTabs().getAllByRole("tab").map((t) => t.textContent?.replace(/\s+/g, ""))).toEqual(["Tasks1", "Routines0"]);
+  });
+
+  it("hides Tasks while it has none, leaving Routines as the one tab, still a tab bar", async () => {
+    renderPanel({ board: { s1: [] }, recorded: {}, routines: ROUTINES });
+    await waitFor(() => expect(panelTabs().getAllByRole("tab").map((t) => t.textContent?.replace(/\s+/g, ""))).toEqual(["Routines1"]), POPUP_READ);
+    expect(top("Routines").getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByRole("list", { name: "Lead's routines" })).toBeTruthy();
+  });
+
+  it("falls back to the first visible tab when the remembered one is hidden, without forgetting it", async () => {
+    window.localStorage.setItem("teammates.panelTab", JSON.stringify({ chief: "pull-requests" }));
+    renderPanel({ board: { s1: [TASKS[3]!] }, recorded: {}, routines: ROUTINES });
+    await waitFor(() => expect(panelTabs().queryByRole("tab", { name: /^Pull Requests/ })).toBeNull(), POPUP_READ);
+    expect(top("Tasks").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tablist", { name: "Task status" })).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem("teammates.panelTab")!)).toEqual({ chief: "pull-requests" });
+  });
+
+  it("links a pull request only to an https github.com address: a script or another site's link draws as plain text", async () => {
+    const at = (url: string) => ({ number: 1, url, title: "Odd link", state: "open" });
+    renderPanel({
+      board: {
+        s1: [
+          coding("t-js", { run: { sessionId: "run-js", requestId: "q", attempt: 1 } }),
+          coding("t-evil", { run: { sessionId: "run-evil", requestId: "q", attempt: 1 } }),
+          coding("t-gh", { run: { sessionId: "run-gh", requestId: "q", attempt: 1 } }),
+        ],
+      },
+      recorded: {
+        "run-js": { pullRequests: [{ ...at("javascript:alert(1)"), number: 11, repository: "o/js" } as never] },
+        "run-evil": { pullRequests: [{ ...at("https://evil.example/x"), number: 12, repository: "o/evil" } as never] },
+        "run-gh": { pullRequests: [{ ...at("https://github.com/o/r/pull/13"), number: 13, repository: "o/r" } as never] },
+      },
+      routines: [],
+    });
     fireEvent.click(top("Pull Requests"));
-    expect(await screen.findByText("No pull requests yet.")).toBeTruthy();
-    expect(top("Pull Requests").textContent).toMatch(/0$/);
+    const open = await screen.findByRole("list", { name: "Open pull requests" }, POPUP_READ);
+    const row = (n: number) => open.querySelector(`[data-pull-request="${n}"]`) as HTMLElement;
+    await waitFor(() => expect(row(13)).not.toBeNull(), POPUP_READ);
+    expect(within(row(13)).getByRole("link", { name: /#13 Odd link/ }).getAttribute("href")).toBe("https://github.com/o/r/pull/13");
+    for (const n of [11, 12]) {
+      expect(within(row(n)).queryByRole("link")).toBeNull();
+      expect(row(n).textContent).toMatch(new RegExp(`#${n} Odd link`));
+    }
   });
 
   it("remembers the tab picked, per teammate", async () => {

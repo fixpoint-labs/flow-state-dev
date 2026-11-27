@@ -1,7 +1,8 @@
 /**
  * A teammate panel's *Pull Requests* tab: the pull requests its tasks' runs
  * opened (`lib/pull-requests`), open ones first, then merged or closed ones.
- * Each row links to the pull request on GitHub, gives its state as its run
+ * Each row links to the pull request on GitHub (plain text when its link
+ * isn't a github.com address), gives its state as its run
  * last saw it, and names its task, which opens in the task popup.
  */
 import { GitMergeIcon, GitPullRequestArrowIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon } from "lucide-react";
@@ -46,14 +47,23 @@ export function PullRequestsList({ rows, sessionId, onOpen }: { rows: readonly T
 function PullRequestRow({ pr, onTask }: { pr: TeammatePullRequest; onTask: () => void }) {
   const look = STATES[pr.state] ?? STATES.open!;
   const Icon = look.icon;
+  const heading = (
+    <>
+      <Icon aria-hidden className={cn("mt-0.5 size-3.5 shrink-0", look.tone)} />
+      <span className="min-w-0">
+        <span className="font-mono text-text-3">#{pr.number}</span> <span className="line-clamp-2 inline">{pr.title ?? pr.repository ?? "Pull request"}</span>
+      </span>
+    </>
+  );
   return (
     <li data-pull-request={pr.number} className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-xs shadow-(--shadow-card)">
-      <a href={pr.url} target="_blank" rel="noreferrer" className="flex items-start gap-2 text-sm leading-snug font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring">
-        <Icon aria-hidden className={cn("mt-0.5 size-3.5 shrink-0", look.tone)} />
-        <span className="min-w-0">
-          <span className="font-mono text-text-3">#{pr.number}</span> <span className="line-clamp-2 inline">{pr.title ?? pr.repository ?? "Pull request"}</span>
-        </span>
-      </a>
+      {pr.url === null ? (
+        <span className="flex items-start gap-2 text-sm leading-snug font-medium">{heading}</span>
+      ) : (
+        <a href={pr.url} target="_blank" rel="noreferrer" className="flex items-start gap-2 text-sm leading-snug font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring">
+          {heading}
+        </a>
+      )}
       <span className="flex min-w-0 items-center gap-2 text-text-3">
         <span data-pr-state className={cn("shrink-0", look.tone)}>
           {pr.state}

@@ -312,9 +312,8 @@ describe("the teammates screen", () => {
     await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
-    // Its tasks, its routines and its pull requests, each a tab; who it is lives in the conversation's header.
-    expect(within(panel("Lead")).getByRole("region", { name: "Tasks" })).toBeTruthy();
-    fireEvent.click(within(panel("Lead")).getByRole("tab", { name: /^Routines/ }));
+    // Its routines, a tab that always shows (Tasks and Pull Requests show once they hold something); who it is lives in the conversation's header.
+    await waitFor(() => expect(within(panel("Lead")).getByRole("tab", { name: /^Routines/ }).getAttribute("aria-selected")).toBe("true"));
     expect(within(panel("Lead")).getByRole("region", { name: "Routines" })).toBeTruthy();
     expect(within(panel("Lead")).getByText("Schedule a routine for Lead.")).toBeTruthy();
   });
@@ -340,7 +339,9 @@ describe("the teammates screen", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(workerRow("writer"));
-    expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
+    // No tasks: no Tasks tab, and its panel opens on Routines.
+    expect(await within(panel("writer")).findByText("Schedule a routine for writer.", undefined, POPUP_READ)).toBeTruthy();
+    expect(within(panel("writer")).queryByRole("tab", { name: /^Tasks/ })).toBeNull();
   });
 
   it("counts running, failed and done tasks on its tiles, lists the selected tile's, and moves a task that ends off Running live", async () => {

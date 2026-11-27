@@ -14,7 +14,8 @@ import { holdOf } from "./task";
 /** One pull request a teammate's task opened, with the task. */
 export interface TeammatePullRequest {
   number: number;
-  url: string;
+  /** Its link: only an `https://github.com/…` address, else `null` (see {@link safePullRequestUrl}). */
+  url: string | null;
   title: string | null;
   repository: string | null;
   /** `open`, `draft`, `merged` or `closed`: the record's last sighting, `open` when none named one. */
@@ -23,6 +24,23 @@ export interface TeammatePullRequest {
   task: CodingBoardTask;
   /** Its task waits on you. */
   attention: boolean;
+}
+
+/** The one host a pull request links to: the lab configures no other GitHub host. */
+const GITHUB_HOST = "github.com";
+
+/**
+ * `url` when it is an `https:` address on github.com, else `null`. The record's
+ * link comes from what a run's tools returned, which an agent can steer, so a
+ * `javascript:` link or another site's never reaches an `href`.
+ */
+export function safePullRequestUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.hostname === GITHUB_HOST ? parsed.href : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A state that ended the pull request. */
@@ -47,7 +65,7 @@ export function pullRequestRows(tasks: readonly CodingBoardTask[], recorded: Rea
       const key = `${pr.repository ?? ""}#${pr.number}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      rows.push({ number: pr.number, url: pr.url, title: pr.title, repository: pr.repository, state: pr.state ?? "open", task, attention: holdOf(task) !== undefined });
+      rows.push({ number: pr.number, url: safePullRequestUrl(pr.url), title: pr.title, repository: pr.repository, state: pr.state ?? "open", task, attention: holdOf(task) !== undefined });
     }
   }
   const open = rows.filter(isOpenPullRequest);

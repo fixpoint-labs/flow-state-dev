@@ -48,13 +48,16 @@ page follows the system's light or dark setting. Yellow marks only the user need
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
-- **Right:** the open teammate's panel, in three tabs, each with its count: *Tasks*,
-  *Routines* and *Pull Requests*. The tab you last picked for a teammate stays picked in this
-  browser. A tab you are not on shows a yellow dot when something in it waits on you.
-  *Pull Requests* lists the pull requests the runs of this teammate's tasks opened, so Chief of
-  Staff's are those of the coding tasks it handed out: open ones first, then merged or closed,
-  each linked to GitHub with its state as its run last saw it and its task, which opens in the
-  popup. *Tasks* counts the tasks its
+- **Right:** the open teammate's panel, in tabs, each with its count: *Tasks*, *Pull Requests*
+  and *Routines*. *Tasks* shows once the teammate has a task and *Pull Requests* once it has a
+  pull request; *Routines* always shows, so a new teammate's panel is one *Routines* tab. The tab
+  you last picked for a teammate stays picked in this browser, and while it is hidden the panel
+  opens on the first tab shown. A tab you are not on shows a yellow dot when something in it
+  waits on you. *Pull Requests* lists the pull requests the runs of this teammate's tasks
+  opened, so Chief of Staff's are those of the coding tasks it handed out: open ones first, then
+  merged or closed, each with its state as its run last saw it and its task, which opens in the
+  popup. A pull request links to GitHub only when its address is an `https://github.com` one;
+  any other shows as plain text. *Tasks* counts the tasks its
   conversation started, coding tasks and teammates' jobs alike. In it, four count tiles,
   *Running*, *Idle*, *Failed* and *Done*, which pick the tasks shown; the selected one lists its tasks
   as cards, newest first. A running task waiting on you leads, and every running task shows,

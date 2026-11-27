@@ -36,7 +36,7 @@ const FILTERS = [
 type Filter = (typeof FILTERS)[number]["status"];
 
 /** The panel's own tabs' names, in {@link PANEL_TABS}' order. */
-const PANEL_LABELS: Record<PanelTab, string> = { tasks: "Tasks", routines: "Routines", "pull-requests": "Pull Requests" };
+const PANEL_LABELS: Record<PanelTab, string> = { tasks: "Tasks", "pull-requests": "Pull Requests", routines: "Routines" };
 
 /** What an empty tab says. */
 const EMPTY: Record<Filter, string> = { running: "No running tasks.", idle: "No idle tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
@@ -147,9 +147,13 @@ export function TeammatePanel({
   const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, idle: null, failed: null, done: null });
   const name = displayName(worker);
   // The panel's own tabs, the open one kept per teammate; the pull requests its tasks' runs recorded, newest task first.
-  const [panelTab, setPanelTab] = usePanelTab(worker.id);
   const panelTabs = useRef<Record<PanelTab, HTMLButtonElement | null>>({ tasks: null, routines: null, "pull-requests": null });
   const pullRequests = useTeammatePullRequests(useMemo(() => newestFirst(tasks), [tasks]));
+  // Tasks shows once it has a task, Pull Requests once it has a pull request; until a read answers, each shows. Routines always shows.
+  const visibleTabs = PANEL_TABS.filter((id) =>
+    id === "tasks" ? board.value === undefined || tasks.length > 0 : id === "pull-requests" ? pullRequests === undefined || pullRequests.length > 0 : true,
+  );
+  const [panelTab, setPanelTab] = usePanelTab(worker.id, visibleTabs);
   const panelCounts: Record<PanelTab, number> = { tasks: tasks.length, routines: routines.length, "pull-requests": pullRequests?.filter(isOpenPullRequest).length ?? 0 };
   // Something in the tab waits on you: a running task's hold, or a pull request whose task holds one.
   const panelAttention: Record<PanelTab, boolean> = {
@@ -161,7 +165,7 @@ export function TeammatePanel({
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (step === 0) return;
     e.preventDefault();
-    const next = PANEL_TABS[(PANEL_TABS.indexOf(panelTab) + step + PANEL_TABS.length) % PANEL_TABS.length]!;
+    const next = visibleTabs[(visibleTabs.indexOf(panelTab) + step + visibleTabs.length) % visibleTabs.length]!;
     setPanelTab(next);
     panelTabs.current[next]?.focus();
   };
@@ -251,7 +255,7 @@ export function TeammatePanel({
   return (
     <aside aria-label={`${name}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
       <div role="tablist" aria-label="Panel" className="flex shrink-0 gap-5 border-b border-border px-4" onKeyDown={onPanelTabKey}>
-        {PANEL_TABS.map((id) => {
+        {visibleTabs.map((id) => {
           const selected = panelTab === id;
           return (
             <button
