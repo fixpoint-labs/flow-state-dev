@@ -139,7 +139,8 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
 
 /** The planted regression: a save action on a flow the host serves over HTTP, writing the list's row. */
 function publicSaveAction(): FlowInstance {
-  const document = defineResource({ ref: GITHUB_REVIEWERS_DOC, scope: "org", stateSchema: z.object({}).passthrough(), default: {}, content: "" } as never);
+  // The same client settings as the host's own document, so start-up admits the plant's pair at one address.
+  const document = defineResource({ ref: GITHUB_REVIEWERS_DOC, scope: "org", stateSchema: z.object({}).passthrough(), default: {}, content: "", client: { content: { read: true } } } as never);
   const save = handler({
     name: "set-github-reviewers",
     inputSchema: z.object({ logins: z.array(z.string()) }),
