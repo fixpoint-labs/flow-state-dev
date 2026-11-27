@@ -92,8 +92,6 @@ export type InboxViewValue = z.infer<typeof inboxViewSchema>;
 export type InboxBoardTask = z.infer<typeof inboxBoardTaskSchema>;
 
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
-const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
 
 /** The request host's session reads: a host that can't read session records refuses by name. */
 function sessionsOf(ctx: BlockContext): RequestSessions {
@@ -120,17 +118,6 @@ async function everyPendingSuspension(sessions: RequestSessions, flowKinds: read
   return all;
 }
 
-/** The org's worker inventory rows: each worker's id and the worker flow it runs on. */
-async function inventoryOf(ctx: BlockContext): Promise<Array<{ id: string; kind: string }>> {
-  const collection = (ctx.resources as unknown as Record<string, { list(): Promise<Array<{ state: unknown }>> } | undefined>)[INVENTORY_RESOURCE];
-  if (collection === undefined) return [];
-  return (await collection.list()).flatMap((entry) => {
-    const id = text(field(entry.state, "id"));
-    const kind = text(field(entry.state, "kind"));
-    return id === null || kind === null ? [] : [{ id, kind }];
-  });
-}
-
 /** What a board is called on a screen: the workstream its conversation leads, else `@<worker>`, else the conversation's id. */
 function boardOwnerLabel(sessionId: string, session: PeerSessionView): string {
   const workstream = text(session.state[WORKSTREAM_STATE_KEY]);
@@ -153,11 +140,19 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
       resources: { ...rosterResources(installation), ...conversationLedgerResources, [INVENTORY_RESOURCE]: inventoryWorkerEntries },
       execute: async (input, ctx) => {
         const sessions = sessionsOf(ctx);
-        const [inventory, roster] = await Promise.all([inventoryOf(ctx), readRosterEntries(ctx, installation)]);
+        const [inventory, roster] = await Promise.all([
+          ctx.resources[INVENTORY_RESOURCE]?.list() ?? [],
+          readRosterEntries(ctx, installation)
+        ]);
         // The worker flows: the inventory's flows and the caller's own roster flows, read here, never from input.
         const ownWorkers = new Map(roster.filter((entry) => !entry.standard).map((entry) => [entry.id, entry.flow]));
-        const workerIds = new Set(inventory.map((worker) => worker.id));
-        const workerFlows = new Set(inventory.map((worker) => worker.kind));
+        const workerIds = new Set<string>();
+        const workerFlows = new Set<string>();
+        for (const { state } of inventory) {
+          if (typeof state?.id !== "string" || typeof state.kind !== "string") continue;
+          workerIds.add(state.id);
+          workerFlows.add(state.kind);
+        }
         const flowKinds = [...new Set([...workerFlows, ...ownWorkers.values()])].sort();
 
         const ledger = resolveResourceCollection(ctx, CONVERSATION_LEDGER_ID);

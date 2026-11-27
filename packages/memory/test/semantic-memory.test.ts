@@ -164,12 +164,8 @@ describe('memory/semanticMemory', () => {
       expect(semanticFactSchema.safeParse(fact).success).toBe(false)
     })
 
-    it('semanticMemoryStateSchema validates default empty state', () => {
-      expect(semanticMemoryStateSchema.safeParse({
-        facts: [],
-        totalExtracted: 0,
-        totalConsolidations: 0,
-      }).success).toBe(true)
+    it('semanticMemoryStateSchema initializes empty state', () => {
+      expect(semanticMemoryStateSchema.parse({})).toEqual({ facts: [], totalExtracted: 0, totalConsolidations: 0 })
     })
 
     it('createSemanticMemoryResource returns a valid resource definition', () => {

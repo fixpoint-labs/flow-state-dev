@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, SkillState } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { activeSkillStateSchema } from "./active-skill-state";
 import {
   appendActivation,
@@ -141,14 +141,13 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
         throw new Error(`Unknown skill "${input.name}". Available: ${available}`);
       }
 
-      const state = manifest.state as unknown as SkillState;
-      if (state.disableModelInvocation) {
+      if (manifest.state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be loaded by the agent`,
         );
       }
 
-      const mode = state.contextMode ?? "inline";
+      const mode = manifest.state.contextMode ?? "inline";
       if (mode !== "inline") {
         throw new Error(
           `Skill "${input.name}" is a ${mode}-mode skill and cannot be loaded inline. ` +

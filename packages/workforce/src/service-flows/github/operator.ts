@@ -60,7 +60,7 @@ export interface OperatorGitHubOptions {
  */
 export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscriptionProvider {
   const { operator, token, apiUrl, reviewers, interestModel } = options;
-  const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
+  const reads = (ctx: BlockContext) => ctx.session.identity.userId === operator;
   const custom =
     reviewers === undefined
       ? undefined

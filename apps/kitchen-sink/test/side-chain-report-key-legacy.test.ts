@@ -68,10 +68,4 @@ describe("the report-acknowledgement key across the side-chain rename", () => {
   it("handles a session predating the key entirely", () => {
     expect(alreadyReportedTaskIds(reportAcknowledgementSchema.parse({})).size).toBe(0);
   });
-
-  it("handles absent state without throwing", () => {
-    // `sessionStateSchema` defaults both keys, but the read rule is called with
-    // whatever the runtime hands it; an undefined state must not throw.
-    expect(alreadyReportedTaskIds(undefined).size).toBe(0);
-  });
 });

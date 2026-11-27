@@ -12,6 +12,7 @@
  * coding agent (its import sweep in `slot.spec.ts`), and claude-code takes no
  * orchestration dependency. Only the Agent SDK's `query` is fake.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -102,7 +103,7 @@ function host() {
     boardCollection: ledger,
     tenant: undefined,
     mode: { name: "implement", instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     // Long past the test's wait: the run ends early only if the steer stops it.
     runTimeoutMs: 15_000,
     ownership: { pollMs: 25 },

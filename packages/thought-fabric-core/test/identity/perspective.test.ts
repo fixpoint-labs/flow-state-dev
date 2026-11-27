@@ -750,12 +750,8 @@ describe('identity/perspective — Phase B schemas', () => {
   })
 
   it('perspectiveObservationsStateSchema has empty defaults', () => {
-    const parsed = perspectiveObservationsStateSchema.parse({
-      observations: [],
-      turnCounter: 0,
-    })
-    expect(parsed.observations).toEqual([])
-    expect(parsed.turnCounter).toBe(0)
+    expect(perspectiveObservationsStateSchema.parse({})).toEqual({ observations: [], turnCounter: 0 })
+    expect(perspectiveObservationsStateSchema.parse({ turnCounter: 2 })).toEqual({ observations: [], turnCounter: 2 })
   })
 
   it('perspectivePositionSchema validates a complete position', () => {
@@ -785,9 +781,9 @@ describe('identity/perspective — Phase B schemas', () => {
   })
 
   it('perspectivePositionsStateSchema has empty defaults', () => {
-    const parsed = perspectivePositionsStateSchema.parse({ positions: [] })
-    expect(parsed.positions).toEqual([])
+    expect(perspectivePositionsStateSchema.parse({})).toEqual({ positions: [] })
   })
+
 })
 
 // ---------------------------------------------------------------------------

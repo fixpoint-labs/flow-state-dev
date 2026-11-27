@@ -15,6 +15,7 @@
  *           GOAL_CONTROL=no-attach (must FAIL the d legs a branch can't do; see EXPECTED)
  *           GOAL_CONTROL=any-user  (must FAIL d:other-user-refused and d:recorded; see EXPECTED)
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,6 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,
-  type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
@@ -113,7 +113,7 @@ const workspace: HarnessSessionWorkspace = {
 // ---- the stub harness: commits one file per turn; "wait" holds the turn ---
 let release: () => void = () => undefined;
 let gate: Promise<void> = Promise.resolve();
-const stubAgent = (feeds: HarnessSessionFeeds) =>
+const stubAgent = (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),

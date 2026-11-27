@@ -22,7 +22,7 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workerMessagesResources } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
-import type { Harness } from "../src/harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import type { CompletionRunContext, ModeSpec, PromptRunContext } from "../src/manager";
 import { scriptedHarness } from "../src/scripted-harness";
 import { modeOfTask, resolveCoderModes, runModeOfTask } from "../src/kit/coder-modes";
