@@ -61,7 +61,7 @@ describe("write-record authorization", () => {
         else if (/\.tsx?$/.test(entry.name)) {
           const source = readFileSync(path, "utf8");
           // Resolves a flow on a registry it holds (not a host's or a runtime's), then runs it.
-          if (/(?<![.\w])registry\.get\(/.test(source) && /\brunAction\(/.test(source)) entries.push(path);
+          if (/(?<![.\w])registry\.get\(/.test(source) && /\brun(Framework)?Action\(/.test(source)) entries.push(path);
         }
       }
     };

@@ -3,12 +3,14 @@
  *
  * Resource content is addressed by (scope_type, scope_id, resource_key) and
  * stored durably in the `resource_content` table, parallel to the Postgres
- * adapter. Reads are scoped via the `(scope_type, scope_id)` index — never a
- * process-wide scan. Defined locally so store-sqlite keeps a type-only
+ * adapter. Reads stay inside one scope: `getAll` reads the
+ * `(scope_type, scope_id)` index and `getByPrefix` walks a key range on the
+ * composite primary key — never a process-wide scan. Defined locally so store-sqlite keeps a type-only
  * dependency on the engine package.
  */
 import type Database from "better-sqlite3";
 import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine/host";
+import { prepareKeyPrefixRead } from "./key-prefix-range";
 
 /**
  * Create a SQLite-backed `ContentStore` over the provided database handle.
@@ -29,12 +31,9 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
   const getAllStmt = db.prepare(
     "SELECT resource_key, content FROM resource_content WHERE scope_type = ? AND scope_id = ?"
   );
-  // Prefix match via substr(...) rather than LIKE — sidesteps LIKE wildcard
-  // escaping (`%`/`_` are legal in resource keys). An empty prefix matches
-  // every key in scope (substr(key, 1, 0) = '').
-  const getByPrefixStmt = db.prepare(
-    "SELECT resource_key, content FROM resource_content " +
-      "WHERE scope_type = ? AND scope_id = ? AND substr(resource_key, 1, length(?)) = ?"
+  const readByPrefix = prepareKeyPrefixRead(
+    db,
+    "SELECT resource_key, content FROM resource_content WHERE scope_type = ? AND scope_id = ?"
   );
   const deleteAllStmt = db.prepare(
     "DELETE FROM resource_content WHERE scope_type = ? AND scope_id = ?"
@@ -87,12 +86,10 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, string>> {
-      const rows = getByPrefixStmt.all(
-        scopeType,
-        scopeId,
-        keyPrefix,
-        keyPrefix
-      ) as Array<{ resource_key: string; content: string }>;
+      const rows = readByPrefix(scopeType, scopeId, keyPrefix) as Array<{
+        resource_key: string;
+        content: string;
+      }>;
       const result: Record<string, string> = {};
       for (const row of rows) result[row.resource_key] = row.content;
       return result;

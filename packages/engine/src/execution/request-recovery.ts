@@ -16,7 +16,7 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { settledRecordFields } from "./request-action-result";
-import { runAction } from "./runAction";
+import { runFrameworkAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
 import { principalKindOf } from "../context/principal";
 import { bringSessionWakesForward } from "../durability/request-wakes";
@@ -342,7 +342,7 @@ export async function retryRequest(
   const retryPrincipalKind = principalKindOf(originalRecord?.principalKind);
   const retryResolvedBy = originalRecord?.resolvedBy ?? undefined;
 
-  void runAction({
+  void runFrameworkAction({
     flow,
     actionName: actionName as keyof typeof flow.actions & string,
     input,

@@ -99,6 +99,7 @@ import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { principalOwns, withRequestOrg, type Principal } from "./principal";
 import { resolveSessionKindRecord } from "./session-kind";
+import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -1261,6 +1262,7 @@ export async function createExecutionContext<
             kind: runKind,
             ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
           } satisfies Principal,
+          deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),

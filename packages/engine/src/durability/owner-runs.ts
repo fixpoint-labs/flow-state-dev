@@ -25,6 +25,7 @@
 import type { ExecutionResult } from "../execution/types";
 import { resolveSharedUserCellKey, tenantMatches } from "../stores/scope-keys";
 import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
+import type { DeliveryOrigin } from "../execution/delivery-origin";
 import { dispatchInternalAs } from "./dispatch-internal";
 import type { Principal } from "../context/principal";
 
@@ -61,10 +62,13 @@ function ownerRunSessionId(run: OwnerRun): string {
  * Check `run`'s row and, when it passes, dispatch the entry as its owner, in
  * the row's own session. Resolves once the host accepted the request; rejects
  * when the host refused or failed to.
+ *
+ * @param options.origin The outside delivery that fired the run, stamped on it (see `execution/delivery-origin.ts`).
  */
 export async function fireOwnerRunThrough(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
-  run: OwnerRun
+  run: OwnerRun,
+  options: { readonly origin?: DeliveryOrigin } = {}
 ): Promise<OwnerRunFired> {
   const { userId, orgId, tenantId } = run.owner;
   const stored = await host.stores.resourceState.get("user", resolveSharedUserCellKey(userId, orgId, run.flowKind), run.rowKey);
@@ -81,7 +85,8 @@ export async function fireOwnerRunThrough(
     // FIX-2942: nominated by a service's routing, not resolved at a person's door: a machine's.
     as: { ...run.owner, kind: "machine" },
     sessionId: ownerRunSessionId(run),
-    metadata: { ownerRun: { rowKey: run.rowKey } }
+    metadata: { ownerRun: { rowKey: run.rowKey } },
+    ...(options.origin !== undefined ? { origin: options.origin } : {})
   });
   if (handle.accepted !== undefined) await handle.accepted;
   return { fired: true, requestId: handle.requestId, finished: handle.finished };
@@ -156,9 +161,9 @@ function otherOwner(run: OwnerRun, owner: RouteOwner): OwnerRunRefusal | undefin
 }
 
 /** Fire one run, catching what the host throws so one bad run can't stop the rest. */
-async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, run: OwnerRun): Promise<RoutedOwnerRun> {
+async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, run: OwnerRun, origin: DeliveryOrigin | undefined): Promise<RoutedOwnerRun> {
   try {
-    const fired = await fireOwnerRunThrough(host, run);
+    const fired = await fireOwnerRunThrough(host, run, origin === undefined ? {} : { origin });
     return fired.fired ? { run, requestId: fired.requestId, finished: fired.finished } : { run, refused: fired.refused };
   } catch (error) {
     return { run, failed: error instanceof Error ? error.message : String(error) };
@@ -178,6 +183,9 @@ async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, 
  *   `other_user`, and another tenant's `other_tenant`, never fired (a publish's routing, which reaches only its
  *   sender's own user). The routing entry is told it too (the event's `owner`), and nominates no one else; this is
  *   the backstop.
+ * @param options.origin The outside delivery the event arrived by (`"webhook"` from the webhook transport). The
+ *   routing and every run it fires carry it, so each reads as started by that delivery
+ *   (`execution/delivery-origin.ts`). The caller sets it from the door the event came through, never from the event.
  */
 export async function routeServiceEvent(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
@@ -187,9 +195,9 @@ export async function routeServiceEvent(
     readonly input: unknown;
     readonly principal: ServicePrincipal;
   },
-  options: { readonly concurrency?: number; readonly owner?: RouteOwner } = {}
+  options: { readonly concurrency?: number; readonly owner?: RouteOwner; readonly origin?: DeliveryOrigin } = {}
 ): Promise<RoutedServiceEvent> {
-  const started = startRouting(host, service);
+  const started = startRouting(host, service, options.origin);
   return fireRouted(host, service, started, options);
 }
 
@@ -199,10 +207,11 @@ interface StartedRouting {
   readonly sessionId: string;
 }
 
-/** Dispatch `service`'s routing entry as the service, in its routing session. */
+/** Dispatch `service`'s routing entry as the service, in its routing session, carrying `origin` when an outside delivery started it. */
 function startRouting(
   host: Pick<InboundTransportHost, "dispatch">,
-  service: { readonly flowKind: string; readonly entry: string; readonly input: unknown; readonly principal: ServicePrincipal }
+  service: { readonly flowKind: string; readonly entry: string; readonly input: unknown; readonly principal: ServicePrincipal },
+  origin: DeliveryOrigin | undefined
 ): StartedRouting {
   const { userId, orgId } = service.principal;
   const sessionId = `service-route:${[orgId, userId, service.flowKind].map(encodeURIComponent).join(":")}`;
@@ -213,7 +222,8 @@ function startRouting(
     // FIX-2942: the service's own identity, a machine's.
     as: { ...service.principal, kind: "machine" },
     sessionId,
-    metadata: { serviceRoute: { entry: service.entry } }
+    metadata: { serviceRoute: { entry: service.entry } },
+    ...(origin !== undefined ? { origin } : {})
   });
   return { handle, sessionId };
 }
@@ -223,7 +233,7 @@ async function fireRouted(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
   service: { readonly flowKind: string; readonly principal: ServicePrincipal },
   { handle, sessionId }: StartedRouting,
-  options: { readonly concurrency?: number; readonly owner?: RouteOwner }
+  options: { readonly concurrency?: number; readonly owner?: RouteOwner; readonly origin?: DeliveryOrigin }
 ): Promise<RoutedServiceEvent> {
   const { orgId } = service.principal;
   const result = await handle.finished;
@@ -244,7 +254,7 @@ async function fireRouted(
     for (let i = next++; i < runs.length; i = next++) {
       const run = runs[i]!;
       const refused = options.owner === undefined ? undefined : otherOwner(run, options.owner);
-      ownerRuns[i] = refused === undefined ? await fireOne(host, run) : { run, refused };
+      ownerRuns[i] = refused === undefined ? await fireOne(host, run, options.origin) : { run, refused };
     }
   };
   const width = Math.max(1, Math.min(options.concurrency ?? DEFAULT_OWNER_RUN_CONCURRENCY, runs.length));
@@ -270,6 +280,8 @@ export interface ServiceRouteDispatch {
     readonly sessionId: string;
     readonly name: string;
   };
+  /** The outside delivery that started the dispatching request, if one did: the routing and its runs carry it. */
+  readonly origin?: DeliveryOrigin;
 }
 
 /** What a service route came to: its routing accepted (it runs on, detached), or not, and why. */
@@ -314,7 +326,7 @@ export function createServiceRouteOperation(
     const service = { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId } };
     let started: StartedRouting;
     try {
-      started = startRouting(host, service);
+      started = startRouting(host, service, route.origin);
     } catch (error) {
       return { ok: false, detail: `the routing was not accepted: ${error instanceof Error ? error.message : String(error)}` };
     }
@@ -323,7 +335,7 @@ export function createServiceRouteOperation(
     // Handed to the drain before acceptance is awaited: a shutdown that starts meanwhile still waits for it.
     const finished = accepted.then(
       () =>
-        fireRouted(host, service, started, { owner })
+        fireRouted(host, service, started, { owner, ...(route.origin !== undefined ? { origin: route.origin } : {}) })
           .then((routed) => {
             reportRouting(host, route.provider, routed);
             for (const fired of routed.ownerRuns) {

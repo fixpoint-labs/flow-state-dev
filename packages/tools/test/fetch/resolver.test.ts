@@ -105,4 +105,21 @@ describe("fetch resolveProvider", () => {
       expect(result.apiKey).toBe("config-key");
     });
   });
+
+  // A hosted provider follows redirects where no hop can be checked, so an
+  // allowlist with one would be a promise the tool cannot keep.
+  describe("allowedHosts", () => {
+    it("selects builtin even when a hosted provider's key is set", () => {
+      process.env.FIRECRAWL_API_KEY = "env-key";
+      process.env.JINA_API_KEY = "env-key";
+
+      expect(resolveProvider({ allowedHosts: ["example.com"] }).adapter.name).toBe("builtin");
+    });
+
+    it.each(["firecrawl", "jina"] as const)("refuses %s named with allowedHosts", (provider) => {
+      expect(() =>
+        resolveProvider({ provider, allowedHosts: ["example.com"], keys: { [provider]: "k" } })
+      ).toThrow(`Fetch provider "${provider}" cannot enforce allowedHosts`);
+    });
+  });
 });

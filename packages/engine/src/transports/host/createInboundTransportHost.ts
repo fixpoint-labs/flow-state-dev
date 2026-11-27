@@ -84,7 +84,8 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
 import { refuseRetiredDispatcherOption } from "../runner";
-import { CLI_SOURCE, INTERNAL_SOURCE, SCHEDULED_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { CLI_SOURCE, isFrameworkStampedSource, SCHEDULED_SOURCE } from "../../execution/transport-sources";
+import { isFrameworkDispatch, withoutDeliveryOrigin } from "../../execution/delivery-origin";
 import {
   createInProcessRunner,
   isInProcessRunner,
@@ -757,7 +758,9 @@ export function createInboundTransportHost(
       ...(envelope.principal.kind != null ? { principalKind: envelope.principal.kind } : {}),
       ...(envelope.principal.resolvedBy != null ? { resolvedBy: envelope.principal.resolvedBy } : {}),
       source: envelope.source,
-      metadata: envelope.metadata,
+      // An adapter's envelope cannot carry a delivery origin: only one the
+      // engine built and marked keeps it (`delivery-origin.ts`, BP-031).
+      metadata: isFrameworkDispatch(envelope) ? envelope.metadata : withoutDeliveryOrigin(envelope.metadata),
       resolvedActionCore: envelope.resolvedActionCore,
       ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {})
     };
@@ -1063,8 +1066,7 @@ export function createInboundTransportHost(
         // become durable together. Under `allow` the gate below is a passthrough,
         // so the run still starts immediately — only what `accepted` waits for
         // changes.
-        const isDispatched =
-          envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
+        const isDispatched = isFrameworkStampedSource(envelope.source);
 
         // A `defer` run waits for its key like a `queue` run, so it needs the
         // same discoverable stub, heartbeat and cancel watch while it waits.

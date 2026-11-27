@@ -8,7 +8,7 @@ import type { StoreRegistry } from "../../stores/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import type { ResponseEmitter } from "../../streaming/response-emitter";
 import type { ExecutionResult } from "../../execution/types";
-import { runAction } from "../../execution/runAction";
+import { runFrameworkAction } from "../../execution/runAction";
 import { UnknownFlowError } from "../../context/instance-pin";
 import type {
   DispatchEnvelope,
@@ -117,7 +117,7 @@ export function createInProcessRunner(
       failAccepted = reject;
     });
 
-    const finished = runAction({
+    const finished = runFrameworkAction({
       flow,
       actionName: envelope.actionName as keyof typeof flow.actions & string,
       input: envelope.input,

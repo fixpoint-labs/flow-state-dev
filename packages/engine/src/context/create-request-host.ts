@@ -102,6 +102,7 @@ import { isWriteSessionId } from "../resources/write-session-id";
 import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { ServiceRouteOperation } from "../durability/owner-runs";
+import { deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
 import {
   birthSession,
   SessionCreateRefusedError,
@@ -166,6 +167,13 @@ export type RequestHostInputs = {
    * running request's own session is a machine's.
    */
   principal?: Principal;
+  // FIX-2942 D1.
+  /**
+   * The outside delivery that started this request (`readDeliveryOrigin`), if
+   * one did. Every request this one dispatches, and a service routing it
+   * starts, carries it: the mark follows dispatches.
+   */
+  deliveryOrigin?: DeliveryOrigin;
   /**
    * Resolve another flow instance registered in this process, by its exact
    * address — the flow registry, narrowed to the one question the seam asks.
@@ -718,7 +726,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
           sessionId: identity.sessionId,
           name: typeof named === "string" && named.length > 0 ? named : flow.kind
-        }
+        },
+        ...(inputs.deliveryOrigin !== undefined ? { origin: inputs.deliveryOrigin } : {})
       });
       if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
       return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };
@@ -764,6 +773,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // the facts the sender supplied through `provenance` — a channel whose
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
+        // Server-set beside the stamp: a request an outside delivery started passes its origin on.
+        // A reserved top-level key: sender facts stay nested under `dispatch`, never here.
+        ...deliveryOriginMetadata(inputs.deliveryOrigin),
         dispatch: {
           // The sender's facts, without any key the seam owns: a provenance
           // never moves the address, the reply route, the approved recipient

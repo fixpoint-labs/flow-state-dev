@@ -11,7 +11,8 @@ import type { runAction } from "../src/execution/runAction";
 type RunActionOptions = Parameters<typeof runAction>[0];
 const runActionMock = vi.fn((_options: RunActionOptions) => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
-  runAction: (options: RunActionOptions) => runActionMock(options)
+  runAction: (options: RunActionOptions) => runActionMock(options),
+  runFrameworkAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 function makeVoiceProvider(id: string): VoiceProvider {

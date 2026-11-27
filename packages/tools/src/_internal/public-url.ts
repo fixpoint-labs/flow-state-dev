@@ -64,12 +64,7 @@ export function assertPublicHttpUrl(value: string): URL {
     throw new BlockedUrlError("Fetch URL must not contain credentials");
   }
 
-  // `url.hostname` keeps the brackets on an IPv6 literal and may carry the
-  // root-zone trailing dot; strip both before classifying.
-  const hostname = url.hostname
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "")
-    .replace(/\.$/, "");
+  const hostname = normalizeHostname(url.hostname);
 
   if (hostname === "" || hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw new BlockedUrlError(NOT_PUBLIC);
@@ -79,6 +74,18 @@ export function assertPublicHttpUrl(value: string): URL {
   }
 
   return url;
+}
+
+/**
+ * Lower-cases a hostname and strips what `URL.hostname` keeps but a comparison
+ * or classification must not see: the brackets on an IPv6 literal and the
+ * root-zone trailing dot.
+ */
+export function normalizeHostname(hostname: string): string {
+  return hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
 }
 
 /**

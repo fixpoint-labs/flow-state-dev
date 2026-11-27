@@ -52,6 +52,7 @@ import type { PrincipalKind } from "./principal";
 import type { BlockDispatchType } from "@flow-state-dev/core/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { RuntimeConfig } from "../runtime-config";
+import { asFrameworkDispatch } from "../execution/delivery-origin";
 
 /**
  * Starts a request the seam has already resolved the session for. Supplied by
@@ -244,7 +245,8 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
     // raised after the attempt cannot rule out a live child.
     let handle: ReturnType<typeof inputs.host.dispatch>;
     try {
-      handle = inputs.host.dispatch({
+      // Marked as the engine's own, so a delivery origin the seam stamped rides it.
+      handle = inputs.host.dispatch(asFrameworkDispatch({
         source: spec.source,
         flowKind: spec.flowKind,
         action: spec.action,
@@ -266,7 +268,7 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
         // Fire-and-forget: no live stream, nobody attached, nothing awaiting the
         // result inline. See the file header.
         responseEmitter: null
-      });
+      }));
     } catch (error) {
       return {
         notStarted: true,
