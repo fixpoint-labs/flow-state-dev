@@ -26,7 +26,11 @@ import type { ExecutionResult } from "../execution/types";
 import { resolveSharedUserCellKey, tenantMatches } from "../stores/scope-keys";
 import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 import type { DeliveryOrigin } from "../execution/delivery-origin";
-import { dispatchInternalAs, type InternalPrincipal } from "./dispatch-internal";
+import { dispatchInternalAs } from "./dispatch-internal";
+import type { Principal } from "../context/principal";
+
+/** A principal a service names or runs as, before its door's kind: the identity half of the one principal. */
+type ServicePrincipal = Pick<Principal, "userId" | "orgId" | "tenantId">;
 
 /** One run as a row's owner: the entry to start, and the row that makes it that user's. */
 export interface OwnerRun {
@@ -36,7 +40,7 @@ export interface OwnerRun {
   readonly entry: string;
   readonly input: unknown;
   /** Who the run would be, as nominated: checked against the row, never trusted alone. */
-  readonly owner: InternalPrincipal;
+  readonly owner: ServicePrincipal;
   /** The row's full key in the owner's user cell (a user-scoped collection shared across flows). */
   readonly rowKey: string;
 }
@@ -78,7 +82,8 @@ export async function fireOwnerRunThrough(
     flowKind: run.flowKind,
     entry: run.entry,
     input: run.input,
-    as: run.owner,
+    // FIX-2942: nominated by a service's routing, not resolved at a person's door: a machine's.
+    as: { ...run.owner, kind: "machine" },
     sessionId: ownerRunSessionId(run),
     metadata: { ownerRun: { rowKey: run.rowKey } },
     ...(options.origin !== undefined ? { origin: options.origin } : {})
@@ -188,7 +193,7 @@ export async function routeServiceEvent(
     readonly flowKind: string;
     readonly entry: string;
     readonly input: unknown;
-    readonly principal: InternalPrincipal;
+    readonly principal: ServicePrincipal;
   },
   options: { readonly concurrency?: number; readonly owner?: RouteOwner; readonly origin?: DeliveryOrigin } = {}
 ): Promise<RoutedServiceEvent> {
@@ -205,7 +210,7 @@ interface StartedRouting {
 /** Dispatch `service`'s routing entry as the service, in its routing session, carrying `origin` when an outside delivery started it. */
 function startRouting(
   host: Pick<InboundTransportHost, "dispatch">,
-  service: { readonly flowKind: string; readonly entry: string; readonly input: unknown; readonly principal: InternalPrincipal },
+  service: { readonly flowKind: string; readonly entry: string; readonly input: unknown; readonly principal: ServicePrincipal },
   origin: DeliveryOrigin | undefined
 ): StartedRouting {
   const { userId, orgId } = service.principal;
@@ -214,7 +219,8 @@ function startRouting(
     flowKind: service.flowKind,
     entry: service.entry,
     input: service.input,
-    as: service.principal,
+    // FIX-2942: the service's own identity, a machine's.
+    as: { ...service.principal, kind: "machine" },
     sessionId,
     metadata: { serviceRoute: { entry: service.entry } },
     ...(origin !== undefined ? { origin } : {})
@@ -225,7 +231,7 @@ function startRouting(
 /** Wait for a started routing to finish, then fire each run it named. */
 async function fireRouted(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
-  service: { readonly flowKind: string; readonly principal: InternalPrincipal },
+  service: { readonly flowKind: string; readonly principal: ServicePrincipal },
   { handle, sessionId }: StartedRouting,
   options: { readonly concurrency?: number; readonly owner?: RouteOwner; readonly origin?: DeliveryOrigin }
 ): Promise<RoutedServiceEvent> {

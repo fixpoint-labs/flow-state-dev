@@ -141,6 +141,8 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
         input: { message: text },
         userId,
         orgId,
+        // The terminal is a person's door, as the HTTP one is.
+        principalKind: "person",
         sessionId,
         requestId,
         stores,

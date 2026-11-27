@@ -212,7 +212,7 @@ describe("a webhook delivery's origin", () => {
         flowKind: "svc",
         entry: "relay",
         input: { note: "hi" },
-        as: { userId: "alice", orgId: ORG },
+        as: { userId: "alice", orgId: ORG, kind: "machine" },
         sessionId: "s-relay",
         metadata: {},
         origin: "webhook"
@@ -357,7 +357,7 @@ describe("a webhook delivery's origin", () => {
         flowKind: "svc",
         entry: "deliver",
         input: { note: "hi" },
-        as: { userId: "alice", orgId: ORG },
+        as: { userId: "alice", orgId: ORG, kind: "machine" },
         sessionId,
         metadata: {},
         origin: "webhook"

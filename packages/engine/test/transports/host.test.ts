@@ -309,7 +309,7 @@ describe("createInboundTransportHost", () => {
         metadata: { body: { userId: "u_body", orgId: "o_1" } }
       }
     });
-    expect(principal).toEqual({ userId: "u_body", orgId: DEFAULT_ORG_ID });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "u_body", orgId: DEFAULT_ORG_ID });
   });
 
   describe("validateDispatch — the envelope carries an organization (FIX-1442)", () => {
