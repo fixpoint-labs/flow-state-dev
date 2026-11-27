@@ -1,5 +1,5 @@
 /**
- * The environment a Cursor run started through `cursorHarness()` is handed:
+ * `cursorHarness()` hands a Cursor run a sandboxed agent by default and
  * exactly Cursor's pass list, never a server variable outside it, since a
  * run's model has a shell. The Cursor block is replaced by a recorder, so the
  * options the value hands it are what's read.
@@ -32,6 +32,26 @@ describe("a Cursor run from cursorHarness()", () => {
     expect(built!.model).toBe("default");
     expect(Object.keys(built!.env)).not.toContain(SECRET);
     expect(built!.env).toEqual(harnessEnv({ pass: CURSOR_PASS }));
+  });
+
+  it("enables Cursor's filesystem sandbox by default", () => {
+    cursorHarness().agent(feeds as never);
+    expect(seen.options[0]!.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: true } } });
+  });
+
+  it("does not let an undefined sandbox option erase the secure default", () => {
+    cursorHarness({ agent: { local: { sandboxOptions: undefined } } } as never).agent(feeds as never);
+    expect(seen.options[0]!.agent.local.sandboxOptions).toEqual({ enabled: true });
+  });
+
+  it("keeps an explicit sandbox opt-out and the caller's other local options", () => {
+    cursorHarness({
+      agent: { local: { dirs: ["/extra"], sandboxOptions: { enabled: false } } },
+    }).agent(feeds as never);
+    expect(seen.options[0]!.agent).toEqual({
+      mode: "agent",
+      local: { sandboxOptions: { enabled: false }, dirs: ["/extra"] },
+    });
   });
 
   it("runs on the model the options name", () => {
