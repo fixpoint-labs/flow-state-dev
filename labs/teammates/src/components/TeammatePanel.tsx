@@ -87,7 +87,7 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
 
 /**
  * The right pane: three tabs, *Tasks*, *Routines* and *Pull Requests*, each
- * counted (all tasks, the routines, the open pull requests), the open one kept
+ * counted (the open tasks, the routines, the open pull requests), the open one kept
  * per teammate in this browser. A tab you are not on carries a dot when
  * something in it waits on you. *Pull Requests* lists what the runs of this
  * conversation's tasks recorded opening (`PullRequestsList`).
@@ -154,7 +154,8 @@ export function TeammatePanel({
     id === "tasks" ? board.value === undefined || tasks.length > 0 : id === "pull-requests" ? pullRequests === undefined || pullRequests.length > 0 : true,
   );
   const [panelTab, setPanelTab] = usePanelTab(worker.id, visibleTabs);
-  const panelCounts: Record<PanelTab, number> = { tasks: tasks.length, routines: routines.length, "pull-requests": pullRequests?.filter(isOpenPullRequest).length ?? 0 };
+  // Tasks counts the open ones, by the filter's own grouping: what *Running* and *Idle* list.
+  const panelCounts: Record<PanelTab, number> = { tasks: groups.running.length + groups.idle.length, routines: routines.length, "pull-requests": pullRequests?.filter(isOpenPullRequest).length ?? 0 };
   // Something in the tab waits on you: a running task's hold, or a pull request whose task holds one.
   const panelAttention: Record<PanelTab, boolean> = {
     tasks: tasks.some((t) => taskStatus(t) === "running" && holdOf(t) !== undefined),

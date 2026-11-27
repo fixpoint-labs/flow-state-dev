@@ -62,7 +62,7 @@ describe("a teammate's panel tabs", () => {
     renderPanel();
     await waitFor(() => expect(top("Pull Requests").textContent).toMatch(/2$/), POPUP_READ);
     expect(panelTabs().getAllByRole("tab").map((t) => [t.textContent?.replace(/\s+/g, ""), t.getAttribute("aria-selected")])).toEqual([
-      ["Tasks4", "true"],
+      ["Tasks2", "true"],
       ["PullRequests2", "false"],
       ["Routines1", "false"],
     ]);
@@ -134,7 +134,7 @@ describe("a teammate's panel tabs", () => {
   it("hides Pull Requests while its tasks have opened none", async () => {
     renderPanel({ board: { s1: [TASKS[3]!] }, recorded: {}, routines: [] });
     await waitFor(() => expect(panelTabs().queryByRole("tab", { name: /^Pull Requests/ })).toBeNull(), POPUP_READ);
-    expect(panelTabs().getAllByRole("tab").map((t) => t.textContent?.replace(/\s+/g, ""))).toEqual(["Tasks1", "Routines0"]);
+    expect(panelTabs().getAllByRole("tab").map((t) => t.textContent?.replace(/\s+/g, ""))).toEqual(["Tasks0", "Routines0"]);
   });
 
   it("hides Tasks while it has none, leaving Routines as the one tab, still a tab bar", async () => {
@@ -179,6 +179,25 @@ describe("a teammate's panel tabs", () => {
       expect(within(row(n)).queryByRole("link")).toBeNull();
       expect(row(n).textContent).toMatch(new RegExp(`#${n} Odd link`));
     }
+  });
+
+  it("counts only the open tasks on Tasks, the ones its Running and Idle filters list, yet shows it with finished ones alone", async () => {
+    const board = [
+      coding("r1", {}),
+      coding("r2", {}),
+      coding("i1", { pullRequests: [7] }),
+      coding("d1", { status: "completed" }, NOW - MIN),
+      coding("d2", { status: "completed" }, NOW - 2 * MIN),
+      coding("d3", { status: "cancelled" }, NOW - 3 * MIN),
+      coding("f1", { status: "errored" }, NOW - 4 * MIN),
+    ];
+    renderPanel({ board: { s1: board }, recorded: {}, routines: [] });
+    await screen.findByRole("list", { name: "Running" }, POPUP_READ);
+    expect(top("Tasks").textContent?.replace(/\s+/g, "")).toBe("Tasks3");
+    cleanup();
+    renderPanel({ board: { s1: board.slice(3) }, recorded: {}, routines: [] });
+    await waitFor(() => expect(within(screen.getByRole("tablist", { name: "Task status" })).getByRole("tab", { name: /^Done/ }).textContent).toBe("Done3"), POPUP_READ);
+    expect(top("Tasks").textContent?.replace(/\s+/g, "")).toBe("Tasks0");
   });
 
   it("remembers the tab picked, per teammate", async () => {
