@@ -71,7 +71,7 @@ function dyingAfter(stores: StoreAdapter, trigger: string) {
         return (...args: unknown[]) => {
           if (dead) return never;
           const result = value.apply(target, args);
-          if (String(prop) !== "persistItems" || !JSON.stringify(args ?? null).includes(trigger)) return result;
+          if (String(prop) !== "persistItems" || !JSON.stringify(args).includes(trigger)) return result;
           dead = true;
           return Promise.resolve(result).then(() => never);
         };

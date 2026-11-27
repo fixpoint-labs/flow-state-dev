@@ -89,6 +89,11 @@ export function heldStopOf(value: unknown): HeldStop | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+/** The held stop a harness step hands on for `held`, with the `once` grants it spent. */
+export function heldStopFrom(held: HeldStop["heldForApproval"], spent: ReadonlySet<number> | undefined): HeldStop {
+  return { heldForApproval: held, spentGrants: [...(spent ?? [])] };
+}
+
 /** The data a yes sends for *Allow for this run*. A plain yes sends none. */
 export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional() }).strict();
 

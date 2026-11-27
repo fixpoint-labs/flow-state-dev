@@ -166,7 +166,7 @@ import {
   toolApprovalStop,
   toolApprovalStateSchema,
   heldStopOf,
-  type HeldStop,
+  heldStopFrom,
   type HeldToolCall,
 } from "./tool-approval";
 
@@ -1371,7 +1371,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
                   const spent = spentGrants.get(requestId);
                   heldCalls.delete(requestId);
                   spentGrants.delete(requestId);
-                  return { heldForApproval: held, spentGrants: [...(spent ?? [])] } satisfies HeldStop;
+                  return heldStopFrom(held, spent);
                 }
                 return recordTurnFailure(error as Error, ctx);
               },

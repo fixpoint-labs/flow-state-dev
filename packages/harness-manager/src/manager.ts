@@ -169,7 +169,7 @@ import {
   toolApprovalStop,
   toolApprovalStateSchema,
   heldStopOf,
-  type HeldStop,
+  heldStopFrom,
   type HeldToolCall,
 } from "./tool-approval";
 import {
@@ -4605,7 +4605,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               const spent = spentGrants.get(requestId);
               heldCalls.delete(requestId);
               spentGrants.delete(requestId);
-              return { heldForApproval: held, spentGrants: [...(spent ?? [])] } satisfies HeldStop;
+              return heldStopFrom(held, spent);
             }
             return STOPPED_FOR_STEER;
           },
