@@ -96,7 +96,11 @@ export class Refused extends Error {
   }
 }
 
-export const hold = (kind: "question" | "review", prompt: string, { id = `hold-${kind}`, taskId = "t1", unanswerable = null as string | null } = {}): InboxHold =>
+export const hold = (
+  kind: "question" | "review",
+  prompt: string,
+  { id = `hold-${kind}`, taskId = "t1", unanswerable = null as string | null, openedAt = 1 } = {},
+): InboxHold =>
   ({
     id,
     source:
@@ -104,7 +108,7 @@ export const hold = (kind: "question" | "review", prompt: string, { id = `hold-$
         ? { kind: "task", flowId: "agent", sessionId: "conversation:teammates.chief-of-staff", action: "updateTask_tasks", taskId }
         : { kind: "suspension", flowId: "coder", sessionId: "run-1", requestId: "q1", suspensionId: id },
     ask: { kind, prompt },
-    openedAt: 1,
+    openedAt,
     answerable: unanswerable === null,
     unanswerable,
   }) as InboxHold;

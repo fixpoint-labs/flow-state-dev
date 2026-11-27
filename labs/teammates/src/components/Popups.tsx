@@ -14,7 +14,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, activeElapsedMs, elapsedText, harnessOf, modelOf, runsNow, taskStatus, timeSignalOf, workerOf } from "../lib/task";
 import { useNow } from "../lib/use-watch";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
@@ -27,6 +27,7 @@ import { LandedOutcome, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
+import { taskSignal } from "./flow-state/task-signals";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
@@ -244,10 +245,12 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const review = task && waiting === "review" ? work.review : undefined;
   const total = tokenTotal(task?.spend);
   const spent = total === undefined ? undefined : `${total} tokens`;
-  // The current attempt's time, including waits; the live line counts only its reply.
-  const now = useNow(undefined, status === "running");
-  const started = task === undefined ? undefined : attemptStartedAt(task);
-  const totalMs = status === "running" && started !== undefined ? now - started : undefined;
+  const timeRow = task === undefined ? undefined : timeSignalOf(task);
+  // The attempt clock runs only while a live run holds the task; waits show a frozen active span or no time.
+  const tick = task !== undefined && runsNow(task, Date.now());
+  const now = useNow(1_000, tick);
+  const signal = timeRow ? taskSignal(timeRow.view, timeRow.run, now) : null;
+  const totalMs = task !== undefined && status === "running" ? activeElapsedMs(task, now, signal) : undefined;
   // The header's status, read once: its words, and the pill's tone and mark.
   const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
     // What waits on you is the highlighter's pill (`styles.css` reads `data-needs-you`); everything else keeps the overlay's tones.

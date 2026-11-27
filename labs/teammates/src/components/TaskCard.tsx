@@ -1,6 +1,8 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { attemptStartedAt, harnessOf, isActive, modelOf, taskStatus, workerOf } from "../lib/task";
+import { activeElapsedMs, clockRuns, harnessOf, isActive, modelOf, taskStatus, timeSignalOf, workerOf } from "../lib/task";
+import { useNow } from "../lib/use-watch";
+import { taskSignal } from "./flow-state/task-signals";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -71,9 +73,12 @@ export const TaskCard = memo(function TaskCard({
   const state = taskPresentation(task);
   const status = taskStatus(task);
   const active = isActive(task);
-  const started = attemptStartedAt(task);
-  // Only an active task counts up; an idle one says what it waits on, an ended one how it ended.
-  const since = active && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
+  const { view, run } = timeSignalOf(task);
+  const tick = clockRuns(task, Date.now(), taskSignal(view, run, Date.now()));
+  const now = useNow(1_000, tick);
+  const signal = taskSignal(view, run, now);
+  const elapsed = active ? activeElapsedMs(task, now, signal) : undefined;
+  const since = elapsed === undefined ? undefined : sinceShort(elapsed);
   // A coding task leads with its title (the tile says it is code); a teammate's says what was asked of whom.
   const title = coding ? task.title : line;
   return (

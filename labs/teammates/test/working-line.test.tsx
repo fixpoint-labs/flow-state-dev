@@ -37,6 +37,7 @@ const RUNNING: CodingBoardTask = codingTask({
   harness: "claude-code",
   runFlow: CODER_FLOW,
   run: { sessionId: "run-1", requestId: "req-1", attempt: 1, startedAt: STARTED },
+  leaseUntil: STARTED + 86_400_000,
 });
 
 /** The popup on a running task, over a stand-in server a test changes as the board and the run would. */
@@ -106,7 +107,7 @@ describe("a running task's feed ends in a live working line", () => {
     vi.setSystemTime(WOKEN + 90_000);
     const earlier = { ...said, ts: STARTED + 60_000 };
     const reply = (id: string, ts: number, status: string) => ({ ...test(status), id, requestId: "req-2", ts });
-    const task = { ...RUNNING, run: { ...RUNNING.run!, requestId: "req-2" } };
+    const task = { ...RUNNING, run: { ...RUNNING.run!, requestId: "req-2" }, leaseUntil: WOKEN + 86_400_000 };
     const { popup } = open(task, { items: { "run-1": [earlier, reply("t2", WOKEN, "completed"), reply("t3", WOKEN + 30_000, "in_progress")] }, requestStarts: { "req-2": WOKEN } });
     await waitFor(() => expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 30s)"));
     // Never the attempt's age on the live line: that reads as a reply stuck for days.

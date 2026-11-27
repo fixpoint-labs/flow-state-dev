@@ -95,9 +95,8 @@ describe("a teammate's tasks in its panel", () => {
     expect(rows(idle)).toEqual(["Asked researcher to task i-pr"]);
     expect(statusOf(idle, 0)).toBe("PR open");
     const card = within(idle).getAllByRole("button")[0]!;
-    // Its age is since it last moved, not its three days open, and in the quiet colour: it is not working.
-    expect(card.querySelector("[data-elapsed]")?.textContent).toBe("2d 0h");
-    expect(card.querySelector("[data-elapsed]")?.className).toContain("text-text-3");
+    // PR open says what it waits on; no clock counts up while nothing runs on it.
+    expect(card.querySelector("[data-elapsed]")).toBeNull();
     expect(card.querySelector("[data-progress]")).toBeNull();
     expect(card.querySelector("[data-long-running]")).toBeNull();
   });
