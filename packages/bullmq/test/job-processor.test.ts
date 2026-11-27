@@ -15,8 +15,10 @@ import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
-  runAction: vi.fn(),
   defaultBodyUserIdPrincipalResolver: vi.fn()
+}));
+vi.mock("@flow-state-dev/engine/internal", () => ({
+  runFrameworkAction: vi.fn()
 }));
 vi.mock("@flow-state-dev/engine/host", () => ({
   // The registry as the processor received it: these cases stub only the
@@ -44,11 +46,11 @@ vi.mock("@flow-state-dev/engine/host", () => ({
 }));
 
 import { holdLeasePlace, settleUnstartedRequest, withChangeBus } from "@flow-state-dev/engine/host";
-import { runAction } from "@flow-state-dev/engine";
+import { runFrameworkAction } from "@flow-state-dev/engine/internal";
 import { createFlowJobProcessor, type JobProcessorDeps } from "../src/job-processor";
 import type { FlowJobData } from "../src/types";
 
-const runActionMock = vi.mocked(runAction);
+const runActionMock = vi.mocked(runFrameworkAction);
 const holdMock = vi.mocked(holdLeasePlace);
 const settleMock = vi.mocked(settleUnstartedRequest);
 

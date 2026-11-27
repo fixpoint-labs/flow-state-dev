@@ -10,11 +10,17 @@
  *
  * The check reads each run's stored request record through the one reader the
  * running context uses, which is what the run itself sees.
+ *
+ * `internal` and `task` are not reserved sources (an app's own code runs an
+ * internal entry through `runAction`), so the mark is honoured only on runs the
+ * engine started: the public `runAction` and an adapter's `host.dispatch` drop
+ * it, and the engine's own dispatches keep it.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowState, inMemoryStores, resolveUserStorageKey } from "../../src";
+import { createFlowState, inMemoryStores, resolveUserStorageKey, runAction } from "../../src";
+import { dispatchInternalAs } from "../../src/durability/dispatch-internal";
 import { fireOwnerRunThrough } from "../../src/durability/owner-runs";
 import { readDeliveryOrigin } from "../../src/execution/delivery-origin";
 import { routeServiceEvent } from "../../src/internal";
@@ -36,10 +42,33 @@ const route = handler({
   execute: async (input) => ({ ownerRuns: input.runs })
 });
 
+/** Requests the `work` entry ran, so a test can find a child the seam started. */
+const worked: string[] = [];
+
+const work = handler({
+  name: "work",
+  inputSchema: z.object({ note: z.string() }),
+  outputSchema: z.object({}),
+  execute: async (_input, ctx) => {
+    worked.push(ctx.request.identity.id);
+    return {};
+  }
+});
+
+/** An internal entry that dispatches on: the hop a marked run's own dispatch takes. */
+const relay = dispatcher({
+  name: "relay",
+  type: "internal",
+  action: "work",
+  inputSchema: z.object({ note: z.string() }),
+  session: { key: () => "relayed" },
+  payload: (input) => ({ note: input.note })
+});
+
 const svc = defineFlow({
   kind: "svc",
   actions: { ask: deliver },
-  internal: { actions: { deliver, route } }
+  internal: { actions: { deliver, route, relay: { block: relay }, work: { block: work } } }
 })();
 
 async function boot() {
@@ -61,6 +90,15 @@ async function boot() {
     return readDeliveryOrigin(record!.source, record!.metadata);
   };
   return { host: host!, write, originOf, dispose: () => state.dispose() };
+}
+
+/** Poll until `predicate` holds: a dispatched child runs unawaited. */
+async function until(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for the dispatched run");
 }
 
 const run = (userId: string, key: string) => ({
@@ -128,6 +166,69 @@ describe("a webhook delivery's origin", () => {
       });
       await handle.finished;
       expect(await originOf(handle.requestId)).toBeUndefined();
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("rides a dispatch a webhook-originated run makes, into the run that dispatch starts", async () => {
+    const { host, originOf, dispose } = await boot();
+    try {
+      worked.length = 0;
+      const parent = dispatchInternalAs(host, {
+        flowKind: "svc",
+        entry: "relay",
+        input: { note: "hi" },
+        as: { userId: "alice", orgId: ORG },
+        sessionId: "s-relay",
+        metadata: {},
+        origin: "webhook"
+      });
+      await parent.finished;
+      await until(() => worked.length === 1);
+      expect(await originOf(parent.requestId)).toBe("webhook");
+      expect(await originOf(worked[0]!)).toBe("webhook");
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("is dropped from an adapter's own internal dispatch: only the engine's dispatches carry it", async () => {
+    const { host, originOf, dispose } = await boot();
+    try {
+      const handle = host.dispatch({
+        source: "internal",
+        flowKind: "svc",
+        action: "deliver",
+        input: { note: "hi" },
+        sessionId: "s-adapter",
+        principal: { userId: "alice", orgId: ORG },
+        metadata: { deliveryOrigin: "webhook" },
+        responseEmitter: null
+      });
+      await handle.finished;
+      expect(await originOf(handle.requestId)).toBeUndefined();
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("is dropped from a public runAction call that claims an internal source", async () => {
+    const { host, originOf, dispose } = await boot();
+    try {
+      const result = await runAction({
+        flow: svc,
+        actionName: "deliver" as never,
+        input: { note: "hi" },
+        userId: "alice",
+        orgId: ORG,
+        sessionId: "s-run-action",
+        source: "internal",
+        metadata: { deliveryOrigin: "webhook" },
+        stores: host.stores,
+        runtimeConfig: {}
+      });
+      expect(await originOf(result.requestId!)).toBeUndefined();
     } finally {
       await dispose();
     }

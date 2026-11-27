@@ -14,6 +14,7 @@ import { isValidOrgId } from "@flow-state-dev/core";
 import { OrgRequiredError, SessionRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
+import { withoutDeliveryOrigin } from "./delivery-origin";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
 import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
@@ -1020,10 +1021,30 @@ async function emitAbortedMessage(
   await response.emitItemDone(item);
 }
 
+// BP-031.
 /**
  * Public action execution API using default internal seams.
+ *
+ * A caller's `metadata` never carries a delivery origin: the key is dropped
+ * here, so only the engine's own paths ({@link runFrameworkAction}) can start a
+ * run that reads as webhook-originated (`delivery-origin.ts`).
  */
 export async function runAction<
+  TFlow extends FlowInstance = FlowInstance,
+  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
+>(
+  options: RunActionOptions<TFlow, TActionName>
+): Promise<ExecutionResult> {
+  return runFrameworkAction({ ...options, metadata: withoutDeliveryOrigin(options.metadata) });
+}
+
+/**
+ * {@link runAction} for the engine's own replays of a request the host accepted
+ * (the in-process runner, recovery, continuation, a queue worker): the record's
+ * metadata passes through whole, delivery origin included. Never for a
+ * caller's options.
+ */
+export async function runFrameworkAction<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(

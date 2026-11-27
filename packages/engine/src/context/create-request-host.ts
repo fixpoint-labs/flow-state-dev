@@ -750,6 +750,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         // Server-set beside the stamp: a request an outside delivery started passes its origin on.
+        // A reserved top-level key: sender facts stay nested under `dispatch`, never here.
         ...deliveryOriginMetadata(inputs.deliveryOrigin),
         dispatch: {
           // The sender's facts, without any key the seam owns: a provenance

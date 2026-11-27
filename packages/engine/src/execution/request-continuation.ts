@@ -22,7 +22,7 @@ import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "./types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
-import { runAction } from "./runAction";
+import { runFrameworkAction } from "./runAction";
 import { stripResumeMetadata } from "./resume-metadata";
 import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
@@ -187,7 +187,7 @@ export async function continueRequest(
   });
 
   const start = (stop?: AbortSignal): Promise<ExecutionResult> =>
-    runAction({
+    runFrameworkAction({
       flow,
       actionName: record.actionName as keyof typeof flow.actions & string,
       input: record.input,

@@ -8,7 +8,7 @@
  * principal's org and tenant on the envelope. The caller decides who the
  * principal is, from a trusted record, never from a request's input.
  */
-import { deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
+import { asFrameworkDispatch, deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
 import { INTERNAL_SOURCE } from "../execution/transport-sources";
 import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 
@@ -40,7 +40,7 @@ export interface InternalDispatch {
 /** Start `run` through `host` as `run.as`, fire-and-forget. */
 export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): InboundDispatchHandle {
   const { userId, orgId, tenantId } = run.as;
-  return host.dispatch({
+  return host.dispatch(asFrameworkDispatch({
     source: INTERNAL_SOURCE,
     flowKind: run.flowKind,
     action: run.entry,
@@ -52,5 +52,5 @@ export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">,
     metadata: { ...run.metadata, ...deliveryOriginMetadata(run.origin) },
     responseEmitter: null,
     ...(run.signal !== undefined ? { signal: run.signal } : {})
-  });
+  }));
 }
