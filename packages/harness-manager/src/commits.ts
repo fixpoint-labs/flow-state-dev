@@ -16,15 +16,13 @@
  * that follows a run while it works asks for the working tree too
  * (`uncommitted`), and each file it adds is marked so.
  *
- * Git runs through the workspace package's bounded `run`, the one place a
- * child process is started for this package.
+ * Every git read runs through `safe-git.ts`, which runs none of the commands
+ * a run can name in its checkout; the working tree is read by
+ * `working-tree.ts`, never through git's filters.
  */
-import { devNull } from "node:os";
-import { run } from "@flow-state-dev/workspace";
 import { z } from "zod";
-
-/** How long one git read may take. */
-const GIT_READ_TIMEOUT_MS = 10_000;
+import { checkoutGit as git } from "./safe-git";
+import { countLines, workingChanges, workingPatch, type WorkingChange } from "./working-tree";
 
 /** The most commit subjects reported for one run. */
 export const MAX_COMMIT_SUBJECTS = 20;
@@ -53,91 +51,6 @@ export interface RunCommits {
   log?: RunCommitEntry[];
   /** Git read the count against a base. `false` when no base or no checkout could be read, and the count is a fallback zero. */
   verified: boolean;
-}
-
-/**
- * Git as the commit history really is, not as the checkout says it is. A run
- * shares its checkout's object store and refs, so it can plant a replace ref,
- * a graft or a commit-graph that gives the base its own work as history, or a
- * shallow file that cuts its own history short, and its work would count
- * none. Every read here ignores all four. `--shallow-file ""` is how git's own
- * fetch says "no shallow file"; in a checkout whose history really is cut
- * short, a read then fails on the missing parents and answers unverified.
- */
-const TRUE_HISTORY = {
-  // No optional locks: a working-tree read never refreshes the index, so it can't hold the lock a harness's own commit needs.
-  env: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: devNull, GIT_OPTIONAL_LOCKS: "0" },
-  args: ["--shallow-file", "", "-c", "core.commitGraph=false"],
-};
-
-/**
- * Git that runs no command the checkout names. A run can write its checkout's
- * config (`.git/config`, a worktree's `config.worktree`, a file either
- * includes) and its `.gitattributes`, and some reads run a command named
- * there: an fsmonitor hook, an external diff, a diff driver's command or
- * textconv, a clean, smudge or process filter, a signature check's gpg. These
- * reads run in the server when a person opens a run's changes, so every one
- * here switches them all off: the settings below on the command line (which
- * outrank every config file), no system or global config, and each filter
- * and diff driver the checkout's config defines emptied by name.
- */
-const NO_COMMANDS = {
-  env: { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull },
-  args: [
-    ["core.fsmonitor", "false"],
-    ["core.untrackedCache", "false"],
-    ["diff.external", ""],
-    ["core.pager", "cat"],
-    ["log.showSignature", "false"],
-  ].flatMap(([key, value]) => ["-c", `${key}=${value}`]),
-};
-
-/** The flags every diff and log read takes, so neither an external diff nor a textconv runs even when a setting slips past. */
-const NO_DIFF_COMMANDS = ["--no-ext-diff", "--no-textconv"];
-
-/** The run's filter and diff drivers, as the checkout's config defines them, each emptied: `-c filter.x.clean=` and so on. */
-async function noDrivers(cwd: string): Promise<string[]> {
-  let keys: string;
-  try {
-    // Reading config runs nothing. Exit 1 is "no such key": no drivers.
-    keys = (await runGit(cwd, ["config", "--null", "--name-only", "--get-regexp", "^(filter|diff)\\..+\\."], [])).stdout;
-  } catch {
-    return [];
-  }
-  const filters = new Set<string>();
-  const drivers = new Set<string>();
-  for (const key of keys.split("\0")) {
-    const match = /^(filter|diff)\.(.+)\.[^.]+$/s.exec(key.trim());
-    if (match === null) continue;
-    (match[1] === "filter" ? filters : drivers).add(match[2]!);
-  }
-  return [
-    ...[...filters].flatMap((name) => ["clean", "smudge", "process"].map((key) => `filter.${name}.${key}=`).concat(`filter.${name}.required=false`)),
-    ...[...drivers].flatMap((name) => ["command", "textconv"].map((key) => `diff.${name}.${key}=`)),
-  ].flatMap((setting) => ["-c", setting]);
-}
-
-/** One git process in `cwd` with {@link TRUE_HISTORY} and {@link NO_COMMANDS}, and `drivers` (from {@link noDrivers}) before the command. */
-function runGit(cwd: string, args: string[], drivers: string[], onLine?: (line: string) => void) {
-  const [command, ...rest] = args;
-  const flags = command === "diff" || command === "log" ? NO_DIFF_COMMANDS : [];
-  return run("git", [...TRUE_HISTORY.args, ...NO_COMMANDS.args, ...drivers, command!, ...flags, ...rest], {
-    cwd,
-    timeoutMs: GIT_READ_TIMEOUT_MS,
-    env: { ...TRUE_HISTORY.env, ...NO_COMMANDS.env },
-    ...(onLine === undefined ? {} : { onLine }),
-  });
-}
-
-/**
- * One git read in `cwd`, as {@link TRUE_HISTORY} reads it and running no
- * command the checkout names ({@link NO_COMMANDS}). With `onLine`, standard
- * output is handed over line by line instead of returned.
- */
-async function git(cwd: string, args: string[], onLine?: (line: string) => void): Promise<string> {
-  // A read that can't reach a driver (no diff, no working tree) skips reading the config for them.
-  const drivers = args[0] === "diff" || args[0] === "ls-files" ? await noDrivers(cwd) : [];
-  return (await runGit(cwd, args, drivers, onLine)).stdout;
 }
 
 /** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
@@ -257,8 +170,8 @@ export async function readRunCommits(
 /** The most files one diff read lists. The totals still count every file. */
 export const MAX_DIFF_FILES = 200;
 
-/** The most new (untracked) files a working-tree read counts lines in, one git call each. More are counted as files only. */
-export const MAX_UNTRACKED_FILES = 50;
+/** The most files a working-tree read counts lines in, copied for one diff. More still count as files, with no lines. */
+export const MAX_COUNTED_FILES = 200;
 
 /** The most characters of one file's patch a read hands back. */
 export const MAX_PATCH_CHARS = 64_000;
@@ -394,30 +307,18 @@ const pathsOf = (out: string) => out.split("\0").filter((path) => path !== "");
 /** One numstat row's counts: a number, `null` for binary (`-`), `NaN` for anything git didn't write as a count. */
 const countOf = (field: string | undefined) => (field === "-" ? null : Number.parseInt(field ?? "", 10));
 
-/** The files git doesn't track and doesn't ignore, in the working tree. */
-async function untrackedFiles(cwd: string): Promise<string[]> {
-  return pathsOf(await git(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]));
+/** The run's committed paths between `start` and `head`, as the diff read lists them. */
+async function committedPaths(cwd: string, start: string, head: string): Promise<string[]> {
+  return pathsOf(await git(cwd, ["diff", "--name-only", "--no-renames", "-z", start, head]));
 }
 
-/**
- * A new file's diff against nothing (`git diff --no-index`), which exits 1
- * when there is a difference: that is its answer, not a failure. A symlink
- * reads as the name it points at, never the file there.
- */
-async function newFileDiff(cwd: string, args: string[], path: string, onLine?: (line: string) => void): Promise<string> {
-  try {
-    return await git(cwd, ["diff", "--no-index", "--no-color", ...args, "--", devNull, path], onLine);
-  } catch (error) {
-    const failed = error as { code?: unknown; stdout?: unknown };
-    if (failed.code === 1) return typeof failed.stdout === "string" ? failed.stdout : "";
-    throw error;
-  }
-}
-
-/** The run's changed paths, as the diff read lists them, and which of them are new files only in the working tree. */
-async function changedPaths(cwd: string, start: string, head: string, uncommitted: boolean): Promise<{ tracked: string[]; untracked: string[] }> {
-  const tracked = pathsOf(await git(cwd, ["diff", "--name-only", "--no-renames", "-z", start, ...(uncommitted ? [] : [head])]));
-  return { tracked, untracked: uncommitted ? await untrackedFiles(cwd) : [] };
+/** The working tree's changes as a diff's files: lines counted for the first {@link MAX_COUNTED_FILES}. */
+async function workingFiles(cwd: string, changes: readonly WorkingChange[]): Promise<RunDiffFile[]> {
+  const counts = await countLines(cwd, changes.slice(0, MAX_COUNTED_FILES));
+  return changes.map((change, i): RunDiffFile => {
+    const { added, removed } = counts[i] ?? { added: 0, removed: 0 };
+    return { path: change.path, added, removed, ...(change.uncommitted ? { uncommitted: true as const } : {}) };
+  });
 }
 
 /**
@@ -437,27 +338,15 @@ export async function readRunDiff(
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
-    // `-z` keeps every path exactly as it is, whatever characters it holds. No end commit: the working tree.
-    const out = await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, ...(uncommitted ? [] : [head])]);
     const all: RunDiffFile[] = [];
-    for (const record of out.split("\0")) {
-      if (record === "") continue;
-      const [added, removed, ...path] = record.split("\t");
-      all.push({ path: path.join("\t"), added: countOf(added), removed: countOf(removed) });
-    }
-    if (uncommitted) {
-      const edited = new Set(pathsOf(await git(cwd, ["diff", "--name-only", "--no-renames", "-z", "HEAD"])));
-      for (const file of all) if (edited.has(file.path)) file.uncommitted = true;
-      const untracked = await untrackedFiles(cwd);
-      for (const [i, path] of untracked.entries()) {
-        if (i >= MAX_UNTRACKED_FILES) {
-          all.push({ path, added: 0, removed: 0, uncommitted: true });
-          continue;
-        }
-        const [added, removed] = (await newFileDiff(cwd, ["--numstat", "-z"], path)).split("\t");
-        all.push({ path, added: countOf(added), removed: countOf(removed), uncommitted: true });
+    if (uncommitted) all.push(...(await workingFiles(cwd, await workingChanges(cwd, start))));
+    else {
+      // `-z` keeps every path exactly as it is, whatever characters it holds.
+      for (const record of (await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, head])).split("\0")) {
+        if (record === "") continue;
+        const [added, removed, ...path] = record.split("\t");
+        all.push({ path: path.join("\t"), added: countOf(added), removed: countOf(removed) });
       }
-      all.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     }
     const diff: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0, verified: true };
     for (const file of all) {
@@ -484,7 +373,7 @@ export async function readRunDiff(
  * other path (unchanged, a folder, a glob, ignored, outside the repository)
  * throws {@link RunFileNotChanged}. The path is matched literally. The base is
  * found as {@link readRunCommits} finds it. With `uncommitted`, the diff is
- * the working tree's, and a new file's patch is read against nothing.
+ * the working tree's (see `working-tree.ts`), and a new file's is against nothing.
  */
 export async function readRunFilePatch(
   cwd: string,
@@ -503,9 +392,8 @@ export async function readRunFilePatch(
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
     // The run's own file list, exactly as the diff read lists it: the path must be one of them.
-    const paths = await changedPaths(cwd, start, head, uncommitted);
-    const isNew = paths.untracked.includes(path);
-    changed = isNew || paths.tracked.includes(path);
+    const working = uncommitted ? (await workingChanges(cwd, start)).find((change) => change.path === path) : undefined;
+    changed = uncommitted ? working !== undefined : (await committedPaths(cwd, start, head)).includes(path);
     let patch = "";
     let truncated = false;
     let lines = 0;
@@ -519,8 +407,8 @@ export async function readRunFilePatch(
         patch = next.slice(0, MAX_PATCH_CHARS);
       } else patch = next;
     };
-    if (isNew) await newFileDiff(cwd, [], path, take);
-    else if (changed) await git(cwd, ["diff", "--no-renames", "--no-color", start, ...(uncommitted ? [] : [head]), "--", `:(literal)${path}`], take);
+    if (working !== undefined) await workingPatch(cwd, working, take);
+    else if (changed) await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], take);
     read = { path, patch, truncated, lines, verified: true };
   } catch (error) {
     console.warn(

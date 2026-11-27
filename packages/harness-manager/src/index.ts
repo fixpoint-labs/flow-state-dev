@@ -201,7 +201,7 @@ export {
 export {
   MAX_DIFF_FILES,
   MAX_PATCH_CHARS,
-  MAX_UNTRACKED_FILES,
+  MAX_COUNTED_FILES,
   runCommitEntrySchema,
   type RunCommitEntry,
   RunFileNotChanged,

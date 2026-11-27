@@ -66,7 +66,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { stampMatches } from "@flow-state-dev/workforce/internal";
-import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
+import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { codingBrief } from "../coding-brief";
 import { commandCheck, type CommandCheckCommands } from "../command-check";
@@ -85,6 +85,8 @@ import { CODER_FLOW } from "../coder-flow-name";
 import { RECORDED_WORK_VIEW, RUN_CHANGES_VIEW } from "../coding-board-ref";
 import { recordedWorkView } from "../recorded-work-view";
 import { harnessRunChangesView } from "../run-changes";
+import { checkoutGit } from "../safe-git";
+import { workingTreeChanged } from "../working-tree";
 
 export { CODER_FLOW };
 
@@ -223,23 +225,22 @@ function requireAppSettings<F extends (options?: { id?: string; config?: Record<
   return Object.assign(mint, flow);
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  return (await exec("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS })).stdout;
-}
-
 /**
  * Whether the run changed its worktree: files left uncommitted, or a tree that
  * differs from the commit its branch was cut at. Trees are compared, not
  * commits counted, so a run that moved its branch back still counts. No base,
  * or anything git can't answer, counts as changed, so the checks run.
+ *
+ * Read in the server, in the run's checkout, so through `safe-git.ts` and
+ * `working-tree.ts`: no command the run named there runs.
  */
-async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
+export async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
   if (run.baseCommit == null) return true;
   try {
-    if ((await git(run.workspacePath, ["status", "--porcelain"])).trim() !== "") return true;
+    if (await workingTreeChanged(run.workspacePath)) return true;
     const [base, head] = await Promise.all([
-      git(run.workspacePath, ["rev-parse", `${run.baseCommit}^{tree}`]),
-      git(run.workspacePath, ["rev-parse", "HEAD^{tree}"]),
+      checkoutGit(run.workspacePath, ["rev-parse", `${run.baseCommit}^{tree}`]),
+      checkoutGit(run.workspacePath, ["rev-parse", "HEAD^{tree}"]),
     ]);
     return base.trim() !== head.trim();
   } catch {

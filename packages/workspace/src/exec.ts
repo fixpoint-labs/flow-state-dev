@@ -91,6 +91,29 @@ export async function run(
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 
+/**
+ * `run`, with standard output as bytes: for output that needn't be text, such
+ * as a blob's content, which decoding would change. Line-by-line output
+ * (`onLine`) doesn't apply.
+ */
+export async function runBytes(
+  file: string,
+  args: string[],
+  options: Omit<RunOptions, "onLine">,
+): Promise<{ stdout: Buffer; stderr: string }> {
+  const pending = execFileAsync(file, args, {
+    cwd: options.cwd,
+    timeout: options.timeoutMs,
+    maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
+    env: childEnv(options),
+    encoding: "buffer",
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  });
+  if (options.input !== undefined) pending.child.stdin?.end(options.input);
+  const result = await pending;
+  return { stdout: result.stdout, stderr: result.stderr.toString("utf8") };
+}
+
 /** The most of a by-line run's standard error kept for its failure: the end of it, where the error is. */
 const STDERR_KEPT = 64 * 1024;
 

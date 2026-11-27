@@ -11,11 +11,13 @@
  * file, and a read that leaves the marker behind.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { effectiveCut, headCommit, readRunCommits, readRunDiff, readRunFilePatch } from "../src/commits";
+import { runChangedFiles } from "../src/kit/coder-flow";
+import type { CompletionRunContext } from "../src/manager";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -93,6 +95,17 @@ const plants: Array<[string, (dir: string, script: string) => void]> = [
     writeFileSync(included, `[core]\n\tfsmonitor = ${script}\n[diff]\n\texternal = ${script}\n[filter "evil"]\n\tclean = ${script}\n\tprocess = ${script}\n`);
     git(dir, "config", "include.path", included);
   }],
+  // An override built as `-c filter.<name>.clean=` splits at the first `=`, so this name would set another key and leave the driver live.
+  ["a filter and diff driver named with an `=` in it", (dir, script) => {
+    writeFileSync(join(dir, ".gitattributes"), "*.txt diff=a=b filter=a=b\n");
+    git(dir, "config", "filter.a=b.clean", script);
+    git(dir, "config", "filter.a=b.process", script);
+    git(dir, "config", "diff.a=b.textconv", script);
+  }],
+  ["a filter defined in `info/attributes`, outside the work tree", (dir, script) => {
+    writeFileSync(join(dir, ".git", "info", "attributes"), "* filter=hidden\n");
+    git(dir, "config", "filter.hidden.clean", script);
+  }],
 ];
 
 describe("a review's git reads in a run's checkout", () => {
@@ -118,5 +131,112 @@ describe("a review's git reads in a run's checkout", () => {
     git(dir, "config", "diff.external", script);
     execFileSync("git", ["diff", "HEAD~1", "HEAD"], { cwd: dir });
     expect(existsSync(marker)).toBe(true);
+  }, 60_000);
+});
+
+/**
+ * The read a coder flow makes when a run ends, to decide whether its checks
+ * run: `git status` and two tree reads in the run's checkout, in the server.
+ * `status` consults fsmonitor and hashes a changed file through its clean or
+ * process filter, so a planted hook or filter would run there too.
+ */
+describe("the run-end read of whether a run changed files", () => {
+  const runEnd: Array<[string, (dir: string, script: string) => void]> = [
+    ["core.fsmonitor", (dir, script) => git(dir, "config", "core.fsmonitor", script)],
+    ["core.fsmonitor, in the worktree's own config", (dir, script) => {
+      git(dir, "config", "extensions.worktreeConfig", "true");
+      git(dir, "config", "--worktree", "core.fsmonitor", script);
+    }],
+    ["a clean filter", (dir, script) => git(dir, "config", "filter.evil.clean", script)],
+    ["a long-running filter process", (dir, script) => git(dir, "config", "filter.evil.process", script)],
+    ["any of them, through an included config file", (dir, script) => {
+      const included = join(dir, ".git", "evil.config");
+      writeFileSync(included, `[core]\n\tfsmonitor = ${script}\n[filter "evil"]\n\tclean = ${script}\n\tprocess = ${script}\n`);
+      git(dir, "config", "include.path", included);
+    }],
+  ];
+  const changed = (dir: string, cut: string) =>
+    runChangedFiles({ workspacePath: dir, baseCommit: cut } as unknown as CompletionRunContext);
+
+  for (const [what, plant] of runEnd) {
+    it(`runs no command the checkout's config names: ${what}`, async () => {
+      const { dir, cut, marker, script } = checkout();
+      plant(dir, script);
+      const answer = await changed(dir, cut);
+      expect(existsSync(marker), `git ran the planted ${what}`).toBe(false);
+      // Still answers: the run left uncommitted work.
+      expect(answer).toBe(true);
+    }, 60_000);
+  }
+
+  it("still says a clean run whose tree is its cut's changed nothing", async () => {
+    const { dir, cut, script, marker } = checkout();
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "the rest");
+    git(dir, "reset", "-q", "--hard", cut);
+    git(dir, "config", "core.fsmonitor", script);
+    expect(await changed(dir, cut)).toBe(false);
+    expect(existsSync(marker)).toBe(false);
+  }, 60_000);
+
+  it("the planted filter does run on a plain git status, so the checks above can fail", async () => {
+    const { dir, marker, script } = checkout();
+    git(dir, "config", "filter.evil.clean", script);
+    execFileSync("git", ["status", "--porcelain"], { cwd: dir });
+    expect(existsSync(marker)).toBe(true);
+  }, 60_000);
+});
+
+/**
+ * The run is live while a person reads its changes, so it can write its
+ * config between any two git processes a read starts. A read that first lists
+ * the drivers and then overrides them by name loses that race. Simulated with
+ * a `git` on PATH that plants a filter after each call it passes through.
+ */
+describe("a run that writes its config while the read is under way", () => {
+  const path = process.env.PATH;
+  afterEach(() => {
+    process.env.PATH = path;
+  });
+
+  it("still runs none of it", async () => {
+    const { dir, cut, marker, script } = checkout();
+    const real = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+    const bin = mkdtempSync(join(tmpdir(), "hm-late-git-"));
+    dirs.push(bin);
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\n"${real}" "$@"\nstatus=$?\n"${real}" -C '${dir}' config filter.evil.clean '${script}' 2>/dev/null\n"${real}" -C '${dir}' config filter.evil.process '${script}' 2>/dev/null\nexit $status\n`,
+    );
+    chmodSync(join(bin, "git"), 0o755);
+    process.env.PATH = `${bin}:${path}`;
+    const read = await everyRead(dir, cut);
+    expect(existsSync(marker), "git ran a filter the run planted mid-read").toBe(false);
+    expect(read.working.files.map((file) => file.path)).toEqual([".gitattributes", "a.txt", "b.txt", "new.txt"]);
+    expect(await runChangedFiles({ workspacePath: dir, baseCommit: cut } as unknown as CompletionRunContext)).toBe(true);
+    expect(existsSync(marker), "git ran a filter the run planted mid-read, at the run's end").toBe(false);
+  }, 60_000);
+});
+
+/** A working-tree read reads the run's files itself, so it must never follow a link out of the checkout. */
+describe("a working-tree read through a folder the run swapped for a link", () => {
+  it("reads the file as gone, never the file the link reaches", async () => {
+    const { dir, cut } = checkout();
+    mkdirSync(join(dir, "docs"));
+    writeFileSync(join(dir, "docs", "notes.txt"), "mine\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "notes");
+    const outside = mkdtempSync(join(tmpdir(), "hm-outside-"));
+    dirs.push(outside);
+    writeFileSync(join(outside, "notes.txt"), "the secret\n");
+    rmSync(join(dir, "docs"), { recursive: true });
+    symlinkSync(outside, join(dir, "docs"));
+    const diff = await readRunDiff(dir, "main", cut, { uncommitted: true });
+    expect(diff.verified).toBe(true);
+    const listed = diff.files.find((file) => file.path === "docs/notes.txt");
+    // Committed then removed: nothing of it is the run's change any more.
+    expect(listed).toBeUndefined();
+    const patch = JSON.stringify(diff);
+    expect(patch).not.toContain("secret");
   }, 60_000);
 });
