@@ -153,7 +153,9 @@ runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
   verdict and a block's named reach all call it. The request-id claim, the
   request-control routes and their guard, and the request listings read a
   request record from before organizations with its session's org
-  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it.
+  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it; a retry
+  or continue of it runs in that org. One whose session has no org either is
+  still refused `migration-required`.
 
 ---
 

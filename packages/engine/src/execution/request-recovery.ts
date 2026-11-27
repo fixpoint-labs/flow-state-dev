@@ -18,7 +18,7 @@ import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./l
 import { settledRecordFields } from "./request-action-result";
 import { runAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
-import { principalKindOf } from "../context/principal";
+import { principalKindOf, withRequestOrg } from "../context/principal";
 import { bringSessionWakesForward } from "../durability/request-wakes";
 
 /**
@@ -303,10 +303,15 @@ export async function retryRequest(
 
   // A retry is an addressed re-execution of stored work, so it is held to the
   // same admission as the original: a request stored before organizations were
-  // required is refused rather than retried under a guess (BR-14). Checked
-  // before the flow is resolved and before any new request id is minted, so a
-  // refused retry leaves nothing behind.
-  const attributedOrgId = requireAttributedOrg({ orgId }, "retrying this request");
+  // required takes its own session's organization, as every request door reads
+  // it (`withRequestOrg`, BP-030), and one whose session names none either is
+  // refused rather than retried under a guess (BR-14). Checked before the flow
+  // is resolved and before any new request id is minted, so a refused retry
+  // leaves nothing behind.
+  const attributedOrgId = requireAttributedOrg(
+    await withRequestOrg(stores, { userId, orgId, tenantId, sessionId }),
+    "retrying this request"
+  );
 
   const owner = resolveRecordOwner(flowRegistry, { flowKind, flowId });
   if (!owner.ok) {

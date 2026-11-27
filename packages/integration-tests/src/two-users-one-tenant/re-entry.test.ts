@@ -151,6 +151,18 @@ async function requestsIn(caller: Caller, sessionId: string): Promise<string[]> 
   return requests.map((r) => r.id).sort();
 }
 
+/** A route's answer as its caller acts on it: the status, and the error it names, if any. */
+async function outcome(response: Response): Promise<{ status: number; error?: unknown }> {
+  const text = await response.text();
+  let error: unknown;
+  try {
+    error = (JSON.parse(text) as { error?: unknown }).error;
+  } catch {
+    error = undefined;
+  }
+  return { status: response.status, ...(error !== undefined ? { error } : {}) };
+}
+
 /** The four request-control routes, as a caller reaches each for `requestId`. */
 const ROUTES: Array<[string, (caller: Caller, requestId: string) => Promise<Response>]> = [
   [
@@ -233,12 +245,14 @@ describe("another user's request id", () => {
   });
 
   it.each(ROUTES)(
-    "%s answers it as an unused id when it predates organizations, as only its owner learns",
+    "%s answers it as an unused id when it predates organizations, and its owner as their own",
     async (_route, call) => {
       const alice = server.as("alice");
       const bob = server.as("bob");
       const aliceRequest = await start(alice, "fail", ALICE_SESSION);
       await statusOf(alice, aliceRequest, "failed");
+      // What the route answers its owner for this request, with its organization stamped.
+      const attributed = await outcome(await call(alice, aliceRequest));
       // Leave the record as a release before organizations wrote it.
       const record = await server.stores.request.get(aliceRequest);
       await server.stores.request.set(aliceRequest, { ...record!, orgId: undefined }, "any");
@@ -246,7 +260,14 @@ describe("another user's request id", () => {
       const unused = await answer(await call(bob, UNUSED_REQUEST), UNUSED_REQUEST);
       const probed = await answer(await call(bob, aliceRequest), aliceRequest);
       expect(probed).toEqual(unused);
-      // Its owner is told it needs migrating.
+      // FIX-2942; BP-030: read with its session's organization, it is still its
+      // owner's, and the route answers them as it did before the strip.
+      expect(await outcome(await call(alice, aliceRequest))).toEqual(attributed);
+
+      // With no organization on its session either, nothing says whose
+      // organization it is: its owner is told it needs migrating.
+      const session = (await server.stores.session.list({ userId: "alice" })).find((s) => s.id.endsWith(ALICE_SESSION));
+      await server.stores.session.set(session!.id, { ...session!, orgId: undefined }, "any");
       const own = await call(alice, aliceRequest);
       expect(own.status).toBe(409);
       expect(((await own.json()) as { error: string }).error).toBe("migration-required");
