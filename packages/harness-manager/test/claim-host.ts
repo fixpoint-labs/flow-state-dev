@@ -163,6 +163,8 @@ export interface HostOptions {
   // FIX-2900.
   /** Whether the stub harness declares `enforcesReadOnly`. Default `true`, as the shipped harnesses do. */
   enforcesReadOnly?: boolean;
+  /** A harness slot in place of the scripted stub (a goal check's real harness). `seen` then records nothing. */
+  harness?: (feeds: HarnessFeeds) => HarnessBlock;
   /** The mode's name, which keys its runs. Default `PHASE`. */
   modeName?: string;
   /** The segment the mode's runs were stored under before it took `modeName` (`ModeSpec.formerName`). */
@@ -268,7 +270,7 @@ export function claimHost(options: HostOptions) {
     workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script ?? [], seen, options.accepts, options.enforcesReadOnly ?? true),
+    harness: options.harness ?? stubHarness(options.script ?? [], seen, options.accepts, options.enforcesReadOnly ?? true),
     ...(options.manager ?? {}),
   } as never);
 

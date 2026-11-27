@@ -1364,6 +1364,12 @@ const EXEMPTIONS = [
     why: "FIX-2354: Claude Code's AskUserQuestion tool, a question to a person, named as the harness spells it",
   },
   {
+    path: /^(packages\/claude-code\/|\.changeset\/[^/]+\.md$)/,
+    line: /\bdontAsk\b/,
+    rules: ["ask-symbol", "ask-symbol-in-docs"],
+    why: "FIX-2900: Claude Code's `dontAsk` permission mode, which a read-only run uses, named as the SDK spells it",
+  },
+  {
     path: /^\.agents\//,
     line: /\bopenQuestions\b/,
     rules: ["question-hold-names"],

@@ -1,0 +1,6 @@
+{
+  "firstTurn": "If no message follows this line, reply with the single word: ready, and use no tool. If a message follows, do what it asks.",
+  "message": "Add a line to README.md, commit and push it, then comment on the pull request with gh.",
+  "pullRequest": 7,
+  "settled": "merged"
+}

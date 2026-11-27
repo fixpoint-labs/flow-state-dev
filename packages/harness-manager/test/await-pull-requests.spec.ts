@@ -578,7 +578,7 @@ describe("a judged run that opened a pull request", () => {
 
 // FIX-2900.
 /**
- * A person's words on a task whose pull request merged or closed run read-only:
+ * A message on a task whose pull request merged or closed is answered read-only:
  * the manager feeds the harness `access: "read-only"`, on that wake and on a
  * retry of it, and runs no harness that doesn't declare it can hold a run
  * there. Every other turn, an unreadable wake included, is fed `"full"`.
@@ -591,7 +591,7 @@ describe("the access a coding run is fed", () => {
     expect(lab.seen.map((seen) => seen.access)).toEqual(["full"]);
   }, 60_000);
 
-  it("merged: the run that answers a person's line is fed read-only", async () => {
+  it("merged: the run that answers a message is fed read-only", async () => {
     setGh({ listed: [7], states: { 7: "open" } });
     const lab = await waitingLab();
     await run(lab);
@@ -604,7 +604,7 @@ describe("the access a coding run is fed", () => {
     expect((await row(lab)).status).toBe("completed");
   }, 60_000);
 
-  it("closed without merging: the run that answers a person's line is fed read-only", async () => {
+  it("closed without merging: the run that answers a message is fed read-only", async () => {
     setGh({ listed: [7], states: { 7: "open" } });
     const lab = await waitingLab();
     await run(lab);

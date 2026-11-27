@@ -1097,7 +1097,7 @@ const managerStateSchema = z.object({
    * merged or closed: the lead those words reach the run under, in place of the
    * one for a pull request still open. Non-null only when `wake` is, and the
    * mark that this turn only answers (no review, no judge's verdict) and that
-   * its run is fed `read-only` (FIX-2900). A retry of the turn restores it
+   * its run is fed `read-only`. A retry of the turn restores it
    * from the run record. `null` on any other turn.
    */
   wakeNews: z.string().nullable().default(null),
@@ -3864,7 +3864,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * request's own delivery, a deadline), settles the task here, with no harness
    * run, by ending the chain on {@link SettledOnPullRequests}. Words a person
    * sent run, led by what became of the pull requests, with the harness fed
-   * `read-only` (FIX-2900), and the settle after the run ends the task; a
+   * `read-only`, and the settle after the run ends the task; a
    * harness that doesn't declare `enforcesReadOnly` gets no run, and the task
    * settles with a note. A retry of that turn reads what the wake found back
    * from the run record. Open or unreadable goes on, and the
