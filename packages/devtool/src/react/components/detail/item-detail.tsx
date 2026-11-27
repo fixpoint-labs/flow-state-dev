@@ -38,7 +38,15 @@ import { SequencerStateSection } from "./sequencer-state-panel";
 import { safeParseJson } from "../../lib/utils";
 import type { TraceNode } from "../../lib/trace-tree";
 
-export function ItemDetail() {
+type ItemDetailProps = {
+  /**
+   * The active tab opens a selected block's detail under its own row (the
+   * Trace tab), so the rail leaves block selections to it and shows only items.
+   */
+  blockDetailInline?: boolean;
+};
+
+export function ItemDetail({ blockDetailInline = false }: ItemDetailProps = {}) {
   const { selection, selectedItem, selectedStateSnapshots, selectedBlockNode } = useSelection();
 
   if (selection === null) {
@@ -47,7 +55,8 @@ export function ItemDetail() {
     );
   }
 
-  if (selection.kind === "block" && selectedBlockNode) {
+  if (selection.kind === "block") {
+    if (blockDetailInline || !selectedBlockNode) return null;
     return <BlockNodeDetail node={selectedBlockNode} />;
   }
 
@@ -59,11 +68,12 @@ export function ItemDetail() {
 }
 
 /**
- * Block-level detail sidebar. Composes every observability surface attached
- * to the selected block into one panel so users don't hunt through sibling
- * rows for debug payload / state timeline / final output.
+ * Block-level detail. Composes every observability surface attached to a
+ * block into one panel so users don't hunt through sibling rows for debug
+ * payload / state timeline / final output. The Trace tab renders it under the
+ * block's row; the rail renders it for a block selected from another tab.
  */
-function BlockNodeDetail({ node }: { node: TraceNode }) {
+export function BlockNodeDetail({ node }: { node: TraceNode }) {
   const traceItem = node.traceItem as BlockTraceItem | undefined;
   const generator = traceItem?.generator;
   const connectedInput = traceItem?.input?.connected;
@@ -218,9 +228,10 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         <SequencerStateSection snapshots={node.stateSnapshots} />
       )}
 
-      {/* Output — collapsed by default, output blobs can be large */}
+      {/* Output — open: the value is what a reader opens a block for. Large
+          blobs scroll inside the detail's bounded height. */}
       {traceItem?.output !== undefined && (
-        <CollapsibleSection title="Output" defaultOpen={false}>
+        <CollapsibleSection title="Output" defaultOpen>
           <BlockValueView value={traceItem.output} />
         </CollapsibleSection>
       )}
