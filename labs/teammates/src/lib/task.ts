@@ -71,19 +71,19 @@ export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, no
   !leaseLapsed({ status: "in_progress", leaseUntil: task.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
 
 /**
- * Whether a task's card or popup should advance a live clock: a non-lapsed
- * lease (`runsNow`), or a row signal that still reads *working*.
+ * Whether a task's UI should advance a live clock: a non-lapsed lease on an
+ * in-progress row and no open hold on the user. A held task has no request in
+ * flight, so nothing to count.
  */
 export function clockRuns(
-  task: Pick<CodingBoardTask, "status" | "leaseUntil">,
+  task: Pick<CodingBoardTask, "status" | "leaseUntil" | "asks">,
   now: number,
-  signal?: { kind: TaskSignalKind } | null,
+  _signal?: { kind: TaskSignalKind } | null,
   options: { stale?: boolean } = {},
 ): boolean {
-  if (runsNow(task, now)) return true;
-  // While the feed is stale, `taskSignal` hides a lapsed lease as *working*; only `runsNow` counts.
   if (options.stale === true) return false;
-  return signal?.kind === "working";
+  if (holdOf(task) !== undefined) return false;
+  return runsNow(task, now);
 }
 
 /**
@@ -118,7 +118,7 @@ export function activeElapsedMs(
   if (start === undefined) return undefined;
   if (clockRuns(task, now, signal, options)) return now - start;
   // A stale feed freezes `now`; keep showing where the clock was, without counting up.
-  if (options.stale === true && taskStatus(task) === "running") return now - start;
+  if (options.stale === true && taskStatus(task) === "running") return frozenActiveMs(task, now, options) ?? now - start;
   return frozenActiveMs(task, now, options);
 }
 

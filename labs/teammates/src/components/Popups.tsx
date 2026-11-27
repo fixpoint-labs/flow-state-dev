@@ -14,7 +14,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, activeElapsedMs, elapsedText, harnessOf, modelOf, runsNow, taskStatus, timeSignalOf, workerOf } from "../lib/task";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, activeElapsedMs, clockRuns, elapsedText, harnessOf, modelOf, taskStatus, timeSignalOf, workerOf } from "../lib/task";
 import { useNow } from "../lib/use-watch";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
@@ -247,7 +247,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const spent = total === undefined ? undefined : `${total} tokens`;
   const timeRow = task === undefined ? undefined : timeSignalOf(task);
   // The attempt clock runs only while a live run holds the task; waits show a frozen active span or no time.
-  const tick = task !== undefined && runsNow(task, Date.now());
+  const tick = task !== undefined && clockRuns(task, Date.now());
   const now = useNow(1_000, tick);
   const signal = timeRow ? taskSignal(timeRow.view, timeRow.run, now) : null;
   const totalMs = task !== undefined && status === "running" ? activeElapsedMs(task, now, signal) : undefined;

@@ -40,6 +40,27 @@ const base = (over: Partial<CodingBoardTask> = {}): CodingBoardTask => {
 const live = (over: Partial<CodingBoardTask> = {}): CodingBoardTask => base({ leaseUntil: Date.now() + 60 * MIN, ...over });
 
 describe("idle tasks don't tick", () => {
+  it("does not tick while waiting on you even if a lease is still present", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const openedAt = Date.now() - 5 * MIN;
+    const task = base({
+      asks: [hold("review", "Please review", { taskId: "t1", openedAt })],
+      leaseUntil: Date.now() + 60 * MIN,
+    });
+    expect(runsNow(task, Date.now())).toBe(true);
+    const { client } = stubServer({ board: { s1: [task] } });
+    render(
+      <TestProvider client={client}>
+        <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => true} onOpen={() => {}} />
+      </TestProvider>,
+    );
+    const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const card = await within(panel).findByRole("button", { name: /Ship the change/ });
+    const before = card.querySelector("[data-elapsed]")?.textContent ?? null;
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(card.querySelector("[data-elapsed]")?.textContent ?? null).toBe(before);
+  });
+
   it("the panel holds useNow and shows no counting elapsed time on an open hold", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     const openedAt = Date.now() - 5 * MIN;
