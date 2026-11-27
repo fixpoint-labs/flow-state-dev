@@ -91,7 +91,7 @@ export function clockRuns(
  * start to the hold's `openedAt`. Nothing while a run is on the task, or when
  * no hold time is known.
  */
-export function frozenActiveMs(
+function frozenActiveMs(
   task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt" | "leaseUntil">,
   now: number,
   options: { stale?: boolean } = {},
