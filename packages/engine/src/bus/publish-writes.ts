@@ -27,11 +27,11 @@
  * |---|---|
  * | a request's items land (`persistItems`, after its batch) | `items` on the request's session |
  * | a request's state field delta (`patchField`, `incField`, `pushToArray`, `deleteField`) | `request` on its session, and `run` on that session's parent |
- * | any other request write | the same, and `run` on its owner's user topic |
+ * | any other request write | the same, and `run` on its owner's user topic (not in a write session) |
  * | a session's state field delta | `run` on the session and on its parent |
- * | any other session write | the same, and `run` on its owner's user topic |
+ * | any other session write | the same, and `run` on its owner's user topic (not for a write session) |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
- * | a session deleted | also `suspension` on its owner's user topic |
+ * | a session deleted, a write session's too | also `suspension` on its owner's user topic |
  * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
  * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
  *
@@ -47,8 +47,9 @@
  * A session delete leaves its requests and suspensions stored, but the
  * pending read answers a suspension in a session only while the session
  * exists, so the delete publishes `suspension` too. It does so on every
- * session delete, without reading whether the session held one: a delete is
- * never per turn, notices for one topic in one microtask turn fold into one,
+ * session delete, a write session's included, without reading whether the
+ * session held one: a delete is never per turn, notices for one topic in
+ * one microtask turn fold into one,
  * and a user with no Inbox open hears nothing, so the cost is one Inbox read
  * per delete a watcher sees, where the check would cost a suspension-store
  * read on every delete.
@@ -299,7 +300,7 @@ type SessionIdentity = {
   id: string;
   tenantId: string | undefined;
   parentSessionId: string | undefined;
-  /** The owner, whose user topic hears every change to the session. */
+  /** The owner, whose user topic hears every change to the session but a write session's (see `ownerHears`). */
   userId: string | undefined;
 };
 /** What a request write needs to name its topics. */
