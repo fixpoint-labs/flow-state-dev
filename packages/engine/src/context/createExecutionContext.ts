@@ -97,6 +97,8 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { principalOwns, withRequestOrg, type Principal } from "./principal";
+import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
@@ -162,11 +164,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import {
-  claimRequestRecord,
-  principalOwnsRequest,
-  type RequestPrincipal
-} from "./request-principal";
+import { claimRequestRecord } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
@@ -826,10 +824,11 @@ export async function createExecutionContext<
   // Asked before the read: a run that stops ending after this has already
   // recorded what it handed on, so the read below sees it (FIX-2145).
   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
-  const [loadedSession, loadedRequest] = await Promise.all([
+  const [storedSession, loadedRequest] = await Promise.all([
     noSession ? undefined : stores.session.get(sessionKey),
     stores.request.get(requestId)
   ]);
+  let loadedSession = storedSession;
   if (
     loadedSession !== undefined &&
     tenantMatches(loadedSession.tenantId, options.tenantId) &&
@@ -856,14 +855,30 @@ export async function createExecutionContext<
   }
   // A request id is an address: another user's record under it is never
   // adopted, however the id reached this run.
-  const requestPrincipal: RequestPrincipal = {
-    userId,
-    orgId: options.orgId,
-    tenantId: options.tenantId
-  };
-  if (loadedRequest !== undefined && !principalOwnsRequest(loadedRequest, requestPrincipal)) {
+  if (
+    loadedRequest !== undefined &&
+    !principalOwns(await withRequestOrg(stores, loadedRequest), { userId, orgId: options.orgId, tenantId: options.tenantId })
+  ) {
     throw new RequestOwnerMismatchError(requestId);
   }
+
+  // FIX-2942: who this run is, as its door set it and carried unchanged: the
+  // options' principal, else the request record's (a continuation, a queued
+  // job), else its session's own kind (a wake or an owner run, started from
+  // a stored record with no principal kind of its own). A run that has none
+  // and creates its session is a machine's. Backfilling a session from before
+  // kinds writes the kind and moves its version on, so the run builds on the
+  // record as written, not the copy read above.
+  let runKind = options.principalKind ?? loadedRequest?.principalKind ?? undefined;
+  if (runKind === undefined && loadedSession !== undefined) {
+    const resolved = await resolveSessionKindRecord(stores, loadedSession, {
+      queuedGraceMs: options.effectiveRuntimeConfig?.queuedGraceMs
+    });
+    runKind = resolved.kind;
+    loadedSession = resolved.session;
+  }
+  runKind ??= "machine";
+  const runResolvedBy = options.resolvedBy ?? loadedRequest?.resolvedBy ?? undefined;
 
   // The same filter as the session's reads; see `sessionRequestScope`.
   const turnScope = sessionRequestScope(
@@ -1027,7 +1042,8 @@ export async function createExecutionContext<
         },
         state: options.sessionState,
         fromCaller: true,
-        via: "action"
+        via: "action",
+        principalKind: runKind
       },
       () => ({
       id: sessionKey,
@@ -1239,6 +1255,13 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
+          principal: {
+            userId,
+            orgId: resolvedOrgId,
+            ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+            kind: runKind,
+            ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+          } satisfies Principal,
           deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
@@ -1771,6 +1794,8 @@ export async function createExecutionContext<
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
+        principalKind: runKind,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {}),
         metadata: options.metadata,
         input: options.input,
         requestState: options.requestState

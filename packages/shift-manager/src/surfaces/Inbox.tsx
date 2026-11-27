@@ -34,7 +34,7 @@ import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
 import { doorOf, waited, workerLabel } from "../lib/shift";
 import { useWorkers, type Workers } from "../lib/directory";
-import type { InboxHold, InboxAnswer, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold, type InboxAnswer, type InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import { describeFailure, type Failure } from "../lib/failure";
 import { useInbox, useInboxAnswer, type InboxAsk } from "../lib/inbox";
@@ -433,7 +433,7 @@ function AskSession({ hold }: { hold: InboxViewHold; reread?: number }) {
   const read = useMemo<AskSessionRead | null>(() => {
     if (items !== undefined) {
       // The stop as the session holds it, where *From the session* is read around.
-      const stop = items.find((item) => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+      const stop = items.find((item) => item.type === "suspension" && suspensionHoldId(item.requestId, (item as SuspensionItem).suspensionId) === hold.id);
       return { ok: true, value: stop === undefined ? null : askSessionOf(items, stop), truncated: hasEarlier };
     }
     return error !== null ? { ok: false, failure: describeFailure(error) } : null;

@@ -50,7 +50,8 @@ import type { SessionRecord } from "../stores/types";
 import type { SessionAdmission, SuspensionAdmission } from "../context/request-sessions";
 import { isOrgAttributed } from "../context/org-attribution";
 import { resolveRecordOwner } from "../context/record-owner";
-import { admitListedSession, flowAuthenticates, ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { admitSession, flowAuthenticates, ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { principalOwns } from "../context/principal";
 
 type ViewRoute = Extract<ParsedFlowRoute, { kind: "run_view" }>;
 
@@ -165,8 +166,8 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
 // FIX-2725 D1.
 /**
  * Which of the caller's sessions a view's session reads may answer, on top of
- * the owner rule they apply: the HTTP session list's per-row admission
- * (`admitListedSession`). A row of an instance with a resolver of its own is
+ * the owner rule they apply: the one session admission (`admitSession`), the
+ * HTTP session list's. A row of an instance with a resolver of its own is
  * judged by that resolver with this request's credentials, so a caller the
  * view's flow admits but that instance refuses reads nothing of it. Any other
  * row needs an organization; and when the view's own flow resolves its callers
@@ -175,27 +176,26 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
  */
 function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantId: string | undefined): SessionAdmission {
   const hostRule = async (session: SessionRecord): Promise<boolean> => {
-    if (!isOrgAttributed(session)) return false;
     if (!flowAuthenticates(flow)) return true;
     const owner = resolveRecordOwner(ctx.registry, session);
     if (!owner.ok) return false;
     const caller = await ctx.callerFor(owner.flow);
-    return caller !== undefined && caller.userId === session.userId && caller.orgId === session.orgId;
+    return caller !== undefined && principalOwns(session, caller);
   };
-  return (session) => admitListedSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, session);
+  return (session) => admitSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, session);
 }
 
 // FIX-2770.
 /**
  * Whether a view's read of the caller's pending suspensions may answer one
  * row: the instance's own credential check, judged on the row's request,
- * with or without a session, by the rule `admitListedSession` applies to a
+ * with or without a session, by the rule `admitSession` applies to a
  * session: a row of an instance with a resolver of its own is judged on that
  * resolver's word (`ownResolverVerdict`); any other row needs an owner that
  * resolves and an organization, and, when the view's own flow resolves its
  * callers itself, the host's resolver must name the same user and
  * organization for the row's owner. A sessionless suspension has no session
- * for `admitListedSession` to judge, so this is what covers it; a row with a
+ * for `admitSession` to judge, so this is what covers it; a row with a
  * session also passes the session admission (`request-sessions.ts`). It only
  * removes rows the store's query already scoped to the caller.
  */
@@ -210,7 +210,7 @@ async function viewSuspensionAdmission(
   if (!owner.ok || !isOrgAttributed(entry)) return false;
   if (!flowAuthenticates(flow)) return true;
   const caller = await ctx.callerFor(owner.flow);
-  return caller !== undefined && caller.userId === entry.userId && caller.orgId === entry.orgId;
+  return caller !== undefined && principalOwns(entry, caller);
 }
 
 // FIX-2625 D1.

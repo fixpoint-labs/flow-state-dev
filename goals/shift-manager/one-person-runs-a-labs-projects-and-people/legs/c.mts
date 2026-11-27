@@ -86,7 +86,7 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
       if (fire.status !== "suspended" || asks.length !== 1) r.fail("c3", `the fire turn ended ${fire.status} with ${asks.length} user_approval ask(s): ${quote(fire)}`);
       else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) r.fail("c3", `the ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
       else {
-        const answered = await answerInInbox(world, asks[0]!.suspensionId!, "Approve");
+        const answered = await answerInInbox(world, { requestId: fire.requestId, suspensionId: asks[0]!.suspensionId! }, "Approve");
         if (!answered.clicked) r.fail("c3", `Inbox draws no card for ${asks[0]!.suspensionId}`);
         const settled = await owner().settle(await shiftCoordinatorFlowOf(world), fire.requestId, 180_000, true);
         r.saw("c3", `Inbox card "${answered.card.slice(0, 160)}"; Approve; the turn ended ${settled}`);
