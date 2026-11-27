@@ -202,8 +202,12 @@ export function App() {
     const sessionId = conversations.current[id];
     if (sessionId !== undefined) focusComposer(sessionId);
   }, []);
-  // Picking the task already open closes it: the panel's cards toggle the sheet.
   const openPopup = useCallback((next: Popup) => {
+    how.current = "push";
+    setPopup(next);
+  }, []);
+  // The panel's cards toggle the sheet: the task already open, picked again, closes it.
+  const togglePopup = useCallback((next: Popup) => {
     how.current = "push";
     setPopup((open) => (next.kind === "task" && open?.kind === "task" && open.taskId === next.taskId && open.sessionId === next.sessionId ? undefined : next));
   }, []);
@@ -366,7 +370,7 @@ export function App() {
             openTask={popup?.kind === "task" ? popup.taskId : undefined}
             nameOf={nameOf}
             isCoding={isCoding}
-            onOpen={openPopup}
+            onOpen={togglePopup}
             // Routines are asked for in words: *New routine* starts the sentence in this teammate's composer.
             onNewRoutine={() => {
               followUps.current += 1;
