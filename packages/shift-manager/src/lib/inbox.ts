@@ -19,6 +19,8 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 import { useView } from "@flow-state-dev/react";
 import { createInboxClient, suspensionHoldId, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
+import { CODER_FLOW, runChangesViewRef } from "@flow-state-dev/harness-manager/browser";
+import type { RunChangesPatch } from "../components/flow-state/run-changes";
 import { isDone } from "./columns";
 import { CONVERSATION_BOARD_COLLECTION } from "./boards";
 import { useReportFeedState } from "./feed-health";
@@ -229,4 +231,26 @@ export function useReviewData(hold: InboxViewHold): ReviewData {
     if (error !== null) return { state: "failed", failure: describeFailure(error), retry };
     return { state: "reading" };
   }, [review, items, error, hold.id, retry]);
+}
+
+// FIX-2796.
+/**
+ * Reads one file's patch for a coding run's review, in place: harness-manager's
+ * `changes` view on the coding worker flow, called in the ask's session, so the
+ * card's file list opens into each file's diff with no pull request needed.
+ * `undefined` for a stop the coding worker flow didn't raise (no such view to
+ * call) and for a run with no session: its files list their lines and don't open.
+ */
+export function usePatchReader(hold: InboxViewHold): ((path: string) => Promise<RunChangesPatch>) | undefined {
+  const { client } = useLab();
+  const sessionId = sessionOfHold(hold);
+  const coding = hold.ask.kind === "review" && hold.detail?.flowKind === CODER_FLOW;
+  return useMemo(() => {
+    if (!coding || sessionId === null) return undefined;
+    return async (path: string) => {
+      const { patch } = (await client.view(runChangesViewRef(), { path }, { sessionId })).value;
+      if (patch === null) throw new Error("the run answered no patch for this file");
+      return patch;
+    };
+  }, [client, coding, sessionId]);
 }
