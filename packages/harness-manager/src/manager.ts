@@ -3673,6 +3673,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
     // FIX-2900: read-only on the turn a person's words woke after its pull requests merged or closed, as
     // the wake found and the run record keeps for a retry; full on every other turn. Never from the prompt.
+    // Invariant: `wakeNews` is set only on that settled-pull-request path (the wake, or its retry from the record).
     access: (ctx) => (managerState(ctx.sequencer?.state).wakeNews !== null ? "read-only" : "full"),
     // Each call the harness asks about (FIX-2389): one a grant of this try
     // covers runs; any other is held, and the step is stopped for it.
