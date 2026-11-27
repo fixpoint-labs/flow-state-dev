@@ -2811,7 +2811,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         : undefined;
       // The pull requests an accept on this task landed on (FIX-2781), kept the same
       // way whether or not this manager waits on pull requests.
-      const landedPullRequests = sameTask ? (recorded.landedPullRequests ?? []) : [];
+      // A follow-up continues its root's branch, so a pull request an accept on an
+      // earlier task of its chain landed on (the root, or an earlier follow-up) is open
+      // from its branch too, and is the work's: kept as well. Only the pull requests:
+      // the requests stay this task's own, and so do the attempt and turn fences.
+      const sameChain =
+        recorded?.taskId != null &&
+        followUpRootId({ id: recorded.taskId, followUpOf: board.get(recorded.taskId)?.followUpOf }, (id) => board.get(id)) === rootId;
+      const landedPullRequests = sameTask || sameChain ? (recorded.landedPullRequests ?? []) : [];
       await fenced(
         openRunRecord(
           ctx,
@@ -4864,8 +4871,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 /**
  * A feature row's identity checks: the row's segment is the manager's mode, by
  * its name or its former name (a row filed before the rename), and, on a
- * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
- * with no payload (a task a conversation filed) has neither to check. A row on
+ * fixed board, its id (a follow-up's root's id) is the one its
+ * `{ issue, phase }` payload derives. A row with no payload (a task a
+ * conversation filed) has neither to check. A row on
  * a board read from the claim is keyed by its own task id, so it has no
  * derived id to match.
  */
@@ -4908,8 +4916,10 @@ function assertFeatureRowIdentity(
   }
 
   // **And the row's ID must be the one its payload derives**, for the same
-  // reason and by the same route. The board capability this flow returns
-  // lets a sibling or outer block add a row with an ID of its choosing, and
+  // reason and by the same route. A follow-up's own id is not: it continues
+  // its root's run, so its root's id is the one compared. The board
+  // capability this flow returns lets a sibling or outer block add a row
+  // with an ID of its choosing, and
   // every partition below — checkout, branch, run topic — is built from the
   // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
   // IDs therefore both pass every guard here and land on one tree, one
@@ -4924,7 +4934,7 @@ function assertFeatureRowIdentity(
   const canonicalId = harnessTaskId(issue, phaseName);
   if (rootId !== canonicalId) {
     throw new HarnessAttemptFailed(
-      `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
+      `[harness-manager] task ${taskId}${rootId === taskId ? "" : ` (a follow-up of ${rootId})`} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +
         `that payload, so a second task under a different id would run the same work ` +
         `in the same tree.`,

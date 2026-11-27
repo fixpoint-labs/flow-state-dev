@@ -654,6 +654,8 @@ export function taskIssueSegment(taskId: string): string {
  * (`followUpOf`, walked through `lookup`), or `task` itself when it follows
  * up nothing. A follow-up of a follow-up continues the same root. A link
  * whose task `lookup` no longer finds ends the walk there, on the id it named.
+ * A chain that loops back on itself ends on the last id reached before the
+ * loop closes, so which id wins depends on the task the walk started from.
  *
  * A follow-up is more work on what its root did, so its run is the root's:
  * the same checkout, branch, run record and coding session. The manager keys

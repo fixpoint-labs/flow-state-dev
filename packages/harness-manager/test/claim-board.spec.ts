@@ -280,6 +280,47 @@ describe("a follow-up of a finished coding task", () => {
     expect(lab.seen.map((run) => run.cwd)).toEqual([lab.seen[0]!.cwd, lab.seen[0]!.cwd]);
     expect(await lab.record(topic)).toMatchObject({ taskId: "t-more", attempt: 1, outcome: "succeeded" });
   }, 60_000);
+
+  // The follow-up works on the root's branch, so the pull request a user's accept on the root landed on is
+  // open from the follow-up's branch too. It is the work's, not someone else's: the follow-up's commits go there
+  // unasked. Forgotten, the user would be asked about their own pull request again, or a second one opened.
+  it("keeps the pull request the root's accept landed on, and puts the follow-up's work there unasked", async () => {
+    const PR_URL = "https://github.com/acme/widgets/pull/42";
+    const KEY = "github.com/acme/widgets/42";
+    const landings: string[] = [];
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      manager: { reviewChanges: true },
+      // The root changes nothing, so it completes with no review; the follow-up commits.
+      script: [{}, { commits: 1 }],
+      // #42 is open from whatever branch is asked about, and a landing on it pushes there.
+      workspace: (host) => ({
+        ...host,
+        landWays: async () => ["pull-request"],
+        existingPullRequest: async (target) => ({ url: PR_URL, number: 42, branch: target.branch }),
+        land: async (target) => {
+          landings.push(target.branch);
+          return { kind: "pull-request", url: PR_URL, number: 42, branch: target.branch, base: "main", remote: "origin", existing: true };
+        },
+      }),
+    });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t-root", PHASE);
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    expect((await lab.runAttempt(CONVERSATIONS, "t-root", "conv-a")).result.error).toBeUndefined();
+    // As the root's record stands once a user's accept on it landed on #42.
+    await lab.putRecord(topic, { ...(await lab.record(topic)), landedPullRequests: [KEY] });
+
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t-more", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const followUp = await lab.row(CONVERSATIONS, "t-more", "conv-a");
+    expect(followUp.status, JSON.stringify(followUp.holds)).toBe("completed");
+    expect(followUp.output).toMatchObject({ landed: { kind: "pull-request", number: 42, existing: true } });
+    expect(landings).toHaveLength(1);
+    expect(await lab.record(topic)).toMatchObject({ taskId: "t-more", landedPullRequests: [KEY] });
+  }, 60_000);
 });
 
 describe("a fixed board's feature rows", () => {
