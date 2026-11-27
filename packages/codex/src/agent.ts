@@ -377,8 +377,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           : client.resumeThread(resumeId, threadArgs);
 
       const emitState = createEmitState();
-      let writePlan: PlanWriter | null =
-        recordPlan && resumeId !== null ? await openPlanWriter(ctx, resumeId) : null;
+      let writePlan: PlanWriter | null = null;
       let sessionId: string | null = resumeId;
       let hookFired = false;
       let usage: CodexRunUsage | null = null;

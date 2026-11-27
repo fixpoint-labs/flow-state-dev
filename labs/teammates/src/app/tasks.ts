@@ -16,7 +16,6 @@ import {
   readRecordedWork,
   readSessionPullRequests,
   CODER_FLOW,
-  recordedWorkViewRef,
   reviewDetail,
   type CodingBoardTask,
   type RecordedWork,
@@ -77,8 +76,9 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
       reviewStop: stop?.suspensionId,
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
+      plan: flowKind === CODER_FLOW ? plan : undefined,
     };
-  }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan]);
+  }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan, flowKind]);
 }
 
 /**

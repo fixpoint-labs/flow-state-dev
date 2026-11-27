@@ -12,7 +12,6 @@ import {
   useTaskDetail,
   useTaskWork,
 } from "../app";
-import { useTaskPlan } from "../lib/task-plan";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
 import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
@@ -195,7 +194,6 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     if (missing) onMissing?.();
   }, [missing, onMissing]);
   const work = useTaskWork(task);
-  const plan = useTaskPlan(task);
   const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
@@ -296,7 +294,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     <>
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
-      {task && coding && plan !== undefined && plan !== null ? <PlanChecklist plan={plan} running={status === "running"} /> : null}
+      {task && coding && work.plan !== undefined && work.plan !== null ? (
+        <PlanChecklist plan={work.plan} running={status === "running"} />
+      ) : null}
       {task && status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && coding ? (

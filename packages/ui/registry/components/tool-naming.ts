@@ -259,6 +259,22 @@ export function toolOutcome(toolName: string, output: unknown): ToolOutcome {
   return "ok";
 }
 
+const PLAN_LIST_TOOLS = new Set(["todo_list", "updatetodos"]);
+
+function planItemCount(record: Fields): number | undefined {
+  const items = record.items ?? record.todos;
+  return Array.isArray(items) ? items.length : undefined;
+}
+
+/** Names a whole-list harness plan update, not the wire tool name. */
+function planToolSubject(toolName: string, args: unknown): ToolSubject | undefined {
+  const lower = toolName.toLowerCase();
+  if (!PLAN_LIST_TOOLS.has(lower)) return undefined;
+  const count = planItemCount(asFields(args));
+  if (count === undefined) return { text: "Update the plan", code: false };
+  return { text: count === 0 ? "Clear the plan" : `Update the plan (${count} steps)`, code: false };
+}
+
 /**
  * Names what a call did, so a run of calls to one tool reads as distinct steps:
  * the command a shell ran, the file a read opened, the pattern a grep sought.
@@ -269,22 +285,6 @@ export function toolOutcome(toolName: string, output: unknown): ToolOutcome {
  * count, a task's title. Without one (a call still running) it says what its
  * args say.
  */
-const PLAN_TOOL_NAMES = new Set(["todo_list", "updatetodos", "taskcreate", "taskupdate"]);
-
-function planItemCount(record: Fields): number | undefined {
-  const items = record.items ?? record.todos;
-  return Array.isArray(items) ? items.length : undefined;
-}
-
-/** Names a harness plan update, not the wire tool. */
-function planToolSubject(toolName: string, args: unknown): ToolSubject | undefined {
-  const lower = toolName.toLowerCase();
-  if (!PLAN_TOOL_NAMES.has(lower)) return undefined;
-  const count = planItemCount(asFields(args));
-  if (count === undefined) return { text: "Update the plan", code: false };
-  return { text: count === 0 ? "Clear the plan" : `Update the plan (${count} steps)`, code: false };
-}
-
 export function toolSubject(toolName: string, args: unknown, output?: unknown): ToolSubject | undefined {
   const base = toolBaseName(toolName);
   const work = Object.hasOwn(WORK_TOOLS, base) ? WORK_TOOLS[base] : undefined;
