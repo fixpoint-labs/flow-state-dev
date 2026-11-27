@@ -387,9 +387,9 @@ export function Conversation({
               </Fragment>,
             ]).concat(waiting.filter((w) => w.at === lines.length).map(card))}
             {answering ? (
-              <div role="status" data-chat-activity className={cn("flex w-fit items-center gap-2 rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
-                {/* Blue means live: a turn waiting on you gets the highlighter and no loader. */}
-                {loader === undefined || step?.needsYou ? null : <AnsweringLoader variant={loader} />}
+              <div role="status" data-chat-activity className={cn("flex w-fit items-center gap-1 text-xs", step?.needsYou && !stale ? "rounded-lg bg-attention px-3 py-2 text-attention-foreground" : (step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
+                {/* Blue means live: a turn waiting on you gets the highlighter pill and no loader. The loader's stage is wider than its dots; the margins take up the empty sides. */}
+                {loader === undefined || step?.needsYou ? null : <AnsweringLoader variant={loader} className="-mr-4 -ml-6" />}
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
               </div>
             ) : null}
