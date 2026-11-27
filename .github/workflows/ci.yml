@@ -109,6 +109,10 @@ jobs:
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
 
+      # wt:prune deletes directories; each keep rule and the pre-push preview guard has a case.
+      - name: Worktree prune and the preview push guard
+        run: node --test scripts/worktree.test.mjs
+
       # One task surface (FIX-2087). Here rather than beside "One word per thing"
       # in Process guards: the endings rule reads callers by type, so it needs the
       # TypeScript this job installs. The goal's rules.mjs owns the allow lists;

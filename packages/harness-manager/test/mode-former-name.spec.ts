@@ -9,7 +9,9 @@
  * rename is keyed by the new name.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { HARNESS_FEATURE_KEY, runTopic } from "../src";
+import { runTopic } from "../src";
+// The legacy key a manager given no `trackerIssueOf` reads (BP-030): internal, no longer published.
+import { HARNESS_FEATURE_KEY } from "../src/manager";
 import { runBoardSegment } from "../src/workspace";
 import { CONVERSATIONS, FIXED_BOARD, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 

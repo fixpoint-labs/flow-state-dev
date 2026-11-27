@@ -319,6 +319,9 @@ describe("the threads-mode screen", () => {
     const change = within(view).getByRole("button", { name: "Request changes" }) as HTMLButtonElement;
     await waitFor(() => expect(change.disabled).toBe(false), SLOW);
     fireEvent.click(change);
+    // The line lands after a round trip to the server, which takes as long as the machine is busy:
+    // wait for it in the body, then for the rise it brings.
+    await within(body).findByText("Shorter, please.", undefined, SLOW);
     await waitFor(() => expect(feeds.scrolls.some((s) => s.feed === body && s.behavior === "smooth")).toBe(true));
   });
 

@@ -195,7 +195,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { harnessFeature: { issue: line[1], phase: "implement" } } } }];
+            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { mode: "implement", issue: line[1] } } }];
       }
       const call = queue.shift();
       step += 1;
