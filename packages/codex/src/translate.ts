@@ -238,6 +238,7 @@ function confirmedCodexTodoList(raw: unknown): Array<{ title: string | null; sta
   return raw.map((entry) => {
     const item = (entry ?? {}) as { text?: unknown; completed?: unknown };
     const title = readString(item.text);
+    // Codex only carries a boolean completed flag today, not in-progress steps.
     return { title: title ?? null, status: item.completed === true ? "completed" : "pending" };
   });
 }
