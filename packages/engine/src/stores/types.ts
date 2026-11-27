@@ -1898,6 +1898,15 @@ export type WakeInput = WakeKey & {
    * wake here rather than clearing it.
    */
   readonly landBy: number;
+  // FIX-2942; BP-030.
+  /**
+   * The resolver identity that produced the writer's principal
+   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
+   * own-resolver sessions that resolver admits. Coalescing keeps it only
+   * while every wake folded in names the same one (`coalesceWake`).
+   * Absent (and on a wake stored before the field) it matches nothing.
+   */
+  readonly resolvedBy?: string;
 };
 
 // FIX-2078 D1.

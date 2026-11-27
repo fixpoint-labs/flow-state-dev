@@ -67,7 +67,9 @@ export async function fireWakeThrough(
   const controller = new AbortController();
   // FIX-2942: a wake stores no principal kind of its own; it runs as its
   // session's owner, with the kind that session was born with (a machine's
-  // when the session is gone), and no resolver identity.
+  // when the session is gone), and the resolver identity the wake names: its
+  // writer's, kept only while every write folded into it named the same one.
+  // A wake stored before the field names none, and admits no own-resolver session.
   const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
   const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session, window);
   const handle = dispatchInternalAs(host, {
@@ -75,7 +77,13 @@ export async function fireWakeThrough(
     entry: wake.entry,
     input: {},
     sessionId: wake.sessionId,
-    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}), kind },
+    as: {
+      userId: wake.userId,
+      orgId: wake.orgId,
+      ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
+      kind,
+      ...(wake.resolvedBy !== undefined ? { resolvedBy: wake.resolvedBy } : {})
+    },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal
   });
@@ -152,7 +160,7 @@ export type RequestWakesInputs = {
   store: WakeStore;
   sessions: Pick<SessionStore, "get">;
   /** The running request's server-derived identity. */
-  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string };
+  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string; resolvedBy?: string };
   /** The running flow instance's id: the address the request's own session's wakes fire on. */
   flowId: string;
   /** How long a write this request owes may take to land: its lease. */
@@ -199,6 +207,7 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
         flowKind,
         userId: identity.userId,
         orgId: identity.orgId,
+        ...(identity.resolvedBy !== undefined ? { resolvedBy: identity.resolvedBy } : {}),
         dueAt: spec.dueAt,
         landBy: now() + inputs.fenceMs
       });

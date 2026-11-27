@@ -88,6 +88,26 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
       });
     });
 
+    // A woken run carries the resolver identity its wake names, and reaches
+    // the own-resolver sessions that resolver admits. A wake two writers owe
+    // under different resolvers must not lend either's reach to the other.
+    it("keeps resolvedBy only while every coalesced write names the same one", async () => {
+      await withStore(async (store) => {
+        const first = await store.owe(wake({ resolvedBy: "vault" }));
+        expect(first.resolvedBy).toBe("vault");
+        expect((await store.owe(wake({ resolvedBy: "vault" }))).resolvedBy).toBe("vault");
+        expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toMatchObject({ resolvedBy: "vault" });
+        const mixed = await store.owe(wake({ resolvedBy: "other" }));
+        expect(mixed.resolvedBy).toBeUndefined();
+        expect((await store.get({ sessionId: "s1", entry: "dispatch" }))?.resolvedBy).toBeUndefined();
+        // Once lost, a later write naming it again does not restore it.
+        expect((await store.owe(wake({ resolvedBy: "vault" }))).resolvedBy).toBeUndefined();
+        // A wake owed with none (an old writer, a board notice) never gains one.
+        await store.owe(wake({ sessionId: "s2" }));
+        expect((await store.owe(wake({ sessionId: "s2", resolvedBy: "vault" }))).resolvedBy).toBeUndefined();
+      });
+    });
+
     it("tenants, sessions and entries are separate wakes", async () => {
       await withStore(async (store) => {
         await store.owe(wake({ dueAt: 1 }));

@@ -111,6 +111,18 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * write one instance set. Session-scope only; rejected at user/org scope.
    */
   sharedToLineage?: boolean;
+  // FIX-2942 D2.
+  /**
+   * The internal entry a write from another session starts a turn of, in the
+   * session written (`ctx.resources.at({ session })`). The turn is a wake on
+   * that session and entry, so writes that land before it runs fold into one
+   * turn: the entry reads what changed, not one event, and settles its wake
+   * (`requestHost.wakes`) as every wake's entry does. Absent, a write from
+   * another session is heard on the change bus and starts no turn. A write
+   * from the session itself never starts one; `reactTo` answers those.
+   * Session-scope only.
+   */
+  wakeEntry?: string;
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
@@ -461,6 +473,12 @@ export function defineResourceCollection<
     throw new Error(
       `defineResourceCollection() rejects sharedToLineage:true on ${config.scope}-scoped collections — ` +
         `${config.scope} scope already spans every session in a lineage`
+    );
+  }
+
+  if (config.wakeEntry !== undefined && (config.scope !== "session" || typeof config.wakeEntry !== "string" || config.wakeEntry.length === 0)) {
+    throw new Error(
+      `defineResourceCollection() takes wakeEntry only on a session-scoped collection, as the name of an internal entry (got ${JSON.stringify(config.wakeEntry)} at ${config.scope} scope)`
     );
   }
 

@@ -13,14 +13,18 @@ export function wakeStorageKey(key: WakeKey): string {
 
 /**
  * The wake `input` makes of `existing`: the earlier due time, the later
- * `landBy`, the next version. Shared by the memory and filesystem stores.
+ * `landBy`, the next version, and the resolver identity only when both name
+ * the same one. Shared by the memory and filesystem stores; the SQL stores
+ * apply the same rule in their upsert.
  */
 export function coalesceWake(existing: WakeRecord | null, input: WakeInput, now: number): WakeRecord {
   if (existing === null) {
     return { ...input, version: 1, createdAt: now, updatedAt: now };
   }
+  const { resolvedBy: _kept, ...rest } = existing;
   return {
-    ...existing,
+    ...rest,
+    ...(existing.resolvedBy !== undefined && existing.resolvedBy === input.resolvedBy ? { resolvedBy: existing.resolvedBy } : {}),
     dueAt: Math.min(existing.dueAt, input.dueAt),
     landBy: Math.max(existing.landBy, input.landBy),
     version: existing.version + 1,

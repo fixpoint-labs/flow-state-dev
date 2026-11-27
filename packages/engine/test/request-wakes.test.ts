@@ -46,6 +46,25 @@ async function setup(now = { t: 1_000_000 }) {
 }
 
 describe("RequestHost.wakes", () => {
+  // The woken run reaches what its writer's resolver admits, no more.
+  it("a wake carries the resolver identity of the principal that owed it", async () => {
+    const stores = createInMemoryStores();
+    await stores.session.set("own", { id: "own", state: {}, version: 0, createdAt: 0, updatedAt: 0, flowKind: "desk", flowId: "desk", userId: "u1", orgId: "o1", journal: [] } as never, "any");
+    const owe = (resolvedBy?: string) =>
+      createRequestWakes({
+        store: stores.wakes!,
+        sessions: stores.session,
+        identity: { ...identity, ...(resolvedBy !== undefined ? { resolvedBy } : {}) },
+        flowId: "desk",
+        fenceMs: 30_000,
+        maxDebtAgeMs: 86_400_000
+      }).owe({ entry: "dispatch", dueAt: 1 });
+    await owe("flow:vault");
+    expect((await stores.wakes!.get({ sessionId: "own", entry: "dispatch" }))?.resolvedBy).toBe("flow:vault");
+    await owe();
+    expect((await stores.wakes!.get({ sessionId: "own", entry: "dispatch" }))?.resolvedBy).toBeUndefined();
+  });
+
   it("owes this session's wake as this request's owner, fenced by its lease", async () => {
     const { stores, wakes } = await setup();
     expect(await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 })).toBe(true);

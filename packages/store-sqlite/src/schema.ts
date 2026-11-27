@@ -589,6 +589,7 @@ CREATE TABLE IF NOT EXISTS wakes (
   org_id     TEXT NOT NULL,
   due_at     INTEGER NOT NULL,
   land_by    INTEGER NOT NULL,
+  resolved_by TEXT,
   version    INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -596,6 +597,20 @@ CREATE TABLE IF NOT EXISTS wakes (
 );
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
+
+// FIX-2942; BP-030.
+/**
+ * Add the `resolved_by` column to a `wakes` table created before it. Runs
+ * after the create, since `wakes` is created if absent. Nullable with no
+ * backfill: a wake kept from before names no resolver, and so admits no
+ * own-resolver session, which is the rule for one.
+ */
+function migrateAddWakesResolvedBy(db: Database.Database): void {
+  const cols = db.prepare("SELECT name FROM pragma_table_info('wakes')").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "resolved_by")) {
+    db.exec("ALTER TABLE wakes ADD COLUMN resolved_by TEXT");
+  }
+}
 
 // FIX-428.
 /**
@@ -771,6 +786,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(SUSPENSION_RECORDS_TABLE);
   db.exec(LEASES_TABLE);
   db.exec(WAKES_TABLE);
+  migrateAddWakesResolvedBy(db);
 }
 
 /**

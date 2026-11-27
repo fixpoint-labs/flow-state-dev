@@ -499,7 +499,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     requestHost: {
       ...baseRuntimeConfig.requestHost,
       staleThresholdMs: staleSweepThresholdMs,
-      staleSweepIntervalMs
+      staleSweepIntervalMs,
+      // FIX-2942: a direct router caller's flows are this router's.
+      flows: baseRuntimeConfig.requestHost?.flows ?? options.registry
     }
   };
 

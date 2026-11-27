@@ -6,7 +6,8 @@
  * One row per (tenant, session, entry). `owe` coalesces in one statement
  * (`ON CONFLICT ... DO UPDATE`), keeping the earlier due time and the later
  * `land_by` and bumping the version, so two writers racing on one key leave
- * one wake at the earliest due time. `move` and `clear` are conditional on
+ * one wake at the earliest due time. It keeps `resolved_by` only while both
+ * writes name the same one (`coalesceWake`'s rule). `move` and `clear` are conditional on
  * the version a pass read. `due_at` is indexed for the sweeper's due read.
  */
 import type Database from "better-sqlite3";
@@ -21,6 +22,7 @@ type WakeRow = {
   org_id: string;
   due_at: number;
   land_by: number;
+  resolved_by: string | null;
   version: number;
   created_at: number;
   updated_at: number;
@@ -41,6 +43,7 @@ function toRecord(row: WakeRow): WakeRecord {
     orgId: row.org_id,
     dueAt: row.due_at,
     landBy: row.land_by,
+    ...(row.resolved_by != null ? { resolvedBy: row.resolved_by } : {}),
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -49,11 +52,12 @@ function toRecord(row: WakeRow): WakeRecord {
 
 export function createSQLiteWakeStore(db: Database.Database): WakeStore {
   const upsertStmt = db.prepare(
-    `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, version, created_at, updated_at)
-     VALUES (@tenant_key, @session_id, @entry, @flow_kind, @user_id, @org_id, @due_at, @land_by, 1, @now, @now)
+    `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, resolved_by, version, created_at, updated_at)
+     VALUES (@tenant_key, @session_id, @entry, @flow_kind, @user_id, @org_id, @due_at, @land_by, @resolved_by, 1, @now, @now)
      ON CONFLICT(tenant_key, session_id, entry) DO UPDATE SET
        due_at = MIN(wakes.due_at, excluded.due_at),
        land_by = MAX(wakes.land_by, excluded.land_by),
+       resolved_by = CASE WHEN wakes.resolved_by = excluded.resolved_by THEN wakes.resolved_by ELSE NULL END,
        version = wakes.version + 1,
        updated_at = excluded.updated_at
      RETURNING *`
@@ -77,6 +81,7 @@ export function createSQLiteWakeStore(db: Database.Database): WakeStore {
         org_id: input.orgId,
         due_at: input.dueAt,
         land_by: input.landBy,
+        resolved_by: input.resolvedBy ?? null,
         now: Date.now()
       }) as WakeRow;
       return toRecord(row);

@@ -7,7 +7,8 @@
  * earlier due time and the later `land_by` and bumps the version: a
  * concurrent upsert on the same key waits on the first one's row, then
  * applies its own update to the committed row, so racing writers leave one
- * wake at the earliest due time with no transaction. `move` and `clear` are
+ * wake at the earliest due time with no transaction. It keeps `resolved_by`
+ * only while both writes name the same one (`coalesceWake`'s rule). `move` and `clear` are
  * conditional on the version a pass read. `due_at` is indexed for the
  * sweeper's due read.
  */
@@ -30,6 +31,7 @@ function toRecord(row: Record<string, unknown>): WakeRecord {
     orgId: row.org_id as string,
     dueAt: Number(row.due_at),
     landBy: Number(row.land_by),
+    ...(row.resolved_by != null ? { resolvedBy: row.resolved_by as string } : {}),
     version: Number(row.version),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at)
@@ -41,15 +43,16 @@ export function createPostgresWakeStore(executor: QueryExecutor): WakeStore {
     async owe(input: WakeInput): Promise<WakeRecord> {
       const now = Date.now();
       const result = await executor.query(
-        `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, version, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $9)
+        `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, resolved_by, version, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, 1, $9, $9)
          ON CONFLICT (tenant_key, session_id, entry) DO UPDATE SET
            due_at = LEAST(wakes.due_at, EXCLUDED.due_at),
            land_by = GREATEST(wakes.land_by, EXCLUDED.land_by),
+           resolved_by = CASE WHEN wakes.resolved_by = EXCLUDED.resolved_by THEN wakes.resolved_by ELSE NULL END,
            version = wakes.version + 1,
            updated_at = EXCLUDED.updated_at
          RETURNING *`,
-        [tenantKey(input), input.sessionId, input.entry, input.flowKind, input.userId, input.orgId, input.dueAt, input.landBy, now]
+        [tenantKey(input), input.sessionId, input.entry, input.flowKind, input.userId, input.orgId, input.dueAt, input.landBy, now, input.resolvedBy ?? null]
       );
       return toRecord(result.rows[0]!);
     },
