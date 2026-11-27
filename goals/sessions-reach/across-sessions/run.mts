@@ -179,7 +179,7 @@ const gate = handler({
       let t = performance.now();
       const filtered = await across.list({ where: { index: "byStatus", value: "open" } });
       gateTimes.filtered.push(performance.now() - t);
-      gateTimes.filteredRows = filtered.rows.length;
+      gateTimes.filteredRows = filtered.entries.length;
       t = performance.now();
       await across.list();
       gateTimes.whole.push(performance.now() - t);

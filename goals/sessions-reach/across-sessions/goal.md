@@ -37,3 +37,5 @@
 | 2026-11-27 | same | n/a | PASS · `alternate.json` | same verdict; gate SQLite 3.19 / 0.55 ms, Postgres 17.80 / 3.34 ms |
 | 2026-11-27 | same | n/a | FAIL (expected) · `topic-off` | `late-row-appears` on all three stores: never shown within 3 s |
 | 2026-11-27 | same | n/a | FAIL (expected) · `owner-user-only` | `other-org-never-appears` on all three stores, with `rows-from-every-session` (the other org's row on the screen) and `gate` (filtered p95 155.92 ms SQLite, 379.93 ms Postgres) |
+| 2026-11-27 | fix/FIX-2945-owner-sessions-read on 1b2a9b5de9, uncommitted (the page's `entries`) | n/a | PASS | all rows on the three stores; late row 18 / 28 / 64 ms. **Gate:** SQLite filtered p95 3.21 ms, whole 0.55 ms; Postgres filtered p95 9.29 ms, whole 1.99 ms |
+| 2026-11-27 | same | n/a | FAIL (expected) · each control | `topic-off`: `late-row-appears` on all three stores. `owner-user-only`: `other-org-never-appears` on all three, with `rows-from-every-session` and `gate` (96.31 ms SQLite, 397.21 ms Postgres) |
