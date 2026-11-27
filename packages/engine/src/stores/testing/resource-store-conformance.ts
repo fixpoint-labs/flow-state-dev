@@ -28,6 +28,30 @@ import type {
 } from "../types";
 import { toStoredState } from "../resource-state-predicate";
 
+/**
+ * Keys a prefix read must sort out exactly: neighbours of each prefix in
+ * byte order (`docs0` and `docs.` beside `docs/`), LIKE wildcards, multi-byte
+ * characters, and the highest code point, whose prefix has no plain
+ * successor. Every adapter runs the same corpus against `startsWith`, so the
+ * SQL stores' rows match the memory and filesystem stores'.
+ */
+const PREFIX_CORPUS_KEYS = [
+  "docs/one",
+  "docs/two/three",
+  "docs0",
+  "docs.",
+  "docr",
+  "50%_off",
+  "5000_off",
+  "café/menu",
+  "cafë",
+  "z\u{10FFFF}/a",
+  "{",
+  "😀/a",
+  "😁"
+];
+const PREFIX_CORPUS_PREFIXES = ["", "docs/", "docs", "50%_", "café/", "caf", "z\u{10FFFF}", "😀/"];
+
 /** Structural shape of the last-write-wins keyed store (`ContentStore`). */
 type KeyedResourceStore<V> = {
   get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<V | undefined>;
@@ -125,6 +149,21 @@ function runKeyedResourceStoreConformance<V>(options: ConformanceOptions<V>): vo
         await store.set("session", "s1", "b", makeValue(2));
         const all = await store.getByPrefix("session", "s1", "");
         expect(Object.keys(all).sort()).toEqual(["a", "b"]);
+      });
+    });
+
+    it("getByPrefix returns exactly the keys that start with the prefix, for any characters", async () => {
+      await withStore(async (store) => {
+        for (const [i, key] of PREFIX_CORPUS_KEYS.entries()) {
+          await store.set("session", "s1", key, makeValue(i));
+        }
+        for (const prefix of PREFIX_CORPUS_PREFIXES) {
+          const matched = await store.getByPrefix("session", "s1", prefix);
+          expect({ prefix, keys: Object.keys(matched).sort() }).toEqual({
+            prefix,
+            keys: PREFIX_CORPUS_KEYS.filter((k) => k.startsWith(prefix)).sort()
+          });
+        }
       });
     });
 
@@ -300,6 +339,19 @@ export function createResourceStateStoreConformanceTests(
         await seed(store, "b", makeState(2));
         const all = await store.getByPrefix("session", "s1", "");
         expect(Object.keys(all).sort()).toEqual(["a", "b"]);
+      });
+    });
+
+    it("getByPrefix returns exactly the live keys that start with the prefix, for any characters", async () => {
+      await withStore(async (store) => {
+        for (const [i, key] of PREFIX_CORPUS_KEYS.entries()) await seed(store, key, makeState(i));
+        for (const prefix of PREFIX_CORPUS_PREFIXES) {
+          const matched = await store.getByPrefix("session", "s1", prefix);
+          expect({ prefix, keys: Object.keys(matched).sort() }).toEqual({
+            prefix,
+            keys: PREFIX_CORPUS_KEYS.filter((k) => k.startsWith(prefix)).sort()
+          });
+        }
       });
     });
 

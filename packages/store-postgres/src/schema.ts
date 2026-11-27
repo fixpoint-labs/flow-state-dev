@@ -145,7 +145,20 @@ const CONCURRENT_INDEXES = [
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_owner_updated ON requests(session_id, user_id, org_id, updated_at)",
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_owner_updated ON sessions(parent_session_id, user_id, org_id, updated_at)",
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_tenant_owner_updated ON requests(session_id, tenant_id, user_id, org_id, updated_at)",
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)"
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)",
+  // FIX-2944: every prefix read (`getByPrefix`) is a range on the key in byte
+  // order, `resource_key COLLATE "C" >= prefix AND < successor`
+  // (`key-prefix-range.ts`). The primary key can't answer it under a language
+  // collation, where keys under one prefix need not sort together, so these
+  // name byte order on the key. They replace the old `(scope_type, scope_id)`
+  // indexes, which only repeated the primary key's leading columns and are
+  // dropped below once these exist, so a write still updates two indexes.
+  // The column keeps its collation: changing it would rebuild the primary key
+  // under a lock that blocks writes.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_state_key ON resource_state(scope_type, scope_id, resource_key COLLATE \"C\")",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_content_key ON resource_content(scope_type, scope_id, resource_key COLLATE \"C\")",
+  "DROP INDEX CONCURRENTLY IF EXISTS idx_resource_state_scope",
+  "DROP INDEX CONCURRENTLY IF EXISTS idx_resource_content_scope"
 ];
 
 /**
@@ -157,7 +170,7 @@ const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
 DECLARE
   n TEXT;
 BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated']
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated', 'idx_resource_state_key', 'idx_resource_content_key']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_class c
@@ -427,9 +440,9 @@ CREATE TABLE IF NOT EXISTS resource_content (
 );
 `;
 
-const RESOURCE_CONTENT_INDEXES = [
-  "CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id)"
-];
+// No secondary index here: the primary key leads with the scope columns, and
+// prefix reads use `idx_resource_content_key` in CONCURRENT_INDEXES.
+const RESOURCE_CONTENT_INDEXES: string[] = [];
 
 const RESOURCE_STATE_TABLE = `
 CREATE TABLE IF NOT EXISTS resource_state (
@@ -443,9 +456,9 @@ CREATE TABLE IF NOT EXISTS resource_state (
 );
 `;
 
-const RESOURCE_STATE_INDEXES = [
-  "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
-];
+// As for resource_content: prefix reads use `idx_resource_state_key` in
+// CONCURRENT_INDEXES.
+const RESOURCE_STATE_INDEXES: string[] = [];
 
 // Index entries for resource collections: one row per (row, index, value), so
 // a collection can be looked up by a declared field without reading its rows.

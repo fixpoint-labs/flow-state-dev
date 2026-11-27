@@ -9,6 +9,7 @@
  */
 import type Database from "better-sqlite3";
 import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine/host";
+import { prepareKeyPrefixRead } from "./key-prefix-range";
 
 /**
  * Create a SQLite-backed `ContentStore` over the provided database handle.
@@ -29,12 +30,9 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
   const getAllStmt = db.prepare(
     "SELECT resource_key, content FROM resource_content WHERE scope_type = ? AND scope_id = ?"
   );
-  // Prefix match via substr(...) rather than LIKE — sidesteps LIKE wildcard
-  // escaping (`%`/`_` are legal in resource keys). An empty prefix matches
-  // every key in scope (substr(key, 1, 0) = '').
-  const getByPrefixStmt = db.prepare(
-    "SELECT resource_key, content FROM resource_content " +
-      "WHERE scope_type = ? AND scope_id = ? AND substr(resource_key, 1, length(?)) = ?"
+  const readByPrefix = prepareKeyPrefixRead(
+    db,
+    "SELECT resource_key, content FROM resource_content WHERE scope_type = ? AND scope_id = ?"
   );
   const deleteAllStmt = db.prepare(
     "DELETE FROM resource_content WHERE scope_type = ? AND scope_id = ?"
@@ -87,12 +85,10 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, string>> {
-      const rows = getByPrefixStmt.all(
-        scopeType,
-        scopeId,
-        keyPrefix,
-        keyPrefix
-      ) as Array<{ resource_key: string; content: string }>;
+      const rows = readByPrefix(scopeType, scopeId, keyPrefix) as Array<{
+        resource_key: string;
+        content: string;
+      }>;
       const result: Record<string, string> = {};
       for (const row of rows) result[row.resource_key] = row.content;
       return result;
