@@ -1225,6 +1225,36 @@ describe("cross-flow resource schema validation", () => {
       ).not.toThrow();
     });
 
+    // The address path reads every collection at the pattern, including ones
+    // that occupy no framework cell, so start-up compares those too.
+    it("refuses two projected collections at one pattern with different client settings", () => {
+      const external = (client: Record<string, unknown>) =>
+        defineProjectedResourceCollection({
+          pattern: "positions/*",
+          scope: "user",
+          stateSchema: shape,
+          client,
+          read: async () => null,
+          search: (async () => ({ hits: [] })) as never,
+        } as never);
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", rawResources: { portfolio: external({ expose: ["n"] }) } }));
+      const error = captureConflict(() =>
+        registry.register(makeFlow({ kind: "flow-b", rawResources: { portfolio: external({ exclude: ["n"] }) } }))
+      );
+      expect(error.reason).toBe("client-config-mismatch");
+      expect(error.field).toBe("resources.positions/*");
+    });
+
+    it("refuses two schema-less collections at one pattern with different client settings", () => {
+      const bare = (client: Record<string, unknown>) => ({ pattern: "notes/*", scope: "user", client });
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", unvalidatedResources: { notes: bare({ expose: ["n"] }) } }));
+      expect(() =>
+        registry.register(makeFlow({ kind: "flow-b", unvalidatedResources: { notes: bare({ exclude: ["n"] }) } }))
+      ).toThrow(/client-config-mismatch/);
+    });
+
     it("does not compare client settings at session scope, which has no address", () => {
       const registry = createFlowRegistry();
       registry.register(makeFlow({ kind: "flow-a", rawResources: { ledger: declare({ client: { expose: ["n"] } }, "session") } }));

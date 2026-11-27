@@ -174,6 +174,7 @@ type ScopeParticipant = {
   flowKind: string;
   stateSchema?: ZodTypeAny;
   resourceSchemas: Record<string, ResourceDeclarations>;
+  addresses: Record<string, DeclaredResourceEntry[]>;
 };
 
 /**
@@ -366,6 +367,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
         emptySchemaMap<ResourceDeclarations>(),
         declaration.resourceSchemas
       ),
+      addresses: Object.assign(emptySchemaMap<DeclaredResourceEntry[]>(), declaration.addresses),
     });
   }
 
@@ -424,13 +426,19 @@ class InMemoryFlowRegistry implements FlowRegistry {
           for (const existingDecl of existingDecls) {
             for (const incomingDecl of incomingDecls) {
               checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
-              // One address at user or org scope: the same comparison the
-              // address path's 409 makes, so the two can't disagree on what
-              // "the same definition" is. Overlapping names are not one address.
-              if (scope !== "session" && existingRef === ref) {
-                checkClientConfigPair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
-              }
             }
+          }
+        }
+      }
+
+      // One address at user or org scope: the same comparison the address
+      // path's 409 makes, over the declarations it reads (`addresses`), so
+      // the two can't disagree on what "the same definition" is. Overlapping
+      // names are not one address.
+      for (const [key, incomingConfigs] of Object.entries(incoming.addresses)) {
+        for (const existingConfig of existing.addresses[key] ?? []) {
+          for (const incomingConfig of incomingConfigs) {
+            checkClientConfigPair(scope, `resources.${key}`, existing.flowKind, flowKind, existingConfig, incomingConfig);
           }
         }
       }
@@ -448,8 +456,6 @@ type ResourceDeclaration = {
   collection: boolean;
   /** The declaration's `secret` fields, sorted: two declarations of one cell must agree. */
   secret: readonly string[];
-  /** The declaration itself, for the client-config compare (`sameClientConfig`). */
-  config: DeclaredResourceEntry;
 };
 
 /**
@@ -474,6 +480,16 @@ type ResourceDeclarations = ResourceDeclaration[];
 type ScopeDeclaration = {
   stateSchema?: ZodTypeAny;
   resourceSchemas: Record<string, ResourceDeclarations>;
+  /**
+   * The shared user or org declarations at each address (a single resource's
+   * storage key, a collection's pattern), for the client-config compare.
+   * Collected by the address path's own inclusion rule (`declarationsOf` in
+   * `resources/scope-address.ts`): every collection, projected or schema-less
+   * included, and every single resource with a `stateSchema`. Wider than
+   * `resourceSchemas`, which holds only what occupies a framework cell. Empty
+   * at session scope, which has no address.
+   */
+  addresses: Record<string, DeclaredResourceEntry[]>;
 };
 
 /**
@@ -585,6 +601,7 @@ function collectScopeDeclaration(
   const stateSchema = flowIsolatesScope ? undefined : scopeStateSchema(flow, scope);
 
   const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
+  const addresses = emptySchemaMap<DeclaredResourceEntry[]>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
   // from `resourceSchemas` — and checked BEFORE the isolation filter below —
   // because a same-flow collision is not a cross-flow question. Isolation
@@ -599,6 +616,15 @@ function collectScopeDeclaration(
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
+    // Before the cell filters below: the address path reads projected and
+    // schema-less collections too, and 409s when their client settings differ.
+    if (
+      scope !== "session" &&
+      (isCollectionConfig(entry) || entry.stateSchema !== undefined) &&
+      !resolveResourceIsolation(entry.flowIsolation, flow, scope)
+    ) {
+      (addresses[storageRef(entry, accessor, storageKeys)] ??= []).push(entry);
+    }
     // Projected collections are read-through views over the app's own store —
     // they never occupy a framework-owned `ResourceStateStore` cell, so two
     // flows exposing the same pattern over separate backings share nothing.
@@ -612,7 +638,7 @@ function collectScopeDeclaration(
     const ref = storageRef(entry, accessor, storageKeys);
     const collection = isCollectionConfig(entry);
     const secret = [...(entry.secret ?? [])].sort();
-    const declaration: ResourceDeclaration = { schema, collection, secret, config: entry };
+    const declaration: ResourceDeclaration = { schema, collection, secret };
 
     // JSON-encoded so the two fields cannot concatenate ambiguously, matching
     // `tupleKey` in core's `flow/defineFlow.ts`.
@@ -648,11 +674,15 @@ function collectScopeDeclaration(
     (resourceSchemas[ref] ??= []).push(declaration);
   }
 
-  if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
+  if (
+    stateSchema === undefined &&
+    Object.keys(resourceSchemas).length === 0 &&
+    Object.keys(addresses).length === 0
+  ) {
     return undefined;
   }
 
-  return { stateSchema, resourceSchemas };
+  return { stateSchema, resourceSchemas, addresses };
 }
 
 /**
@@ -695,10 +725,10 @@ function checkClientConfigPair(
   field: string,
   flowA: string,
   flowB: string,
-  a: ResourceDeclaration,
-  b: ResourceDeclaration
+  a: DeclaredResourceEntry,
+  b: DeclaredResourceEntry
 ): void {
-  if (sameClientConfig(a.config, b.config)) return;
+  if (sameClientConfig(a, b)) return;
   throw new CrossFlowSchemaConflictError({
     scope,
     field,
@@ -706,7 +736,7 @@ function checkClientConfigPair(
     flowB,
     reason: "client-config-mismatch",
     detail: "the two declare different client, runBy or canWrite settings; declare it once and share it",
-    collection: a.collection || b.collection,
+    collection: isCollectionConfig(a) || isCollectionConfig(b),
   });
 }
 
