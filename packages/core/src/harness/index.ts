@@ -27,6 +27,7 @@ export {
 export type {
   ClassifiedHarnessError,
   HarnessActivity,
+  HarnessAccess,
   HarnessActivityHook,
   HarnessBilling,
   HarnessEventHook,

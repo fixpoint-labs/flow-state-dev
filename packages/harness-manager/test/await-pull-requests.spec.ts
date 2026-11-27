@@ -575,3 +575,114 @@ describe("a judged run that opened a pull request", () => {
     expect(failed.feedback).toMatch(/^the judge found the task not done: /);
   }, 60_000);
 });
+
+// FIX-2900.
+/**
+ * A message on a task whose pull request merged or closed is answered read-only:
+ * the manager feeds the harness `access: "read-only"`, on that wake and on a
+ * retry of it, and runs no harness that doesn't declare it can hold a run
+ * there. Every other turn, an unreadable wake included, is fed `"full"`.
+ */
+describe("the access a coding run is fed", () => {
+  it("a first turn is fed full", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full"]);
+  }, 60_000);
+
+  it("merged: the run that answers a message is fed read-only", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Add a line to the README and push it.");
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "read-only"]);
+    // The run is told why it can't change anything, so it explains instead of trying.
+    expect(lab.seen[1]!.prompt).toContain("read-only");
+    expect((await row(lab)).status).toBe("completed");
+  }, 60_000);
+
+  it("closed without merging: the run that answers a message is fed read-only", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+    setGh({ listed: [7], states: { 7: "closed" } });
+    await line(lab, "closed it, why?");
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "read-only"]);
+  }, 60_000);
+
+  it("open: a line's run keeps full access", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+    await line(lab, "also fix the lint");
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "full"]);
+  }, 60_000);
+
+  it("unreadable: a line's run keeps full access, as before", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+    setGh({ listed: [7], states: { 7: "merged" }, fail: true });
+    await line(lab, "is it in?");
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "full"]);
+    expect((await record(lab))?.wakeNews).toBeNull();
+  }, 60_000);
+
+  it("merged: a retry of the answer turn after its run failed is read-only too, the message still under the settled lead", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = claimHost({
+      mode: "claim",
+      script: [{ answer: "Opened PR #7." }, { throws: "the answer turn's run failed" }, { answer: "It merged; a change needs a new task." }],
+      manager: { awaitPullRequests: true },
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "fix the bug", input: {} });
+    await run(lab);
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Add a line to the README and push it.");
+    // The wake's run throws: the try fails, and the task goes back for a retry.
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect((await row(lab)).status).toBe("pending");
+    await run(lab);
+
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "read-only", "read-only"]);
+    // Not under "follow them": the retry shows the words under the lead that says the pull request merged.
+    expect(lab.seen[2]!.prompt).toContain("Pull request #7 has merged.");
+    expect(lab.seen[2]!.prompt).not.toContain("They are part of the task: follow them.");
+    const done = await row(lab);
+    expect(done.status).toBe("completed");
+    expect(done.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
+  }, 60_000);
+
+  it("a harness that doesn't declare enforcesReadOnly gets no run on a merged pull request, and the task completes with a note", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = claimHost({ mode: "claim", enforcesReadOnly: false, manager: { awaitPullRequests: true } });
+    await lab.seed({ ...AT, id: "t1", goal: "fix the bug", input: {} });
+    await run(lab);
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Add a line to the README and push it.");
+    const result = await run(lab);
+
+    expect(lab.seen).toHaveLength(1);
+    const done = await row(lab);
+    expect(done.status).toBe("completed");
+    expect(done.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
+    expect(untakenSteers(done)).toEqual([]);
+    expect(statusText(result)).toContain("start a new task");
+  }, 60_000);
+
+  it("a harness that doesn't declare enforcesReadOnly still runs on an open pull request, with full access", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = claimHost({ mode: "claim", enforcesReadOnly: false, manager: { awaitPullRequests: true } });
+    await lab.seed({ ...AT, id: "t1", goal: "fix the bug", input: {} });
+    await run(lab);
+    await line(lab, "also fix the lint");
+    await run(lab);
+    expect(lab.seen.map((seen) => seen.access)).toEqual(["full", "full"]);
+  }, 60_000);
+});

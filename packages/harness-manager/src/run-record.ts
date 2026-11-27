@@ -207,6 +207,16 @@ export const runRecordStateSchema = z.object({
    * wake.
    */
   wokeFor: z.string().nullable().default(null),
+  // FIX-2900; BP-030.
+  /**
+   * What the wake {@link wokeFor} names found, written in the same write: the
+   * lead a person's words reach the run under when its pull requests had
+   * merged or closed, and the mark that the turn is read-only. `null` when
+   * they were open, or couldn't be read. A later attempt of the task (a retry)
+   * reads it back, since its own state starts empty. `null` on a record
+   * written before it was kept, read as full access.
+   */
+  wakeNews: z.string().nullable().default(null),
 
   // ── Authoritative: nothing else holds these ────────────────────────────────
   /** Where the run's checkout is. A record of the derivation, never its source. */

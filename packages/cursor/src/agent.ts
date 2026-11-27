@@ -61,6 +61,7 @@ import { ATTACHMENT_IMAGE_TYPES, type AttachmentAccepts } from "@flow-state-dev/
 import { randomUUID } from "node:crypto";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
+  HarnessAccess,
   HarnessActivityHook,
   HarnessEventHook,
   HarnessCallbackContext,
@@ -156,6 +157,19 @@ export interface CursorAgentOptions {
    * agent, so no dead id is ever written back over a good one.
    */
   onSession?: HarnessSessionHook;
+  // FIX-2900.
+  /**
+   * What this run may do, resolved once per run, before the agent is created
+   * or resumed. Absent, or `"full"`, is {@link agent} and {@link send} as
+   * they are. `"read-only"` offers the agent reading tools only (`read`,
+   * `grep`, `glob`, `ls`, `semSearch`, `readLints`, `readTodos`, an allowlist,
+   * so a tool Cursor adds later is not offered), with no MCP server, custom
+   * tool or subagent and no settings loaded from the checkout, over anything
+   * those options set. The block declares `enforcesReadOnly` for it. A
+   * Cursor that refuses one of those tool names fails the run; it never falls
+   * back to full.
+   */
+  access?: HarnessResolver<HarnessAccess>;
   /**
    * Offered Cursor's `run.steer` once the prompt is sent, on a run that has
    * one (a local run), so the host can hand a line to the turn in flight; then
@@ -437,6 +451,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     onSteerable,
     onActivity,
     onEvent,
+    access: resolveAccess,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -524,12 +539,15 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
         runModel = selectionOf(typeof model === "function" ? await model(ctx) : model);
+        // FIX-2900: resolved beside them; on read-only, the reading-tools allowlist wins over the host's options.
+        const readOnly = resolveAccess !== undefined && (await resolveAccess(ctx)) === "read-only";
         agent = await openAgent({
           ctx,
           resolveCwd,
           resolveResume,
           onSession,
           agentOptions: runModel === undefined ? agentOptions : { ...agentOptions, model: runModel },
+          readOnly,
           resolveCursorClient,
         });
         sessionId = agent.agentId;
@@ -540,7 +558,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
-        const run = await agent.send(message, sendOptions);
+        const run = await agent.send(message, readOnly ? readOnlySendOptions(sendOptions) : sendOptions);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
         // finished turn's running total, then the settled total.
@@ -595,7 +613,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         closeQuietly(agent);
       }
     },
-  }), { accepts: CURSOR_ACCEPTS });
+  }), { accepts: CURSOR_ACCEPTS, enforcesReadOnly: true as const });
 }
 
 // FIX-2145, FIX-2288.
@@ -701,6 +719,7 @@ async function openAgent(args: {
   resolveResume: HarnessResolver<string | null | undefined> | undefined;
   onSession: HarnessSessionHook | undefined;
   agentOptions: CursorCreateOptions | undefined;
+  readOnly: boolean;
   resolveCursorClient: ResolveCursorClient;
 }): Promise<CursorAgentLike> {
   const workingDirectory = args.resolveCwd === undefined ? undefined : await args.resolveCwd(args.ctx);
@@ -713,7 +732,7 @@ async function openAgent(args: {
   // A deep directory reaches the SDK through a short link: Cursor names its
   // state directory after the whole path, and a long one does not fit.
   const sdkDirectory = workingDirectory === undefined ? undefined : await cursorWorkingDirectory(workingDirectory);
-  const createOptions = mergeCreateOptions(args.agentOptions, sdkDirectory);
+  const createOptions = mergeCreateOptions(args.agentOptions, sdkDirectory, args.readOnly);
   const agent =
     resumeId === null ? await client.create(createOptions) : await resumeAgent(client, resumeId, createOptions);
 
@@ -819,16 +838,38 @@ function ownStrings(env: Record<string, string>): Record<string, string> {
 function mergeCreateOptions(
   agentOptions: CursorCreateOptions | undefined,
   workingDirectory: string | undefined,
+  readOnly: boolean,
 ): CursorCreateOptions & { local?: { cwd?: string } } {
   const local = {
     ...(agentOptions?.local ?? {}),
     ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
   };
   const hasLocal = workingDirectory !== undefined || agentOptions?.local !== undefined;
-  return {
+  const merged = {
     ...(agentOptions ?? {}),
     ...(hasLocal ? { local } : {}),
   };
+  if (!readOnly) return merged;
+  // FIX-2900: a read-only run, on create and on resume alike (Cursor keeps none of these on the agent).
+  const { agents: _agents, ...rest } = merged;
+  const { customTools: _customTools, ...readOnlyLocal } = local;
+  return { ...rest, tools: [...READ_ONLY_TOOLS], mcpServers: {}, local: { ...readOnlyLocal, settingSources: [] } };
+}
+
+// FIX-2900.
+/**
+ * The tools a read-only run is offered: reading ones only. An allowlist, so a
+ * tool Cursor adds later is not offered; without `mcp`, no MCP tool is either.
+ */
+const READ_ONLY_TOOLS = ["read", "grep", "glob", "ls", "semSearch", "readLints", "readTodos"];
+
+// FIX-2900.
+/** A read-only run's send options: the host's, without the MCP servers or custom tools a send can add. */
+function readOnlySendOptions(sendOptions: CursorSendOptions | undefined): CursorSendOptions | undefined {
+  if (sendOptions === undefined) return undefined;
+  const { mcpServers: _mcpServers, local, ...rest } = sendOptions;
+  const { customTools: _customTools, ...sendLocal } = local ?? {};
+  return { ...rest, ...(local === undefined ? {} : { local: sendLocal }) };
 }
 
 /**

@@ -408,6 +408,9 @@ export type ClaudeCodeQuery = (args: {
 export interface ClaudeCodeQueryOptions {
   model?: string;
   systemPrompt?: ClaudeCodeSystemPrompt;
+  // FIX-2900.
+  /** The SDK's tool ceiling: only these built-in tools are offered. Set on a read-only run alone. */
+  tools?: string[];
   allowedTools?: string[];
   disallowedTools?: string[];
   permissionMode?: string;

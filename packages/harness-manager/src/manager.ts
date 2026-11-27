@@ -1096,8 +1096,9 @@ const managerStateSchema = z.object({
    * What the wake found when a person's words woke it and its pull requests had
    * merged or closed: the lead those words reach the run under, in place of the
    * one for a pull request still open. Non-null only when `wake` is, and the
-   * mark that this turn only answers (no review, no judge's verdict). `null` on
-   * any other turn.
+   * mark that this turn only answers (no review, no judge's verdict) and that
+   * its run is fed `read-only`. A retry of the turn restores it
+   * from the run record. `null` on any other turn.
    */
   wakeNews: z.string().nullable().default(null),
   // FIX-2086.
@@ -3670,6 +3671,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const note = progressNoteOf(activity);
       if (note !== null) progressNotes.get(ctx.request.identity.id)?.report(note);
     },
+    // FIX-2900: read-only on the turn a person's words woke after its pull requests merged or closed, as
+    // the wake found and the run record keeps for a retry; full on every other turn. Never from the prompt.
+    // Invariant: `wakeNews` is set only on that settled-pull-request path (the wake, or its retry from the record).
+    access: (ctx) => (managerState(ctx.sequencer?.state).wakeNews !== null ? "read-only" : "full"),
     // Each call the harness asks about (FIX-2389): one a grant of this try
     // covers runs; any other is held, and the step is stopped for it.
     ...(approveTools ? { onToolApproval: askAboutToolCall } : {}),
@@ -3677,6 +3682,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // FIX-2312.
   /** The host's word, else what the harness declares. */
   const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
+  // FIX-2900.
+  /** The harness's word that it holds a run fed `read-only` to it: without it, such a turn runs no harness. */
+  const enforcesReadOnly = harnessBlock.enforcesReadOnly === true;
 
   // FIX-2290.
   /**
@@ -3856,8 +3864,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * first. Merged or closed, with only outside news on the wake (the pull
    * request's own delivery, a deadline), settles the task here, with no harness
    * run, by ending the chain on {@link SettledOnPullRequests}. Words a person
-   * sent always run, led by what became of the pull requests, and
-   * the settle after the run ends the task. Open or unreadable goes on, and the
+   * sent run, led by what became of the pull requests, with the harness fed
+   * `read-only`, and the settle after the run ends the task; a
+   * harness that doesn't declare `enforcesReadOnly` gets no run, and the task
+   * settles with a note. A retry of that turn reads what the wake found back
+   * from the run record. Open or unreadable goes on, and the
    * wake's words reach the run as its brief. A pass-through
    * unless `awaitPullRequests` is on and this turn is that wake: the row's
    * newest external wait is answered, by a steer this attempt has not taken.
@@ -3874,27 +3885,43 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(ctx.sequencer?.state);
       const recorded = await readRunRecord(ctx, state.topic!);
       const wait = row === undefined ? undefined : wokenWait(row);
-      // Each wait is woken once: a later turn of the task (a retry, a question's answer) is not its wake.
-      if (wait === undefined || recorded?.wokeFor === wait.id) return;
-      await fenced(writeRunRecord(ctx, identityOf(ctx, state), { wokeFor: wait.id }), "the wake was recorded");
+      if (wait === undefined) return;
+      // Each wait is woken once: a later turn of the task (a retry) is not its wake. FIX-2900: it keeps what
+      // the wake found, read back from the record since its own state starts empty, so the woken words stay
+      // under the wake's lead and a turn the wake made read-only stays read-only. A record from before the
+      // finding was kept reads as full access (BP-030).
+      if (recorded?.wokeFor === wait.id) {
+        await ctx.sequencer!.patchState({ wake: wait.id, wakeNews: recorded.wakeNews ?? null });
+        return;
+      }
       await ctx.sequencer!.patchState({ wake: wait.id });
+      /** Records the wake and what it found, in one write: a retry reads both back. */
+      const woke = (wakeNews: string | null) =>
+        fenced(writeRunRecord(ctx, identityOf(ctx, state), { wokeFor: wait.id, wakeNews }), "the wake was recorded");
       const keys = wait.source.closedBy.flatMap((releaser) =>
         releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT ? [releaser.key] : [],
       );
       const prs = await waitedPullRequests(ctx, keys);
-      if (prs.length === 0) return;
+      if (prs.length === 0) {
+        await woke(null);
+        return;
+      }
       const kept = recorded?.waitOutput;
       const parsed = kept != null && kept.attempt === state.attempt ? managerOutputSchema.safeParse(kept.output) : undefined;
       const output: ManagerOutput = parsed?.success === true ? parsed.data : outputWithoutRun(state);
       const reads = await readTaskPullRequests(ctx, prs);
-      // Open, or unreadable: the wake's words run, and the run's end comes back to the settle's read.
+      // Open, or unreadable: the wake's words run, with full access, and the run's end comes back to the settle's read.
       if ("unreadable" in reads) {
+        await woke(null);
         ctx.emit.status(`The task's pull request couldn't be read from GitHub, so its message goes to the run: ${reads.unreadable}`, {
           transient: false,
         });
         return;
       }
-      if (pullRequestsVerdict(reads.read) === "hold") return;
+      if (pullRequestsVerdict(reads.read) === "hold") {
+        await woke(null);
+        return;
+      }
       // FIX-2884.
       // Words a person sent, or the filer on their behalf, always reach the run, told what became of the pull
       // requests; the settle after it reads them again and ends the task. Only news from outside (the pull
@@ -3904,9 +3931,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const take = await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
       const now = await committedRow(ctx);
       if (personSpokeOnWake(now === undefined ? undefined : answerOf(now, wait.id), take?.taken ?? [])) {
-        await ctx.sequencer!.patchState({ wakeNews: settledPullRequestNews(reads.read) });
-        return;
+        // FIX-2900 D1: that run is read-only, so a harness that can't hold one there gets no run.
+        if (enforcesReadOnly) {
+          const wakeNews = settledPullRequestNews(reads.read);
+          await woke(wakeNews);
+          await ctx.sequencer!.patchState({ wakeNews });
+          return;
+        }
+        ctx.emit.status(NOT_READ_ONLY_NOTE, { transient: false });
       }
+      await woke(null);
       throw new SettledOnPullRequests(await settleOnPullRequests(ctx, prs, output, { reads }));
     },
   });
@@ -5156,9 +5190,16 @@ function settledPullRequestNews(read: readonly PullRequestRead[]): string {
   );
   return (
     `${each.join(" ")} Your checkout and your earlier work are as you left them. Answer the message below. ` +
-    "Push nothing to a merged or closed pull request's branch: if the message asks for more changes, say they need a new task:"
+    "Your tools are read-only this turn: you can read the checkout, but you can't change a file, run a command " +
+    "that changes anything, or push. If the message asks for more changes, say they need a new task:"
   );
 }
+
+// FIX-2900.
+/** The note a person's words on a merged or closed pull request get when the harness can't run read-only there. */
+const NOT_READ_ONLY_NOTE =
+  "This task's harness can't answer once its work is done, because it can't keep a run read-only. " +
+  "To change the work, start a new task.";
 
 /** The lead the step after a stop for a steer opens with. */
 const STOPPED_LEAD =

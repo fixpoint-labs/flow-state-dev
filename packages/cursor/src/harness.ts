@@ -6,6 +6,7 @@
  * environment (`harnessEnv` over `CURSOR_PASS`). A local Cursor run must
  * name its model: `"default"`, Cursor's own pick, unless the options name
  * one. Its sandbox is off: a coding run already works in its own worktree.
+ * A run the runner feeds `access: "read-only"` is offered reading tools only.
  */
 import { harnessEnv, type Harness } from "@flow-state-dev/core/harness";
 import { cursorAgent, type CursorAgentOptions } from "./agent";
@@ -14,7 +15,7 @@ import { listCursorModels } from "./model-list";
 import { checkCursorReadiness } from "./sign-in";
 
 /** What `cursorHarness` takes: the Cursor block's options, less what each run feeds it. */
-export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity" | "onEvent">;
+export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity" | "onEvent" | "access">;
 
 /**
  * Cursor as a harness value.
@@ -39,6 +40,7 @@ export function cursorHarness(options: CursorHarnessOptions = {}): Harness {
         ...(feeds.onSteerable === undefined ? {} : { onSteerable: feeds.onSteerable }),
         ...(feeds.onActivity === undefined ? {} : { onActivity: feeds.onActivity }),
         ...(feeds.onEvent === undefined ? {} : { onEvent: feeds.onEvent }),
+        ...(feeds.access === undefined ? {} : { access: feeds.access }),
       }),
     readiness: () => checkCursorReadiness(env()),
     pass: CURSOR_PASS,

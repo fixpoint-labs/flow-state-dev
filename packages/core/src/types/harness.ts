@@ -29,6 +29,8 @@
  * - {@link HarnessBlock} — the conformance alias.
  * - {@link HarnessResolver} and {@link HarnessSessionHook} — the signatures a
  *   host feeds per-run configuration through.
+ * - {@link HarnessAccess} — what one run may do, `"full"` or `"read-only"`,
+ *   fed per run and enforced by a harness that declares `enforcesReadOnly`.
  * - {@link HarnessFailureKind} / {@link harnessFailureKind} — the neutral
  *   classification a harness puts on the error it fails with.
  * - {@link HarnessUsageWindow} / {@link harnessUsageWindowSchema},
@@ -246,6 +248,17 @@ export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRun
    * returns, as `stopsOnAbort` is.
    */
   readonly accepts?: AttachmentAccepts;
+  // FIX-2900.
+  /**
+   * The harness's own word that a run fed {@link HarnessAccess} `"read-only"`
+   * (through {@link HarnessFeeds}'s `access`) can read its working folder and
+   * nothing else: no file write, no command that changes anything, no network.
+   * The harness enforces it with its vendor's own limit, never the prompt. A
+   * host that needs a run read-only reads it before the run and runs no
+   * harness that doesn't declare it. Absent means no. Stamped on the block the
+   * factory returns, as `stopsOnAbort` is.
+   */
+  readonly enforcesReadOnly?: boolean;
 };
 
 /**
@@ -323,6 +336,21 @@ export type HarnessCallbackContext = BlockContext<
  * cast is the honest spelling of that split rather than a hole in it.
  */
 export type HarnessResolver<T> = (ctx: HarnessCallbackContext) => T | Promise<T>;
+
+// FIX-2900.
+/**
+ * What one run may do, as a host decides it per run:
+ *
+ * - `"full"`: what the harness's own options allow, unchanged.
+ * - `"read-only"`: read the working folder and nothing else. No file write,
+ *   no command that changes anything, no network. A harness that declares
+ *   `enforcesReadOnly` sets its vendor's limit for the run, over anything its
+ *   own options set.
+ *
+ * Fed through {@link HarnessFeeds}'s `access`, never on {@link HarnessRunInput}:
+ * a model could set a field there.
+ */
+export type HarnessAccess = "full" | "read-only";
 
 /**
  * Called by a harness the moment its vendor names a session, so the host can
@@ -743,6 +771,15 @@ export interface HarnessFeeds {
    * unset.
    */
   readonly model?: HarnessResolver<string | undefined>;
+  // FIX-2900.
+  /**
+   * What this run may do ({@link HarnessAccess}). Absent, or `"full"`, is the
+   * harness's own options, unchanged. A harness that declares
+   * `enforcesReadOnly` reads it once per run, a resumed one included, and on
+   * `"read-only"` sets its vendor's read-only limit. Filled by the task runner;
+   * a session turn leaves it unset.
+   */
+  readonly access?: HarnessResolver<HarnessAccess>;
   /**
    * Called by a harness whose run can take a line into its turn in flight,
    * with the steer that does it, and with `null` once it can't. Both runners

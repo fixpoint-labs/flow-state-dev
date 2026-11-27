@@ -12,7 +12,9 @@
  * `mcpTools` feed a host relays MCP servers through. The stub takes no relayed
  * tools: handed one, it says in the run's session which servers it runs
  * without. Given `toolCalls`, it makes them as a coding run does, asking
- * through `onToolApproval` when the manager hands it (`approveTools`).
+ * through `onToolApproval` when the manager hands it (`approveTools`). It
+ * declares `enforcesReadOnly`, and a run the `access` feed makes `read-only`
+ * does nothing in its checkout.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -24,6 +26,7 @@ import {
 } from "@flow-state-dev/core/harness";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
+  HarnessAccess,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessFeeds,
@@ -45,6 +48,9 @@ export interface StubRun {
    * stub makes; optional so a host's own `StubRun` (a fixture) needs none.
    */
   session?: string;
+  // FIX-2900.
+  /** What the runner's `access` feed answered, or `undefined` when it handed none. */
+  access?: HarnessAccess;
 }
 
 /**
@@ -139,6 +145,14 @@ export interface HarnessStubOptions {
    * Absent, the run reports nothing.
    */
   spend?: { inputTokens: number; outputTokens: number; costUsd: number | null };
+  // FIX-2900.
+  /**
+   * Whether the stub declares `enforcesReadOnly`. Default `true`: a run fed
+   * `read-only` makes none of its `toolCalls` and skips `duringRun`, so it
+   * changes nothing in its checkout. `false` declares nothing, as a harness
+   * that can't hold a run read-only.
+   */
+  enforcesReadOnly?: boolean;
 }
 
 /** The part of a host's MCP relay the stub asks: which servers a run's project names. */
@@ -191,7 +205,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
   return {
     runs,
     toolCalls,
-    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval, onEvent }) => {
+    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval, onEvent, access }) => {
       const block = handler({
         name: "harness-stub",
         inputSchema: harnessRunInputSchema,
@@ -201,12 +215,16 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
         execute: async (input, ctx) => {
           sessions += 1;
           const session = `sess_stub_${sessions}`;
+          const runAccess = await access?.(ctx);
           const run: StubRun = {
             prompt: input.prompt,
             cwd: await cwd(ctx),
             resume: await resume(ctx),
             session,
+            ...(runAccess !== undefined ? { access: runAccess } : {}),
           };
+          // A read-only run changes nothing: no scripted call, no work in the checkout.
+          const readOnly = runAccess === "read-only" && options.enforcesReadOnly !== false;
           runs.push(run);
           try {
 
@@ -239,7 +257,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             // Told the call it stopped on was not allowed, the run goes on without it, as a model does.
             if (progress.heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) progress.nextCall += 1;
             progress.heldLast = false;
-            for (; progress.nextCall < (options.toolCalls ?? []).length; progress.nextCall += 1) {
+            for (; !readOnly && progress.nextCall < (options.toolCalls ?? []).length; progress.nextCall += 1) {
               const call = options.toolCalls![progress.nextCall]!;
               const record = (decision: StubToolCallRecord["decision"]) =>
                 toolCalls.push({ run: runs.length - 1, toolName: call.toolName, input: call.input, decision, at: Date.now() });
@@ -258,7 +276,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
                 await pause(2 ** 31 - 1, ctx.signal);
               }
             }
-            await options.duringRun?.(run);
+            if (!readOnly) await options.duringRun?.(run);
 
             return {
               source: "harness-manager/stub",
@@ -284,8 +302,12 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           }
         },
       });
-      // A held call waits for the stop, and the run ends with it: the stop waits for nothing more.
-      return options.toolCalls === undefined ? block : Object.assign(block, { stopsOnAbort: true });
+      return Object.assign(
+        block,
+        // A held call waits for the stop, and the run ends with it: the stop waits for nothing more.
+        options.toolCalls === undefined ? {} : { stopsOnAbort: true },
+        options.enforcesReadOnly === false ? {} : { enforcesReadOnly: true },
+      );
     },
   };
 }

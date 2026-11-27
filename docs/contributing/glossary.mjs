@@ -775,6 +775,12 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "Harness access",
+    means: "What one harness run may do, as its host decides per run: `full` (the harness's own options, unchanged) or `read-only` (read the working folder, and nothing that writes, runs a changing command or reaches the network). Core's `HarnessAccess`, fed through the `access` feed beside `cwd` and `resume`, never on the run input. A harness declares `enforcesReadOnly` on its block when it holds a `read-only` run with its vendor's own limit; a host that needs one runs no harness without it. The harness manager feeds `read-only` to the turn that answers a person on a task whose pull request merged or closed. Not \"mode\": a coding run's Mode is another term.",
+    decision: "FIX-2900 (one read-only vocabulary, also for FIX-2878's plan runs and FIX-2599)",
+    retires: [],
+  },
+  {
     term: "Mode",
     means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. A coding task names the mode it runs (`mode`, one the app registered, the app's `defaultMode` when it names none), checked at filing. Not a stage of a task on a board.",
     decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea; FIX-2878 (a task names its mode)",
@@ -1356,6 +1362,12 @@ const EXEMPTIONS = [
     line: /\bAskUserQuestion\b/,
     rules: ["ask-symbol", "ask-symbol-in-docs"],
     why: "FIX-2354: Claude Code's AskUserQuestion tool, a question to a person, named as the harness spells it",
+  },
+  {
+    path: /^(packages\/claude-code\/|\.changeset\/[^/]+\.md$)/,
+    line: /\bdontAsk\b/,
+    rules: ["ask-symbol", "ask-symbol-in-docs"],
+    why: "FIX-2900: Claude Code's `dontAsk` permission mode, which a read-only run uses, named as the SDK spells it",
   },
   {
     path: /^\.agents\//,
