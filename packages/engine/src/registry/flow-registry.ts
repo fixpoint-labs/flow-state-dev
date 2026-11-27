@@ -86,6 +86,7 @@ import {
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
 import { admitIndexedCollections, type IndexedCollection } from "../resources/resource-indexes";
+import { sameClientConfig } from "../resources/same-client-config";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -423,6 +424,12 @@ class InMemoryFlowRegistry implements FlowRegistry {
           for (const existingDecl of existingDecls) {
             for (const incomingDecl of incomingDecls) {
               checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
+              // One address at user or org scope: the same comparison the
+              // address path's 409 makes, so the two can't disagree on what
+              // "the same definition" is. Overlapping names are not one address.
+              if (scope !== "session" && existingRef === ref) {
+                checkClientConfigPair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
+              }
             }
           }
         }
@@ -441,6 +448,8 @@ type ResourceDeclaration = {
   collection: boolean;
   /** The declaration's `secret` fields, sorted: two declarations of one cell must agree. */
   secret: readonly string[];
+  /** The declaration itself, for the client-config compare (`sameClientConfig`). */
+  config: DeclaredResourceEntry;
 };
 
 /**
@@ -603,7 +612,7 @@ function collectScopeDeclaration(
     const ref = storageRef(entry, accessor, storageKeys);
     const collection = isCollectionConfig(entry);
     const secret = [...(entry.secret ?? [])].sort();
-    const declaration: ResourceDeclaration = { schema, collection, secret };
+    const declaration: ResourceDeclaration = { schema, collection, secret, config: entry };
 
     // JSON-encoded so the two fields cannot concatenate ambiguously, matching
     // `tupleKey` in core's `flow/defineFlow.ts`.
@@ -672,6 +681,32 @@ function checkResourcePair(
     reason: "secret-mismatch",
     detail: `one marks secret ${list(a.secret)}, the other ${list(b.secret)}; declare the same secret fields`,
     collection,
+  });
+}
+
+/**
+ * Two flows' declarations of one user or org address must agree on their
+ * client projection, owner rules, `runBy` and `canWrite` (`sameClientConfig`,
+ * the comparison the address path answers 409 with). Otherwise the one cell
+ * has two answers to what a client sees and who may write it.
+ */
+function checkClientConfigPair(
+  scope: ConflictScope,
+  field: string,
+  flowA: string,
+  flowB: string,
+  a: ResourceDeclaration,
+  b: ResourceDeclaration
+): void {
+  if (sameClientConfig(a.config, b.config)) return;
+  throw new CrossFlowSchemaConflictError({
+    scope,
+    field,
+    flowA,
+    flowB,
+    reason: "client-config-mismatch",
+    detail: "the two declare different client, runBy or canWrite settings; declare it once and share it",
+    collection: a.collection || b.collection,
   });
 }
 

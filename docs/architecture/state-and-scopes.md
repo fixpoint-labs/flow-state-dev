@@ -558,6 +558,7 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 | Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
 | A state field the two flows default differently, or one declares `.nullable()` | Throw `CrossFlowSchemaConflictError` (`incompatible-default` / `incompatible-types`), naming the field path (`stateSchema.<field>`). |
 | Two shared resources in one scope whose names meet (the same `ref`, or a key or pattern that reaches the other's) with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared user/org resources at one address (the same `ref`, or the same collection `pattern`) whose client projection, owner rules, `secret`, `runBy` or `canWrite` differ | Throw `CrossFlowSchemaConflictError` (`client-config-mismatch`). `sameClientConfig`, the comparison the address path answers 409 with, so start-up and the address path hold one definition. `canWrite` and `client.data` compare by identity: share the one definition. |
 
 The error names both flow kinds, the scope (`user`, `org` or `session`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is reconciling the schemas, opting into isolation, or (at session scope, where there is no isolation) giving one declaration a distinct name.
 

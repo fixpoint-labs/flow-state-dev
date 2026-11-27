@@ -1173,6 +1173,68 @@ describe("cross-flow resource schema validation", () => {
   });
 
   /**
+   * One user or org address read and written by two flows needs one answer to
+   * what a client sees and who may write. The address path refuses a pair that
+   * disagrees with 409; start-up refuses it with the same comparison, so an app
+   * can't start in a shape every addressed read of that resource then refuses.
+   */
+  describe("one definition: client settings", () => {
+    const shape = z.object({ n: z.number().default(0) });
+    const declare = (extra: Record<string, unknown>, scope: "user" | "org" | "session" = "user") =>
+      defineResource({ ref: "ledger", scope, stateSchema: shape, ...extra } as never);
+
+    it("refuses two flows declaring one user address with different client settings", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", rawResources: { ledger: declare({ client: { expose: ["n"] } }) } }));
+      const error = captureConflict(() =>
+        registry.register(makeFlow({ kind: "flow-b", rawResources: { ledger: declare({ client: { exclude: ["n"] } }) } }))
+      );
+      expect(error.reason).toBe("client-config-mismatch");
+      expect(error.scope).toBe("user");
+      expect(error.field).toBe("resources.ledger");
+      expect(new Set([error.flowA, error.flowB])).toEqual(new Set(["flow-a", "flow-b"]));
+    });
+
+    it("refuses one org address written under two canWrite rules", () => {
+      const registry = createFlowRegistry();
+      const client = { expose: ["n"] };
+      registry.register(
+        makeFlow({ kind: "flow-a", rawResources: { ledger: declare({ client, runBy: "default", canWrite: () => true }, "org") } })
+      );
+      expect(() =>
+        registry.register(
+          makeFlow({ kind: "flow-b", rawResources: { ledger: declare({ client, runBy: "default", canWrite: () => false }, "org") } })
+        )
+      ).toThrow(/client-config-mismatch/);
+    });
+
+    it("admits two flows sharing one definition", () => {
+      const ledger = declare({ client: { expose: ["n"] }, runBy: "default", canWrite: () => true });
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", rawResources: { ledger } }));
+      expect(() => registry.register(makeFlow({ kind: "flow-b", rawResources: { ledger } }))).not.toThrow();
+    });
+
+    it("does not compare client settings for an isolated copy", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", rawResources: { ledger: declare({ client: { expose: ["n"] } }) } }));
+      expect(() =>
+        registry.register(
+          makeFlow({ kind: "flow-b", rawResources: { ledger: declare({ client: { exclude: ["n"] }, flowIsolation: true }) } })
+        )
+      ).not.toThrow();
+    });
+
+    it("does not compare client settings at session scope, which has no address", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "flow-a", rawResources: { ledger: declare({ client: { expose: ["n"] } }, "session") } }));
+      expect(() =>
+        registry.register(makeFlow({ kind: "flow-b", rawResources: { ledger: declare({ client: { exclude: ["n"] } }, "session") } }))
+      ).not.toThrow();
+    });
+  });
+
+  /**
    * A collection keys its rows under its pattern, so a single resource at
    * `files/a` and a collection at `files/*` write one cell. The
    * check compares by name: every declaration whose key or pattern can reach

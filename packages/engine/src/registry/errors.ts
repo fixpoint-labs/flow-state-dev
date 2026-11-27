@@ -98,8 +98,10 @@ export interface CrossFlowSchemaConflictDetails {
   /**
    * `incompatible-default`: the two flows' scope state schemas default one
    * field to different values (the strict state check, not `compareZodSchemas`).
+   * `client-config-mismatch`: two declarations of one user or org address
+   * differ in client, `runBy` or `canWrite` settings (`sameClientConfig`).
    */
-  reason: CompatibilityReason | "incompatible-default";
+  reason: CompatibilityReason | "incompatible-default" | "client-config-mismatch";
   detail: string;
   /**
    * True when the conflicting field is a resource COLLECTION. Changes only the
@@ -132,7 +134,7 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly field: string;
   readonly flowA: string;
   readonly flowB: string;
-  readonly reason: CompatibilityReason | "incompatible-default";
+  readonly reason: CrossFlowSchemaConflictDetails["reason"];
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
