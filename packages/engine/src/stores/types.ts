@@ -21,6 +21,7 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
 import type { BlobStore } from "../blobs/types";
+import type { PrincipalKind } from "../context/principal";
 
 export type { RequestStatus };
 
@@ -92,6 +93,37 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * records can never both fall back to one id.
    */
   lineageId?: string;
+  // FIX-2942; BP-030; BP-031.
+  /**
+   * The kind of the principal that created this session (`context/principal.ts`):
+   * a person's, or a machine's (a schedule's gateway, the system user, a
+   * delivery). A run in a machine's session reaches no session but its own.
+   * Written once, by the birth (`birthSession`), from the creating run's
+   * principal, never from a caller's input. `set` keeps the stored value
+   * whatever a later write carries, so a stale whole-record write can't
+   * change it.
+   *
+   * `== null` on a record written before the field existed: classified from
+   * its first request record instead (`context/session-kind.ts`).
+   */
+  principalKind?: PrincipalKind;
+  /**
+   * A random token minted once per birth (`birthSession`): what tells two
+   * incarnations of one session id apart when their birth time (millisecond
+   * resolution) and lineage (inherited or derived) match. `set` keeps the
+   * stored value whatever a later write carries, as for {@link principalKind}.
+   *
+   * `== null` on a record written before the field: compared by its birth
+   * time and lineage instead (`sameSessionIncarnation`).
+   */
+  incarnationToken?: string;
+  /**
+   * The incarnation of the session that dispatched this one
+   * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
+   * Binds the child to that parent record, not to its reusable bare id.
+   * `== null` on a top-level session and on a child born before the field.
+   */
+  parentIncarnation?: string;
   // FIX-1010; BP-030.
   /**
    * Human-readable name for the body of work a child session was
@@ -155,6 +187,19 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
+  /**
+   * The kind of the principal this request runs as, as its door set it
+   * (`context/principal.ts`). A run started from this record (a continuation,
+   * a queued job, a recovery) reads it, never a payload. `== null` on a
+   * record written before the field.
+   */
+  principalKind?: PrincipalKind;
+  /**
+   * The resolver identity that produced the request's principal
+   * (`Principal.resolvedBy`). `== null` → none: a run from this record
+   * reaches no target whose flow has a resolver of its own.
+   */
+  resolvedBy?: string;
   // BP-030.
   /**
    * Which request this record is, among every request that has held its id.
@@ -1834,9 +1879,10 @@ export interface LeaseStore {
 
 // FIX-2078 D1.
 /**
- * Where a wake is kept: one per session and internal entry.
+ * Where a wake is kept: one per session, internal entry and resolver identity.
  * `tenantId` is part of the key, so two tenants' sessions under one id never
- * share a wake.
+ * share a wake; so is `resolvedBy`, so writers under two resolvers never
+ * share one either, and a wake's resolver never changes while it is kept.
  */
 export type WakeKey = {
   readonly tenantId?: string;
@@ -1844,6 +1890,14 @@ export type WakeKey = {
   readonly sessionId: string;
   /** The internal entry the wake dispatches in that session. */
   readonly entry: string;
+  /**
+   * The resolver identity that produced the writer's principal
+   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
+   * own-resolver sessions that resolver admits. Absent is a key value of its
+   * own: the wake of writers that hold none (and every wake stored before the
+   * field), whose run admits no own-resolver session.
+   */
+  readonly resolvedBy?: string;
 };
 
 /** What a writer owes a wake: the key, its owner and its due time, all server-written. */
@@ -1883,8 +1937,9 @@ export type WakeRecord = WakeInput & {
  * written before it still type-checks and loads, and a host whose stores keep
  * no wakes logs once and pays debts on its fast paths only.
  *
- * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
- *   time and the LATER `landBy`, and bumping the version.
+ * - {@link owe} writes or coalesces: one wake per key (resolver identity
+ *   included), keeping the EARLIER due time and the LATER `landBy`, and
+ *   bumping the version.
  * - {@link move} and {@link clear} are conditional on the version a pass read,
  *   so a wake written during the pass survives it. Neither bumps the version.
  */

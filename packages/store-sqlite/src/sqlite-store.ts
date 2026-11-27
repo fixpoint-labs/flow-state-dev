@@ -58,6 +58,21 @@ export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
    * never caller input.
    */
   preserveJsonKeys?: string[];
+  // FIX-2942.
+  /**
+   * Top-level `data` keys that `set` writes once: while the stored row has
+   * none, the incoming value is written as it is; once it has one, the stored
+   * value wins in both directions, as for {@link preserveJsonKeys}. Enforced
+   * inside the write statement, for the same reason.
+   *
+   * Used by the session store for `principalKind`: a birth writes it, a
+   * session from before the field gets its backfilled kind once, and no
+   * later whole-record write changes either.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  writeOnceJsonKeys?: string[];
 };
 
 export type SQLiteRecordStore<TRecord, TListOptions> = {
@@ -116,7 +131,8 @@ export function createSQLiteRecordStore<
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
   const preserveJsonKeys = config.preserveJsonKeys ?? [];
-  for (const key of preserveJsonKeys) {
+  const writeOnceJsonKeys = config.writeOnceJsonKeys ?? [];
+  for (const key of [...preserveJsonKeys, ...writeOnceJsonKeys]) {
     // Interpolated into SQL, so refuse anything that isn't a plain identifier
     // rather than trusting the caller's discipline.
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
@@ -136,7 +152,7 @@ export function createSQLiteRecordStore<
    * change the stored type).
    */
   function dataAssignment(source: string): string {
-    return preserveJsonKeys.reduce((acc, key) => {
+    const preserved = preserveJsonKeys.reduce((acc, key) => {
       const stripped = `json_remove(${acc}, '$.${key}')`;
       return (
         `json_patch(${stripped}, CASE WHEN json_type(${tableName}.data, '$.${key}') IS NULL` +
@@ -144,6 +160,16 @@ export function createSQLiteRecordStore<
         ` ELSE json_object('${key}', json(${tableName}.data -> '$.${key}')) END)`
       );
     }, source);
+    // A write-once key: the incoming value while the stored row has none, the
+    // stored one after (`json_patch` with `{}` leaves the incoming key alone).
+    // The incoming value appears once, so the placeholder count is unchanged.
+    return writeOnceJsonKeys.reduce(
+      (acc, key) =>
+        `json_patch(${acc}, CASE WHEN json_type(${tableName}.data, '$.${key}') IS NULL` +
+        ` THEN json('{}')` +
+        ` ELSE json_object('${key}', json(${tableName}.data -> '$.${key}')) END)`,
+      preserved
+    );
   }
 
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];

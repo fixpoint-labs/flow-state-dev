@@ -23,7 +23,7 @@ export {
 } from "./recorded-work";
 export { CODER_FLOW } from "./coder-flow-name";
 export { harnessReadinessViewRef } from "./readiness-view-ref";
-export { codingBoardViewRef, recordedWorkViewRef } from "./coding-board-ref";
+export { codingBoardViewRef, recordedWorkViewRef, runChangesViewRef } from "./coding-board-ref";
 export type { CodingBoardTask, CodingBoardView } from "./kit/coding-board";
 export type { RecordedWorkView } from "./recorded-work-view";
 export { landedOf, type LandedWork } from "./landed-work";

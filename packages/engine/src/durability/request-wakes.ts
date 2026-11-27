@@ -24,6 +24,7 @@ import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
+import { resolveSessionKind, type BirthWindow } from "../context/session-kind";
 import type { InboundTransportHost } from "../transports/types";
 
 type Listener = (dueAt: number) => void;
@@ -54,20 +55,37 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
  * run's completion and a way to abort it, so a host that closes its stores can
- * wait for it, for a while.
+ * wait for it, for a while. `window` is the host's queued grace, which bounds
+ * where a session from before kinds finds its birth request.
  */
 export async function fireWakeThrough(
-  host: Pick<InboundTransportHost, "dispatch">,
+  host: Pick<InboundTransportHost, "dispatch" | "stores">,
   wake: WakeRecord,
-  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
+  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void,
+  window: BirthWindow = {}
 ): Promise<void> {
   const controller = new AbortController();
+  // FIX-2942: a wake stores no principal kind of its own; it runs as its
+  // session's owner, with the kind that session was born with (a machine's
+  // when the session is gone), and the resolver identity its row is kept
+  // under: its writers', since a wake is kept per resolver. Only that
+  // resolver's writers owe the row, so the turn holds it for the whole turn,
+  // and reads and settles that row (`createRequestWakes`). A wake stored
+  // before the field names none, and admits no own-resolver session.
+  const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
+  const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session, window);
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,
     input: {},
     sessionId: wake.sessionId,
-    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}) },
+    as: {
+      userId: wake.userId,
+      orgId: wake.orgId,
+      ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
+      kind,
+      ...(wake.resolvedBy !== undefined ? { resolvedBy: wake.resolvedBy } : {})
+    },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal
   });
@@ -143,8 +161,13 @@ export async function probeWakes(
 export type RequestWakesInputs = {
   store: WakeStore;
   sessions: Pick<SessionStore, "get">;
-  /** The running request's server-derived identity. */
-  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string };
+  /**
+   * The running request's server-derived identity. `resolvedBy` is its
+   * principal's resolver identity (`Principal.resolvedBy`): the wakes it owes
+   * are kept under it, and the wake it reads and settles is its own
+   * resolver's (the one that fired it, for a woken run). Absent, it holds none.
+   */
+  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string; resolvedBy?: string };
   /** The running flow instance's id: the address the request's own session's wakes fire on. */
   flowId: string;
   /** How long a write this request owes may take to land: its lease. */
@@ -161,7 +184,8 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
   const keyOf = (sessionId: string, entry: string) => ({
     ...(tenant !== undefined ? { tenantId: tenant } : {}),
     sessionId,
-    entry
+    entry,
+    ...(identity.resolvedBy !== undefined ? { resolvedBy: identity.resolvedBy } : {})
   });
 
   /** The flow `sessionId` runs on, when it is a session this request may reach. */
@@ -226,8 +250,14 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
  * owed now rather than at its backoff. A wake's entry pays only what is due,
  * so a wake fired early costs one pass and moves itself on.
  *
- * One read per entry the session's flow declares and one write per wake kept
- * there that is due later; nothing else is read. The write is an `owe` from
+ * A wake is kept per resolver identity, and a pass reads and settles the
+ * wake of the resolver it runs under, so what the request held is under its
+ * own resolver identity or under none (a pass the sweeper fired from a wake
+ * no resolver owed). Those are the wakes brought forward; a wake under
+ * another resolver fires at its own due time, and any pass pays what is due.
+ *
+ * One read per entry the session's flow declares and resolver identity, and
+ * one write per wake kept there that is due later; nothing else is read. The write is an `owe` from
  * the wake just read: it keeps the earlier due time and bumps the version, so
  * a pass that read the wake before this write and settles it after finds it
  * changed (`stale`) and leaves it due now, rather than moving it back to its
@@ -239,17 +269,25 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
  */
 export async function bringSessionWakesForward(
   store: WakeStore,
-  session: { readonly tenantId?: string | null; readonly sessionId: string },
+  session: { readonly tenantId?: string | null; readonly sessionId: string; readonly resolvedBy?: string | null },
   entries: readonly string[],
   now: number
 ): Promise<void> {
   const tenant = session.tenantId != null && session.tenantId.length > 0 ? session.tenantId : undefined;
+  const resolvers = session.resolvedBy != null ? [undefined, session.resolvedBy] : [undefined];
   for (const entry of entries) {
-    const key = { ...(tenant !== undefined ? { tenantId: tenant } : {}), sessionId: session.sessionId, entry };
-    const wake = await store.get(key);
-    if (wake === null || wake.dueAt <= now) continue;
-    const { version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...owed } = wake;
-    const kept = await store.owe({ ...owed, dueAt: now });
-    noteWakeOwed(store, kept.dueAt);
+    for (const resolvedBy of resolvers) {
+      const key = {
+        ...(tenant !== undefined ? { tenantId: tenant } : {}),
+        sessionId: session.sessionId,
+        entry,
+        ...(resolvedBy !== undefined ? { resolvedBy } : {})
+      };
+      const wake = await store.get(key);
+      if (wake === null || wake.dueAt <= now) continue;
+      const { version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...owed } = wake;
+      const kept = await store.owe({ ...owed, dueAt: now });
+      noteWakeOwed(store, kept.dueAt);
+    }
   }
 }

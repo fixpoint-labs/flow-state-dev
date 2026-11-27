@@ -577,8 +577,9 @@ CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at);
 `;
 
 // FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
-// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
-// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+// clears it. One row per (tenant, session, entry, resolver identity);
+// `tenant_key` and `resolved_by` are '' for none so the key has no NULL.
+// `due_at` is indexed for the sweeper's read.
 const WAKES_TABLE = `
 CREATE TABLE IF NOT EXISTS wakes (
   tenant_key TEXT NOT NULL,
@@ -589,13 +590,52 @@ CREATE TABLE IF NOT EXISTS wakes (
   org_id     TEXT NOT NULL,
   due_at     INTEGER NOT NULL,
   land_by    INTEGER NOT NULL,
+  resolved_by TEXT NOT NULL DEFAULT '',
   version    INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  PRIMARY KEY (tenant_key, session_id, entry)
+  PRIMARY KEY (tenant_key, session_id, entry, resolved_by)
 );
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
+
+// BP-030.
+/**
+ * Re-key a `wakes` table created before wakes were kept per resolver
+ * identity, from (tenant, session, entry) to (tenant, session, entry,
+ * resolver identity). Every kept wake names none (`''`), so they keep
+ * coalescing with each other as before.
+ *
+ * SQLite cannot change a primary key in place, so the table is rebuilt inside
+ * one `IMMEDIATE` transaction, re-checked under the lock as
+ * {@link migrateScheduleIndexCell} is. Idempotent: a table already keyed on
+ * `resolved_by` is left alone.
+ */
+function migrateWakesResolverKey(db: Database.Database): void {
+  const columns = (): Array<{ name: string; pk: number }> | undefined => {
+    const exists = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wakes'").get();
+    return exists === undefined ? undefined : (db.prepare("SELECT name, pk FROM pragma_table_info('wakes')").all() as Array<{ name: string; pk: number }>);
+  };
+  const needsKey = (): boolean => {
+    const cols = columns();
+    return cols !== undefined && !cols.some((c) => c.name === "resolved_by" && c.pk > 0);
+  };
+  if (!needsKey()) return;
+
+  db.transaction(() => {
+    if (!needsKey()) return;
+    const resolvedBy = columns()!.some((c) => c.name === "resolved_by") ? "COALESCE(resolved_by, '')" : "''";
+    db.exec("ALTER TABLE wakes RENAME TO wakes_pre_resolver");
+    db.exec("DROP INDEX IF EXISTS idx_wakes_due_at");
+    db.exec(WAKES_TABLE);
+    db.exec(`
+      INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, resolved_by, version, created_at, updated_at)
+      SELECT tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, ${resolvedBy}, version, created_at, updated_at
+        FROM wakes_pre_resolver
+    `);
+    db.exec("DROP TABLE wakes_pre_resolver");
+  }).immediate();
+}
 
 // FIX-428.
 /**
@@ -751,6 +791,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddResourceStateVersioning(db);
   migrateAddScheduleIndexOrgId(db);
   migrateScheduleIndexCell(db);
+  migrateWakesResolverKey(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

@@ -24,6 +24,9 @@
  * - **Reclaiming**. A record coming into existence starts a new
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
+ * - **Classifying.** The kind of the principal that created the session
+ *   (`SessionRecord.principalKind`), written once here so every later run in
+ *   it is fenced the same way (`principal.ts`).
  * - **Checking.** The session's initial state, parsed through the flow's
  *   `stateSchema` (on a flow that binds its sessions, a state the schema
  *   refuses is refused; see {@link parseInitialSessionState}), the
@@ -57,6 +60,7 @@ import {
 import { toBareState } from "../stores/resource-state-views";
 import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { scopeStateSchema } from "./scope-state-defaults";
+import { principalKindOf, type PrincipalKind } from "./principal";
 
 // FIX-1000; FIX-1068.
 /**
@@ -210,6 +214,13 @@ export type SessionCreateRequest = {
    */
   fromCaller: boolean;
   via: SessionCreatePath;
+  // FIX-2942; BP-031.
+  /**
+   * The kind of the principal creating the session: the run's, as its door
+   * set it. Written on the record as `principalKind`, after the caller's
+   * seed, so no request input can set it. Absent → a machine's (fail closed).
+   */
+  principalKind?: PrincipalKind;
 };
 
 /**
@@ -416,7 +427,10 @@ export async function birthSession(
   const record: SessionRecord = {
     ...seed,
     state,
-    lineageId: seed.lineageId ?? generateId("lin")
+    lineageId: seed.lineageId ?? generateId("lin"),
+    // After the seed, so no record a caller shaped can set either.
+    principalKind: principalKindOf(request.principalKind),
+    incarnationToken: generateId("inc")
   };
   const created = await stores.session.set(storageKey, record, "absent");
   if (created.ok) return { born: true, record };

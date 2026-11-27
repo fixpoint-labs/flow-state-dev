@@ -341,6 +341,40 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+// BP-030.
+/**
+ * Re-key a `wakes` table created before wakes were kept per resolver
+ * identity, from (tenant, session, entry) to (tenant, session, entry,
+ * resolver identity). Every kept wake names none (`''`), so they keep
+ * coalescing with each other as before. Idempotent: a table already keyed on
+ * `resolved_by` is left alone, and a fresh database, where the table is
+ * created with the key, skips it.
+ */
+const WAKES_RESOLVER_KEY_MIGRATION = `
+DO $$
+DECLARE
+  pk TEXT;
+BEGIN
+  IF to_regclass('wakes') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+       WHERE i.indrelid = to_regclass('wakes') AND i.indisprimary AND a.attname = 'resolved_by'
+    ) THEN
+      ALTER TABLE wakes ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+      UPDATE wakes SET resolved_by = '' WHERE resolved_by IS NULL;
+      ALTER TABLE wakes ALTER COLUMN resolved_by SET DEFAULT '';
+      ALTER TABLE wakes ALTER COLUMN resolved_by SET NOT NULL;
+      SELECT conname INTO pk FROM pg_constraint WHERE conrelid = to_regclass('wakes') AND contype = 'p';
+      IF pk IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE wakes DROP CONSTRAINT %I', pk);
+      END IF;
+      ALTER TABLE wakes ADD PRIMARY KEY (tenant_key, session_id, entry, resolved_by);
+    END IF;
+  END IF;
+END $$;
+`;
+
 // FIX-1546; BP-030.
 /**
  * Re-key a `schedule_index` created before rows carried their
@@ -692,8 +726,9 @@ const LEASES_INDEXES = [
 ];
 
 // FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
-// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
-// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+// clears it. One row per (tenant, session, entry, resolver identity);
+// `tenant_key` and `resolved_by` are '' for none so the key has no NULL.
+// `due_at` is indexed for the sweeper's read.
 const WAKES_TABLE = `
 CREATE TABLE IF NOT EXISTS wakes (
   tenant_key TEXT NOT NULL,
@@ -704,10 +739,11 @@ CREATE TABLE IF NOT EXISTS wakes (
   org_id     TEXT NOT NULL,
   due_at     BIGINT NOT NULL,
   land_by    BIGINT NOT NULL,
+  resolved_by TEXT NOT NULL DEFAULT '',
   version    BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
-  PRIMARY KEY (tenant_key, session_id, entry)
+  PRIMARY KEY (tenant_key, session_id, entry, resolved_by)
 );
 `;
 
@@ -795,7 +831,10 @@ const PROJECT_TO_ORG_MIGRATIONS = [
 
   // FIX-1546: re-key a pre-cell `schedule_index` on (cell, key), adopting
   // every existing row as its person's own cell. See the migration's note.
-  ADD_SCHEDULE_INDEX_CELL_MIGRATION
+  ADD_SCHEDULE_INDEX_CELL_MIGRATION,
+
+  // Keep a wake per resolver identity: re-key `wakes` on `resolved_by`.
+  WAKES_RESOLVER_KEY_MIGRATION
 ];
 
 /**

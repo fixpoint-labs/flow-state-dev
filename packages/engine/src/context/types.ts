@@ -25,6 +25,8 @@ import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { RecordedRead } from "./view-reads";
 import type { SessionAdmission, SuspensionAdmission } from "./request-sessions";
+import type { PrincipalKind } from "./principal";
+import type { FlowRegistry } from "../registry/flow-registry";
 
 export type RequestRuntime = {
   requestId: string;
@@ -107,6 +109,14 @@ export type CreateExecutionContextOptions<
    * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`context/principal.ts`). Absent → the request record's, then the
+   * session's; a run that creates its session with none is a machine's.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → the request record's, or none. */
+  resolvedBy?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
@@ -257,6 +267,13 @@ export type RequestHostConstructionInputs = {
    * same fail-closed shape `dispatchOperation` has.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  /**
+   * The host's flow registry, as a named reach's admission reads it
+   * (`admitNamedSession`): which flow owns a session, and which resolver
+   * that flow answers with. Wired beside `resolveFlow`. Absent → every
+   * session a block names reads as missing.
+   */
+  flows?: Pick<FlowRegistry, "get" | "list">;
   // FIX-2725 D1.
   /**
    * A view run's per-session admission, on top of the owner rule every

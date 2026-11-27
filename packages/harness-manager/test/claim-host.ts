@@ -15,7 +15,7 @@
  * records what it was fed.
  */
 import type { HarnessFeeds } from "@flow-state-dev/core/harness";
-import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
+import { localRepoWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -179,6 +179,8 @@ export interface HostOptions {
   baseTip?: () => Promise<string | undefined>;
   /** Name no base, so each run is cut from whichever branch the repository has checked out (`HEAD`), as a host over a person's own checkout does. */
   checkedOutBase?: boolean;
+  /** Wrap the workspace host the manager is given, to stand in for one of its methods (a landing, say). */
+  workspace?: (host: WorkspaceHost) => WorkspaceHost;
   /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
   gateLedger?: (ref: TaskCollectionRef) => TaskCollectionRef;
 }
@@ -254,9 +256,11 @@ export function claimHost(options: HostOptions) {
         },
       },
     },
-    workspace: options.checkedOutBase === true
-      ? localWorkspaceHost({ root: join(dir, "checkouts"), remotes: { allow: [] }, localRepositories: [sourceRepo], source: () => ({ kind: "repo", repo: sourceRepo }), provisionTimeoutMs: 10_000 })
-      : options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
+    workspace: (options.workspace ?? ((it: WorkspaceHost) => it))(
+      options.checkedOutBase === true
+        ? localWorkspaceHost({ root: join(dir, "checkouts"), remotes: { allow: [] }, localRepositories: [sourceRepo], source: () => ({ kind: "repo", repo: sourceRepo }), provisionTimeoutMs: 10_000 })
+        : options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
+    ),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
@@ -281,6 +285,7 @@ export function claimHost(options: HostOptions) {
       maxAttempts: z.number().optional(),
       deps: z.array(z.string()).optional(),
       attachments: z.array(z.unknown()).optional(),
+      followUpOf: z.string().optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
@@ -295,6 +300,7 @@ export function claimHost(options: HostOptions) {
           ...(input.input !== undefined ? { input: input.input } : {}),
           ...(input.deps !== undefined ? { deps: input.deps } : {}),
           ...(input.attachments !== undefined ? { attachments: input.attachments as never } : {}),
+          ...(input.followUpOf !== undefined ? { followUpOf: input.followUpOf } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }

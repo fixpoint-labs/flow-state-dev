@@ -46,6 +46,38 @@ async function setup(now = { t: 1_000_000 }) {
 }
 
 describe("RequestHost.wakes", () => {
+  // The woken run reaches what its writer's resolver admits, no more. A wake
+  // is kept per resolver, so a run under one resolver owes, reads and settles
+  // its own resolver's wake and never another's.
+  it("owes, reads and settles the wake of its own resolver identity, beside another resolver's", async () => {
+    const stores = createInMemoryStores();
+    await stores.session.set("own", { id: "own", state: {}, version: 0, createdAt: 0, updatedAt: 0, flowKind: "desk", flowId: "desk", userId: "u1", orgId: "o1", journal: [] } as never, "any");
+    const as = (resolvedBy?: string) =>
+      createRequestWakes({
+        store: stores.wakes!,
+        sessions: stores.session,
+        identity: { ...identity, ...(resolvedBy !== undefined ? { resolvedBy } : {}) },
+        flowId: "desk",
+        fenceMs: 0,
+        maxDebtAgeMs: 86_400_000
+      });
+    const vault = as("flow:vault");
+    const none = as();
+    await vault.owe({ entry: "dispatch", dueAt: 1 });
+    await none.owe({ entry: "dispatch", dueAt: 2 });
+    const due = await stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 10);
+    expect(due.map((wake) => [wake.resolvedBy ?? null, wake.dueAt])).toEqual([
+      ["flow:vault", 1],
+      [null, 2]
+    ]);
+    const read = (await vault.read("dispatch"))!;
+    expect(read.dueAt).toBe(1);
+    expect((await none.read("dispatch"))?.dueAt).toBe(2);
+    expect(await vault.settle("dispatch", read, null)).toBe("cleared");
+    // The other resolver's wake is left as it was, to fire its own turn.
+    expect((await stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 10)).map((wake) => wake.resolvedBy ?? null)).toEqual([null]);
+  });
+
   it("owes this session's wake as this request's owner, fenced by its lease", async () => {
     const { stores, wakes } = await setup();
     expect(await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 })).toBe(true);

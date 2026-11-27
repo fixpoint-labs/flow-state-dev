@@ -28,6 +28,7 @@ import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 import { ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { principalOwns, withRequestOrg } from "../context/principal";
 
 type RecoveryRouteContext = {
   registry: FlowRegistry;
@@ -64,7 +65,7 @@ export async function handleRetryRequest(
   const originalRecord = await ctx.stores.request.get(route.requestId);
   if (
     originalRecord === undefined ||
-    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRecord, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }
@@ -189,7 +190,7 @@ export async function handleContinueRequest(
   const originalRecord = await ctx.stores.request.get(route.requestId);
   if (
     originalRecord === undefined ||
-    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRecord, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }
@@ -300,6 +301,7 @@ type ListedRecord = OwnedRecord & {
   userId: string;
   orgId?: string | null;
   tenantId?: string | null;
+  sessionId?: string | null;
 };
 
 // FIX-682.
@@ -315,19 +317,22 @@ type ListedRecord = OwnedRecord & {
  * own rows in their own organization; reached anonymously in a mixed app, the
  * rows of any instance that is not open are withheld.
  */
-async function listingAdmits(ctx: ListingRouteContext, row: ListedRecord): Promise<boolean> {
-  if (!tenantMatches(row.tenantId ?? undefined, ctx.tenantId)) return false;
+async function listingAdmits(ctx: ListingRouteContext, listed: ListedRecord): Promise<boolean> {
+  if (!tenantMatches(listed.tenantId ?? undefined, ctx.tenantId)) return false;
+  // BP-030: a row written before organizations were stamped is read with its
+  // session's organization, as the addressed request routes read it
+  // (`withRequestOrg`), so its owner keeps it on both verdicts below.
+  const row = await withRequestOrg(ctx.stores, listed);
   const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, row);
   if (own !== undefined) return own;
   const callerId = ctx.principal?.userId;
   // Both axes, for the reason BR-8 gives on the addressed routes: one person
   // in two organizations passes the user check while looking at the other
-  // organization's work. A row with no organization at all is a legacy row
-  // and is withheld rather than attributed to the caller (BR-14) —
-  // `row.orgId === callerOrgId` does that by construction, since an
+  // organization's work. A row with no organization even after that read is
+  // withheld rather than attributed to the caller (BR-14), since an
   // authenticated caller's org is never undefined.
   if (callerId !== undefined) {
-    return row.userId === callerId && row.orgId === ctx.principal?.orgId;
+    return principalOwns(row, { userId: callerId, orgId: ctx.principal?.orgId, tenantId: ctx.tenantId });
   }
   const allowed = ctx.anonymousFlowIds;
   if (allowed === undefined) return true;
