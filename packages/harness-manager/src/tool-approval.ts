@@ -78,6 +78,8 @@ export const toolApprovalStateSchema = z.object({
  * running step's own maps die with the host.
  */
 const heldStopSchema = z.object({
+  // Marks a value `heldStopFrom` built, so a harness handle that happens to carry the same field names doesn't parse.
+  stop: z.literal("held-for-approval"),
   heldForApproval: heldToolCallSchema,
   spentGrants: z.array(z.number().int()),
 });
@@ -91,7 +93,7 @@ export function heldStopOf(value: unknown): HeldStop | undefined {
 
 /** The held stop a harness step hands on for `held`, with the `once` grants it spent. */
 export function heldStopFrom(held: HeldStop["heldForApproval"], spent: ReadonlySet<number> | undefined): HeldStop {
-  return { heldForApproval: held, spentGrants: [...(spent ?? [])] };
+  return { stop: "held-for-approval", heldForApproval: held, spentGrants: [...(spent ?? [])] };
 }
 
 /** The data a yes sends for *Allow for this run*. A plain yes sends none. */
