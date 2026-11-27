@@ -1300,7 +1300,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // which takes such a filing before it reaches here), never a child session
     // of itself (FIX-2076).
     const self = verifiedWorkerOf(ctx.session);
-    const fromTaskSession = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
+    const fromTaskSession = typeof ctx.session.state[TASK_ID_STATE_KEY] === "string";
     // FIX-2080.
     /**
      * Every check a row passes before anything is written: the
