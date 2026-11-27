@@ -3,13 +3,12 @@
  * PostgreSQL-backed wake store: a debt's due time, kept until a
  * pass in its session clears it.
  *
- * One row per (tenant, session, entry). `owe` is one upsert that keeps the
- * earlier due time and the later `land_by` and bumps the version: a
- * concurrent upsert on the same key waits on the first one's row, then
- * applies its own update to the committed row, so racing writers leave one
- * wake at the earliest due time with no transaction. It keeps `resolved_by`
- * only while both writes name the same one (`coalesceWake`'s rule). `move` and `clear` are
- * conditional on the version a pass read. `due_at` is indexed for the
+ * One row per (tenant, session, entry, resolver identity). `owe` is one
+ * upsert that keeps the earlier due time and the later `land_by` and bumps
+ * the version: a concurrent upsert on the same key waits on the first one's
+ * row, then applies its own update to the committed row, so racing writers
+ * leave one wake at the earliest due time with no transaction. `move` and
+ * `clear` are conditional on the version a pass read. `due_at` is indexed for the
  * sweeper's due read.
  */
 import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine/host";
@@ -18,6 +17,11 @@ import type { QueryExecutor } from "./types";
 /** The tenant column: `""` for no tenant, so the primary key has no NULL in it. */
 function tenantKey(key: WakeKey): string {
   return key.tenantId ?? "";
+}
+
+/** The resolver column: `""` for none, as {@link tenantKey}. */
+function resolverKey(key: WakeKey): string {
+  return key.resolvedBy ?? "";
 }
 
 function toRecord(row: Record<string, unknown>): WakeRecord {
@@ -31,7 +35,7 @@ function toRecord(row: Record<string, unknown>): WakeRecord {
     orgId: row.org_id as string,
     dueAt: Number(row.due_at),
     landBy: Number(row.land_by),
-    ...(row.resolved_by != null ? { resolvedBy: row.resolved_by as string } : {}),
+    ...(row.resolved_by != null && row.resolved_by !== "" ? { resolvedBy: row.resolved_by as string } : {}),
     version: Number(row.version),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at)
@@ -45,22 +49,21 @@ export function createPostgresWakeStore(executor: QueryExecutor): WakeStore {
       const result = await executor.query(
         `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, resolved_by, version, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, 1, $9, $9)
-         ON CONFLICT (tenant_key, session_id, entry) DO UPDATE SET
+         ON CONFLICT (tenant_key, session_id, entry, resolved_by) DO UPDATE SET
            due_at = LEAST(wakes.due_at, EXCLUDED.due_at),
            land_by = GREATEST(wakes.land_by, EXCLUDED.land_by),
-           resolved_by = CASE WHEN wakes.resolved_by = EXCLUDED.resolved_by THEN wakes.resolved_by ELSE NULL END,
            version = wakes.version + 1,
            updated_at = EXCLUDED.updated_at
          RETURNING *`,
-        [tenantKey(input), input.sessionId, input.entry, input.flowKind, input.userId, input.orgId, input.dueAt, input.landBy, now, input.resolvedBy ?? null]
+        [tenantKey(input), input.sessionId, input.entry, input.flowKind, input.userId, input.orgId, input.dueAt, input.landBy, now, resolverKey(input)]
       );
       return toRecord(result.rows[0]!);
     },
 
     async get(key: WakeKey): Promise<WakeRecord | null> {
       const result = await executor.query(
-        "SELECT * FROM wakes WHERE tenant_key = $1 AND session_id = $2 AND entry = $3",
-        [tenantKey(key), key.sessionId, key.entry]
+        "SELECT * FROM wakes WHERE tenant_key = $1 AND session_id = $2 AND entry = $3 AND resolved_by = $4",
+        [tenantKey(key), key.sessionId, key.entry, resolverKey(key)]
       );
       const row = result.rows[0];
       return row === undefined ? null : toRecord(row);
@@ -69,16 +72,16 @@ export function createPostgresWakeStore(executor: QueryExecutor): WakeStore {
     async move(key: WakeKey, version: number, dueAt: number): Promise<boolean> {
       const result = await executor.query(
         `UPDATE wakes SET due_at = $1, updated_at = $2
-         WHERE tenant_key = $3 AND session_id = $4 AND entry = $5 AND version = $6`,
-        [dueAt, Date.now(), tenantKey(key), key.sessionId, key.entry, version]
+         WHERE tenant_key = $3 AND session_id = $4 AND entry = $5 AND resolved_by = $6 AND version = $7`,
+        [dueAt, Date.now(), tenantKey(key), key.sessionId, key.entry, resolverKey(key), version]
       );
       return result.rowCount > 0;
     },
 
     async clear(key: WakeKey, version: number): Promise<boolean> {
       const result = await executor.query(
-        "DELETE FROM wakes WHERE tenant_key = $1 AND session_id = $2 AND entry = $3 AND version = $4",
-        [tenantKey(key), key.sessionId, key.entry, version]
+        "DELETE FROM wakes WHERE tenant_key = $1 AND session_id = $2 AND entry = $3 AND resolved_by = $4 AND version = $5",
+        [tenantKey(key), key.sessionId, key.entry, resolverKey(key), version]
       );
       return result.rowCount > 0;
     },

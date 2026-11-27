@@ -58,6 +58,8 @@ const woken: Array<{ session: string; entries: number; settled?: string }> = [];
 /** What a woken turn does around its wake read: `before` runs first, `reach` right after, its answer kept in `wokenReach`. */
 const wokenHooks: { before?: () => Promise<void>; reach?: Op } = {};
 let wokenReach: unknown;
+/** Every woken turn's `reach` answer, in the order the turns ran. */
+const wokenReaches: unknown[] = [];
 const inboxChanged = handler({
   name: "inbox-changed",
   inputSchema: z.object({}).passthrough(),
@@ -72,6 +74,7 @@ const inboxChanged = handler({
       } catch (error) {
         wokenReach = { error: (error as Error).message, name: (error as Error).name };
       }
+      wokenReaches.push(wokenReach);
     }
     const entries = await (ctx.resources as any).inbox.list();
     const settled = wakes !== undefined && read !== undefined ? await wakes.settle("inboxChanged", read, null) : undefined;
@@ -195,6 +198,7 @@ afterEach(() => {
   delete wokenHooks.before;
   delete wokenHooks.reach;
   wokenReach = undefined;
+  wokenReaches.length = 0;
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -525,42 +529,100 @@ describe("ctx.resources.at({ session })", () => {
     expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "b", "notes/"))).toEqual(["notes/n1"]);
   });
 
-  // A woken turn holds its writers' resolver authority only while its wake
-  // stays at the generation its dispatch read. A writer under another
-  // resolver that owes after the dispatch folds its write into this turn, so
-  // the turn must not keep reaching what only the first resolver admits.
-  describe("a woken turn's resolver authority", () => {
+  // A wake is kept per resolver identity, and the turn it fires holds that
+  // row's resolver for the whole turn: only that resolver's writers owe the
+  // row, so nothing that happens to the session's other wakes, or to this
+  // one, while the turn runs can change what it may reach.
+  describe("a woken turn's resolver identity is its wake row's", () => {
     type Env = Awaited<ReturnType<typeof boot>>;
-    /** Write into b's inbox from a, as a principal the vault's resolver produced; then fire b's wake. */
-    async function wokenUnderVault(before?: (env: Env) => Promise<void>): Promise<Env> {
+    const vaultIdentityOf = (env: Env) => principalResolverIdentity(env.registry, "vault", defaultBodyUserIdPrincipalResolver)!;
+    /** Write into b's inbox from a under `resolvedBy` (none when `undefined`). */
+    const writeIntoB = (env: Env, id: string, resolvedBy: string | undefined) =>
+      env.reachFrom(
+        async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create(id, { text: "from a" })).state.text,
+        resolvedBy !== undefined ? { resolvedBy } : {}
+      );
+    const reachVault: Op = async (ctx) => texts(await ctx.resources.at({ session: "v" }).notes.list());
+    async function booted(): Promise<Env> {
       woken.length = 0;
       const env = await boot();
       await env.seedIn(flowA, "a", "mine");
       await env.seedIn(flowB, "b", "theirs");
       await env.seedIn(vault, "v", "vaulted");
-      const vaultIdentity = principalResolverIdentity(env.registry, "vault", defaultBodyUserIdPrincipalResolver)!;
-      await env.reachFrom(
-        async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create("m1", { text: "from a" })).state.text,
-        { resolvedBy: vaultIdentity }
-      );
+      return env;
+    }
+    /** Write into b's inbox from a, as a principal the vault's resolver produced; then fire b's wake. */
+    async function wokenUnderVault(before?: (env: Env) => Promise<void>, reachWith: (env: Env) => Op = () => reachVault): Promise<Env> {
+      const env = await booted();
+      await writeIntoB(env, "m1", vaultIdentityOf(env));
       if (before !== undefined) wokenHooks.before = () => before(env);
-      wokenHooks.reach = async (ctx) => texts(await ctx.resources.at({ session: "v" }).notes.list());
+      wokenHooks.reach = reachWith(env);
       await env.fireDue(Number.MAX_SAFE_INTEGER);
       return env;
     }
+    /** Owe on b's inbox entry as a writer under `resolvedBy` would, straight into the store. */
+    const oweIntoB = (env: Env, resolvedBy: string) =>
+      env.stores.wakes!.owe({ sessionId: "b", entry: "inboxChanged", flowKind: "beta", userId: "alice", orgId: ORG, dueAt: Date.now(), landBy: Date.now(), resolvedBy });
+    const keptWakes = async (env: Env) =>
+      (await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).map((wake) => [wake.sessionId, wake.entry, wake.resolvedBy ?? null, wake.version]);
 
-    it("reaches what its writers' resolver admits while its wake is unchanged", async () => {
+    it("reaches what its writers' resolver admits", async () => {
       await wokenUnderVault();
       expect(wokenReach).toEqual({ ok: ["vaulted"] });
     });
 
-    it("a mixed owe after dispatch, before the entry reads its wake, refuses own-resolver reach for the rest of the turn", async () => {
-      await wokenUnderVault(async (env) => {
-        const [current] = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 10);
-        const { version: _v, createdAt: _c, updatedAt: _u, resolvedBy: _r, ...owed } = current!;
-        await env.stores.wakes!.owe({ ...owed, resolvedBy: "another resolver" });
+    it("two resolvers' writes into one session and entry keep two wakes and start two turns, each under its own resolver", async () => {
+      const env = await booted();
+      await writeIntoB(env, "m1", vaultIdentityOf(env));
+      await writeIntoB(env, "m2", undefined);
+      await writeIntoB(env, "m3", vaultIdentityOf(env));
+      expect((await keptWakes(env)).map(([, , resolvedBy]) => resolvedBy).sort()).toEqual([null, vaultIdentityOf(env)].sort());
+      wokenHooks.reach = reachVault;
+      await env.fireDue(Number.MAX_SAFE_INTEGER);
+      expect(woken.map((turn) => turn.session)).toEqual(["b", "b"]);
+      // The vault's turn reaches the vault's session; the other turn, under no resolver, can't.
+      expect(wokenReaches).toHaveLength(2);
+      expect(wokenReaches).toContainEqual({ ok: ["vaulted"] });
+      expect(wokenReaches).toContainEqual(expect.objectContaining({ name: "SessionNotFoundError" }));
+    });
+
+    // A turn delayed past its row's clear and re-owe reads its own resolver's
+    // row again, which only that resolver's writers can owe.
+    it("a delayed turn whose row was cleared and re-owed by its own resolver reaches only what it could before; another resolver's owe is a row of its own", async () => {
+      let vaultIdentity = "";
+      const env = await wokenUnderVault(async (env) => {
+        vaultIdentity = vaultIdentityOf(env);
+        const [kept] = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 10);
+        expect(await env.stores.wakes!.clear(kept!, kept!.version)).toBe(true);
+        await oweIntoB(env, vaultIdentity);
+        await oweIntoB(env, "another resolver");
       });
-      expect(wokenReach).toMatchObject({ name: "SessionNotFoundError" });
+      expect(wokenReach).toEqual({ ok: ["vaulted"] });
+      // The turn settled its own row; the other resolver's is untouched, to fire its own turn.
+      expect(woken.at(-1)?.settled).not.toBe("stale");
+      const left = await keptWakes(env);
+      expect(left).toContainEqual(["b", "inboxChanged", "another resolver", 1]);
+      expect(left.filter(([, , resolvedBy]) => resolvedBy === vaultIdentity).every(([, , , version]) => version === 1)).toBe(true);
+    });
+
+    // Another resolver's owe while the turn waits on a named session's
+    // admission can't change the turn's resolver: it owes a row of its own.
+    it("another resolver's owe during a named-copy admission leaves the turn's own-resolver reach as it was, and makes its own row", async () => {
+      const env = await wokenUnderVault(undefined, (env) => async (ctx) => {
+        const get = env.stores.session.get.bind(env.stores.session);
+        let owed = false;
+        vi.spyOn(env.stores.session, "get").mockImplementation(async (key) => {
+          const record = await get(key);
+          if (key === "v" && !owed) {
+            owed = true;
+            await oweIntoB(env, "another resolver");
+          }
+          return record;
+        });
+        return reachVault(ctx);
+      });
+      expect(wokenReach).toEqual({ ok: ["vaulted"] });
+      expect(await keptWakes(env)).toContainEqual(["b", "inboxChanged", "another resolver", 1]);
     });
   });
 });

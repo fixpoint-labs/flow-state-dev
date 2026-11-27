@@ -1879,9 +1879,10 @@ export interface LeaseStore {
 
 // FIX-2078 D1.
 /**
- * Where a wake is kept: one per session and internal entry.
+ * Where a wake is kept: one per session, internal entry and resolver identity.
  * `tenantId` is part of the key, so two tenants' sessions under one id never
- * share a wake.
+ * share a wake; so is `resolvedBy`, so writers under two resolvers never
+ * share one either, and a wake's resolver never changes while it is kept.
  */
 export type WakeKey = {
   readonly tenantId?: string;
@@ -1889,6 +1890,14 @@ export type WakeKey = {
   readonly sessionId: string;
   /** The internal entry the wake dispatches in that session. */
   readonly entry: string;
+  /**
+   * The resolver identity that produced the writer's principal
+   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
+   * own-resolver sessions that resolver admits. Absent is a key value of its
+   * own: the wake of writers that hold none (and every wake stored before the
+   * field), whose run admits no own-resolver session.
+   */
+  readonly resolvedBy?: string;
 };
 
 /** What a writer owes a wake: the key, its owner and its due time, all server-written. */
@@ -1906,14 +1915,6 @@ export type WakeInput = WakeKey & {
    * wake here rather than clearing it.
    */
   readonly landBy: number;
-  /**
-   * The resolver identity that produced the writer's principal
-   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
-   * own-resolver sessions that resolver admits. Coalescing keeps it only
-   * while every wake folded in names the same one (`coalesceWake`).
-   * Absent (and on a wake stored before the field) it matches nothing.
-   */
-  readonly resolvedBy?: string;
 };
 
 // FIX-2078 D1.
@@ -1936,8 +1937,9 @@ export type WakeRecord = WakeInput & {
  * written before it still type-checks and loads, and a host whose stores keep
  * no wakes logs once and pays debts on its fast paths only.
  *
- * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
- *   time and the LATER `landBy`, and bumping the version.
+ * - {@link owe} writes or coalesces: one wake per key (resolver identity
+ *   included), keeping the EARLIER due time and the LATER `landBy`, and
+ *   bumping the version.
  * - {@link move} and {@link clear} are conditional on the version a pass read,
  *   so a wake written during the pass survives it. Neither bumps the version.
  */

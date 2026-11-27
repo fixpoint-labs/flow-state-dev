@@ -105,7 +105,7 @@ import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
 import { resolveRecordOwner } from "./record-owner";
 import type { FlowRegistry } from "../registry/flow-registry";
-import { noteWakeOwed, readWakeGeneration, type WakeAuthority } from "../durability/request-wakes";
+import { noteWakeOwed } from "../durability/request-wakes";
 
 /**
  * How long a wake a write from another session owes waits before its turn
@@ -925,14 +925,6 @@ export async function createExecutionContext<
   }
   runKind ??= "machine";
   const runResolvedBy = options.resolvedBy ?? loadedRequest?.resolvedBy ?? undefined;
-  // The run's resolver authority as it stands: a run a wake fired holds it
-  // only while that wake stays at the generation its fire read
-  // (`fenceWakeAuthority`). Read here by every use after the run started.
-  const wakeGeneration = readWakeGeneration(options.source, options.metadata);
-  const runAuthority: WakeAuthority = {
-    resolvedBy: runResolvedBy,
-    ...(wakeGeneration !== undefined ? { wake: wakeGeneration } : {})
-  };
 
   // The same filter as the session's reads; see `sessionRequestScope`.
   const turnScope = sessionRequestScope(
@@ -1316,7 +1308,6 @@ export async function createExecutionContext<
             kind: runKind,
             ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
           } satisfies Principal,
-          authority: runAuthority,
           deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
@@ -3679,32 +3670,26 @@ export async function createExecutionContext<
    * publishes on the named session's topics and, for a collection with a
    * `wakeEntry`, owes a wake on that session's entry before it is written.
    */
-  const namedFence = { origin: readDeliveryOrigin(options.source, options.metadata), sessionId };
-  /** A named session's admitted copy, and the resolver authority it was admitted under. */
-  type NamedCopy = {
-    readonly record: SessionRecord;
-    readonly resolvedBy: string | undefined;
-    readonly registry: ResourceRegistry<Record<string, AnyResourceRef>>;
+  const namedPrincipal: Principal = {
+    userId,
+    orgId: resolvedOrgId,
+    ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+    kind: runKind,
+    ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
   };
+  const namedFence = { origin: readDeliveryOrigin(options.source, options.metadata), sessionId };
+  type NamedCopy = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
   const namedCopies = new Map<string, Promise<NamedCopy | undefined>>();
-  /** Admit `target` from scratch, under the run's authority as it stands, and keep the answer for this run's later verbs. */
+  /** Admit `target` from scratch, and keep the answer for this run's later verbs. */
   const admitCopy = (target: string): Promise<NamedCopy | undefined> => {
     const copy = (async (): Promise<NamedCopy | undefined> => {
       const flows = options.requestHost?.flows;
       if (flows === undefined || noSession) return undefined;
-      const resolvedBy = runAuthority.resolvedBy;
-      const principal: Principal = {
-        userId,
-        orgId: resolvedOrgId,
-        ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
-        kind: runKind,
-        ...(resolvedBy !== undefined ? { resolvedBy } : {})
-      };
       const record = await admitNamedSession(
-        { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal, sessionId },
+        { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
         target
       );
-      return record === undefined ? undefined : { record, resolvedBy, registry: buildNamedCopy(target, record, flows) };
+      return record === undefined ? undefined : { record, registry: buildNamedCopy(target, record, flows) };
     })();
     namedCopies.set(target, copy);
     return copy;
@@ -3713,8 +3698,6 @@ export async function createExecutionContext<
     const kept = namedCopies.get(target);
     if (kept === undefined) return (await admitCopy(target))?.registry;
     const admitted = await kept;
-    // The authority it was admitted under was dropped since: admitted again under what the run holds now.
-    if (admitted !== undefined && admitted.resolvedBy !== runAuthority.resolvedBy) return (await admitCopy(target))?.registry;
     if (admitted === undefined) return undefined;
     // The record as it stands now: still the one admitted, or admitted again.
     const now = await stores.session.get(resolveSessionStorageKey(target, options.tenantId));
@@ -3789,7 +3772,7 @@ export async function createExecutionContext<
         orgId: record.orgId ?? resolvedOrgId,
         dueAt: now + NAMED_WRITE_WAKE_DUE_MS,
         landBy: now + fenceMs,
-        ...(runAuthority.resolvedBy !== undefined ? { resolvedBy: runAuthority.resolvedBy } : {})
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
       });
       noteWakeOwed(wakes, owed.dueAt);
     };

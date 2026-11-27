@@ -60,8 +60,8 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "turn-per-write": [
     {
       module: WAKES,
-      from: String.raw`return \x60\$\{key\.tenantId \?\? ""\}\\u0000\$\{key\.sessionId\}\\u0000\$\{key\.entry\}\x60;`,
-      to: 'return `${key.tenantId ?? ""}\\u0000${key.sessionId}\\u0000${key.entry}\\u0000${key.dueAt ?? ""}`;'
+      from: String.raw`const base = \x60\$\{key\.tenantId \?\? ""\}\\u0000\$\{key\.sessionId\}\\u0000\$\{key\.entry\}\x60;`,
+      to: 'const base = `${key.tenantId ?? ""}\\u0000${key.sessionId}\\u0000${key.entry}\\u0000${key.dueAt ?? ""}`;'
     }
   ],
   // The fence reads the webhook source only, not the origin a delivery's owner runs carry.

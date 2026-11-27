@@ -113,7 +113,7 @@ import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, heartbeatStaleThreshold, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
-import { createRequestWakes, type WakeAuthority } from "../durability/request-wakes";
+import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
 import { createOwingPark } from "../durability/park-owed";
 import { createRequestSessions, type SessionAdmission, type SuspensionAdmission } from "./request-sessions";
@@ -167,13 +167,6 @@ export type RequestHostInputs = {
    * running request's own session is a machine's.
    */
   principal?: Principal;
-  /**
-   * The principal's resolver authority as it stands this turn: its
-   * `resolvedBy` at the start, dropped once a woken run's wake moves on under
-   * another resolver (`fenceWakeAuthority`). A dispatch and a wake this
-   * request owes carry it as it stands then. Absent, the run holds none.
-   */
-  authority?: WakeAuthority;
   // FIX-2942 D1.
   /**
    * The outside delivery that started this request (`readDeliveryOrigin`), if
@@ -773,7 +766,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       orgId: session.orgId,
       // FIX-2942: the sending request's principal, carried unchanged.
       ...(inputs.principal !== undefined ? { principalKind: inputs.principal.kind } : {}),
-      ...(inputs.authority?.resolvedBy !== undefined ? { resolvedBy: inputs.authority.resolvedBy } : {}),
+      ...(inputs.principal?.resolvedBy !== undefined ? { resolvedBy: inputs.principal.resolvedBy } : {}),
       // Server-assembled provenance for the request record: the address, the
       // sending block and session, the key (when a child was derived), the
       // recipient's approved lineage (when an existing session was addressed), and
@@ -921,9 +914,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         userId: identity.userId,
         tenantId: identity.tenantId,
         orgId: identity.orgId,
-        sessionId: identity.sessionId
+        sessionId: identity.sessionId,
+        ...(inputs.principal?.resolvedBy !== undefined ? { resolvedBy: inputs.principal.resolvedBy } : {})
       },
-      ...(inputs.authority !== undefined ? { authority: inputs.authority } : {}),
       flowId: flow.id,
       fenceMs: inputs.wakes.fenceMs,
       maxDebtAgeMs: inputs.wakes.maxDebtAgeMs,
