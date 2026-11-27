@@ -166,14 +166,17 @@ async function postgresBackend(collationNote: string[]): Promise<Backend> {
       const failures: string[] = [];
       if (nodes.some((n) => n["Node Type"] === "Seq Scan")) failures.push(`scans the table: ${shape}`);
       const ranges = nodes.filter((n) => n["Index Name"] !== undefined && (n["Index Cond"] ?? "").includes("resource_key"));
-      if (ranges.length === 0) failures.push(`no index range on the key: ${shape}`);
       const removed = nodes.reduce(
         (sum, n) => sum + ((n["Rows Removed by Filter"] ?? 0) + (n["Rows Removed by Index Recheck"] ?? 0)) * (n["Actual Loops"] ?? 1),
         0
       );
       if (removed > 0) failures.push(`read and discarded ${removed} rows of the scope: ${shape}`);
-      const walked = Math.max(0, ...ranges.map((n) => (n["Actual Rows"] ?? 0) * (n["Actual Loops"] ?? 1)));
-      if (ranges.length > 0 && walked !== returned) failures.push(`the index walked ${walked} rows for ${returned} returned: ${shape}`);
+      if (ranges.length === 0) {
+        failures.push(`no index range on the key: ${shape}`);
+      } else {
+        const walked = Math.max(...ranges.map((n) => (n["Actual Rows"] ?? 0) * (n["Actual Loops"] ?? 1)));
+        if (walked !== returned) failures.push(`the index walked ${walked} rows for ${returned} returned: ${shape}`);
+      }
       return failures;
     },
     async schemaChecks(failures, tell) {
