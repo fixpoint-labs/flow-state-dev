@@ -660,7 +660,9 @@ export function taskIssueSegment(taskId: string): string {
  * A follow-up is more work on what its root did, so its run is the root's:
  * the same checkout, branch, run record and coding session. The manager keys
  * a run by this, and so does every reader of the run (a session door's
- * `runOf`), so the two never disagree.
+ * `runOf`), so the two never disagree. The mode stays part of the run's key:
+ * a follow-up run in another mode than its root's has a run of its own
+ * (`<board>/<root>/<its mode>`), with its own checkout and branch.
  */
 export function followUpRootId(
   task: { readonly id: string; readonly followUpOf?: string },

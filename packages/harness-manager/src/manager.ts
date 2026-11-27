@@ -2583,7 +2583,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **A follow-up continues its root's run**: the same checkout, branch,
       // run record and coding session, so it works on what the root did. Its
       // run is keyed by its follow-up root, as every reader keys it.
-      const rootId = followUpRootId({ id: input.taskId, followUpOf: board.get(input.taskId)?.followUpOf }, (id) => board.get(id));
+      const rootOf = (id: string) => followUpRootId({ id, followUpOf: board.get(id)?.followUpOf }, (other) => board.get(other));
+      const rootId = rootOf(input.taskId);
+      // **One task of a chain runs at a time**: two would share one checkout and
+      // one coding session. A board's one-open-task start test keeps a follow-up
+      // waiting while its root runs; on a board without one, this attempt fails
+      // and the board's retry tries again later.
+      const running = board.list().find((task) => task.id !== input.taskId && task.status === "in_progress" && rootOf(task.id) === rootId);
+      if (running !== undefined) {
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} continues the run of ${rootId}, and ${running.id} is still running ` +
+            `in it. Refusing: the two would share one checkout and one coding session.`,
+        );
+      }
       const issue = payload === undefined || claim !== null ? taskIssueSegment(rootId) : payload.issue;
       if (payload !== undefined) {
         assertFeatureRowIdentity(input.taskId, rootId, payload.issue, segment, mode, claim === null);
@@ -2689,7 +2701,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         sameSegment(segment, mode.name)
           ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
           : { name: keyed },
-        input.taskId,
+        // A follow-up's run is its chain's: a record of an earlier task of the chain is this run.
+        (recordedTaskId) => recordedTaskId === input.taskId || rootOf(recordedTaskId) === rootId,
         // BP-030: before the key folded, the payload's own spelling was the key.
         segment,
       );
@@ -2815,9 +2828,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // earlier task of its chain landed on (the root, or an earlier follow-up) is open
       // from its branch too, and is the work's: kept as well. Only the pull requests:
       // the requests stay this task's own, and so do the attempt and turn fences.
-      const sameChain =
-        recorded?.taskId != null &&
-        followUpRootId({ id: recorded.taskId, followUpOf: board.get(recorded.taskId)?.followUpOf }, (id) => board.get(id)) === rootId;
+      const sameChain = recorded?.taskId != null && rootOf(recorded.taskId) === rootId;
       const landedPullRequests = sameTask || sameChain ? (recorded.landedPullRequests ?? []) : [];
       await fenced(
         openRunRecord(
