@@ -30,6 +30,7 @@ import {
   resolveUserStorageKey,
   runAction
 } from "../../src";
+import { createInitialRequestRecord } from "../../src/context/initial-request-record";
 import { dispatchInternalAs } from "../../src/durability/dispatch-internal";
 import { fireOwnerRunThrough } from "../../src/durability/owner-runs";
 import { readDeliveryOrigin } from "../../src/execution/delivery-origin";
@@ -72,6 +73,21 @@ const work = handler({
   }
 });
 
+/** What a run can reach: who it runs as, and the scopes it reads and writes. */
+const probe = handler({
+  name: "probe",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ reach: z.any() }),
+  execute: async (_input, ctx) => ({
+    reach: {
+      user: ctx.user.identity,
+      session: ctx.session.identity,
+      org: ctx.org?.identity ?? null,
+      request: { userId: ctx.request.identity.userId, orgId: ctx.request.identity.orgId, tenantId: ctx.request.identity.tenantId }
+    }
+  })
+});
+
 /** An internal entry that dispatches on: the hop a marked run's own dispatch takes. */
 const relay = dispatcher({
   name: "relay",
@@ -85,7 +101,7 @@ const relay = dispatcher({
 const svc = defineFlow({
   kind: "svc",
   actions: { ask: deliver },
-  internal: { actions: { deliver, route, relay: { block: relay }, work: { block: work } } }
+  internal: { actions: { deliver, route, relay: { block: relay }, work: { block: work }, probe: { block: probe } } }
 })();
 
 async function boot() {
@@ -257,6 +273,53 @@ describe("a webhook delivery's origin", () => {
     expect(readDeliveryOrigin("task", { deliveryOrigin: "webhook" })).toBe("webhook");
     expect(readDeliveryOrigin("http", { deliveryOrigin: "webhook" })).toBeUndefined();
     expect(readDeliveryOrigin("internal", { deliveryOrigin: "poll" })).toBeUndefined();
+  });
+
+  it("gets a run that carries a forged mark no more access than an unmarked run, and only less", async () => {
+    // The mark only fences (`readDeliveryOrigin`'s invariant): the D1 fence is its one
+    // reader, and it refuses. Forged here the way Codex named it, through a record an
+    // app's own code writes before it calls the public `runAction` with that id: the
+    // record `createExecutionContext` would write for a caller-supplied source and metadata.
+    const stores = createInMemoryStores();
+    const runProbe = (requestId: string, sessionId: string) =>
+      runAction({
+        flow: svc,
+        actionName: "probe" as never,
+        input: {},
+        userId: "alice",
+        orgId: ORG,
+        sessionId,
+        requestId,
+        source: "internal",
+        metadata: {},
+        stores,
+        runtimeConfig: {}
+      });
+    await stores.request.set(
+      "req_forged",
+      createInitialRequestRecord(
+        { requestId: "req_forged", flowKind: "svc", flowId: svc.id, actionName: "probe", userId: "alice", orgId: ORG, sessionId: "s-forged", source: "internal", metadata: { deliveryOrigin: "webhook" }, input: {} },
+        Date.now()
+      ),
+      "absent"
+    );
+    const forged = await runProbe("req_forged", "s-forged");
+    const plain = await runProbe("req_plain", "s-plain");
+
+    // Not vacuous: the forged mark is honoured, so the run really carries it.
+    const forgedRecord = await stores.request.get("req_forged");
+    expect(readDeliveryOrigin(forgedRecord!.source, forgedRecord!.metadata)).toBe("webhook");
+    const plainRecord = await stores.request.get("req_plain");
+    expect(readDeliveryOrigin(plainRecord!.source, plainRecord!.metadata)).toBeUndefined();
+
+    // Same principal, same user and org scopes; only the session differs, by the id each named.
+    expect(forgedRecord?.status).toBe("completed");
+    expect(plainRecord?.status).toBe("completed");
+    const reach = (result: { output?: unknown }) => (result.output as { reach: Record<string, unknown> }).reach;
+    const { session: forgedSession, ...forgedRest } = reach(forged);
+    const { session: plainSession, ...plainRest } = reach(plain);
+    expect(forgedRest).toEqual(plainRest);
+    expect(forgedSession).toEqual({ ...(plainSession as object), id: expect.stringContaining("s-forged") });
   });
 
   describe("on a worker behind an external runner", () => {

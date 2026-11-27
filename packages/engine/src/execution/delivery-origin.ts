@@ -51,6 +51,10 @@ const DELIVERY_ORIGIN_KEY = "deliveryOrigin";
  * started, or an `internal` / `task` run the server stamped as fired by one;
  * `undefined` for every other run, including a caller whose metadata names an
  * origin.
+ *
+ * Invariant: the origin may only ever restrict a run and must never grant it
+ * access. Every reader keys a refusal on it, never an allowance, which is why
+ * a forged mark is harmless and the mark carries no attestation.
  */
 export function readDeliveryOrigin(source: string | undefined, metadata: unknown): DeliveryOrigin | undefined {
   if (source === WEBHOOK_SOURCE) return "webhook";
