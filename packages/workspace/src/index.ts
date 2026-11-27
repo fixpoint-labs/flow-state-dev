@@ -20,6 +20,8 @@
  */
 export { createProjection, hashContent } from "./projection";
 export type { Projection, ProjectionOptions } from "./projection";
+export { projectionSession } from "./projection-session";
+export type { ProjectionSession, SettledFlush } from "./projection-session";
 export { createMemoryPlace } from "./memory-place";
 export type { MemoryPlace } from "./memory-place";
 export { createHostPlace } from "./host-place";
@@ -43,6 +45,8 @@ export {
   unscopedCollectionId,
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
+export { encodeSegment, readableSegment,
+  segmentDigest, scopeFolder, tenantSegment } from "./segments";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
 export { localRepoWorkspaceHost } from "./local-repo-host";
 export type { LocalRepoWorkspaceHostOptions } from "./local-repo-host";

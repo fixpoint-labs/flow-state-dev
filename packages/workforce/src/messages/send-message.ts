@@ -208,12 +208,12 @@ export async function payPlace(ctx: BlockContext, installation: WorkerInstallati
   /** The place a send takes in a chain that already holds `sent`. */
   const placeAfter = (sent: number) => Math.max(floor, sent + 1);
   const known = turnChainOf(ctx);
-  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
+  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator);
   const paidOf = (current: Readonly<Record<string, unknown>>): string[] =>
     Array.isArray(current[TURN_PAID_STATE]) ? (current[TURN_PAID_STATE] as string[]) : [];
   const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
-    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
+    const sent = typeof current[TURN_SENT_STATE] === "number" ? current[TURN_SENT_STATE] : 0;
+    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? current[TURN_CHAIN_STATE] : (known ?? newChainId());
     const paid = paidOf(current);
     if (given !== undefined && paid.includes(given)) return { state: {}, result: turnChain };
     if (sent >= limits.perTurn) return { state: {}, result: undefined };
@@ -227,14 +227,14 @@ export async function payPlace(ctx: BlockContext, installation: WorkerInstallati
   }
   const chain = reserved;
   const id = given ?? newMessageId();
-  const chainRow = await chains.getOrCreate(chain, { sent: [] });
+  const chainRow = await chains.getOrCreate(chain);
   await chainRow.updateState((row) =>
     row.sent.includes(id) || placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {
     await atomicRequest((current) => {
-      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
+      const sent = typeof current[TURN_SENT_STATE] === "number" ? current[TURN_SENT_STATE] : 1;
       return { [TURN_SENT_STATE]: Math.max(0, sent - 1), [TURN_PAID_STATE]: paidOf(current).filter((paid) => paid !== id) };
     });
     return budgetRefusal(placeAfter(chainRow.state.sent.length));
@@ -292,7 +292,7 @@ export async function sendMessage(
   from: string,
   options: SendOptions = {}
 ): Promise<SendOutcome> {
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const sender = state[WORKER_ID_STATE_KEY];
   if (typeof sender !== "string" || sender.length === 0) return refuse("not_a_worker: this session runs no worker, so it can't send a message.");
   const repeated = await checkTextAndRepeat(ctx, installation, flowKind, input.text, from, options.id);

@@ -38,7 +38,6 @@ export { createLocalFsSandbox } from "./adapters/local-fs";
 export type {
   Sandbox,
   CommandResult,
-  FileEntryState,
   SandboxProvider,
   WorkspaceScope,
   NetworkConfig,

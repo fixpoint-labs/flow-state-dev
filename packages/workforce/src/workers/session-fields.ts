@@ -90,7 +90,7 @@ export function setSessionFieldsAction(fields: SessionFields) {
       inputSchema: setSessionFieldsInputSchema,
       outputSchema: z.object({ fields: z.record(z.unknown()) }),
       execute: async (input, ctx) => {
-        const state = ctx.session.state ?? {};
+        const { state } = ctx.session;
         const running = state[WORKER_ID_STATE_KEY];
         if (typeof running !== "string") refuse("this session runs no worker.");
         if (input.worker !== undefined && input.worker !== running) {
