@@ -16,4 +16,6 @@ A scope is how many copies exist; the owner decides who may look; name a session
 - **Use `ctx.sessions`** for what isn't a resource: another session's flow, readable state, history and turns.
 - **Wakes carry `resolvedBy`.** A woken run reaches the own-resolver sessions its writer's resolver admits. SQLite and Postgres add a nullable `resolved_by` column to `wakes` on start (no backfill); a wake stored before reaches no own-resolver session.
 
-Docs: apps/docs resource guides (a "Another session's copy" section beside `ctx.sessions`, with `wakeEntry` and the webhook fence), and the store adapters' schema notes for the `wakes.resolved_by` column.
+- **The two errors, for `packages/engine/README.md`.** `SessionNotFoundError`: a named session this run may not reach, or that no one holds, with one message for both. `UntrustedReachError`: a turn a webhook delivery started named a session other than its own.
+
+Docs: packages/engine/README.md (`SessionNotFoundError`, `UntrustedReachError`), apps/docs resource guides (a "Another session's copy" section beside `ctx.sessions`, with `wakeEntry` and the webhook fence), and the store adapters' schema notes for the `wakes.resolved_by` column.
