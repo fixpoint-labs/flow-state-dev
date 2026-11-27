@@ -12,6 +12,7 @@ import { TeammatePanel } from "./TeammatePanel";
 import { WorkersList } from "./WorkersList";
 import { SIDEBAR_WIDTH, useSidebar } from "../lib/sidebar";
 import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
+import { SessionOverlayArea, SessionOverlayProvider } from "./flow-state/session-overlay";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
 import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
@@ -24,8 +25,11 @@ import { displayName, settingOf, takesTasks, useWorkforce } from "../lib/roster"
  * tasks its conversation filed. Coding is a background task, not a teammate:
  * the worker coding tasks run on is off the list, and each coding task is a
  * row in the panel of the teammate that started it.
- * A task or a message between workers, and a coding task, opens in a popup
- * over the conversation, read only and live. The app opens on the first teammate,
+ * A task opens in a sheet over the conversation, which blurs behind it, and
+ * the panel stays live beside it: the open task is marked there, another task
+ * picked there takes the sheet, and the open one picked again closes it, as a
+ * click outside the sheet does. A message between workers opens in a popup
+ * over the page. Both are read only and live. The app opens on the first teammate,
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
@@ -198,9 +202,10 @@ export function App() {
     const sessionId = conversations.current[id];
     if (sessionId !== undefined) focusComposer(sessionId);
   }, []);
+  // Picking the task already open closes it: the panel's cards toggle the sheet.
   const openPopup = useCallback((next: Popup) => {
     how.current = "push";
-    setPopup(next);
+    setPopup((open) => (next.kind === "task" && open?.kind === "task" && open.taskId === next.taskId && open.sessionId === next.sessionId ? undefined : next));
   }, []);
   const closePopup = useCallback(() => {
     how.current = "push";
@@ -298,95 +303,100 @@ export function App() {
     );
   }
   return (
-    <div
-      className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: columns }}
-    >
-      {/* One follower per conversation: every screen on it reads what it read. */}
-      {Object.values(sessions).map((id) => (
-        <ConversationFollower key={id} sessionId={id} />
-      ))}
-      <WorkersList
-        workers={teammates}
-        sessions={sessions}
-        selected={worker?.id}
-        nameOf={nameOf}
-        lookOf={lookOf}
-        isCoding={isCoding}
-        onSelect={selectWorker}
-        onHire={hire}
-        hiring={hiring}
-        onHiring={setHiring}
-        workspace={context === undefined ? undefined : { name: context.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? context.folder, path: context.folder }}
-        choices={{ models: context?.models }}
-        defaults={{ model: context?.model }}
-        collapsed={sidebar.collapsed}
-        overlay={sidebar.narrow && !sidebar.collapsed}
-        onToggle={sidebar.toggle}
-        onClose={sidebar.collapse}
-      />
-      {worker && sessionId ? (
-        <Conversation
-          // One conversation per session: a draft typed to one worker never carries over to another.
-          key={sessionId}
-          worker={worker}
-          sessionId={sessionId}
+    // A task's sheet draws over the conversation's area, wherever it is opened from.
+    <SessionOverlayProvider>
+      <div
+        className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
+        style={{ gridTemplateColumns: columns }}
+      >
+        {/* One follower per conversation: every screen on it reads what it read. */}
+        {Object.values(sessions).map((id) => (
+          <ConversationFollower key={id} sessionId={id} />
+        ))}
+        <WorkersList
+          workers={teammates}
+          sessions={sessions}
+          selected={worker?.id}
           nameOf={nameOf}
           lookOf={lookOf}
           isCoding={isCoding}
-          onFire={() => fire(worker.id)}
-          onOpen={openPopup}
-          prefill={prefill?.sessionId === sessionId ? prefill : undefined}
-          onPrefilled={consumePrefill}
-          workers={workers}
-          context={context}
-          harnesses={harnesses}
-          onRecheck={recheck}
-          // The panel beside the conversation lists its tasks: View brings that list into sight.
-          onViewTasks={() => document.getElementById("tasks-heading")?.scrollIntoView({ block: "start" })}
+          onSelect={selectWorker}
+          onHire={hire}
+          hiring={hiring}
+          onHiring={setHiring}
+          workspace={context === undefined ? undefined : { name: context.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? context.folder, path: context.folder }}
+          choices={{ models: context?.models }}
+          defaults={{ model: context?.model }}
+          collapsed={sidebar.collapsed}
+          overlay={sidebar.narrow && !sidebar.collapsed}
+          onToggle={sidebar.toggle}
+          onClose={sidebar.collapse}
         />
-      ) : (
-        <main aria-label="Conversation" />
-      )}
-      {panelShown ? (
-        <TeammatePanel
-          // One panel per teammate: an opened group or an edit doesn't carry over to another.
-          key={worker.id}
-          worker={worker}
-          sessionId={sessionId}
-          openTask={popup?.kind === "task" ? popup.taskId : undefined}
-          nameOf={nameOf}
-          isCoding={isCoding}
-          onOpen={openPopup}
-          // Routines are asked for in words: *New routine* starts the sentence in this teammate's composer.
-          onNewRoutine={() => {
-            followUps.current += 1;
-            setPrefill({ sessionId, text: "Set up a routine: ", n: followUps.current });
+        <SessionOverlayArea>
+          {worker && sessionId ? (
+            <Conversation
+              // One conversation per session: a draft typed to one worker never carries over to another.
+              key={sessionId}
+              worker={worker}
+              sessionId={sessionId}
+              nameOf={nameOf}
+              lookOf={lookOf}
+              isCoding={isCoding}
+              onFire={() => fire(worker.id)}
+              onOpen={openPopup}
+              prefill={prefill?.sessionId === sessionId ? prefill : undefined}
+              onPrefilled={consumePrefill}
+              workers={workers}
+              context={context}
+              harnesses={harnesses}
+              onRecheck={recheck}
+              // The panel beside the conversation lists its tasks: View brings that list into sight.
+              onViewTasks={() => document.getElementById("tasks-heading")?.scrollIntoView({ block: "start" })}
+            />
+          ) : (
+            <main aria-label="Conversation" />
+          )}
+        </SessionOverlayArea>
+        {panelShown ? (
+          <TeammatePanel
+            // One panel per teammate: an opened group or an edit doesn't carry over to another.
+            key={worker.id}
+            worker={worker}
+            sessionId={sessionId}
+            openTask={popup?.kind === "task" ? popup.taskId : undefined}
+            nameOf={nameOf}
+            isCoding={isCoding}
+            onOpen={openPopup}
+            // Routines are asked for in words: *New routine* starts the sentence in this teammate's composer.
+            onNewRoutine={() => {
+              followUps.current += 1;
+              setPrefill({ sessionId, text: "Set up a routine: ", n: followUps.current });
+            }}
+          />
+        ) : null}
+        <Switcher
+          open={switching}
+          onOpenChange={setSwitching}
+          teammates={teammates}
+          onPick={(id) => {
+            // A pick goes somewhere: the key list or a popup, if one was open under the switcher, closes too.
+            setSwitching(false);
+            setKeysOpen(false);
+            setPopup(undefined);
+            selectWorker(id);
+          }}
+          onHire={() => {
+            setSwitching(false);
+            setKeysOpen(false);
+            setPopup(undefined);
+            setHiring(true);
+            focusWhenDrawn('input[aria-label="Teammate name"]');
           }}
         />
-      ) : null}
-      <Switcher
-        open={switching}
-        onOpenChange={setSwitching}
-        teammates={teammates}
-        onPick={(id) => {
-          // A pick goes somewhere: the key list or a popup, if one was open under the switcher, closes too.
-          setSwitching(false);
-          setKeysOpen(false);
-          setPopup(undefined);
-          selectWorker(id);
-        }}
-        onHire={() => {
-          setSwitching(false);
-          setKeysOpen(false);
-          setPopup(undefined);
-          setHiring(true);
-          focusWhenDrawn('input[aria-label="Teammate name"]');
-        }}
-      />
-      <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-      {popup ? <PopupView popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
-    </div>
+        <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
+        {popup ? <PopupView popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
+      </div>
+    </SessionOverlayProvider>
   );
 }
 

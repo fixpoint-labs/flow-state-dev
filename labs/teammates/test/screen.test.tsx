@@ -418,6 +418,35 @@ describe("the teammates screen", () => {
     expect(conversation()).toBeTruthy();
   });
 
+  it("opens a task in a sheet over the conversation, the panel still in reach: another task takes the sheet, and the open one or a click outside closes it", async () => {
+    renderOnBoard({ [LEAD]: [coding("t-1", "claude-code"), coding("t-2", "codex", { title: "Bump the version" })] });
+    const side = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const first = await within(side).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" }, POPUP_READ);
+    const second = within(side).getByRole("button", { name: "Coding task: Bump the version, on Codex" });
+    fireEvent.click(first);
+    const sheet = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
+    // A sheet, not a modal: it covers the conversation alone, so the panel beside it stays usable and shows which task is open.
+    expect(sheet.getAttribute("aria-modal")).toBeNull();
+    expect(conversation().parentElement!.contains(sheet)).toBe(true);
+    expect(side.contains(sheet)).toBe(false);
+    expect(first.getAttribute("aria-current")).toBe("true");
+    // Another task picked in the panel takes the sheet's place: one sheet, now on it.
+    fireEvent.click(second);
+    expect(await screen.findByRole("dialog", { name: "Coding task: Bump the version" }, POPUP_READ)).toBeTruthy();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(second.getAttribute("aria-current")).toBe("true");
+    expect(first.getAttribute("aria-current")).toBeNull();
+    // The open task picked again closes it.
+    fireEvent.click(second);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(second.getAttribute("aria-current")).toBeNull();
+    // A click outside the sheet, on the blurred conversation, closes it too.
+    fireEvent.click(first);
+    await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
+    fireEvent.click(document.querySelector("[data-overlay-backdrop]")!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
   it("says on a coding task's line which harness it runs on, and its model only once its run reported one", async () => {
     const { server } = renderOnBoard({ [LEAD]: [coding("t-1", "cursor"), coding("t-2", "codex", { title: "Bump the version" })] });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
