@@ -50,7 +50,13 @@
  * summary, text, annotations) or logs: the workflow writes those, and a pull request can change
  * the workflow, so no subscriber of any kind hears them. A check run is on a pull request only when
  * its entry in `pull_requests` is headed on this repository at the branch of the run's suite
- * (`check_suite.head_branch`); otherwise it is on the repository's thread alone.
+ * (`check_suite.head_branch`), and, when the suite names a `head_repository`, that is this
+ * repository too; otherwise it is on the repository's thread alone. GitHub sends a suite
+ * headed on a fork with `head_branch: null` and an empty `pull_requests` ("When the check
+ * suite's `head_branch` is in a forked repository it will be `null` and the `pull_requests`
+ * array will be empty": the `check_run` webhook payload's `check_suite.pull_requests`,
+ * https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_run), so a fork's run
+ * lands on no pull request by either rule.
  *
  * **`addressed`.** `true` when the event mentions one of the app's agent
  * handles (outside quoted lines and code), assigns one, or requests its review.
@@ -391,7 +397,14 @@ export function normalizeGitHubEvent(input: GitHubEventInput, options: GitHubNor
       };
       // A pull request the run is on only when its entry is headed on this repository at the branch the
       // run's suite ran for: a fork's pull request at the same commit stays off it, the run the repository's alone.
-      const suiteBranch = str(obj(run.check_suite)?.head_branch);
+      const suite = obj(run.check_suite);
+      // Undocumented on this payload, so read only when sent: a suite headed on another repository puts the run on no pull request.
+      const suiteHead = obj(suite?.head_repository);
+      const suiteHere =
+        suiteHead === undefined ||
+        (typeof repository?.id === "number" && suiteHead.id === repository.id) ||
+        (typeof suiteHead.full_name === "string" && suiteHead.full_name.toLowerCase() === fullName.toLowerCase());
+      const suiteBranch = suiteHere ? str(suite?.head_branch) : undefined;
       const numbers = [
         ...new Set(
           (Array.isArray(run.pull_requests) ? run.pull_requests : []).flatMap((pr) => {

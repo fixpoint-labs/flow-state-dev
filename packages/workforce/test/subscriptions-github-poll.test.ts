@@ -9,7 +9,7 @@
  * was asked. And a quiet thread must cost conditional requests that come back
  * `304`, not a full re-read of the PR every five minutes.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
 
@@ -154,6 +154,37 @@ describe("GitHub's poll", () => {
     it("drops a github-actions run when its workflow runs can't be read", async () => {
       const { checks } = await checksOf({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }, "/repos/acme/api/actions/runs": FORBIDDEN });
       expect(checks).toEqual([]);
+    });
+
+    // Out of requests is not an answer: the Actions run waits for the next poll rather than being lost.
+    it("retries a github-actions run on the next poll when its workflow runs were rate limited", async () => {
+      const runs = { "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] } };
+      const limited = fakeGitHub({ ...runs, "/repos/acme/api/actions/runs": RATE_LIMITED });
+      const first = await limited.provider.poll!(PR, { since: SINCE }, ctx);
+      if ("unchanged" in first) throw new Error("expected a read");
+      expect(first.events.filter((e) => e.kind === "check"), "fails closed this poll").toEqual([]);
+      expect(first.through, "the mark stays at the run").toBeLessThanOrEqual(Date.parse(at(5)));
+      const second = await fakeGitHub(runs).provider.poll!(PR, { since: first.through, etags: first.etags! }, ctx);
+      if ("unchanged" in second) throw new Error("the rate-limited run was never asked again");
+      expect(second.events.filter((e) => e.kind === "check").map((e) => e.object.id)).toEqual(["check_run:7"]);
+    });
+
+    it("says once that a token can't read Actions, and moves on", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const runs = { "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }, "/repos/acme/api/actions/runs": FORBIDDEN };
+        const first = await fakeGitHub(runs).provider.poll!(PR, { since: SINCE }, ctx);
+        if ("unchanged" in first) throw new Error("expected a read");
+        expect(first.events.filter((e) => e.kind === "check")).toEqual([]);
+        expect(first.through, "a permanent refusal advances the mark").toBeGreaterThan(Date.parse(at(5)));
+        const said = () => warn.mock.calls.filter((c) => String(c[0]).includes("can't read GitHub Actions")).length;
+        expect(said()).toBe(1);
+        const next = { ...runs, "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(8, 1)] } };
+        await fakeGitHub(next).provider.poll!(PR, { since: SINCE, etags: Object.fromEntries(Object.entries(first.etags!).filter(([k]) => !k.includes("check-runs"))) }, ctx);
+        expect(said(), "once per subscription").toBe(1);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("binds another app's suite to this pull request, not to a branch name", async () => {

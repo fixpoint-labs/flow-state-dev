@@ -30,7 +30,10 @@
  * this pull request headed on this repository (`check_suite.pull_requests`), not
  * by a branch name a fork can copy. A GitHub Actions run is also kept only when
  * the workflow run that made its suite is headed on this repository
- * (`workflow_run.head_repository`); when that can't be read, it is dropped. A
+ * (`workflow_run.head_repository`); when that can't be read, it is dropped. Out of
+ * requests, `429` or a `5xx` holds the mark at that run, so the next poll asks
+ * again; any other refusal (a token that can't read Actions) moves on, and says
+ * so once per subscription. A
  * check run's own object names only its suite's id, so the head's suites (and,
  * for an Actions run, the head's workflow runs) are read once, in full, on a
  * poll that found a finished run; a quiet poll costs nothing more. The head's
@@ -86,6 +89,9 @@ const HEAD_KEY = "#head";
  */
 const HEAD_REF_KEY = "#head-ref";
 const HEAD_FORK_KEY = "#head-fork";
+
+/** Marks, beside the ETags, a subscription already told its token can't read GitHub Actions. */
+const ACTIONS_DENIED_KEY = "#actions-denied";
 
 /** The GitHub Actions app's slug: its check suites are bound to a workflow run as well. */
 const ACTIONS_APP = "github-actions";
@@ -421,14 +427,27 @@ export async function pollGitHubThread(
   // An Actions suite is also bound to the workflow run that made it, whose head repository GitHub names:
   // a fork's workflow can't pass as ours by its branch's name. Unread or unnamed: its runs are dropped.
   const actionsHere = new Set<number>();
-  if (finished.some((run) => isActions(run) && ours.has(suiteOf(run)))) {
-    try {
-      for (const workflow of list(obj((await get(`${repo}/actions/runs?head_sha=${sha}&per_page=100`, true))?.body)?.workflow_runs)) {
+  const pendingActions = finished.filter((run) => isActions(run) && ours.has(suiteOf(run)));
+  /** How far the mark may go: short of an Actions run whose workflow runs couldn't be read for now. */
+  let readThrough = through;
+  if (pendingActions.length > 0) {
+    const read = await readWorkflowRuns(call, ctx, `${repo}/actions/runs?head_sha=${sha}&per_page=100`);
+    if ("runs" in read) {
+      for (const workflow of read.runs) {
         const from = obj(workflow.head_repository)?.full_name;
         if (typeof workflow.check_suite_id === "number" && typeof from === "string" && from.toLowerCase() === fullName.toLowerCase()) actionsHere.add(workflow.check_suite_id);
       }
-    } catch {
-      // Fails closed: the Actions runs on this commit aren't delivered by this poll.
+    } else if (read.unread === "later") {
+      // Fails closed this poll, and holds the mark at the earliest such run with its check runs asked in full again,
+      // so the next poll retries it. Runs already delivered come back as seen versions.
+      readThrough = Math.min(through, ...pendingActions.map((run) => ms(run.completed_at) ?? through));
+      for (const key of Object.keys(etags)) if (key.includes("/check-runs")) delete etags[key];
+    } else {
+      // A token that may not read Actions never will: the mark moves on, and the subscription is told once.
+      if (cursor.etags?.[ACTIONS_DENIED_KEY] === undefined) {
+        console.warn("[workforce] this GitHub token can't read GitHub Actions, so a followed pull request's Actions CI can't be checked or heard", { thread });
+      }
+      etags[ACTIONS_DENIED_KEY] = "1";
     }
   }
   const headRef = "ref" in head ? head.ref : undefined;
@@ -444,5 +463,23 @@ export async function pollGitHubThread(
     });
   }
   // Only this thread's events: a repository-wide object (a check on no pull request) isn't this poll's.
-  return result(events.filter((e) => e.threads.includes(thread.toLowerCase())));
+  const own = events.filter((e) => e.threads.includes(thread.toLowerCase()));
+  return readThrough === through || !moved ? result(own) : { events: own, through: readThrough, etags, ...(incomplete ? { incomplete: true as const } : {}) };
+}
+
+/**
+ * The head commit's Actions workflow runs, or why they weren't read: `later` for an answer worth asking
+ * again (out of requests, `429`, a `5xx`, no answer at all), `denied` for any other refusal.
+ */
+async function readWorkflowRuns(call: GitHubCall, ctx: BlockContext, path: string): Promise<{ runs: Json[] } | { unread: "later" | "denied" }> {
+  let res: Response | undefined;
+  try {
+    res = await call(ctx, path);
+  } catch {
+    return { unread: "later" };
+  }
+  if (res === undefined) return { unread: "later" };
+  if (res.ok) return { runs: list(obj(await res.json())?.workflow_runs) };
+  const limited = res.status === 403 && (res.headers.get("x-ratelimit-remaining") === "0" || res.headers.get("retry-after") !== null);
+  return limited || res.status === 429 || res.status >= 500 ? { unread: "later" } : { unread: "denied" };
 }

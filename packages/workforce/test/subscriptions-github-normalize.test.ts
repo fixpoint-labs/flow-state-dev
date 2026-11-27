@@ -209,6 +209,12 @@ describe("normalizeGitHubEvent", () => {
       expect(threadsOf([prEntry(412, { repo: { id: 99, url: "https://api.github.com/repos/mallory/API", name: "API" } })])).toEqual(["github:acme/api"]);
     });
 
+    // GitHub's check_run payload doesn't document a suite's head repository; when one is sent, it decides.
+    it("drops every entry when the suite names a head repository other than this one", () => {
+      expect(threadsOf([prEntry(412)], { ...SUITE, head_repository: { id: 99, full_name: "mallory/API" } })).toEqual(["github:acme/api"]);
+      expect(threadsOf([prEntry(412)], { ...SUITE, head_repository: { id: 1, full_name: "Acme/API" } })).toEqual(["github:acme/api#412"]);
+    });
+
     it("drops an entry on another branch than the suite's, or when the suite names none", () => {
       expect(threadsOf([prEntry(412, { ref: "elsewhere" })])).toEqual(["github:acme/api"]);
       expect(threadsOf([prEntry(412)], { id: 3, head_branch: null })).toEqual(["github:acme/api"]);
