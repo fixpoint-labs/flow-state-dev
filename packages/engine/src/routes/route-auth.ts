@@ -23,6 +23,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { withRequestOrg } from "../context/principal";
 import {
   isOrgAttributed,
   UnattributedOrgError,
@@ -478,9 +479,14 @@ export async function authorizeManagementRoute(
       break;
     }
     case "request": {
-      const record = await ctx.stores.request.get(effective.requestId);
-      if (record !== undefined) {
-        checked = { request: record };
+      const stored = await ctx.stores.request.get(effective.requestId);
+      if (stored !== undefined) {
+        checked = { request: stored };
+        // BP-030: a record written before organizations were stamped is read
+        // with its session's organization, as every request door reads it
+        // (`withRequestOrg`), so its owner keeps it; one whose session has
+        // none either is still refused below as unattributed.
+        const record = await withRequestOrg(ctx.stores, stored);
         const resolved = ownerFlowOf(ctx, record, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
@@ -509,12 +515,13 @@ export async function authorizeManagementRoute(
         }
         return ALLOWED;
       }
-      const resolved = ownerFlowOf(ctx, active, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
+      const entry = await withRequestOrg(ctx.stores, active);
+      const resolved = ownerFlowOf(ctx, entry, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
-      owner = active.userId;
-      ownerOrgId = active.orgId;
-      sessionId = active.sessionId;
+      owner = entry.userId;
+      ownerOrgId = entry.orgId;
+      sessionId = entry.sessionId;
       break;
     }
     case "flow":

@@ -15,12 +15,12 @@ import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-s
 import { isTraceObservabilityEnabled, warnOnce, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
-import { principalOwns } from "../context/principal";
+import { principalOwns, withRequestOrg } from "../context/principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownerKeyAdmits } from "../resources/owner-private";
@@ -195,11 +195,14 @@ export function unknownRequestStreamResponse(
   return new Response("", { status: 200, headers: SSE_HEADERS });
 }
 
+// BP-030.
 /**
  * Whether the caller may act on `record` through a request-control route
  * (retry, continue, resume, abort). With a principal, the record must be that
  * principal's in the caller's tenant (`principalOwns`: user, organization
- * and tenant, exact, so a record with no organization is no one's). Without one, nothing in the
+ * and tenant, exact). A record written before organizations were stamped
+ * takes its session's organization first (`withRequestOrg`), so its
+ * owner keeps it and nobody else gains it. Without a principal, nothing in the
  * app authenticates, so there is no user to compare and the tenant is the only
  * boundary.
  *
@@ -214,13 +217,14 @@ export function unknownRequestStreamResponse(
  * handler runs, with the same answer. This is the handler's own check, and the
  * only one of the two that compares the tenant.
  */
-export function callerReachesRequest(
-  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
+export async function callerReachesRequest(
+  stores: Pick<StoreRegistry, "session">,
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId" | "sessionId">,
   tenantId: string | undefined,
   principal: ResolvedPrincipal | undefined
-): boolean {
+): Promise<boolean> {
   if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
-  return principalOwns(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
+  return principalOwns(await withRequestOrg(stores, record), { userId: principal.userId, orgId: principal.orgId, tenantId });
 }
 
 /**

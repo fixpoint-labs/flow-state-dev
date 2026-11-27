@@ -38,7 +38,7 @@ export interface Principal extends ResolvedPrincipal {
 }
 
 /** The system principal's user (`ScheduleConfig.principal`): a machine wherever it appears. */
-export const SYSTEM_USER_ID = "system";
+const SYSTEM_USER_ID = "system";
 
 /**
  * The kind a principal assembled without its door's answer reads as: a
