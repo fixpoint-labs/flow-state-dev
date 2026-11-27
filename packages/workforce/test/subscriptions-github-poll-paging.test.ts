@@ -55,12 +55,13 @@ function prApi(): Record<string, unknown> {
   return {
     "/repos/acme/api": { full_name: "acme/api", private: true },
     "/repos/acme/api/issues/412": { number: 412, title: "Rename the handler", pull_request: {}, user: user("alice"), created_at: at(-600), labels: [{ name: "ci" }] },
-    "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc" }, labels: [{ name: "ci" }] },
+    "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc", ref: "rename", repo: { full_name: "acme/api" } }, labels: [{ name: "ci" }] },
     "/repos/acme/api/issues/412/timeline": [],
     "/repos/acme/api/issues/412/comments": [],
     "/repos/acme/api/pulls/412/reviews": [],
     "/repos/acme/api/pulls/412/comments": [],
-    "/repos/acme/api/commits/abc/check-runs": { check_runs: [] }
+    "/repos/acme/api/commits/abc/check-runs": { check_runs: [] },
+    "/repos/acme/api/commits/abc/check-suites": { check_suites: [{ id: 1, head_branch: "rename" }] }
   };
 }
 
@@ -152,7 +153,7 @@ describe("GitHub's poll, quiet and busy", () => {
     const first = await provider.poll!(PR, { since: SINCE }, ctx);
     if ("unchanged" in first) throw new Error("expected a first read");
     api["/repos/acme/api/commits/abc/check-runs"] = {
-      check_runs: [{ id: 5, name: "ci", status: "completed", conclusion: "success", completed_at: at(4), app: { slug: "github-actions" } }]
+      check_runs: [{ id: 5, name: "ci", status: "completed", conclusion: "success", completed_at: at(4), check_suite: { id: 1 }, app: { slug: "github-actions" } }]
     };
     const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
     if ("unchanged" in second) throw new Error("the finished check was hidden by an unchanged pull request");
@@ -230,7 +231,7 @@ describe("GitHub's poll, quiet and busy", () => {
 
   it("reads a head commit's check runs past their first page", async () => {
     const api = prApi();
-    const runs = Array.from({ length: 101 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "completed", conclusion: "success", completed_at: at(1), app: { slug: "github-actions" } }));
+    const runs = Array.from({ length: 101 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "completed", conclusion: "success", completed_at: at(1), check_suite: { id: 1 }, app: { slug: "github-actions" } }));
     api["/repos/acme/api/commits/abc/check-runs"] = runs;
     const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
     const result = await provider.poll!(PR, { since: SINCE }, ctx);
@@ -241,7 +242,7 @@ describe("GitHub's poll, quiet and busy", () => {
   // Check runs change in place (a run on any page completes), unlike the append-only lists.
   it("hears a check run that completed on a middle page while the first page came back 304", async () => {
     const api = prApi();
-    const runs: Array<Record<string, unknown>> = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", app: { slug: "github-actions" } }));
+    const runs: Array<Record<string, unknown>> = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", check_suite: { id: 1 }, app: { slug: "github-actions" } }));
     api["/repos/acme/api/commits/abc/check-runs"] = runs;
     const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
     const first = await provider.poll!(PR, { since: SINCE }, ctx);
@@ -254,7 +255,7 @@ describe("GitHub's poll, quiet and busy", () => {
 
   it("says so when a list that changes in place has more pages than one poll reads", async () => {
     const api = prApi();
-    api["/repos/acme/api/commits/abc/check-runs"] = Array.from({ length: 650 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", app: { slug: "github-actions" } }));
+    api["/repos/acme/api/commits/abc/check-runs"] = Array.from({ length: 650 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", check_suite: { id: 1 }, app: { slug: "github-actions" } }));
     const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
     const result = await provider.poll!(PR, { since: SINCE }, ctx);
     if ("unchanged" in result) throw new Error("expected a read");

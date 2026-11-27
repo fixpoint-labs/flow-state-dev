@@ -23,6 +23,16 @@
  * the head didn't move, and its check runs are still asked every poll, since
  * a finished run doesn't change the pull request.
  *
+ * **Whose checks.** A pull request hears check runs only from its own branch on
+ * this repository. A head on a fork hears none, and isn't asked for them: anyone
+ * can open a fork's pull request at the same commit, and its workflow reports on
+ * that commit here. A run at the head commit is kept only when its suite ran for
+ * the pull request's branch (`check_suite.head_branch`). A check run's own object
+ * names only its suite's id, so the head's suites are read once, in full, on a
+ * poll that found a finished run; a quiet poll costs nothing more. The head's
+ * branch, or the fork mark, is kept beside the ETags, so a `304` on the pull
+ * request still knows it.
+ *
  * **Long lists.** GitHub lists oldest first. A list with more than one page
  * is read from its last page back toward the mark, until a page starts before
  * it, at most {@link MAX_PAGES} pages a list. A walk that stops at the bound
@@ -66,6 +76,13 @@ const MAX_PAGES = 5;
 /** Where the head commit of the pull request is kept between polls, beside the ETags. */
 const HEAD_KEY = "#head";
 
+/**
+ * Where the pull request's head branch is kept between polls when the head is on this repository,
+ * and where a head on a fork (or a deleted one) is marked instead: one of the two, beside the ETags.
+ */
+const HEAD_REF_KEY = "#head-ref";
+const HEAD_FORK_KEY = "#head-fork";
+
 /** Where a list's last page and its count are kept between polls, beside the ETags. */
 const LAST_PREFIX = "#last:";
 
@@ -79,6 +96,20 @@ const validatorKey = (path: string) => path.replace(/&since=[^&]*/, "");
 function lastPageOf(link: string | null): number | undefined {
   const match = link === null ? null : /[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(link);
   return match === null ? undefined : Number(match[1]);
+}
+
+/**
+ * A pull request's head as GitHub answered it: its branch when the head is on `repository`
+ * (`owner/repo`, any case), `{ fork: true }` when it is on another or its repository is gone,
+ * `undefined` when the pull request wasn't read.
+ */
+function headOf(pr: Json | undefined, repository: string): { ref: string } | { fork: true } | undefined {
+  if (pr === undefined) return undefined;
+  const head = obj(pr.head);
+  const from = obj(head?.repo)?.full_name;
+  const ref = head?.ref;
+  if (typeof from !== "string" || from.toLowerCase() !== repository.toLowerCase() || typeof ref !== "string") return { fork: true };
+  return { ref };
 }
 
 /** Poll one GitHub thread since the cursor. */
@@ -317,14 +348,24 @@ export async function pollGitHubThread(
   let pr = isPr ? obj((await get(`${repo}/pulls/${n}`))?.body) : undefined;
   const sha = (typeof obj(pr?.head)?.sha === "string" ? (obj(pr?.head)!.sha as string) : undefined) ?? cursor.etags?.[HEAD_KEY];
   if (isPr && sha !== undefined) etags[HEAD_KEY] = sha;
+  // Whose head it is. A cursor from before this was kept, with the pull request unchanged, reads it in full once.
+  if (isPr && pr === undefined && cursor.etags?.[HEAD_REF_KEY] === undefined && cursor.etags?.[HEAD_FORK_KEY] === undefined) {
+    pr = obj((await get(`${repo}/pulls/${n}`, true))?.body);
+  }
+  const head = headOf(pr, `${owner}/${name}`) ?? (cursor.etags?.[HEAD_REF_KEY] === undefined ? { fork: true as const } : { ref: cursor.etags[HEAD_REF_KEY] });
+  if (isPr) {
+    if ("ref" in head) etags[HEAD_REF_KEY] = head.ref;
+    else etags[HEAD_FORK_KEY] = "1";
+  }
 
   const timeline = await pages(`${repo}/issues/${n}/timeline?per_page=100`, (s) => ms(s.created_at));
   const issueComments = await pages(`${repo}/issues/${n}/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
   const reviews = isPr ? await pages(`${repo}/pulls/${n}/reviews?per_page=100`, (r) => ms(r.submitted_at)) : [];
   const reviewComments = isPr ? await pages(`${repo}/pulls/${n}/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at)) : [];
   // Asked every poll, paged like the rest: a finished run changes neither the issue nor the pull request.
+  // A head on a fork hears no check runs: its workflow is the fork's, and it may share a commit with ours.
   const runs =
-    isPr && sha !== undefined
+    isPr && sha !== undefined && "ref" in head
       ? await pages(`${repo}/commits/${sha}/check-runs?per_page=100`, (r) => ms(r.completed_at) ?? ms(r.started_at), (body) => list(obj(body)?.check_runs), true)
       : [];
 
@@ -357,8 +398,17 @@ export async function pollGitHubThread(
     if (after(ms(review.submitted_at))) push("pull_request_review", { action: "submitted", review, pull_request: subject, repository: repoPayload, sender: review.user });
   }
   for (const comment of reviewComments) push("pull_request_review_comment", { action: "created", comment, pull_request: subject, repository: repoPayload, sender: comment.user });
-  for (const run of runs) {
-    if (run.status === "completed" && after(ms(run.completed_at))) {
+  const finished = runs.filter((run) => run.status === "completed" && after(ms(run.completed_at)));
+  // A check run names only its suite; the suite names the branch it ran for. Asked only when a run finished since the mark.
+  const ours = new Set<number>();
+  if (finished.length > 0 && "ref" in head) {
+    for (const suite of list(obj((await get(`${repo}/commits/${sha}/check-suites?per_page=100`, true))?.body)?.check_suites)) {
+      if (typeof suite.id === "number" && suite.head_branch === head.ref) ours.add(suite.id);
+    }
+  }
+  for (const run of finished) {
+    // A run at this commit from another branch's suite (a fork's pull request at the same commit) isn't this pull request's.
+    if (ours.has(obj(run.check_suite)?.id as number)) {
       push("check_run", { action: "completed", check_run: { ...run, pull_requests: [{ number: Number(n) }] }, repository: repoPayload, sender: obj(run.app) });
     }
   }
