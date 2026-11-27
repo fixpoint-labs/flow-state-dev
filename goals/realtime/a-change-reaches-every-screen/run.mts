@@ -31,17 +31,24 @@
  *         reply, process 2's view shows it within 1 s and reads no clock.
  *   j4  — the app behind `createNextHandler`: no push, and B catches up within
  *         the hooks' poll interval plus 1 s.
+ *   j2-teammates, j2-claude-code-style (FIX-2843) — each lab served twice
+ *         with `fsdev dev --app`, its store line swapped to Postgres, its
+ *         workers on a scripted model (`labs/`); a reply, a running turn, the
+ *         worker's activity and a settled task written on process 1 show on
+ *         process 2's page within 1 s, and idle, the page sends nothing and
+ *         process 2 reads no watched session.
  *
  * Controls (each runs this file again; goal.md → Controls):
  *   GOAL_CONTROL=memory-bus          both processes on the in-memory bus
  *   GOAL_CONTROL=no-request-publish  the bus's write wrapper publishes nothing
+ *   GOAL_CONTROL=never-crosses       the Postgres bus never listens, and says it doesn't cross
  *   GOAL_CONTROL=skip-check          the mint grants every topic
  *   GOAL_CONTROL=main-before         the same app on the parent of FIX-2426's merge
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { connect, createServer } from "node:net";
+import { connect } from "node:net";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, BrowserContext, Page } from "playwright";
@@ -52,33 +59,40 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
+  intentFreeEnv,
   modulePatchEnv,
+  onClosed,
   runGoal,
   sleep,
+  stopProcessGroup,
   type ModulePatch,
   type Tell
 } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { freePort, refuseIfAnswering } from "../../lib/server.mts";
 import { forkPeer, type Peer } from "../../lib/peers.mts";
 import { startPostgres, type RunningPostgres } from "../../lib/postgres.mts";
 import { buildShiftManagerPages, labRoutes, personPage, startShiftManager } from "../../lib/shift-manager.mts";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { COORDINATOR_FLOW, WORKER_ID_STATE_KEY, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_FLOW, WORKER_ID_STATE_KEY, createWorkforceClient, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
+import { codingBoardViewRef } from "@flow-state-dev/harness-manager/browser";
+import { createInboxClient, type InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GOAL_DIR = relative(REPO_ROOT, HERE);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("a-change-reaches-every-screen");
-const KNOWN_SCENES = ["a", "b", "c", "d", "j2", "j3", "j4"];
+const KNOWN_SCENES = ["a", "b", "c", "d", "j2", "j3", "j4", "j2-teammates", "j2-claude-code-style"];
 const SCENES = new Set((process.env.GOAL_SCENES ?? KNOWN_SCENES.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 // A selection that runs nothing would grade PASS on no evidence.
 const unknownScenes = [...SCENES].filter((s) => !KNOWN_SCENES.includes(s));
 if (SCENES.size === 0 || unknownScenes.length > 0) {
   throw new Error(`setup: GOAL_SCENES must name at least one of ${KNOWN_SCENES.join(", ")} (got ${JSON.stringify(process.env.GOAL_SCENES)})`);
 }
-// j4 does not run under main-before (see the run), so j4 alone would grade nothing there.
-if (CONTROL === "main-before" && [...SCENES].every((s) => s === "j4")) {
-  throw new Error("setup: GOAL_SCENES=j4 runs nothing under GOAL_CONTROL=main-before; select another scene");
+// j4 and the labs' scenes do not run under main-before (see the run), so they alone would grade nothing there.
+if (CONTROL === "main-before" && [...SCENES].every((s) => s === "j4" || s.startsWith("j2-"))) {
+  throw new Error(`setup: GOAL_SCENES=${[...SCENES].join(",")} runs nothing under GOAL_CONTROL=main-before; select another scene`);
 }
 const BOUND_MS = 1_000;
 const SAMPLES = 5;
@@ -115,6 +129,14 @@ const PATCHES: Record<string, ModulePatch[]> = {
       module: "packages/engine/src/bus/publish-writes.ts",
       from: String.raw`publishNotices\(bus, identities\.sessionNotices\(`,
       to: "void (identities.sessionNotices("
+    }
+  ],
+  // FIX-2427's `no-listen`, its first hunk only: the bus never listens, and so never says it crosses.
+  "never-crosses": [
+    {
+      module: "packages/store-postgres/src/bus.ts",
+      from: String.raw`#start\(\)(?:: void)? \{`,
+      to: "#start() { return;"
     }
   ],
   // FIX-2428's `skip-check`: the mint grants every session topic, checked or not.
@@ -212,18 +234,6 @@ async function buildPage(checkout: string, out: string): Promise<void> {
     nodePaths: [join(checkout, "packages", "shift-manager", "node_modules")]
   });
   cpSync(join(app, "index.html"), join(out, "index.html"));
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => (typeof address === "object" && address !== null ? resolve(address.port) : reject(new Error("no port"))));
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -905,12 +915,10 @@ async function legB(
       // ~200 ms after its send would read 500–1000 ms (FIX-2841). Front it, and refuse to time a
       // page whose frames still don't run (`document.hasFocus()` says true either way).
       await conversationPage.bringToFront();
-      // A string, so the bundler's helpers don't reach the page. The timeout ends the count where frames stop altogether.
-      const PROBE = "new Promise((done) => { let frames = 0; const t0 = performance.now(); const rate = () => frames / ((performance.now() - t0) / 1000); const tick = () => (++frames, performance.now() - t0 < 300 ? requestAnimationFrame(tick) : done(rate())); requestAnimationFrame(tick); setTimeout(() => done(rate()), 1500); })";
       // One runner pause can stall a single 300 ms probe; a background tab stays slow on every one.
       const rates: number[] = [];
       for (let probe = 0; probe < 3; probe++) {
-        rates.push(await conversationPage.evaluate<number>(PROBE));
+        rates.push(await conversationPage.evaluate<number>(FRAME_PROBE));
         if (rates.at(-1)! >= 20) break;
       }
       if (rates.every((r) => r < 20)) throw new Error(`setup: the lead's conversation draws ${rates.map((r) => r.toFixed(1)).join(", ")} frames a second over ${rates.length} probes, a background tab's rate; its samples would time that, not the line`);
@@ -1130,6 +1138,385 @@ async function journeyJ4(
 }
 
 // ---------------------------------------------------------------------------
+// Journeys j2-teammates and j2-claude-code-style: each lab on two processes
+// ---------------------------------------------------------------------------
+
+/** The lab's one user, on both processes. */
+const LAB_USER = "u_closure";
+/** Where the store swap's `postgresStores` loads from: the goals' own dependency. */
+const STORE_POSTGRES = import.meta.resolve("@flow-state-dev/store-postgres");
+
+/** What a lab page drew, each time it changed, stamped in the page. */
+type LabShown = { at: number; answers: string[]; running: boolean; working: boolean; settled: string[] };
+
+/**
+ * One lab, as its scene serves, opens and reads it. `storeLine` is the host's
+ * store line, swapped as each process loads the host (FIX-2368 D2); `observe`
+ * reports what the page draws: each `answer`/`held <tag>` in the
+ * conversation, whether the conversation draws a turn running, whether the
+ * worker list draws the worker working, and the text of each task the tasks
+ * view draws settled.
+ */
+type Lab = {
+  name: "teammates" | "claude-code-style";
+  pkg: string;
+  config: string;
+  host: string;
+  storeLine: string;
+  env(dir: string, repo: string): Record<string, string>;
+  /** On process 1, as another client: the conversation the scene writes into. */
+  open(fsd: ReturnType<typeof createClient>, repo: string): Promise<string>;
+  /** The page on process 2, on that conversation, with its tasks view showing settled tasks. */
+  show(page: Page, origin: string, session: string): Promise<void>;
+  observe: string;
+};
+
+/** The observer every lab page runs, over the lab's four reads. */
+const labObserver = (reads: { conversation: string; running: string; working: string; settled: string }) => `(() => {
+  const tags = (re, text) => [...text.matchAll(re)].map((m) => m[0]);
+  let last = '';
+  const note = () => {
+    const conversation = document.querySelector(${JSON.stringify(reads.conversation)});
+    const now = {
+      answers: tags(/(answer|held) [A-Za-z0-9]+/g, conversation?.innerText ?? ''),
+      running: (${reads.running})(),
+      working: (${reads.working})(),
+      settled: [...document.querySelectorAll(${JSON.stringify(reads.settled)})].map((el) => el.textContent ?? '')
+    };
+    const key = JSON.stringify(now);
+    if (key === last) return;
+    last = key;
+    window.__goalLab?.({ at: Date.now(), ...now });
+  };
+  new MutationObserver(note).observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+})();`;
+
+const TEAMMATES_LEAD = { id: "teammates.chief-of-staff", name: "Chief of Staff" };
+
+const LABS: Record<string, Lab> = {
+  "j2-teammates": {
+    name: "teammates",
+    pkg: "@flow-state-dev/teammates",
+    config: join(HERE, "labs", "teammates.config.mts"),
+    host: "labs/teammates/host.mts",
+    storeLine: String.raw`sqliteStores\(\{ filename: options\.store \}\)`,
+    env: (dir, repo) => ({ TEAMMATES_STORE: join(dir, "teammates.sqlite"), TEAMMATES_USER: LAB_USER, TEAMMATES_WORKDIR: repo, TEAMMATES_RUNS: join(dir, "runs") }),
+    open: async (fsd) => (await createWorkforceClient(fsd).ensureWorkerSession({ worker: TEAMMATES_LEAD.id })).id,
+    show: async (page, origin) => {
+      await page.goto(origin);
+      await page.locator(`nav[aria-label="Workers"] button[data-worker="${TEAMMATES_LEAD.name}"]`).click();
+      const panel = page.locator(`aside[aria-label="${TEAMMATES_LEAD.name}'s panel"]`);
+      await panel.waitFor({ timeout: 30_000 });
+      // The panel shows one status at a time: settled tasks are under Done.
+      await panel.locator("#tasks-tab-done").click();
+    },
+    observe: labObserver({
+      conversation: 'main[aria-label="Conversation"]',
+      running: `() => document.querySelector('main[aria-label="Conversation"] [data-chat-activity]') !== null`,
+      working: `() => /^Replying/.test(document.querySelector('nav[aria-label="Workers"] button[data-worker="${TEAMMATES_LEAD.name}"] [data-status]')?.textContent ?? '')`,
+      settled: `aside[aria-label="${TEAMMATES_LEAD.name}'s panel"] button[data-task="done"]`
+    })
+  },
+  "j2-claude-code-style": {
+    name: "claude-code-style",
+    pkg: "@flow-state-dev/claude-code-style",
+    config: join(HERE, "labs", "claude-code-style.config.mts"),
+    host: "labs/claude-code-style/host.mts",
+    storeLine: String.raw`sqliteStores\(\{ filename: join\(data, "lab\.db"\) \}\)`,
+    env: (dir, repo) => ({ CLAUDE_CODE_STYLE_DATA: join(dir, "data"), CLAUDE_CODE_STYLE_USER: LAB_USER, CLAUDE_CODE_STYLE_REPOSITORIES: repo }),
+    open: async (fsd, repo) => {
+      const calls = appCalls(fsd);
+      const project = await calls.createProject(`closure ${RUN_STAMP.slice(-6)}`, `file://${repo}`);
+      return (await calls.openSession("session", project.id)).id;
+    },
+    show: async (page, origin, session) => {
+      await page.goto(`${origin}/?session=${encodeURIComponent(session)}`);
+      await page.getByRole("complementary", { name: "Background tasks" }).waitFor({ timeout: 30_000 });
+    },
+    observe: labObserver({
+      conversation: 'main[aria-label="Main thread"]',
+      running: `() => [...document.querySelectorAll('main[aria-label="Main thread"] [role=status]')].some((el) => /working/.test(el.textContent ?? ''))`,
+      working: `() => document.querySelector('nav[aria-label="Sessions"] li button[aria-current="true"] [aria-label="running"]') !== null`,
+      settled: 'aside[aria-label="Background tasks"] [data-task-status="completed"]'
+    })
+  }
+};
+
+/** A scratch git checkout with one commit that ignores `.fsdev/`: the labs' working folder and project. */
+function labRepository(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "README.md"), "# Closure\n");
+  writeFileSync(join(dir, ".gitignore"), "**/.fsdev/\n");
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=goal", "-c", "user.email=goal@example.com", ...args], { cwd: dir });
+  git("init", "-q", "-b", "main");
+  git("add", ".");
+  git("commit", "-q", "-m", "start");
+  return dir;
+}
+
+type ServedLab = { name: string; origin: string; log: () => string; stop(): Promise<void> };
+
+/**
+ * One process of `lab`: `fsdev dev --config <the goal's config> --app <the lab's pages>`, its
+ * own OS process, its statements logged under `goal-<name>`. The host's store line is swapped to
+ * Postgres as the process loads it, beside the control's patches; a host whose line is gone
+ * fails here, before anything starts, and a process Postgres hears nothing from fails once it serves.
+ */
+async function serveLab(lab: Lab, name: string, db: RunningPostgres, dir: string, repo: string): Promise<ServedLab> {
+  const port = await freePort();
+  const origin = `http://127.0.0.1:${port}`;
+  // Another process can take the port between freePort and the bind; its answers would pass the readiness poll below.
+  await refuseIfAnswering(origin);
+  const swap: ModulePatch = {
+    module: lab.host,
+    from: lab.storeLine,
+    to: `(await import(${JSON.stringify(STORE_POSTGRES)})).postgresStores({ connectionString: process.env.FSD_DB_URL })`
+  };
+  // The control's patches still apply: the runner was started with them, and they are handed on with the swap.
+  const control = process.env.GOAL_MODULE_PATCH === undefined ? undefined : (JSON.parse(process.env.GOAL_MODULE_PATCH) as { mark?: string });
+  const mark = control?.mark ?? join(SCRATCH, `swap-mark-${RUN_STAMP}`);
+  const patches = [...(PATCHES[CONTROL] ?? []), swap];
+  let log = "";
+  const child = spawn(join(REPO_ROOT, "node_modules", ".bin", "tsx"), ["packages/fsdev/src/bin.ts", "dev", "--config", lab.config, "--app", lab.pkg, "--port", String(port), "--no-open"], {
+    cwd: REPO_ROOT,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: intentFreeEnv(process.env, {
+      GOAL_CONTROL: "",
+      FSD_DB_URL: withAppName(db.url, `goal-${name}`),
+      ...lab.env(dir, repo),
+      ...modulePatchEnv(patches, REPO_ROOT, mark)
+    })
+  });
+  const keep = (chunk: unknown) => {
+    log += String(chunk);
+    writeFileSync(join(dir, `${name}.log`), log);
+  };
+  child.stdout!.on("data", keep);
+  child.stderr!.on("data", keep);
+  let gone = false;
+  const exited = new Promise<void>((resolve) => onClosed(child, () => ((gone = true), resolve())));
+  const stop = async () => {
+    stopProcessGroup(child);
+    await exited;
+  };
+  for (const until = Date.now() + 120_000; Date.now() < until && !gone; await delay(500)) {
+    if (!/Data:/.test(log)) continue;
+    if ((await fetch(origin).then((r) => r.status, () => 0)) !== 200) continue;
+    // The swap took: this process talks to Postgres under its own name (the SQLite store would log nothing there).
+    if (db.log !== undefined && !statements(db.log).some((s) => s.app === `goal-${name}`)) {
+      await stop();
+      throw new Error(`setup: ${name} serves, but Postgres logged nothing from it: its store is not the swapped one`);
+    }
+    return { name, origin, log: () => log, stop };
+  }
+  await stop();
+  throw new Error(`setup: ${name} never served on ${origin}. Log tail:\n${log.slice(-2000)}`);
+}
+
+/**
+ * The page's frame rate over 300 ms, as j2 and the lab scenes probe it: a background tab runs a frame or two a second.
+ * A string, so the bundler's helpers don't reach the page. The timeout ends the count where frames stop altogether.
+ */
+const FRAME_PROBE = "new Promise((done) => { let frames = 0; const t0 = performance.now(); const rate = () => frames / ((performance.now() - t0) / 1000); const tick = () => (++frames, performance.now() - t0 < 300 ? requestAnimationFrame(tick) : done(rate())); requestAnimationFrame(tick); setTimeout(() => done(rate()), 1500); })";
+
+/** When the store first holds `query`'s single `status` at one of `statuses`, polled every 5 ms on the runner's own connection. */
+async function storeSaid(db: RunningPostgres, query: string, params: unknown[], statuses: string[], withinMs: number): Promise<number | undefined> {
+  for (const deadline = Date.now() + withinMs; Date.now() < deadline; await delay(5)) {
+    const found = await db.query<{ status: string }>(query, params);
+    if (found.some((r) => statuses.includes(r.status))) return Date.now();
+  }
+  return undefined;
+}
+
+/** When `shown` first held a drawing `match` accepts at or after `since`, waiting up to `withinMs`. */
+async function labShownAt(shown: LabShown[], since: number, match: (drawn: LabShown) => boolean, withinMs: number): Promise<number | undefined> {
+  for (const deadline = Date.now() + withinMs; ; await delay(5)) {
+    const hit = shown.find((drawn) => drawn.at >= since && match(drawn));
+    if (hit !== undefined) return hit.at;
+    if (Date.now() > deadline) return undefined;
+  }
+}
+
+const isWrite = (s: Statement) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(s.text) || /^\s*WITH\b[\s\S]*\b(INSERT|UPDATE|DELETE)\b/i.test(s.text);
+
+async function journeyLab(
+  scene: string,
+  { failures, tell, evidence }: Legs,
+  env: { db: RunningPostgres; browser: Browser }
+): Promise<void> {
+  const note = noting(evidence);
+  const lab = LABS[scene]!;
+  const { db, browser } = env;
+  const dir = join(SCRATCH, `${scene}-${CONTROL || "main"}-${RUN_STAMP}`);
+  mkdirSync(dir, { recursive: true });
+  const repo = labRepository(join(dir, "repo"));
+  const sceneFrom = Date.now();
+  const p1Name = `${scene}-p1`;
+  const p2Name = `${scene}-p2`;
+  // Process 1 first: it makes the schema; process 2 then starts on it.
+  const started: ServedLab[] = [];
+  let context: BrowserContext | undefined;
+  try {
+    started.push(await serveLab(lab, p1Name, db, join(dir, "p1"), repo));
+    started.push(await serveLab(lab, p2Name, db, join(dir, "p2"), repo));
+    const [p1, p2] = started as [ServedLab, ServedLab];
+    // Another client, on process 1: it opens the conversation and sends every line.
+    const fsd = createClient({ userId: LAB_USER, baseUrl: p1.origin });
+    const workforce = createWorkforceClient(fsd);
+    const inbox = createInboxClient(fsd);
+    const session = await lab.open(fsd, repo);
+
+    context = await browser.newContext();
+    const page = await context.newPage();
+    const screen = await watchPage(page, `${scene} on p2`, lab.observe);
+    const drawings: LabShown[] = [];
+    await page.exposeFunction("__goalLab", (drawn: LabShown) => void drawings.push(drawn));
+    await lab.show(page, p2.origin, session);
+    await page.bringToFront();
+    const rates: number[] = [];
+    for (let probe = 0; probe < 3; probe++) {
+      rates.push(await page.evaluate<number>(FRAME_PROBE));
+      if (rates.at(-1)! >= 20) break;
+    }
+    if (rates.every((r) => r < 20)) throw new Error(`setup: ${scene}'s page draws ${rates.map((r) => r.toFixed(1)).join(", ")} frames a second, a background tab's rate`);
+    note(`${scene}: page on p2 at ${rates.at(-1)!.toFixed(0)} frames a second`);
+
+    // :no-poll and :no-timed-read · the idle window, from the first `crosses: true` (or, under
+    // never-crosses, `crosses: false`) once the opening reads have gone quiet. Nothing has run.
+    const crossing = (value: boolean) => screen.frames.find((f) => f.frame.type === "crossing" && f.frame.crosses === value)?.at;
+    const said = await until(() => crossing(true) !== undefined || (CONTROL === "never-crosses" && crossing(false) !== undefined), 15_000);
+    tell.over(`${scene}:no-poll · the page's crossing frames`, screen.frames.filter((f) => f.frame.type === "crossing"));
+    // Under never-crosses the control fails only on what its window counts: a missing frame shows nothing.
+    if (!said && CONTROL === "never-crosses") throw new Error(`setup: ${scene}: the page's socket never said crosses: false within 15 s, so never-crosses' window has no start`);
+    if (!said) failures.push(`${scene}:no-poll: the page's socket never said crosses: true within 15 s`);
+    await quiet([screen], 1_000, 15_000);
+    const from = Date.now();
+    await delay(IDLE_MS);
+    const to = Date.now();
+    const idleSent = tell.over(`${scene}:no-poll · the page's requests over the idle window`, screen.sent.filter((s) => s.at >= from && s.at < to), { emptyIs: "the claim: 0 requests" });
+    tell.over(`${scene}:no-poll · the page's requests before the window (it was reading)`, screen.sent.filter((s) => s.at < from));
+    if (idleSent.length > 0) failures.push(`${scene}:no-poll: the page sent ${idleSent.length} requests in ${IDLE_MS / 1000} s with nothing written (${idleSent.slice(0, 3).map((s) => `${s.method} ${new URL(s.url).pathname}`).join(", ")})`);
+    // A watched session: one the page named in a request it sent.
+    const sessionIds = (await db.query<{ id: string }>("SELECT id FROM sessions")).map((r) => r.id);
+    const watched = sessionIds.filter((id) => screen.sent.some((s) => s.url.includes(id)) || id === session);
+    tell.over(`${scene}:no-timed-read · the sessions the page watches`, watched);
+    let named: Statement[] = [];
+    if (db.log === undefined) tell.over(`${scene}:no-timed-read · p2's statements (FSD_DB_URL: no server log to read)`, []);
+    else {
+      tell.over(`${scene}:no-timed-read · p2's logged statements (the log reads p2)`, statements(db.log).filter((s) => s.app === `goal-${p2Name}`));
+      const p2Idle = statements(db.log).filter((s) => s.app === `goal-${p2Name}` && s.at >= from && s.at < to && !isBusTraffic(s));
+      named = tell.over(`${scene}:no-timed-read · p2 statements naming a watched session, idle`, p2Idle.filter((s) => watched.some((id) => s.text.includes(id) || s.params.includes(id))), { emptyIs: "the claim: no timed read" });
+      if (named.length > 0) failures.push(`${scene}:no-timed-read: process 2 sent ${named.length} statements naming a watched session over ${IDLE_MS / 1000} s idle (${named[0]!.text.slice(0, 100)})`);
+    }
+    note(`${scene}: idle ${IDLE_MS / 1000} s, the page sent ${idleSent.length} requests, p2 logged ${named.length} statements naming ${watched.length} watched sessions`);
+
+    // The samples: every line sent on process 1, 1.5 s apart (past the session stream's interval).
+    const stamp = RUN_STAMP.replace(/[^A-Za-z0-9]/g, "").slice(-6);
+    // Unique to this run and this scene: both labs' scenes share the one Postgres.
+    const tagOf = (kind: string, i: number) => `${kind.toLowerCase()}${lab.name === "teammates" ? "t" : "c"}${stamp}x${i}`;
+    const lat = { message: [] as number[], running: [] as number[], ended: [] as number[], activity: [] as number[], task: [] as number[] };
+    const written: Array<{ assertion: string; needles: string[] }> = [];
+    let reviewed = 0;
+    const requestOf = "SELECT r.status FROM requests r WHERE r.id = $1";
+    const missed = (assertion: string, what: string) => failures.push(`${scene}:${assertion}: ${what} never drawn within ${SAMPLE_WAIT_MS / 1000} s`);
+
+    for (let i = 1; i <= SAMPLES; i++) {
+      const tag = tagOf("SAY", i);
+      const sent = Date.now();
+      const { requestId } = await workforce.send(session, `SAY-${tag}`);
+      const shown = await labShownAt(drawings, sent, (r) => r.answers.includes(`answer ${tag}`), SAMPLE_WAIT_MS);
+      if (shown === undefined) missed("message", `answer ${tag}`);
+      else lat.message.push(shown - sent);
+      written.push({ assertion: "message", needles: [`answer ${tag}`, requestId] });
+      await delay(STREAM_INTERVAL_MS + 500);
+    }
+    for (let i = 1; i <= SAMPLES; i++) {
+      const tag = tagOf("HOLD", i);
+      const sent = Date.now();
+      const { requestId } = await workforce.send(session, `HOLD-${tag}`);
+      const running = await storeSaid(db, requestOf, [requestId], ["in_progress"], SAMPLE_WAIT_MS);
+      if (running === undefined) throw new Error(`setup: ${scene}: the turn for HOLD-${tag} never ran in the store`);
+      const drawnRunning = await labShownAt(drawings, sent, (r) => r.running, SAMPLE_WAIT_MS);
+      const drawnWorking = await labShownAt(drawings, sent, (r) => r.working, SAMPLE_WAIT_MS);
+      const ended = await storeSaid(db, requestOf, [requestId], ["completed", "failed", "aborted"], 30_000);
+      if (ended === undefined) throw new Error(`setup: ${scene}: the turn for HOLD-${tag} never ended in the store`);
+      const drawnEnded = await labShownAt(drawings, Math.max(ended - 50, drawnRunning ?? sent), (r) => !r.running && r.answers.includes(`held ${tag}`), SAMPLE_WAIT_MS);
+      if (drawnRunning === undefined) missed("turn", `HOLD-${tag}'s turn running`);
+      else lat.running.push(drawnRunning - running);
+      if (drawnEnded === undefined) missed("turn", `HOLD-${tag}'s turn ended`);
+      else lat.ended.push(drawnEnded - ended);
+      if (drawnWorking === undefined) missed("activity", `the worker working on HOLD-${tag}`);
+      else lat.activity.push(drawnWorking - running);
+      written.push({ assertion: "turn", needles: [requestId] }, { assertion: "activity", needles: [requestId] });
+      await delay(STREAM_INTERVAL_MS + 500);
+    }
+    for (let i = 1; i <= SAMPLES; i++) {
+      const tag = tagOf("FILE", i);
+      const sent = Date.now();
+      await workforce.send(session, `FILE-${tag}`);
+      // A run that committed waits for your review where the lab reviews (Teammates): the other client
+      // on process 1 accepts it, as a person does from the task's popup. The store is read every 5 ms.
+      const taskQuery = "SELECT state->>'status' AS status FROM resource_state WHERE resource_key LIKE 'tasks/%' AND state->>'title' = $1";
+      let settled: number | undefined;
+      let accepted = false;
+      for (let n = 0, deadline = Date.now() + 60_000; settled === undefined && Date.now() < deadline; n++, await delay(5)) {
+        if ((await db.query<{ status: string }>(taskQuery, [`Task ${tag}`])).some((r) => ["completed", "failed", "cancelled"].includes(r.status))) settled = Date.now();
+        else if (!accepted && n % 40 === 0) {
+          const board = (await fsd.view(codingBoardViewRef(), { sessionId: session })).value as Array<{ title: string; asks: InboxHold[] }>;
+          const review = board.find((t) => t.title === `Task ${tag}`)?.asks.find((hold) => hold.ask.kind === "review");
+          if (review !== undefined) {
+            await inbox.answerOne(review, { value: { verdict: "accepted" } });
+            accepted = true;
+          }
+        }
+      }
+      if (settled === undefined) throw new Error(`setup: ${scene}: "Task ${tag}" never settled in the store within 60 s`);
+      const [task] = await db.query<{ status: string; id: string }>("SELECT state->>'status' AS status, state->>'id' AS id FROM resource_state WHERE resource_key LIKE 'tasks/%' AND state->>'title' = $1", [`Task ${tag}`]);
+      if (task?.status !== "completed") throw new Error(`setup: ${scene}: "Task ${tag}" settled ${task?.status}, not completed`);
+      const drawn = await labShownAt(drawings, sent, (r) => r.settled.some((text) => text.includes(`Task ${tag}`)), SAMPLE_WAIT_MS);
+      if (drawn === undefined) {
+        missed("task", `"Task ${tag}" settled`);
+        await page.screenshot({ path: join(dir, `task-${i}.png`) }).catch(() => {});
+      }
+      else lat.task.push(drawn - settled);
+      written.push({ assertion: "task", needles: [task.id] });
+      if (accepted) reviewed += 1;
+      await delay(STREAM_INTERVAL_MS + 500);
+    }
+
+    // Every graded change was written by process 1: each write naming a sample's answer, request or task.
+    if (db.log === undefined) tell.over(`${scene} · writes by process (FSD_DB_URL: no server log to read)`, []);
+    else {
+      const writes = statements(db.log).filter((x) => x.at >= sceneFrom && isWrite(x));
+      for (const { assertion, needles } of written) {
+        const mine = writes.filter((s) => needles.some((n) => s.text.includes(n) || s.params.includes(n)));
+        const by = new Set(mine.map((s) => s.app));
+        if (mine.length === 0) failures.push(`setup: ${scene}:${assertion}: no logged write names ${needles.join(" or ")}, so who wrote it can't be read`);
+        else if ([...by].some((app) => app !== `goal-${p1Name}`)) failures.push(`setup: ${scene}:${assertion}: a sample naming ${needles.join(" or ")} was written by ${[...by].join(", ")}, not process 1 alone`);
+      }
+      const p2Writes = writes.filter((s) => s.app === `goal-${p2Name}` && s.at >= from);
+      note(`${scene}: every graded change written by p1 (${written.length} checked); p2 wrote ${p2Writes.length} statements of its own after the page opened`);
+    }
+
+    const grade = (assertion: string, what: string, list: number[], expected: number) => {
+      const read = tell.over(`${scene}:${assertion} · ${what} samples`, list);
+      if (read.length === expected && read.some((ms) => ms >= BOUND_MS)) failures.push(`${scene}:${assertion}: ${what} drawn ${read.join(", ")} ms after the change (bound ${BOUND_MS})`);
+      note(`${scene}:${assertion} ${what} ${read.join("/")} ms`);
+    };
+    grade("message", "answer after sent", lat.message, SAMPLES);
+    grade("turn", "running after the store", lat.running, SAMPLES);
+    grade("turn", "ended after the store", lat.ended, SAMPLES);
+    grade("activity", "working after the store", lat.activity, SAMPLES);
+    grade("task", "settled after the store", lat.task, SAMPLES);
+    note(`${scene}: ${reviewed} of ${SAMPLES} tasks waited for a review, accepted from process 1`);
+  } finally {
+    await context?.close().catch(() => {});
+    for (const served of started.reverse()) await served.stop();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
 
@@ -1157,6 +1544,14 @@ await runGoal(async (failures, tell) => {
     else if (SCENES.has("j4")) await journeyJ4({ failures, tell, evidence }, { db, browser, pages });
     if (SCENES.has("j3")) await journeyJ3({ failures, tell, evidence }, { tree: checkout, db, browser, pages });
     if (SCENES.has("b") || SCENES.has("j2")) await legB({ failures, tell, evidence }, { tree: checkout, db, browser, label: CONTROL || "main" });
+    // The labs' hosts on the main-before commit predate the options these scenes serve them with.
+    for (const scene of Object.keys(LABS).filter((s) => SCENES.has(s))) {
+      if (CONTROL === "main-before") evidence.push(`${scene}: not run under main-before (its lab predates the options it serves it with)`);
+      else {
+        execFileSync("pnpm", ["--filter", LABS[scene]!.pkg, "build"], { cwd: REPO_ROOT, stdio: "ignore" });
+        await journeyLab(scene, { failures, tell, evidence }, { db, browser });
+      }
+    }
   } finally {
     await browser?.close();
     await db.stop();
