@@ -22,7 +22,7 @@ import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIco
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
 import { LandFailure, landLabel, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
-import { RunChanges } from "./flow-state/run-changes";
+import { RunChanges, type RunChangesPatch } from "./flow-state/run-changes";
 import { runCheckPassed } from "./flow-state/run-checks";
 
 /** How a check line ended, as the review draws it. `reported` is a run's line that didn't say. */
@@ -349,8 +349,20 @@ export function RunAnswer({ answer, report: asReport }: { answer: string; report
  * The review's body: verdict, What changed, Checks, Worth knowing, Files and
  * the original request. `onDraft` puts words in the compose box; `onFollowUp`
  * asks the task's filer to follow up on a note. Either absent: no button.
+ * `loadPatch` reads one changed file's diff, so a file in Files opens to it;
+ * absent, the files list their lines and don't open.
  */
-export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDetail; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
+export function ReviewBody({
+  review,
+  onDraft,
+  onFollowUp,
+  loadPatch,
+}: {
+  review: ReviewDetail;
+  onDraft?: (text: string) => void;
+  onFollowUp?: (note: string) => void;
+  loadPatch?: (path: string) => Promise<RunChangesPatch>;
+}) {
   // Parsed once per answer, not on each keystroke in the compose box.
   const report = useMemo(() => wholeReport(review.answer), [review.answer]);
   const lines = checkLines(review, report);
@@ -377,6 +389,7 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
               {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
               {...(review.added != null ? { added: review.added } : {})}
               {...(review.removed != null ? { removed: review.removed } : {})}
+              {...(loadPatch ? { loadPatch } : {})}
               className="rounded-lg border-border bg-card [&>button]:px-3.5 [&>button]:py-2.5"
             />
           </Section>

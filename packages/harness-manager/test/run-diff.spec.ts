@@ -8,11 +8,11 @@
  * one that missed a file would hide one that is about to land.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { MAX_DIFF_FILES, MAX_PATCH_CHARS, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
+import { MAX_DIFF_FILES, MAX_PATCH_CHARS, RunFileNotChanged, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -90,7 +90,7 @@ describe("readRunDiff", () => {
     const diff = await readRunDiff(dir, "main", base);
     expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
     expect(diff.verified).toBe(true);
-    expect((await readRunFilePatch(dir, "main", base, "z.txt")).patch).toBe("");
+    await expect(readRunFilePatch(dir, "main", base, "z.txt")).rejects.toBeInstanceOf(RunFileNotChanged);
   });
 
   it("ignores a tip that doesn't descend from the cut, and reads against the cut as before", async () => {
@@ -148,7 +148,18 @@ describe("readRunFilePatch", () => {
   it("reads the path literally, so a glob names no other file", async () => {
     const { dir, cut } = repo();
     commitFiles(dir, "change", { "a.txt": "changed\n", "b.txt": "new\n" });
-    expect((await readRunFilePatch(dir, "main", cut, "*.txt")).patch).toBe("");
+    await expect(readRunFilePatch(dir, "main", cut, "*.txt")).rejects.toBeInstanceOf(RunFileNotChanged);
+  });
+
+  it("refuses a path the run didn't change: a file it never touched, a folder, or one outside the checkout", async () => {
+    // Only the change's own files open: a reviewer's screen can't be turned into a reader of the repository.
+    const { dir, cut } = repo();
+    mkdirSync(join(dir, "src"));
+    commitFiles(dir, "change", { "src/a.txt": "changed\n" });
+    for (const path of ["a.txt", "src", "../outside.txt", "/etc/hosts"]) {
+      await expect(readRunFilePatch(dir, "main", cut, path), path).rejects.toBeInstanceOf(RunFileNotChanged);
+    }
+    expect((await readRunFilePatch(dir, "main", cut, "src/a.txt")).patch).toContain("+changed");
   });
 
   it("answers the run's own patch after it planted a replace ref that swaps its HEAD for a harmless one", async () => {
@@ -177,6 +188,8 @@ describe("readRunFilePatch", () => {
     const read = await readRunFilePatch(dir, "main", cut, "big.txt");
     expect(read.truncated).toBe(true);
     expect(read.patch.length).toBe(MAX_PATCH_CHARS);
+    // The whole patch's length, counted past the cut, so the screen can say how much it isn't showing.
+    expect(read.lines).toBe(1_006);
   });
 
   it("answers no patch for a base the checkout doesn't have, and says it couldn't tell", async () => {
@@ -185,6 +198,7 @@ describe("readRunFilePatch", () => {
       path: "a.txt",
       patch: "",
       truncated: false,
+      lines: 0,
       verified: false,
     });
   });

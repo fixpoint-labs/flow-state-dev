@@ -202,8 +202,22 @@ export interface RunFilePatch {
   patch: string;
   /** The patch was longer than {@link MAX_PATCH_CHARS} and was cut. */
   truncated: boolean;
+  /** Lines in the whole patch, counted past the cut: what a screen says it isn't showing. */
+  lines: number;
   /** As {@link RunDiff.verified}. */
   verified: boolean;
+}
+
+/**
+ * A patch read named a path the run's commits didn't change: a file it never
+ * touched, a folder, a glob, or anything outside the checkout. Refused rather
+ * than read, so a changes read opens only the change's own files.
+ */
+export class RunFileNotChanged extends Error {
+  constructor(readonly path: string) {
+    super(`"${path}" isn't a file this run changed, so its patch isn't read.`);
+    this.name = "RunFileNotChanged";
+  }
 }
 
 /** Where a diff read ends. Default `"HEAD"`: the checkout's branch now. */
@@ -233,6 +247,7 @@ export const runFilePatchSchema = z.object({
   path: z.string(),
   patch: z.string(),
   truncated: z.boolean(),
+  lines: z.number().int().nonnegative(),
   verified: z.boolean(),
 });
 
@@ -319,9 +334,10 @@ export async function readRunDiff(
 
 /**
  * One file's patch, as the run's commits changed it, cut at
- * {@link MAX_PATCH_CHARS}. The path is read literally (no glob), and only in
- * the run's own diff, so it can name nothing outside the repository. The base
- * is found as {@link readRunCommits} finds it.
+ * {@link MAX_PATCH_CHARS}. Only a file in the run's own diff is read: any
+ * other path (unchanged, a folder, a glob, outside the repository) throws
+ * {@link RunFileNotChanged}. The path is matched literally. The base is found
+ * as {@link readRunCommits} finds it.
  */
 export async function readRunFilePatch(
   cwd: string,
@@ -330,24 +346,32 @@ export async function readRunFilePatch(
   path: string,
   options: RunDiffOptions = {},
 ): Promise<RunFilePatch> {
-  const unverified: RunFilePatch = { path, patch: "", truncated: false, verified: false };
+  const unverified: RunFilePatch = { path, patch: "", truncated: false, lines: 0, verified: false };
   const head = options.head ?? "HEAD";
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return unverified;
+  let changed: boolean;
+  let read: RunFilePatch;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
+    // The run's own file list, exactly as the diff read lists it: the path must be one of them.
+    changed = (await git(cwd, ["diff", "--name-only", "--no-renames", "-z", start, head])).split("\0").includes(path);
     let patch = "";
     let truncated = false;
-    // Line by line, so a huge patch is never held whole: past the cut, lines are dropped.
-    await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], (line) => {
-      if (truncated) return;
-      const next = patch === "" ? line : `${patch}\n${line}`;
-      if (next.length > MAX_PATCH_CHARS) {
-        truncated = true;
-        patch = next.slice(0, MAX_PATCH_CHARS);
-      } else patch = next;
-    });
-    return { path, patch, truncated, verified: true };
+    let lines = 0;
+    if (changed) {
+      // Line by line, so a huge patch is never held whole: past the cut, lines are only counted.
+      await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], (line) => {
+        lines++;
+        if (truncated) return;
+        const next = patch === "" ? line : `${patch}\n${line}`;
+        if (next.length > MAX_PATCH_CHARS) {
+          truncated = true;
+          patch = next.slice(0, MAX_PATCH_CHARS);
+        } else patch = next;
+      });
+    }
+    read = { path, patch, truncated, lines, verified: true };
   } catch (error) {
     console.warn(
       `[harness-manager] could not read the run's patch of ${path} against ${bases.join(" and ")} in ${cwd} ` +
@@ -355,4 +379,6 @@ export async function readRunFilePatch(
     );
     return unverified;
   }
+  if (!changed) throw new RunFileNotChanged(path);
+  return read;
 }

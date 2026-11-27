@@ -39,6 +39,7 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
   harnessRunChangesView,
+  RunFileNotChanged,
   HarnessRunChangesRefused,
   harnessTaskInputSchema,
   runOwnerClaimOrder,
@@ -475,6 +476,8 @@ describe("a coding run that made changes waits for a person's review", () => {
       const opened = await h.readChanges({ path: "change-1.txt" });
       expect(opened.body.output).toMatchObject({ diff: null, patch: { path: "change-1.txt", truncated: false, verified: true } });
       expect(opened.body.output.patch.patch).toContain("+change 1");
+      // Only a file the run changed opens: any other path is refused, never read.
+      expect(await h.readChanges({ path: "README.md" })).toMatchObject({ status: 422, body: { message: new RunFileNotChanged("README.md").message } });
     } finally {
       await h.dispose();
     }

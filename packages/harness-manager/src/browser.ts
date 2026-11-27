@@ -23,9 +23,10 @@ export {
 } from "./recorded-work";
 export { CODER_FLOW } from "./coder-flow-name";
 export { harnessReadinessViewRef } from "./readiness-view-ref";
-export { codingBoardViewRef, recordedWorkViewRef } from "./coding-board-ref";
+export { codingBoardViewRef, recordedWorkViewRef, runChangesViewRef } from "./coding-board-ref";
 export type { CodingBoardTask, CodingBoardView } from "./kit/coding-board";
 export type { RecordedWorkView } from "./recorded-work-view";
+export type { HarnessRunChangesView } from "./run-changes";
 export { landedOf, type LandedWork } from "./landed-work";
 export { harnessUsageViewRef, recheckHarnessUsage } from "./usage-view-ref";
 export { reviewDetail, type ReviewCheck, type ReviewDetail, type ReviewFile, type ReviewLand, type ReviewPullRequest } from "./review-detail";

@@ -54,24 +54,67 @@ describe("a run's changes", () => {
     expect(loadPatch).toHaveBeenCalledTimes(1);
   });
 
-  it("says when a patch was cut, and when it couldn't be read", async () => {
+  it("opens and closes a file's diff under its row, with several files open at once", async () => {
+    const loadPatch = vi.fn(async (path: string) => ({ patch: `@@ -1 +1 @@\n+in ${path}`, truncated: false }));
+    render(<RunChanges files={[files[0]!, { path: "src/b.ts", added: 1, removed: 0 }]} loadPatch={loadPatch} defaultOpen />);
+    const a = screen.getByRole("button", { name: /src\/a\.ts/ });
+    const b = screen.getByRole("button", { name: /src\/b\.ts/ });
+    expect(a.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(a);
+    fireEvent.click(b);
+    expect(a.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByText("+in src/a.ts")).toBeTruthy();
+    expect(await screen.findByText("+in src/b.ts")).toBeTruthy();
+    fireEvent.click(a);
+    expect(a.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("+in src/a.ts")).toBeNull();
+    expect(screen.getByText("+in src/b.ts")).toBeTruthy();
+  });
+
+  it("tints added and removed lines and hunk headers, and leaves out git's file header", async () => {
+    const patch = ["diff --git a/src/a.ts b/src/a.ts", "index 1..2 100644", "--- a/src/a.ts", "+++ b/src/a.ts", "@@ -1,2 +1,2 @@", " same", "-old", "+new"].join("\n");
+    render(<RunChanges files={files} loadPatch={async () => ({ patch, truncated: false })} defaultOpen />);
+    fireEvent.click(screen.getByRole("button", { name: /src\/a\.ts/ }));
+    expect((await screen.findByText("+new")).getAttribute("class")).toContain("bg-success/10");
+    expect(screen.getByText("-old").getAttribute("class")).toContain("bg-destructive/10");
+    expect(screen.getByText("@@ -1,2 +1,2 @@").getAttribute("class")).toContain("text-muted-foreground");
+    expect(screen.queryByText("+++ b/src/a.ts")).toBeNull();
+    expect(screen.queryByText("index 1..2 100644")).toBeNull();
+  });
+
+  it("says a binary, deleted or renamed file in one line instead of drawing its patch", async () => {
+    const patches: Record<string, string> = {
+      "logo.png": "diff --git a/logo.png b/logo.png\nnew file mode 100644\nindex 0..1\nBinary files /dev/null and b/logo.png differ",
+      "src/a.ts": "diff --git a/src/a.ts b/src/a.ts\ndeleted file mode 100644\nindex 1..0\n--- a/src/a.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone",
+      "src/c.ts": "diff --git a/src/old.ts b/src/c.ts\nsimilarity index 100%\nrename from src/old.ts\nrename to src/c.ts",
+    };
+    render(<RunChanges files={[...files, { path: "src/c.ts", added: 0, removed: 0 }]} loadPatch={async (path) => ({ patch: patches[path]!, truncated: false })} defaultOpen />);
+    for (const name of [/logo\.png/, /src\/a\.ts/, /src\/c\.ts/]) fireEvent.click(screen.getByRole("button", { name }));
+    expect(await screen.findByText("Binary file: no lines to show.")).toBeTruthy();
+    expect(await screen.findByText("File deleted.")).toBeTruthy();
+    expect(screen.queryByText("-gone")).toBeNull();
+    expect(await screen.findByText("Renamed from src/old.ts.")).toBeTruthy();
+  });
+
+  it("says when a patch was cut and how long the whole one is, and when it couldn't be read", async () => {
     const loadPatch = vi.fn(async (path: string) => {
       if (path === "logo.png") throw new Error("no checkout");
-      return { patch: "+x", truncated: true };
+      return { patch: "@@ -0,0 +1,5000 @@\n+x", truncated: true, lines: 5006 };
     });
     render(<RunChanges files={files} loadPatch={loadPatch} defaultOpen />);
     fireEvent.click(screen.getByRole("button", { name: /src\/a\.ts/ }));
-    expect(await screen.findByText(/The patch is cut here/)).toBeTruthy();
+    expect(await screen.findByText("Diff too large, 5,006 lines: showing the start.")).toBeTruthy();
+    expect(screen.getByText("The diff is cut here.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /logo\.png/ }));
     expect(await screen.findByText(/couldn't be read: no checkout/)).toBeTruthy();
   });
 
-  it("says an unread patch couldn't be read instead of showing no changes, and reads it again on reopen", async () => {
+  it("says the diff is no longer available instead of showing no changes, and reads it again on reopen", async () => {
     const loadPatch = vi.fn(async () => ({ patch: "", truncated: false, verified: false }));
     render(<RunChanges files={files} loadPatch={loadPatch} defaultOpen />);
     const row = screen.getByRole("button", { name: /src\/a\.ts/ });
     fireEvent.click(row);
-    expect(await screen.findByText(/couldn't be read: git couldn't read it/)).toBeTruthy();
+    expect(await screen.findByText("Diff no longer available.")).toBeTruthy();
     expect(screen.queryByText("No changes to show.")).toBeNull();
     fireEvent.click(row);
     fireEvent.click(row);

@@ -13,6 +13,7 @@ import {
   useTaskWork,
 } from "../app";
 import { harnessName } from "../lib/harness";
+import { runPatchReader } from "../lib/run-patch";
 import { settingOf, takesTasks } from "../lib/roster";
 import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
 import { useNow } from "../lib/use-watch";
@@ -193,6 +194,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     if (missing) onMissing?.();
   }, [missing, onMissing]);
   const work = useTaskWork(task);
+  const { client } = useAppClient();
+  // A changed file's diff, read when the review's Files list opens it; one reader per run.
+  const loadPatch = useMemo(() => runPatchReader(client, task), [client, task?.id, task?.run?.sessionId, task?.runFlow]);
   const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
@@ -385,7 +389,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       {task && review ? (
         <>
           <ReviewLead key={hold?.id}>
-            <ReviewBody review={review} onDraft={setWords} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
+            <ReviewBody review={review} onDraft={setWords} {...(loadPatch ? { loadPatch } : {})} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
           </ReviewLead>
           <Fold data-run-steps label="How it got there">
             <div className="flex flex-col gap-3">{feed}</div>

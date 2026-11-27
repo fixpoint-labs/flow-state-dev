@@ -63,7 +63,8 @@ export class HarnessRunChangesRefused extends Error {
  * Input `{ taskId?, path? }`. Without `path` it answers `{ diff }`: each file
  * the run's commits changed and its lines, the totals, and `verified: false`
  * when git couldn't read them. With `path` it answers `{ patch }`: that file's
- * unified diff, cut at `MAX_PATCH_CHARS`. A run of kept files alone has no
+ * unified diff, cut at `MAX_PATCH_CHARS`, with its whole length in `lines`;
+ * a path the run didn't change fails with `RunFileNotChanged`. A run of kept files alone has no
  * branch, and answers a verified empty diff.
  */
 export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
@@ -94,7 +95,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
         const verified = record?.filesOnly === true;
         return input.path === undefined
           ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified }, patch: null }
-          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified } };
+          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, lines: 0, verified } };
       }
       // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
       const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);
@@ -104,3 +105,6 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
   });
   return defineView({ scope: "session", block, description: "What this session's coding run changed: its files and lines, or one file's patch." });
 }
+
+/** The changes view, as {@link harnessRunChangesView} builds it. Import as a type in client code. */
+export type HarnessRunChangesView = ReturnType<typeof harnessRunChangesView>;

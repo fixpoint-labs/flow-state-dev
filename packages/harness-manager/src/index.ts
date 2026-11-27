@@ -195,11 +195,13 @@ export {
   harnessRunChangesInputSchema,
   harnessRunChangesOutputSchema,
   HarnessRunChangesRefused,
+  type HarnessRunChangesView,
   type HarnessRunChangesViewOptions,
 } from "./run-changes";
 export {
   MAX_DIFF_FILES,
   MAX_PATCH_CHARS,
+  RunFileNotChanged,
   runChangesSchema,
   runDiffSchema,
   runFilePatchSchema,
