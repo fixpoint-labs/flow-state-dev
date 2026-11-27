@@ -165,6 +165,8 @@ import {
   toolApprovalOutcome,
   toolApprovalStop,
   toolApprovalStateSchema,
+  heldStopOf,
+  heldStopFrom,
   type HeldToolCall,
 } from "./tool-approval";
 
@@ -1218,7 +1220,7 @@ type TurnDeadlines = RunStops;
 const turnApprovalsSchema = z.object({ approvals: toolApprovalStateSchema.nullable().default(null) });
 const EMPTY_APPROVALS = toolApprovalStateSchema.parse({});
 
-/** What a harness step stopped for an approval hands on, in place of a handle. */
+/** What the held-call step hands on for a harness step stopped for an approval, in place of a handle. */
 const STOPPED_FOR_APPROVAL = "harness-session:stopped-for-approval";
 
 /** The message a turn with approvals on is refused with on a host without durable execution. */
@@ -1242,7 +1244,7 @@ export const HARNESS_SESSION_TURN_WAITS_ON_APPROVAL =
 function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
   /** Each running harness step's stop, by request. */
   const stops = new Map<string, AbortController>();
-  /** The call each step was stopped on, until the held-call step moves it onto the turn's state. */
+  /** The call each running step was stopped on, until the step's stop hands it on in its kept output. */
   const heldCalls = new Map<string, HeldToolCall>();
   /** The `once` grants a step spent, by their index in the turn's grants. */
   const spentGrants = new Map<string, Set<number>>();
@@ -1360,10 +1362,16 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
               inputSchema: z.unknown(),
               outputSchema: z.unknown(),
               execute: async (error: unknown, ctx) => {
-                if (heldCalls.has(ctx.request.identity.id)) {
+                const requestId = ctx.request.identity.id;
+                const held = heldCalls.get(requestId);
+                if (held !== undefined) {
                   // Stopped for the call: the step's deadline, had it fired too, is moot.
-                  deadlines.takeFired(ctx.request.identity.id);
-                  return STOPPED_FOR_APPROVAL;
+                  deadlines.takeFired(requestId);
+                  // The call and the grants it spent go on in the step's kept output, not the maps.
+                  const spent = spentGrants.get(requestId);
+                  heldCalls.delete(requestId);
+                  spentGrants.delete(requestId);
+                  return heldStopFrom(held, spent);
                 }
                 return recordTurnFailure(error as Error, ctx);
               },
@@ -1380,13 +1388,16 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
         sequencerStateSchema: turnApprovalsSchema,
         execute: async (value: unknown, ctx) => {
           const requestId = ctx.request.identity.id;
-          const held = heldCalls.get(requestId);
-          const spent = spentGrants.get(requestId);
+          // A step stopped for a call hands it on in its output, which a replay on another host reads too.
+          const stop = heldStopOf(value);
+          const held = stop?.heldForApproval ?? heldCalls.get(requestId);
+          const spent = stop === undefined ? spentGrants.get(requestId) : new Set(stop.spentGrants);
           heldCalls.delete(requestId);
           spentGrants.delete(requestId);
+          const handOn = stop === undefined ? value : STOPPED_FOR_APPROVAL;
           const approvals = ctx.sequencer?.state.approvals ?? EMPTY_APPROVALS;
           const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
-          if (held === undefined && grants.length === approvals.grants.length) return value;
+          if (held === undefined && grants.length === approvals.grants.length) return handOn;
           if (held !== undefined) {
             // On the turn's record, so a turn sent while this one waits is refused.
             await ctx.session.atomicState((state) =>
@@ -1394,7 +1405,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
             );
           }
           await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
-          return value;
+          return handOn;
         },
       });
       // The wait, and what its answer means: a yes leaves a grant and a no

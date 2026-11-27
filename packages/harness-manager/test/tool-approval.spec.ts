@@ -7,6 +7,8 @@ import {
   ALLOW_FOR_RUN,
   grantMatches,
   heldToolCallOf,
+  heldStopFrom,
+  heldStopOf,
   heldToolDecision,
   toolApprovalOutcome,
   toolApprovalStop,
@@ -36,6 +38,21 @@ describe("a held tool call", () => {
 
   it("is held, not denied: the decision stops the call for a person", () => {
     expect(heldToolDecision(heldToolCallOf({ toolName: "Bash", input: { command: "ls" } }, CWD))).toMatchObject({ decision: "held" });
+  });
+});
+
+describe("the held stop a harness step hands on", () => {
+  const held = heldToolCallOf({ toolName: "Bash", input: { command: "ls" } }, CWD);
+
+  it("reads back the call and the grants it spent, so a replay on another host waits on the same call", () => {
+    expect(heldStopOf(heldStopFrom(held, new Set([2])))).toEqual(heldStopFrom(held, new Set([2])));
+    expect(heldStopOf(heldStopFrom(held, new Set([2])))?.heldForApproval).toEqual(held);
+  });
+
+  it("does not take a finished run's handle for a stop, even one that carries the same field names", () => {
+    // A handle mistaken for a stop would throw the run's result away and ask about a call nobody made.
+    const handle = { status: "completed", sessionId: "s-1", heldForApproval: held, spentGrants: [] };
+    expect(heldStopOf(handle)).toBeUndefined();
   });
 });
 

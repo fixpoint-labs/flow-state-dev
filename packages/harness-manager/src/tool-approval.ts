@@ -17,6 +17,7 @@
  *   decision, are core's: `@flow-state-dev/core/harness`);
  * - what a held call is ({@link heldToolCallOf}) and the decision that holds
  *   it ({@link heldToolDecision});
+ * - what a step stopped on a held call hands the next step ({@link heldStopOf});
  * - the grant rule ({@link grantMatches}): the same tool on the same file
  *   or command, or with the same arguments for any other call;
  * - the stop a held call waits on ({@link toolApprovalStop}), and what its
@@ -66,6 +67,34 @@ export const toolApprovalStateSchema = z.object({
   grants: z.array(toolGrantSchema).default([]),
   steps: z.number().int().default(0),
 });
+
+// FIX-2445.
+/**
+ * What a harness step stopped for a held call hands on in place of its
+ * handle: the call, and the `once` grants the step spent, by their index in
+ * the state's grants. A step's output is kept in the request's log, so the
+ * step after it reads the held call from there, and a replay on another host
+ * after this one died between the two steps reads the same call. The
+ * running step's own maps die with the host.
+ */
+const heldStopSchema = z.object({
+  // Marks a value `heldStopFrom` built, so a harness handle that happens to carry the same field names doesn't parse.
+  stop: z.literal("held-for-approval"),
+  heldForApproval: heldToolCallSchema,
+  spentGrants: z.array(z.number().int()),
+});
+export type HeldStop = z.infer<typeof heldStopSchema>;
+
+/** The held stop a step's output is, or `undefined` for any other output (a handle, a stop for a steer). */
+export function heldStopOf(value: unknown): HeldStop | undefined {
+  const parsed = heldStopSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** The held stop a harness step hands on for `held`, with the `once` grants it spent. */
+export function heldStopFrom(held: HeldStop["heldForApproval"], spent: ReadonlySet<number> | undefined): HeldStop {
+  return { stop: "held-for-approval", heldForApproval: held, spentGrants: [...(spent ?? [])] };
+}
 
 /** The data a yes sends for *Allow for this run*. A plain yes sends none. */
 export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional() }).strict();

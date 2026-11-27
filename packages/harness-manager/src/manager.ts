@@ -168,6 +168,8 @@ import {
   toolApprovalOutcome,
   toolApprovalStop,
   toolApprovalStateSchema,
+  heldStopOf,
+  heldStopFrom,
   type HeldToolCall,
 } from "./tool-approval";
 import {
@@ -3552,9 +3554,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // FIX-2389.
   /**
    * The calls each running step was stopped on for a person's approval,
-   * by request, until the approval step moves it onto the
-   * sequencer's state; and the `once` grants a step spent, by their index in
-   * that state's grants, dropped there by the next approval step.
+   * by request, until the step's stop hands it on in its kept output; and the
+   * `once` grants a step spent, by their index in the sequencer state's
+   * grants, dropped there by the held-call step.
    */
   const heldCalls = new Map<string, HeldToolCall>();
   const spentGrants = new Map<string, Set<number>>();
@@ -4596,6 +4598,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             const fired = harnessStops.takeFired(ctx.request.identity.id);
             if (fired !== undefined && watch?.stopped !== true) throw new HarnessAttemptFailed(fired.message);
             if (watch?.stopped !== true) throw error;
+            // Stopped for a held call: it and the grants it spent go on in the step's kept output, not the maps.
+            const requestId = ctx.request.identity.id;
+            const held = heldCalls.get(requestId);
+            if (held !== undefined) {
+              const spent = spentGrants.get(requestId);
+              heldCalls.delete(requestId);
+              spentGrants.delete(requestId);
+              return heldStopFrom(held, spent);
+            }
             return STOPPED_FOR_STEER;
           },
         }),
@@ -4701,15 +4712,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     execute: async (value: unknown, ctx) => {
       if (!approveTools) return value;
       const requestId = ctx.request.identity.id;
-      const held = heldCalls.get(requestId);
-      const spent = spentGrants.get(requestId);
+      // A step stopped for a call hands it on in its output, which a replay on another host reads too.
+      const stop = heldStopOf(value);
+      const held = stop?.heldForApproval ?? heldCalls.get(requestId);
+      const spent = stop === undefined ? spentGrants.get(requestId) : new Set(stop.spentGrants);
       heldCalls.delete(requestId);
       spentGrants.delete(requestId);
+      // Past this step, the stop reads as the steer stop it was made through.
+      const handOn = stop === undefined ? value : STOPPED_FOR_STEER;
       const approvals = managerState(ctx.sequencer?.state).approvals ?? EMPTY_APPROVALS;
       const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
-      if (held === undefined && grants.length === approvals.grants.length) return value;
+      if (held === undefined && grants.length === approvals.grants.length) return handOn;
       await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
-      if (held === undefined) return value;
+      if (held === undefined) return handOn;
       // The step's watch, kept by its rescue for the steer check, is the approval's to drop.
       steerWatches.delete(requestId);
       // **A save point, as a turn's end is**: nothing stays live while it
@@ -4723,7 +4738,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             `so it does not wait on work that exists only on this machine`,
         );
       }
-      return value;
+      return handOn;
     },
   });
 
