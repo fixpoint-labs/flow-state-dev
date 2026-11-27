@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { appCalls } from "../src/app";
 import { codingBoardTask } from "./coding-board-task";
 
@@ -48,7 +48,7 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
 /** A review hold on the run's stop `stop`. */
 const reviewHold = (stop: string) =>
   ({
-    id: stop,
+    id: suspensionHoldId("q1", stop),
     source: { kind: "suspension", flowId: "coder", sessionId: "run-1", requestId: "q1", suspensionId: stop },
     ask: { kind: "review", prompt: "Accept the changes?" },
     openedAt: 1,
@@ -98,11 +98,11 @@ describe("the lab's task actions", () => {
     // The drawn task and the board agree, so only the stop on screen can tell: a verdict on round 2 is one nobody saw.
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
     const drawn = codingBoardTask({ asks: [reviewHold("stop-2")] });
-    await expect(appCalls(lab.client).resolve("s1", drawn, undefined, "stop-1")).rejects.toThrow(/newer review/);
-    await expect(appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.", "stop-1")).rejects.toThrow(/newer review/);
+    await expect(appCalls(lab.client).resolve("s1", drawn, undefined, suspensionHoldId("q1", "stop-1"))).rejects.toThrow(/newer review/);
+    await expect(appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.", suspensionHoldId("q1", "stop-1"))).rejects.toThrow(/newer review/);
     expect(lab.answered).toEqual([]);
     // Once the feed draws round 2, the verdict goes to it.
-    await appCalls(lab.client).resolve("s1", drawn, undefined, "stop-2");
+    await appCalls(lab.client).resolve("s1", drawn, undefined, suspensionHoldId("q1", "stop-2"));
     expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-2"]);
   });
 

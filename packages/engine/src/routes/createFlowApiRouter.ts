@@ -499,7 +499,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     requestHost: {
       ...baseRuntimeConfig.requestHost,
       staleThresholdMs: staleSweepThresholdMs,
-      staleSweepIntervalMs
+      staleSweepIntervalMs,
+      // a direct router caller's flows are this router's.
+      flows: baseRuntimeConfig.requestHost?.flows ?? options.registry
     }
   };
 
@@ -583,7 +585,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           // internal request in its session, as its owner (FIX-2078 D1). Off
           // where the host offers no wakes, a store that can't read them included.
           ...(runtimeConfig.requestHost?.wakes !== undefined
-            ? { fireWake: (wake: WakeRecord) => fireWakeThrough(handlers.host, wake, holdFiredWake) }
+            ? { fireWake: (wake: WakeRecord) => fireWakeThrough(handlers.host, wake, holdFiredWake, { queuedGraceMs }) }
             : {})
         })
       : { dispose: () => {}, timesOutWaits: () => false };

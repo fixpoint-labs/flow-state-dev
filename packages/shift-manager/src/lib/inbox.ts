@@ -17,8 +17,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { useView } from "@flow-state-dev/react";
-import { createInboxClient, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, suspensionHoldId, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
+import { CODER_FLOW, runChangesViewRef } from "@flow-state-dev/harness-manager/browser";
+import type { RunChangesPatch } from "../components/flow-state/run-changes";
 import { isDone } from "./columns";
 import { CONVERSATION_BOARD_COLLECTION } from "./boards";
 import { useReportFeedState } from "./feed-health";
@@ -91,12 +93,12 @@ export function openBoardTasks(value: InboxViewValue): InboxBoardTask[] {
 }
 
 /**
- * The Inbox item that shows suspension `suspensionId`: a task's item when its
- * task holds it, else the ask's own. Its id when the view doesn't list it, so
- * a link still opens the Inbox.
+ * The Inbox item that shows hold `holdId`: a task's item when its task holds
+ * it, else the ask's own. The hold's id when the view doesn't list it, so a
+ * link still opens the Inbox.
  */
-export function itemIdHolding(items: readonly InboxViewItem[], suspensionId: string): string {
-  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+export function itemIdHolding(items: readonly InboxViewItem[], holdId: string): string {
+  return items.find((item) => item.holds.some((hold) => hold.id === holdId))?.id ?? holdId;
 }
 
 /** A task's Inbox item, by its board and id; `undefined` when nothing of it waits on the user. */
@@ -142,10 +144,11 @@ export function suspensionOfHold(hold: InboxViewHold, data?: Record<string, unkn
   const ask = hold.detail;
   const variant = hold.ask.kind === "approval" || hold.ask.kind === "review" ? hold.ask.kind : "input";
   const requestId = hold.source.kind === "suspension" ? hold.source.requestId : "";
+  const suspensionId = hold.source.kind === "suspension" ? hold.source.suspensionId : hold.id;
   return {
     type: "suspension",
-    id: hold.id,
-    suspensionId: hold.id,
+    id: suspensionId,
+    suspensionId,
     requestId,
     status: "completed",
     suspensionStatus: "pending",
@@ -222,10 +225,32 @@ export function useReviewData(hold: InboxViewHold): ReviewData {
   return useMemo((): ReviewData => {
     if (!review) return { state: "none" };
     if (items !== undefined) {
-      const found = items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+      const found = items.find((item): item is SuspensionItem => item.type === "suspension" && suspensionHoldId(item.requestId, (item as SuspensionItem).suspensionId) === hold.id);
       return { state: "read", data: found?.data };
     }
     if (error !== null) return { state: "failed", failure: describeFailure(error), retry };
     return { state: "reading" };
   }, [review, items, error, hold.id, retry]);
+}
+
+// FIX-2796.
+/**
+ * Reads one file's patch for a coding run's review, in place: harness-manager's
+ * `changes` view on the coding worker flow, called in the ask's session, so the
+ * card's file list opens into each file's diff with no pull request needed.
+ * `undefined` for a stop the coding worker flow didn't raise (no such view to
+ * call) and for a run with no session: its files list their lines and don't open.
+ */
+export function usePatchReader(hold: InboxViewHold): ((path: string) => Promise<RunChangesPatch>) | undefined {
+  const { client } = useLab();
+  const sessionId = sessionOfHold(hold);
+  const coding = hold.ask.kind === "review" && hold.detail?.flowKind === CODER_FLOW;
+  return useMemo(() => {
+    if (!coding || sessionId === null) return undefined;
+    return async (path: string) => {
+      const { patch } = (await client.view(runChangesViewRef(), { path }, { sessionId })).value;
+      if (patch === null) throw new Error("the run answered no patch for this file");
+      return patch;
+    };
+  }, [client, coding, sessionId]);
 }

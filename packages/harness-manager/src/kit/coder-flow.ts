@@ -86,7 +86,8 @@ import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trusted
 import { isTrackerIssue } from "../issue-spec";
 
 import { CODER_FLOW } from "../coder-flow-name";
-import { RECORDED_WORK_VIEW } from "../coding-board-ref";
+import { RECORDED_WORK_VIEW, RUN_CHANGES_VIEW } from "../coding-board-ref";
+import { harnessRunChangesView } from "../run-changes";
 import { recordedWorkView } from "../recorded-work-view";
 
 export { CODER_FLOW };
@@ -592,8 +593,8 @@ export function coderWorkerFlow(
         // Optional only so the shared copy, which carries no worker's settings, can be built.
         configSchema: settingsSchema,
         session: installation.session(),
-        // FIX-2725: a run's plan and pull requests, read in its own session.
-        views: { [RECORDED_WORK_VIEW]: recordedWorkView() },
+        // FIX-2725: a run's plan and pull requests; FIX-2796: what it changed, a file's patch at a time. Both read in its own session.
+        views: { [RECORDED_WORK_VIEW]: recordedWorkView(), [RUN_CHANGES_VIEW]: harnessRunChangesView({ name: CODER_FLOW, board }) },
         resources: flowResources,
         actions: {
           ...appActions,

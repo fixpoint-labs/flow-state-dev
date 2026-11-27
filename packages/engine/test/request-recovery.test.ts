@@ -346,6 +346,45 @@ describe("detectInterruptedRequests", () => {
     expect(runActionMock.mock.calls[0]![0].orgId).toBe("org-acme");
   });
 
+  // FIX-2942: a retry mints a new request id, and a new id has no record a
+  // successor run could read who it is from. Its principal is the original's,
+  // forwarded: else a machine's request in a person's session would recover as
+  // the session's person and reach their other sessions.
+  it("forwards the original record's principal kind and resolver to the retried run", async () => {
+    runActionMock.mockClear();
+    await stores.request.set(
+      "req_machine",
+      makeRequestRecord("req_machine", { principalKind: "machine", resolvedBy: "host:webhook" }),
+      "any"
+    );
+    await stores.request.set(
+      "req_person",
+      makeRequestRecord("req_person", { principalKind: "person", resolvedBy: "flow:chat" }),
+      "any"
+    );
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_machine", stores, flowRegistry, runtimeConfig: {} });
+    await retryRequest({ originalRequestId: "req_person", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(2);
+    expect(runActionMock.mock.calls[0]![0]).toMatchObject({ principalKind: "machine", resolvedBy: "host:webhook" });
+    expect(runActionMock.mock.calls[1]![0]).toMatchObject({ principalKind: "person", resolvedBy: "flow:chat" });
+  });
+
+  it("recovers a record from before the principal fields as a machine's, with no resolver", async () => {
+    runActionMock.mockClear();
+    await stores.request.set("req_legacy_kind", makeRequestRecord("req_legacy_kind"), "any");
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_legacy_kind", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    const options = runActionMock.mock.calls[0]![0];
+    expect(options.principalKind).toBe("machine");
+    expect(options.resolvedBy).toBeUndefined();
+  });
+
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
     // Regression: retry used to forward only the router-level provider, so a
     // flow that overrides TTS would synthesize with the wrong backend after
@@ -512,6 +551,30 @@ describe("detectInterruptedRequests", () => {
       // Nothing is written where nothing was owed.
       expect(await stores.wakes!.get({ sessionId: "s_filer", entry: "neverOwed" })).toBeNull();
       expect(await dueOf("s_other", "onTaskSettled")).toBe(LATER);
+    });
+
+    // A wake is kept per resolver identity: a pass the request held ran under
+    // the request's own resolver, or under none.
+    it("brings forward the wakes kept under the request's own resolver identity and under none", async () => {
+      await stores.activeRequests.register({
+        orgId: DEFAULT_ORG_ID,
+        requestId: "req_vault",
+        flowKind: "chat",
+        actionName: "run",
+        source: "http",
+        userId: "user_1",
+        sessionId: "s_vault",
+        startedAt: Date.now() - 60_000,
+        lastHeartbeatAt: Date.now() - 60_000
+      });
+      await stores.request.set("req_vault", makeRequestRecord("req_vault", { sessionId: "s_vault", resolvedBy: "flow:vault" }), "any");
+      await stores.wakes!.owe({ ...wake("s_vault", "onTaskSettled"), resolvedBy: "flow:vault" });
+      await stores.wakes!.owe(wake("s_vault", "onTaskSettled"));
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: () => ["onTaskSettled"] });
+
+      expect((await stores.wakes!.get({ sessionId: "s_vault", entry: "onTaskSettled", resolvedBy: "flow:vault" }))?.dueAt).toBeLessThanOrEqual(Date.now());
+      expect(await dueOf("s_vault", "onTaskSettled")).toBeLessThanOrEqual(Date.now());
     });
 
     it("bumps the wake's version, so a pass that read it before settles stale and leaves it due now", async () => {

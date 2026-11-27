@@ -47,7 +47,7 @@ import {
   UserBindingMismatchError
 } from "../../context/binding-errors";
 import { isOrgAttributed } from "../../context/org-attribution";
-import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
+import { claimRequestRecord } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
@@ -75,7 +75,8 @@ import {
   type ConcurrencyAdmission,
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
-import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
+import { pickPrincipalResolver, principalResolverIdentity } from "../auth/pickPrincipalResolver";
+import { principalOwns, type Principal } from "../../context/principal";
 import {
   defaultBodyUserIdPrincipalResolver,
   isDefaultBodyUserIdPrincipalResolver
@@ -96,8 +97,7 @@ import type {
   InboundRequestEnvelope,
   InboundTransportHost,
   PrincipalResolutionContext,
-  PrincipalResolver,
-  ResolvedPrincipal
+  PrincipalResolver
 } from "../types";
 
 // FIX-999.
@@ -196,7 +196,7 @@ const inProcessWaits = new WeakSet<PrincipalResolutionContext>();
 
 /** An answer to "who is this caller", with whether the framework supplied it. */
 type PrincipalResolution = {
-  principal: ResolvedPrincipal;
+  principal: Principal;
   /**
    * True when the resolver that ran is the framework default, so the
    * organization is the reserved development one rather than a verified value.
@@ -350,8 +350,16 @@ function createPrincipalResolution(options: {
       );
     }
 
+    // FIX-2942: the door names a person, and which resolver answered, with
+    // the settings it applied. A door that fires for a machine says so itself.
+    const resolvedBy = principalResolverIdentity(registry, context.envelope.flowKind, resolvePrincipal);
     return {
-      principal: { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) },
+      principal: {
+        userId,
+        orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId),
+        kind: "person",
+        ...(resolvedBy !== undefined ? { resolvedBy } : {})
+      },
       isDevelopmentDefault
     };
   };
@@ -374,7 +382,7 @@ export interface InProcessPrincipalQuestion {
 }
 
 /** Who an in-process caller is, and where that answer came from. */
-export interface InProcessPrincipal extends ResolvedPrincipal {
+export interface InProcessPrincipal extends Principal {
   /**
    * `resolver` when a configured resolver named the organization;
    * `development-default` when the flow authenticates nobody and the framework
@@ -641,7 +649,7 @@ export function createInboundTransportHost(
         refusal.reason
       );
     }
-    if (active !== undefined && !principalOwnsRequest(active, dispatchEnvelope)) {
+    if (active !== undefined && !principalOwns(active, dispatchEnvelope)) {
       throw new RequestOwnerMismatchError(dispatchEnvelope.requestId);
     }
     return session;
@@ -746,6 +754,9 @@ export function createInboundTransportHost(
       sessionId: envelope.sessionId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
       tenantId: envelope.tenantId,
+      // FIX-2942: the door's principal, carried unchanged to the run.
+      ...(envelope.principal.kind != null ? { principalKind: envelope.principal.kind } : {}),
+      ...(envelope.principal.resolvedBy != null ? { resolvedBy: envelope.principal.resolvedBy } : {}),
       source: envelope.source,
       // An adapter's envelope cannot carry a delivery origin: only one the
       // engine built and marked keeps it (`delivery-origin.ts`, BP-031).
@@ -1611,7 +1622,7 @@ export function createInboundTransportHost(
 
   const resolve = async (
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal> => (await resolution(context)).principal;
+  ): Promise<Principal> => (await resolution(context)).principal;
 
   return {
     registry,

@@ -4,6 +4,7 @@
  * the session feed (`src/app/`), and nothing here reaches the server.
  */
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
+import { suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { ReviewAnswer, ReviewLand } from "../components/flow-state/review-hold";
 
@@ -22,12 +23,13 @@ const latestReviewStop = (items: readonly OutputItem[]) =>
   [...items].reverse().find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).kind === "review");
 
 /**
- * The id of the latest review stop (its `suspensionId`, the id the board's review hold carries): one id per
+ * The id of the board's review hold for the latest review stop (`suspensionHoldId` of its request and suspension id): one id per
  * review round. A run sent back, or a landing retried, stops for review again under a new id, which is how
  * the accept tells a new round from the one it answered, and a verdict names the round on screen.
  */
 export function reviewStopIdOf(items: readonly OutputItem[]): string | undefined {
-  return latestReviewStop(items)?.suspensionId;
+  const stop = latestReviewStop(items);
+  return stop && suspensionHoldId(stop.requestId, stop.suspensionId);
 }
 
 /**

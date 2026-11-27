@@ -1,19 +1,26 @@
 // FIX-2078 D1.
 /**
  * In-memory WakeStore, for development and tests. One wake per
- * (tenant, session, entry); see `WakeStore` for the coalescing and the
- * version rule.
+ * (tenant, session, entry, resolver identity); see `WakeStore` for the
+ * coalescing and the version rule.
  */
 import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "../types";
 
-/** The one string a wake is kept under. NUL never appears in an id. */
+/**
+ * The one string a wake is kept under. NUL never appears in an id. A wake
+ * that names no resolver keeps the key it had before wakes carried one, so a
+ * filesystem store's wakes from then are still found.
+ */
 export function wakeStorageKey(key: WakeKey): string {
-  return `${key.tenantId ?? ""}\u0000${key.sessionId}\u0000${key.entry}`;
+  const base = `${key.tenantId ?? ""}\u0000${key.sessionId}\u0000${key.entry}`;
+  return key.resolvedBy === undefined ? base : `${base}\u0000${key.resolvedBy}`;
 }
 
 /**
- * The wake `input` makes of `existing`: the earlier due time, the later
- * `landBy`, the next version. Shared by the memory and filesystem stores.
+ * The wake `input` makes of `existing`, kept under the same key (resolver
+ * identity included): the earlier due time, the later `landBy`, the next
+ * version. Shared by the memory and filesystem stores; the SQL stores apply
+ * the same rule in their upsert.
  */
 export function coalesceWake(existing: WakeRecord | null, input: WakeInput, now: number): WakeRecord {
   if (existing === null) {

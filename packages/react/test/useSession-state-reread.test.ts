@@ -65,6 +65,12 @@
  *     the record: the "suspended ... finished elsewhere" case fails.
  *   - changes after a held state-only response treated like an unknown
  *     boundary: the "after a state-only read held" case fails (count 0).
+ *   - a held state-only response's boundary taken when its detail read
+ *     answers: the "between a held state-only response and its detail
+ *     response" case fails (count 0).
+ *   - an unfollowed shown request read only when the latest-request read
+ *     names another: the "no latest-request record" case fails (no status
+ *     read, followedRequest null).
  *   - a dropped stream leaving its status in place: the "dropped stream" case
  *     fails (in progress over a completed record).
  *   - reading the followed request's status as soon as its stream ends,
@@ -316,6 +322,26 @@ describe("live changes a state read may already hold", () => {
     await land(stateCalls.length - 1, counted(0));
     // The held response was already in hand: this one can't be in it.
     act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("inc1", "increment", { count: 1 })));
+    await land(0, counted(0, [message("m1", "req_turn")]));
+    expect(hook.result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
+  });
+
+  it("a change between a held state-only response and its detail response is put back on it", async () => {
+    // The detail read answers last: the state response was in hand before
+    // the increment, so the increment can't be in it.
+    let answerDetail!: (value: unknown) => void;
+    const hook = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
+    await flush();
+    act(() => void hook.result.current.followRequest("req_turn"));
+    sessionsMock.get.mockImplementationOnce(() => new Promise((resolve) => (answerDetail = resolve)));
+    act(() => void hook.result.current.refresh({ items: false }));
+    await flush();
+    await land(stateCalls.length - 1, counted(0));
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("inc1", "increment", { count: 1 })));
+    await act(async () => {
+      answerDetail({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0 });
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
     await land(0, counted(0, [message("m1", "req_turn")]));
     expect(hook.result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
   });
@@ -781,6 +807,25 @@ describe("followedRequest", () => {
 
       await act(() => vi.advanceTimersByTimeAsync(1_000));
       expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+    });
+
+    it("live, with no latest-request record, reads the shown request's own status until it ended", async () => {
+      // The latest-request read fails: the shown request still gets a record,
+      // and is read again while it runs.
+      sessionsMock.requests.mockRejectedValue(new Error("offline"));
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount({ live: true });
+      await flush();
+      expect(result.current.latestRequest).toBeNull();
+      expect(requestMock.status).toHaveBeenCalledWith("req_turn");
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "in_progress", startedAtMs: 10 });
+
+      requestMock.status.mockResolvedValue({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, ageMs: 1 });
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+      const reads = requestMock.status.mock.calls.length;
+      await act(() => vi.advanceTimersByTimeAsync(120_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(reads);
     });
 
     it("live, a request suspended on this view's stream and finished elsewhere reads finished", async () => {

@@ -1,0 +1,7 @@
+{
+  "org": "acme",
+  "person": "alice",
+  "otherPerson": "bob",
+  "scheduledPerson": "u_carol",
+  "gateway": "cron-gateway"
+}

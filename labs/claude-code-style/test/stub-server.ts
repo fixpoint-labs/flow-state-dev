@@ -10,7 +10,7 @@
  */
 import { createElement, type ReactNode } from "react";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { RecordedWorkView } from "@flow-state-dev/harness-manager/browser";
 import type { ViewOutput } from "@flow-state-dev/core/types";
 import { AppProvider, type CodingBoardTask } from "../src/app";
@@ -51,7 +51,7 @@ export const reviewStop = (id: string, review: unknown) => ({ id: `item-${id}`, 
 /** The review hold a coding task carries on the board, answered at the run's stop `stop`. */
 const reviewHold = (stop = "stop-1"): InboxHold =>
   ({
-    id: stop,
+    id: suspensionHoldId(RUN.requestId, stop),
     source: { kind: "suspension", flowId: "coder", sessionId: RUN.sessionId, requestId: RUN.requestId, suspensionId: stop },
     ask: { kind: "review", prompt: "Accept the changes, or ask for changes in words." },
     openedAt: 1,

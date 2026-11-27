@@ -510,7 +510,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         host,
         request,
         hostResolver,
-        action: route.kind
+        action: route.kind,
+        ...(tenantId !== undefined ? { tenantId } : {})
       });
 
       if (route.kind === "not_found") {

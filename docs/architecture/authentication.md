@@ -118,6 +118,52 @@ security hole. The scheduled-actions adapter is the reference
 implementation — it resolves from a server-side resource, never from the
 request body.
 
+### The run's principal: `kind` and `resolvedBy` (FIX-2942)
+
+`host.resolvePrincipal` returns the one principal a run carries
+(`Principal`, `context/principal.ts`): `{ userId, orgId, tenantId, kind,
+resolvedBy }`. It is set once, at the door, and dispatch, sub-flows, owner
+runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
+`DispatchEnvelope`, the request record).
+
+- **`kind`** is `"person"` from every door that resolves credentials (HTTP,
+  MCP, the in-process `cli` door). The scheduled route sets `"machine"` when a
+  fire runs as the gateway fallback, the gateway's own user and org, or the
+  system user (`scheduledFireKind`); a schedule naming a real person runs as
+  that person. The webhook route sets `"machine"` for a delivery, and owner
+  runs and a service's routing are machines. A session records its creator's
+  kind once, at birth (`SessionRecord.principalKind`), and every session
+  store's `set` keeps the stored value. A run whose principal, or whose
+  session, is a machine's reaches no other session. A session from before
+  the field is classified from its birth request: a request of its own
+  owner, organization, tenant and flow, written within the host's queued
+  grace (`queuedGraceMs`) of the record's `createdAt` (`context/session-kind.ts`).
+  Nothing says which incarnation wrote a request, so the session reads as a
+  kind only when every request that could be its birth request agrees: a
+  predecessor's request under an id reused within the window, a session
+  with no birth request left, or a later turn once retention pruned it,
+  reads as a machine's. The answer
+  is written onto the record the first time, and the store keeps it from
+  then on. A recovery retry runs under the original request's kind and
+  `resolvedBy` (a record from before them: a machine, none).
+- **`resolvedBy`** is the identity of the resolver that answered, with the
+  settings the host applied to its answer (`principalResolverIdentity`): the
+  key the HTTP list resolves once per. A named reach into a session whose flow
+  has its own resolver is admitted only when that identity equals the
+  principal's `resolvedBy`; absent on either side matches nothing.
+- **One owner comparison** (`principalOwns`): user, organization and tenant,
+  exact. The session and request routes, the view host rule, the own-resolver
+  verdict and a block's named reach all call it. The request-id claim, the
+  request-control routes and their guard, and the request listings read a
+  request record from before organizations with its session's org
+  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it, but
+  only when that session is the one it was written in: the same user and
+  tenant, born no later than the record. Otherwise the id may have been
+  deleted and taken again, in another org, and the record stays no one's.
+  That read is for visibility only: retry, continue, resume and answer run
+  stored work again, and refuse such a record `migration-required` to its
+  owner until it is migrated (BR-14).
+
 ---
 
 ## Scope: the whole `/api/flows` surface

@@ -1,4 +1,4 @@
-// BR-25; BR-26; FIX-2774.
+// BR-25; BR-26; FIX-2774; FIX-2796.
 /**
  * One pending ask, drawn with the registry's own approval and question cards,
  * answered through orchestration's one answer call on the Inbox hold it is.
@@ -16,7 +16,8 @@
  * the stop's data in the ask's session by harness-manager's browser reader.
  * Until that read lands the card offers no answer: drawn without the data, a
  * review offers a plain Accept that lands nothing. A failed read says why, with
- * Retry.
+ * Retry. A coding run's changed files open into their patches in place, read
+ * from the run's session as each is opened (`usePatchReader`).
  */
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -27,8 +28,8 @@ import { SuspensionCard } from "./flow-state/suspension-card";
 import { SectionFailure } from "./ui";
 import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { answerOfResolution, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
-import { sessionOfHold } from "../lib/inbox-list";
+import { answerOfResolution, suspensionOfHold, useInboxAnswer, usePatchReader, useReviewData, type InboxAsk } from "../lib/inbox";
+import { sessionOfHold, suspensionIdOfHold } from "../lib/inbox-list";
 
 /**
  * The registry's cards read their resolution from the session's items. An ask
@@ -45,6 +46,7 @@ const NO_ITEMS: OutputItem[] = [];
 export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; titled?: boolean }) {
   const answer = useInboxAnswer();
   const review = useReviewData(hold);
+  const loadPatch = usePatchReader(hold);
   const data = review.state === "read" ? review.data : undefined;
   const resolve = useMemo<SuspensionResolver>(
     () => async ({ action, data: given }) => {
@@ -60,13 +62,13 @@ export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; t
   const card = (
     <SessionItemsProvider value={NO_ITEMS}>
       {item.kind === "review" && takesReviewVerdict(item.resumeSchema) ? (
-        <ReviewSuspension item={item} review={reviewDetail(item.data)} />
+        <ReviewSuspension item={item} review={reviewDetail(item.data)} {...(loadPatch !== undefined ? { loadPatch } : {})} />
       ) : (
         <SuspensionCard item={item} />
       )}
     </SessionItemsProvider>
   );
-  const ids = { "data-suspension-id": hold.id, "data-session-id": sessionOfHold(hold) ?? undefined };
+  const ids = { "data-suspension-id": suspensionIdOfHold(hold), "data-session-id": sessionOfHold(hold) ?? undefined };
   if (review.state === "reading") {
     return (
       <div data-testid="ask-card" {...ids}>

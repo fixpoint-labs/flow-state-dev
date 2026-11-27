@@ -545,14 +545,50 @@ export type AnyResourceRef =
  * would then compile wherever a ref is accepted. Without one, an undeclared
  * name is a missing-property error. Optional entries can be absent by
  * property access. `get` throws for an absent name and `list` returns only
- * the handles that exist.
+ * the handles that exist. `at` is typed the same way, for the same reason.
  */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
   get: (<TKey extends keyof TResources>(name: TKey) => NonNullable<TResources[TKey]>) & ResourceRef<any>;
   list: (() => Array<NonNullable<TResources[keyof TResources]>>) & ResourceRef<any>;
+  /**
+   * Another session's copy of this run's session-scoped collections, by the
+   * calling flow's definitions: `ctx.resources.at({ session }).notes`. Reads,
+   * lists and writes act on that one copy, as its own session's would, and
+   * the session written hears each write as it hears its own.
+   *
+   * The session is reached only when it is the run's owner's, by the same
+   * admission the HTTP routes apply. Any other session (another user's,
+   * another org's or tenant's, one an own-resolver flow refuses, or one no
+   * one holds) answers every verb alike: rejected with `SessionNotFoundError`.
+   * A turn a webhook delivery started reaches no session but its own.
+   *
+   * For what isn't a resource (another session's flow, its readable state,
+   * its history), use `ctx.sessions`.
+   */
+  at: ((target: SessionReachTarget) => ResourceRegistry<SessionReachable<TResources>>) & ResourceRef<any>;
 };
+
+/**
+ * The handles `ctx.resources.at` reaches in another session: the stored
+ * collections whose scope may be `session`. A single resource, a projected
+ * collection and a collection declared at user or org scope drop out, since
+ * each throws there at runtime. A collection whose declaration doesn't name
+ * its scope literally stays, as the open registry stays whole.
+ */
+export type SessionReachable<TResources extends Record<string, AnyResourceRef>> = string extends keyof TResources
+  ? TResources
+  : {
+      [K in keyof TResources as NonNullable<TResources[K]> extends ResourceCollectionRef<any, infer TScope>
+        ? "session" extends TScope
+          ? K
+          : never
+        : never]: TResources[K];
+    };
+
+/** The session `ctx.resources.at` names: its id, as the session routes take it. */
+export type SessionReachTarget = { readonly session: string };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
   ? S["_output"]
