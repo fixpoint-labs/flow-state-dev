@@ -23,7 +23,9 @@ describe("another worker's reply", () => {
     expect(line.getAttribute("data-state")).toBe("closed");
     expect(line.querySelector('[data-part="preview"]')).not.toBeNull();
     expect(screen.getByRole("button", { name: "Show full message from Writer" }).getAttribute("aria-expanded")).toBe("false");
-    expect(line.querySelector('[data-part="preview"]')!.textContent).toContain("First finding");
+    const preview = line.querySelector('[data-part="preview"]')!;
+    expect(preview.textContent).toContain("research dump");
+    expect(preview.className).toContain("line-clamp-2");
   });
 
   it("expands to the full text per message, then folds again", async () => {
@@ -33,8 +35,10 @@ describe("another worker's reply", () => {
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("true"));
     expect(line.getAttribute("data-state")).toBe("open");
+    expect(line.querySelector('[data-part="body"]')).not.toBeNull();
     expect(line.textContent).toContain("Second finding");
-    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Collapse message from Writer" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse message from Writer" }));
     await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("false"));
     expect(line.getAttribute("data-state")).toBe("closed");
   });
@@ -51,7 +55,7 @@ describe("another worker's reply", () => {
 describe("a task result from another worker", () => {
   it("collapses long result text by default", async () => {
     drawLines(linesOf([result("r", "q1", { taskId: "task_y", from: WRITER, title: "Draft", text: LONG, ending: "completed" })]), { nameOf: () => "writer" });
-    const line = await waitFor(() => screen.getByRole("region", { name: "writer finished: Draft" }));
+    const line = await waitFor(() => screen.getByRole("region", { name: "Task result from writer" }));
     expect(line.getAttribute("data-collapsed-default")).toBe("true");
     expect(screen.getByRole("button", { name: "Show full result from writer" })).toBeTruthy();
   });
