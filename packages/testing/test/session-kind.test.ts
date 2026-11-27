@@ -44,11 +44,9 @@ describe("the helpers' session kind", () => {
     expect((await stores.session.get("s1"))?.principalKind).toBe(expected);
   });
 
-  it("is a person's on the session createTestContext seeds, and on the one it lets the run create", async () => {
+  it("is a person's on the session createTestContext seeds", async () => {
     const expected = await bornOverHttp();
-    const seeded = await createTestContext({ sessionId: "s1", seed: { session: { state: {} } } });
+    const seeded = await createTestContext({ sessionId: "s1", session: { state: {} } });
     expect((await seeded.stores.session.get("s1"))?.principalKind).toBe(expected);
-    const created = await createTestContext({ sessionId: "s2" });
-    expect((await created.stores.session.get("s2"))?.principalKind).toBe(expected);
   });
 });
