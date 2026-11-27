@@ -43,14 +43,13 @@ export function upsertResource<TInputSchema extends ZodTypeAny>(
     resources: config.resources,
     sequencerStateSchema: config.sequencerStateSchema,
     execute: async (input, ctx: BlockContext) => {
-      const collection = ctx.resources[config.collectionKey] as ResourceCollectionRef;
       const key = config.key(input);
       const state = config.state(input, ctx) as JsonObject;
       const content = config.content?.(input);
 
       // getOrCreate sets initial state only on creation; always patchState
       // afterwards so updates are applied whether the resource is new or existing.
-      const ref = await collection.getOrCreate(key, state);
+      const ref = await (ctx.resources[config.collectionKey] as ResourceCollectionRef).getOrCreate(key, state);
       await ref.patchState(state);
       if (content !== undefined) {
         await ref.writeContent(content);
