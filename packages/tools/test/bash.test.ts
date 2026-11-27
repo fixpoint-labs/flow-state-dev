@@ -3,7 +3,8 @@ import { z } from "zod";
 import { hashContent } from "@flow-state-dev/workspace";
 import { createBashTool } from "../src/bash/create-bash-tool";
 import { createBashCapability } from "../src/bash/capability";
-import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
+import type { Sandbox, CommandResult } from "../src/bash/types";
+import type { ProjectedEntryState } from "@flow-state-dev/workspace";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 import { runForTest } from "@flow-state-dev/testing";
@@ -50,29 +51,29 @@ function createMockSandbox(
 
 interface MockResourceEntry {
   name: string;
-  state: FileEntryState;
+  state: ProjectedEntryState;
   content: string | null;
 }
 
 function createMockCollection(
   entries: MockResourceEntry[] = [],
-): ResourceCollectionRef<FileEntryState> {
+): ResourceCollectionRef<ProjectedEntryState> {
   const store = new Map<string, MockResourceEntry>();
   for (const entry of entries) {
     store.set(entry.name, entry);
   }
 
-  const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> =>
+  const makeRef = (entry: MockResourceEntry): ResourceRef<ProjectedEntryState> =>
     // Deliberate partial: only the ref methods the bash tool calls.
     ({
       path: entry.name,
       scope: "session",
       uri: `session/${entry.name}`,
       state: entry.state,
-      patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
-        entry.state = { ...entry.state, ...updates } as FileEntryState;
+      patchState: vi.fn(async (updates: Partial<ProjectedEntryState>) => {
+        entry.state = { ...entry.state, ...updates } as ProjectedEntryState;
       }),
-      setState: vi.fn(async (next: FileEntryState) => {
+      setState: vi.fn(async (next: ProjectedEntryState) => {
         entry.state = next;
       }),
       updateState: vi.fn(async (updater) => {
@@ -84,24 +85,24 @@ function createMockCollection(
         entry.content = content;
       }),
       config: { scope: "session", stateSchema: {} as any },
-    }) as unknown as ResourceRef<FileEntryState>;
+    }) as unknown as ResourceRef<ProjectedEntryState>;
 
   return {
     pattern: "files/*",
     scope: "session",
 
-    async get(key: string): Promise<ResourceRef<FileEntryState>> {
+    async get(key: string): Promise<ResourceRef<ProjectedEntryState>> {
       const entry = store.get(key);
       if (!entry) throw new Error(`Not found: ${key}`);
       return makeRef(entry);
     },
 
-    async getOptional(key: string): Promise<ResourceRef<FileEntryState> | undefined> {
+    async getOptional(key: string): Promise<ResourceRef<ProjectedEntryState> | undefined> {
       const entry = store.get(key);
       return entry ? makeRef(entry) : undefined;
     },
 
-    create: vi.fn(async (key: string, initial?: Partial<FileEntryState>) => {
+    create: vi.fn(async (key: string, initial?: Partial<ProjectedEntryState>) => {
       if (store.has(key)) throw new Error(`Already exists: ${key}`);
       const entry: MockResourceEntry = {
         name: key,
@@ -116,7 +117,7 @@ function createMockCollection(
       return makeRef(entry);
     }),
 
-    getOrCreate: vi.fn(async (key: string, initial?: Partial<FileEntryState>) => {
+    getOrCreate: vi.fn(async (key: string, initial?: Partial<ProjectedEntryState>) => {
       const existing = store.get(key);
       if (existing) return makeRef(existing);
       const entry: MockResourceEntry = {
@@ -132,7 +133,7 @@ function createMockCollection(
       return makeRef(entry);
     }),
 
-    async list(): Promise<ResourceRef<FileEntryState>[]> {
+    async list(): Promise<ResourceRef<ProjectedEntryState>[]> {
       return Array.from(store.values()).map(makeRef);
     },
 
@@ -149,7 +150,7 @@ function createMockCollection(
     // Expose internals for assertions
     _store: store,
     // Deliberate partial: the bash tool never calls upsert.
-  } as unknown as ResourceCollectionRef<FileEntryState> & { _store: Map<string, MockResourceEntry> };
+  } as unknown as ResourceCollectionRef<ProjectedEntryState> & { _store: Map<string, MockResourceEntry> };
 }
 
 // ---------------------------------------------------------------------------
@@ -329,7 +330,7 @@ describe("createBashTool", () => {
           },
         ]),
         pattern: "tmp/**",
-      } as ResourceCollectionRef<FileEntryState>;
+      } as ResourceCollectionRef<ProjectedEntryState>;
       const customSandbox = createMockSandbox();
       const { tools } = await createBashTool({
         collections: { scratch: collection },
@@ -1007,12 +1008,12 @@ describe("createBashBlocks", () => {
   function buildCtx(
     sessionId: string,
     scopes: {
-      session?: Record<string, ResourceCollectionRef<FileEntryState>>;
-      user?: Record<string, ResourceCollectionRef<FileEntryState>>;
-      org?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      session?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
+      user?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
+      org?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
     } = {},
   ) {
-    const resources: Record<string, ResourceCollectionRef<FileEntryState>> = {
+    const resources: Record<string, ResourceCollectionRef<ProjectedEntryState>> = {
       ...(scopes.session ?? {}),
       ...(scopes.user ?? {}),
       ...(scopes.org ?? {}),
@@ -1042,9 +1043,9 @@ describe("createBashBlocks", () => {
   function createMockCollectionWithPattern(
     pattern: string,
     entries: MockResourceEntry[] = [],
-  ): ResourceCollectionRef<FileEntryState> {
+  ): ResourceCollectionRef<ProjectedEntryState> {
     const base = createMockCollection(entries);
-    return { ...base, pattern } as ResourceCollectionRef<FileEntryState>;
+    return { ...base, pattern } as ResourceCollectionRef<ProjectedEntryState>;
   }
 
   // The host shell runs real commands on the machine, and its guards are a
@@ -2023,7 +2024,7 @@ describe("createBashBlocks", () => {
         store.delete(key);
       },
       config: { pattern, stateSchema: schema },
-    } as unknown as ResourceCollectionRef<FileEntryState>;
+    } as unknown as ResourceCollectionRef<ProjectedEntryState>;
   }
 
   function blocksOf(cap: ReturnType<typeof createBashCapability>) {
