@@ -86,7 +86,7 @@ const REQUESTS_INDEXES = [
  * Ordering columns are declared ASC and scanned backwards, which Postgres does
  * for an `ORDER BY` that reverses every key uniformly.
  *
- * Paired with {@link DROP_INVALID_CONCURRENT_INDEXES}: an interrupted concurrent
+ * Paired with {@link dropInvalidConcurrentIndexes}: an interrupted concurrent
  * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
  * forever, so the planner would never use it and nothing would say so.
  */
@@ -161,27 +161,35 @@ const CONCURRENT_INDEXES = [
   "DROP INDEX CONCURRENTLY IF EXISTS idx_resource_content_scope"
 ];
 
+/** The names {@link CONCURRENT_INDEXES} builds: the indexes recovery may rebuild. */
+const CONCURRENT_INDEX_NAMES = CONCURRENT_INDEXES.flatMap(
+  (ddl) => /^CREATE INDEX CONCURRENTLY IF NOT EXISTS (\w+) /.exec(ddl)?.[1] ?? []
+);
+
 /**
  * Drop a concurrently built index left `indisvalid = false` by an interrupted
- * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
+ * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` after it rebuilds it
  * instead of skipping a dead one. A no-op on every healthy database.
+ *
+ * The drop is concurrent too, so it runs as its own statement outside any
+ * transaction or `DO` block, like the builds. A plain `DROP INDEX` takes an
+ * ACCESS EXCLUSIVE lock that blocks reads and writes on the table.
  */
-const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
-DECLARE
-  n TEXT;
-BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated', 'idx_resource_state_key', 'idx_resource_content_key']
-  LOOP
-    IF EXISTS (
-      SELECT 1 FROM pg_class c
-      JOIN pg_index i ON i.indexrelid = c.oid
-      JOIN pg_namespace ns ON ns.oid = c.relnamespace
-      WHERE c.relname = n AND ns.nspname = current_schema() AND NOT i.indisvalid
-    ) THEN
-      EXECUTE format('DROP INDEX %I', n);
-    END IF;
-  END LOOP;
-END $$;`;
+async function dropInvalidConcurrentIndexes(
+  query: (text: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+): Promise<void> {
+  const invalid = await query(
+    `SELECT c.relname AS name FROM pg_class c
+     JOIN pg_index i ON i.indexrelid = c.oid
+     JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE ns.nspname = current_schema() AND NOT i.indisvalid AND c.relname = ANY($1::text[])`,
+    [CONCURRENT_INDEX_NAMES]
+  );
+  for (const row of invalid.rows) {
+    const quoted = `"${String(row.name).replace(/"/g, '""')}"`;
+    await query(`DROP INDEX CONCURRENTLY IF EXISTS ${quoted}`);
+  }
+}
 
 const USERS_TABLE = `
 CREATE TABLE IF NOT EXISTS users (
@@ -787,11 +795,7 @@ const PROJECT_TO_ORG_MIGRATIONS = [
 
   // FIX-1546: re-key a pre-cell `schedule_index` on (cell, key), adopting
   // every existing row as its person's own cell. See the migration's note.
-  ADD_SCHEDULE_INDEX_CELL_MIGRATION,
-
-  // Clear an invalid index left by an interrupted concurrent build
-  // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
-  DROP_INVALID_CONCURRENT_INDEXES
+  ADD_SCHEDULE_INDEX_CELL_MIGRATION
 ];
 
 /**
@@ -875,6 +879,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     // Concurrent builds last, and one statement at a time: they cannot run
     // inside a transaction, and they are the only DDL here that can land on a
     // populated table (FIX-1010).
+    await dropInvalidConcurrentIndexes((text, values) => executor.query(text, values));
     for (const ddl of concurrentIndexes) {
       await executor.query(ddl);
     }
@@ -937,6 +942,7 @@ export async function initializeSchemaWithDedicatedClient(
       }
       // See `initializeSchema` — concurrent builds run outside a transaction,
       // one statement at a time (FIX-1010).
+      await dropInvalidConcurrentIndexes((text, values) => client.query(text, values));
       for (const ddl of concurrentIndexes) {
         await client.query(ddl);
       }
