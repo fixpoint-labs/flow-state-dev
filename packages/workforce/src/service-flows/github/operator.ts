@@ -6,7 +6,9 @@
  * GitHub routine asked for with no token, or by any other user, naming
  * `GITHUB_TOKEN`, so the token is never lent. With `reviewers`, it declares
  * the trusted reviewers' list screen, asked of GitHub with the
- * operator's token for the operator's own subscriptions only.
+ * operator's token for the operator's own subscriptions only. With
+ * `agentToken`, a subscription's self is the coding agents' own account, so
+ * the operator's comments on their pull requests are heard.
  *
  * Node-only (`operatorGitHubToken` asks `gh`): the server entry exports it,
  * the browser entry doesn't.
@@ -50,6 +52,14 @@ export interface OperatorGitHubOptions {
   reviewers?: GitHubTrustedReviewers;
   /** The model a routine's `interest` screen is judged on. Absent: a routine listing `interest` is refused. */
   interestModel?: string | EvaluationModel;
+  /**
+   * A token of the GitHub account the host's coding agents act as, when they
+   * have their own. A subscription's self is then that account, asked of
+   * GitHub with this token, so the own screen drops the agents' comments and
+   * hears the operator's. Everything else still reads GitHub with `token`.
+   * Absent: self is the operator's own account.
+   */
+  agentToken?: string;
 }
 
 /**
@@ -59,7 +69,7 @@ export interface OperatorGitHubOptions {
  * saves nothing; a poll for anyone else reads nothing.
  */
 export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscriptionProvider {
-  const { operator, token, apiUrl, reviewers, interestModel } = options;
+  const { operator, token, apiUrl, reviewers, interestModel, agentToken } = options;
   const reads = (ctx: BlockContext) => ctx.session.identity.userId === operator;
   const custom =
     reviewers === undefined
@@ -84,8 +94,12 @@ export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscripti
     ...(apiUrl === undefined ? {} : { apiUrl }),
     ...(screens === undefined ? {} : { screens })
   });
+  // Who the agents are on GitHub: their own account's `/user`, for the operator's subscriptions alone.
+  const agents =
+    agentToken === undefined ? undefined : githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? agentToken : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
   return {
     ...github,
+    ...(agents === undefined ? {} : { self: agents.self }),
     async canRead(key: string, ctx: BlockContext) {
       if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the lab again. Nothing was saved.");
       if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this lab's GITHUB_TOKEN, which serves only ${operator}. Nothing was saved.`);

@@ -14,15 +14,23 @@ import { listCursorModels } from "./model-list";
 import { checkCursorReadiness } from "./sign-in";
 
 /** What `cursorHarness` takes: the Cursor block's options, less what each run feeds it. */
-export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity" | "onEvent">;
+export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity" | "onEvent"> & {
+  /**
+   * Variables set on every run over the pass-list, as given: values, not
+   * names to pass. For what the host means a run to have, such as the GitHub
+   * account it acts as (`gitHubAccountEnv` from `@flow-state-dev/core/harness`).
+   */
+  extraEnv?: Readonly<Record<string, string>>;
+};
 
 /**
  * Cursor as a harness value.
  *
  * @param options The Cursor block's options. Its environment is always Cursor's own.
  */
-export function cursorHarness(options: CursorHarnessOptions = {}): Harness {
-  const env = () => harnessEnv({ pass: CURSOR_PASS });
+export function cursorHarness(harnessOptions: CursorHarnessOptions = {}): Harness {
+  const { extraEnv, ...options } = harnessOptions;
+  const env = () => ({ ...harnessEnv({ pass: CURSOR_PASS }), ...extraEnv });
   return {
     id: "cursor",
     label: "Cursor",

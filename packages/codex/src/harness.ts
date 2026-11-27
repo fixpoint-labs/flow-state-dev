@@ -14,7 +14,14 @@ import { listCodexModels } from "./model-list";
 import { readCodexUsage } from "./usage";
 
 /** What `codexHarness` takes: the Codex block's options, less what each run feeds it. */
-export type CodexHarnessOptions = Omit<CodexAgentOptions, "cwd" | "resume" | "onSession" | "onActivity" | "onEvent">;
+export type CodexHarnessOptions = Omit<CodexAgentOptions, "cwd" | "resume" | "onSession" | "onActivity" | "onEvent"> & {
+  /**
+   * Variables set on every run over the pass-list, as given: values, not
+   * names to pass. For what the host means a run to have, such as the GitHub
+   * account it acts as (`gitHubAccountEnv` from `@flow-state-dev/core/harness`).
+   */
+  extraEnv?: Readonly<Record<string, string>>;
+};
 
 /** How long the readiness check waits for Codex's account to answer. */
 const READINESS_TIMEOUT_MS = 30_000;
@@ -24,8 +31,9 @@ const READINESS_TIMEOUT_MS = 30_000;
  *
  * @param options The Codex block's options. Its client's environment is always Codex's own.
  */
-export function codexHarness(options: CodexHarnessOptions = {}): Harness {
-  const env = () => harnessEnv({ pass: CODEX_PASS });
+export function codexHarness(harnessOptions: CodexHarnessOptions = {}): Harness {
+  const { extraEnv, ...options } = harnessOptions;
+  const env = () => ({ ...harnessEnv({ pass: CODEX_PASS }), ...extraEnv });
   return {
     id: "codex",
     label: "Codex",

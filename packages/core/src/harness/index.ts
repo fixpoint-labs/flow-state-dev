@@ -145,8 +145,8 @@ export {
 export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "../helpers/pull-request-recorder";
 
 /** The allowlisted environment for a harness's child process, and the base every harness's list starts from. */
-export { HARNESS_BASE_PASS, harnessEnv } from "../helpers/harness-env";
-export type { HarnessEnvOptions } from "../helpers/harness-env";
+export { GH_TOKEN_CREDENTIAL_HELPER, gitHubAccountEnv, gitHubAccountFrom, HARNESS_BASE_PASS, harnessEnv } from "../helpers/harness-env";
+export type { GitHubAccount, HarnessEnvOptions } from "../helpers/harness-env";
 /** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
 export { harnessSteering } from "../helpers/harness-steering";
 export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "../helpers/harness-steering";

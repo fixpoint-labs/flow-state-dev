@@ -44,4 +44,9 @@ describe("a Cursor run from cursorHarness()", () => {
     cursorHarness().agent(feeds as never);
     expect(seen.options[0]!.onEvent).toBe(feeds.onEvent);
   });
+
+  it("sets the host's extraEnv over the pass list, so a run can act as an account of its own", () => {
+    cursorHarness({ extraEnv: { GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" } }).agent(feeds as never);
+    expect(seen.options[0]!.env).toEqual({ ...harnessEnv({ pass: CURSOR_PASS }), GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" });
+  });
 });

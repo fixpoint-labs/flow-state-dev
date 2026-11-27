@@ -245,6 +245,18 @@ export interface LocalWorkspaceHostOptions {
    */
   pullRequestRepo?: (url: string) => string | undefined;
   /**
+   * The GitHub account `land` pushes a run's branch and opens its pull request
+   * as, by a token of it, when the host's coding agents have one of their own.
+   * The push goes to that pull request's repository over https, with the
+   * token as GitHub's only credential, whatever the pinned remote's scheme;
+   * `gh` is handed the token as `GH_TOKEN`. github.com only: a pull request
+   * whose repository is on any other host is refused (`pull-request-host`)
+   * before anything is pushed or `gh` starts. Absent: the host's own
+   * credentials, as its remote calls always get them. A merge is the
+   * person's, and never uses it.
+   */
+  pullRequestsAs?: { readonly token: string };
+  /**
    * How long one whole provision may take, every git command in it included,
    * in milliseconds. Defaults to ten minutes. A caller that holds a lock
    * across provisioning reads it as the longest provisioning can hold it.
@@ -2346,7 +2358,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     );
   }
 
-  const landHost = (repo: string) => ({ repo, pins: fetchPins.get(repo), env, remotePass, pullRequestRepo: options.pullRequestRepo });
+  const landHost = (repo: string) => ({ repo, pins: fetchPins.get(repo), env, remotePass, pullRequestRepo: options.pullRequestRepo, pullRequestsAs: options.pullRequestsAs });
 
   /** `WorkspaceHost.land`: the run's checkout must be a worktree of a listed repository. */
   async function land(target: LandTarget, request: LandRequest): Promise<Landed> {

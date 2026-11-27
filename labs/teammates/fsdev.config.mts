@@ -8,6 +8,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gitHubAccountFrom } from "@flow-state-dev/core/harness";
 import { operatorGitHubToken } from "@flow-state-dev/workforce";
 import { checkCommands, defaultStore, openTeammates, runTimeout, setupCommand } from "./host.mts";
 
@@ -28,6 +29,7 @@ export default await openTeammates({
   setup: setupCommand(process.env.TEAMMATES_SETUP),
   checks: checkCommands(process.env.TEAMMATES_CHECKS),
   githubToken: operatorGitHubToken(),
+  agentGitHub: gitHubAccountFrom(process.env, { token: "TEAMMATES_AGENT_GITHUB_TOKEN", name: "TEAMMATES_AGENT_GIT_NAME", email: "TEAMMATES_AGENT_GIT_EMAIL" }),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
   ...(process.env.GOAL_HARNESS === "stub" ? { scriptedHarnessStepMs: Number(process.env.GOAL_HARNESS_STEP_MS ?? 2_000) } : {}),

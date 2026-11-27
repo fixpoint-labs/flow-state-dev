@@ -29,7 +29,7 @@
  * Every failure is a `WorkspaceRefusedError` whose message says what
  * happened and, where there is one, what clears it.
  */
-import { pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
+import { GH_TOKEN_CREDENTIAL_HELPER, pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
 import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { childEnv, HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
@@ -157,6 +157,8 @@ export interface LandHost {
    * URL names, or `undefined` when it names none. Default {@link repoOf}.
    */
   readonly pullRequestRepo?: (url: string) => string | undefined;
+  /** The GitHub account a pull request is pushed and opened as: `LocalWorkspaceHostOptions.pullRequestsAs`. */
+  readonly pullRequestsAs?: { readonly token: string };
 }
 
 /**
@@ -212,7 +214,7 @@ export async function existingPullRequest(
   if (remote === undefined || repo === undefined) return null;
   const ghDir = scratchDir();
   try {
-    const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo], pass: host.remotePass ?? HOST_REMOTE_PASS };
+    const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir), ...ghTokenOf(host, repo) }, where: ["--repo", repo], pass: host.remotePass ?? HOST_REMOTE_PASS };
     // Into the base a landing would ask for: the remote's default branch when the run's is gone.
     const judged = checkRemoteShape(remote.url);
     // A base gone with no default to fall back on throws `base-gone`: it can't be told where a pull request would be.
@@ -234,7 +236,7 @@ export async function existingPullRequest(
  * landing: the branch is pushed to it, and no second one is opened.
  *
  * @throws WorkspaceRefusedError `branch-gone`, `base-unknown`, `no-push-remote`, `no-pull-request-repo`,
- *   `remote-repointed`, `base-gone`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
+ *   `remote-repointed`, `base-gone`, `push-failed`, `pull-request-failed`, `pull-request-gone`, `pull-request-host`,
  *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
  */
@@ -640,7 +642,7 @@ async function openPullRequest(
   // (`url.*.insteadOf`, `pushurl`, a credential helper), and git above it is never looked for.
   // It is always told the head branch, so it never pushes: the push below is the only one.
   const ghDir = scratchDir();
-  const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
+  const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir), ...ghTokenOf(host, repo) };
   const where = ["--repo", repo];
   try {
     return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, pass: host.remotePass ?? HOST_REMOTE_PASS, repo });
@@ -734,7 +736,7 @@ async function pushAndOpen(
   }
   if (already !== undefined && pullRequestRefFromUrl(already) !== null) {
     try {
-      await push(git, host, target, remote, judged, left);
+      await push(git, host, target, remote, judged, gh.repo, left);
     } catch (error) {
       if (!(await remoteHolds(git, host, target, judged, left))) throw error;
     }
@@ -746,7 +748,7 @@ async function pushAndOpen(
       `No pull request is open from "${target.branch}" into ${remote.base} any more, so nothing was pushed and none was opened. Its commits are still there.`,
     );
   }
-  await push(git, host, target, remote, judged, left);
+  await push(git, host, target, remote, judged, gh.repo, left);
 
   // `owner:branch` on GitHub's side.
   const head = `${gh.repo.split("/")[1]}:${target.branch}`;
@@ -909,12 +911,58 @@ async function remoteBranchHolds(
   }
 }
 
+/**
+ * Where a push goes and with what credential. With `host.pullRequestsAs`, to
+ * the pull request's repository (`repo`) over https, the account's token
+ * github's only credential: an ssh remote would use the person's key.
+ * Otherwise to the pinned remote, with the person's own helpers.
+ */
+function pushedAs(host: LandHost, judged: AllowedRemote, repo: string): { url: string; scheme: string; config: string[]; env: Record<string, string> } {
+  if (host.pullRequestsAs === undefined) return { url: judged.url, scheme: judged.scheme, config: remoteConfig(host, judged), env: {} };
+  // The host is never read from `repo`: the token only ever goes to github.com.
+  const https = checkRemoteShape(`https://github.com/${agentGitHubRepo(repo)}.git`);
+  if ("reason" in https) throw new Error(https.message);
+  return {
+    url: https.url,
+    scheme: https.scheme,
+    config: remoteCallConfig(https.scheme, [["credential.https://github.com.helper", GH_TOKEN_CREDENTIAL_HELPER]]),
+    env: { GH_TOKEN: host.pullRequestsAs.token },
+  };
+}
+
+/**
+ * `owner/name` of a github.com pull-request repository (`github.com/owner/name`).
+ * @throws WorkspaceRefusedError `pull-request-host` for any other host: the
+ *   agents' token is only ever sent to github.com.
+ */
+function agentGitHubRepo(repo: string): string {
+  const match = /^github\.com\/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)$/i.exec(repo);
+  if (match === null) {
+    throw new WorkspaceRefusedError(
+      "pull-request-host",
+      `The pull request's repository is "${repo}", not one on github.com, so it isn't opened with the agents' GitHub token, and nothing was pushed.`,
+    );
+  }
+  return match[1]!;
+}
+
+/**
+ * gh's token for a landing in `repo`: the account's with `host.pullRequestsAs`
+ * (refused off github.com, before gh starts), else none set here (the host's own is passed).
+ */
+function ghTokenOf(host: LandHost, repo: string): Record<string, string> {
+  if (host.pullRequestsAs === undefined) return {};
+  agentGitHubRepo(repo);
+  return { GH_TOKEN: host.pullRequestsAs.token };
+}
+
 async function push(
   git: Git,
   host: LandHost,
   target: LandTarget,
   remote: { remoteName: string; url: string; base: string },
   judged: AllowedRemote,
+  repo: string,
   left: () => number,
 ): Promise<void> {
   const commit = await git(target.cwd, ["rev-parse", "--verify", `refs/heads/${target.branch}^{commit}`]);
@@ -922,6 +970,7 @@ async function push(
   // repository's config, which the run can rewrite, is never read.
   let scratch: string | undefined;
   try {
+    const to = pushedAs(host, judged, repo);
     scratch = scratchDir();
     const objects = join(await git(host.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
     const isolated = { ...host.env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
@@ -929,16 +978,16 @@ async function push(
     await run(
       "git",
       [
-        ...remoteConfig(host, judged),
+        ...to.config,
         "push",
         "--receive-pack=git-receive-pack",
         "--quiet",
         "--no-verify",
         "--",
-        judged.url,
+        to.url,
         `${commit}:refs/heads/${target.branch}`,
       ],
-      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: host.remotePass ?? HOST_REMOTE_PASS, gitCredentials: true },
+      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: to.scheme, GIT_SSH_COMMAND: "ssh", ...to.env }, pass: host.remotePass ?? HOST_REMOTE_PASS, gitCredentials: true },
     );
   } catch (error) {
     throw new WorkspaceRefusedError(
