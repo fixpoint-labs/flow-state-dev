@@ -366,7 +366,7 @@ export function unmatchedRefusal(input: Pick<SubscribeInput, "unmatched">, flowK
 
 function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refused: string } | { sessionId: string; worker: string; taskId?: string } {
   if (target !== undefined) return { sessionId: target.sessionId, worker: target.worker, ...(target.taskId === undefined ? {} : { taskId: target.taskId }) };
-  const state = ctx.session.state ?? {};
+  const { state } = ctx.session;
   const worker = state[WORKER_ID_STATE_KEY];
   if (typeof worker !== "string" || worker.length === 0) return { refused: "not_a_worker: this session runs no worker, so it can't subscribe." };
   const taskId = state[TASK_ID_STATE_KEY];
@@ -512,7 +512,7 @@ async function writeSubscription(
       return { refused: `ended: its task was already ${ended.ending === "errored" ? "failed" : "cancelled"}, so it ended with it.` };
     }
   }
-  await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+  await subscriptionCursorsOf(ctx).getOrCreate(id);
   // The same id on a new thread (a declared routine's entry changed): the thread the write replaced
   // loses its entry, or its stale screen settings keep nominating it there.
   if (moved.prior.thread !== moved.now.thread) await dropFromIndex(ctx, moved.prior.thread, id);
@@ -535,7 +535,7 @@ export async function syncIndex(ctx: BlockContext, subscription: SubscriptionRes
   }
   // Other users' subscribes to this thread may write at once: `updateState`
   // runs again against the subscription that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread), { subscriptions: {} });
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread));
   const slot = indexSlotOf(subscription.userId, subscription.id);
   await retryOnConflict(() =>
     index.updateState((current) => {

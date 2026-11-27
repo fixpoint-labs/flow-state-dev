@@ -211,7 +211,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     if (verifiedWorkerOf(ctx.session) !== undefined) {
       return withRoster(installation, ctx, await seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx))));
     }
-    const named = ctx.session.state?.[WORKER_ID_STATE_KEY];
+    const named = ctx.session.state[WORKER_ID_STATE_KEY];
     return typeof named === "string" ? ownerDefaults(ctx) : withRoster(installation, ctx, delegateDefaultsOf(turnConfigOf(ctx)));
   };
 

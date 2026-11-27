@@ -156,6 +156,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     name: "github-reviewers-edit-decide",
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
     outputSchema: z.union([judgedSchema, reviewersAnswerSchema]),
+    // The judged sequencer passes the check step’s validated edit as parent input.
     parentInputSchema: reviewersCheckedSchema,
     resources,
     execute: async ({ answers }, ctx) => {
