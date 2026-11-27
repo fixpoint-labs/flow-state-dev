@@ -641,11 +641,50 @@ const ENCODED_TASK_ISSUE = /^h-[0-9a-f]{16}$/i;
  * shaped like an encoding is encoded too, so no id lands on another's.
  *
  * Every reader of a run keyed this way (a session door's `runOf`) derives the
- * issue through this, so it reads the record the manager wrote.
+ * issue through {@link runIssueSegment}, which applies this to the task's
+ * follow-up root, so it reads the record the manager wrote.
  */
 export function taskIssueSegment(taskId: string): string {
   const fits = OWNED_SEGMENT.test(taskId) && taskId.length <= MAX_OWNED_SEGMENT && !ENCODED_TASK_ISSUE.test(taskId);
   return fits ? taskId : `h-${hashKeySegment(taskId)}`;
+}
+
+/**
+ * The task whose run `task` continues: the root of its follow-up chain
+ * (`followUpOf`, walked through `lookup`), or `task` itself when it follows
+ * up nothing. A follow-up of a follow-up continues the same root. A link
+ * whose task `lookup` no longer finds ends the walk there, on the id it named.
+ *
+ * A follow-up is more work on what its root did, so its run is the root's:
+ * the same checkout, branch, run record and coding session. The manager keys
+ * a run by this, and so does every reader of the run (a session door's
+ * `runOf`), so the two never disagree.
+ */
+export function followUpRootId(
+  task: { readonly id: string; readonly followUpOf?: string },
+  lookup: (id: string) => { readonly followUpOf?: string } | undefined,
+): string {
+  let root = task.id;
+  let next = task.followUpOf;
+  const walked = new Set([root]);
+  while (next !== undefined && !walked.has(next)) {
+    walked.add(next);
+    root = next;
+    next = lookup(next)?.followUpOf;
+  }
+  return root;
+}
+
+/**
+ * The issue a task's run is keyed by on a board that mints its ids: its
+ * follow-up root's id ({@link followUpRootId}) as {@link taskIssueSegment}
+ * encodes it. A task that follows up nothing keeps the key of its own id.
+ */
+export function runIssueSegment(
+  task: { readonly id: string; readonly followUpOf?: string },
+  lookup: (id: string) => { readonly followUpOf?: string } | undefined,
+): string {
+  return taskIssueSegment(followUpRootId(task, lookup));
 }
 
 /**

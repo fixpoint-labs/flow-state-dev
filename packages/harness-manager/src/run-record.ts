@@ -620,9 +620,11 @@ export async function writeRunRecord(
   // A later attempt, or a later turn of the same attempt, of the same task has opened the
   // record: this one is over. Only within one task: a task filed again under the same id
   // starts its attempts and turns over, and the board row's fence above already refuses the
-  // old task's writes.
+  // old task's writes. Nor across tasks: a follow-up continues its root's record with
+  // attempts of its own.
   const sameTask =
-    existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
+    (existing?.taskId == null || existing.taskId === identity.taskId) &&
+    (existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId);
   if (sameTask && existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
   if (
     identity.turn !== undefined &&

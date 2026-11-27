@@ -202,6 +202,7 @@ import {
   worktreeNameFor,
   runIdentityKey,
   taskIssueSegment,
+  followUpRootId,
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
@@ -2579,9 +2580,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const payload = taskPayload(input, claim === null, trackerIssueOf);
       // A legacy feature payload's own `phase` names the segment its run is keyed by.
       const segment = payload?.phase ?? mode.name;
-      const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
+      // **A follow-up continues its root's run**: the same checkout, branch,
+      // run record and coding session, so it works on what the root did. Its
+      // run is keyed by its follow-up root, as every reader keys it.
+      const rootId = followUpRootId({ id: input.taskId, followUpOf: board.get(input.taskId)?.followUpOf }, (id) => board.get(id));
+      const issue = payload === undefined || claim !== null ? taskIssueSegment(rootId) : payload.issue;
       if (payload !== undefined) {
-        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode, claim === null);
+        assertFeatureRowIdentity(input.taskId, rootId, payload.issue, segment, mode, claim === null);
       }
       // The issue the task is for, when it names one. On a board read from
       // the claim it also leads the branch (see `branchFor`), checked as an
@@ -4866,6 +4871,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
  */
 function assertFeatureRowIdentity(
   taskId: string,
+  // A follow-up continues its root's run, so its root's id is the one checked.
+  rootId: string,
   issue: string,
   phaseName: string,
   mode: Pick<ModeSpec, "name" | "formerName">,
@@ -4915,7 +4922,7 @@ function assertFeatureRowIdentity(
   // payload, so the collapse can't happen there, and its ids are minted.
   if (!fixedBoard) return;
   const canonicalId = harnessTaskId(issue, phaseName);
-  if (taskId !== canonicalId) {
+  if (rootId !== canonicalId) {
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +

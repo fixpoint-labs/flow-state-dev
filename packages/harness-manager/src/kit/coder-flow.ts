@@ -76,7 +76,7 @@ import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type Completion
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
-import { taskIssueSegment } from "../workspace";
+import { runIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
@@ -364,7 +364,8 @@ export function coderWorkerFlow(
               tasks: filed.tasks,
               runOf: (task: Task) => {
                 const mode = runModeOfTask(task.input, resolved, stampMatches(task, CODER_FLOW, declaration));
-                return mode === undefined ? undefined : { issue: taskIssueSegment(task.id), mode };
+                // Keyed as the manager keys it: a follow-up by its root.
+                return mode === undefined ? undefined : { issue: runIssueSegment(task, (id) => filed.tasks.get(id)), mode };
               },
             };
       };
