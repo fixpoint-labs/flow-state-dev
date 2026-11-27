@@ -14,7 +14,6 @@
  * starts a fresh run, `continueRequest` resumes an existing one.
  */
 import { requireAttributedOrg } from "../context/org-attribution";
-import { withRequestOrg } from "../context/principal";
 import type { FlowInstance, ResumeContext } from "@flow-state-dev/core/types";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -162,11 +161,10 @@ export async function continueRequest(
   const responseEmitter = options.responseEmitter ?? liveStream?.emitter;
 
   // A resume is an addressed execution, so the stored record must name its
-  // organization before anything runs under it (BR-14): its own, or, for a
-  // record from before organizations, its session's (`withRequestOrg`,
-  // BP-030). Refused here, above the activeRequests register, so a legacy row
-  // is not re-advertised as in-flight on its way to being refused.
-  const orgId = requireAttributedOrg(await withRequestOrg(stores, record), "resuming this request");
+  // organization before anything runs under it (BR-14). Refused here, above the
+  // activeRequests register, so a legacy row is not re-advertised as in-flight
+  // on its way to being refused.
+  const orgId = requireAttributedOrg(record, "resuming this request");
 
   // Re-register the heartbeat under the SAME id so the stale-request sweeper
   // doesn't reap the continued run. Mirrors the field set the external-dispatch

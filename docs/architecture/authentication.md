@@ -135,11 +135,14 @@ runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
   kind once, at birth (`SessionRecord.principalKind`), and every session
   store's `set` keeps the stored value. A run whose principal, or whose
   session, is a machine's reaches no other session. A session from before
-  the field is classified from its birth request: the earliest request of
-  its own owner, organization, tenant and flow, written within the queued
-  grace of the record's `createdAt` (`context/session-kind.ts`). Nothing
-  else counts, so a predecessor's request under a reused id, or a later turn
-  once retention pruned the birth request, reads as a machine's. The answer
+  the field is classified from its birth request: a request of its own
+  owner, organization, tenant and flow, written within the host's queued
+  grace (`queuedGraceMs`) of the record's `createdAt` (`context/session-kind.ts`).
+  Nothing says which incarnation wrote a request, so the session reads as a
+  kind only when every request that could be its birth request agrees: a
+  predecessor's request under an id reused within the window, a session
+  with no birth request left, or a later turn once retention pruned it,
+  reads as a machine's. The answer
   is written onto the record the first time, and the store keeps it from
   then on. A recovery retry runs under the original request's kind and
   `resolvedBy` (a record from before them: a machine, none).
@@ -153,9 +156,13 @@ runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
   verdict and a block's named reach all call it. The request-id claim, the
   request-control routes and their guard, and the request listings read a
   request record from before organizations with its session's org
-  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it; a retry
-  or continue of it runs in that org. One whose session has no org either is
-  still refused `migration-required`.
+  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it, but
+  only when that session is the one it was written in: the same user and
+  tenant, born no later than the record. Otherwise the id may have been
+  deleted and taken again, in another org, and the record stays no one's.
+  That read is for visibility only: retry, continue, resume and answer run
+  stored work again, and refuse such a record `migration-required` to its
+  owner until it is migrated (BR-14).
 
 ---
 

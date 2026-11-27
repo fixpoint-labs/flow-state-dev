@@ -413,7 +413,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // the child's, and a child records its incarnation.
     const parent = await stores.session.get(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     const principalKind: PrincipalKind =
-      inputs.principal?.kind === "person" && parent !== undefined && (await resolveSessionKind(stores, parent)) === "person"
+      inputs.principal?.kind === "person" && parent !== undefined && (await resolveSessionKind(stores, parent, { queuedGraceMs: inputs.effectiveRuntimeConfig?.queuedGraceMs })) === "person"
         ? "person"
         : "machine";
     try {

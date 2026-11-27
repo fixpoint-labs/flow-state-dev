@@ -151,18 +151,6 @@ async function requestsIn(caller: Caller, sessionId: string): Promise<string[]> 
   return requests.map((r) => r.id).sort();
 }
 
-/** A route's answer as its caller acts on it: the status, and the error it names, if any. */
-async function outcome(response: Response): Promise<{ status: number; error?: unknown }> {
-  const text = await response.text();
-  let error: unknown;
-  try {
-    error = (JSON.parse(text) as { error?: unknown }).error;
-  } catch {
-    error = undefined;
-  }
-  return { status: response.status, ...(error !== undefined ? { error } : {}) };
-}
-
 /** The four request-control routes, as a caller reaches each for `requestId`. */
 const ROUTES: Array<[string, (caller: Caller, requestId: string) => Promise<Response>]> = [
   [
@@ -244,35 +232,50 @@ describe("another user's request id", () => {
     expect(request.retryOf).toBe(aliceRequest);
   });
 
-  it.each(ROUTES)(
-    "%s answers it as an unused id when it predates organizations, and its owner as their own",
+  it.each(ROUTES.filter(([name]) => name !== "abort"))(
+    "%s answers it as an unused id when it predates organizations, and runs nothing for its owner until it is migrated",
     async (_route, call) => {
       const alice = server.as("alice");
       const bob = server.as("bob");
+      // A later turn, so its session's organization does make it visible to its owner.
+      await statusOf(alice, await start(alice, "fail", ALICE_SESSION), "failed");
       const aliceRequest = await start(alice, "fail", ALICE_SESSION);
       await statusOf(alice, aliceRequest, "failed");
-      // What the route answers its owner for this request, with its organization stamped.
-      const attributed = await outcome(await call(alice, aliceRequest));
       // Leave the record as a release before organizations wrote it.
       const record = await server.stores.request.get(aliceRequest);
       await server.stores.request.set(aliceRequest, { ...record!, orgId: undefined }, "any");
+      const before = await requestsIn(alice, ALICE_SESSION);
 
       const unused = await answer(await call(bob, UNUSED_REQUEST), UNUSED_REQUEST);
       const probed = await answer(await call(bob, aliceRequest), aliceRequest);
       expect(probed).toEqual(unused);
-      // FIX-2942; BP-030: read with its session's organization, it is still its
-      // owner's, and the route answers them as it did before the strip.
-      expect(await outcome(await call(alice, aliceRequest))).toEqual(attributed);
-
-      // With no organization on its session either, nothing says whose
-      // organization it is: its owner is told it needs migrating.
-      const session = (await server.stores.session.list({ userId: "alice" })).find((s) => s.id.endsWith(ALICE_SESSION));
-      await server.stores.session.set(session!.id, { ...session!, orgId: undefined }, "any");
+      // Running stored work again needs its organization recorded, not read
+      // from its session: its owner is told it needs migrating, and nothing runs.
       const own = await call(alice, aliceRequest);
       expect(own.status).toBe(409);
       expect(((await own.json()) as { error: string }).error).toBe("migration-required");
+      expect(await requestsIn(alice, ALICE_SESSION)).toEqual(before);
     }
   );
+
+  it("abort answers it as an unused id when it predates organizations, and its owner as their own", async () => {
+    const alice = server.as("alice");
+    const bob = server.as("bob");
+    const abort = ROUTES.find(([name]) => name === "abort")![1];
+    // A later turn, written once the session existed.
+    await statusOf(alice, await start(alice, "fail", ALICE_SESSION), "failed");
+    const aliceRequest = await start(alice, "fail", ALICE_SESSION);
+    await statusOf(alice, aliceRequest, "failed");
+    // What abort answers its owner for this request, with its organization stamped.
+    const attributed = await answer(await abort(alice, aliceRequest), aliceRequest);
+    const record = await server.stores.request.get(aliceRequest);
+    await server.stores.request.set(aliceRequest, { ...record!, orgId: undefined }, "any");
+
+    const unused = await answer(await abort(bob, UNUSED_REQUEST), UNUSED_REQUEST);
+    expect(await answer(await abort(bob, aliceRequest), aliceRequest)).toEqual(unused);
+    // Abort runs nothing, so it reads a turn written in the session as its session's organization's.
+    expect(await answer(await abort(alice, aliceRequest), aliceRequest)).toEqual(attributed);
+  });
 });
 
 describe("a request that arrived on a transport not open to re-entry", () => {

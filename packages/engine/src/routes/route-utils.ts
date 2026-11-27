@@ -219,7 +219,7 @@ export function unknownRequestStreamResponse(
  */
 export async function callerReachesRequest(
   stores: Pick<StoreRegistry, "session">,
-  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId" | "sessionId">,
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId" | "sessionId" | "createdAt">,
   tenantId: string | undefined,
   principal: ResolvedPrincipal | undefined
 ): Promise<boolean> {

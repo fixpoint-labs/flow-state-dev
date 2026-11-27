@@ -88,16 +88,28 @@ export function resolvedByMatches(resolvedBy: string | undefined, target: string
  * claim's tolerance for those records, applied at read so the one exact owner
  * comparison (`principalOwns`) decides: an owner retrying such an id reuses
  * it, and nobody else gains it, since user and tenant still compare exactly.
- * A record whose session is gone, or has no organization either, stays
- * unattributed and is no one's.
+ *
+ * The session's organization speaks for the record only when that session is
+ * the one the record was written in: the same user and tenant, and born no
+ * later than the record (its `createdAt`, an in-flight entry's `startedAt`;
+ * a record with neither proves nothing).
+ * Deleting a session leaves its requests behind and the id can be taken
+ * again, in another organization; a session born after the record may be
+ * that replacement. A request written just before its session was born (an
+ * action's first) is not told apart from a predecessor's, so it is not
+ * normalised either. A record left unattributed is no one's: visibility
+ * answers it as an unknown id, and execution refuses it as unattributed
+ * (`requireAttributedOrg`, which reads the stored record, not this).
  */
-export async function withRequestOrg<T extends OwnedIdentity & { sessionId?: string | null }>(
-  stores: Pick<StoreRegistry, "session">,
-  record: T
-): Promise<T> {
+export async function withRequestOrg<
+  T extends OwnedIdentity & { sessionId?: string | null; createdAt?: number; startedAt?: number }
+>(stores: Pick<StoreRegistry, "session">, record: T): Promise<T> {
   if (record.orgId != null || record.sessionId == null) return record;
   const session = await stores.session.get(resolveSessionStorageKey(record.sessionId, record.tenantId ?? undefined));
   if (session?.orgId == null || session.userId !== record.userId) return record;
+  if ((session.tenantId ?? undefined) !== (record.tenantId ?? undefined)) return record;
+  const writtenAt = record.createdAt ?? record.startedAt;
+  if (writtenAt === undefined || session.createdAt > writtenAt) return record;
   return { ...record, orgId: session.orgId };
 }
 

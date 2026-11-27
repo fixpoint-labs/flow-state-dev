@@ -24,7 +24,7 @@ import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
-import { resolveSessionKind } from "../context/session-kind";
+import { resolveSessionKind, type BirthWindow } from "../context/session-kind";
 import type { InboundTransportHost } from "../transports/types";
 
 type Listener = (dueAt: number) => void;
@@ -55,19 +55,21 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
  * run's completion and a way to abort it, so a host that closes its stores can
- * wait for it, for a while.
+ * wait for it, for a while. `window` is the host's queued grace, which bounds
+ * where a session from before kinds finds its birth request.
  */
 export async function fireWakeThrough(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
   wake: WakeRecord,
-  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
+  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void,
+  window: BirthWindow = {}
 ): Promise<void> {
   const controller = new AbortController();
   // FIX-2942: a wake stores no principal kind of its own; it runs as its
   // session's owner, with the kind that session was born with (a machine's
   // when the session is gone), and no resolver identity.
   const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
-  const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session);
+  const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session, window);
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,

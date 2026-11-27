@@ -15,6 +15,9 @@
  * it from then on.
  */
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createExecutionContext } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 import { createInitialRequestRecord } from "../../src/context/initial-request-record";
 import { resolveSessionKind } from "../../src/context/session-kind";
@@ -85,6 +88,28 @@ describe("the birth request of a session from before kinds", () => {
     expect(await resolveSessionKind(stores, session)).toBe("machine");
   });
 
+  it("is no request at all when a predecessor's request shares the birth window, so the session reads as a machine's", async () => {
+    // The id was deleted and taken again within the window: a predecessor's
+    // person request and this record's webhook birth both look like a birth.
+    // Nothing ties either to this incarnation, so neither is trusted.
+    for (const birthAt of [BORN - 1_000, BORN + 1_000]) {
+      const stores = createInMemoryStores();
+      await request(stores, "r-predecessor", "s", BORN - 2 * MINUTE, { source: "http" });
+      await request(stores, "r-birth", "s", birthAt, { source: "webhook" });
+      const session = await legacySession(stores, "s");
+      expect(await resolveSessionKind(stores, session), String(birthAt - BORN)).toBe("machine");
+      expect((await stores.session.get("s"))?.principalKind).toBe("machine");
+    }
+  });
+
+  it("is looked for as far before the session as the host lets a queued action wait", async () => {
+    const stores = createInMemoryStores();
+    const session = await legacySession(stores, "s");
+    // Queued 20 minutes before a worker created the session, under a 30-minute grace.
+    await request(stores, "r-birth", "s", BORN - 20 * MINUTE, { source: "http" });
+    expect(await resolveSessionKind(stores, session, { queuedGraceMs: 30 * MINUTE })).toBe("person");
+  });
+
   it("is never another owner's, another organization's or another flow's request under the id", async () => {
     for (const other of [{ userId: "bob" }, { orgId: "globex" }, { flowKind: "elsewhere" }]) {
       const stores = createInMemoryStores();
@@ -132,5 +157,35 @@ describe("a backfilled kind under retention", () => {
     const session = await legacySession(stores, "s");
     await request(stores, "r-later", "s", BORN + 60 * MINUTE, { source: "http" });
     expect(await resolveSessionKind(stores, session)).toBe("machine");
+  });
+});
+
+describe("a run in a session from before kinds", () => {
+  it("writes its session's state with no retries left after the kind is backfilled", async () => {
+    // The backfill writes the kind and advances the record's version. A run
+    // that kept the copy it read before that would conflict on its first
+    // session write, and with no retries the write fails.
+    const stores = createInMemoryStores();
+    const block = handler({ name: "noop", execute: (_input: { value: string }) => ({ ok: true }) });
+    const flow = defineFlow({
+      kind: "notes",
+      session: { cas: { maxRetries: 0 } },
+      actions: { run: { inputSchema: z.object({ value: z.string() }), block } }
+    })();
+    await legacySession(stores, "s");
+    await request(stores, "r-birth", "s", BORN, { source: "http" });
+    const ctx = await createExecutionContext({
+      orgId: ORG,
+      flow,
+      actionName: "run",
+      requestId: "r-owner-run",
+      sessionId: "s",
+      userId: "alice",
+      stores
+    });
+    expect((await stores.session.get("s"))?.principalKind).toBe("person");
+    const session = ctx.session as unknown as { setState(next: Record<string, unknown>): Promise<boolean> };
+    await expect(session.setState({ mode: "written" })).resolves.toBe(true);
+    expect((await stores.session.get("s"))?.state).toEqual({ mode: "written" });
   });
 });

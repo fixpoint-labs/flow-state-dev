@@ -34,6 +34,7 @@ import type { Principal } from "../../src/context/principal";
 import { claimRequestRecord, resolveCallerRequestId } from "../../src/context/request-principal";
 import { createInitialRequestRecord } from "../../src/context/initial-request-record";
 import { RequestOwnerMismatchError } from "../../src/context/binding-errors";
+import { callerReachesRequest } from "../../src/routes/route-utils";
 import { recentTimes } from "../transports/scheduled/recent-times";
 
 // ── fixtures ────────────────────────────────────────────────────────────────
@@ -378,5 +379,19 @@ describe("pre-org request retry", () => {
     );
     await expect(claimRequestRecord(stores, flow, retry)).resolves.toMatchObject({ id: "req-old" });
     await expect(claimRequestRecord(stores, flow, { ...retry, userId: "bob" })).rejects.toBeInstanceOf(RequestOwnerMismatchError);
+  });
+
+  it("is no one's once the id is taken again: the replacement session's organization proves nothing about it", async () => {
+    const stores = createInMemoryStores();
+    await plantSession(stores, "s-old");
+    const original = (await stores.session.get("s-old"))!;
+    await plantRequest(stores, "req-old", "s-old", { orgId: null, at: original.createdAt + 5 });
+    // The original session is deleted; the same user takes the id again, in another organization.
+    await stores.session.delete("s-old");
+    await stores.session.set("s-old", { ...original, orgId: "globex", createdAt: original.createdAt + 60_000, version: 0 }, "any");
+    const replacement = { userId: "alice", orgId: "globex" };
+    const record = (await stores.request.get("req-old"))!;
+    expect(await callerReachesRequest(stores, record, undefined, replacement)).toBe(false);
+    expect(await resolveCallerRequestId(stores, "req-old", replacement)).not.toBe("req-old");
   });
 });
