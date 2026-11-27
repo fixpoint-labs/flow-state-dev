@@ -62,6 +62,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   filedWorkKeepsOpen,
+  leaseLapsed,
   ticketForClaim,
   type SuspensionHold,
   type Task,
@@ -490,30 +491,17 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     const stop = stopOf(record, ending);
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
     let outcome = await waitOn(record, row, stop.on, undefined, mirror);
-    // Only the lease lapsed: the row is still this attempt's and turn's, and
-    // no reclaim moved it. The claim takes it back, by the start gate's own
-    // takeover (the span the claim committed to, a renewal that must say it
-    // landed), and mirrors the stop, so the person can still answer it.
-    // Cancelling the stop instead would let the resume, admitted on this
-    // same attempt, settle the task on a review nobody gave (FIX-2847). Only
-    // a definite refusal (`StaleTaskClaimError`: a reclaim won, no verdict,
-    // no span to take it back for) leaves the write refused, and the stop is
-    // ended below as superseded. Any other failure is thrown: the attempt may
-    // still own the row, so the stop stays suspended, still needing its
-    // review, for the request's recovery.
-    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim") {
-      const stored = await readCommittedTask(ref, row.id);
-      if (claimHolds(ref, ticket, stored)) {
-        const adopted = await adoptLapsedLease(ref, stored).catch((error: unknown) => {
-          if (error instanceof StaleTaskClaimError) return undefined;
-          // Said here: an engine with no logger says nothing of a hook that throws.
-          console.warn(
-            `[task-board] task "${row.id}": its lease lapsed before its stop for a person was mirrored, and taking the row back failed; the stop stays for its person: ${(error as Error).message}`
-          );
-          throw error;
-        });
-        if (adopted !== undefined) outcome = await waitOn(record, adopted, stop.on, undefined, mirror);
-      }
+    // Refused on a lease that lapsed after the read above: the mirror must
+    // land, so the person can still answer the stop. Cancelling the stop
+    // instead would let the resume, admitted on this same attempt, settle the
+    // task on a review nobody gave (FIX-2847). So the row is taken back after
+    // the refusal, by the same takeover a stopped request takes before its
+    // end write, and the mirror written again. A failed takeover is thrown:
+    // the attempt may still own the row, so the stop stays suspended, still
+    // needing its review, for the request's recovery. A definite refusal
+    // leaves the write refused, and the stop is ended below as superseded.
+    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim" && (await takeBackLapsedLease(record, row))) {
+      outcome = await waitOn(record, row, stop.on, undefined, mirror);
     }
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the
     // first branch), and the collection still refuses a mirror on a row a
@@ -529,6 +517,9 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     return undefined;
   }
   if (ending.status === "aborted") {
+    // The stop ended the lease's renewal, and a side chain that ignored the
+    // abort can hold the request's end past its lapse (FIX-2897).
+    await takeBackLapsedLease(record, row);
     if (!record.own) return checkStopped(record, row);
     // A person stopped the task's own request (the abort route,
     // `stopRequest`): the task stops with it, rather than retrying the work
@@ -627,6 +618,41 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
     return undefined;
   }
   return completeFenced(record, row, row.output, !rechecked, (fresh) => checkStopped(record, fresh, true));
+}
+
+// FIX-2897; FIX-2847.
+/**
+ * Before an end write that must land, or after one refused on it, take back
+ * a lease that only lapsed: the row as stored is still this claim's attempt
+ * and turn, and no reclaim moved it. By the start gate's own takeover (`adoptLapsedLease`: the span the claim
+ * committed to, a renewal that must say it landed), so the write that follows
+ * is not refused `lost-claim` and the task settles on its same attempt rather
+ * than being taken by the next claim as abandoned.
+ *
+ * A definite refusal (`StaleTaskClaimError`: a reclaim won, a hold refused
+ * the renewal, no verdict, no span to take it back for) takes nothing back,
+ * and the write is refused as before.
+ *
+ * @returns whether the row was taken back.
+ * @throws any other failure of the takeover: the attempt may still own the row.
+ */
+async function takeBackLapsedLease(record: Admitted, task: Task): Promise<boolean> {
+  const { ref, ticket } = record;
+  const stored = await readCommittedTask(ref, task.id);
+  if (!claimHolds(ref, ticket, stored) || !leaseLapsed(stored, ref.now())) return false;
+  try {
+    await adoptLapsedLease(ref, stored);
+    return true;
+  } catch (error) {
+    if (error instanceof StaleTaskClaimError) {
+      // Said here: the write that follows is refused as `lost-claim`, which doesn't say what blocked the takeover.
+      console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write and was not taken back: ${error.message}`);
+      return false;
+    }
+    // Said here: an engine with no logger says nothing of a hook that throws.
+    console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write, and taking the row back failed: ${(error as Error).message}`);
+    throw error;
+  }
 }
 
 /**
