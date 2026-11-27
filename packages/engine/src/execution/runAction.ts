@@ -2108,6 +2108,7 @@ async function runActionAttempt<
       logger,
       tracingLevel: options.runtimeConfig.tracingLevel,
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
+      runsCarriedCore: options.resolvedActionCore !== undefined,
       errorCapture: options.runtimeConfig.errorCapture,
       requestHost: options.runtimeConfig.requestHost,
       // What THIS request is running under, which is not always what the host

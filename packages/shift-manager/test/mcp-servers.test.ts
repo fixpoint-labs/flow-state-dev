@@ -297,7 +297,7 @@ describe("the harness a Lab runs", () => {
     const { claudeCodeHarness, errorReporterHarness } = await import("../teams/devteam/harness.mts");
     process.env.FSD_TEST_LINEAR_SEED = SENTINEL;
     try {
-      const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
+      const feeds = { cwd: () => "/w", worktree: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
       claudeCodeHarness(feeds);
       claudeCodeHarness({ ...feeds, mcpTools: Object.assign(async () => ({}), { named: async () => [] }) });
       errorReporterHarness({ cwd: () => "/w" } as never);
@@ -308,7 +308,8 @@ describe("the harness a Lab runs", () => {
     const [without, withTools, reporter] = handed;
     expect(reporter).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
+      // `worktree` is a feed every runner hands (the fence's directory); Claude Code takes no option by that name.
+      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt", "worktree"].sort(),
     );
     expect(without!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob"]);
     // Claude Code's own preset, with nothing appended: the run's terms and report are in its brief, which every harness reads.

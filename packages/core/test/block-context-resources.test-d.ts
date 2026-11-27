@@ -15,9 +15,9 @@
  */
 import { expectTypeOf } from "vitest";
 import { z } from "zod";
-import { defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core";
-import type { AnyResourceRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import type { AnyResourceRef, ProjectedResourceCollectionRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 const notes = defineResource({ scope: "session", stateSchema: z.object({ count: z.number() }) });
 const skills = defineResourceCollection({
@@ -65,8 +65,8 @@ handler({
 
     // The declared ref keeps its own type, by property and through `get`;
     // it is not widened to the `AnyResourceRef` union.
-    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<any>>();
-    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<any>>();
+    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<{ count: number }>>();
+    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<{ count: number }>>();
     // @ts-expect-error `get` accepts only a declared name.
     ctx.resources.get("missing");
     // @ts-expect-error an undeclared name is a missing property.
@@ -118,11 +118,32 @@ handler({
   execute: (input, ctx) => {
     readsAnyCtx(ctx);
     readsOpenRegistry(ctx.resources);
-    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<any>>();
+    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<{ name: string }>>();
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<
-      Array<ResourceRef<any> | ResourceCollectionRef<any>>
+      Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }>>
     >();
     return input;
+  },
+});
+
+const portfolio = defineProjectedResourceCollection({
+  pattern: "positions/*",
+  scope: "user",
+  stateSchema: z.object({ shares: z.number() }),
+  read: async () => null,
+  search: async () => ({ hits: [] }),
+});
+declare const showPortfolio: boolean;
+
+handler({
+  name: "declares-optional-portfolio",
+  resources: { ...(showPortfolio ? { portfolio } : {}) },
+  execute: (_input, ctx) => {
+    readsAnyCtx(ctx);
+    type PortfolioRef = ProjectedResourceCollectionRef<{ shares: number }>;
+    expectTypeOf(ctx.resources.portfolio).toEqualTypeOf<PortfolioRef | undefined>();
+    expectTypeOf(ctx.resources.get("portfolio")).toEqualTypeOf<PortfolioRef>();
+    expectTypeOf(ctx.resources.list()).toEqualTypeOf<PortfolioRef[]>();
   },
 });
 

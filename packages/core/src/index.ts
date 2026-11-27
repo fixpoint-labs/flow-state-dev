@@ -434,7 +434,8 @@ export {
   RouteUnavailableError,
   RecordedValueOmittedError,
   RECORDED_VALUE_OMITTED,
-  isAbortLike
+  isAbortLike,
+  containsSecret
 } from "./errors";
 export type {
   FlowErrorOptions,

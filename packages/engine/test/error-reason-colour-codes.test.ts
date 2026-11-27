@@ -188,6 +188,83 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(errorItem?.details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET", message: "raw" });
   });
 
+  it("shows the cause as the seam left it when the seam changes or replaces the cause and keeps the message", async () => {
+    // A seam that narrows the wrapped cause and adds a diagnosis has said
+    // something the raw throw did not; unwrapping past it would drop that.
+    const narrow = (error: FlowError) => {
+      const cause = error.cause as Error & { code?: string };
+      cause.message = "socket closed by the provider";
+      cause.code = "E_PROVIDER_RESET";
+    };
+    const raw = () => new Error("raw", { cause: new Error("socket closed") });
+
+    // Changed in place: returned as is, returned as a clone, or nothing returned.
+    for (const seam of [
+      (error: FlowError) => (narrow(error), error),
+      (error: FlowError) => (narrow(error), cloneError(error)),
+      (error: FlowError) => void narrow(error)
+    ]) {
+      const thrown = raw();
+      const out = applyNormalizedErrorSeam({ interceptNormalizedError: seam }, normalizeError(thrown), {} as ExecutionMetadata);
+      expect(out.message).toBe("raw");
+      expect(displayCause(out)).toBe(thrown);
+    }
+
+    // Normalizing again, as each engine layer does, keeps the seam's change shown.
+    const thrown = raw();
+    const narrowed = normalizeError(thrown);
+    narrow(narrowed);
+    expect(displayCause(normalizeError(narrowed))).toBe(thrown);
+
+    // A cause below the wrapped one that cannot be turned into a string (no
+    // prototype) still normalizes, and is still unwrapped to.
+    const bare = Object.assign(Object.create(null) as object, { message: "socket closed" });
+    expect(displayCause(normalizeError(new Error("raw", { cause: bare })))).toBe(bare);
+
+    // Replaced in place with a different error.
+    const replaced = normalizeError(raw());
+    const replacement = Object.assign(new Error("raw"), { code: "E_PROVIDER_RESET" });
+    (replaced as { cause?: unknown }).cause = replacement;
+    expect(displayCause(replaced)).toBe(replacement);
+
+    // End to end: the terminal error item carries the seam's cause.
+    const flow = defineFlow({
+      kind: "narrowed-cause-item",
+      actions: {
+        run: handler({
+          name: "fails",
+          inputSchema: z.object({}),
+          outputSchema: z.string(),
+          execute: () => {
+            throw raw();
+          }
+        })
+      }
+    })();
+    const result = await runActionInternal({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      requestId: "req_narrowed_cause",
+      sessionId: "sess_narrowed_cause",
+      userId: "user_narrowed_cause",
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      internalSeams: { interceptNormalizedError: (error) => void narrow(error) }
+    });
+    const errorItem = result.items.find((item) => item.type === "error") as
+      | { message?: string; details?: { cause?: unknown } }
+      | undefined;
+    expect(errorItem?.message).toBe("raw");
+    expect(errorItem?.details?.cause).toMatchObject({
+      name: "Error",
+      message: "socket closed by the provider",
+      code: "E_PROVIDER_RESET",
+      cause: { message: "socket closed" }
+    });
+  });
+
   it("keeps the raw cause's name, code and message when the seam rewrites the message", async () => {
     const friendlySeam = {
       interceptNormalizedError: (error: FlowError) => new FlowError("friendly", { cause: error.cause })

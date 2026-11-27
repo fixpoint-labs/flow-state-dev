@@ -14,6 +14,7 @@
  *           GOAL_CONTROL=keep-ready  (must FAIL d:removed, and nothing else)
  *           GOAL_CONTROL=one-org     (must FAIL e:other-org, and nothing else)
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,6 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,
-  type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
@@ -110,7 +110,7 @@ const workspace: HarnessSessionWorkspace = {
 };
 
 // ---- the stub harness: commits once a turn; "switch" commits twice, then leaves the branch
-const stubAgent = (feeds: HarnessSessionFeeds) =>
+const stubAgent = (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),

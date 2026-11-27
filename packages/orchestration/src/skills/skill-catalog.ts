@@ -7,7 +7,8 @@
  * a binding allows.
  */
 
-import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { SkillsCollectionState } from "./collection";
 
 /** One skill offered to tier 3: its name and the text that describes it. */
 export interface OfferedSkill {
@@ -26,7 +27,7 @@ export interface OfferedSkill {
  * @param allowedSet - The binding's allowed names; `undefined` allows every skill.
  */
 export async function listOfferedSkills(
-  collection: ResourceCollectionRef | undefined,
+  collection: ResourceCollectionRef<SkillsCollectionState> | undefined,
   cap: number,
   allowedSet: Set<string> | undefined,
 ): Promise<OfferedSkill[]> {
@@ -42,7 +43,7 @@ export async function listOfferedSkills(
     if (seen.has(skillName)) continue;
     seen.add(skillName);
     if (allowedSet && !allowedSet.has(skillName)) continue;
-    const state = ref.state as unknown as SkillState;
+    const { state } = ref;
     if (state.disableModelInvocation) continue;
     let desc = state.description ?? "";
     if (state.whenToUse) desc = `${desc}\n${state.whenToUse}`;

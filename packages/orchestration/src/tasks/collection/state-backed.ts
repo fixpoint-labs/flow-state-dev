@@ -108,9 +108,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
   const maxTotalRetries = options.maxTotalRetries ?? undefined;
 
-  function readTasks(): Record<string, Task> {
-    const raw = options.state.state as Record<string, unknown>;
-    const slot = raw[stateKey];
+  function readTasks(state = options.state.state): Record<string, Task> {
+    const slot = state[stateKey];
     if (!slot || typeof slot !== "object") return {};
     return slot as Record<string, Task>;
   }
@@ -135,14 +134,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     mutate: (tasks: Readonly<Record<string, Task>>) => Record<string, Task> | undefined
   ): Promise<void> {
     await options.state.atomicState((state) => {
-      const raw = state as Record<string, unknown>;
-      // The mutator re-reads committed state on every CAS retry.
-      const slot = raw[stateKey];
-      const currentTasks = !slot || typeof slot !== "object" ? {} : (slot as Record<string, Task>);
-
-      const next = mutate(currentTasks);
-      if (next === undefined) return {} as Partial<Record<string, unknown>>;
-      return { [stateKey]: next } as Partial<Record<string, unknown>>;
+      const next = mutate(readTasks(state));
+      return next === undefined ? {} : { [stateKey]: next };
     });
   }
 

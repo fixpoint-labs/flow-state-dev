@@ -151,6 +151,13 @@ export type CreateExecutionContextOptions<
   tracingLevel?: TracingLevel;
   /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
   durabilityEnabled?: boolean;
+  // FIX-2895.
+  /**
+   * Whether the run's handler was carried on its dispatch rather than found
+   * on the flow (a dynamic schedule's fire). Such a run never parks: whatever
+   * continued it would re-run it from its record, which holds no handler.
+   */
+  runsCarriedCore?: boolean;
   // FIX-724.
   /**
    * Opt-in error-capture sink. When set, runtime block failures are

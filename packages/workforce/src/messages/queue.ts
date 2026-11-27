@@ -43,7 +43,7 @@ export const QUESTION_RECHECK_MS = 30_000;
 async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   const stop = await requestHostOf(ctx)?.waits?.userStop?.();
   if (stop !== undefined) return { requestId: stop.requestId };
-  const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+  const taskId = ctx.session.state?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return null;
   const sessionId = ctx.session.identity.id;
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
@@ -74,7 +74,7 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
  *   as any other.
  */
 export async function answerExternalWait(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "from" | "text">): Promise<boolean> {
-  const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+  const taskId = ctx.session.state?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return false;
   const sessionId = ctx.session.identity.id;
   const key = `message:${row.id}`;

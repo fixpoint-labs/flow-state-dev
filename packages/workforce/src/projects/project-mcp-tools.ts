@@ -162,7 +162,7 @@ export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpT
   return Object.assign(resolve, {
     named: async (ctx: HarnessCallbackContext) => {
       const found = await runProjectOf(ctx);
-      return found.kind === "refused" ? [] : [...(found.project.mcpServers ?? [])];
+      return found.kind === "refused" ? [] : [...found.project.mcpServers];
     }
   });
 }
@@ -207,7 +207,7 @@ export async function planProjectMcp(
 ): Promise<ProjectMcpPlan | undefined> {
   const found = await runProjectOf(ctx);
   if (found.kind === "refused") return undefined;
-  const named = found.project.mcpServers ?? [];
+  const named = found.project.mcpServers;
   if (named.length === 0) return undefined;
 
   const env = options.env ?? process.env;

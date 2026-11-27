@@ -18,6 +18,7 @@
  *
  * Run: pnpm tsx goals/harness-manager/issue-aware-run/run.mts
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -31,7 +32,6 @@ import {
   harnessSessionFlow,
   runBoardSegment,
   runTopic,
-  type HarnessSessionFeeds,
   type HarnessSessionPlace,
 } from "@flow-state-dev/harness-manager";
 import { z } from "zod";
@@ -73,7 +73,7 @@ function sessionHost(checkout: string) {
       locate: () => checkout,
       branch: () => null,
     },
-    agent: (feeds: HarnessSessionFeeds) =>
+    agent: (feeds: HarnessFeeds) =>
       handler({
         name: "recording-harness",
         inputSchema: z.object({ prompt: z.string() }),

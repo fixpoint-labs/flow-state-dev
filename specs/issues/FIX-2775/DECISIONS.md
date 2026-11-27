@@ -46,6 +46,16 @@ It comes down to who else is changed: two reads change nobody; a view changes th
 **What would change my mind:** the owner wanting a screen to read one page at a time. Then the
 message log and the projects page on the screen, and `all` isn't added.
 
+**Amendment (2026-11-19, Jake).** That change of mind happened, for the message log only.
+The log reads one page at a time: the newest page first, and older pages as the reader
+scrolls. `all` stays for bounded collections (projects, the worker inventory). Under `all`,
+a notice with no ids, a missed-notice gap, or a failed entry read diffs the collection
+manifest (each entry's storage key and version, no values) and reads only the entries that
+are new or changed. It does not `listAll()`. [FIX-2845](https://linear.app/fixpoint-labs/issue/FIX-2845).
+
+Message ids are `msg_` plus random bytes, so storage-key order is not time order.
+Newest is each entry's `at`. A key sorted newest-first would show a random page.
+
 ![D2, chosen: useResource reads every page, beside a Shift Manager hook over listAll. Decides it: where the live read lives; in the app it imports topic, an inventory finding. Price: three public names. Tie: every page read either way](figures/d2-whole-collection.svg)
 
 It comes down to where the live read lives: in `react` once, or in the app, where the inventory finds it.

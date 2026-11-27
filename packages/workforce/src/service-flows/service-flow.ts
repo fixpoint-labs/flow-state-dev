@@ -467,7 +467,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     // slot. A copy of an event in flight (a redelivery while the first still
     // sends) stops before both, so it spends no slot and marks nothing seen:
     // the first's outcome decides, and a lost first is sent by the next copy.
-    const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [] });
+    const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription);
     const id = deliveryMessageId(event.object, row.sessionId, row.tenantId);
     // A send the recipient took after its delivery looked (an accepted
     // dispatch) is seen now, on its next copy, without a slot.
@@ -571,7 +571,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       ...workerMessagesResources
     } as typeof subscriptionResources & typeof workerMessagesResources,
     execute: async ({ subscription, event, endOnly, forward }, ctx): Promise<Delivered> => {
-      const identity = ctx.session.identity as { userId?: string; orgId?: string };
+      const identity = ctx.session.identity;
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionResourceState | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
       // The index only nominates, and an entry can outlive what the saved subscription now says (an
@@ -645,7 +645,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
 
   /** The running user's enabled subscriptions on `thread`, in the running org, under no tenant: the only ones its poll reaches (D1, ER-4). */
   const liveOnThread = async (ctx: BlockContext, thread: string): Promise<SubscriptionResourceState[]> => {
-    const identity = ctx.session.identity as { userId?: string; orgId?: string };
+    const identity = ctx.session.identity;
     // Every subscription in the cell: its key names its session and thread, not the thread alone.
     return (await subscriptionsOf(ctx).list())
       .map((ref) => ref.state)

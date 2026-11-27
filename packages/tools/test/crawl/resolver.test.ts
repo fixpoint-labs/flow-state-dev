@@ -67,4 +67,24 @@ describe("crawl resolveProvider", () => {
       expect(() => resolveProvider({})).not.toThrow();
     });
   });
+
+  // Firecrawl follows redirects where no hop can be checked, so an allowlist
+  // with it would be a promise the tool cannot keep.
+  describe("allowedHosts", () => {
+    it("selects builtin even when the Firecrawl key is set", () => {
+      process.env.FIRECRAWL_API_KEY = "env-key";
+
+      expect(resolveProvider({ allowedHosts: ["example.com"] }).adapter.name).toBe("builtin");
+    });
+
+    it("refuses firecrawl named with allowedHosts", () => {
+      expect(() =>
+        resolveProvider({
+          provider: "firecrawl",
+          allowedHosts: ["example.com"],
+          keys: { firecrawl: "k" },
+        })
+      ).toThrow('Crawl provider "firecrawl" cannot enforce allowedHosts');
+    });
+  });
 });
