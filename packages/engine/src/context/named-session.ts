@@ -20,6 +20,7 @@
  * `undefined`, exactly as it does for an id nobody holds, so a caller cannot
  * learn which ids exist.
  */
+import type { DeliveryOrigin } from "../execution/delivery-origin";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { admitSession, flowAuthenticates, type InstanceCallerResolver } from "../routes/instance-caller";
 import { principalResolverIdentity } from "../transports/auth/pickPrincipalResolver";
@@ -88,4 +89,46 @@ export async function admitNamedSession(
     record
   );
   return admitted ? record : undefined;
+}
+
+/**
+ * What every verb on a named session answers when {@link admitNamedSession}
+ * refuses it, and when no one holds the id: one message, naming neither the
+ * id nor why, so the two answers are the same bytes.
+ */
+export class SessionNotFoundError extends Error {
+  constructor() {
+    super("Session not found");
+    this.name = "SessionNotFoundError";
+  }
+}
+
+/**
+ * The refusal a turn an outside delivery started meets when it names
+ * another session. It names the rule, never the target.
+ */
+export class UntrustedReachError extends Error {
+  constructor() {
+    super("A turn a webhook delivery started reaches no session but its own.");
+    this.name = "UntrustedReachError";
+  }
+}
+
+/**
+ * The fence on a named reach, decided here and nowhere else: a turn a
+ * webhook delivery started, or a run that delivery fired, reaches no session
+ * but its own, on every verb, before anything is looked up. Keyed on the
+ * run's delivery origin (`readDeliveryOrigin`), which may only restrict.
+ *
+ * A board's settle on its claimed task's session and a subscription delivery
+ * take their session from a server-held record, not from a name, and don't
+ * come through here.
+ *
+ * @throws {UntrustedReachError} When the run is fenced and `sessionId` isn't its own.
+ */
+export function fenceNamedReach(
+  run: { readonly origin: DeliveryOrigin | undefined; readonly sessionId: string },
+  sessionId: string
+): void {
+  if (run.origin !== undefined && sessionId !== run.sessionId) throw new UntrustedReachError();
 }

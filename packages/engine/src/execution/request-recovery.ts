@@ -119,7 +119,12 @@ export async function detectInterruptedRequests(options: {
     const wakes = stores.wakes;
     if (wakes === undefined || options.wakeEntriesOf === undefined || record.sessionId == null) return;
     try {
-      await bringSessionWakesForward(wakes, { tenantId: record.tenantId, sessionId: record.sessionId }, options.wakeEntriesOf(record), now);
+      await bringSessionWakesForward(
+        wakes,
+        { tenantId: record.tenantId, sessionId: record.sessionId, resolvedBy: record.resolvedBy },
+        options.wakeEntriesOf(record),
+        now
+      );
     } catch (error) {
       logRuntimeEvent(logger, "warn", "[flow-state] an interrupted request's session wakes weren't brought forward: they fire at their own due time", {
         requestId: record.id,

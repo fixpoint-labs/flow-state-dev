@@ -7,7 +7,7 @@
  * written before is classified in place, with no new config, from its birth
  * request (`firstRequestKind`), and the answer is written onto the record the
  * first time, so later retention can't change it: the session store keeps a
- * stored `principalKind` against every later write (`withStoredPrincipalKind`).
+ * stored `principalKind` against every later write (`withWriteOnceSessionFields`).
  *
  * A birth candidate is a request written for this record: its owner,
  * organization (a request from before organizations takes the session's),

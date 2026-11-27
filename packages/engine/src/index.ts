@@ -10,6 +10,7 @@
  * its readers import it from; core and contracts names are imported from core.
  */
 export { createExecutionContext } from "./context/createExecutionContext";
+export { SessionNotFoundError, UntrustedReachError } from "./context/named-session";
 export {
   type CapabilitySlot,
   type CapabilitySlotMap,
