@@ -98,7 +98,7 @@ export async function runProjectOf(ctx: BlockContext): Promise<RunProject | RunS
     return otherProject(named, own) ?? fromProject(ctx, own);
   }
   // The project the held task was filed in (FIX-2161), kept on its row.
-  // The board's filing check (FIX-2333, `assertProjectFor`) asks the same
+  // The board's filing check (FIX-2333, FIX-2894: `inputLookup`'s `hasProject`) asks the same
   // order before a row exists: a change here belongs there too.
   const stamped = filedProjectOf(held);
   if (stamped !== undefined) {
@@ -157,11 +157,6 @@ function otherProject(named: NamedProject, own: ProjectAddress | undefined): Run
   );
 }
 
-/** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
-function runOwnerOf(ctx: BlockContext): string | undefined {
-  return ctx.user?.identity?.userId;
-}
-
 /** A run for the workstream its session leads. */
 async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunProject | RunSourceRefusal> {
   const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
@@ -170,7 +165,8 @@ async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunProje
     return refused("no-such-workstream", `this run's session names workstream "${link}", which names no workstream.`);
   }
   const { project, id } = address;
-  const runOwner = runOwnerOf(ctx);
+  // Match the run's user to the owner recorded on the workstream session.
+  const runOwner = ctx.user?.identity?.userId;
   if (runOwner !== owner) {
     return refused(
       "not-the-owner",
@@ -203,7 +199,7 @@ async function fromProject(ctx: BlockContext, address: ProjectAddress): Promise<
     return refused("no-project", `there is no ${address.visibility} project "${address.id}" this run can work in.`);
   }
   const project = projectResourceStateSchema.parse(stored.state);
-  const owner = runOwnerOf(ctx);
+  const owner = ctx.user?.identity?.userId;
   if (owner === undefined || !mayWorkOn(address.visibility, project, owner)) return notAMember(owner, address.id);
   return { kind: "found", visibility: address.visibility, project, owner };
 }

@@ -138,7 +138,6 @@ Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_AC
 
 /** The log, the shared projects and their entries, as the roster flow declares them. */
 const WRITES = { ...workerMessagesResources, projects: defineProjectsCollection(), ...WORKSTREAM_RESOURCES };
-const collection = (ctx: any, name: string) => ctx.resources[name] as { create(key: string | Record<string, string>, state: unknown): Promise<unknown> };
 
 function deskFlow(): FlowInstance {
   return defineFlow({
@@ -147,15 +146,14 @@ function deskFlow(): FlowInstance {
     actions: {
       // A message from the Talk panel's worker, as `sendMessage` logs it: one it waits on a reply to, so it is open.
       logMessage: {
-        inputSchema: z.object({ id: z.string() }),
         block: handler({
           name: "log-message",
           inputSchema: z.object({ id: z.string() }),
           outputSchema: z.object({}).passthrough(),
           resources: WRITES,
-          execute: async ({ id }, ctx: any) => {
+          execute: async ({ id }, ctx) => {
             const at = Date.now();
-            await collection(ctx, WORKER_MESSAGES_RESOURCE).create(id, {
+            await ctx.resources[WORKER_MESSAGES_RESOURCE].create(id, {
               id, exchange: id, from: TALK_WORKER, to: "writer", text: `line ${id}`, at,
               fromSession: ctx.session.identity.id, fromFlow: "desk", toSession: ctx.session.identity.id, toFlow: "desk", hop: 1, status: "delivered", replyRequested: true,
             });
@@ -164,29 +162,27 @@ function deskFlow(): FlowInstance {
         }),
       },
       openProject: {
-        inputSchema: z.object({}),
         block: handler({
           name: "open-project",
           inputSchema: z.object({}),
           outputSchema: z.object({}).passthrough(),
           resources: WRITES,
-          execute: async (_input, ctx: any) => {
-            await collection(ctx, "projects").create(PROJECT, { id: PROJECT, title: "Apollo", ownerUserId: "alice", members: ["alice"] });
+          execute: async (_input, ctx) => {
+            await ctx.resources.projects.create(PROJECT, { id: PROJECT, title: "Apollo", ownerUserId: "alice", members: ["alice"] });
             return {};
           },
         }),
       },
       // A workstream entry, as the project coordinator's open writes it.
       openEntry: {
-        inputSchema: z.object({ id: z.string() }),
         block: handler({
           name: "open-entry",
           inputSchema: z.object({ id: z.string() }),
           outputSchema: z.object({}).passthrough(),
           resources: WRITES,
-          execute: async ({ id }, ctx: any) => {
+          execute: async ({ id }, ctx) => {
             const now = new Date().toISOString();
-            await collection(ctx, "workstreams").create(workstreamEntryKey(PROJECT, "alice", id), {
+            await ctx.resources.workstreams.create(workstreamEntryKey(PROJECT, "alice", id), {
               title: `The ${id}`, lead: "researcher", sessionId: null, status: "on-track", due: null, objectives: [], openedAt: now, updatedAt: now, writtenBy: { userId: "alice" },
             });
             return {};
@@ -194,12 +190,11 @@ function deskFlow(): FlowInstance {
         }),
       },
       respond: {
-        inputSchema: z.object({ message: z.string(), count: z.number().default(1), holdMs: z.number().default(0) }),
         block: handler({
           name: "respond",
           inputSchema: z.object({ message: z.string(), count: z.number().default(1), holdMs: z.number().default(0) }),
           outputSchema: z.object({}).passthrough(),
-          execute: async ({ message, count, holdMs }, ctx: any) => {
+          execute: async ({ message, count, holdMs }, ctx) => {
             if (holdMs > 0) await new Promise((r) => setTimeout(r, holdMs));
             // One item at a time, as a streamed reply stores them: each is its own `items` notice.
             for (let i = 0; i < count; i++) {

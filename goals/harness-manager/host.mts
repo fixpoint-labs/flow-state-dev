@@ -9,6 +9,7 @@
  * `seed` does not interrogate a row it finds at its id. A third goal that needs
  * any of those should say so here rather than copy this host as if it had them.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { z } from "zod";
@@ -34,9 +35,7 @@ import {
   runRecordStateSchema,
   RUNS,
   runTopic,
-  type HarnessFeeds,
-  type PhaseSpec,
-  type WorkspaceConfig,
+  type ModeSpec,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
@@ -46,6 +45,7 @@ import {
   joinIdentity,
 } from "@flow-state-dev/harness-manager/checkout";
 import { isAbsolute } from "node:path";
+import { localRepoWorkspaceHost, type LocalRepoWorkspaceHostOptions } from "@flow-state-dev/workspace";
 
 const ASSIGNEE = "harness" as const;
 
@@ -55,10 +55,11 @@ const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
 export interface HarnessGoalFlowOptions {
   /** Names the board and the collection so two goals do not share rows. */
   epic: string;
-  workspace: WorkspaceConfig;
+  /** The one repository every run is cut from, and where checkouts go. */
+  workspace: LocalRepoWorkspaceHostOptions & { baseRef: string };
   maxAttempts?: number;
   runTimeoutMs?: number;
-  phase: PhaseSpec;
+  mode: ModeSpec;
   /** `claudeCodeAgent`'s options, minus the feeds the manager's slot supplies and the two this host fixes. */
   agent?: Omit<
     Parameters<typeof claudeCodeAgent>[0],
@@ -107,30 +108,30 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     workspace: callerWorkspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
-    phase: callerPhase,
+    mode: callerMode,
     agent,
     slot,
   } = options;
 
-  const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
-  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+  const workspace = Object.freeze({ ...callerWorkspace });
+  const mode: ModeSpec = Object.freeze({ ...callerMode });
 
   assertPositiveInt("runTimeoutMs", runTimeoutMs);
   assertPositiveInt("maxAttempts", maxAttempts);
   if (workspace.provisionTimeoutMs !== undefined) {
     assertPositiveInt("workspace.provisionTimeoutMs", workspace.provisionTimeoutMs);
   }
-  for (const field of ["root", "sourceRepo"] as const) {
+  for (const field of ["root", "repo"] as const) {
     if (!isAbsolute(workspace[field])) {
       throw new Error(
         `workspace.${field} is relative (${workspace[field]}). Pass an absolute path.`,
       );
     }
   }
-  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo, process.cwd());
-  assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+  assertDistinctRepository("workspace.repo", workspace.repo, process.cwd());
+  assertBaseRefExists(workspace.repo, workspace.baseRef, "workspace.baseRef");
   assertCheckoutRootUsable(workspace.root, "workspace.root");
-  assertSafeSegment("phase", phase.phase);
+  assertSafeSegment("mode", mode.name);
 
   const boardId = joinIdentity("harness-goal", assertSafeSegment("epic", epic));
   const collectionId = joinIdentity("harness-goal-tasks", assertSafeSegment("epic", epic));
@@ -145,8 +146,8 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     boardCollectionId: collectionId,
     boardCollection: tasks,
     tenant: undefined,
-    phase,
-    workspace,
+    mode,
+    workspace: localRepoWorkspaceHost(workspace),
     runTimeoutMs,
     // The feeds are spread, so a feed the manager adds (onUsage was the last)
     // reaches the harness without an edit here.

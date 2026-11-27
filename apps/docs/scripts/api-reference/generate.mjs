@@ -2,10 +2,8 @@
  * The API reference generator: one section of Markdown per published package, rendered from
  * the doc comments in the `.d.ts` files each package publishes.
  *
- * The site build calls `generateApiReference` (through `plugin.mjs`) when
- * `FSD_API_REFERENCE` is set; the output is generated at each build and never committed.
- * Before the cutover nothing generated is published: the default site build does not run
- * this, and CI's run builds into a scratch folder that is not deployed.
+ * The site build calls `generateApiReference` (through `plugin.mjs`) on every build; the
+ * output is published at `/docs/reference/api/<slug>` and never committed.
  *
  *   node apps/docs/scripts/api-reference/generate.mjs [--out <dir>] [--skip-types]
  *

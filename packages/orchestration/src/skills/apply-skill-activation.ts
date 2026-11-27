@@ -20,7 +20,7 @@ import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import {
-  replaceActivations,
+  explicitActivationScopeSchema,
   type ExplicitActivationScope,
 } from "./activation-store";
 import { skillActivatorStateSchema } from "./skill-activation-types";
@@ -53,6 +53,7 @@ export interface ApplySkillActivationOptions {
 /** Build the apply-skill-activation handler. */
 export function createApplySkillActivation(options: ApplySkillActivationOptions = {}) {
   const scope: ExplicitActivationScope = options.activeState?.scope ?? "session";
+  const validScope = explicitActivationScopeSchema.options.includes(scope);
   const field = options.activeState?.field ?? "activeSkills";
   const allowedSet = options.allowed ? new Set(options.allowed) : undefined;
   const scopeSchema = z.object({ [field]: activeSkillsArraySchema });
@@ -87,9 +88,11 @@ export function createApplySkillActivation(options: ApplySkillActivationOptions 
       }));
       // Replace (per-turn semantics) the resolved set at the configured scope
       // + field. Default target is session `activeSkills` (legacy slot).
-      // Goes through the shared activation-store helper so the matcher, the
-      // load tool, and the reader agree on one write model.
-      await replaceActivations(ctx, { kind: "explicit", scope, field }, activeSkillEntries);
+      const handle = validScope ? ctx[scope] : undefined;
+      if (!handle?.patchState) {
+        throw new Error(`Skill activation cannot write to ${scope} state — scope unavailable`);
+      }
+      await handle.patchState({ [field]: activeSkillEntries });
 
       return { skillCount: skills.length, activationSource };
     },

@@ -12,15 +12,15 @@ import {
 } from "@flow-state-dev/core/types";
 import { hasClientProjection, resolveClientData } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { isTraceObservabilityEnabled, warnOnce, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
-import { principalOwnsRequest } from "../context/request-principal";
+import { principalOwns, withRequestOrg } from "../context/principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownerKeyAdmits } from "../resources/owner-private";
@@ -195,11 +195,14 @@ export function unknownRequestStreamResponse(
   return new Response("", { status: 200, headers: SSE_HEADERS });
 }
 
+// BP-030.
 /**
  * Whether the caller may act on `record` through a request-control route
  * (retry, continue, resume, abort). With a principal, the record must be that
- * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
- * and organization when the record carries one). Without one, nothing in the
+ * principal's in the caller's tenant (`principalOwns`: user, organization
+ * and tenant, exact). A record written before organizations were stamped
+ * takes its session's organization first (`withRequestOrg`), so its
+ * owner keeps it and nobody else gains it. Without a principal, nothing in the
  * app authenticates, so there is no user to compare and the tenant is the only
  * boundary.
  *
@@ -214,13 +217,14 @@ export function unknownRequestStreamResponse(
  * handler runs, with the same answer. This is the handler's own check, and the
  * only one of the two that compares the tenant.
  */
-export function callerReachesRequest(
-  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
+export async function callerReachesRequest(
+  stores: Pick<StoreRegistry, "session">,
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId" | "sessionId" | "createdAt">,
   tenantId: string | undefined,
   principal: ResolvedPrincipal | undefined
-): boolean {
+): Promise<boolean> {
   if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
-  return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
+  return principalOwns(await withRequestOrg(stores, record), { userId: principal.userId, orgId: principal.orgId, tenantId });
 }
 
 /**
@@ -544,8 +548,9 @@ export async function buildResourceSnapshot(options: {
  * The request's physical log is collapsed to its canonical view first:
  * a resumed request's suspending block re-emits its pre-suspension
  * items, and the superseded copies must not surface. Per request, because
- * logical ids are scoped by request id. Then either the caller's type filter
- * or, without one, client visibility decides what stays.
+ * logical ids are scoped by request id. Without a type filter, client
+ * visibility decides what stays; with one, the named types stay, and a
+ * client-hidden item of a named type only while trace observability is on.
  *
  * The one filter behind both the session snapshot (`GET /sessions/:id/state`)
  * and the session stream (`GET /sessions/:id/stream`), so a live view and a
@@ -560,10 +565,32 @@ export function snapshotItemsOf(
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
-  // Visibility drops trace rows unless `itemTypes` names one.
-  return collapseToCanonicalLog(items).filter((item) =>
-    itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
-  ) as OutputItem[];
+  // Visibility drops client-hidden rows unless `itemTypes` names one and
+  // trace observability is on: naming a type is the caller's request, not a grant.
+  // Asked at most once per call: `traceRequestAllowed` warns when it refuses.
+  let hiddenAllowed: boolean | undefined;
+  return collapseToCanonicalLog(items).filter((item) => {
+    if (itemTypes === undefined) return resolveItemVisibility(item).client;
+    if (!itemTypes.has(item.type)) return false;
+    return resolveItemVisibility(item).client || (hiddenAllowed ??= traceRequestAllowed());
+  }) as OutputItem[];
+}
+
+/**
+ * Whether a caller's request for client-hidden items (`?include=trace`, or an
+ * `item_types` filter naming a hidden item) may be honoured. Call it only when
+ * such a request was made. The answer is the server's trace-observability gate
+ * (`isTraceObservabilityEnabled`: on outside production, and in production
+ * only with `FSDEV_TRACE_OBSERVABILITY=true`), never the query string. A
+ * refused request is logged once per process, and the caller gets the client view.
+ */
+export function traceRequestAllowed(): boolean {
+  if (isTraceObservabilityEnabled()) return true;
+  warnOnce(
+    "engine/trace-request-ignored",
+    "a request for trace items (`?include=trace` or `item_types` naming a client-hidden item) was ignored because trace observability is off; set FSDEV_TRACE_OBSERVABILITY=true to serve them"
+  );
+  return false;
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

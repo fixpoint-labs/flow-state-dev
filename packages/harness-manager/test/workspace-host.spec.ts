@@ -11,6 +11,7 @@
  * already provisioned keeps the repository its record names when its source
  * changes underneath it.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -31,7 +32,7 @@ import {
 import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type LocalWorkspaceHostOptions, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
@@ -197,17 +198,19 @@ function lab(options: {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: (run) =>
+    mode: {
+      name: PHASE,
+      instructions: (run) =>
         [
           `Work on ${run.issue}, attempt ${run.attempt}.`,
           "To ask, write it as the entire contents of this file:",
           `  ${run.askMarkerPath}`,
         ].join("\n"),
-      isDone: async () => {
-        await duringVerdict.shift()?.();
-        return true;
+      doneWhen: {
+        check: async () => {
+          await duringVerdict.shift()?.();
+          return true;
+        },
       },
     },
     workspace,

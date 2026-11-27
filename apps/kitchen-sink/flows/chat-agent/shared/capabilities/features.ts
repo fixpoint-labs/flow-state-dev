@@ -27,18 +27,12 @@ import {
   readSkillsDirectory,
   type SkillsBindingConfig,
 } from "@flow-state-dev/orchestration";
-import { z } from "zod";
-import { modeSchema, featuresSchema } from "../schemas";
+import { sessionStateSchema } from "../schemas";
 import { artifactsCapability } from "../artifacts";
 import { selectBashProvider } from "./bash";
 import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const featuresSessionStateSchema = z.object({
-  mode: modeSchema,
-  features: featuresSchema.default({}),
-});
 
 // Web tools — instantiated once, included conditionally by the features cap.
 // agentControlsTier lets the model pick search depth per query (e.g. "deep").
@@ -121,9 +115,9 @@ export const skillActivatorBlock = createSkillActivator({
 // under a mount's directory route back to that collection; files under
 // /workspace/tmp/ are scratch; anything else is dropped with a warning.
 //
-// Provider is environment-selected (VERCEL → vercel sandbox,
-// STORE_TYPE=filesystem → local shell, else → just-bash WASM with
-// python + javascript). The just-bash default keeps preview environments
+// Provider is environment-selected (BASH_PROVIDER wins, then VERCEL with
+// sandbox credentials → vercel sandbox, else → just-bash WASM with
+// python + javascript; the host shell only via BASH_PROVIDER=local). The just-bash default keeps preview environments
 // self-contained so skills that exercise bash are testable without
 // touching the host filesystem.
 export const bashCap = createBashCapability({
@@ -151,7 +145,7 @@ export const bashCap = createBashCapability({
  */
 export const featuresCapability = defineCapability({
   name: "features",
-  sessionStateSchema: featuresSessionStateSchema,
+  sessionStateSchema: sessionStateSchema.pick({ features: true }),
 
   uses: [
     // Static: skills library binding — installs the skills collection resource

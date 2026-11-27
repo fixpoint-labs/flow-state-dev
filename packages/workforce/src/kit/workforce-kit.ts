@@ -21,9 +21,11 @@
  *   a builder handed the installation; the kit serves what it returns beside
  *   its worker flows. Workforce ships none of its own.
  *
- * The kit adds two capabilities of workforce's own to those flows, over its
- * installation: consulting another conversation (`consultSessions`) and the
- * routine tools. Each is offered only to a worker whose file picks it.
+ * The kit adds three capabilities of workforce's own to those flows, over its
+ * installation: consulting another conversation (`consultSessions`), the
+ * routine tools, and hiring and firing on the user's approval
+ * (`hireWorkers`). A worker gets each only by picking it in its file, or by
+ * naming its tools in its `tools:` line.
  */
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -44,6 +46,8 @@ import { splitResourceModules } from "../split-resource-modules";
 import { createRoutinesCapability, type RoutinesOptions } from "../routines/routines";
 import { githubServiceFlow, type GitHubServiceFlowOptions } from "../service-flows/github/service-flow";
 import { internalServiceFlow, type InternalServiceFlow, type InternalServiceFlowOptions } from "../service-flows/internal-events/service-flow";
+import type { HireChecks } from "../workers/hire-blocks";
+import { hireWorkersCapability } from "../workers/roster-tools";
 import { createWorkerInstallation, type WorkerInstallation } from "../workers/installation";
 import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
@@ -52,6 +56,8 @@ import { workerFlow } from "../workers/worker-flow";
 export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation"> & {
   /** The settings a user sees on a worker's roster row (`icon`, `color`). */
   showSettings?: readonly string[];
+  /** Settings the app no longer takes: a stored worker that set one reads without it, and a hire or an edit naming one is refused. */
+  retiredSettings?: readonly string[];
 };
 
 /** The coordinator flow's options, as the kit's config takes them. */
@@ -85,6 +91,8 @@ export interface WorkforceConfig {
   consult?: ConsultSessionsOptions;
   /** Routines: the schedule index, the providers an event routine follows, polling, the app's declared ones. */
   routines?: RoutinesOptions;
+  /** What every hire and edit of a user's worker is checked against, on the roster and from a conversation alike: `models`, the models a worker may run on. Omitted: any the flow takes. */
+  hire?: HireChecks;
   /** GitHub's service flow, which delivers GitHub's events to the conversations that follow them. Omitted: none. */
   github?: Omit<GitHubServiceFlowOptions, "installation">;
   /**
@@ -139,6 +147,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     coordinator: object<WorkforceCoordinatorOptions>().optional(),
     consult: object<ConsultSessionsOptions>().optional(),
     routines: object<RoutinesOptions>().optional(),
+    hire: object<HireChecks>().optional(),
     github: object<Omit<GitHubServiceFlowOptions, "installation">>().optional(),
     internalEvents: object<Omit<InternalServiceFlowOptions, "installation">>().optional(),
     generated: generatedSchema.optional(),
@@ -220,18 +229,19 @@ function installWorkforce(
   }
   // The `resources/` folders' TypeScript modules: capabilities for the flows, resources for the grants.
   const modules = splitResourceModules(generated.resourceModules ?? {});
-  /** What every flow this kit builds adds: the slot's capabilities and workforce's own two. */
+  /** What every flow this kit builds adds: the slot's capabilities and workforce's own three. */
   const added = (installation: WorkerInstallation): CapabilityRef[] =>
     [
       ...slots.uses,
       ...modules.capabilities,
       consultSessionsCapability(installation, config.consult ?? {}),
       createRoutinesCapability(installation),
+      hireWorkersCapability(installation, config.hire),
     ] as CapabilityRef[];
 
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
-    const { showSettings, ...agent } = config.agent ?? {};
+    const { showSettings, retiredSettings, ...agent } = config.agent ?? {};
     builtIn[AGENT_FLOW] = workerFlow(
       (installation) =>
         defineAgentWorkerFlow({
@@ -240,7 +250,7 @@ function installWorkforce(
           installation,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
-      { showSettings: showSettings ?? [] },
+      { showSettings: showSettings ?? [], retiredSettings: retiredSettings ?? [] },
     );
   }
   if (config.coordinator !== undefined) {
@@ -273,6 +283,7 @@ function installWorkforce(
     ...(config.taskChainLimit === undefined ? {} : { taskChainLimit: config.taskChainLimit }),
     ...(config.messages === undefined ? {} : { messages: config.messages }),
     ...(routines === undefined ? {} : { routines }),
+    ...(config.hire === undefined ? {} : { hire: config.hire }),
   });
   const built = Object.values(slots.flows).flatMap((build) => build(installation) as FlowInstance[]);
   const github = config.github === undefined ? [] : [githubServiceFlow({ ...config.github, installation }) as unknown as FlowInstance];

@@ -14,7 +14,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";
 import { checkWorkerFlows } from "../hire";
 import type { InventoryWorker } from "../inventory/open-inventory";
-import { createWorkerHireBlocks } from "./hire-blocks";
+import { createWorkerHireBlocks, type HireChecks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import { messageReceivedProblem } from "../messages/message-received-entry";
@@ -24,6 +24,8 @@ import { setRoutineSeed, setRoutinesReach } from "../routines/routines-options";
 import { assertPollCadence } from "../subscriptions/poll";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
+import { taskInputSourceOf, unregisterTaskDoor } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf } from "../worker-task-entry";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 
@@ -61,6 +63,8 @@ export interface HireWorkforceOptions {
    * schedule index of its own and the default cadence.
    */
   routines?: RoutinesOptions;
+  /** What the roster's hire and edit check beyond the worker's flow: the models a worker may run on. */
+  hire?: HireChecks;
 }
 
 /**
@@ -80,6 +84,17 @@ export interface HireWorkforceOptions {
  *   and nothing is registered: a short roster that still runs is the failure.
  */
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
+  try {
+    return hire(installation, options);
+  } catch (error) {
+    // A refused hire gives up its flows' doors (FIX-2894): one that shares a prebuilt flow with a live
+    // installation never takes that door from it.
+    unregisterInstallationDoors(installation);
+    throw error;
+  }
+}
+
+function hire(installation: WorkerInstallation, options: HireWorkforceOptions): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   if (options.messages !== undefined) setMessageLimits(installation, options.messages);
   const poll = options.routines?.poll;
@@ -126,9 +141,9 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
         problems.map((problem) => `  - ${problem}`).join("\n")
     );
   }
-  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation);
-  const scheduled = defineScheduledWork(installation, options.routines?.index);
-  const routines = defineRoutineActions(installation, options.routines ?? {}, scheduled.resources);
+  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation, options.hire);
+  const schedules = defineScheduledWork(installation, options.routines?.index);
+  const routines = defineRoutineActions(installation, options.routines ?? {});
   const roster = defineWorkerRosterFlow(
     installation,
     {
@@ -139,10 +154,26 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       reset: { inputSchema: reset.inputSchema, block: reset },
       ...routines.actions
     },
-    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
+    { resources: routines.resources, schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
   return copies;
+}
+
+/** Give up `installation`'s claim on each of its flows' `work` doors, which its flows' resolution made. */
+function unregisterInstallationDoors(installation: WorkerInstallation): void {
+  const source = taskInputSourceOf(installation);
+  if (source === undefined) return;
+  let flows: ReturnType<WorkerInstallation["workerFlows"]>;
+  try {
+    flows = installation.workerFlows();
+  } catch {
+    return;
+  }
+  for (const { flow } of Object.values(flows)) {
+    const door = conversationTaskDoorOf(flow);
+    if (door !== undefined) unregisterTaskDoor(door, source);
+  }
 }
 
 /**

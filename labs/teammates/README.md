@@ -5,9 +5,10 @@ is one half of the evidence that the same package pieces make familiar apps: an 
 configuration, React UI and a few small flows, and anything else it needs is a gap filed against the
 package.
 
-Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
-registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
-theme so it reads as the app it copies.
+It draws in the Flow State design's two themes, Paper (light) and Night (near-black, warm), from
+one set of tokens in `src/lib/theme.css`, mapped onto the registry's `tokens` item so the installed
+components read them too. A switch in the sidebar picks the theme and keeps the pick; with none, the
+page follows the system's light or dark setting. Yellow marks only the user needing to act.
 
 - **Left:** the teammates, Lead, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
@@ -171,10 +172,10 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, its instructions, and optionally its model and default coding harness. It joins the list at once, you can talk to it, and Lead can
+does, its instructions, and optionally its model. It joins the list at once, you can talk to it, and Lead can
 hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
-instructions, or change its model (what its replies run on, from the next reply) and default coding harness
-(where the composer's *Code with* starts). A teammate from the files can be edited too, and *Reset to default*
+instructions, or change its model (what its replies run on, from the next reply). A teammate has no coding
+harness of its own: coding work starts on the lab's default. A teammate from the files can be edited too, and *Reset to default*
 puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
@@ -208,7 +209,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the *Model* field of *Edit teammate* and *Hire a teammate*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on, and where *Code with* starts for a teammate with no default harness of its own: `claude-code`, `codex` or `cursor` | `cursor` |
+| `TEAMMATES_HARNESS` | the lab's default coder: Lead starts coding work on the coding worker with this harness unless you name another, and *Code with* starts there: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
@@ -266,6 +267,13 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   draws its context strip and first-run lines from it.
 - **Teammates** you hire from the page are rows of your own roster, written through the workforce
   kit's roster flow; nothing restarts.
+- **Hiring from the conversation:** Lead holds workforce's `hire` and `fire` tools (the `hireWorkers`
+  capability), so you can ask it for a teammate or to let one go. They are the roster's own hire and
+  fire, the same as the page's. A hire you ask for lands at once; a fire waits for your Approve in
+  Inbox. Only your own message can start either. A hire's
+  model must be one of `TEAMMATES_MODELS` with a key or gateway set, on the page's form too; a taken
+  id, an unlisted model or one with no key is refused before anything is written. It never takes an
+  API key.
 - **Routines:** Lead, researcher and writer hold the routine tools, so you can ask one to follow a
   GitHub pull request or to do something on a clock, and to list, pause or delete what it follows.
   A pull request's events are polled (no public URL) on the operator's own GitHub token, for the
@@ -348,9 +356,13 @@ when the server says they changed, and on a host whose push can miss a change, s
 store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
 short one.
 
-`color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
-each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
-hire here, gets its initial on a palette color picked from its id.
+`icon:` names one of eleven bot faces, `pip`, `tally`, `bolt`, `dot`, `hex`, `sprocket`, `visor`,
+`dome`, `pod`, `telly` or `chip`, and
+`color:` one of the team palette, `coral`, `amber`, `mint`, `teal`, `iris`, `orchid`, `rose` or
+`slate`, each three `--team-*` tokens in the theme (an older `blue`, `green` or `violet` reads as
+`iris`, `mint` or `orchid`). A teammate whose file sets neither line, such as one you hire here, gets
+a face and a color picked from its id. The bot shows what the teammate is doing: running, needs you,
+queued, done or idle.
 
 Not wired yet:
 

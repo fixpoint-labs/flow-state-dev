@@ -6,6 +6,7 @@
  */
 
 import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine/host";
+import { keyPrefixRange } from "./key-prefix-range";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresContentStore(executor: QueryExecutor): ContentStore {
@@ -51,13 +52,11 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, string>> {
-      // Prefix match via LEFT(...) = prefix rather than LIKE — sidesteps
-      // LIKE wildcard escaping (`%`/`_` are legal in resource keys). An
-      // empty prefix matches every key (LEFT(key, 0) = '').
+      const range = keyPrefixRange(keyPrefix, 3);
       const result = await executor.query(
         "SELECT resource_key, content FROM resource_content " +
-          "WHERE scope_type = $1 AND scope_id = $2 AND LEFT(resource_key, char_length($3)) = $3",
-        [scopeType, scopeId, keyPrefix]
+          `WHERE scope_type = $1 AND scope_id = $2 AND ${range.sql}`,
+        [scopeType, scopeId, ...range.values]
       );
       const entries: Record<string, string> = {};
       for (const row of result.rows) {

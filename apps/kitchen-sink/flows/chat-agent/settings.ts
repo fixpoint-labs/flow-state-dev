@@ -20,7 +20,7 @@ export const setSelectedModelHandler = handler({
   inputSchema: setSelectedModelInputSchema,
   userStateSchema,
   execute: async (input, ctx) => {
-    await ctx.user!.patchState({ selectedModel: input.selectedModel });
+    await ctx.user.patchState({ selectedModel: input.selectedModel });
   },
 });
 
@@ -35,6 +35,6 @@ export const setThinkingEnabledHandler = handler({
   inputSchema: setThinkingEnabledInputSchema,
   userStateSchema,
   execute: async (input, ctx) => {
-    await ctx.user!.patchState({ thinkingEnabled: input.thinkingEnabled });
+    await ctx.user.patchState({ thinkingEnabled: input.thinkingEnabled });
   },
 });

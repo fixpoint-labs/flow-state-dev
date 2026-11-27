@@ -352,6 +352,44 @@ describe("scope ids as directory names", () => {
     expect(resolveRegistryKeyForTest("run", { ...first })).toBe(resolveRegistryKeyForTest("run", first));
   });
 
+  // UTF-8 cannot carry a lone surrogate: Node writes each one as U+FFFD's
+  // bytes, so hashing the UTF-8 gave these four ids one digest and one
+  // directory. A caller who sets their user id to one of them read and wrote
+  // the files of whoever holds another.
+  const UTF8_ALIASES = ["\ud800", "\ud801", "\udfff", "\ufffd"];
+
+  it("gives ids UTF-8 cannot tell apart a directory each", async () => {
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const dirs = UTF8_ALIASES.map((userId) =>
+      resolveWorkspaceCwdForTest("user", { requestId: "r", sessionId: "s", userId }),
+    );
+    expect(new Set(dirs).size).toBe(UTF8_ALIASES.length);
+  });
+
+  it("gives ids UTF-8 cannot tell apart a MOAT container each", async () => {
+    // MOAT reconnects by run name alone, so one name is one shared container.
+    const { resolveMoatRunNameForTest } = await import("../src/bash/blocks");
+    const names = UTF8_ALIASES.map((sessionId) =>
+      resolveMoatRunNameForTest({ requestId: "r", sessionId }),
+    );
+    expect(new Set(names).size).toBe(UTF8_ALIASES.length);
+  });
+
+  it("leaves an ordinary id's existing directory where it is", async () => {
+    // Spelled out on purpose, not re-derived: an id that is valid Unicode
+    // keeps the exact name it had before the fix above, so the workspaces
+    // already on disk stay where they are and nothing has to move.
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const dir = resolveWorkspaceCwdForTest("user", {
+      requestId: "r",
+      sessionId: "s",
+      userId: "user_123",
+    });
+    expect(dir).toBe(
+      path.join(process.cwd(), ".fsdev", "workspaces", "user", "enc-user_123-80fba0ae1c48"),
+    );
+  });
+
   it("does not collapse two hostile ids onto one workspace", async () => {
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const a = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });

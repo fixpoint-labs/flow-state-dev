@@ -21,14 +21,13 @@
  * Only this subpath imports workforce: the package root never does.
  */
 import { defineFlow, defineKit, slot } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { WorkerInstallation } from "@flow-state-dev/workforce";
 import { codingBoardView } from "./coding-board";
 import { CODING_BOARD_VIEW, HARNESSES_FLOW } from "../coding-board-ref";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
-import { harnessSchema, type Harness } from "../harness";
+import { harnessSchema, type Harness } from "@flow-state-dev/core/harness";
 import {
   formatHarnessReadiness,
   harnessReadiness,
@@ -36,7 +35,7 @@ import {
   harnessReadinessView,
   type HarnessReadinessRead,
 } from "../readiness";
-import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions } from "./coder-flow";
+import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions, type CoderWorkerExtension } from "./coder-flow";
 import { assertBranchPrefix } from "../workspace";
 
 export { HARNESSES_FLOW };
@@ -78,9 +77,25 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
         message: "`onPullRequestRecorded` builds a follower on the installation: `(installation) => followPullRequest({ providers, installation })`",
       })
       .optional(),
+    // Checked in full when the coding flow is built (`codingModes`), naming the mode.
+    modes: z.record(z.string(), z.object({}).passthrough()).optional(),
+    defaultMode: z.string().min(1).optional(),
+    approveTools: z.boolean().optional(),
+    worker: z
+      .object({
+        settings: z.record(z.string(), z.custom<z.ZodTypeAny>((value) => value instanceof z.ZodType, { message: "a `worker.settings` entry is a zod schema" })).optional(),
+        resources: z.record(z.string(), z.unknown()).optional(),
+        actions: z
+          .custom<NonNullable<CoderWorkerExtension["actions"]>>((value) => typeof value === "function", {
+            message: "`worker.actions` builds the app's actions on the installation: `(installation) => ({ … })`",
+          })
+          .optional(),
+      })
+      .strict()
+      .optional(),
     logReadiness: z.boolean().optional(),
   })
-  .strict();
+  .strict() as unknown as z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig>;
 
 /**
  * One readiness read per filled slot: the capability `contributes` adds and
@@ -124,19 +139,20 @@ export const harnesses = defineKit({
     const readiness = readinessOf(filled);
     return {
       [workforce.slots.workerFlows]: { [CODER_FLOW]: coderWorkerFlow(config, filled, (id) => readiness.refusal(id)) },
-      [workforce.slots.uses]: [harnessReadinessCapability(readiness)],
+      [workforce.slots.uses]: [harnessReadinessCapability(readiness, config.defaultHarness)],
       // FIX-2725 D2: built on workforce's installation, so the coding board
       // reads the roster for a task's `harness:`.
       [workforce.slots.flows]: {
         [HARNESSES_FLOW]: (installation: WorkerInstallation) => [
           defineFlow({
             kind: HARNESSES_FLOW,
+            actions: {},
             description: "The coding harnesses' readiness and the coding board, read as views. Nobody talks to it, so it has no sessions.",
             views: {
               readiness: harnessReadinessView(readiness),
               [CODING_BOARD_VIEW]: codingBoardView(installation, config.defaultHarness),
             },
-          } as never)({ id: HARNESSES_FLOW } as never) as unknown as FlowInstance,
+          })({ id: HARNESSES_FLOW }),
         ],
       },
     };

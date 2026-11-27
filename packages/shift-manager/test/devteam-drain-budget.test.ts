@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { harnessStub } from "@flow-state-dev/harness-manager";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 /** The options the Lab built its FlowState with. */
 const built: { options?: { dispatchDrainTimeoutMs?: number } } = {};
@@ -41,7 +42,7 @@ describe("stopping the Lab", () => {
   it("waits long enough for a full coding run and its project checks", async () => {
     const lab = await openLab({
       stores: inMemoryStores(),
-      harness: harnessStub().slot,
+      harnesses: [readyHarness(harnessStub().slot)],
       runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS,
       workspace: { root: mkdtempSync(join(tmpdir(), "sm-drain-")), remotes: { allow: ["file"] } },
       coderWorkerId: "eng.coder",

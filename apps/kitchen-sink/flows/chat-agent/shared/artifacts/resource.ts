@@ -34,7 +34,7 @@ export const artifactStateSchema = z.object({
   updatedAt: z.string()
 });
 
-type ArtifactState = z.infer<typeof artifactStateSchema>;
+export type ArtifactState = z.infer<typeof artifactStateSchema>;
 
 // ---------------------------------------------------------------------------
 // Content reaction: summarize the body whenever it is written

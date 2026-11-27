@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { reviewDetail } from "../src/browser";
 
 /** The fields a review stop's data had none of before the card showed what a person decides on (FIX-2782). */
-const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], round: null, files: null, fileCount: null, added: null, removed: null };
+const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
 
 describe("reviewDetail", () => {
   it("reads a full review's data", () => {
@@ -141,5 +141,14 @@ describe("reviewDetail: what the review card needs to decide on", () => {
     });
     // Data from before these fields: none of them, and the files unread.
     expect(reviewDetail({ branch: "b" })).toMatchObject({ goal: null, answer: null, pullRequests: [], round: null, files: null });
+  });
+
+  // FIX-2920: a card that can't tell a pull request is already open from the branch offers to open a second one.
+  it("reads the pull request open from the branch, and anything that isn't one as none", () => {
+    const pr = { number: 5661, url: "https://github.com/acme/widgets/pull/5661" };
+    expect(reviewDetail({ branch: "b", openPullRequest: pr })?.openPullRequest).toEqual(pr);
+    expect(reviewDetail({ branch: "b", openPullRequest: { number: 5661, url: "javascript:alert(1)" } })?.openPullRequest).toBeNull();
+    // Data from before the field: none open.
+    expect(reviewDetail({ branch: "b" })?.openPullRequest).toBeNull();
   });
 });

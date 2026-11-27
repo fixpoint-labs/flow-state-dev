@@ -62,11 +62,12 @@ import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-r
 import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
-import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
+import { ROUTED_FROM_STATE_KEY, TASK_TITLE_STATE_KEY, WORKER_NAME_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
+import { taskInputSourceOf } from "../task-input/checked-ledger";
 import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
@@ -114,7 +115,10 @@ export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   PLAN_WAITING_STATE,
   // Not the board's: the work-project action writes it after a membership check (FIX-2161). Here so
   // every flow declaring this list, with a board or without, refuses it on a caller's create.
-  WORK_PROJECT_STATE_KEY
+  WORK_PROJECT_STATE_KEY,
+  // Not the board's either: the create check and the hand-over write them as a session is born (FIX-2881).
+  WORKER_NAME_STATE_KEY,
+  TASK_TITLE_STATE_KEY
 ];
 
 /** What a session board is built from. */
@@ -175,8 +179,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
-    // A coding flow's task is refused when it is filed with no project (FIX-2333).
-    needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
+    // What each delegate's flow takes, read off its `work` entry per call (FIX-2894), its project requirement included (FIX-2333).
+    taskInputOf: (flow) => taskInputSourceOf(options.installation)?.declarationOf(flow),
+    workerOf: async (ctx, id) => taskInputSourceOf(options.installation)?.workerOf(ctx, id),
     // The app's session fields go down every hand-over with the filing project.
     sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.

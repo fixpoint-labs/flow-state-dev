@@ -61,10 +61,13 @@ export interface AppCalls {
   /** A line in a thread: answers its open question, else steers its task. */
   sayInThread(sessionId: string, task: CodingBoardTask, line: string): Promise<void>;
   taskActions(sessionId: string): TaskBoardCalls;
-  /** Accept the review task `task` holds you on in session `sessionId`'s board, landing it as `land` says. */
-  resolve(sessionId: string, task: CodingBoardTask, land?: ReviewLand): Promise<void>;
-  /** Ask for changes, in `words`, on the review task `task` holds you on in session `sessionId`'s board. */
-  requestChanges(sessionId: string, task: CodingBoardTask, words: string): Promise<void>;
+  /**
+   * Accept the review task `task` holds you on in session `sessionId`'s board, landing it as `land` says.
+   * `round` is the review stop on screen; without one, the round the task as drawn holds.
+   */
+  resolve(sessionId: string, task: CodingBoardTask, land?: ReviewLand, round?: string): Promise<void>;
+  /** Ask for changes, in `words`, on the review task `task` holds you on in session `sessionId`'s board; `round` as {@link resolve}'s. */
+  requestChanges(sessionId: string, task: CodingBoardTask, words: string, round?: string): Promise<void>;
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
   dismiss(task: Pick<CodingBoardTask, "id" | "attempts">): Promise<void>;
@@ -115,12 +118,14 @@ export function appCalls(fsd: Client, connection: AppConnection = {}, stops: Sto
   /**
    * Answer the review round the screen drew, and only while the board still holds it: a verdict on a
    * round you never saw would land work nobody read, so a newer round is refused for the screen to draw.
+   * The round drawn is the review stop on screen (`round`); the task as drawn can reach a newer
+   * round before the run's feed draws it, so its hold stands in only when no stop is on screen.
    */
-  const answerReview = async (sessionId: string, task: CodingBoardTask, answer: InboxAnswer) => {
+  const answerReview = async (sessionId: string, task: CodingBoardTask, answer: InboxAnswer, round: string | undefined) => {
     const review = await holdOn(sessionId, task.id, "review");
     if (review === undefined) throw new Error(`The thread "${task.id}" isn't waiting on your review.`);
-    const drawn = task.asks?.find((hold) => hold.ask.kind === "review");
-    if (drawn?.id !== review.id) throw new Error(`The thread "${task.id}" has a newer review; look it over first.`);
+    const drawn = round ?? task.asks?.find((hold) => hold.ask.kind === "review")?.id;
+    if (drawn !== review.id) throw new Error(`The thread "${task.id}" has a newer review; look it over first.`);
     await inbox.answerOne(review, answer);
   };
   const pins = () => fsd.resource(appPins);
@@ -200,8 +205,8 @@ export function appCalls(fsd: Client, connection: AppConnection = {}, stops: Sto
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),
-    resolve: (sessionId, task, land) => answerReview(sessionId, task, { value: acceptOf(land) }),
-    requestChanges: (sessionId, task, words) => answerReview(sessionId, task, { value: { verdict: "revise", words } }),
+    resolve: (sessionId, task, land, round) => answerReview(sessionId, task, { value: acceptOf(land) }, round),
+    requestChanges: (sessionId, task, words, round) => answerReview(sessionId, task, { value: { verdict: "revise", words } }, round),
     pin: async (taskId) => {
       await pins().update((s) => ({ pinned: s.pinned.includes(taskId) ? s.pinned : [...s.pinned, taskId] }));
     },

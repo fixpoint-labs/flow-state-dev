@@ -1352,6 +1352,12 @@ importers:
       '@flow-state-dev/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.0
+        version: 5.3.0
+      '@fontsource/space-grotesk':
+        specifier: ^5.2.0
+        version: 5.3.0
       '@tailwindcss/vite':
         specifier: ^4.2.0
         version: 4.3.0(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -1443,12 +1449,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
-      '@flow-state-dev/workforce':
-        specifier: workspace:*
-        version: link:../workforce
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1456,9 +1456,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
@@ -1487,9 +1484,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1564,9 +1558,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1834,6 +1825,12 @@ importers:
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../tools
+      '@flow-state-dev/workforce':
+        specifier: workspace:*
+        version: link:../workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -2318,6 +2315,9 @@ importers:
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
+      undici:
+        specifier: ^7.29.1
+        version: 7.29.1
       zod:
         specifier: ^3.25.76
         version: 3.25.76

@@ -72,7 +72,7 @@ export function midwayQuestionText(row: Task, hold: OwnHold): string {
  * session, which names no filer, the conversation the row was filed from.
  */
 function filerOf(ctx: BlockContext, row: Task): MessageTarget | undefined {
-  const worker = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_WORKER_STATE_KEY];
+  const worker = ctx.session.state[FILING_WORKER_STATE_KEY];
   if (typeof worker === "string") return worker;
   return row.filer === undefined ? undefined : { session: row.filer.sessionId };
 }

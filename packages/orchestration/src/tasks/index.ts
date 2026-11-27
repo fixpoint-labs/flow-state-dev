@@ -70,6 +70,8 @@ export {
   type TaskSettingsSupport,
 } from "./collection/filing";
 export type { TaskSettingsPatch } from "./collection/internal";
+// FIX-2894: a write refused by a rule, named by its code; the refusal a flow's task-input hooks throw.
+export { TaskWriteRefusedError } from "./collection/refused-write";
 // Steers (FIX-2086): words sent into an open task, kept on the task.
 export { taskSteerSchema, type TaskSteer } from "./schema/steer";
 export {

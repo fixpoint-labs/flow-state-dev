@@ -21,7 +21,7 @@ export interface ScriptedHarnessOptions {
   mcpUses?: readonly CapabilityRef[];
 }
 
-/** The task line the manager's prompt carries (`Task <id>, phase <p>, attempt <n>.`), else "a task". */
+/** The task line the manager's prompt carries (`Task <id>, mode <m>, attempt <n>.`), else "a task". */
 function taskLine(prompt: string): string {
   return prompt.split("\n").find((line) => line.startsWith("Task ")) ?? "a task";
 }

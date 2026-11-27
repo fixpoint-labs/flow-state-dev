@@ -107,7 +107,7 @@ export async function handleResumeSuspension(
   if (
     originalRequest === undefined ||
     !ownsRecord(flow, originalRequest) ||
-    !callerReachesRequest(originalRequest, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRequest, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }

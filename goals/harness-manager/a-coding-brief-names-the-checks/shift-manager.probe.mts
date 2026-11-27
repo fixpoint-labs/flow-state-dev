@@ -16,6 +16,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const check = process.env.GOAL_CHECK;
 const script = process.env.GOAL_CHECK_FILE;
@@ -34,7 +35,7 @@ const stub = harnessStub({
 });
 const lab = await openLab({
   stores: inMemoryStores(),
-  harness: stub.slot,
+  harnesses: [readyHarness(stub.slot)],
   runTimeoutMs: 30_000,
   workspace: { root: mkdtempSync(join(tmpdir(), "coding-brief-sm-")), remotes: { allow: ["file"] } },
   coderWorkerId: "eng.coder",

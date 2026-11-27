@@ -28,7 +28,7 @@ import { SectionFailure } from "./ui";
 import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { answerOfResolution, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
-import { sessionOfHold } from "../lib/inbox-list";
+import { sessionOfHold, suspensionIdOfHold } from "../lib/inbox-list";
 
 /**
  * The registry's cards read their resolution from the session's items. An ask
@@ -66,7 +66,7 @@ export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; t
       )}
     </SessionItemsProvider>
   );
-  const ids = { "data-suspension-id": hold.id, "data-session-id": sessionOfHold(hold) ?? undefined };
+  const ids = { "data-suspension-id": suspensionIdOfHold(hold), "data-session-id": sessionOfHold(hold) ?? undefined };
   if (review.state === "reading") {
     return (
       <div data-testid="ask-card" {...ids}>

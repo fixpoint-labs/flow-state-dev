@@ -41,7 +41,6 @@ import {
   type TaskCapOptions,
   type TaskCollectionRef,
   type TaskInit,
-  type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
 import {
   resolveTaskCapDefaults,
@@ -155,7 +154,7 @@ export interface EventActorsWorkspaceConfig {
  */
 export function createEventActorsWorkspace(
   _config: EventActorsWorkspaceConfig
-): { workspace: DefinedResource } {
+) {
   return { workspace: createEventActorsWorkspaceResource() };
 }
 
@@ -231,7 +230,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     reEmit = false,
     maxDepth = 3,
   } = config;
-  const workspaceResource = config.workspace.workspace;
+  const workspaceResource = config.workspace.workspace as DefinedResource<EventActorsWorkspaceState>;
 
   if (actors.length === 0) {
     throw new Error(
@@ -263,20 +262,13 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
   });
 
-  async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
+  function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
     return getOrCreateTaskCollection({
       ctx,
       backing: "state",
       collectionId,
       ...boardCaps,
     });
-  }
-
-  function matchingActors(entry: { type: string; topic: string }): Actor[] {
-    const topicKey = `${entry.type ?? ""}:${entry.topic ?? ""}`;
-    return actors.filter((a) =>
-      a.watch.some((pattern) => matchTopic(pattern, topicKey))
-    );
   }
 
   // FIX-931.
@@ -286,30 +278,16 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
    * "what to create" from "create it" is what lets the unit of atomicity be the
    * caller's, rather than being fixed at one entry.
    */
-  function taskInitsFor(
-    entry: { type: string; topic: string; body: unknown },
-    depth: number
-  ): TaskInit[] {
-    return matchingActors(entry).map((actor) => ({
-      goal: `${actor.name} on ${entry.type}:${entry.topic}`,
-      assignee: actor.name,
-      input: entry,
-      metadata: { depth, type: entry.type, topic: entry.topic },
-    }));
-  }
-
-  // Spawns every Task one entry matches, atomically. The initial emit handles a
-  // single entry, so its batch is that entry's actors; the re-emission path
-  // batches across ALL entries itself (see `reEmitTap`).
-  async function spawnTasksFor(
-    entry: { type: string; topic: string; body: unknown },
-    depth: number,
-    ctx: BlockContext
-  ): Promise<void> {
-    const inits = taskInitsFor(entry, depth);
-    if (inits.length === 0) return;
-    const collection = await getCollection(ctx);
-    await collection.createTasks(inits);
+  function taskInitsFor(entry: EntryLike, depth: number): TaskInit[] {
+    const topicKey = `${entry.type ?? ""}:${entry.topic ?? ""}`;
+    return actors
+      .filter((actor) => actor.watch.some((pattern) => matchTopic(pattern, topicKey)))
+      .map((actor) => ({
+        goal: `${actor.name} on ${entry.type}:${entry.topic}`,
+        assignee: actor.name,
+        input: entry,
+        metadata: { depth, type: entry.type, topic: entry.topic },
+      }));
   }
 
   // Top-of-emit: append the seed entry, spawn depth-1 tasks for matching actors.
@@ -318,8 +296,10 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     inputSchema: z.any(),
     resources: { [RESOURCE_KEY]: workspaceResource },
     execute: async (entry, ctx) => {
-      const e = entry as { type: string; topic: string; body: unknown };
-      await spawnTasksFor(e, 1, ctx);
+      const inits = taskInitsFor(entry, 1);
+      if (inits.length === 0) return;
+      const collection = await getCollection(ctx);
+      await collection.createTasks(inits);
     },
   });
 
@@ -342,10 +322,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       execute: async (output, ctx) => {
         if (!reEmit) return;
 
-        const seqState = ctx.sequencer?.state as
-          | { _taskId?: string }
-          | undefined;
-        const taskId = seqState?._taskId;
+        const taskId = ctx.sequencer?.state._taskId;
         if (!taskId) return;
 
         const collection = await getCollection(ctx);
@@ -356,7 +333,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         const entries = normalizeToEntries(output);
         if (entries.length === 0) return;
 
-        const workspaceRef = (ctx.resources as Record<string, any>)[RESOURCE_KEY];
+        const workspaceRef = ctx.resources[RESOURCE_KEY];
 
         // The unit of atomicity is the whole RE-EMISSION, not one entry
         // (FIX-931). Making a single entry's actors atomic still left the loop
@@ -365,7 +342,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         // output already dispatched. Everything this output wants to spawn goes
         // in ONE `createTasks`, submitted before any state is committed.
         const seen = new Set(
-          (workspaceRef.state as EventActorsWorkspaceState).entries.map(
+          workspaceRef.state.entries.map(
             (e: Record<string, unknown>) => JSON.stringify([e.type, e.topic]),
           ),
         );
@@ -404,7 +381,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         // same moment — where the racing worker fails silently, with a
         // half-populated log that looks legitimate.
         for (const entry of toAppend) {
-          const wsState = workspaceRef.state as EventActorsWorkspaceState;
+          const wsState = workspaceRef.state;
           await workspaceRef.patchState({ entries: [...wsState.entries, entry] });
           ctx.emit.data(
             "rb-entry",
@@ -414,8 +391,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         }
 
         if (inits.length > 0) {
-          const collectionForSpawn = await getCollection(ctx);
-          await collectionForSpawn.createTasks(inits);
+          await collection.createTasks(inits);
         }
       },
     });
@@ -435,7 +411,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       stateSchema: actorWrapperStateSchema,
     })
       .tap(stashTaskId)
-      .map((input: TaskWorkerInput) => input.input)
+      .map((input) => input.input)
       .step(a.block)
       .tap(reEmitTap);
   }

@@ -1,5 +1,7 @@
 /** Goal check. Contract, controls, and the verdict log: `goal.md`. */
 
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +12,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, taskIssueSegment } from "@flow-state-dev/harness-manager";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
@@ -267,13 +269,13 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
   const manager = harnessManager({
     ledgers: conversationLedgers,
     tenant: undefined,
-    phase: { phase: "answer", buildPrompt: async (run: { issue: string }) => `Work on task ${run.issue}.`, isDone: () => true },
-    workspace: { root: checkouts, sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
+    mode: { name: "answer", instructions: async (run: { issue: string }) => `Work on task ${run.issue}.`, doneWhen: { check: () => true } },
+    workspace: localRepoWorkspaceHost({ root: checkouts, repo, baseRef: "main", provisionTimeoutMs: 20_000 }),
     runTimeoutMs: 60_000,
     stopsOnAbort: true,
     harness: fakeHarness
   } as never) as TaskWorker;
-  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
+  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), mode: { name: "answer" } });
   const message = harnessSessionDoor({
     name: "steer-goal-coder",
     harness: fakeHarness,

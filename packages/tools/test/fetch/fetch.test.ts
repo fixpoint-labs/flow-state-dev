@@ -102,6 +102,24 @@ describe("fetch tool factory", () => {
     expect(result.source).toBe("firecrawl");
   });
 
+  it("hands the app's allowedHosts to the built-in adapter, even with a vendor key set", async () => {
+    // The resolver only picks the adapter; the list has to reach it for the
+    // restriction to hold on the public tool.
+    process.env.FIRECRAWL_API_KEY = "fc-key";
+    const { builtinFetchAdapter } = await import("../../src/fetch/providers");
+
+    const result = await runForTest(
+      fetch({ allowedHosts: ["docs.example"] }),
+      { url: "https://docs.example/" },
+      {} as any
+    );
+
+    expect(result.source).toBe("builtin");
+    expect(vi.mocked(builtinFetchAdapter.fetch).mock.lastCall?.[1]).toMatchObject({
+      allowedHosts: ["docs.example"],
+    });
+  });
+
   it("executes fetch with config keys", async () => {
     const tool = fetch({ keys: { firecrawl: "config-key" } });
     const result = await runForTest(tool, { url: "https://example.com" }, {} as any);

@@ -38,6 +38,8 @@ Written by `docs-writer` (sonnet), 2417 words. Scenario: The `roster` view of th
 
 - After PR review (Greptile): the scopes answer names both resolvers, the flow's `authentication.resolvePrincipal` and the host-level `resolvePrincipal` on `createFlowState`, and limits the `body.userId` warning to apps with neither. 2582 words. Page sha256 f6edb4ee83bc.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/reference/views.md`: "computed on each ask" reads "computed on each read" (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 413a88a4ec81, and the 21 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Final fact check of the page as it closed, sha256 5744c254a312: 3 untrue, fixed 
 - Re-run after the review edit: fact-checked against `view-routes.ts:81-93`, `defaultBodyUserIdPrincipalResolver.ts:31-43` and `pickPrincipalResolver.ts:21-28`; the earlier claim that the caller never comes from the body was untrue under the default resolver and is corrected on the page and the fact sheet. No untrue claim remains open.
 
 - Re-run after the review edit: checked against `packages/engine/src/flowstate/types.ts:285-289`, `packages/engine/src/transports/auth/pickPrincipalResolver.ts:21-28` and `packages/engine/src/flowstate/createFlowState.ts:1154`. No untrue claim remains open.
+
+Cutover, 2026-11-24: "computed on each ask" reads "computed on each read" (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

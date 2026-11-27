@@ -11,6 +11,12 @@
  * name below so a component writes `bg-surface-raised` or `text-text-3`.
  */
 @import "tailwindcss" source(none);
+@import "@fontsource/space-grotesk/latin-400.css";
+@import "@fontsource/space-grotesk/latin-500.css";
+@import "@fontsource/space-grotesk/latin-600.css";
+@import "@fontsource/space-grotesk/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
 @import "./lib/theme.css";
 @import "@flow-state-dev/design-system/type.css";
 @import "./components/flow-state/tokens.css";
@@ -103,4 +109,91 @@
     text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
     text-underline-offset: 2px;
   }
+}
+
+/*
+ * A popup's status pill when the task waits on you (`Popups.tsx` marks the
+ * words `data-needs-you`): the highlighter, since the user needs to act. The
+ * pill is the registry's (`session-overlay`, a copy the lab can't edit), so
+ * this is unlayered, to win over its utilities.
+ */
+[data-overlay-status]:has([data-needs-you]) {
+  background-color: var(--hl);
+  color: var(--onhl);
+}
+
+/*
+ * The "is answering" loader (`AnsweringLoader.tsx`): three dots on a 112×36
+ * stage, in ink with the middle one blue (`ld-live`), on the theme's hairline
+ * (`--line3`). Under reduced motion every dot holds still where its delay
+ * puts it in the loop, so the three stay apart instead of stacking at the start.
+ */
+@layer components {
+  .ld-stage { position: relative; width: 112px; height: 36px; flex: none; }
+  .ld-ground { position: absolute; bottom: 3px; height: 1px; background: var(--line3); }
+  .ld-guide { position: absolute; left: 0; top: 0; overflow: visible; fill: none; stroke: var(--line3); stroke-width: 1; stroke-dasharray: 2 3; }
+  .ld-ball { position: absolute; bottom: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); transform-origin: 50% 100%; animation: ld-hop 0.72s infinite; }
+  .ld-shadow { position: absolute; bottom: 1px; width: 10px; height: 3px; border-radius: 50%; background: var(--ink); opacity: 0.35; animation: ld-shadow 0.72s infinite; }
+  .ld-hand { position: absolute; bottom: 2px; width: 24px; height: 1px; background: var(--line3); }
+  .ld-dot { position: absolute; left: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
+  .ld-stage .ld-live { background: var(--blue); }
+  .ld-jug { offset-path: path("M46 30 Q66 -8 86 28 Q78 36 66 30 Q46 -8 26 28 Q34 36 46 30"); offset-rotate: 0deg; animation: ld-juggle 1.8s linear infinite; }
+  .ld-frog { left: 42px; top: 24px; animation: ld-frog 1.5s infinite; }
+  .ld-orb { offset-path: path("M34 18 A22 8 0 1 0 78 18 A22 8 0 1 0 34 18"); offset-rotate: 0deg; animation: ld-orbit 1.6s linear infinite; }
+  .ld-tri { animation: ld-tri 1.8s infinite; }
+  .ld-gat { top: 14px; }
+  .ld-gat.l { left: 38px; animation: ld-gl 1.4s infinite; }
+  .ld-gat.r { left: 66px; animation: ld-gr 1.4s infinite; }
+  .ld-gat.m { left: 52px; z-index: 1; animation: ld-gm 1.4s infinite; }
+}
+@keyframes ld-hop {
+  0% { transform: translateY(0) scale(1.3, 0.7); animation-timing-function: ease-out; }
+  8% { transform: translateY(-3px) scale(0.85, 1.2); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+  50% { transform: translateY(-20px) scale(1, 1); animation-timing-function: cubic-bezier(0.6, 0, 0.85, 0.4); }
+  92% { transform: translateY(-2px) scale(0.88, 1.14); animation-timing-function: linear; }
+  100% { transform: translateY(0) scale(1.3, 0.7); }
+}
+@keyframes ld-shadow {
+  0%, 100% { transform: scaleX(1.2); opacity: 0.4; }
+  50% { transform: scaleX(0.45); opacity: 0.1; }
+}
+@keyframes ld-juggle {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+@keyframes ld-frog {
+  0% { transform: translate(28px, 0); animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); }
+  33.33% { transform: translate(14px, 0); animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); }
+  66.67% { transform: translate(0, 0); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+  83.33% { transform: translate(14px, -18px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+  100% { transform: translate(28px, 0); }
+}
+@keyframes ld-orbit {
+  0% { offset-distance: 0%; transform: scale(1); opacity: 0.8; }
+  25% { transform: scale(1.4); opacity: 1; }
+  50% { transform: scale(1); opacity: 0.8; }
+  75% { transform: scale(0.6); opacity: 0.45; }
+  100% { offset-distance: 100%; transform: scale(1); opacity: 0.8; }
+}
+@keyframes ld-tri {
+  0% { transform: translate(52px, 4px); animation-timing-function: cubic-bezier(0.6, 0, 0.3, 1); }
+  20%, 33.33% { transform: translate(64px, 24px); animation-timing-function: cubic-bezier(0.6, 0, 0.3, 1); }
+  53.33%, 66.67% { transform: translate(40px, 24px); animation-timing-function: cubic-bezier(0.6, 0, 0.3, 1); }
+  86.67%, 100% { transform: translate(52px, 4px); }
+}
+@keyframes ld-gl {
+  0%, 100% { transform: translateX(0); animation-timing-function: cubic-bezier(0.6, 0, 0.4, 1); }
+  40%, 60% { transform: translateX(14px); animation-timing-function: cubic-bezier(0.6, 0, 0.4, 1); }
+}
+@keyframes ld-gr {
+  0%, 100% { transform: translateX(0); animation-timing-function: cubic-bezier(0.6, 0, 0.4, 1); }
+  40%, 60% { transform: translateX(-14px); animation-timing-function: cubic-bezier(0.6, 0, 0.4, 1); }
+}
+@keyframes ld-gm {
+  0%, 32%, 72%, 100% { transform: scale(1); }
+  46% { transform: scale(1.9); }
+  58% { transform: scale(1.55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-stage * { animation-play-state: paused !important; }
 }

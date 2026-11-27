@@ -101,7 +101,7 @@ async function open(calls: Step[], seen: string[]): Promise<Lab> {
   lab = await openLab({
     modelResolver: model,
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

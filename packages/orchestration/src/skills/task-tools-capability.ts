@@ -118,9 +118,8 @@ function askOf(question: string | { kind: "question" | "confirm"; prompt: string
 // FIX-2133 D1; BP-031.
 /**
  * Whether the running request's caller reaches `row`: the
- * user, tenant and org its filing ran under, compared as the engine compares
- * a request's (`principalOwnsRequest`): the same user, the same tenant (none
- * matching none), and the same org when the row recorded one. Read from the
+ * user, tenant and org its filing ran under: the same user, the same tenant
+ * (none matching none), and the same org when the row recorded one. Read from the
  * request's verified identity, never input. A row filed with no user
  * recorded is decided by tenant and org alone.
  */

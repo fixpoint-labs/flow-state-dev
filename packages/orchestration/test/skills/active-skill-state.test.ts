@@ -23,6 +23,13 @@ describe("readActiveSkills", () => {
     expect(readActiveSkills({})).toEqual([]);
     expect(readActiveSkills({ activeSkills: "not an array" })).toEqual([]);
   });
+  it("preserves stored entries in the binding's selected field", () => {
+    const stored = [{ name: "", mode: "fork" }, { name: "legacy" }];
+    const state = { activeSkills: [entry("other")], selected: stored };
+    expect(readActiveSkills(state, "selected")).toBe(stored);
+    expect(readActiveSkills(state, "missing")).toEqual([]);
+    expect(readActiveSkills({ selected: null }, "selected")).toEqual([]);
+  });
   it("returns the array when present", () => {
     expect(readActiveSkills({ activeSkills: [entry("foo")] })).toEqual([
       entry("foo"),
@@ -44,6 +51,18 @@ describe("pushActiveSkill", () => {
 });
 
 describe("unionAllowedTools", () => {
+  it("skips retired and incomplete entries from a persisted binding", () => {
+    const active = readActiveSkills({
+      activeSkills: [{ name: "retired", mode: "fork" }, { name: "incomplete" }, entry("current")],
+    });
+    const tools = unionAllowedTools(active, {
+      retired: ["old-tool"],
+      incomplete: ["tool-without-mode"],
+      current: ["current-tool"],
+    });
+    expect(tools).toEqual(["current-tool"]);
+  });
+
   it("returns undefined when no inline skill declares allowed-tools", () => {
     const active = [entry("foo"), entry("bar")];
     expect(

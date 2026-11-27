@@ -14,12 +14,12 @@
  *
  * ```ts
  * const phase = commandCheck(
- *   { phase: "code", buildPrompt: (run) => codingBrief(run, { instructions }), isDone },
+ *   { name: "default", instructions: (run) => codingBrief(run, { instructions }), doneWhen: { check } },
  *   { commands: projectChecks(), timeoutMs, inBrief: true },
  * );
  * ```
  */
-import { harnessFeatureOf, type PromptRunContext } from "./manager";
+import type { PromptRunContext } from "./manager";
 import { RUN_REPORT_ASK } from "./run-report";
 
 /** What an app puts in a coding brief beside the task. Every part is optional. */
@@ -74,7 +74,7 @@ function section(heading: string, body: string | undefined): string[] {
 export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): string {
   const { task } = run;
   // A board that mints its own row ids runs a feature row under the minted id, so name the issue too.
-  const issue = harnessFeatureOf(task.input)?.issue;
+  const issue = run.trackerIssue ?? undefined;
   return [
     `# Your task`,
     ``,
@@ -91,7 +91,7 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
     ...section("Your team's conventions", parts.conventions ?? DEFAULT_CONVENTIONS),
     `# Where and how to work`,
     ``,
-    `Task ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    `Task ${run.issue}, mode ${run.mode}, attempt ${run.attempt}.`,
     ...(issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : []),
     run.branch === "" ? `Work in ${run.workspacePath}.` : `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     ...(parts.terms ?? []),

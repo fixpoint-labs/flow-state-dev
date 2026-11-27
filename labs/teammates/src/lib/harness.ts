@@ -33,27 +33,3 @@ export function harnessWarning(chips: readonly HarnessReadinessChipRow[] | undef
   if (chip === undefined || harnessState(chip) !== "not-ready") return undefined;
   return { harness, label: chip.label, why: chip.remedy ?? chip.reason, ready: chips.filter((c) => c.ready) };
 }
-
-/**
- * The harness Lead assigns a coding task to when a line names none: its
- * WORKER.md says `teammates.cursor` ("When they name none, assign it to
- * `teammates.cursor`"). Kept here so the composer knows when the lab's own
- * default differs from it and has to be named.
- */
-const LEAD_FALLBACK_HARNESS = "cursor";
-
-/**
- * The line you send, naming the harness its coding tasks should start on: one
- * plain `Coding harness: <name>` line at the end, which the teammate reads like
- * any other words. An explicit pick is always named, whatever the default is at
- * send time, so a pick is never dropped because the default moved to match it.
- * With no pick, the lab's default is named only when it differs from the one
- * Lead falls back to, so the picker's default and the task's harness agree; an
- * ordinary line on the usual default goes as typed.
- */
-export function withHarness(text: string, picked: string | undefined, fallback: string | undefined): string {
-  const harness = picked ?? (fallback !== undefined && fallback !== LEAD_FALLBACK_HARNESS ? fallback : undefined);
-  if (harness === undefined) return text;
-  const line = `Coding harness: ${harnessName(harness)}`;
-  return text === "" ? line : `${text}\n\n${line}`;
-}

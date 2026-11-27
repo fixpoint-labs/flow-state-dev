@@ -444,6 +444,8 @@ export async function executeRunCommand(
             ...(seedData !== undefined ? { state: seedData } : {}),
             fromCaller: true,
             via: "cli",
+            // The terminal is a person's door, as the HTTP one is.
+            principalKind: "person",
           },
           () => ({
             id: sessionId,
@@ -539,6 +541,8 @@ export async function executeRunCommand(
         input: input ?? {},
         userId: principal.userId,
         orgId: principal.orgId,
+        // The terminal is a person's door, as the HTTP one is.
+        principalKind: "person",
         sessionId,
         stores,
         responseEmitter,

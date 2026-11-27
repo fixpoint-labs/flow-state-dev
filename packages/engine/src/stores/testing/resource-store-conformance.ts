@@ -28,6 +28,64 @@ import type {
 } from "../types";
 import { toStoredState } from "../resource-state-predicate";
 
+/**
+ * Keys a prefix read must sort out exactly: neighbours of each prefix in
+ * byte order (`docs0` and `docs.` beside `docs/`), LIKE wildcards, multi-byte
+ * characters, and the highest code point, whose prefix has no plain
+ * successor. Every adapter runs the same corpus against `startsWith`, so the
+ * SQL stores' rows match the memory and filesystem stores'.
+ */
+const PREFIX_CORPUS_KEYS = [
+  "docs/one",
+  "docs/two/three",
+  "docs0",
+  "docs.",
+  "docr",
+  "50%_off",
+  "5000_off",
+  "café/menu",
+  "cafë",
+  "z\u{10FFFF}/a",
+  "{",
+  "😀/a",
+  "😁"
+];
+const PREFIX_CORPUS_PREFIXES = ["", "docs/", "docs", "50%_", "café/", "caf", "z\u{10FFFF}", "😀/"];
+
+/** Scopes beside `session`/`s1` that the prefix corpus is also written to. */
+const PREFIX_CORPUS_OTHER_SCOPES: ReadonlyArray<readonly [ContentScopeType, string]> = [
+  ["session", "s2"],
+  ["user", "s1"]
+];
+
+/**
+ * Write the prefix corpus to `session`/`s1`, and a renamed copy to each other
+ * scope, then assert every corpus prefix reads exactly the `s1` keys that
+ * start with it. The copies get their own keys (`<key>-elsewhere`) that match
+ * the same prefixes: a read that dropped the scope equality would return
+ * them, where a copy under the same key would collapse into the result
+ * record unseen. The empty prefix matters most, since its range has no upper
+ * bound and only the scope keeps it off the rest of the table.
+ */
+async function assertPrefixCorpus(
+  write: (scopeType: ContentScopeType, scopeId: string, key: string, i: number) => Promise<void>,
+  read: (keyPrefix: string) => Promise<Record<string, unknown>>
+): Promise<void> {
+  for (const [i, key] of PREFIX_CORPUS_KEYS.entries()) {
+    await write("session", "s1", key, i);
+    for (const [scopeType, scopeId] of PREFIX_CORPUS_OTHER_SCOPES) {
+      await write(scopeType, scopeId, `${key}-elsewhere`, i);
+    }
+  }
+  for (const prefix of PREFIX_CORPUS_PREFIXES) {
+    const matched = await read(prefix);
+    expect({ prefix, keys: Object.keys(matched).sort() }).toEqual({
+      prefix,
+      keys: PREFIX_CORPUS_KEYS.filter((k) => k.startsWith(prefix)).sort()
+    });
+  }
+}
+
 /** Structural shape of the last-write-wins keyed store (`ContentStore`). */
 type KeyedResourceStore<V> = {
   get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<V | undefined>;
@@ -125,6 +183,15 @@ function runKeyedResourceStoreConformance<V>(options: ConformanceOptions<V>): vo
         await store.set("session", "s1", "b", makeValue(2));
         const all = await store.getByPrefix("session", "s1", "");
         expect(Object.keys(all).sort()).toEqual(["a", "b"]);
+      });
+    });
+
+    it("getByPrefix returns exactly the scope's keys that start with the prefix, for any characters", async () => {
+      await withStore(async (store) => {
+        await assertPrefixCorpus(
+          (scopeType, scopeId, key, i) => store.set(scopeType, scopeId, key, makeValue(i)),
+          (prefix) => store.getByPrefix("session", "s1", prefix)
+        );
       });
     });
 
@@ -300,6 +367,18 @@ export function createResourceStateStoreConformanceTests(
         await seed(store, "b", makeState(2));
         const all = await store.getByPrefix("session", "s1", "");
         expect(Object.keys(all).sort()).toEqual(["a", "b"]);
+      });
+    });
+
+    it("getByPrefix returns exactly the scope's live keys that start with the prefix, for any characters", async () => {
+      await withStore(async (store) => {
+        await assertPrefixCorpus(
+          async (scopeType, scopeId, key, i) => {
+            const result = await store.set(scopeType, scopeId, key, makeState(i), 0);
+            if (!result.ok) throw new Error(`seed of ${key} conflicted`);
+          },
+          (prefix) => store.getByPrefix("session", "s1", prefix)
+        );
       });
     });
 

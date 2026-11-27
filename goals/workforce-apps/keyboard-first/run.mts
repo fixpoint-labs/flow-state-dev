@@ -27,7 +27,7 @@ import type { Browser, Page } from "playwright";
 import { parseDeclaredWorkerId } from "@flow-state-dev/workforce";
 import { LAB_TREE, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
-import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { LAB as CLAUDE_CODE_STYLE, startLab } from "../../claude-code-style-lab/lab.mts";
 import { startTeammates } from "../../teammates-lab/lab.mts";
 import { REPO_ROOT, goalTmpDir, readTree, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";

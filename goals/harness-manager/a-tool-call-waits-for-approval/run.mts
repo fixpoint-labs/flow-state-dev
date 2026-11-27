@@ -29,6 +29,7 @@
 // Traces off before anything reads the flag: a resume must run no completed step again without them.
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 
+import type { HarnessToolApprovalHook } from "@flow-state-dev/core/harness";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,9 +44,9 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { sleep } from "../../lib/time.mts";
-import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type HarnessToolApprovalHook, type StubRun } from "@flow-state-dev/harness-manager";
+import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
-import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeEnv, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
@@ -238,15 +239,14 @@ async function open(label: string, slot: (feeds: any) => HarnessBlock, reopen?: 
   remotes.set(label, remote);
   const lab = await openLab({
     stores: sqliteStores({ filename: join(root, "lab.sqlite") }),
-    harness: slot as never,
+    // The recording wrapper is a sequencer, which hides the stub's own `stopsOnAbort`: declared on the block again.
+    harnesses: [readyHarness(((feeds: never) => Object.assign(slot(feeds), { stopsOnAbort: true })) as never)],
     runTimeoutMs: label === "r" ? 180_000 : 30_000,
     workspace: { root: join(root, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,
     inventory: true,
     devtool: true,
     approveTools: true,
-    // The recording wrapper is a sequencer, which hides the stub's own `stopsOnAbort`.
-    stopsOnAbort: true,
     sweepIntervalMs: 200,
     projects: [{ id: "storefront", title: "Storefront", repository: remote.url }],
     modelResolver: models(goal),

@@ -92,7 +92,6 @@ import {
   AREAS,
   GUARD_EXEMPTIONS as EXCEPTIONS,
   GUARD_TERMS as TERMS,
-  PERSON_PINS,
   PUBLISHED_TERMS,
   RELEASE_NOTE_EXEMPTIONS,
   sharedGuardExemption,
@@ -103,8 +102,8 @@ import { gitReader } from "./mechanism-exports.mjs";
 // The notes `changeset version` deletes; a `releaseNote` flag may name these and nothing else.
 import { isPendingChangeset } from "./pending-changesets.mjs";
 
-/** The glossary's areas, terms, exceptions and pins, re-exported for this guard's tests and codemods. */
-export { AREAS, EXCEPTIONS, PERSON_PINS, TERMS };
+/** The glossary's areas, terms and exceptions, re-exported for this guard's tests and codemods. */
+export { AREAS, EXCEPTIONS, TERMS };
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -118,7 +117,7 @@ export const areaOf = (path) => AREAS.find((a) => a.re.test(path));
  */
 const WORKFORCE_PATHS = /^packages\/(workforce|shift-manager)\/|^apps\/docs\/docs\/(workforce|shift-manager)\/|^apps\/docs\/docs\/glossary\/(workforce|shift-manager)\.svg$|workforce/i;
 const WORKFORCE_IMPORT = /["']@flow-state-dev\/(?:workforce|shift-manager)(?:\/[^"']*)?["']/;
-const GLOSSARY = "apps/docs/docs/glossary.md";
+const GLOSSARY = "apps/docs/docs/reference/glossary.md";
 /** The glossary is Workforce's ground from its Workforce section on. */
 const GLOSSARY_WORKFORCE_HEADING = /^## Workforce\b/;
 
@@ -533,7 +532,7 @@ export const PLANTS = [
   { path: "apps/kitchen-sink/flows/zz-board/flow.ts", line: 'const board = taskBoard({ name: "triage", workers }); // each seat runs inline', term: "seat" },
   { path: "apps/kitchen-sink/flows/zz-board/flow.ts", line: "if (envelope.seat === name) return;", term: "seat" },
   { path: "apps/kitchen-sink/flows/zz-board/flow.ts", line: "// a hired seat answers elsewhere", term: "seat" },
-  { path: PERSON_PINS[0].path, line: "If you can't help, say how to reach a person, and tell the person who signed in.", term: "person" },
+  { path: "apps/docs/docs/catalog/workforce/zz-planted-person.md", line: "If you can't help, tell the person who signed in.", term: "person" },
   { path: GLOSSARY, line: "| **Worker** | workforce | A second definition. | Worker |", term: null },
   { path: "zz-planted-folder/notes.md", line: "Nothing retired here.", term: null },
   // A resource named as a row or a collection item, and a lifecycle named State, in any package (FIX-2479).

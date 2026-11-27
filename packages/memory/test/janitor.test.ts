@@ -9,7 +9,7 @@
  *   - markStale idempotency
  *   - memorySystemJanitor end-to-end
  *   - factory plumbing (default-on, schedule routing, hygiene: false revert)
- *   - ranking sites (createRecall + intrinsicSemanticScore)
+ *   - ranking sites (recall + intrinsicSemanticScore)
  *   - config validation (halfLife <= 0, cullFloor out of range)
  */
 
@@ -624,7 +624,7 @@ describe('memory/janitor — ranking sites use effectiveConfidence', () => {
     expect(freshScore).toBeGreaterThan(oldScore)
   })
 
-  it('createRecall ranks fresh facts higher than ancient facts of the same raw confidence (hygiene on)', () => {
+  it('recall ranks fresh facts higher than ancient facts of the same raw confidence (hygiene on)', () => {
     const mem = system({
       model: 'gpt-test',
       working: true,
@@ -652,7 +652,7 @@ describe('memory/janitor — ranking sites use effectiveConfidence', () => {
     expect(freshResult.relevance).toBeGreaterThan(oldResult.relevance)
   })
 
-  it('createRecall uses raw confidence when hygiene is false (pre-FIX-411 ordering)', () => {
+  it('recall uses raw confidence when hygiene is false (pre-FIX-411 ordering)', () => {
     const mem = system({
       model: 'gpt-test',
       working: true,

@@ -1,5 +1,96 @@
 # @flow-state-dev/tools
 
+## 0.3.0
+
+### Minor Changes
+
+- 08f350c: Bash sandboxes no longer leave processes and containers running after they are released (FIX-2678, FIX-2679).
+
+  - **Local provider:** releasing a sandbox stops every background job its commands started (SIGTERM, then SIGKILL after a 2-second grace). A job still outlives the command that started it, so the agent can start a server and use it in its next command. If your flow wires `bashCap.cleanupBlock` into `request.onFinished`, a background job now stops when the request finishes; a job started with `setsid` or as a daemon leaves its process group and is not stopped.
+  - **Idle release:** a sandbox no command has used for 30 minutes is released automatically, for every provider. Flows that never wire `cleanupBlock` are reaped too. The timer never holds the process open.
+  - **MOAT provider:** a persisting container (`persist` defaults to on) still survives `cleanupBlock`, but once idle for 30 minutes it is stopped and destroyed; the next command in that session starts a fresh container. A command that times out is now stopped inside the container, not only the host `moat` process. `moat exec` output is capped at 10 MB per stream, as the local provider's is; a command that overruns is stopped and returns exit code 1.
+
+  Docs: packages/tools/README.md (the persistent-containers paragraph: the cleanup block no longer means the container lives until `moat stop`; idle stop after 30 minutes; local background jobs stop on release or after 30 idle minutes), apps/docs/docs/tools/bash.md (the persistent MOAT section, "becomes a no-op" and "outlives the framework process" bullets; the exec-timeout bullet: the command inside the container is stopped too, and the 10 MB output cap; the local provider's background-job lifetime)
+
+- 7ddae5c: A file a workspace saves keeps that workspace's path, content hash, and `updatedAt`, which is an ISO timestamp. `entryState` and bash `createState` can still add other fields. A `path`, `hash`, or `updatedAt` they return is ignored (FIX-2749).
+
+  Docs: apps/docs/docs/tools/workspace.md
+
+### Patch Changes
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ffbe992]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [abed271]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [5f1c26a]
+- Updated dependencies [7ddae5c]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [2e63b30]
+- Updated dependencies [e238e18]
+- Updated dependencies [cc91d7a]
+- Updated dependencies [3f23173]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [3ef3979]
+- Updated dependencies [8d4dd64]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [6b68a97]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [9f8b8d3]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [89b40bc]
+- Updated dependencies [b5b52b9]
+- Updated dependencies [d0e892d]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/workspace@0.5.0
+
 ## 0.2.2
 
 ### Patch Changes

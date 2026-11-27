@@ -40,7 +40,7 @@ import { starterLines, type StarterDelegate } from "../lib/first-run";
 import { shiftCoordinatorOf, workerLabel, workerStates } from "../lib/shift";
 import { everyAsk, itemIdHolding, useInbox } from "../lib/inbox";
 import { shiftSummary } from "../lib/tasks";
-import { workerOfHold } from "../lib/inbox-list";
+import { suspensionIdOfHold, workerOfHold } from "../lib/inbox-list";
 import { useLab } from "../lib/lab-data";
 import { useSessions, useWorkers } from "../lib/directory";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -193,7 +193,7 @@ function ShiftSummary() {
               key={ask.id}
               className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
               data-testid="shift-coordinator-ask"
-              data-suspension-id={ask.id}
+              data-suspension-id={suspensionIdOfHold(ask)}
             >
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />

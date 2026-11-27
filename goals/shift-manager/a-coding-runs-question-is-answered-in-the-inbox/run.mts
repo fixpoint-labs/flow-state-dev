@@ -54,7 +54,7 @@ import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
-import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeEnv, claudeCodeHarness, selectHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
@@ -247,7 +247,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
   mkdirSync(join(root, "runs"), { recursive: true });
   const lab = await openLab({
     stores: sqliteStores({ filename: join(root, "lab.sqlite") }),
-    harness: slot as never,
+    harnesses: [readyHarness(slot as never)],
     runTimeoutMs,
     workspace: { root: join(root, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

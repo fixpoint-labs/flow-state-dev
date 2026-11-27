@@ -53,6 +53,7 @@ import { boardAboveOf } from "./board-above";
 import { withoutReportMarkers } from "./report-owed";
 import { conversationDelivery } from "./delivery";
 import { INFERRED_FORWARD_METADATA } from "../messages/hop";
+import { FILLED_FOR } from "../task-input/filing-check";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -189,7 +190,7 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
   return conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
 }
 
-// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161.
+// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161; FIX-2894.
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
@@ -197,7 +198,8 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
  * session as its split or as the session that filed its work,
  * or set the hop count its turn starts at, or the
  * project it was filed in, or set or clear the forward a task filed on an
- * inferred turn was inferred from (the mark its approval guards read).
+ * inferred turn was inferred from (the mark its approval guards read), or the
+ * flow and declaration its input was filled for.
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -205,6 +207,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [INFERRED_FORWARD_METADATA]: _inferred, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [INFERRED_FORWARD_METADATA]: _inferred, [FILLED_FOR]: _filledFor, ...rest } = kept;
   return rest;
 }

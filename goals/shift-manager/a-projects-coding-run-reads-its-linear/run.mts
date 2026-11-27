@@ -48,7 +48,7 @@ import { createModelResolver } from "@flow-state-dev/core";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { fail, goalTmpDir, REPO_ROOT, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { CHECKOUTS } from "../../../packages/shift-manager/teams/devteam/fsd-checkouts.mts";
 import { FSD_MCP_SERVERS, FSD_PROJECTS } from "../../../packages/shift-manager/teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -192,7 +192,7 @@ await runGoal(async (failures) => {
 
     lab = await openLab({
       stores: inMemoryStores(),
-      harness: claudeCodeHarness,
+      harnesses: [readyHarness(claudeCodeHarness, "claude-code", "Claude Code")],
       runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS,
       workspace: { root: runsRoot, remotes: { allow: [] }, checkouts: CHECKOUTS.map((entry) => ({ ...entry, checkout })) },
       coderWorkerId: CODER,

@@ -45,12 +45,13 @@ export function defineFlows(workers: WorkerInstallation) {
   });
 
   /** A coordinator: its delegates live in its session state. */
+  const coordinatorSession = workers.session({ delegates: z.array(z.string()).default([]) });
   const coordinatorFlow = defineFlow({
     kind: "coordinator",
     internal: { actions: hearsMessages(workers, "coordinator") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    session: workers.session({ delegates: z.array(z.string()).default([]) }),
+    session: coordinatorSession,
     resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: {
@@ -58,9 +59,10 @@ export function defineFlows(workers: WorkerInstallation) {
         block: handler({
           name: "coordinator-route",
           inputSchema: message,
-          outputSchema: z.object({ delegates: z.array(z.string()) }),
+          sessionStateSchema: coordinatorSession.stateSchema,
+          outputSchema: coordinatorSession.stateSchema.pick({ delegates: true }),
           execute: (_input, ctx) => {
-            const delegates = (ctx.session.state as { delegates?: string[] }).delegates ?? [];
+            const { delegates } = ctx.session.state;
             ctx.emit.message(`delegates: ${delegates.join(", ") || "none"}`);
             return { delegates };
           },
@@ -112,11 +114,7 @@ export function defineFlows(workers: WorkerInstallation) {
           outputSchema: z.object({ kept: z.string() }),
           resources: { board },
           execute: async (input, ctx) => {
-            await (
-              ctx.resources.board as unknown as {
-                create: (key: string, state: { text: string }, options?: { replace?: boolean }) => Promise<unknown>;
-              }
-            ).create(input.key, { text: input.text }, { replace: true });
+            await ctx.resources.board.create(input.key, { text: input.text }, { replace: true });
             return { kept: input.key };
           },
         }),

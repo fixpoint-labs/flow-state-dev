@@ -11,12 +11,14 @@
  */
 import { useView, type ItemLine } from "@flow-state-dev/react";
 import type { SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
+import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
 import { activeCoding, attemptStartedAt, holdOf, runsNow, taskStatus, waitsOnPullRequest, workerOf } from "./task";
+import type { BotStatus } from "./looks";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -35,8 +37,8 @@ export interface StatusInputs {
 /** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
 export const ENDING_SHOWN_MS = 2 * 60_000;
 
-/** An approval's tone: the attention colour, you must act. A task's tone is `taskPresentation`'s. */
-const NEEDS_OK = "text-attention";
+/** An approval's tone: plain readable text; the highlighter is drawn as a fill behind the words, never as their colour. A task's tone is `taskPresentation`'s. */
+const NEEDS_OK = "text-text-2";
 /** The tone of a line that only reports (replying, idle), not a task's state or something you owe. */
 export const PLAIN = "text-muted-foreground";
 
@@ -46,13 +48,15 @@ export interface Status {
   tone: string;
   /** It asks you to act: an approval, or a task waiting on you. */
   needsYou: boolean;
+  /** How its bot shows it: what the status line says, as a state (`lib/looks`). */
+  state: BotStatus;
 }
 
 const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** An approval it asked for that you haven't answered yet. */
 const openApproval = (line: ItemLine): line is Extract<ItemLine, { kind: "suspension" }> =>
-  line.kind === "suspension" && line.item.reason === "user_approval" && line.resolution === undefined;
+  line.kind === "suspension" && suspendForUserKindOf(line.item) === "approval" && line.resolution === undefined;
 
 /** One thing a teammate needs from you: its key (one per approval, or per hold of a task, for the notifier), what it asks, and, for a task, the task. */
 export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: CodingBoardTask });
@@ -97,34 +101,35 @@ export function freshEndings(tasks: readonly CodingBoardTask[], now: number, isC
 export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): Status {
   const { activity, lines, talk, tasks, now } = inputs;
   const need = needsOf(inputs)[0];
-  if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
+  if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true, state: "needs" };
   if (need?.kind === "task") {
     const state = taskPresentation(need.task);
-    return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true };
+    return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true, state: "needs" };
   }
-  const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
+  const plain = (text: string, state: BotStatus): Status => ({ text, tone: PLAIN, needsYou: false, state });
   if (activity?.running) {
     // What it is answering: the last line it was given, yours or another worker's.
     const given = [...lines].reverse().find((line) => line.kind === "user" || (line.kind === "data" && line.item.dataType === RECEIVED_MESSAGE_DATA_TYPE));
     const from = given?.kind === "data" ? (given.item.value as { from?: string })?.from : undefined;
-    return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
+    return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you", "running");
   }
   // The newest running task names the line: an old one left running must not hide the one you just started.
   // Running only while a run holds its lease: an idle one (a pull request open) or one kept open with no run on it claims nothing.
   const coding = activeCoding(tasks, isCoding).filter((t) => runsNow(t, now)).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
-  if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`);
-  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`);
+  if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`, "running");
+  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`, "running");
   const merging = tasks.find((t) => waitsOnPullRequest(t) && isCoding(workerOf(t)));
-  if (merging) return plain(`Waiting on its pull request: ${merging.title}`);
+  if (merging) return plain(`Waiting on its pull request: ${merging.title}`, "queued");
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
+    // A failed task leaves the bot idle (no done smile); the words and their red tone say it failed.
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false, state: ended.status === "errored" ? "idle" : "done" };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
-  if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
-  if (activity === undefined) return plain("");
-  return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");
+  if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`, "queued");
+  if (activity === undefined) return plain("", "idle");
+  return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle", "idle");
 }
 
 /**
@@ -145,8 +150,8 @@ export function answeringStep(lines: readonly ItemLine[]): Status | undefined {
     const item = last.items[i]!;
     if (item.type !== "tool_output") continue;
     const step = stepOf(item as ToolOutputItem, last.ended === true);
-    if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true };
-    if (step.state === "running") return { text: knownToolVerbs(step.tool)?.present ?? "using a tool", tone: PLAIN, needsYou: false };
+    if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true, state: "needs" };
+    if (step.state === "running") return { text: knownToolVerbs(step.tool)?.present ?? "using a tool", tone: PLAIN, needsYou: false, state: "running" };
   }
   return undefined;
 }

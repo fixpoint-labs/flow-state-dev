@@ -42,6 +42,8 @@ Written by `docs-writer` (sonnet), 3185 words. Scenario: The `support` team of o
 
 - After the loop (review): the Greptile review: `flowIsolation: true` keys org-scope storage by worker flow, not worker, so a `resources/` document is one per organization per worker flow and workers on one flow share it (packages/engine/src/stores/scope-keys.ts:430-432; packages/workforce/src/workers/register.ts:99-100). This corrects the earlier review edit, which said per worker; the fact sheet is corrected too. 3265 words. Page sha256 4ec285effdfe.
 
+- Re-run after the 2026-11-24 release docs pass, which added this release's changes to the page: `node scripts/check-docs-page.mjs` ok (3271 words), brand lint 0 findings, and each new or changed TypeScript example type-checked in a scratch folder, with a planted error caught.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 12a384d093bd, and the 11 Reference row(s) pass 6 moved.
@@ -57,6 +59,8 @@ Final fact check of the page as it closed, sha256 c3d0597a0131: 3 untrue, fixed 
 - Re-run after the review edit: the changed cell names the same storage split; no claim changed. No untrue claim remains open.
 
 - Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
+
+- Re-run after the 2026-11-24 release docs pass: the writer checked each new claim and name against the package entries and source it describes. This was the writer's check, not a separate code-reader pass.
 
 ## 6 · Depth pass
 

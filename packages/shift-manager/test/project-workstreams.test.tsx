@@ -147,7 +147,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   lab = await openLab({
     modelResolver: scripted(),
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
@@ -590,7 +590,10 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const { act, fireEvent, within } = dom!;
     const group = screen.getByTestId("nav-project-apollo").closest("[data-testid='project-group']") as HTMLElement;
     await within(group).findAllByTestId("nav-workstream", undefined, { timeout: 10_000 });
-    expect(entryReads().map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(entryReads().map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+    // By the one prefix: values on the first read, and the manifest after it (FIX-2845), never the values again.
+    expect(entryReads().map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(
+      entryReads().map((_, i) => (i === 0 ? "?limit=200&topicPrefix=workstreams/apollo/" : "?limit=10000&topicPrefix=workstreams/apollo/&manifest=1")),
+    );
     act(() => fireEvent.click(within(group).getByTestId("nav-project-apollo-toggle")));
     const closedAt = entryReads().length;
     act(() => fireEvent.click(screen.getByRole("tab", { name: /brief/i })));
@@ -695,7 +698,10 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       ].sort(),
     );
     const entryReads = seen.filter((r) => /\/resources\/(org|user)\/workstreams\//.test(r.path));
-    expect(entryReads.map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(entryReads.map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+    // By the one prefix: values on the first read, and the manifest after it (FIX-2845), never the values again.
+    expect(entryReads.map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(
+      entryReads.map((_, i) => (i === 0 ? "?limit=200&topicPrefix=workstreams/apollo/" : "?limit=10000&topicPrefix=workstreams/apollo/&manifest=1")),
+    );
 
     // Bob's opens on his entry's view, and is the sidebar's current row.
     act(() => fireEvent.click(nested.find((b) => b.getAttribute("data-owner") === BOB.userId)!));

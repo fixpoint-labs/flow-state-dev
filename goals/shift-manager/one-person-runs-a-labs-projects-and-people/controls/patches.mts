@@ -38,7 +38,7 @@ export function extraFlow(flow: string): Patch {
       // The flow is built where the Lab builds its own, on the installation the kit hires,
       // and named among the Lab's flows, so the kit's `workerFlows` slot registers it.
       const anchor = "  hiredOn = { builtFlows, projectsFlow };";
-      const named = "  const labFlows = [EM_FLOW, CODER_FLOW, AGENT_FLOW, COORDINATOR_FLOW, ";
+      const named = "  const labFlows = [EM_FLOW, AGENT_FLOW, COORDINATOR_FLOW, ";
       if (!text.includes(anchor) || !text.includes(named)) throw new Error("extra-flow: host.mts no longer has the lines this patch edits");
       const k = JSON.stringify(flow);
       text = text.replace(named, `${named}${k}, `);

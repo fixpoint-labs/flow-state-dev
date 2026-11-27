@@ -17,6 +17,7 @@ import { Spend } from "../components/flow-state/spend";
 import { workerFor, workerLabel, waited } from "../lib/shift";
 import { useWorkers } from "../lib/directory";
 import { askWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
+import { suspensionIdOfHold } from "../lib/inbox-list";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure } from "../lib/failure";
 import { GENERAL_TEAM } from "../lib/workers";
@@ -79,7 +80,7 @@ export function TaskInspector({ gaps }: { gaps: Gaps }) {
               to={{ level: "inbox", item: itemIdHolding(items, ask.id) }}
               className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-xs font-medium text-attention-foreground"
               data-testid="inspector-needs"
-              data-suspension-id={ask.id}
+              data-suspension-id={suspensionIdOfHold(ask)}
             >
               <span>
                 {askWord(ask)} waiting {waited(ask.openedAt, Date.now())}

@@ -9,6 +9,8 @@
  * Small real windows here; the 20-minute default is graded with a fake clock
  * in `session-turn-deadline.spec.ts`, through the same stop.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +23,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
-import { harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { heard } from "./heard";
 import { seedRepo } from "./fixtures";
@@ -53,8 +55,8 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}.`, isDone: async () => true },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
     harnessLabel: "the stub harness",

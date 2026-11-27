@@ -335,6 +335,14 @@ export interface TaskSettingsPatch {
   metadata?: Record<string, unknown>;
   /** Who works it. A follow-up keeps its root's worker. */
   assignee?: string;
+  // FIX-2894.
+  /**
+   * Write only while the row is still at this `revision` (a row stored with
+   * none reads as `0`): decided inside the write, so an edit decided on an
+   * earlier read of the row is declined `revision-moved`, never written over
+   * the newer one. Omitted, the edit lands on whatever the row is now.
+   */
+  ifRevision?: number;
 }
 
 /**
@@ -351,7 +359,7 @@ function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
 /** The fields a patch names, in the field table's words. */
 function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
   return (Object.keys(patch) as Array<keyof TaskSettingsPatch>).filter(
-    (field) => patch[field] !== undefined,
+    (field) => field !== "ifRevision" && patch[field] !== undefined,
   ) as TaskEditField[];
 }
 
@@ -384,6 +392,7 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
+  if (patch.ifRevision !== undefined && (task.revision ?? 0) !== patch.ifRevision) return { decline: "revision-moved" };
   const locked = lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);

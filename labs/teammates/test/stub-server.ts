@@ -8,13 +8,15 @@
  * answered done, or as `answer` says. The screen still reads through
  * `src/app/` and the real client; only the host behind them is stood in for.
  * `TestProvider` puts a tree under the lab's provider on a client over it,
- * merged with the scripted server's when a test hands it one.
+ * merged with the scripted server's when a test hands it one, inside an area
+ * a task's sheet draws over.
  */
 import { createElement, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { taskView, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { AppProvider, useAppClient } from "../src/app";
+import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import type { ConversationView, WindowMark } from "../src/lib/conversation";
 import type { ScriptedServer } from "./scripted-server";
 
@@ -30,6 +32,8 @@ export interface StubData {
   board?: Record<string, CodingBoardTask[]>;
   /** Each session's stored items, by session id. */
   items?: Record<string, unknown[]>;
+  /** Request start times as replayed in their request-created events. */
+  requestStarts?: Record<string, number>;
   /** Each run's recorded plan, by request id, as the recorded work view answers it. */
   plan?: Record<string, { title: string; status: string | null }[]>;
   /**
@@ -149,6 +153,11 @@ export function stubServer(data: StubData = {}) {
       const sessionId = path.split("/").at(-2)!;
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
+          const startedAt = data.requestStarts?.[sessionId];
+          if (path.includes("/requests/") && startedAt !== undefined) {
+            const event = { stream: "request", type: "request.created", requestId: sessionId, sequence_number: 1, status: "in_progress", ts: startedAt };
+            controller.enqueue(new TextEncoder().encode(`event: request.created\ndata: ${JSON.stringify(event)}\n\n`));
+          }
           streams.set(sessionId, (frame) => {
             // A stream the screen already closed takes nothing more.
             try {
@@ -163,7 +172,11 @@ export function stubServer(data: StubData = {}) {
     if (path.endsWith("/state")) {
       const sessionId = path.split("/").at(-2)!;
       const items = data.items?.[sessionId] ?? [];
-      return json({ sessionId, flowKind: "f", at: 1, sessionCreatedAt: 1, clientData: {}, items, pagination: { offset: 0, limit: 200, total: items.length, hasMore: false, nextOffset: items.length } });
+      const offset = Number(parsed.searchParams.get("offset") ?? 0);
+      const limit = Number(parsed.searchParams.get("limit") ?? 200);
+      const page = items.slice(offset, offset + limit);
+      const nextOffset = offset + page.length;
+      return json({ sessionId, flowKind: "f", at: 1, sessionCreatedAt: 1, clientData: {}, items: page, pagination: { offset, limit, total: items.length, hasMore: nextOffset < items.length, nextOffset } });
     }
     // A session's resources, as harness-manager's direct reads list them: a run's files and pull requests.
     const manifest = /^\/api\/flows\/sessions\/([^/]+)\/manifest$/.exec(path);
@@ -220,7 +233,9 @@ export function stubServer(data: StubData = {}) {
  */
 export function TestProvider({ server, client, children }: { server?: ScriptedServer; client?: Client; children?: ReactNode }) {
   const merged = server === undefined ? (client ?? EMPTY()) : client === undefined ? server.client : mergedClient(server, client);
-  return createElement(AppProvider, { client: merged, connection: server?.connection, pollIntervalMs: 100 }, children);
+  // An area for a task's sheet to draw over, as the app's conversation is: a popup drawn on its own has one too.
+  const sheetArea = createElement(SessionOverlayProvider, null, createElement(SessionOverlayArea, null, children));
+  return createElement(AppProvider, { client: merged, connection: server?.connection, pollIntervalMs: 100 }, sheetArea);
 }
 
 /** One merged client per pair, so a provider that draws again keeps its client. */

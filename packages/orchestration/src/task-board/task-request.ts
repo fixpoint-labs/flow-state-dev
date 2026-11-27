@@ -62,6 +62,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   filedWorkKeepsOpen,
+  leaseLapsed,
   ticketForClaim,
   type SuspensionHold,
   type Task,
@@ -73,6 +74,7 @@ import {
 import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
+import { requestStates } from "../tasks/helpers/request-states";
 import { readFor, untakenBy, untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
@@ -183,10 +185,6 @@ export const SPEND_TICK_MS = 2_000;
  */
 const admitted = new Map<string, Admitted>();
 
-function requestKey(ctx: BlockContext): string {
-  return ctx.request.identity.id;
-}
-
 // FIX-2082.
 /**
  * The task the running request was admitted for in this process, and the
@@ -257,11 +255,13 @@ export async function admitClaimedTask(
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
   const askedTurn = options.own && row.askedInTurn === ticket.turn;
-  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setKeptOpenBy !== undefined) {
+  // The run's own resume closes the mirror of its stop (FIX-2133), also on a
+  // row whose wait a later request's admission cleared (FIX-2898). A later
+  // request (a notice, a steer's turn) keeps it: the task's own run is still
+  // parked on it, and a cancel meanwhile owes that run its resume.
+  const closesMirror = options.own && suspensionHoldOf(row) !== undefined;
+  if (!askedTurn && (prior !== undefined || row.turnOwed === true || closesMirror) && ref.setKeptOpenBy !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
-    // The run's own resume closes the mirror of its stop (FIX-2133). A later
-    // request (a notice, a steer's turn) keeps it: the task's own run is
-    // still parked on it, and a cancel meanwhile owes that run its resume.
     const outcome = await ref.setKeptOpenBy(row.id, null, {
       claim: ticket,
       leaseUntil: ref.now() + span,
@@ -285,7 +285,7 @@ export async function admitClaimedTask(
           // down stops renewing. The check at its end stops it otherwise.
           signal: ctx.signal,
         });
-  const key = requestKey(ctx);
+  const key = ctx.request.identity.id;
   const before = admitted.get(key);
   before?.renewal?.stop();
   before?.spendTick?.stop();
@@ -333,7 +333,7 @@ export async function admitClaimedTask(
 async function writeSpend(record: Admitted, part: "live" | "settle", spend: RequestSpend): Promise<boolean> {
   const recordSpend = record.ref.recordSpend;
   if (recordSpend === undefined) return false;
-  const requestId = requestKey(record.ctx);
+  const requestId = record.ctx.request.identity.id;
   try {
     // Only the task this request was admitted for: two tasks a worker runs at once never share a request's spend.
     await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend, writer: record.writer, admittedAt: record.admittedAt, recovered: record.recovered }, { claim: record.ticket });
@@ -409,7 +409,7 @@ type TaskEnding = Omit<RequestEnding, "spend">;
  * the task is checked here.
  */
 async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
-  const key = requestKey(ctx);
+  const key = ctx.request.identity.id;
   const record = admitted.get(key);
   if (record === undefined) return;
   if (record.answerCounts) record.answer = { output };
@@ -484,37 +484,24 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   // request, and keeps an answer this one gave that counts. One a person
   // stopped keeps no answer (below).
   if (!record.own && waitsOnItsOwnRequest(record.prior) && ending.status !== "aborted") {
-    await waitOn(record, row, record.prior!, record.answer);
+    if (await ownRequestParked(record, row)) await waitOn(record, row, record.prior!, record.answer);
     return undefined;
   }
   if (ending.status === "suspended") {
     const stop = stopOf(record, ending);
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
     let outcome = await waitOn(record, row, stop.on, undefined, mirror);
-    // Only the lease lapsed: the row is still this attempt's and turn's, and
-    // no reclaim moved it. The claim takes it back, by the start gate's own
-    // takeover (the span the claim committed to, a renewal that must say it
-    // landed), and mirrors the stop, so the person can still answer it.
-    // Cancelling the stop instead would let the resume, admitted on this
-    // same attempt, settle the task on a review nobody gave (FIX-2847). Only
-    // a definite refusal (`StaleTaskClaimError`: a reclaim won, no verdict,
-    // no span to take it back for) leaves the write refused, and the stop is
-    // ended below as superseded. Any other failure is thrown: the attempt may
-    // still own the row, so the stop stays suspended, still needing its
-    // review, for the request's recovery.
-    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim") {
-      const stored = await readCommittedTask(ref, row.id);
-      if (claimHolds(ref, ticket, stored)) {
-        const adopted = await adoptLapsedLease(ref, stored).catch((error: unknown) => {
-          if (error instanceof StaleTaskClaimError) return undefined;
-          // Said here: an engine with no logger says nothing of a hook that throws.
-          console.warn(
-            `[task-board] task "${row.id}": its lease lapsed before its stop for a person was mirrored, and taking the row back failed; the stop stays for its person: ${(error as Error).message}`
-          );
-          throw error;
-        });
-        if (adopted !== undefined) outcome = await waitOn(record, adopted, stop.on, undefined, mirror);
-      }
+    // Refused on a lease that lapsed after the read above: the mirror must
+    // land, so the person can still answer the stop. Cancelling the stop
+    // instead would let the resume, admitted on this same attempt, settle the
+    // task on a review nobody gave (FIX-2847). So the row is taken back after
+    // the refusal, by the same takeover a stopped request takes before its
+    // end write, and the mirror written again. A failed takeover is thrown:
+    // the attempt may still own the row, so the stop stays suspended, still
+    // needing its review, for the request's recovery. A definite refusal
+    // leaves the write refused, and the stop is ended below as superseded.
+    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim" && (await takeBackLapsedLease(record, row))) {
+      outcome = await waitOn(record, row, stop.on, undefined, mirror);
     }
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the
     // first branch), and the collection still refuses a mirror on a row a
@@ -530,6 +517,9 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     return undefined;
   }
   if (ending.status === "aborted") {
+    // The stop ended the lease's renewal, and a side chain that ignored the
+    // abort can hold the request's end past its lapse (FIX-2897).
+    await takeBackLapsedLease(record, row);
     if (!record.own) return checkStopped(record, row);
     // A person stopped the task's own request (the abort route,
     // `stopRequest`): the task stops with it, rather than retrying the work
@@ -604,7 +594,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
 async function checkStopped(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
   const { ref, ticket } = record;
   record.answer = undefined;
-  record.stoppedBy = requestKey(record.ctx);
+  record.stoppedBy = record.ctx.request.identity.id;
   const parked = (outcome: TaskWriteOutcome | undefined) => {
     if (outcome?.outcome === "declined") {
       console.warn(`[task-board] task "${row.id}": a stopped later request couldn't park the task again (${outcome.reason}); the next claim takes it`);
@@ -617,7 +607,7 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
     return undefined;
   }
   if (record.prior === "suspended") {
-    parked(await waitOn(record, row, "suspended", undefined));
+    if (await ownRequestParked(record, row)) parked(await waitOn(record, row, "suspended", undefined));
     return undefined;
   }
   // As stored, with the steers this request took untaken, as the write below leaves them.
@@ -630,12 +620,68 @@ async function checkStopped(record: Admitted, row: Task, rechecked = false): Pro
   return completeFenced(record, row, row.output, !rechecked, (fresh) => checkStopped(record, fresh, true));
 }
 
+// FIX-2897; FIX-2847.
+/**
+ * Before an end write that must land, or after one refused on it, take back
+ * a lease that only lapsed: the row as stored is still this claim's attempt
+ * and turn, and no reclaim moved it. By the start gate's own takeover (`adoptLapsedLease`: the span the claim
+ * committed to, a renewal that must say it landed), so the write that follows
+ * is not refused `lost-claim` and the task settles on its same attempt rather
+ * than being taken by the next claim as abandoned.
+ *
+ * A definite refusal (`StaleTaskClaimError`: a reclaim won, a hold refused
+ * the renewal, no verdict, no span to take it back for) takes nothing back,
+ * and the write is refused as before.
+ *
+ * @returns whether the row was taken back.
+ * @throws any other failure of the takeover: the attempt may still own the row.
+ */
+async function takeBackLapsedLease(record: Admitted, task: Task): Promise<boolean> {
+  const { ref, ticket } = record;
+  const stored = await readCommittedTask(ref, task.id);
+  if (!claimHolds(ref, ticket, stored) || !leaseLapsed(stored, ref.now())) return false;
+  try {
+    await adoptLapsedLease(ref, stored);
+    return true;
+  } catch (error) {
+    if (error instanceof StaleTaskClaimError) {
+      // Said here: the write that follows is refused as `lost-claim`, which doesn't say what blocked the takeover.
+      console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write and was not taken back: ${error.message}`);
+      return false;
+    }
+    // Said here: an engine with no logger says nothing of a hook that throws.
+    console.warn(`[task-board] task "${task.id}": its lease lapsed before its request's end write, and taking the row back failed: ${(error as Error).message}`);
+    throw error;
+  }
+}
+
 /**
  * Whether request `requestId` took any of `task`'s steers on its attempt:
  * every read that takes one names the request in its `takenIn`.
  */
 function tookSteers(task: Task, requestId: string): boolean {
   return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId));
+}
+
+// FIX-2898.
+/**
+ * Whether the task's own request (the one its stop's mirror names, else the
+ * row's run link) is still parked, as
+ * the engine records it ({@link requestStates}). A later request's admission
+ * clears the row's wait, and the task's own entry admits that request's
+ * resume on a row showing none, so a person can answer the stop while the
+ * later request runs. Then the row is left as it stands: the own request,
+ * running, checks the task at its end, and one that ended has checked it
+ * already. A host that records neither state, or a row with no run link,
+ * answers parked, as the row last recorded.
+ */
+async function ownRequestParked(record: Admitted, task: Task): Promise<boolean> {
+  // A stop for a person names its request on the row: a steer's turn that
+  // stopped is not the request the run link names.
+  const requestId = suspensionHoldOf(task)?.source.requestId ?? task.run?.requestId;
+  if (requestId === undefined) return true;
+  const standing = (await requestStates(record.ctx, [requestId]))?.[requestId];
+  return standing !== "running" && standing !== "ended";
 }
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
@@ -674,7 +720,7 @@ function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undef
     actor: "user",
     openedAt: Date.now(),
     ...(suspension.expiresAt !== undefined ? { due: suspension.expiresAt } : {}),
-    source: { kind: "suspension", requestId: requestKey(ctx), suspensionId: suspension.suspensionId },
+    source: { kind: "suspension", requestId: ctx.request.identity.id, suspensionId: suspension.suspensionId },
     ask: {
       kind,
       prompt: prompt.length > MAX_QUESTION_PROMPT ? `${prompt.slice(0, MAX_QUESTION_PROMPT - 1)}…` : prompt,
@@ -766,7 +812,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   const stored = (await readCommittedTask(ref, row.id)) ?? row;
   // The turn owed for a steer that took none: owing another would loop with
   // no end, so the task settles and the steers stay on it, untaken.
-  const noProgress = record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx));
+  const noProgress = record.prior === "steer" && !tookSteers(stored, record.ctx.request.identity.id);
   if (untakenSteers(stored).length > 0) {
     if (noProgress) {
       console.warn(`[task-board] task "${row.id}"'s steer turn took none of its steers; it settles without another turn`);
@@ -964,7 +1010,12 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
         const found = await options.find(ctx);
         if (found === undefined) return;
         const { ref, row } = found;
-        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true)) return;
+        // The resume of the stop the row waits on is that stop's own request, whichever entry
+        // started it (a steer's turn, after an answered question): its admission closes the
+        // mirror, and its end settles the task. Admitted on a row a later request cleared too
+        // (FIX-2898). Any other request admitted meanwhile is a later one.
+        const own = suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id;
+        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true && !own)) return;
         let admittedAs: Awaited<ReturnType<typeof admitClaimedTask>>;
         try {
           admittedAs = await admitClaimedTask(ctx, {
@@ -972,10 +1023,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
             row,
             ticket: ticketForClaim(ref.collectionId, row, ref.partition),
             answerCounts: options.answerCounts,
-            // The resume of the stop the row waits on is that stop's own request, whichever entry
-            // started it (a steer's turn, after an answered question): its admission closes the
-            // mirror, and its end settles the task. Any other request admitted meanwhile is a later one.
-            own: suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id,
+            own,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
           });
         } catch (error) {
@@ -1011,14 +1059,14 @@ export const noteTaskAnswer = handler({
  * that runs before the check.
  */
 export async function afterTaskCheck(ctx: BlockContext, after: () => Promise<unknown>): Promise<void> {
-  const record = admitted.get(requestKey(ctx));
+  const record = admitted.get(ctx.request.identity.id);
   if (record !== undefined && !record.inline && onRequestEnded(ctx, async () => void (await after()))) return;
   await after();
 }
 
 /** The claim this request holds on `ledger`, server-set (the gate's or an admission's), and its admission record. */
 function heldClaimOn(ctx: BlockContext, ledger: TaskCollectionRef) {
-  const record = admitted.get(requestKey(ctx));
+  const record = admitted.get(ctx.request.identity.id);
   const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
   return { record, claim: claim === undefined || claim.collectionId !== ledger.collectionId ? undefined : claim };
 }

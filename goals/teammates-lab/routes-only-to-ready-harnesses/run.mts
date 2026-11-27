@@ -56,7 +56,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "": [],
   // The workers' context loses the rows: the incident, where Codex is filed on regardless.
   "no-readiness-context": [
-    { module: "packages/harness-manager/src/kit/harnesses-kit.ts", from: String.raw`\[harnessReadinessCapability\(readiness\)\]`, to: "[]" },
+    { module: "packages/harness-manager/src/kit/harnesses-kit.ts", from: String.raw`\[harnessReadinessCapability\(readiness, config\.defaultHarness\)\]`, to: "[]" },
   ],
   // A refresh answers from the kept rows: a sign-in made after start is never seen.
   "kept-answer": [

@@ -25,6 +25,7 @@ import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { RecordedRead } from "./view-reads";
 import type { SessionAdmission, SuspensionAdmission } from "./request-sessions";
+import type { PrincipalKind } from "./principal";
 
 export type RequestRuntime = {
   requestId: string;
@@ -107,6 +108,15 @@ export type CreateExecutionContextOptions<
    * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
+  // FIX-2942.
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`context/principal.ts`). Absent → the request record's, then the
+   * session's; a run that creates its session with none is a machine's.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → the request record's, or none. */
+  resolvedBy?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
@@ -151,6 +161,13 @@ export type CreateExecutionContextOptions<
   tracingLevel?: TracingLevel;
   /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
   durabilityEnabled?: boolean;
+  // FIX-2895.
+  /**
+   * Whether the run's handler was carried on its dispatch rather than found
+   * on the flow (a dynamic schedule's fire). Such a run never parks: whatever
+   * continued it would re-run it from its record, which holds no handler.
+   */
+  runsCarriedCore?: boolean;
   // FIX-724.
   /**
    * Opt-in error-capture sink. When set, runtime block failures are

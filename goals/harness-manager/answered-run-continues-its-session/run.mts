@@ -33,7 +33,7 @@
  *
  * ## The anti-game is checked on the prompt this script built
  *
- * Not reviewed once and trusted. `buildPrompt` is this check's own, so the
+ * Not reviewed once and trusted. `instructions` is this check's own, so the
  * strings it produces are inspected before the run: the answer's run's prompt must
  * contain neither the fact nor the session id. The manager's prompt-based
  * carry-forward is retired (LAB-154, PR a) — while it existed, a run told the
@@ -55,7 +55,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  type PhaseSpec,
+  type ModeSpec,
 } from "@flow-state-dev/harness-manager";
 import {
   GIT_TIMEOUT_MS,
@@ -192,9 +192,9 @@ await runGoal(async (failures) => {
      * fail for reasons that have nothing to do with resume. The completion
      * condition here is the fact file, which is the thing being proved.
      */
-    const phase: PhaseSpec = {
-      phase: fixture.phase,
-      buildPrompt: (run) => {
+    const mode: ModeSpec = {
+      name: fixture.phase,
+      instructions: (run) => {
         const target = join(run.workspacePath, fixture.factFileName);
         factFile = target;
         // The first run is told the fact and made to ask. The answer's run is
@@ -229,18 +229,20 @@ await runGoal(async (failures) => {
       },
       // The first run asks before this is ever consulted (the ask is read
       // first), so this only ever grades the answer's run.
-      isDone: (run) => {
-        const target = join(run.workspacePath, fixture.factFileName);
-        return existsSync(target) && readFileSync(target, "utf8").includes(fact);
+      doneWhen: {
+        check: (run) => {
+          const target = join(run.workspacePath, fixture.factFileName);
+          return existsSync(target) && readFileSync(target, "utf8").includes(fact);
+        },
       },
     };
 
     const built = harnessGoalFlow({
       epic: fixture.epic,
-      workspace: { root: workspaceRoot, sourceRepo, baseRef },
+      workspace: { root: workspaceRoot, repo: sourceRepo, baseRef },
       maxAttempts: MAX_ATTEMPTS,
       runTimeoutMs: RUN_TIMEOUT_MS,
-      phase,
+      mode,
       agent: {
         allowedTools: ["Read", "Write", "Edit"],
         permissionMode: "acceptEdits",

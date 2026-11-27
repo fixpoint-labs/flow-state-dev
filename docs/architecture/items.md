@@ -15,7 +15,7 @@ Every item's visibility is derived from two things: its `type` and the optional 
 - **`client`** — whether the item is sent to connected clients (browser, mobile, CLI)
 - **`history`** — whether the item is included in LLM conversation history
 
-Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool always sees everything.
+Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool can ask for client-hidden items over HTTP (`?include=trace` on a request's stream and `/continue`, `item_types` naming a hidden type on the session snapshot and stream, or `include_items=true` on the session request list), and the server honours that only while trace observability is on (`isTraceObservabilityEnabled()`: outside production, or with `FSDEV_TRACE_OBSERVABILITY=true`). Otherwise the caller gets the client view.
 
 ### Four type categories
 

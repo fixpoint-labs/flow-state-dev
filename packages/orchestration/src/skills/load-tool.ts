@@ -18,11 +18,10 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, SkillState } from "@flow-state-dev/core/types";
-import { activeSkillsArraySchema } from "./active-skill-state";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { activeSkillStateSchema } from "./active-skill-state";
 import {
   appendActivation,
-  BLOCK_STATE_FIELD,
   type ActivationLocation,
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
@@ -112,8 +111,8 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
       whereTheNamesAre(opts.catalogInContext !== false),
     inputSchema,
     outputSchema,
-    parentStateSchema: z.object({ [BLOCK_STATE_FIELD]: activeSkillsArraySchema }),
-    execute: async (input, ctx: BlockContext) => {
+    parentStateSchema: activeSkillStateSchema,
+    execute: async (input, ctx) => {
       validateSkillName(input.name);
 
       const collection = resolveSkillsCollection(ctx, collectionKey);
@@ -142,14 +141,13 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
         throw new Error(`Unknown skill "${input.name}". Available: ${available}`);
       }
 
-      const state = manifest.state as unknown as SkillState;
-      if (state.disableModelInvocation) {
+      if (manifest.state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be loaded by the agent`,
         );
       }
 
-      const mode = state.contextMode ?? "inline";
+      const mode = manifest.state.contextMode ?? "inline";
       if (mode !== "inline") {
         throw new Error(
           `Skill "${input.name}" is a ${mode}-mode skill and cannot be loaded inline. ` +

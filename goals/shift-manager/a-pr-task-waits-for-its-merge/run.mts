@@ -39,10 +39,11 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { githubStub, REMOTE, stubPullRequestUrl } from "../../lib/github-stub.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -58,7 +59,7 @@ const SETTLE_MS = 60_000;
 const CONTROLS: Record<string, { patches: ModulePatch[]; must: string[] }> = {
   "no-wait": {
     must: ["a:open"],
-    patches: [{ module: "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts", from: "awaitPullRequests: true,", to: "awaitPullRequests: false," }],
+    patches: [{ module: "packages/harness-manager/src/kit/coder-flow.ts", from: "awaitPullRequests: options.pullRequests !== false,", to: "awaitPullRequests: false," }],
   },
 };
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -139,7 +140,7 @@ await runGoal(async (failures, tell) => {
   mkdirSync(join(scratch, "runs"), { recursive: true });
   const lab = await openLab({
     stores: sqliteStores({ filename: join(scratch, "lab.sqlite") }),
-    harness: coder.slot as never,
+    harnesses: [readyHarness(coder.slot as never)],
     runTimeoutMs: 30_000,
     workspace: { root: join(scratch, "runs"), remotes: { allow: [] }, checkouts: [{ remote: REMOTE, checkout, projects: [{ orgId: LAB_ORG_ID, id: STOREFRONT.id }] }] },
     coderWorkerId: CODER,

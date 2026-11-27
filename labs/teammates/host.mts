@@ -1,14 +1,15 @@
 // fallow-ignore-file duplicate-export -- each starter is its own app, and its host exposes the same checkCommands as the others on purpose.
 /** The lab's server, from package pieces: the README's "The host" says what each piece is for and what each option sets. */
+import type { Harness } from "@flow-state-dev/core/harness";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeCode } from "@flow-state-dev/claude-code";
+import { claudeCodeHarness } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
 import type { ModelResolver, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, assertPositiveInt, GOAL_JUDGE_MODEL, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, assertPositiveInt, GOAL_JUDGE_MODEL, scriptedHarness } from "@flow-state-dev/harness-manager";
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { system } from "@flow-state-dev/memory";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -16,7 +17,7 @@ import { fetch, search } from "@flow-state-dev/tools";
 import { githubTrustedReviewers, operatorGitHub, projectSourceTools } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
-import { checkCommandsFrom, localWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { appContextFlow } from "./flows/lab-context.mts";
 
@@ -66,10 +67,11 @@ export async function openTeammates(options: TeammatesOptions) {
   const declared = (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.map((w) => [w.id, w.declared.delegates, w.declared.capabilities] as const);
   const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d)).map(([id, d]) => [id, d])) as Record<string, "all" | string[]>;
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
-  const workspace = localWorkspaceHost({ root: options.runsRoot, remotes: { allow: [] }, localRepositories: [workdir], source: () => ({ kind: "repo", repo: workdir }), ...(options.setup === undefined ? {} : { setup: options.setup }) });
+  const workspace = localRepoWorkspaceHost({ root: options.runsRoot, repo: workdir, ...(options.setup === undefined ? {} : { setup: options.setup }) });
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
   const checks = { commands: options.checks ?? [], timeoutMs: 10 * 60_000 };
   const harness = options.harness ?? "cursor";
+  const models = [...new Set([options.model, ...(options.models ?? [])])];
   const folderProblem = workspace.checkRepository!(workdir, { ignored: ASK_MARKER_IGNORED }).then(
     (answer) => (answer.usable ? null : answer.problem),
     (error: unknown) => `couldn't check the folder: ${error instanceof Error ? error.message : String(error)}`,
@@ -85,8 +87,9 @@ export async function openTeammates(options: TeammatesOptions) {
       workforce({
         directory: tree,
         agent: {
-          settings: { icon: z.string().optional(), color: z.string().optional(), harness: z.string().optional() },
-          showSettings: ["icon", "color", "model", "harness"],
+          settings: { icon: z.string().optional(), color: z.string().optional() },
+          showSettings: ["icon", "color", "model"],
+          retiredSettings: ["harness"],
           model: options.model,
           catalog: { ...projectSourceTools(workspace), search: search(), fetch: fetch() },
           uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), reviewers.capability],
@@ -94,13 +97,13 @@ export async function openTeammates(options: TeammatesOptions) {
           maxSteps: 100,
         },
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
+        hire: { models },
         github: { provider: github, poll: true },
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
-      scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
-    fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models: [...new Set([options.model, ...(options.models ?? [])])], harness, delegates }))],
+    fill: { [harnesses.slots.harnesses]: scripted === undefined ? [claudeCodeHarness(), codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

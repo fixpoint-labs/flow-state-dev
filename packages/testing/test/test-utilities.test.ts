@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResource, generator, handler, router } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, defineResource, generator, handler, router, sequencer } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   mockGenerator,
@@ -36,6 +37,60 @@ describe("testing utilities", () => {
     expect(result.stateChanges.some((change) => change.operation === "incState")).toBe(true);
   });
 
+  it("fills missing scope fields from a child handler and its capability", async () => {
+    const pins = defineCapability({
+      name: "pins",
+      userStateSchema: z.object({ pinned: z.array(z.string()).default([]) })
+    });
+    const read = handler({
+      name: "read-state",
+      inputSchema: z.object({}),
+      uses: [pins],
+      sessionStateSchema: z.object({ count: z.number().default(32), mode: z.string().default("auto") }),
+      orgStateSchema: z.object({ active: z.boolean().default(true) }),
+      execute: (_input, ctx) => ({
+        count: ctx.session.state.count,
+        mode: ctx.session.state.mode,
+        pinned: ctx.user.state.pinned,
+        active: ctx.org?.state.active
+      })
+    });
+    const pipeline = sequencer({ name: "inspect", inputSchema: read.inputSchema }).step(read);
+
+    const fresh = await testBlock(pipeline, { input: {} });
+    expect(fresh.error).toBeNull();
+    expect(fresh.output).toEqual({ count: 32, mode: "auto", pinned: [], active: true });
+
+    const seeded = await testBlock(pipeline, {
+      input: {},
+      session: { state: { count: 0, other: "keep" } },
+      user: { state: { pinned: ["first"] } },
+      org: { state: { active: false } }
+    });
+    expect(seeded.error).toBeNull();
+    expect(seeded.output).toEqual({ count: 0, mode: "auto", pinned: ["first"], active: false });
+    expect(seeded.state.session.other).toBe("keep");
+
+    // A hand-built instance contributes the flow's own schema alongside the block's.
+    const flow: FlowInstance = {
+      id: "hand-built",
+      kind: "hand-built",
+      cardinality: "singleton",
+      actions: {},
+      config: {},
+      requireUser: true,
+      isolateUserState: false,
+      isolateOrgState: false,
+      flowLevelResourceKeys: new Set(),
+      session: { stateSchema: z.object({ label: z.string().default("supplied") }) }
+    };
+    const supplied = await testBlock(pipeline, { flow, input: {}, session: { state: { count: 8 } } });
+    expect(supplied.error).toBeNull();
+    expect(supplied.output).toEqual({ count: 8, mode: "auto", pinned: [], active: true });
+    expect(supplied.state.session.label).toBe("supplied");
+    expect(flow.scopeStateSchemas).toBeUndefined();
+  });
+
   it("registers a block's declared resources so ctx.resources is wired without explicit seeding", async () => {
     // Regression: testBlock ran a block that declared a resource on
     // its `resources:` slot without registering it, so `ctx.resources.X` was
@@ -54,7 +109,7 @@ describe("testing utilities", () => {
       resources: { ledger },
       execute: async (input: { note: string }, ctx) => {
         // Throws unless ctx.resources.ledger was registered from declaredResources.
-        await ctx.resources.ledger.setState({ entries: [input.note] } as never);
+        await ctx.resources.ledger.setState({ entries: [input.note] });
         return { ok: true };
       }
     });
@@ -188,23 +243,18 @@ describe("testing utilities", () => {
   it("testFlow shares state across runs when given the same stores", async () => {
     const counter = handler({
       name: "counter",
-      execute: async (input: { amount: number }, ctx) => {
-        const current = (ctx.session.state as { count?: number }).count ?? 0;
-        const total = current + input.amount;
-        await ctx.session.patchState({ count: total });
-        return { total };
+      inputSchema: z.object({ amount: z.number() }),
+      sessionStateSchema: z.object({ count: z.number().default(0) }),
+      execute: async (input, ctx) => {
+        await ctx.session.incState({ count: input.amount });
+        return { total: ctx.session.state.count };
       }
     });
 
     const flow = defineFlow({
       kind: "stateful-flow",
       requireUser: true,
-      actions: {
-        run: {
-          inputSchema: passthroughSchema as any,
-          block: counter
-        }
-      }
+      actions: { run: counter }
     })();
 
     const stores = createInMemoryStores();
@@ -235,7 +285,7 @@ describe("testing utilities", () => {
     expect(r2.output).toEqual({ total: 3 });
 
     const session = await stores.session.get(sessionId);
-    expect((session?.state as { count: number }).count).toBe(3);
+    expect(session?.state.count).toBe(3);
   });
 
   it("testItems and snapshotTrace provide deterministic assertions", () => {
