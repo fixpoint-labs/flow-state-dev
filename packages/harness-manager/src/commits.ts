@@ -166,13 +166,14 @@ export async function readRunCommits(
 }
 
 /**
- * How many commits on `cwd`'s HEAD `commit` lacks: what a push to a pull
+ * How many commits on `branch` `commit` lacks: what a push to a pull
  * request at `commit` would add. `null` when git can't tell, as when `commit`
  * isn't in the checkout.
  */
-export async function commitsNotIn(cwd: string, commit: string): Promise<number | null> {
+export async function commitsNotIn(cwd: string, commit: string, branch: string): Promise<number | null> {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit)) return null;
   try {
-    const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", commit])).trim(), 10);
+    const count = Number.parseInt((await git(cwd, ["rev-list", "--count", `refs/heads/${branch}`, "--not", commit])).trim(), 10);
     return Number.isNaN(count) ? null : count;
   } catch {
     return null;

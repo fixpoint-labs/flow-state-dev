@@ -480,28 +480,17 @@ export function RunMeta({
  * onto one open from the branch, the registry's "Push to PR #N".
  */
 const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullRequest" | "pullRequest"> | undefined): string =>
-  land === "pull-request" && review?.pullRequest != null
+  land === "pull-request" && review?.pullRequest != null && review.openPullRequest?.url === review.pullRequest.url
     ? "Push update"
     : land === "pull-request" && review?.openPullRequest == null
       ? "Open pull request"
       : landLabel(land, review?.openPullRequest);
 
-/**
- * Whether a `pull-request` land can be offered beside the pull request the work is already on: only a push onto
- * it (the one open from the branch, which is where that land goes, not read as merged or closed) of commits it
- * lacks. What couldn't be read counts against nothing, so a push is never hidden on a read that failed. No such
- * pull request: the land as it is.
- */
-const pushable = (review: Pick<ReviewDetail, "openPullRequest" | "pullRequest">): boolean => {
-  const on = review.pullRequest ?? null;
-  return on === null || (review.openPullRequest?.number === on.number && on.state !== "merged" && on.state !== "closed" && on.unpushed !== 0);
-};
-
 /** What the primary button does, in a line under the buttons. Exported for its test. */
 export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest" | "pullRequest">, open: number): string {
   const branch = review.branch === null ? "the run's branch" : shortBranch(review.branch);
   const onto = review.openPullRequest ?? null;
-  const lacks = review.pullRequest?.unpushed ?? null;
+  const lacks = onto?.url === review.pullRequest?.url ? review.pullRequest?.unpushed ?? null : null;
   const said =
     land === "pull-request"
       ? onto !== null
@@ -586,8 +575,7 @@ export function ReviewFooter({
     if (note !== "") void send({ verdict: "revise", words: note });
   };
   const accept = (land?: ReviewLand) => void send({ verdict: "accepted", ...(land ? { land } : {}), ...(land && note !== "" ? { words: note } : {}) });
-  // Beside the pull request the work is already on, a pull-request land is only ever a push onto it.
-  const ordered = orderedLands((review?.lands ?? []).filter((land) => land !== "pull-request" || review === undefined || pushable(review)), failed);
+  const ordered = orderedLands(review?.lands ?? [], failed);
   const primary = ordered[0] ?? null;
   const others = ordered.slice(1);
   const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;

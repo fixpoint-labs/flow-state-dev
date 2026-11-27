@@ -59,14 +59,16 @@ export interface ReviewDetail {
   /**
    * The pull request already open from the run's branch, which a
    * `pull-request` accept puts the work on rather than opening a second one.
-   * `null` when none is open, or GitHub couldn't say. Optional, as `lands` is.
+   * `null` when none is open, or GitHub couldn't say. This is the landing target;
+   * `pullRequest` describes its state, while `lands` says whether a push is available.
+   * Optional, as `lands` is.
    */
   openPullRequest?: ReviewPullRequest | null;
   /**
    * The pull request the run's work is already on, as GitHub had it when the
-   * review was asked: the one open from the branch, else the task's newest
-   * recorded one, whatever its state. A card offers no second pull request
-   * beside it. `null` when there is none. Optional, as `lands` is.
+   * review was asked: the one open from the branch, else a recorded one verified
+   * against the checkout's repository and run branch. `null` when none is verified.
+   * Optional, as `lands` is.
    */
   pullRequest?: ReviewWorkPullRequest | null;
   /**

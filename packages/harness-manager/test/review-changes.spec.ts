@@ -1249,6 +1249,7 @@ describe("a run on a branch with a pull request already open from it puts its wo
   let ghLog: string;
   // When set, how many more times `pr list` finds #42 open; then it finds none (closed since).
   let listsLeft: string;
+  let headMode: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -1258,12 +1259,15 @@ describe("a run on a branch with a pull request already open from it puts its wo
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
     listsLeft = join(bin, "lists-left");
+    headMode = join(bin, "head-mode");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+const mode = fs.existsSync(${JSON.stringify(headMode)}) ? fs.readFileSync(${JSON.stringify(headMode)}, "utf8") : "unknown";
+if (mode === "error" && args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])) process.exit(1);
 const listed = () => {
   if (!fs.existsSync(${JSON.stringify(listsLeft)})) return true;
   const left = Number(fs.readFileSync(${JSON.stringify(listsLeft)}, "utf8"));
@@ -1283,7 +1287,7 @@ const out =
             base: { repo: { full_name: "acme/widgets" } },
           }])
       : args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])
-        ? JSON.stringify({ number: 42, html_url: ${JSON.stringify(PR_URL)}, state: "open", merged: false, head: { ref: "x", sha: "0" } })
+        ? JSON.stringify({ number: 42, html_url: ${JSON.stringify(PR_URL)}, state: "open", merged: false, head: { ref: "x", sha: mode === "current" ? require("node:child_process").execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() : "0" } })
         : "[]";
 process.stdout.write(out);
 `,
@@ -1296,7 +1300,22 @@ process.stdout.write(out);
   });
   afterEach(() => {
     rmSync(listsLeft, { force: true });
+    rmSync(headMode, { force: true });
   });
+
+  it.each(["current", "unknown", "error"])("sends the available PR actions to every review UI when its head is %s", async (mode) => {
+    writeFileSync(headMode, mode);
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const detail = reviewDetail(await h.reviewData(held));
+      expect(detail?.lands).toEqual(mode === "current" ? ["merge"] : ["pull-request", "merge"]);
+      expect(detail?.pullRequest).toEqual({ number: 42, url: PR_URL, state: mode === "error" ? null : "open", unpushed: mode === "current" ? 0 : null });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
   /** Refuse the remote's first `times` pushes, as GitHub refuses one. */
   const refusePushes = (remote: string, times: number) => {
     const count = join(remote, "refused");
@@ -1466,24 +1485,32 @@ process.stdout.write(out);
 describe("a coding run's review carries what was asked, the run's summary and its pull requests", () => {
   const PR_URL = "https://github.com/acme/widgets/pull/41";
   const PATH = process.env.PATH;
+  let settings: string;
+  let calls: string;
 
   // `gh` is a stub on PATH: the branch has pull request #41, closed, so it is recorded but nothing is open to push to.
   beforeAll(() => {
     const bin = mkdtempSync(join(tmpdir(), "harness-manager-recorded-pr-gh-"));
     dirs.push(bin);
+    settings = join(bin, "settings.json");
+    calls = join(bin, "calls.log");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
-const listed = [{ number: 41, html_url: ${JSON.stringify(PR_URL)}, state: "closed", title: "Tidy the task list", created_at: new Date().toISOString(), head: { ref: "x" } }];
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(args) + "\\n");
+const options = fs.existsSync(${JSON.stringify(settings)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(settings)}, "utf8")) : {};
+const listed = [{ number: 41, html_url: options.url ?? ${JSON.stringify(PR_URL)}, state: "closed", title: "Tidy the task list", created_at: new Date().toISOString(), head: { ref: "x" } }];
 const path = args.find((a) => a.startsWith("repos/")) ?? "";
 // Read on its own, #41's head is one commit behind the run's branch (gh runs in the run's checkout).
 const head = () => require("node:child_process").execFileSync("git", ["rev-parse", "HEAD~1"], { encoding: "utf8" }).trim();
+const branch = () => require("node:child_process").execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
 process.stdout.write(
   args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "")
     ? JSON.stringify(listed)
-    : args[0] === "api" && path === "repos/acme/widgets/pulls/41"
-      ? JSON.stringify({ ...listed[0], merged_at: null, head: { ref: "x", sha: head() } })
+    : args[0] === "api" && /pulls\\/41$/.test(path)
+      ? JSON.stringify({ ...listed[0], html_url: args.includes("--hostname") ? listed[0].html_url : ${JSON.stringify(PR_URL)}, merged_at: null, head: { ref: options.branch ?? branch(), sha: head() } })
       : "[]",
 );
 `,
@@ -1494,6 +1521,38 @@ process.stdout.write(
   afterAll(() => {
     process.env.PATH = PATH;
   });
+
+  afterEach(() => rmSync(settings, { force: true }));
+
+  it.each(["https://evil.example/acme/widgets/pull/41", "https://github.com/other/repo/pull/41"])("does not trust a recorded URL to select an authenticated GitHub target: %s", async (url) => {
+    writeFileSync(settings, JSON.stringify({ url }));
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const detail = reviewDetail(await h.reviewData(held));
+      expect(detail?.pullRequest).toBeNull();
+      expect(detail?.lands).toContain("pull-request");
+      const asked = readFileSync(calls, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+      expect(asked.some((args) => args.includes("evil.example") || args.some((arg) => arg.includes("repos/other/repo/")))).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("keeps opening a PR available when the recorded PR belongs to another branch", async () => {
+    writeFileSync(settings, JSON.stringify({ branch: "an-earlier-task-branch" }));
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const detail = reviewDetail(await h.reviewData(held));
+      expect(detail?.pullRequest).toBeNull();
+      expect(detail?.lands).toContain("pull-request");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
 
   it("puts the task's goal, the run's final message and the recorded pull request on the review's data and prompt", async () => {
     const h = host({ script: ["commits"], remote: true });
@@ -1523,6 +1582,7 @@ process.stdout.write(
       await h.start();
       const held = await h.until(h.waiting, "the review");
       expect(reviewDetail(await h.reviewData(held))?.pullRequest).toEqual({ number: 41, url: PR_URL, state: "closed", unpushed: 1 });
+      expect(reviewDetail(await h.reviewData(held))?.lands).not.toContain("pull-request");
     } finally {
       await h.dispose();
     }

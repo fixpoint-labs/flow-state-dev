@@ -4121,23 +4121,30 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       };
       const pullRequests =
         ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);
-      // **The pull request the work is already on**: the one open from the branch, else the task's newest
-      // recorded one (which may be on the branch the checkout moved to, or merged or closed since), read as
-      // GitHub has it now, with how many of the branch's commits it lacks. So a card never offers to open a
-      // second one, and offers a push only when there is something to push. Only shown: a failed read says so.
+      // A branch-open target is host-verified. A recorded URL is tool output: it cannot choose where
+      // authenticated gh runs, and must match the checkout's PR and branch before it can affect landing.
       const readWorkPullRequest = async (): Promise<ReviewWorkPullRequest | null> => {
-        const on = onPullRequest ?? named ?? pullRequests.at(-1) ?? null;
+        const target = onPullRequest ?? named;
+        const on = target ?? pullRequests.at(-1) ?? null;
         const ref = on === null ? null : pullRequestRefFromUrl(on.url);
-        if (ref === null || state.workspacePath == null) return null;
+        const branch = target?.branch ?? state.branch;
+        if (ref === null || state.workspacePath == null || branch == null) return null;
         try {
-          const now = await readPullRequest({ cwd: state.workspacePath, number: ref.number, repository: `${ref.owner}/${ref.name}`, host: ref.host, timeoutMs: NETWORK_CALL_TIMEOUT_MS });
-          const unpushed = now.commit === null ? null : await commitsNotIn(state.workspacePath, now.commit);
+          const now = await readPullRequest({
+            cwd: state.workspacePath,
+            number: ref.number,
+            // Only a target the workspace host resolved from its pinned remote may name a repository.
+            ...(target === null ? {} : { repository: `${ref.owner}/${ref.name}`, host: ref.host }),
+            timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+          });
+          if (pullRequestRefFromUrl(now.url ?? "")?.url !== ref.url || (target === null && now.branch !== branch)) return null;
+          const unpushed = now.commit === null ? null : await commitsNotIn(state.workspacePath, now.commit, branch);
           return { number: ref.number, url: ref.url, state: now.merged ? "merged" : now.state, unpushed };
         } catch {
-          return { number: ref.number, url: ref.url, state: null, unpushed: null };
+          return target === null ? null : { number: ref.number, url: ref.url, state: null, unpushed: null };
         }
       };
-      const workPullRequest =
+      let workPullRequest =
         ctx.runOnce === undefined ? await readWorkPullRequest() : await ctx.runOnce(`review:work-pull-request:${state.steerSteps ?? 0}`, readWorkPullRequest);
       // This round's commits, read by `decide`; `null` when the round is the whole branch, or added
       // nothing, so the card falls back to the branch's commits rather than an empty list.
@@ -4193,7 +4200,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               removed: decision.diff?.verified === true ? decision.diff.removed : null,
               judge: read,
               checks: decision.checks ?? null,
-              lands,
+              // Unknown reads keep a push available. Only a verified branch-open target can be pushed to.
+              lands: lands.filter((land) => land !== "pull-request" || workPullRequest === null || (
+                (onPullRequest ?? named)?.url === workPullRequest.url &&
+                workPullRequest.state !== "merged" && workPullRequest.state !== "closed" && workPullRequest.unpushed !== 0
+              )),
               landFailed: failed,
               // Every try of the last landing, oldest first (FIX-2658).
               landAttempts: attempts,
@@ -4234,6 +4245,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // Once per round, so a resume that runs this again doesn't push or merge twice.
           const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked || onNamed);
           if ("error" in outcome) {
+            if ((unasked || onNamed) && outcome.reason === "pull-request-gone") workPullRequest = null;
             // The pull request the review named closed since: asked again without it, so an accept may open one.
             if (onNamed && outcome.reason === "pull-request-gone") named = null;
             // Closed or merged since it was found: the person is offered every way, as without one.
