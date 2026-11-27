@@ -38,6 +38,7 @@ import {
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
 import type {
+  HarnessAccess,
   HarnessActivityHook,
   HarnessEventHook,
   HarnessBilling,
@@ -114,6 +115,16 @@ export interface CodexAgentOptions {
    * no dead id is ever written back over a good one.
    */
   onSession?: HarnessSessionHook;
+  // FIX-2900.
+  /**
+   * What this run may do, resolved once per run, before the thread starts or
+   * resumes. Absent, or `"full"`, is {@link thread} as it is. `"read-only"`
+   * runs the thread in Codex's `read-only` sandbox with `approvalPolicy:
+   * "never"` and no network, over whatever {@link thread} sets: its shell can
+   * read the checkout and refuses every write and network call. The block
+   * declares `enforcesReadOnly` for it.
+   */
+  access?: HarnessResolver<HarnessAccess>;
   // FIX-2290.
   /**
    * Called with each assistant message and each tool call the run starts,
@@ -192,6 +203,14 @@ interface InternalTestSeams {
   [INTERNAL_CODEX_SDK_VERSION_READER]?: InstalledSdkVersionReader;
 }
 
+// FIX-2900.
+/** The thread options a read-only run takes over the host's: Codex's read-only sandbox, never asking, no network. */
+const READ_ONLY_THREAD = {
+  sandboxMode: "read-only",
+  approvalPolicy: "never",
+  networkAccessEnabled: false,
+} as const satisfies CodexThreadOptions;
+
 /** Option-group keys the block owns and therefore refuses to forward. */
 const REFUSED_THREAD_KEYS = ["workingDirectory", "signal"] as const;
 const REFUSED_CLIENT_KEYS = ["signal"] as const;
@@ -235,6 +254,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     onSession,
     onActivity,
     onEvent,
+    access: resolveAccess,
     model,
     thread: threadOptions,
     client: clientOptions,
@@ -325,10 +345,13 @@ export function codexAgent(options: CodexAgentOptions = {}) {
 
       const client = await resolveCodexClient(ctx);
       const dispatchedAt = Date.now();
+      // FIX-2900: resolved beside them; on read-only, Codex's own sandbox wins over the host's thread options.
+      const readOnly = resolveAccess !== undefined && (await resolveAccess(ctx)) === "read-only";
       const threadArgs = {
         ...threadOptions,
         ...(runModel !== undefined ? { model: runModel } : {}),
         ...(workingDirectory !== undefined ? { workingDirectory } : {}),
+        ...(readOnly ? READ_ONLY_THREAD : {}),
       };
       const thread =
         resumeId === null
@@ -510,7 +533,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         if (images !== undefined) await removeTurnImages(images.folder);
       }
     },
-  }), { accepts: CODEX_ACCEPTS });
+  }), { accepts: CODEX_ACCEPTS, enforcesReadOnly: true as const });
 }
 
 /**

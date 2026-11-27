@@ -47,6 +47,7 @@ import {
 } from "@flow-state-dev/core/attachments";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
+  HarnessAccess,
   HarnessActivityHook,
   HarnessEventHook,
   HarnessCallbackContext,
@@ -648,6 +649,19 @@ export interface ClaudeCodeAgentOptions {
    * stream, so a slow hook slows the run and a throwing one fails it.
    */
   onSession?: HarnessSessionHook;
+  // FIX-2900.
+  /**
+   * What this run may do, resolved once per run, a resumed one included.
+   * Absent, or `"full"`, is this block's options as they are. `"read-only"`
+   * runs the SDK with its `tools` ceiling at `Read`, `Grep` and `Glob`, in
+   * `dontAsk` mode, with no `onToolApproval` seam, no relayed MCP tools and no
+   * MCP server but none (`strictMcpConfig`, the account's connectors off), no
+   * setting sources (`settingSources: []`, so no checkout settings file, hook
+   * or `.mcp.json` server loads) and every hook off. On `"read-only"` that
+   * wins over anything these options set. The block declares
+   * `enforcesReadOnly` for it.
+   */
+  access?: HarnessResolver<HarnessAccess>;
   /**
    * Called with each subscription usage window Claude Code reports during the
    * run (its `rate_limit_event`), so a host can record how much of the
@@ -931,6 +945,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onUsage,
     onActivity,
     onEvent,
+    access: resolveAccess,
     settingSources,
     settings,
     env,
@@ -1080,6 +1095,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           : "";
 
       const runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
+      // FIX-2900: once per run, beside the directory and the session it continues.
+      const readOnly = resolveAccess !== undefined && (await resolveAccess(ctx)) === "read-only";
 
       const sandboxSettings =
         typeof sandbox === "function"
@@ -1138,7 +1155,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // above, so exactly one of these two is ever a non-empty string.
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-        ...(onToolApproval
+        // Not on a read-only run: nothing there needs approving, and it is offered no tool that would.
+        ...(onToolApproval && !readOnly
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx, () => (heldACall = true)) }
           : {}),
       };
@@ -1247,8 +1265,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // Resolved once per run, as late as possible, and raced against the
         // run's signal: an abort stops waiting on a stalled connect, and what
         // the resolver answers after that is closed when it arrives.
-        handedTools =
-          typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
+        // A read-only run relays no MCP tools: nothing is resolved, so nothing is connected.
+        handedTools = readOnly
+          ? undefined
+          : typeof mcpTools === "function"
+            ? await resolveMcpTools(mcpTools, ctx)
+            : mcpTools;
         if (handedTools !== undefined) {
           Object.assign(queryOptions, mcpQueryOptions(handedTools, runSettings));
           // With `mcpTools` set, the relayed tools are allowed without asking.
@@ -1257,6 +1279,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           ];
           handedServers = new Set(Object.keys(handedTools));
         }
+        if (readOnly) Object.assign(queryOptions, readOnlyQueryOptions(runSettings));
         try {
           // The loop runs as its own promise so it can be RACED against the
           // block's own signal (FIX-1301) rather than awaited outright — the
@@ -1680,7 +1703,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  }), { stopsOnAbort: true as const, accepts: CLAUDE_CODE_ACCEPTS });
+  }), { stopsOnAbort: true as const, accepts: CLAUDE_CODE_ACCEPTS, enforcesReadOnly: true as const });
 }
 
 /**
@@ -1800,6 +1823,31 @@ function mcpQueryOptions(
 }
 
 /** Every relayed tool by the name the run calls it: `mcp__<server>__<tool>`. */
+// FIX-2900.
+/** The tools a read-only run is offered, and allowed without asking: reading ones only. */
+const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
+
+// FIX-2900.
+/**
+ * The SDK options a read-only run takes over the ones the block built: the
+ * `tools` ceiling (`allowedTools` alone is widened by a checkout's own
+ * `permissions.allow` under `dontAsk`), `dontAsk` so nothing off the list is
+ * asked about, the strict MCP set `mcpTools: {}` sets, no setting sources so
+ * no checkout settings file, hook or `.mcp.json` server loads, and every hook
+ * off in the host's own layer too.
+ */
+function readOnlyQueryOptions(hostSettings: Record<string, unknown>): Partial<ClaudeCodeQueryOptions> {
+  const mcp = mcpQueryOptions({}, hostSettings);
+  return {
+    ...mcp,
+    tools: [...READ_ONLY_TOOLS],
+    allowedTools: [...READ_ONLY_TOOLS],
+    permissionMode: "dontAsk",
+    settingSources: [],
+    settings: { ...mcp.settings, disableAllHooks: true },
+  };
+}
+
 function relayedToolNames(tools: ClaudeCodeMcpTools): string[] {
   return Object.entries(tools).flatMap(([server, entry]) =>
     entry.tools.map((tool) => `mcp__${server}__${tool.name}`),

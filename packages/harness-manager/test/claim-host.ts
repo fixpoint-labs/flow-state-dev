@@ -24,7 +24,7 @@ import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { HarnessBlock, HarnessRunInput } from "@flow-state-dev/core/harness";
+import type { HarnessAccess, HarnessBlock, HarnessRunInput } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
@@ -88,6 +88,9 @@ export interface SeenRun {
   // FIX-2522.
   /** The files the run was handed beside the prompt, when it was handed any. */
   attachments?: HarnessRunInput["attachments"];
+  // FIX-2900.
+  /** What the run's `access` feed answered, or `undefined` when the runner handed none. */
+  access?: HarnessAccess;
 }
 
 /** Commit `count` new files in the checkout `cwd`. */
@@ -100,7 +103,7 @@ function commitIn(cwd: string, count: number, tag: string): void {
   }
 }
 
-function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlock["accepts"]) {
+function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlock["accepts"], enforcesReadOnly: boolean) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     Object.assign(handler({
       name: "claim-host-harness",
@@ -109,7 +112,14 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlo
       execute: async (input, ctx) => {
         const cwd = await feeds.cwd(ctx as never);
         const resume = await feeds.resume(ctx as never);
-        seen.push({ cwd, prompt: input.prompt, resume, ...(input.attachments !== undefined ? { attachments: input.attachments } : {}) });
+        const access = await feeds.access?.(ctx as never);
+        seen.push({
+          cwd,
+          prompt: input.prompt,
+          resume,
+          ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
+          ...(access !== undefined ? { access } : {}),
+        });
         const step = script[seen.length - 1] ?? {};
         const sessionId = resume ?? `sess_${seen.length}`;
         await feeds.onSession(sessionId, ctx as never);
@@ -134,7 +144,7 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlo
           cost: null,
         };
       },
-    }), accepts === undefined ? {} : { accepts }) as unknown as HarnessBlock;
+    }), accepts === undefined ? {} : { accepts }, enforcesReadOnly ? { enforcesReadOnly: true } : {}) as unknown as HarnessBlock;
 }
 
 /** The claim a test puts on the manager's input, playing the entry adapter. */
@@ -150,6 +160,9 @@ export interface HostOptions {
   script?: HarnessStep[];
   /** The file types the stub harness says it takes. Default: none, as a harness that declares nothing. */
   accepts?: HarnessBlock["accepts"];
+  // FIX-2900.
+  /** Whether the stub harness declares `enforcesReadOnly`. Default `true`, as the shipped harnesses do. */
+  enforcesReadOnly?: boolean;
   /** The mode's name, which keys its runs. Default `PHASE`. */
   modeName?: string;
   /** The segment the mode's runs were stored under before it took `modeName` (`ModeSpec.formerName`). */
@@ -255,7 +268,7 @@ export function claimHost(options: HostOptions) {
     workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script ?? [], seen, options.accepts),
+    harness: stubHarness(options.script ?? [], seen, options.accepts, options.enforcesReadOnly ?? true),
     ...(options.manager ?? {}),
   } as never);
 
