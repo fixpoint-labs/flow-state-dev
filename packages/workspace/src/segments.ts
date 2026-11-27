@@ -12,10 +12,9 @@
  *   the principal's components of a harness checkout path, a full SHA-256 over
  *   UTF-16LE.
  *
- * They are not merged because the scope-folder digest goes through UTF-8,
- * which maps every lone surrogate and U+FFFD to one value. Bash folders keep
- * that format so files do not move; a checkout cannot, because two principals
- * would share a tree, a branch and a lock.
+ * They are not merged because their formats differ and both are on disk:
+ * bash folders keep their 12-hex names so files do not move, and checkouts
+ * keep their full digest so a checkout path does not move either.
  */
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -64,10 +63,32 @@ export function readableSegment(id: string): string {
   return id.replace(/[^A-Za-z0-9_-]/g, "-");
 }
 
+/** In `u` mode a surrogate pair is one code point, so only a lone half matches. */
+const LONE_SURROGATE = /\p{Cs}/u;
+
+/**
+ * 12 hex of SHA-256 over bytes that mean `text` and nothing else: the digest
+ * in a scope-folder segment and in a bash MOAT run name.
+ *
+ * UTF-8 alone is not that: it cannot carry a lone surrogate, and Node writes
+ * each one as U+FFFD's bytes, so `"\ud800"`, `"\udfff"` and `"\ufffd"` were
+ * one digest and so one directory and one MOAT container.
+ *
+ * Valid Unicode still hashes as UTF-8, so every existing directory and run
+ * name keeps its name and nothing moves. Anything else hashes as `0xFF` then
+ * its UTF-16LE code units, which keeps every code unit. `0xFF` never occurs in
+ * UTF-8, so the two kinds of input cannot spell each other's bytes.
+ */
+export function segmentDigest(text: string): string {
+  const bytes = !LONE_SURROGATE.test(text)
+    ? Buffer.from(text, "utf-8")
+    : Buffer.concat([Buffer.from([0xff]), Buffer.from(text, "utf16le")]);
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+}
+
 function folderSegment(id: string): string {
   const safe = readableSegment(id).slice(0, 40) || "id";
-  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
-  return `${ENCODED_PREFIX}${safe}-${digest}`;
+  return `${ENCODED_PREFIX}${safe}-${segmentDigest(id)}`;
 }
 
 /**

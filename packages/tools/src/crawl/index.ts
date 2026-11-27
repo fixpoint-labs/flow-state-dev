@@ -37,6 +37,7 @@ export function crawl(config: CrawlConfig = {}) {
         waitForJS: config.waitForJS ?? false,
         apiKey,
         signal: ctx.signal,
+        allowedHosts: config.allowedHosts,
       });
     },
   });

@@ -45,7 +45,8 @@ export {
   unscopedCollectionId,
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
-export { encodeSegment, readableSegment, scopeFolder, tenantSegment } from "./segments";
+export { encodeSegment, readableSegment,
+  segmentDigest, scopeFolder, tenantSegment } from "./segments";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
 export { localRepoWorkspaceHost } from "./local-repo-host";
 export type { LocalRepoWorkspaceHostOptions } from "./local-repo-host";

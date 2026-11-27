@@ -50,9 +50,9 @@ import {
   readableSegment,
   scopeComponents,
   scopeFolder,
+  segmentDigest,
 } from "@flow-state-dev/workspace";
 import type { ProjectedEntryExtra, ProjectionSession, ScopeName, ScopePrincipal } from "@flow-state-dev/workspace";
-import { createHash } from "node:crypto";
 import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
   TMP_DIR,
@@ -315,7 +315,7 @@ type ScopeIdentity = ScopePrincipal;
  */
 function defaultMoatRunName(identity: ScopeIdentity): string {
   const { key } = resolveScopeKey("session", identity);
-  const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
+  const digest = segmentDigest(key);
   // `readableSegment`, not the folder encoder. That one ends in a digest of the
   // session id alone, and truncating its output to fit a run name cut that
   // digest off again — a hash computed and thrown away, and the wrong hash

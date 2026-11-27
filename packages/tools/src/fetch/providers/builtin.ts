@@ -18,7 +18,10 @@ export const builtinFetchAdapter: FetchProviderAdapter = {
     let readBody: () => Promise<string>;
 
     try {
-      ({ response, finalUrl, readBody } = await fetchValidated(url, { signal: options.signal }));
+      ({ response, finalUrl, readBody } = await fetchValidated(url, {
+        signal: options.signal,
+        allowedHosts: options.allowedHosts,
+      }));
     } catch (cause) {
       // A blocked destination is a policy refusal — permanent, so non-retryable,
       // and its own `errorType` rather than a transport class. Everything else

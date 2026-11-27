@@ -46,6 +46,7 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
         // skipped by the surrounding catch, like any other unreachable page.
         const { response, readBody } = await fetchValidated(entry.url, {
           signal: options.signal,
+          allowedHosts: options.allowedHosts,
         });
 
         // Judge the page by its headers before reading a body it will not use.

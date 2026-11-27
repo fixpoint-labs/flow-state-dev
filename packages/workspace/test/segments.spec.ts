@@ -7,7 +7,7 @@
  */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { encodeSegment, scopeFolder, tenantSegment } from "../src/segments";
+import { encodeSegment, scopeFolder, tenantSegment, segmentDigest } from "../src/segments";
 import type { ScopePrincipal } from "../src/scope-identity";
 
 const ROOT = "/srv/app";
@@ -44,13 +44,27 @@ describe("scopeFolder keeps every existing bash folder where it was", () => {
   });
 });
 
-describe("the checkout encoder stays apart from the folder encoder", () => {
-  it("gives each lone surrogate and U+FFFD its own segment, where the folder digest would merge them", () => {
-    const ids = ["\ud800", "\ud801", "\udfff", "\ufffd"];
-    expect(new Set(ids.map(encodeSegment)).size).toBe(4);
+describe("ids UTF-8 cannot tell apart", () => {
+  // Node writes every lone surrogate as U+FFFD's bytes, so a UTF-8 digest gave
+  // these one value: one shared folder and one shared checkout.
+  const ids = ["\ud800", "\ud801", "\udfff", "\ufffd"];
+
+  it("get a scope folder each", () => {
     const folders = ids.map((id) => scopeFolder(ROOT, "user", { requestId: "r", sessionId: "s", userId: id }));
-    expect(new Set(folders).size).toBe(1);
+    expect(new Set(folders).size).toBe(ids.length);
   });
+
+  it("get a checkout segment each", () => {
+    expect(new Set(ids.map(encodeSegment)).size).toBe(ids.length);
+  });
+
+  it("get a run-name digest each, while valid Unicode keeps its UTF-8 digest", () => {
+    expect(new Set(ids.map(segmentDigest)).size).toBe(ids.length);
+    expect(segmentDigest("user_123")).toBe("80fba0ae1c48");
+  });
+});
+
+describe("the checkout encoder", () => {
 
   it("tags tenant presence rather than defaulting it", () => {
     expect(tenantSegment(undefined)).toBe("t0");
