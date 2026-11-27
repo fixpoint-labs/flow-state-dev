@@ -732,7 +732,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Take the steers that arrived since the claim: mark each steer
    * no request of the claim's attempt has taken as taken by it, in the read
-   * named `takenIn`. Read them back with `steersTakenIn`. A steer this attempt
+   * named `takenIn`, by request `requestId`: the request a stop of it names
+   * (`untakeSteersOf`) to give them back, whatever `takenIn` says. Read them
+   * back with `steersTakenIn`. A steer this attempt
    * took already, in any read, stays as it is.
    *
    * Fenced like {@link linkRun}: `options.claim` is required, the row must be
@@ -746,7 +748,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   takeSteers?(
     id: string,
-    options: { claim: TaskClaimTicket; takenIn: string }
+    options: { claim: TaskClaimTicket; takenIn: string; requestId: string }
   ): Promise<TaskWriteOutcome & { readonly taken?: readonly string[] }>;
   // FIX-976; FIX-981.
   /**

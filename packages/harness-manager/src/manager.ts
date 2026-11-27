@@ -2191,10 +2191,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return readCommittedTask(board, taskId);
   };
 
-  /** Take this attempt's untaken steers in `takenIn`, fenced to the claim, then return what `select` reads. */
+  /** Take this attempt's untaken steers in `takenIn` by request `requestId`, fenced to the claim, then return what `select` reads. */
   const takeSteersFor = async (
     ctx: ManagerContext,
     takenIn: string,
+    requestId: string,
     select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
   ): Promise<{ steers: ShownSteer[]; taken: TaskSteer[] } | null> => {
     const board = await runBoard(ctx);
@@ -2206,7 +2207,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // turn of the attempt holds another ticket, and its steers are its own.
       const claim = ctx.sequencer?.state.ticket ?? null;
       if (claim === null) return null;
-      const outcome = await board.takeSteers(row.id, { claim, takenIn });
+      const outcome = await board.takeSteers(row.id, { claim, takenIn, requestId });
       // Declined: the attempt no longer holds the row (claimed again, finished).
       if (outcome.outcome === "declined") return null;
       taken = outcome.taken ?? [];
@@ -3049,7 +3050,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       let news: ShownSteer[] = [];
       const steers =
         (
-          await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) => {
+          await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, ctx.request.identity.id, (row) => {
             const mine = (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts && !isAnswer(row, steer));
             // What woke this turn's pull-request wait (FIX-2578) is news on the pull request, under its own lead.
             const woke = (steer: TaskSteer) => state.wake !== null && steer.answers === state.wake;
@@ -3901,7 +3902,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // request's own merge or close, a deadline) settles here with no run. Everything owed is taken first, in
       // one write, and the choice reads what that write took: a line sent while GitHub was read is never taken
       // with a settle that doesn't answer it. A taken steer is this attempt's, so the brief still shows it.
-      const take = await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      const take = await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, ctx.request.identity.id, () => []);
       const now = await committedRow(ctx);
       if (personSpokeOnWake(now === undefined ? undefined : answerOf(now, wait.id), take?.taken ?? [])) {
         await ctx.sequencer!.patchState({ wakeNews: settledPullRequestNews(reads.read) });
@@ -4441,7 +4442,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           const takenIn = `live:${requestId}:${state.steerSteps ?? 0}:${watch.handed}`;
           const nextStep = owedFor(requestId);
           const taking = (async () => {
-            const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
+            const take = await takeSteersFor(ctx, takenIn, requestId, (now, id) => steersTakenIn(now, id));
             if (take === null || take.steers.length === 0) return;
             await showTakenSteers(ctx, take.taken);
             // The step ended, or its run withdrew the offer, while the take wrote
@@ -4647,7 +4648,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         `[harness-manager] the run has already taken ${MAX_STEERS} steps for steers, the most a task's steers can ask for.`,
       );
     }
-    const take = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
+    const take = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, ctx.request.identity.id, (now, takenIn) => steersTakenIn(now, takenIn));
     if (take === null) {
       if (!stopped) return undefined;
       throw new HarnessAttemptFailed(STALE_AFTER_STOP);
