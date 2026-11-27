@@ -18,6 +18,7 @@ import { PrincipalResolutionError } from "../transports/errors";
 import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
+import { isOrgAttributed } from "../context/org-attribution";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { isWriteRecord, isWriteSessionId } from "../resources/default-write-flow";
 import { tenantMatches } from "../stores/scope-keys";
@@ -108,7 +109,7 @@ export function flowAuthenticates(flow: {
  * instance, that principal is inside the pin.
  */
 export async function ownResolverVerdict(
-  registry: FlowRegistry,
+  registry: Pick<FlowRegistry, "get" | "list">,
   callerFor: InstanceCallerResolver,
   row: OwnedRecord & { userId: string; orgId?: string | null }
 ): Promise<boolean | undefined> {
@@ -123,24 +124,31 @@ export async function ownResolverVerdict(
   return !pinRejectsCaller(owner.flow.ownerPin, caller);
 }
 
-// FIX-2725 D1.
+/** What {@link admitSession} judges a session against: who asks, in which tenant, and the rule for a row no own resolver owns. */
+export type SessionAdmissionContext = {
+  registry: Pick<FlowRegistry, "get" | "list">;
+  callerFor: InstanceCallerResolver;
+  tenantId: string | undefined;
+  /** The owner rule for a row whose instance has no resolver of its own. Only asked of an attributed row. */
+  hostRule: (session: SessionRecord) => boolean | Promise<boolean>;
+};
+
+// FIX-2725 D1; FIX-2942.
 /**
- * The one per-row admission of a session list: the HTTP session list's, and
- * a view's session reads'. A row of another tenant is never shown, nor a write
- * session, which is no conversation; a row owned by an instance
- * with a resolver of its own is judged on that resolver's word
- * ({@link ownResolverVerdict}); any other row by the caller's `hostRule`.
+ * The one admission of another session: the HTTP session list's per row, a
+ * view's session reads', and a block's named reach (`named-session.ts`). Every
+ * door that shows a caller a session it did not start asks this, so they
+ * cannot drift apart.
+ *
+ * A row of another tenant is never admitted, nor a write session, which is no
+ * conversation, nor a row stored before organizations were required
+ * (`isOrgAttributed`). A row owned by an instance with a resolver of its own is
+ * judged on that resolver's word ({@link ownResolverVerdict}); any other row by
+ * the caller's `hostRule`.
  */
-export async function admitListedSession(
-  ctx: {
-    registry: FlowRegistry;
-    callerFor: InstanceCallerResolver;
-    tenantId: string | undefined;
-    hostRule: (session: SessionRecord) => boolean | Promise<boolean>;
-  },
-  session: SessionRecord
-): Promise<boolean> {
+export async function admitSession(ctx: SessionAdmissionContext, session: SessionRecord): Promise<boolean> {
   if (!tenantMatches(session.tenantId, ctx.tenantId)) return false;
   if (isWriteSessionId(session.id)) return false;
+  if (!isOrgAttributed(session)) return false;
   return (await ownResolverVerdict(ctx.registry, ctx.callerFor, session)) ?? ctx.hostRule(session);
 }

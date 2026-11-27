@@ -23,7 +23,6 @@ import { birthSession, SessionCreateRefusedError } from "../context/session-birt
 import { mapLimit } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
-import { isOrgAttributed } from "../context/org-attribution";
 import { readonlyStateFilter } from "../context/readonly-state-filter";
 import {
   asObject,
@@ -57,7 +56,7 @@ import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
-  admitListedSession,
+  admitSession,
   type InstanceCallerResolver
 } from "./instance-caller";
 
@@ -300,9 +299,9 @@ export async function handleListSessions(
   // OTHER organization predates the upgrade and is refused by the addressed
   // read, so it is withheld here for the same reason (BR-10) — the store query
   // above could not scope it, because there was no principal to scope it by.
+  // `admitSession` refuses the unattributed rows itself, before this rule is asked.
   const hostRuleAdmits = (s: SessionRecord): boolean =>
     flowVisible(s) &&
-    isOrgAttributed(s) &&
     (allowed === undefined || s.orgId === DEFAULT_ORG_ID);
 
   // Everything above is the host-level rule. A row owned by an instance with a
@@ -318,7 +317,7 @@ export async function handleListSessions(
   const admission = { registry: ctx.registry, callerFor: ctx.callerFor, tenantId: ctx.tenantId, hostRule: hostRuleAdmits };
   const visible: SessionRecord[] = [];
   for (const s of sessions) {
-    if (await admitListedSession(admission, s)) visible.push(s);
+    if (await admitSession(admission, s)) visible.push(s);
   }
 
   // Each visible row's latest request status, only when asked:

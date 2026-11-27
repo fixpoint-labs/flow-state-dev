@@ -270,7 +270,10 @@ export async function handleDispatch(
         cron: schedule.cron,
         nominalFireTime,
         dispatchedAt: new Date().toISOString(),
-        timezone
+        timezone,
+        // FIX-2942: the run is the gateway's, not a user's, so it owns no
+        // session but its own (`context/named-session.ts`).
+        ...(schedule.principal === undefined ? { gatewayPrincipal: true } : {})
       }
     },
     // A dynamic schedule's core is produced by the resolver at dispatch time
