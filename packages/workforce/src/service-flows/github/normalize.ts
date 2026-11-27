@@ -41,6 +41,12 @@
  * logins, a bot's without `[bot]`. A check run is sent by the app that ran
  * it (`check_run.app.slug`, a `bot`), not by whoever pushed.
  *
+ * **A check carries only what GitHub sets.** Its title is `Check <name>: <conclusion>`, its
+ * text the lines `status: completed`, `conclusion: <conclusion>` and `head: <sha>`, each value
+ * checked against GitHub's form, and its url the run's page. Never the run's `output` (title,
+ * summary, text, annotations) or logs: the workflow writes those, and a pull request can change
+ * the workflow, so no subscriber of any kind hears them.
+ *
  * **`addressed`.** `true` when the event mentions one of the app's agent
  * handles (outside quoted lines and code), assigns one, or requests its review.
  * A mention of anyone else never asks the agent.
@@ -49,6 +55,22 @@ import { MAX_SUBSCRIPTION_EVENT_TEXT, type SubscriptionEvent } from "@flow-state
 
 /** The provider key GitHub's events and thread keys carry. */
 export const GITHUB_PROVIDER = "github";
+
+/** The conclusions GitHub gives a completed check run. A check's text carries one of these, or none. */
+const CHECK_CONCLUSIONS = new Set(["success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale", "startup_failure"]);
+
+/** The conclusions that mean the check went red: what a run has to act on. */
+const FAILED_CHECK_CONCLUSIONS = new Set(["failure", "timed_out", "action_required", "startup_failure"]);
+
+/**
+ * Whether a normalized GitHub `check` event reports a failed check. It reads the `conclusion:` line
+ * {@link normalizeGitHubEvent} writes into a check's text, which holds only GitHub's own values.
+ */
+export function githubCheckFailed(event: SubscriptionEvent): boolean {
+  if (event.provider !== GITHUB_PROVIDER || event.kind !== "check") return false;
+  const conclusion = /^conclusion: (\S+)$/m.exec(event.text)?.[1];
+  return conclusion !== undefined && FAILED_CHECK_CONCLUSIONS.has(conclusion);
+}
 
 /** One GitHub event, as the webhook route or a poll hands it to {@link normalizeGitHubEvent}. **Pinned.** */
 export interface GitHubEventInput {
@@ -309,19 +331,22 @@ export function normalizeGitHubEvent(input: GitHubEventInput, options: GitHubNor
       const run = obj(payload.check_run);
       const runId = num(run?.id);
       if (action !== "completed" || run === undefined || runId === undefined) return [];
-      const output = obj(run.output);
       // A check run is the app's: it reports as the app that ran it (`github-actions`), a bot the service lists or not.
       const app = obj(run.app);
       const appSlug = str(app?.slug);
       const from = appSlug === undefined ? undefined : { id: githubLoginId(appSlug), name: str(app?.name) ?? appSlug, role: "bot" as const };
+      // GitHub's own values, each checked against its form, so nothing else rides along in the text.
+      const conclusion = CHECK_CONCLUSIONS.has(str(run.conclusion) ?? "") ? str(run.conclusion) : undefined;
+      const head = /^[0-9a-f]{40}$/.test(str(run.head_sha) ?? "") ? str(run.head_sha) : undefined;
       const base = {
         ...(from === undefined ? {} : { from }),
         kind: "check",
         id: `check_run:${runId}`,
         version: msOf(run.completed_at),
         association: undefined,
-        title: `Check ${str(run.name) ?? ""}: ${str(run.conclusion) ?? "completed"}`,
-        text: [str(output?.title), str(output?.summary)].filter((part) => part !== undefined).join("\n"),
+        title: `Check ${str(run.name) ?? ""}: ${conclusion ?? "completed"}`,
+        // Only what GitHub sets: never the run's `output` (title, summary, text, annotations), which the workflow writes.
+        text: [`status: completed`, ...(conclusion === undefined ? [] : [`conclusion: ${conclusion}`]), ...(head === undefined ? [] : [`head: ${head}`])].join("\n"),
         labels: [],
         url: str(run.html_url) ?? ""
       };
