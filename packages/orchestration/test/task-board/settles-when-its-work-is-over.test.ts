@@ -62,6 +62,8 @@ async function harness(
     workWriteFails?: () => string | undefined;
     /** What the background step of a later request throws, if anything (FIX-2088). */
     laterWriteFails?: () => string | undefined;
+    /** Give requests the host's waits, as a durable host's do: a later request reads its own request's status through them (FIX-2898). */
+    hostWaits?: boolean;
   } = {}
 ) {
   const store = createFakeResourceCollection();
@@ -252,7 +254,21 @@ async function harness(
     suspensions: stores.suspensions,
     leases: stores.leases,
   });
-  const runtimeConfig = { durabilityProvider: provider };
+  const runtimeConfig = {
+    durabilityProvider: provider,
+    ...(options.hostWaits === true
+      ? {
+          requestHost: {
+            wakes: { maxDebtAgeMs: 60_000 },
+            waits: { provider, deadlines: { defaultMs: 60_000, minMs: 1_000, maxMs: 3_600_000 } },
+            // Present because the host's waits stand beside it; no test here resumes a wait gate.
+            waitResume: async () => {
+              throw new Error("no wait gate resumes in this harness");
+            },
+          },
+        }
+      : {}),
+  };
   /** Run the task's entry on `claim`: the harness's first claim, or a reclaim's. */
   const run = (claim: Task = claimed) =>
     runAction({
@@ -1256,6 +1272,66 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(task?.leaseUntil).toBeUndefined();
   });
 
+  // FIX-2897: a side chain that ignores the abort can hold the request's end past its lease, whose renewal the stop ended.
+  describe("a stopped request whose lease lapsed before its end write takes the row back first", () => {
+    it("the task's own request: the cancel lands on the same attempt", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        // Nothing reclaimed the row: only its lease ran out.
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      const { requestId } = await h.run();
+      expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+      // Not left running for the next claim to take as an abandonment: cancelled, as the person asked.
+      expect(await h.row()).toMatchObject({ status: "cancelled", attempts: 1 });
+    });
+
+    it("a later request that took an owed turn gives the turn back", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx, ledger) => {
+        await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+        return "a partial answer";
+      });
+      await h.run();
+      await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+      const owed = (await h.row())!;
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      // Owed again on the same attempt, with no lease: the board's claim takes it as a turn, not a new attempt.
+      expect(task).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      expect(await h.reclaim()).toMatchObject({ id: "t1", attempts: 1, turn: (owed.turn ?? 0) + 2 });
+    });
+
+    // Parked on an external event: a stop for a person mirrors a hold on the row, and a held row renews no lease.
+    it("a later request while the task's own request is parked parks the task on it again", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "external_event", message: "waiting" }));
+      await h.run();
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      // Still parked: no claim takes it as abandoned.
+      expect(await h.reclaim()).toBeNull();
+    });
+  });
+
   it("a stop that lands after a later attempt took the row writes nothing on it: the cancel is fenced", async () => {
     const h = await harness();
     let next: Task | undefined;
@@ -1268,5 +1344,118 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     await h.run();
     expect(next).toMatchObject({ attempts: 2 });
     expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: next!.leaseUntil });
+  });
+});
+
+// FIX-2898.
+describe("a later request parks the task on its own request only while that request is still parked", () => {
+  /** The task's own request parks, then waits on `release` once resumed. */
+  const parkedOwnRequest = async (reason: "external_event" | "user_input") => {
+    const h = await harness({ hostWaits: true });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.setBehaviour(async (ctx) => {
+      const answer = await ctx.suspend!({ reason, message: "waiting" });
+      await released;
+      return { resumedWith: answer };
+    });
+    const { requestId } = await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    let finished: Promise<unknown> | undefined;
+    /** Resume the own request from inside a later turn, and return once it runs again. */
+    const resumeOwn = async () => {
+      finished = h.resume(requestId!, "go");
+      for (let i = 0; i < 200 && (await h.requests.get(requestId!))?.status !== "in_progress"; i += 1) await sleep(10);
+      expect((await h.requests.get(requestId!))?.status).toBe("in_progress");
+    };
+    return {
+      h,
+      resumeOwn,
+      finishOwn: async () => {
+        release();
+        await finished;
+      },
+    };
+  };
+
+  it.each(["external_event", "user_input"] as const)(
+    "a later request that ends while the resumed own request (%s) runs writes no wait over it, and the own request settles the task",
+    async (reason) => {
+      const { h, resumeOwn, finishOwn } = await parkedOwnRequest(reason);
+      h.setLaterTurn(async () => {
+        await resumeOwn();
+        return "a later answer";
+      });
+      await h.runLater("notice");
+      // Not parked on a stop nobody is waiting on any more.
+      expect((await h.row())?.keptOpenBy).toBeUndefined();
+      await finishOwn();
+      expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
+    }
+  );
+
+  it("a later request that ends while the own request is still parked parks the task on it again", async () => {
+    const { h, resumeOwn, finishOwn } = await parkedOwnRequest("user_input");
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+    expect((await h.row())?.leaseUntil).toBeUndefined();
+    await resumeOwn();
+    await finishOwn();
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
+  });
+
+  it("a steer's turn stopped for a person is the request the task waits on: a notice re-parks on it, and its resume during a notice settles the task", async () => {
+    const h = await harness({ hostWaits: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return "a partial answer";
+    });
+    await h.run();
+    await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+    // The owed turn stops for a person's review; the row's run link still names the first request.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.setSteerTurn(async (_steers, ctx) => {
+      const answer = await ctx.suspend!({ reason: "user_input", message: "look?" });
+      await released;
+      return { reviewed: answer };
+    });
+    const steer = await h.runLater("steerTurn");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice while the steer's turn is parked parks the task on it again.
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice during which the person answers: the steer's turn resumes on a row showing no wait.
+    let finished: Promise<unknown> | undefined;
+    h.setLaterTurn(async () => {
+      finished = h.resume(steer.requestId!, "fine");
+      for (let i = 0; i < 200 && (await h.requests.get(steer.requestId!))?.status !== "in_progress"; i += 1) await sleep(10);
+      expect((await h.requests.get(steer.requestId!))?.status).toBe("in_progress");
+      return "a later answer";
+    });
+    await h.runLater("notice");
+    expect((await h.row())?.keptOpenBy).toBeUndefined();
+    release();
+    await finished;
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { reviewed: "fine" } });
+  });
+
+  it("a stopped later request that ends while the resumed own request runs writes no wait over it either", async () => {
+    const { h, resumeOwn, finishOwn } = await parkedOwnRequest("external_event");
+    h.setLaterTurn(async (ctx) => {
+      await resumeOwn();
+      await ctx.session.stopRequest(ctx.request.identity.id);
+      await sleep(5);
+      return "an answer the stop overtook";
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    expect((await h.row())?.keptOpenBy).toBeUndefined();
+    await finishOwn();
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
   });
 });

@@ -49,7 +49,7 @@ import {
   discoverPackageBlocks,
   type DiscoveredPackageBlock,
 } from "./discover-package-blocks";
-import { typescriptExtension } from "./typescript-module";
+import { moduleSpecifier, typescriptExtension } from "./typescript-module";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "block";
@@ -285,7 +285,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
         slot: slot.id,
         name,
         path: relative,
-        importPath: `./${slot.dir}/${name}`,
+        importPath: moduleSpecifier(`./${slot.dir}/${name}`, extension),
       });
     }
   }

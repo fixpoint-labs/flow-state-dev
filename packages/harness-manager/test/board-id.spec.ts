@@ -19,6 +19,7 @@
  * 3. **An id git cannot carry is refused when the manager is built**, naming
  *    it, before any row is claimed.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,7 +58,7 @@ function derive(epic: string, principal: RunLocation["principal"] = ALICE, orgle
     ...(orgless !== undefined ? { orgless } : {}),
     ...(nested !== undefined ? { nested } : {}),
   };
-  return { checkout: checkoutPathFor(CONFIG, location), branch: branchFor(location) };
+  return { checkout: checkoutPathFor(CONFIG.root, location), branch: branchFor(location) };
 }
 
 /** Git's own verdict on a branch name — the consumer the grammar answers to. */
@@ -132,7 +133,7 @@ describe("an id git cannot carry is refused when the manager is built", () => {
       }),
       tenant: undefined,
       mode: { name: "implement", instructions: () => "go", doneWhen: { check: () => true } },
-      workspace: { root: join(tmpdir(), "harness-manager-board-id"), sourceRepo, baseRef: "main" },
+      workspace: localRepoWorkspaceHost({ root: join(tmpdir(), "harness-manager-board-id"), repo: sourceRepo, baseRef: "main" }),
       runTimeoutMs: 30_000,
       harness: () =>
         handler({

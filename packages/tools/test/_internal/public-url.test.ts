@@ -3,42 +3,47 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertPublicHttpUrl,
   isPublicIp,
+  resolvePublicAddresses,
   type AddressLookup,
 } from "../../src/_internal/public-url";
-
-
-/** A lookup that must never be reached — literals are classified without DNS. */
-const noLookup: AddressLookup = () => {
-  throw new Error("lookup should not be called");
-};
 
 const lookupReturning = (...addresses: string[]): AddressLookup =>
   vi.fn().mockResolvedValue(addresses.map((address) => ({ address })));
 
-describe("assertPublicHttpUrl", () => {
-  it("accepts a hostname whose every resolved address is public", async () => {
+describe("resolvePublicAddresses", () => {
+  it("returns every address when all of them are public", async () => {
     await expect(
-      assertPublicHttpUrl(
-        "https://example.com/page",
+      resolvePublicAddresses(
+        "example.com",
         lookupReturning("93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"),
       ),
-    ).resolves.toMatchObject({ hostname: "example.com" });
+    ).resolves.toEqual([
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+    ]);
   });
 
   it("rejects a hostname when any single resolved address is private", async () => {
     // Mixed A/AAAA: the connect path may pick either, so one bad answer is fatal.
     await expect(
-      assertPublicHttpUrl(
-        "https://attacker.example",
-        lookupReturning("93.184.216.34", "10.0.0.8"),
-      ),
+      resolvePublicAddresses("attacker.example", lookupReturning("93.184.216.34", "10.0.0.8")),
     ).rejects.toThrow("public IP addresses");
   });
 
   it("rejects a hostname that resolves to nothing", async () => {
     await expect(
-      assertPublicHttpUrl("https://void.example", lookupReturning()),
+      resolvePublicAddresses("void.example", lookupReturning()),
     ).rejects.toThrow("public IP addresses");
+  });
+});
+
+describe("assertPublicHttpUrl", () => {
+  it("accepts a hostname without resolving it", () => {
+    // The hostname is checked by the socket's lookup, where the answer that is
+    // checked is the answer that is connected to.
+    expect(assertPublicHttpUrl("https://example.com/page")).toMatchObject({
+      hostname: "example.com",
+    });
   });
 
   it.each([
@@ -52,14 +57,12 @@ describe("assertPublicHttpUrl", () => {
     ["RFC1918", "http://192.168.1.1/"],
     ["CGNAT", "http://100.64.0.1/"],
     ["a trailing-dot loopback", "http://127.0.0.1./"],
-  ])("rejects %s (%s)", async (_label, url) => {
-    await expect(assertPublicHttpUrl(url, noLookup)).rejects.toThrow();
+  ])("rejects %s (%s)", (_label, url) => {
+    expect(() => assertPublicHttpUrl(url)).toThrow();
   });
 
-  it("rejects embedded credentials", async () => {
-    await expect(
-      assertPublicHttpUrl("http://user:pw@example.com/", noLookup),
-    ).rejects.toThrow("credentials");
+  it("rejects embedded credentials", () => {
+    expect(() => assertPublicHttpUrl("http://user:pw@example.com/")).toThrow("credentials");
   });
 });
 

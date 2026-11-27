@@ -235,11 +235,11 @@ export type IntakeDecision =
 
 /** The running flow's report rows, or a refusal naming the accessor. */
 export function reportsOf(ctx: BlockContext): ResourceCollectionRef {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[ERROR_REPORTS_RESOURCE];
+  const ref = ctx.resources?.[ERROR_REPORTS_RESOURCE];
   if (typeof ref !== "object" || ref === null || !("getOrCreate" in ref)) {
     throw new Error(`This flow doesn't declare "${ERROR_REPORTS_RESOURCE}", so it can't keep error reports.`);
   }
-  return ref as ResourceCollectionRef;
+  return ref;
 }
 
 /** The key of a fingerprint's report. */
