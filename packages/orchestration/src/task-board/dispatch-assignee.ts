@@ -45,7 +45,7 @@ import { type DispatchHandle } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core/capability";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
 import type { DefinedTaskCollection, TaskWorker } from "../tasks";
-import type { TaskWorkerRegistry } from "../tasks/workers/types";
+import type { TaskWorkerInput, TaskWorkerRegistry } from "../tasks/workers/types";
 import type { TaskBoardBacking } from "./index";
 
 /** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */
@@ -58,6 +58,22 @@ export type TaskDispatcherBlock = BlockDefinition<any, any, TaskDispatchInput, D
 export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> | TaskDispatcherBlock;
 
 /**
+ * Any one assignee, whatever its worker's payload and output: what a registry
+ * value or a board's `defaultWorker` may hold.
+ *
+ * Not `TaskAssignee`: under `strictFunctionTypes` (any app on `strict: true`) a
+ * block's input and output types are invariant, so a typed worker fits no
+ * `unknown`-typed one (`task-board-workers-strict.test-d.ts`). The payload and
+ * output are `any`; the rest of the task envelope stays checked. A worker that
+ * requires its payload needs the second member, since an optional `input` and a
+ * required one are not interchangeable.
+ */
+export type AnyTaskAssignee =
+  | TaskWorker<any, any>
+  | BlockDefinition<any, any, TaskWorkerInput<any> & { input: any }, any>
+  | TaskDispatcherBlock;
+
+/**
  * A worker registry whose values may also be task dispatchers.
  *
  * Deliberately **not** parameterized by the board's `TInput`/`TOutput`:
@@ -65,7 +81,7 @@ export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> 
  * heterogeneous — each declares its own payload schema and the board's
  * generics describe the collection, not every route.
  */
-export type TaskAssigneeRegistry = Record<string, TaskAssignee>;
+export type TaskAssigneeRegistry = Record<string, AnyTaskAssignee>;
 
 /**
  * True when `block` is a task dispatcher — a block carrying a `task` address —

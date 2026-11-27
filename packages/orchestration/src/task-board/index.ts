@@ -154,7 +154,7 @@ import {
   isTaskDispatcher,
   resolveWorkerSlots,
   type DispatchingAssignee,
-  type TaskAssignee,
+  type AnyTaskAssignee,
   type TaskAssigneeRegistry,
   type TaskDispatcherBlock,
 } from "./dispatch-assignee";
@@ -385,7 +385,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * declared workers are never routed through it (reached only on a
    * genuine miss). Blackboard and the patterns leave it unset.
    */
-  defaultWorker?: TaskAssignee;
+  defaultWorker?: AnyTaskAssignee;
 
   // FIX-2082.
   /**
