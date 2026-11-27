@@ -7,7 +7,9 @@
  * A runner's envelope carries no credentials, so the block side cannot ask a
  * flow's resolver the way the HTTP doors do. It answers that question with the
  * run itself: a target whose flow resolves its callers with a resolver of its
- * own admits only a block of that same flow, on the run's principal. Any other
+ * own admits only a block of that same flow whose principal that same
+ * resolver produced. A principal a run inherited (a dispatch from another
+ * flow) was never that resolver's verdict, so it is not admitted on it. Any other
  * target is judged by the owner compare the routes apply (`principalOwnsRequest`
  * with the organization required), then the target instance's pin.
  *
@@ -36,6 +38,12 @@ export interface BlockCaller {
   readonly tenantId?: string;
   /** The exact instance the block runs in. */
   readonly flowId: string;
+  /**
+   * The exact instance whose own resolver produced this principal, when one
+   * did: set only on a run that entered through that instance's door. Absent
+   * for an inherited principal (a dispatch, a schedule) or the host's resolver.
+   */
+  readonly resolvedByFlowId?: string;
   /** The block's own session: the one session a caller that owns nothing still holds. */
   readonly sessionId: string;
   /** A machine principal (a schedule's gateway fallback or the system principal): owns no other session. */
@@ -58,11 +66,12 @@ export function principalOwnsNothing(source: string | undefined, metadata: unkno
 /**
  * The block side's {@link InstanceCallerResolver}: a flow with a resolver of
  * its own resolves the run's principal only for a block of that same
- * instance. Every other flow's resolver refuses it.
+ * instance, on a principal that same resolver produced. Every other flow's
+ * resolver refuses it.
  */
 function createBlockCallerResolver(caller: BlockCaller): InstanceCallerResolver {
   return async (flow) =>
-    flowAuthenticates(flow) && flow.id === caller.flowId && !caller.ownsNothing
+    flowAuthenticates(flow) && flow.id === caller.flowId && flow.id === caller.resolvedByFlowId && !caller.ownsNothing
       ? { userId: caller.userId, orgId: caller.orgId }
       : undefined;
 }

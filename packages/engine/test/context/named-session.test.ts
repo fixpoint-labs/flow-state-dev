@@ -88,7 +88,7 @@ describe("admitNamedSession", () => {
   it("admits a session of a flow with its own resolver to a block of that same flow", async () => {
     const { put, admit } = await boot();
     await put("v", { flow: "vault", userId: "alice", orgId: ORG });
-    expect((await admit(alice("vault"), "v"))?.flowKind).toBe("vault");
+    expect((await admit(alice("vault", { resolvedByFlowId: "vault" }), "v"))?.flowKind).toBe("vault");
   });
 
   // Each case: one session the caller must not reach, and the answer must be the unknown id's.
@@ -97,13 +97,18 @@ describe("admitNamedSession", () => {
     ["the same user in another org", (put) => put("b", { flow: "notes", userId: "alice", orgId: "globex" }), alice()],
     ["the same user in another tenant", (put) => put("b", { flow: "notes", userId: "alice", orgId: ORG, tenantId: "t2" }), alice("chat", { tenantId: "t1" })],
     ["a session stored with no org", (put) => put("b", { flow: "notes", userId: "alice" }), alice()],
-    ["an own-resolver instance whose pin refuses the caller", (put) => put("b", { flow: "locked", userId: "alice", orgId: ORG }), alice("locked")],
+    ["an own-resolver instance whose pin refuses the caller", (put) => put("b", { flow: "locked", userId: "alice", orgId: ORG }), alice("locked", { resolvedByFlowId: "locked" })],
     [
       "a second schedule on the gateway principal",
       (put) => put("b", { flow: "notes", userId: "gateway", orgId: ORG }),
       { userId: "gateway", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: true }
     ],
-    ["a target whose flow has its own resolver, from a block of another flow", (put) => put("b", { flow: "vault", userId: "alice", orgId: ORG }), alice("chat")]
+    ["a target whose flow has its own resolver, from a block of another flow", (put) => put("b", { flow: "vault", userId: "alice", orgId: ORG }), alice("chat")],
+    [
+      "a target whose flow has its own resolver, from a block of that flow on a principal it inherited",
+      (put) => put("b", { flow: "vault", userId: "alice", orgId: ORG }),
+      alice("vault")
+    ]
   ];
 
   for (const [name, plant, caller] of refusals) {
@@ -126,7 +131,7 @@ describe("admitNamedSession", () => {
     await put("own-person", { flow: "notes", userId: "carol", orgId: ORG });
     expect(await admit(alice(), "own-user")).toBeDefined();
     expect(await admit(alice("chat", { tenantId: "t1" }), "own-tenant")).toBeDefined();
-    expect(await admit({ ...alice("locked"), userId: "bob" }, "own-pin")).toBeDefined();
+    expect(await admit({ ...alice("locked", { resolvedByFlowId: "locked" }), userId: "bob" }, "own-pin")).toBeDefined();
     // A schedule naming a person (not a machine) reaches that person's sessions.
     expect(await admit({ userId: "carol", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: false }, "own-person")).toBeDefined();
   });
