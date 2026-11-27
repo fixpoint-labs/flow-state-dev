@@ -598,7 +598,6 @@ CREATE TABLE IF NOT EXISTS wakes (
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
 
-// FIX-2942; BP-030.
 /**
  * Add the `resolved_by` column to a `wakes` table created before it. Runs
  * after the create, since `wakes` is created if absent. Nullable with no

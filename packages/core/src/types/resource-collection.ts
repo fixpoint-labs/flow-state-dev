@@ -111,7 +111,6 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * write one instance set. Session-scope only; rejected at user/org scope.
    */
   sharedToLineage?: boolean;
-  // FIX-2942 D2.
   /**
    * The internal entry a write from another session starts a turn of, in the
    * session written (`ctx.resources.at({ session })`). The turn is a wake on

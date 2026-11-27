@@ -105,7 +105,6 @@ import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
 import { noteWakeOwed } from "../durability/request-wakes";
 
-// FIX-2942 D2.
 /**
  * How long a wake a write from another session owes waits before its turn
  * runs: the writes that land within it fold into that one turn. The same
@@ -2114,7 +2113,6 @@ export async function createExecutionContext<
   const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
     scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
-  // FIX-2942.
   /**
    * One copy's cache and address: what the lazy loaders and the per-key
    * writers below read and write. A run holds its own session's, user's and
@@ -3635,7 +3633,6 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
-  // FIX-2942.
   /**
    * `ctx.resources.at({ session })`: another session's copy of this flow's
    * session-scoped collections, by this flow's definitions. Each verb waits
@@ -3716,7 +3713,7 @@ export async function createExecutionContext<
       onResourceChanged: makeResourceChangeHandler("session", {
         sessionId: target,
         ownerUserId: record.userId,
-        // FIX-2942 D2: a turn this write starts is a wake on the session's
+        // a turn this write starts is a wake on the session's
         // entry, owed once the write has landed (so the wake guards nothing
         // still in flight), coalescing with every other write's before it runs.
         wake: async (storageKey) => {
@@ -3749,6 +3746,8 @@ export async function createExecutionContext<
     if (viewDependencies !== undefined) {
       throw new Error("A view reads its own copies: `ctx.resources.at` is not available in a view.");
     }
+    // The run's own session is its own copy, through the one cache it already holds.
+    if (named === sessionId) return flatResourcesRegistry;
     /** The named copy, or the refusal every verb shares. */
     const open = async (): Promise<ResourceRegistry<Record<string, AnyResourceRef>>> => {
       fenceNamedReach(namedFence, named);
@@ -3784,12 +3783,18 @@ export async function createExecutionContext<
         `Resource "${name}" can't be reached in another session: \`ctx.resources.at\` reaches the session-scoped, stored collections`
       );
     };
-    return {
+    const copy = {
       ...handles,
       get: (name: string) => resolve(String(name)),
       list: () => Object.values(handles),
       at: atSession
-    } as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
+    };
+    // Any other accessor this flow declares refuses by property, as it does by name.
+    for (const accessor of Object.keys(accessorScope)) {
+      if (accessor in copy) continue;
+      Object.defineProperty(copy, accessor, { enumerable: false, get: () => resolve(accessor) });
+    }
+    return copy as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
   };
   (flatResourcesRegistry as { at: unknown }).at = atSession;
 

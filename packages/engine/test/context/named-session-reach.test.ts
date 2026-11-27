@@ -11,7 +11,7 @@
  * leak onto a topic the caller hears.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowRegistry, defaultBodyUserIdPrincipalResolver, runAction } from "../../src";
 import { createInboundTransportHost, createInMemoryBus, createInMemoryStores } from "../../src/host";
@@ -21,6 +21,8 @@ import type { StoreRegistry } from "../../src/stores/types";
 
 const ORG = "acme";
 
+/** A single resource: its state is read synchronously, so it can't wait on another session's admission. */
+const prefs = defineResource({ scope: "session", stateSchema: z.object({ theme: z.string().default("light") }) });
 const notes = defineResourceCollection({
   pattern: "notes/*",
   scope: "session",
@@ -88,7 +90,7 @@ const reach = handler({
   }
 });
 
-const flowA = defineFlow({ kind: "alpha", actions: { seed, reach }, internal: { actions: { reach: { block: reach } } }, resources: { notes, inbox } })();
+const flowA = defineFlow({ kind: "alpha", actions: { seed, reach }, internal: { actions: { reach: { block: reach } } }, resources: { notes, inbox, prefs } })();
 const flowB = defineFlow({
   kind: "beta",
   actions: { seed, reach },
@@ -103,7 +105,7 @@ async function boot() {
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: createInMemoryBus() };
   const runtimeConfig = { requestHost: { flows: registry, wakes: { maxDebtAgeMs: 86_400_000 } } };
   const as = (userId: string, orgId = ORG) => ({ userId, orgId, principalKind: "person" as const, source: "http" });
-  const seedIn = async (flow: typeof flowA, sessionId: string, text: string, who = as("alice")) => {
+  const seedIn = async (flow: typeof flowA | typeof flowB, sessionId: string, text: string, who = as("alice")) => {
     const result = await runAction({ flow, actionName: "seed", input: { text }, sessionId, stores, runtimeConfig, ...who });
     expect(result.error).toBeUndefined();
   };
@@ -282,6 +284,20 @@ describe("ctx.resources.at({ session })", () => {
     expect(woken).toEqual([{ session: "b", rows: 20 }]);
   });
 
+  it("naming the run's own session is its own copy: one cache, its reactTo, no wake", async () => {
+    reacted.length = 0;
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    const seen = await env.reachFrom(async (ctx) => {
+      await ctx.resources.at({ session: "a" }).inbox.create("m1", { text: "own" });
+      // The run's own handle sees the write at once, from the same cache.
+      return (await ctx.resources.inbox.getOptional("m1"))?.state.text ?? null;
+    });
+    expect(seen).toEqual({ ok: "own" });
+    expect(reacted).toEqual(["a"]);
+    expect(await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).toEqual([]);
+  });
+
   it("a session's own writes start no wake: its reactTo answers them, as before", async () => {
     reacted.length = 0;
     const env = await boot();
@@ -289,5 +305,15 @@ describe("ctx.resources.at({ session })", () => {
     await env.reachFrom(async (ctx) => (await ctx.resources.inbox.create("m1", { text: "own" })).state.text);
     expect(reacted).toEqual(["a"]);
     expect(await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).toEqual([]);
+  });
+
+  it("a single resource can't be reached in another session: naming one throws, by property or by name", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    const byProperty = (await env.reachFrom(async (ctx) => ctx.resources.at({ session: "b" }).prefs.state)) as { error?: string };
+    const byName = (await env.reachFrom(async (ctx) => ctx.resources.at({ session: "b" }).get("prefs").state)) as { error?: string };
+    expect(byProperty.error).toContain("can't be reached in another session");
+    expect(byName.error).toBe(byProperty.error);
   });
 });

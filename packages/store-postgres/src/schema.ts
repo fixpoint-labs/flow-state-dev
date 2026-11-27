@@ -341,7 +341,6 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
-// FIX-2942; BP-030.
 /**
  * Add `resolved_by` to a `wakes` table created before it. Nullable with no
  * backfill: a wake kept from before names no resolver, and so admits no
@@ -809,7 +808,7 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // every existing row as its person's own cell. See the migration's note.
   ADD_SCHEDULE_INDEX_CELL_MIGRATION,
 
-  // FIX-2942: the resolver identity a wake's run carries.
+  // the resolver identity a wake's run carries.
   ADD_WAKES_RESOLVED_BY_MIGRATION
 ];
 

@@ -803,6 +803,27 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 
 **Sharing does not imply serialization.** Two child sessions writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 
+## Another session's copy
+
+A scope is how many copies of a resource exist: one per session, per user or per org. The owner decides who may look at a copy. A block reaches another session's copy by naming that session:
+
+```ts
+ctx.resources.notes                                // this session's copy
+ctx.resources.at({ session: launchChatId }).notes  // the launch chat's copy, read and write
+```
+
+`at({ session })` returns the session-scoped, stored collections this flow declares, read through **this flow's definitions** at the named session's address. List, count, `get`, `findBy` and every write act on that one copy and nothing else: no verb sweeps every session. A `sharedToLineage` collection addresses the named session's lineage root, as it would in that session's own run. Single resources and projected collections are not reachable this way yet; naming one throws.
+
+**Admission is the routes'.** Every verb waits on one admission per named session per run, `admitNamedSession` (`context/named-session.ts`): the routes' own admission (`admitSession`), fed the run's principal instead of HTTP credentials. A machine's run, or a run in a machine's session, reaches none. A session another user, org or tenant holds, a session with no org, one an own-resolver flow refuses (its resolver is not the principal's `resolvedBy`), and an id no one holds all answer every verb the same way: rejected with `SessionNotFoundError`, whose message names neither the id nor why. The run's own session, named, is its own.
+
+**Writes are versioned, not locked.** The named copy has its own cache, filled lazily, and its writes go through the same per-key CAS as the run's own (`CopyCell` in `createExecutionContext.ts`). Two sessions writing one copy conflict as two local writers do, and the definition's checks arbitrate. Nothing serializes them across sessions.
+
+**The session written hears it.** A write publishes on the named session's change-bus topics (and its owner's user topic for a lineage-shared key), exactly as a write in that session would, and never on the caller's stream or topics. Whether it starts a turn there is the definition's call: a collection that declares `wakeEntry` owes a wake on that session and entry once the write has landed. Wakes coalesce per tenant, session and entry, and the wake waits two seconds, so a burst of writes starts one turn, which reads what changed rather than one event, and settles its wake as every wake's entry does (`requestHost.wakes.read` / `settle`). The named session's `reactTo` blocks never run inside the writer's turn; `reactTo` answers a session's own writes. The wake carries the writer's `resolvedBy`, kept only while every write folded into it names the same one, so the woken turn reaches what that resolver admits; a wake stored before the field carries none and reaches no own-resolver session. On a host that keeps no wakes, a write is heard on the bus and starts no turn.
+
+**A webhook turn reaches nothing but its own session.** A turn a webhook delivery started, or a run that delivery fired (its routing and owner runs, which carry the delivery's origin, `readDeliveryOrigin`), is refused on every verb with `UntrustedReachError`, which names the rule and not the target, before anything is looked up. The fence lives in one function, `fenceNamedReach`, so widening it to every untrusted turn changes one place. A board's settle on its claimed task's session and a subscription delivery don't name a session; they take it from a server-held record and keep their own checks.
+
+**When to use `ctx.sessions` instead.** `ctx.resources.at` is for another session's *resources*. For what isn't a resource (another session's flow, its readable state fields, its history and turns, the owner's session list) use `ctx.sessions`, which reaches no resources. A view reads its own copies: `at` throws in a view.
+
 ## Streaming Integration
 
 State and resource mutations emit streaming events:

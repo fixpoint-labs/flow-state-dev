@@ -109,7 +109,6 @@ export type CreateExecutionContextOptions<
    * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
-  // FIX-2942.
   /**
    * The kind of the principal this run runs as, as its door set it
    * (`context/principal.ts`). Absent → the request record's, then the
@@ -268,7 +267,6 @@ export type RequestHostConstructionInputs = {
    * same fail-closed shape `dispatchOperation` has.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
-  // FIX-2942.
   /**
    * The host's flow registry, as a named reach's admission reads it
    * (`admitNamedSession`): which flow owns a session, and which resolver

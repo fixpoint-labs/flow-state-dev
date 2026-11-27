@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshPglite } from "./shared-pglite";
 import { initializeSchema } from "../src/schema";
-import type { QueryExecutor } from "../src/host";
+import { createPostgresWakeStore, type QueryExecutor } from "../src/host";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {
@@ -209,5 +209,28 @@ describe("project → org schema migration (postgres)", () => {
     `);
     await initializeSchema(pgliteExecutor(pglite));
     await expect(initializeSchema(pgliteExecutor(pglite))).resolves.not.toThrow();
+  });
+
+  // A wake kept before wakes carried a resolver identity must still be read,
+  // and read as naming none, so its run reaches no own-resolver session.
+  it("adds wakes.resolved_by to an older wakes table; a kept wake reads back with none", async () => {
+    const pglite = await freshPglite();
+    await pglite.exec(`
+      CREATE TABLE wakes (
+        tenant_key TEXT NOT NULL, session_id TEXT NOT NULL, entry TEXT NOT NULL,
+        flow_kind TEXT NOT NULL, user_id TEXT NOT NULL, org_id TEXT NOT NULL,
+        due_at BIGINT NOT NULL, land_by BIGINT NOT NULL, version BIGINT NOT NULL,
+        created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+        PRIMARY KEY (tenant_key, session_id, entry)
+      );
+      INSERT INTO wakes VALUES ('', 's1', 'dispatch', 'desk', 'u1', 'o1', 5, 6, 1, 1, 1);
+    `);
+    const executor = pgliteExecutor(pglite);
+    await initializeSchema(executor);
+    expect(await columnExists(pglite, "wakes", "resolved_by")).toBe(true);
+    const store = createPostgresWakeStore(executor);
+    const kept = await store.get({ sessionId: "s1", entry: "dispatch" });
+    expect(kept).toMatchObject({ dueAt: 5, landBy: 6 });
+    expect(kept?.resolvedBy).toBeUndefined();
   });
 }, { timeout: 30000 });

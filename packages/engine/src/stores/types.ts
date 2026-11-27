@@ -107,7 +107,6 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * its first request record instead (`context/session-kind.ts`).
    */
   principalKind?: PrincipalKind;
-  // FIX-2942; BP-030.
   /**
    * The incarnation of the session that dispatched this one
    * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
@@ -178,7 +177,6 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
-  // FIX-2942; BP-030.
   /**
    * The kind of the principal this request runs as, as its door set it
    * (`context/principal.ts`). A run started from this record (a continuation,
@@ -1898,7 +1896,6 @@ export type WakeInput = WakeKey & {
    * wake here rather than clearing it.
    */
   readonly landBy: number;
-  // FIX-2942; BP-030.
   /**
    * The resolver identity that produced the writer's principal
    * (`Principal.resolvedBy`), which the woken run carries, so it reaches the

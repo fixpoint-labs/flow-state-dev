@@ -114,7 +114,6 @@ export class UntrustedReachError extends Error {
   }
 }
 
-// FIX-2942 D1.
 /**
  * The fence on a named reach, decided here and nowhere else: a turn a
  * webhook delivery started, or a run that delivery fired, reaches no session

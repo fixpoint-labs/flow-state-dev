@@ -6,6 +6,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { initializeSchema } from "../src/schema";
+import { createSQLiteWakeStore } from "../src/wake-store";
 
 function tableInfo(db: Database.Database, table: string): string[] {
   return (
@@ -236,6 +237,33 @@ describe("project → org schema migration", () => {
 
     initializeSchema(db);
     expect(() => initializeSchema(db)).not.toThrow();
+    db.close();
+  });
+});
+
+// A wake kept before wakes carried a resolver identity must still be read,
+// and read as naming none, so its run reaches no own-resolver session.
+describe("wakes.resolved_by migration", () => {
+  it("adds the column to an older wakes table; a kept wake reads back with no resolvedBy", async () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE wakes (
+        tenant_key TEXT NOT NULL, session_id TEXT NOT NULL, entry TEXT NOT NULL,
+        flow_kind TEXT NOT NULL, user_id TEXT NOT NULL, org_id TEXT NOT NULL,
+        due_at INTEGER NOT NULL, land_by INTEGER NOT NULL, version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        PRIMARY KEY (tenant_key, session_id, entry)
+      );
+    `);
+    db.prepare(`INSERT INTO wakes VALUES ('', 's1', 'dispatch', 'desk', 'u1', 'o1', 5, 6, 1, 1, 1)`).run();
+    initializeSchema(db);
+    expect(tableInfo(db, "wakes")).toContain("resolved_by");
+    const store = createSQLiteWakeStore(db);
+    const kept = await store.get({ sessionId: "s1", entry: "dispatch" });
+    expect(kept).toMatchObject({ dueAt: 5, landBy: 6 });
+    expect(kept?.resolvedBy).toBeUndefined();
+    const owed = await store.owe({ sessionId: "s1", entry: "dispatch", flowKind: "desk", userId: "u1", orgId: "o1", dueAt: 9, landBy: 9, resolvedBy: "vault" });
+    expect(owed.resolvedBy).toBeUndefined();
     db.close();
   });
 });
