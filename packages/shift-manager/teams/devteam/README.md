@@ -72,8 +72,8 @@ The profile's seed opens two workstreams in
 Storefront, `feature` and `release`, as the lab's second user, each led by the
 EM. A line said in a workstream, or a project coordinator's hand-off to it,
 reaches the EM in that workstream's session, and the EM files the coder's tasks
-on that session's board, each naming its issue and its phase under
-`harnessFeature`. The hand-off from
+on that session's board, each in mode `implement` with its issue.
+The hand-off from
 the board to the coder underneath is unchanged.
 
 These are the lab's rather than the framework's, each because the framework has
@@ -82,7 +82,7 @@ no opinion at that spot — not because a convention is missing.
 | File | Why it is the lab's |
 |---|---|
 | `workforce/flows/workers/em.mts` | The coordinator worker flow. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the worker flow, not about one run. |
-| `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The working worker flow, `coder`, is the harness kit's (`@flow-state-dev/harness-manager/kit`), configured here with two modes: `implement`, for a task carrying the `harnessFeature` marker, which needs a commit, and `answer`, for any other, which needs an answer and works in the `answers` host. The kit's judge (`goalJudge`, on Jev) reads both, and the Lab adds its `document:` setting, its documents and its `inspect` read. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
+| `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The working worker flow, `coder`, is the harness kit's (`@flow-state-dev/harness-manager/kit`), configured here with two modes: `implement`, for a task filed in that mode with its issue, which needs a commit, and `answer`, for any other, which needs an answer and works in the `answers` host. The kit's judge (`goalJudge`, on Jev) reads both, and the Lab adds its `document:` setting, its documents and its `inspect` read. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 

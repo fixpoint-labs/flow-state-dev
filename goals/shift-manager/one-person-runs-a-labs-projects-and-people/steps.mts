@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
+import { suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import { readTree } from "../../lib/workers.mts";
 import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
@@ -328,8 +329,9 @@ export async function inboxAsks(world: World): Promise<string[]> {
  *
  * @returns What the card said, and whether the answer landed.
  */
-export async function answerInInbox(world: World, suspensionId: string, action: "Approve" | "Reject"): Promise<{ card: string; clicked: boolean }> {
-  await world.open(`/inbox/${encodeURIComponent(suspensionId)}`);
+export async function answerInInbox(world: World, ask: { requestId: string; suspensionId: string }, action: "Approve" | "Reject"): Promise<{ card: string; clicked: boolean }> {
+  const { suspensionId } = ask;
+  await world.open(`/inbox/${encodeURIComponent(suspensionHoldId(ask.requestId, suspensionId))}`);
   const card = world.page.locator(`[data-testid=ask-card][data-suspension-id="${suspensionId}"]`);
   try {
     await card.waitFor({ timeout: 15_000 });

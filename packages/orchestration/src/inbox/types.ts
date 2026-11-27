@@ -40,7 +40,7 @@ export type OwnHoldSource = {
 
 /** One open hold an item shows. */
 export type InboxHold<TDetail = unknown> = {
-  /** A suspension hold's suspension id; an own hold's own id. */
+  /** A suspension hold's request and suspension (`suspensionHoldId`); an own hold's own id. */
   readonly id: string;
   /** What answers it: a suspension through the engine, an own hold through the board. */
   readonly source: SuspensionHoldSource | OwnHoldSource;
@@ -68,7 +68,7 @@ export type InboxTask = {
 
 /** One thing waiting on the user. */
 export type InboxItem<TDetail = unknown> = {
-  /** Its address in the Inbox: a task's item by its board and task, else a lone suspension's id. */
+  /** Its address in the Inbox: a task's item by its board and task, else its lone suspension's hold id. */
   readonly id: string;
   /** The task it holds; `null` for a suspension in a request with no task. */
   readonly task: InboxTask | null;

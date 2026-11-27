@@ -70,7 +70,7 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
   // reads it, else the worker's file. `createTask` unsuffixed: Workforce's
   // conversation board mounts the task tools with no `nameSuffix`, so a
   // worker on this flow always sees that name.
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const delegates: readonly string[] | "all" = Array.isArray(state[DELEGATES_STATE])
     ? currentDelegates(state, { delegates: [] }).delegates.map((record) => record.worker)
     : me.delegates;

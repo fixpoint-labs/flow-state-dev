@@ -359,7 +359,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   );
   return (
     <SessionOverlay
-      variant="modal"
+      variant="sheet"
+      docked
       label={line}
       title={title}
       icon={coding ? <SquareTerminalIcon className="size-[18px]" /> : undefined}

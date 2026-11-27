@@ -13,7 +13,7 @@ import { conversationLedgerAt } from "./ledger";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 
 function stringAt(ctx: BlockContext, key: string): string | undefined {
-  const value = ((ctx.session.state ?? {}) as Record<string, unknown>)[key];
+  const value = ctx.session.state[key];
   return typeof value === "string" ? value : undefined;
 }
 

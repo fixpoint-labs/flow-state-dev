@@ -2,9 +2,9 @@
  * The issue a coding run is for, and its spec brief.
  *
  * A run can be told which tracker issue it works on (`ENG-142`): a harness
- * session is born with one, and a board task names one under
- * `harnessFeature: { issue }`. This module holds the two things both entries
- * share about it:
+ * session is born with one, and a board task names one in its input (the
+ * coding flow's `issue`). This module holds the two things both entries share
+ * about it:
  *
  * - **The grammar** ({@link isTrackerIssue}): letters and digits in runs
  *   joined by single `-` or `_`, so the key can be a path segment and a git

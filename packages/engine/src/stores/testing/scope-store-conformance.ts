@@ -429,6 +429,87 @@ export function createScopeStoreConformanceTests(
       }
     });
 
+    // FIX-2942: a session's recorded principal kind is written once, at birth,
+    // and kept by `set` whatever a later whole-record write carries, so a
+    // writer holding a stale snapshot can't turn a machine's session into a
+    // person's.
+    describe("a session's principal kind is kept by set", () => {
+      const withKind = (record: SessionRecord, principalKind: "person" | "machine" | undefined): SessionRecord => {
+        const { principalKind: _dropped, ...rest } = record;
+        return principalKind === undefined ? rest : { ...rest, principalKind };
+      };
+
+      it("keeps a machine's kind against a stale person snapshot written unconditionally", async () => {
+        await withStore(async (store) => {
+          const stale = withKind(makeSession("s1", 0, { from: "first" }), "person");
+          await store.set("s1", withKind(makeSession("s1", 0), "machine"), "absent");
+
+          expect((await store.set("s1", { ...stale, version: 1 }, "any")).ok).toBe(true);
+
+          const stored = await store.get("s1");
+          expect(stored?.principalKind).toBe("machine");
+          expect(stored?.state).toEqual({ from: "first" });
+        });
+      });
+
+      it("keeps a machine's kind against a version-matched write carrying person", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withKind(makeSession("s1", 0), "machine"), "absent");
+          await store.set("s1", withKind(makeSession("s1", 1), "person"), 0);
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+        });
+      });
+
+      it("keeps the stored kind when a write omits it", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withKind(makeSession("s1", 0), "person"), "absent");
+          await store.set("s1", withKind(makeSession("s1", 1), undefined), "any");
+          expect((await store.get("s1"))?.principalKind).toBe("person");
+        });
+      });
+
+      // BP-030: a session from before the field gets its backfilled kind once,
+      // and from then on it is kept like a born one.
+      it("writes the first kind onto a record stored without one, then keeps it", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withKind(makeSession("s1", 0), undefined), "absent");
+          expect((await store.set("s1", withKind(makeSession("s1", 1), "machine"), 0)).ok).toBe(true);
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+          await store.set("s1", withKind(makeSession("s1", 2), "person"), "any");
+          await store.set("s1", withKind(makeSession("s1", 3), undefined), "any");
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+        });
+      });
+
+      it("writes the kind a create carries", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withKind(makeSession("s1", 0), "machine"), "absent");
+          await store.set("s2", withKind(makeSession("s2", 0), "person"), "any");
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+          expect((await store.get("s2"))?.principalKind).toBe("person");
+        });
+      });
+
+      it.runIf(createSharedPair !== undefined)(
+        "keeps a reborn machine's kind against a person snapshot another connection read before the delete",
+        async () => {
+          const pair = await (createSharedPair as NonNullable<typeof createSharedPair>)();
+          try {
+            await pair.a.set("s1", withKind(makeSession("s1", 0), "person"), "absent");
+            const snapshot = await pair.b.get("s1");
+            await pair.a.delete("s1");
+            await pair.a.set("s1", withKind(makeSession("s1", 0), "machine"), "absent");
+
+            await pair.b.set("s1", { ...(snapshot as SessionRecord), version: 1 }, "any");
+
+            expect((await pair.a.get("s1"))?.principalKind).toBe("machine");
+          } finally {
+            await pair.cleanup?.();
+          }
+        }
+      );
+    });
+
     describe.runIf(createSharedPair !== undefined)("across two connections", () => {
       async function withPair(
         fn: (a: ScopeStoreUnderTest, b: ScopeStoreUnderTest) => Promise<void>
