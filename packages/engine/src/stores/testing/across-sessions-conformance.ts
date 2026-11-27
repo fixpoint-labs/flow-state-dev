@@ -111,6 +111,19 @@ export function createAcrossSessionsConformanceTests(options: CreateAcrossSessio
         expect(keysOf(rows)).toEqual(["s-a notes/1", "s-a notes/2", "s-a-child notes/9", "s-b notes/1"]);
         expect(rows[0]!.state).toEqual({ text: "notes/1" });
         expect(rows[0]!.version).toBe(1);
+        // The session's owner and flow, as its record holds them: what the per-row admission judges.
+        expect(rows[0]!.session).toEqual({ flowKind: "notes-flow", flowId: "notes-flow", userId: "alice", orgId: "acme" });
+      });
+    });
+
+    it("carries a tenant-bound session's tenant with its row", async () => {
+      await withStore(async (store) => {
+        await session(store, "t1:a", { tenantId: "t1" });
+        await row(store, "t1:a", "notes/1");
+        const rows = await list(store, query({ owner: { ...ALICE, tenantId: "t1" } }));
+        expect(rows.map((r) => r.session)).toEqual([
+          { flowKind: "notes-flow", flowId: "notes-flow", userId: "alice", orgId: "acme", tenantId: "t1" }
+        ]);
       });
     });
 

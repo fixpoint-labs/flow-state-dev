@@ -12,6 +12,7 @@ import { FlowStateConfigError } from "../errors/flow-error";
 import type {
   AcrossSessionsQuery,
   AcrossSessionsStoredRow,
+  SessionRecord,
   SessionStore,
   VersionedResourceState
 } from "./types";
@@ -32,6 +33,17 @@ export function compareByCodePoint(a: string, b: string): number {
     const diff = (l.value.codePointAt(0) as number) - (r.value.codePointAt(0) as number);
     if (diff !== 0) return diff;
   }
+}
+
+/** A session record's owner and flow, as a stored row of the read carries them. */
+function sessionIdentity(record: SessionRecord): AcrossSessionsStoredRow["session"] {
+  return {
+    flowKind: record.flowKind,
+    ...(record.flowId != null ? { flowId: record.flowId } : {}),
+    userId: record.userId,
+    ...(record.orgId != null ? { orgId: record.orgId } : {}),
+    ...(record.tenantId != null ? { tenantId: record.tenantId } : {})
+  };
 }
 
 /** The refusal a resource-state store built without its session store gives the read. */
@@ -60,12 +72,13 @@ export async function listAcrossSessions(
     parentage: "all"
   });
   const after = query.after;
-  const keys = owned
-    .map((record) => record.id)
-    .filter((key) => after === undefined || compareByCodePoint(key, after.sessionKey) >= 0)
-    .sort(compareByCodePoint);
+  const records = owned
+    .filter((record) => after === undefined || compareByCodePoint(record.id, after.sessionKey) >= 0)
+    .sort((a, b) => compareByCodePoint(a.id, b.id));
   const rows: AcrossSessionsStoredRow[] = [];
-  for (const sessionKey of keys) {
+  for (const record of records) {
+    const sessionKey = record.id;
+    const session = sessionIdentity(record);
     const stored = await rowsOf(sessionKey, query.keyPrefix);
     const inSession = Object.keys(stored)
       .filter((key) => key.startsWith(query.keyPrefix))
@@ -74,7 +87,7 @@ export async function listAcrossSessions(
       .sort(compareByCodePoint);
     for (const key of inSession) {
       const row = stored[key]!;
-      rows.push({ sessionKey, key, state: row.state, version: row.version });
+      rows.push({ sessionKey, session, key, state: row.state, version: row.version });
       if (rows.length >= query.limit) return rows;
     }
   }

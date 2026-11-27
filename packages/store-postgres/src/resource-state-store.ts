@@ -532,7 +532,8 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         where.push(`(s.id COLLATE "C" > ${sessionKey} OR rs.resource_key COLLATE "C" > ${param(after.key)})`);
       }
       const result = await executor.query(
-        "SELECT s.id AS session_key, rs.resource_key, rs.state, rs.version " +
+        "SELECT s.id AS session_key, s.flow_kind, s.flow_id, s.user_id, s.org_id, s.tenant_id, " +
+          "rs.resource_key, rs.state, rs.version " +
           "FROM sessions s JOIN resource_state rs ON rs.scope_id = s.id " +
           `WHERE ${where.join(" AND ")} ` +
           `ORDER BY s.id COLLATE "C", rs.resource_key COLLATE "C" LIMIT ${param(query.limit)}`,
@@ -540,6 +541,13 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       );
       return result.rows.map((row) => ({
         sessionKey: row.session_key as string,
+        session: {
+          flowKind: row.flow_kind as string,
+          ...(row.flow_id != null ? { flowId: row.flow_id as string } : {}),
+          userId: row.user_id as string,
+          ...(row.org_id != null ? { orgId: row.org_id as string } : {}),
+          ...(row.tenant_id != null ? { tenantId: row.tenant_id as string } : {})
+        },
         key: row.resource_key as string,
         state: row.state as JsonObject,
         version: Number(row.version)

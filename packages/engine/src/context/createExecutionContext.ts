@@ -82,6 +82,7 @@ import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import {
   ConcurrentModificationError,
+  FlowStateConfigError,
   ResourceAlreadyExistsError
 } from "../errors/flow-error";
 import type { TraceStore, VersionedResourceState } from "../stores/types";
@@ -103,6 +104,7 @@ import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
+import { createAcrossSessions } from "./across-sessions";
 import { resolveRecordOwner } from "./record-owner";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { noteWakeOwed } from "../durability/request-wakes";
@@ -775,6 +777,14 @@ export async function createExecutionContext<
     else if (scope === "org") orgResourceConfigs[accessor] = def;
     else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
     accessorScope[accessor] = scope;
+  }
+
+  // The session-scoped stored collections, read across the owner's sessions
+  // (`ctx.resources.acrossSessions()`): kept before a view with no session
+  // drops its session declarations below, since a user view reads them there.
+  const acrossSessionConfigs: Record<string, ResourceCollectionConfig> = Object.create(null);
+  for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
+    if (isNamedReachable(config)) acrossSessionConfigs[accessor] = config;
   }
 
   // FIX-2623: a user or org view has no session, so it installs none of the
@@ -3876,6 +3886,32 @@ export async function createExecutionContext<
     return copy as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
   };
   (flatResourcesRegistry as { at: unknown }).at = atSession;
+
+  /**
+   * `ctx.resources.acrossSessions()`: this flow's session-scoped collections
+   * read across every session the run's owner has (`across-sessions.ts`).
+   * Each row is admitted as `ctx.resources.at` admits its session; a view's
+   * read is heard on the owner's change topic for each collection it lists.
+   */
+  let acrossSessionsHandles: ReturnType<typeof createAcrossSessions> | undefined;
+  const acrossSessions = (): ReturnType<typeof createAcrossSessions> => {
+    if (acrossSessionsHandles !== undefined) return acrossSessionsHandles;
+    const flows = options.requestHost?.flows;
+    if (flows === undefined) {
+      throw new FlowStateConfigError("`ctx.resources.acrossSessions()` needs the host's flow registry, to admit each session as the routes do.");
+    }
+    acrossSessionsHandles = createAcrossSessions({
+      configs: acrossSessionConfigs,
+      store: stores.resourceState,
+      admission: { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
+      owner: { userId, orgId: resolvedOrgId, tenantId: options.tenantId },
+      actorUserId: userId,
+      origin: namedFence.origin,
+      sharesLineage: (prefix) => sharesLineageRef.current({ prefix })
+    });
+    return acrossSessionsHandles;
+  };
+  (flatResourcesRegistry as { acrossSessions: unknown }).acrossSessions = acrossSessions;
 
   // FIX-2625: a task board's ledger is named by the accessor whose handle its
   // task collection read through, and lives at that accessor's scope.

@@ -1783,6 +1783,12 @@ export type AcrossSessionsQuery = {
 export type AcrossSessionsStoredRow = {
   /** The session's storage key (`resolveSessionStorageKey`). */
   sessionKey: string;
+  /**
+   * The session's owner and flow, as its record holds them, read in the same
+   * statement: what the engine's per-row admission judges, so a page costs no
+   * session read of its own.
+   */
+  session: Pick<SessionRecord, "flowKind" | "flowId" | "userId" | "orgId" | "tenantId">;
   key: string;
   state: JsonObject;
   version: number;

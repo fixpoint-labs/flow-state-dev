@@ -148,7 +148,8 @@ export function createSQLiteResourceStateStore(
     let statement = acrossStatements.get(id);
     if (statement === undefined) {
       statement = db.prepare(
-        "SELECT s.id AS sessionKey, rs.resource_key AS key, rs.state AS state, rs.version AS version " +
+        "SELECT s.id AS sessionKey, s.flow_kind AS flowKind, s.flow_id AS flowId, s.user_id AS userId, " +
+          "s.org_id AS orgId, s.tenant_id AS tenantId, rs.resource_key AS key, rs.state AS state, rs.version AS version " +
           "FROM sessions s CROSS JOIN resource_state rs " +
           "WHERE s.user_id = ? AND s.tenant_id IS ? AND s.org_id IS ? " +
           "AND rs.scope_type = 'session' AND rs.scope_id = s.id AND rs.lifecycle = 'live' " +
@@ -561,9 +562,26 @@ export function createSQLiteResourceStateStore(
         ...(index !== undefined ? [index.collection, index.index, index.value, index.collection, index.index] : []),
         ...(after !== undefined ? [after.sessionKey, after.sessionKey, after.key] : []),
         query.limit
-      ) as Array<{ sessionKey: string; key: string; state: string; version: number }>;
+      ) as Array<{
+        sessionKey: string;
+        flowKind: string;
+        flowId: string | null;
+        userId: string;
+        orgId: string | null;
+        tenantId: string | null;
+        key: string;
+        state: string;
+        version: number;
+      }>;
       return rows.map((row) => ({
         sessionKey: row.sessionKey,
+        session: {
+          flowKind: row.flowKind,
+          ...(row.flowId !== null ? { flowId: row.flowId } : {}),
+          userId: row.userId,
+          ...(row.orgId !== null ? { orgId: row.orgId } : {}),
+          ...(row.tenantId !== null ? { tenantId: row.tenantId } : {})
+        },
         key: row.key,
         state: JSON.parse(row.state) as JsonObject,
         version: row.version
