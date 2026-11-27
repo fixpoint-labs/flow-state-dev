@@ -22,7 +22,7 @@ import {
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import { userSeedCell } from "../internal/user-cell";
 import { answerThroughRoute } from "./answerThroughRoute";
-import type { TestFlowAnswer, TestFlowOptions, TestFlowResult } from "./types";
+import type { TestFlowAnswer, TestFlowOptions, TestFlowResult, TestStateSeed } from "./types";
 
 function normalizeStatus(
   value: RequestStatus | undefined
@@ -42,16 +42,11 @@ async function seedFlowStores(options: {
   flow: FlowInstance;
   action: string;
   requestId: string;
-  sessionId?: string;
+  sessionId: string;
   /** The org the run uses: the seeded org, or `DEFAULT_ORG_ID`. */
   orgId: string;
   userId: string;
-  seed?: {
-    request?: { state?: Record<string, unknown> };
-    session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-  };
+  seed?: TestStateSeed;
 }): Promise<void> {
   const now = Date.now();
 
@@ -116,7 +111,9 @@ async function seedFlowStores(options: {
     await seedResourceState("org", options.orgId, options.seed?.org?.resources);
   }
 
-  if (options.sessionId !== undefined) {
+  // A fixture represents an existing session. Otherwise runAction creates
+  // the session and applies the flow's schema defaults at creation time.
+  if (options.seed?.session !== undefined) {
     const existing = await options.stores.session.get(options.sessionId);
     if (existing === undefined) {
       await options.stores.session.set(options.sessionId, {
@@ -127,7 +124,7 @@ async function seedFlowStores(options: {
         orgId: options.orgId,
         metadata: undefined,
         latestRequestId: undefined,
-        state: toJsonObject(cloneValue(options.seed?.session?.state ?? {})),
+        state: toJsonObject(cloneValue(options.seed.session.state ?? {})),
         version: 0,
         createdAt: now,
         updatedAt: now,
@@ -137,7 +134,7 @@ async function seedFlowStores(options: {
         principalKind: "person"
       }, "any");
     }
-    await seedResourceState("session", options.sessionId, options.seed?.session?.resources);
+    await seedResourceState("session", options.sessionId, options.seed.session.resources);
   }
 
   if (options.seed?.request !== undefined) {
