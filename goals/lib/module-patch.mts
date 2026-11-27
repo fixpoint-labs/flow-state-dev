@@ -33,7 +33,7 @@ const HOOK = fileURLToPath(new URL("./module-patch.mjs", import.meta.url));
  * 1 (FAIL), nor 3 (CAN'T TELL): the control never ran, so it neither failed
  * its row nor passed it.
  */
-export const PATCH_TARGET_MISSING_EXIT = 4;
+const PATCH_TARGET_MISSING_EXIT = 4;
 
 /**
  * The environment that applies `patches` to a process serving the checkout at
