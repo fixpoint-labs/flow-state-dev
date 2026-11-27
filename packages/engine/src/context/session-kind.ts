@@ -36,7 +36,9 @@
  * disagree it reads as a machine's. Once retention prunes the birth request,
  * the oldest one left is a later turn's, and doesn't count.
  *
- * Two cases the stored times can't settle:
+ * Cases the stored times can't settle. Each one needs a request from the
+ * session's own user, org, tenant and flow, and each affects only sessions
+ * from before kinds (a session born now records its kind):
  *
  * - A predecessor's run still in flight while its session is deleted and the
  *   id is taken again looks live at the birth. Against a birth written at or
@@ -44,9 +46,15 @@
  *   Against a birth written after (a dispatch, or the session-create route's
  *   first turn) it is the only live request, and the session reads as the
  *   predecessor's kind.
- * - A queued action whose run created the session and then crashed before
- *   writing its request again looks finished before the birth; the session
- *   reads as its first later turn's kind, or a machine's with none.
+ * - A person request queued before the birth, which waits at the gate while
+ *   a dispatch births the session, is written again after the birth. It
+ *   reads as the live birth, and the session reads as a person's. That
+ *   case looks exactly like a person birth followed moments later by a wake
+ *   or notice delivery. Backfill favours the ordinary conversation.
+ * - A queued action whose run created the session and then never wrote its
+ *   request again looks finished before the birth: a crash, or a start-up
+ *   throw after the session exists. The session reads as its first later
+ *   turn's kind, or a machine's with none.
  *
  * A dispatched session (`internal`, `task`) takes the kind of the parent it
  * can prove dispatched it (`provesDispatchingParent`), walking up to
