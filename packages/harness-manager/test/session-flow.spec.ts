@@ -861,7 +861,7 @@ describe("what a turn changed", () => {
         branch: () => null,
         ...(options.baseTip !== undefined ? { baseTip: () => Promise.resolve(options.baseTip!(dir)) } : {}),
       };
-      const agent = (feeds: HarnessSessionFeeds) =>
+      const agent = (feeds: HarnessFeeds) =>
         handler({
           name: "merging-harness",
           inputSchema: z.object({ prompt: z.string() }),
