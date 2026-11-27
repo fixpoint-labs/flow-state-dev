@@ -88,25 +88,22 @@ export function withStoredAbortRequested<T extends RequestRecord>(
  * whatever the incoming record says: the rule that keeps a session's creator
  * kind as its birth wrote it. A write that omits it keeps the stored one, and
  * one that carries another (a stale snapshot of a person's session written
- * over a machine's reborn under the same id) cannot change it. With nothing
- * stored, the incoming record is written as it is, which is how a birth sets it.
+ * over a machine's reborn under the same id) cannot change it. With no kind
+ * stored, the incoming record is written as it is: that is how a birth sets
+ * it, and how a session from before the field gets its backfilled kind, once
+ * (`context/session-kind.ts`).
  *
  * The memory and filesystem session stores call it inside their write; the
  * SQL adapters keep the same rule inside the write statement
- * (`preserveJsonKeys`), since a read before their write protects nothing
+ * (`writeOnceJsonKeys`), since a read before their write protects nothing
  * across connections.
  */
 export function withStoredPrincipalKind<T extends SessionRecord>(
   value: T,
   stored: SessionRecord | undefined
 ): T {
-  if (stored === undefined) return value;
-  const kept = stored.principalKind ?? undefined;
-  if (value.principalKind === kept) return value;
-  if (kept === undefined) {
-    const { principalKind: _dropped, ...rest } = value;
-    return rest as T;
-  }
+  const kept = stored?.principalKind ?? undefined;
+  if (kept === undefined || value.principalKind === kept) return value;
   return { ...value, principalKind: kept };
 }
 

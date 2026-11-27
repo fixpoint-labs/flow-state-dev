@@ -345,6 +345,45 @@ describe("detectInterruptedRequests", () => {
     expect(runActionMock.mock.calls[0]![0].orgId).toBe("org-acme");
   });
 
+  // FIX-2942: a retry mints a new request id, and a new id has no record a
+  // successor run could read who it is from. Its principal is the original's,
+  // forwarded: else a machine's request in a person's session would recover as
+  // the session's person and reach their other sessions.
+  it("forwards the original record's principal kind and resolver to the retried run", async () => {
+    runActionMock.mockClear();
+    await stores.request.set(
+      "req_machine",
+      makeRequestRecord("req_machine", { principalKind: "machine", resolvedBy: "host:webhook" }),
+      "any"
+    );
+    await stores.request.set(
+      "req_person",
+      makeRequestRecord("req_person", { principalKind: "person", resolvedBy: "flow:chat" }),
+      "any"
+    );
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_machine", stores, flowRegistry, runtimeConfig: {} });
+    await retryRequest({ originalRequestId: "req_person", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(2);
+    expect(runActionMock.mock.calls[0]![0]).toMatchObject({ principalKind: "machine", resolvedBy: "host:webhook" });
+    expect(runActionMock.mock.calls[1]![0]).toMatchObject({ principalKind: "person", resolvedBy: "flow:chat" });
+  });
+
+  it("recovers a record from before the principal fields as a machine's, with no resolver", async () => {
+    runActionMock.mockClear();
+    await stores.request.set("req_legacy_kind", makeRequestRecord("req_legacy_kind"), "any");
+    const flowRegistry = { get: vi.fn(() => ({ kind: "chat", actions: { run: {} } })) } as never;
+
+    await retryRequest({ originalRequestId: "req_legacy_kind", stores, flowRegistry, runtimeConfig: {} });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    const options = runActionMock.mock.calls[0]![0];
+    expect(options.principalKind).toBe("machine");
+    expect(options.resolvedBy).toBeUndefined();
+  });
+
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
     // Regression: retry used to forward only the router-level provider, so a
     // flow that overrides TTS would synthesize with the wrong backend after

@@ -468,6 +468,19 @@ export function createScopeStoreConformanceTests(
         });
       });
 
+      // BP-030: a session from before the field gets its backfilled kind once,
+      // and from then on it is kept like a born one.
+      it("writes the first kind onto a record stored without one, then keeps it", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withKind(makeSession("s1", 0), undefined), "absent");
+          expect((await store.set("s1", withKind(makeSession("s1", 1), "machine"), 0)).ok).toBe(true);
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+          await store.set("s1", withKind(makeSession("s1", 2), "person"), "any");
+          await store.set("s1", withKind(makeSession("s1", 3), undefined), "any");
+          expect((await store.get("s1"))?.principalKind).toBe("machine");
+        });
+      });
+
       it("writes the kind a create carries", async () => {
         await withStore(async (store) => {
           await store.set("s1", withKind(makeSession("s1", 0), "machine"), "absent");

@@ -135,8 +135,14 @@ runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
   kind once, at birth (`SessionRecord.principalKind`), and every session
   store's `set` keeps the stored value. A run whose principal, or whose
   session, is a machine's reaches no other session. A session from before
-  the field is classified from its first request record
-  (`context/session-kind.ts`).
+  the field is classified from its birth request: the earliest request of
+  its own owner, organization, tenant and flow, written within the queued
+  grace of the record's `createdAt` (`context/session-kind.ts`). Nothing
+  else counts, so a predecessor's request under a reused id, or a later turn
+  once retention pruned the birth request, reads as a machine's. The answer
+  is written onto the record the first time, and the store keeps it from
+  then on. A recovery retry runs under the original request's kind and
+  `resolvedBy` (a record from before them: a machine, none).
 - **`resolvedBy`** is the identity of the resolver that answered, with the
   settings the host applied to its answer (`principalResolverIdentity`): the
   key the HTTP list resolves once per. A named reach into a session whose flow
@@ -144,9 +150,10 @@ runs, wakes, schedules and webhooks carry it unchanged (the envelope, the
   principal's `resolvedBy`; absent on either side matches nothing.
 - **One owner comparison** (`principalOwns`): user, organization and tenant,
   exact. The session and request routes, the view host rule, the own-resolver
-  verdict and a block's named reach all call it. The request-id claim reads a
+  verdict and a block's named reach all call it. The request-id claim, the
+  request-control routes and their guard, and the request listings read a
   request record from before organizations with its session's org
-  (`withRequestOrg`) before comparing.
+  (`withRequestOrg`, BP-030) before comparing, so its owner keeps it.
 
 ---
 
