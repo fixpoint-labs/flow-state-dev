@@ -34,7 +34,7 @@ these against what shipped:
   The specs disagree on whether `workforce(...)` needs a model (`model` in `docs/architecture/kits.md`,
   `agent: { model }` in the FIX-2627 spec); the pages show `directory` alone.
 - `harnesses({ workspace: { root, sourceRepo, baseRef } })` from `@flow-state-dev/harness-manager/kit`:
-  the page shows today's `WorkspaceConfig` shape; the kit specs give `{ root, repositories, setup }`,
+  the page shows a `{ root, sourceRepo, baseRef }` object, which no longer exists (a host is built with `localRepoWorkspaceHost`); the kit specs give `{ root, repositories, setup }`,
   `{ root, source, setup }` or a workspace host. Reconcile the keys.
 - `tools: [search, fetch]` in the researcher file in `what-flow-state-is.md` works only where the app's
   tool catalog has both names.

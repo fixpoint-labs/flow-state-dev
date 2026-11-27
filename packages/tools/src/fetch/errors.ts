@@ -17,6 +17,9 @@ import { FlowError } from "@flow-state-dev/core";
  * is not one the built-in providers may reach. It is its own category because
  * none of the transport classes describe it, and conflating it with `network`
  * would make it look retryable when retrying can only refuse again.
+ *
+ * `too_large` is a response body past the built-in providers' byte cap: the
+ * request worked, but the page is more than the tool will read.
  */
 export type FetchErrorType =
   | "http"
@@ -25,6 +28,7 @@ export type FetchErrorType =
   | "abort"
   | "parse"
   | "blocked"
+  | "too_large"
   | "unknown";
 
 /** Max characters of a non-2xx response body retained for error reporting. */
@@ -77,11 +81,15 @@ export function classifyFetchFailure(err: unknown): FetchErrorType {
  */
 export async function readTruncatedBody(res: Response, max = BODY_LIMIT): Promise<string> {
   try {
-    const text = await res.text();
-    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+    return truncateBody(await res.text(), max);
   } catch {
     return "";
   }
+}
+
+/** Length-cap an already-read response body for error reporting. */
+export function truncateBody(text: string, max = BODY_LIMIT): string {
+  return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
 }
 
 /**
@@ -173,6 +181,23 @@ export function providerFetchError(provider: string, url: string, message: strin
     retryable: false,
     details: {
       errorType: "unknown" satisfies FetchErrorType,
+      url,
+    },
+  });
+}
+
+/**
+ * Build the `FlowError` thrown when a response body is past the built-in
+ * providers' byte cap. Never retryable: the same page is the same size.
+ */
+export function responseTooLargeFetchError(provider: string, url: string, cause: unknown): FlowError {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new FlowError(`${provider} fetch failed: ${message}`, {
+    code: "fetch_response_too_large",
+    retryable: false,
+    cause,
+    details: {
+      errorType: "too_large" satisfies FetchErrorType,
       url,
     },
   });

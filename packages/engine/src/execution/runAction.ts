@@ -14,6 +14,8 @@ import { isValidOrgId } from "@flow-state-dev/core";
 import { OrgRequiredError, SessionRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
+import { deliveryOriginMetadata, readDeliveryOrigin, withoutDeliveryOrigin } from "./delivery-origin";
+import { isFrameworkStampedSource } from "./transport-sources";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
 import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
@@ -98,7 +100,8 @@ import {
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError
 } from "../context/binding-errors";
-import { claimRequestRecord, principalOwnsRequest } from "../context/request-principal";
+import { claimRequestRecord } from "../context/request-principal";
+import { principalOwns, withRequestOrg, type PrincipalKind } from "../context/principal";
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
@@ -531,7 +534,7 @@ async function settleFreshRequestSetupFailure(options: {
       current !== undefined &&
       (isTerminalRequestStatus(current.status) ||
         !ownsRecord(options.flow, current) ||
-        !principalOwnsRequest(current, {
+        !principalOwns(await withRequestOrg(options.stores, current), {
           userId: options.userId,
           orgId: options.orgId,
           tenantId: options.tenantId
@@ -1020,10 +1023,55 @@ async function emitAbortedMessage(
   await response.emitItemDone(item);
 }
 
+// BP-031.
 /**
  * Public action execution API using default internal seams.
+ *
+ * A caller's `metadata` never carries a delivery origin: the key is dropped
+ * here. The one origin this entry keeps is the one the host itself recorded
+ * for `requestId` when it accepted the request and handed it to an external
+ * runner ({@link callerRunMetadata}), which is how a queue worker or any other
+ * runner's worker replays a webhook-fired run without the caller being able to
+ * claim one (`delivery-origin.ts`).
  */
 export async function runAction<
+  TFlow extends FlowInstance = FlowInstance,
+  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
+>(
+  options: RunActionOptions<TFlow, TActionName>
+): Promise<ExecutionResult> {
+  return runFrameworkAction({ ...options, metadata: await callerRunMetadata(options) });
+}
+
+/**
+ * The metadata the public {@link runAction} runs a caller's options with: the
+ * caller's own bag without a delivery origin, plus the origin the host
+ * recorded for `requestId` when it accepted the request. That record is the
+ * one the host wrote before handing the request to a runner, never anything in
+ * the caller's options, and it counts only for a framework-stamped source and
+ * only when it is for the same source and session the caller names. A direct
+ * call, a job enqueued around the host, or one queued before the record carried
+ * the mark has no such record and runs unmarked. Module-internal: exported for
+ * its tests, not from the package.
+ */
+export async function callerRunMetadata(
+  options: Pick<RunActionOptions, "requestId" | "source" | "sessionId" | "stores" | "metadata">
+): Promise<Record<string, unknown> | undefined> {
+  const metadata = withoutDeliveryOrigin(options.metadata);
+  if (options.requestId === undefined || !isFrameworkStampedSource(options.source)) return metadata;
+  const accepted = await options.stores.request.get(options.requestId);
+  if (accepted == null || accepted.source !== options.source || accepted.sessionId !== options.sessionId) return metadata;
+  const origin = readDeliveryOrigin(accepted.source, accepted.metadata);
+  return origin === undefined ? metadata : { ...metadata, ...deliveryOriginMetadata(origin) };
+}
+
+/**
+ * {@link runAction} for the engine's own in-process replays of a request the
+ * host accepted (the in-process runner, recovery, continuation): the record's
+ * metadata passes through whole, delivery origin included. Never for a
+ * caller's options.
+ */
+export async function runFrameworkAction<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(
@@ -1334,7 +1382,7 @@ async function runActionAttempt<
   // under it is never adopted, heartbeated or written by this run.
   if (
     admittedRequest !== undefined &&
-    !principalOwnsRequest(admittedRequest, {
+    !principalOwns(await withRequestOrg(options.stores, admittedRequest), {
       userId: options.userId,
       orgId: options.orgId,
       tenantId: options.tenantId
@@ -1369,6 +1417,8 @@ async function runActionAttempt<
             tenantId: options.tenantId,
             orgId: options.orgId,
             source,
+            ...(options.principalKind !== undefined ? { principalKind: options.principalKind } : {}),
+            ...(options.resolvedBy !== undefined ? { resolvedBy: options.resolvedBy } : {}),
             metadata: options.metadata,
             input: options.input,
             attachments: options.attachments
@@ -2095,6 +2145,8 @@ async function runActionAttempt<
       orgId: options.orgId,
       tenantId: options.tenantId,
       source,
+      ...(options.principalKind !== undefined ? { principalKind: options.principalKind } : {}),
+      ...(options.resolvedBy !== undefined ? { resolvedBy: options.resolvedBy } : {}),
       metadata: options.metadata,
       resumeContext,
       input: options.input,
@@ -2108,6 +2160,7 @@ async function runActionAttempt<
       logger,
       tracingLevel: options.runtimeConfig.tracingLevel,
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
+      runsCarriedCore: options.resolvedActionCore !== undefined,
       errorCapture: options.runtimeConfig.errorCapture,
       requestHost: options.runtimeConfig.requestHost,
       // What THIS request is running under, which is not always what the host

@@ -4,8 +4,9 @@
  * whole by the project's one prefix through react's `useResource` when they
  * are drawn, and again only on a notice under that prefix in the project's
  * scope (the org's for a shared project, the user's for a private one). A
- * notice that names entries reads just those; one that names none reads the
- * prefix whole. Nothing reads them on a Lab read. A failed later read keeps
+ * notice that names entries reads just those; one that names none diffs the
+ * prefix's manifest and reads only what changed (FIX-2845). Nothing reads them
+ * on a Lab read. A failed later read keeps
  * the last rows; only a failed first read shows.
  *
  * The client's direct read and its subscription are the test's.
@@ -26,6 +27,7 @@ const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o)
 let entries: Array<{ storageKey: string; clientData: unknown }> = [];
 let failing = false;
 let projectReads = 0;
+let manifestReads = 0;
 const prefixes: string[] = [];
 const entryReads: string[] = [];
 const stored = () => entries.map((entry) => ({ topic: entry.storageKey, storageKey: entry.storageKey, value: entry.clientData, version: 1 }));
@@ -35,7 +37,18 @@ const client = {
   resource: ({ scope, pattern }: { scope: string; pattern: string }) => ({
     scope,
     key: pattern,
-    list: async () => ({ items: stored() }),
+    // A later read with entries in hand diffs the manifest instead of listing values (FIX-2845).
+    list: async (options: { manifest?: boolean; topicPrefix?: string } = {}) => {
+      if (options.manifest !== true) return { items: stored() };
+      manifestReads += 1;
+      prefixes.push(`${scope}:${options.topicPrefix}`);
+      if (failing) throw new Error("unavailable");
+      return {
+        items: stored()
+          .filter((entry) => options.topicPrefix === undefined || entry.storageKey.startsWith(options.topicPrefix))
+          .map((entry) => ({ storageKey: entry.storageKey, version: entry.version })),
+      };
+    },
     listAll: async (options: { topicPrefix?: string } = {}) => {
       projectReads += 1;
       prefixes.push(`${scope}:${options.topicPrefix}`);
@@ -85,6 +98,7 @@ beforeEach(() => {
   entries = [entry("u_1", "research", "Research")];
   failing = false;
   projectReads = 0;
+  manifestReads = 0;
   prefixes.splice(0);
   entryReads.splice(0);
 });
@@ -116,9 +130,14 @@ describe("a project's workstreams", () => {
     expect(entryReads).toEqual(["workstreams/apollo/~u_2/search"]);
     expect(projectReads).toBe(1);
 
-    // A notice under the project that names none reads it whole.
+    // A notice under the project that names none diffs its manifest by the prefix: nothing changed, so no value is read again.
     hear(resource("org", "workstreams/apollo"));
-    await waitFor(() => expect(projectReads).toBe(2));
+    await waitFor(() => expect(manifestReads).toBe(1));
+    await settle();
+    expect(prefixes.at(-1)).toBe("org:workstreams/apollo/");
+    expect(projectReads).toBe(1);
+    expect(entryReads).toEqual(["workstreams/apollo/~u_2/search"]);
+    expect(titles()).toEqual(["Research", "Search"]);
   });
 
   it("of a private project are read and heard under the user's scope", async () => {
@@ -139,9 +158,9 @@ describe("a project's workstreams", () => {
     await waitFor(() => expect(titles()).toEqual(["Research"]));
 
     failing = true;
-    const before = projectReads;
+    const before = manifestReads;
     hear(resource("org", "workstreams/apollo"));
-    await waitFor(() => expect(projectReads).toBe(before + 1));
+    await waitFor(() => expect(manifestReads).toBe(before + 1));
     await settle();
     expect(titles()).toEqual(["Research"]);
   });

@@ -20,7 +20,7 @@ const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o)
 
 /** each collection's entries, by pattern. */
 const stored: Record<string, Array<{ storageKey: string; value: unknown }>> = {};
-/** Every whole read made, by `<scope>:<pattern>`. */
+/** Every whole read made, by `<scope>:<pattern>`: the values (`listAll`), or the manifest a later read diffs (FIX-2845). */
 const lists: string[] = [];
 /** How the session list answers; a test swaps it. */
 let listSessions: (...args: unknown[]) => Promise<unknown> = async () => [];
@@ -29,7 +29,11 @@ const client = {
   resource: ({ scope, pattern }: { scope: string; pattern: string }) => ({
     scope,
     key: pattern,
-    list: async () => ({ items: [] }),
+    list: async (options: { manifest?: boolean } = {}) => {
+      if (options.manifest !== true) return { items: [] };
+      lists.push(`${scope}:${pattern}`);
+      return { items: (stored[pattern] ?? []).map((each) => ({ storageKey: each.storageKey, version: 1 })) };
+    },
     listAll: async () => {
       lists.push(`${scope}:${pattern}`);
       return (stored[pattern] ?? []).map((each) => ({ topic: each.storageKey, ...each, version: 1 }));

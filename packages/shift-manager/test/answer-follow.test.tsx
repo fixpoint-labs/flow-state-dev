@@ -12,7 +12,7 @@
  */
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { LabProvider } from "../src/lib/lab-data";
 import { useInboxAnswer } from "../src/lib/inbox";
 
@@ -56,7 +56,7 @@ function Grab() {
 
 /** An approval a worker's run in session `s1` waits on. */
 const hold: InboxHold<unknown> = {
-  id: "susp_1",
+  id: suspensionHoldId("req_1", "susp_1"),
   source: { kind: "suspension", flowId: "desk", sessionId: "s1", requestId: "req_1", suspensionId: "susp_1" },
   ask: { kind: "approval", prompt: "Ship it?" },
   openedAt: 0,

@@ -499,7 +499,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,
           deps: [first.id],
-          input: { harnessFeature: { issue: fixture.devteam.followUp.issue, phase: PHASE } },
+          input: { mode: PHASE, issue: fixture.devteam.followUp.issue },
         },
         userId,
       );

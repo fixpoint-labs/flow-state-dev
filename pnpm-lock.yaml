@@ -1449,12 +1449,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
-      '@flow-state-dev/workforce':
-        specifier: workspace:*
-        version: link:../workforce
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1462,9 +1456,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
@@ -1493,9 +1484,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1570,9 +1558,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/harness-manager':
-        specifier: workspace:*
-        version: link:../harness-manager
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace
@@ -1840,6 +1825,12 @@ importers:
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../tools
+      '@flow-state-dev/workforce':
+        specifier: workspace:*
+        version: link:../workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -2324,6 +2315,9 @@ importers:
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
+      undici:
+        specifier: ^7.29.1
+        version: 7.29.1
       zod:
         specifier: ^3.25.76
         version: 3.25.76

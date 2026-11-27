@@ -20,6 +20,8 @@
  */
 export { createProjection, hashContent } from "./projection";
 export type { Projection, ProjectionOptions } from "./projection";
+export { projectionSession } from "./projection-session";
+export type { ProjectionSession, SettledFlush } from "./projection-session";
 export { createMemoryPlace } from "./memory-place";
 export type { MemoryPlace } from "./memory-place";
 export { createHostPlace } from "./host-place";
@@ -43,7 +45,11 @@ export {
   unscopedCollectionId,
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
+export { encodeSegment, readableSegment,
+  segmentDigest, scopeFolder, tenantSegment } from "./segments";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
+export { localRepoWorkspaceHost } from "./local-repo-host";
+export type { LocalRepoWorkspaceHostOptions } from "./local-repo-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
@@ -86,7 +92,8 @@ export {
 } from "./worktrees";
 export type { CheckoutSnapshot } from "./worktrees";
 export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeResourceState, WorktreeStatus } from "./worktrees";
-export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { acquireLock, refreshLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { privateTempRoot } from "./private-temp";
 export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";

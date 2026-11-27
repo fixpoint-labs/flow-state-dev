@@ -268,6 +268,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         words={words}
         setWords={setWords}
         answer={async (verdict) => {
+          // The board can reach a newer round before the run's feed draws it: a verdict then would approve work
+          // nobody on this screen has seen. With no review read, the hold's own prompt shows, so it is the round.
+          if (review !== undefined && work.reviewStop !== hold?.id) throw new Error("This task has a newer review than the one shown. Look it over before you answer.");
           await actions.answer(task, verdict);
           decided(verdict);
         }}
@@ -356,7 +359,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   );
   return (
     <SessionOverlay
-      variant="modal"
+      variant="sheet"
+      docked
       label={line}
       title={title}
       icon={coding ? <SquareTerminalIcon className="size-[18px]" /> : undefined}

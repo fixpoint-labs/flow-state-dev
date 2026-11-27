@@ -9,7 +9,9 @@
  *
  *  - `sheet` draws in the `SessionOverlayArea` under a `SessionOverlayProvider`,
  *    over that area alone, so a side pane beside it stays usable (pick another
- *    task there and the same sheet shows it). Tab may leave it.
+ *    task there and the same sheet shows it). Tab may leave it. A `docked`
+ *    sheet sits against the area's far edge, next to that pane, full height,
+ *    and blurs what it covers.
  *  - `modal` draws over the page and holds Tab inside it.
  *
  * Both close the same way, with the close button, Esc, or a click on the
@@ -52,6 +54,11 @@ export function SessionOverlayArea({ children }: { children: ReactNode }) {
 export interface SessionOverlayProps {
   /** `sheet`: over the `SessionOverlayArea`, the page beside it live. `modal`: over the page, Tab held inside. */
   variant: "sheet" | "modal";
+  /**
+   * A sheet only: against the area's end edge, full height, beside the pane that opened it, and what it
+   * covers blurred. Absent, the sheet floats in the area's middle over a light veil.
+   */
+  docked?: boolean;
   /** The overlay's accessible name. */
   label: string;
   title: ReactNode;
@@ -86,7 +93,7 @@ export interface SessionOverlayProps {
 const STATUS_TONE = { neutral: "border border-border text-muted-foreground", info: "bg-info/15 text-info", success: "bg-success/15 text-success" } as const;
 
 /** One session over the thread, as a sheet or a modal. */
-export function SessionOverlay({ variant, label, title, status, statusTone, statusIcon, icon, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
+export function SessionOverlay({ variant, docked = false, label, title, status, statusTone, statusIcon, icon, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
   const { host } = useContext(OverlayHost);
   const own = useJumpToLatest();
   const feed = shared ?? own;
@@ -98,6 +105,7 @@ export function SessionOverlay({ variant, label, title, status, statusTone, stat
     close.current = onClose;
   });
   const modal = variant === "modal";
+  const edge = !modal && docked;
   const target = modal ? (typeof document === "undefined" ? null : document.body) : host;
 
   useEffect(() => {
@@ -141,7 +149,7 @@ export function SessionOverlay({ variant, label, title, status, statusTone, stat
   return createPortal(
     <div
       data-overlay-backdrop
-      className={`${modal ? "fixed z-20" : "absolute"} inset-0 flex justify-center bg-background/60 p-6 backdrop-blur-[1px]`}
+      className={`${modal ? "fixed z-20" : "absolute"} inset-0 flex ${edge ? "justify-end bg-background/40 backdrop-blur-sm" : "justify-center bg-background/60 p-6 backdrop-blur-[1px]"}`}
       onClick={onClose}
     >
       <section
@@ -149,7 +157,7 @@ export function SessionOverlay({ variant, label, title, status, statusTone, stat
         role="dialog"
         aria-modal={modal ? "true" : undefined}
         aria-label={label}
-        className={`flex h-full w-full ${modal ? "max-w-[var(--thread-width,46rem)]" : "max-w-3xl"} min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg`}
+        className={`flex h-full w-full ${modal ? "max-w-[var(--thread-width,46rem)]" : "max-w-3xl"} min-h-0 flex-col overflow-hidden ${edge ? "border-l" : "rounded-xl border"} border-border bg-card shadow-lg`}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-4">

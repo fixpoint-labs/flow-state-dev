@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief } from "@flow-state-dev/harness-manager";
 import type {
   CodingBriefParts,
   CompletionRunContext,
@@ -38,6 +38,7 @@ import type {
   PromptRunContext,
 } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
+import { isCheckedCodingTask } from "@flow-state-dev/harness-manager/kit";
 import { runAcceptance } from "./acceptance.mts";
 import type { WorkerOf } from "./worker-config.mts";
 
@@ -45,17 +46,27 @@ import type { WorkerOf } from "./worker-config.mts";
 export const PHASE = "implement";
 
 /**
- * A feature row's `input`: its issue in {@link PHASE}, under the manager's
- * feature key. Here rather than in the EM's file, which imports no harness
+ * A feature row's `input`: the coder's {@link PHASE} mode, on its issue
+ * (FIX-2878). Here rather than in the EM's file, which imports no harness
  * package: the EM files rows, it never runs one.
  */
 export function featureInput(issue: string): Record<string, unknown> {
-  return { [HARNESS_FEATURE_KEY]: { issue, phase: PHASE } };
+  return { mode: PHASE, issue };
 }
 
-/** The issue a row's `input` names as feature work, or `undefined` for none. */
-export function featureIssueOfInput(input: unknown): string | undefined {
-  return harnessFeatureOf(input)?.issue;
+// BP-030; BP-031.
+/**
+ * The issue a stored row names as feature work, or `undefined` for none: an
+ * implement task's `issue` on a row the coder's filing check stamped, or the
+ * `harnessFeature` marker of a row stored before modes. Any other row's
+ * `mode` and `issue` were a model's free fields, and name no feature.
+ */
+export function featureIssueOfTask(task: { readonly input?: unknown; readonly metadata?: Record<string, unknown> }): string | undefined {
+  const { input } = task;
+  if (typeof input !== "object" || input === null) return undefined;
+  const { mode, issue, harnessFeature } = input as { mode?: unknown; issue?: unknown; harnessFeature?: { issue?: unknown } | null };
+  if (isCheckedCodingTask(task as never)) return mode === PHASE && typeof issue === "string" ? issue : undefined;
+  return mode === undefined && typeof harnessFeature?.issue === "string" ? harnessFeature.issue : undefined;
 }
 
 /**
@@ -116,7 +127,7 @@ export async function buildWorkerPrompt(
  */
 async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<CodingBriefParts> {
   const ctx = run.ctx;
-  const { config } = await workerOf(ctx as never);
+  const { config } = await workerOf(ctx);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -134,7 +145,7 @@ async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<C
   }
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
-  const skills = config.workerSkills ?? [];
+  const skills = config.workerSkills;
   return {
     ...(config.instructions === undefined ? {} : { instructions: config.instructions }),
     standingBrief: { name: documentRef, text: brief },
@@ -369,7 +380,7 @@ export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPh
 
 /**
  * Build the answer phase: the phase of a task that names no feature work
- * (no `harnessFeature`). Done means the run didn't stop at its limit and ended with an
+ * (any mode but implement). Done means the run didn't stop at its limit and ended with an
  * answer; a commit is reported in the output, never required.
  *
  * @param options How the run's worker is loaded.

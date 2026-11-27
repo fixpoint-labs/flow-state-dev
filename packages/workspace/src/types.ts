@@ -36,11 +36,11 @@ export interface Place {
 }
 
 /**
- * The state a projected file carries in its collection.
+ * The state a projected file carries in its collection. File content lives in
+ * the entry's content, not here.
  *
- * Structurally identical to the bash tool's `FileEntryState`, and declared
- * here rather than imported from it so the dependency runs the right way: the
- * projection is what the tools use, not the reverse.
+ * A type alias, not an interface, so it satisfies the `JsonObject` index
+ * signature a `ResourceCollectionRef` requires.
  */
 export type ProjectedEntryState = {
   /** Path relative to the mount, e.g. `"src/index.ts"`. */

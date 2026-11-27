@@ -140,6 +140,29 @@ export const FILING_PROJECT_STATE_KEY = "filingProjectId";
  */
 export const TASK_ID_STATE_KEY = "taskId";
 
+// FIX-2881.
+/**
+ * The session-state field that holds the display name of the session's
+ * worker, as a reader sees it: its roster entry's `name`, or a standard
+ * worker's file `name:`. Written by the installation's create check from the
+ * worker it reads, on every path that creates a worker session, and by
+ * nothing else: a create that seeds it is refused. Readonly, so it is the
+ * name the worker had when the session was born. Absent when the worker has
+ * no name. Display only, never an address.
+ */
+export const WORKER_NAME_STATE_KEY = "workerName";
+
+// FIX-2881.
+/**
+ * The session-state field that holds the title of the task a worker session
+ * was opened for (its goal when it has none), written beside
+ * {@link TASK_ID_STATE_KEY} by the board's hand-over and by nothing else.
+ * Server-owned and shown to the client, not readonly: a later hand-over of
+ * the same task, after its title was edited, adopts the session rather than
+ * being refused over it. Display only, never an address.
+ */
+export const TASK_TITLE_STATE_KEY = "taskTitle";
+
 /**
  * The roster flow's flow kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session

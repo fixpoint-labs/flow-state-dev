@@ -86,7 +86,7 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * five, with *Show all* / *Show fewer*. *Failed* has *Clear*, which moves its
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
  * holds completed and cancelled tasks too, a cancelled one marked so on its
- * card. A card opens its task in a popup and carries its time: an
+ * card. A card opens its task in the sheet beside the panel, or closes it when it is the open one, and carries its time: an
  * active one's clock on this attempt, with a thin bar while its run answers,
  * and *Long-running* once it has been open a day; an idle one's time since it
  * last moved; an ended one's age. Then
@@ -105,7 +105,7 @@ export function TeammatePanel({
   worker: RosterEntry;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
-  /** The task open in the popup, if one is. */
+  /** The task open in the sheet, if one is: its card is marked. */
   openTask: string | undefined;
   nameOf: (id: string) => string;
   isCoding: (id: string) => boolean;
@@ -165,12 +165,16 @@ export function TeammatePanel({
           data-task={status}
           onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
           className={cn(
-            "flex w-full flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-left shadow-(--shadow-card) transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-ring",
-            t.id === openTask && "border-brand",
+            "relative flex w-full flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-left shadow-(--shadow-card) transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-ring",
+            // The task open in the sheet beside the panel: ringed, with a mark pointing at the sheet.
+            t.id === openTask && "border-info ring-1 ring-info",
             // A stale feed greys the whole card: STALE_CLASS only reaches descendants.
             stale && STALE_CLASS,
           )}
         >
+          {t.id === openTask ? (
+            <span aria-hidden data-open-mark className="absolute top-1/2 -left-2 -translate-y-1/2 border-y-[5px] border-r-[6px] border-y-transparent border-r-info" />
+          ) : null}
           <span className="flex items-start justify-between gap-3">
             <span className="line-clamp-2 text-sm leading-snug font-medium" title={line}>
               {coding ? t.title : line}

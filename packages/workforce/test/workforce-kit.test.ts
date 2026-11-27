@@ -85,6 +85,12 @@ describe("workforce as a kit", () => {
       "notes.txt": "a note",
       // A worker flow is read, so the folder beside it is walked and the helper named on its own.
       "flows/workers/coder.mts": "export {};",
+      // `fsdev gen` default-imports every module from an ES module, which a
+      // CommonJS module's default export does not survive, so `.cts` is refused.
+      "flows/workers/digest.cts": "export {};",
+      // A document is read, so its folder is walked and the `.cts` module named on its own.
+      "teams/core/resources/handbook.md": "---\ndescription: How we work.\n---\nBe brief.",
+      "teams/core/resources/ledger.cts": "module.exports = {};",
       "flows/helper.mts": "export {};",
       "teams/core/notes.md": "a note",
       "flows/workers/nested/deep.ts": "export {};",
@@ -94,11 +100,19 @@ describe("workforce as a kit", () => {
       () => "started",
       (error: Error) => error.message,
     );
-    for (const stray of ["notes.txt", "flows/helper.mts", "teams/core/notes.md", "flows/workers/nested"]) {
+    for (const stray of [
+      "notes.txt",
+      "flows/helper.mts",
+      "flows/workers/digest.cts",
+      "teams/core/resources/ledger.cts",
+      "teams/core/notes.md",
+      "flows/workers/nested",
+    ]) {
       expect(refused).toContain(`"${stray}"`);
     }
     expect(refused).not.toContain("WORKER.md");
     expect(refused).not.toContain("coder.mts");
+    expect(refused).not.toContain("handbook.md");
   });
 
   it("refuses to start when a worker file doesn't load, naming it", async () => {

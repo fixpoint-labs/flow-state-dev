@@ -88,16 +88,21 @@ import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import {
+  MAX_LINEAGE_DEPTH,
   matchesOrgFilter,
   resolveLineageId,
-  resolveSessionStorageKey
+  resolveSessionStorageKey,
+  sessionIncarnation
 } from "../stores/scope-keys";
+import type { Principal, PrincipalKind } from "./principal";
+import { resolveSessionKind } from "./session-kind";
 import { deriveDispatchRunSessionId, evaluateAdoption, readonlyStateMismatch } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import { isWriteSessionId } from "../resources/write-session-id";
 import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { ServiceRouteOperation } from "../durability/owner-runs";
+import { deliveryOriginMetadata, type DeliveryOrigin } from "../execution/delivery-origin";
 import {
   birthSession,
   SessionCreateRefusedError,
@@ -155,6 +160,20 @@ export type RequestHostInputs = {
   // FIX-2630 D1.
   /** Routes a dispatch to a `service` entry (see the seam's step 1); absent, such a dispatch refuses `no-dispatch-operation`. */
   serviceRoute?: ServiceRouteOperation;
+  // FIX-2942.
+  /**
+   * The running request's principal, as its door set it. A session the
+   * request dispatches into is born with its kind, or a machine's when the
+   * running request's own session is a machine's.
+   */
+  principal?: Principal;
+  // FIX-2942 D1.
+  /**
+   * The outside delivery that started this request (`readDeliveryOrigin`), if
+   * one did. Every request this one dispatches, and a service routing it
+   * starts, carries it: the mark follows dispatches.
+   */
+  deliveryOrigin?: DeliveryOrigin;
   /**
    * Resolve another flow instance registered in this process, by its exact
    * address — the flow registry, narrowed to the one question the seam asks.
@@ -395,9 +414,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     sessionId: string,
     targetFlow: FlowInstance,
     state: Readonly<Record<string, unknown>> | undefined,
-    build: (ts: number) => SessionRecordSeed
+    build: (ts: number, parent: SessionRecord | undefined) => SessionRecordSeed
   ): Promise<{ outcome: SessionBirthOutcome } | { refused: Refused }> => {
     const ts = nowMs();
+    // FIX-2942: the sending session, read once: its kind joins the run's in
+    // the child's, and a child records its incarnation.
+    const parent = await stores.session.get(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
+    const principalKind: PrincipalKind =
+      inputs.principal?.kind === "person" && parent !== undefined && (await resolveSessionKind(stores, parent, { queuedGraceMs: inputs.effectiveRuntimeConfig?.queuedGraceMs })) === "person"
+        ? "person"
+        : "machine";
     try {
       return {
         outcome: await birthSession(
@@ -413,9 +439,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             },
             ...(state !== undefined ? { state: { ...state } } : {}),
             fromCaller: false,
-            via: "dispatch"
+            via: "dispatch",
+            principalKind
           },
-          () => build(ts)
+          () => build(ts, parent)
         )
       };
     } catch (error) {
@@ -485,9 +512,11 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     };
 
     // A child's id is derived, so a retry reuses it and create-if-absent is that race.
-    const attempt = await birthDispatchSession(storageKey, childId, targetFlow, initialState, (ts) => ({
+    const attempt = await birthDispatchSession(storageKey, childId, targetFlow, initialState, (ts, parent) => ({
       ...dispatchSeed(storageKey, targetFlow, ts),
       parentSessionId: identity.sessionId,
+      // FIX-2942: bound to this incarnation of the parent, not its reusable id.
+      ...(parent !== undefined ? { parentIncarnation: sessionIncarnation(parent) } : {}),
       // Inherited verbatim for a same-flow child. Not a hash, not a
       // re-derivation — the same value, so parent and child address one bucket
       // by construction (FIX-1068). A cross-flow child roots its own; see above.
@@ -697,7 +726,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
           sessionId: identity.sessionId,
           name: typeof named === "string" && named.length > 0 ? named : flow.kind
-        }
+        },
+        ...(inputs.deliveryOrigin !== undefined ? { origin: inputs.deliveryOrigin } : {})
       });
       if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
       return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };
@@ -734,12 +764,18 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       userId: identity.userId,
       ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
       orgId: session.orgId,
+      // FIX-2942: the sending request's principal, carried unchanged.
+      ...(inputs.principal !== undefined ? { principalKind: inputs.principal.kind } : {}),
+      ...(inputs.principal?.resolvedBy !== undefined ? { resolvedBy: inputs.principal.resolvedBy } : {}),
       // Server-assembled provenance for the request record: the address, the
       // sending block and session, the key (when a child was derived), the
       // recipient's approved lineage (when an existing session was addressed), and
       // the facts the sender supplied through `provenance` — a channel whose
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
+        // Server-set beside the stamp: a request an outside delivery started passes its origin on.
+        // A reserved top-level key: sender facts stay nested under `dispatch`, never here.
+        ...deliveryOriginMetadata(inputs.deliveryOrigin),
         dispatch: {
           // The sender's facts, without any key the seam owns: a provenance
           // never moves the address, the reply route, the approved recipient
@@ -1008,16 +1044,6 @@ function label(
   return value === undefined || value.length === 0 ? {} : { [field]: value };
 }
 
-/**
- * Whether `sessionId` lies in the caller's descendant chain, under the same
- * principal and tenant.
- *
- * Walks `parentSessionId` upward from the candidate. The current session
- * qualifies — a request may ask about siblings it started in its own session.
- * The walk is bounded so a corrupted parent cycle cannot hang a read, and every
- * hop re-checks the principal, so a chain cannot be followed out of its tenant.
- */
-const MAX_LINEAGE_DEPTH = 32;
 
 // FIX-1440.
 /**
@@ -1093,6 +1119,16 @@ async function isDispatchRunOfCaller(
   return ownsRecord(flow, record);
 }
 
+/**
+ * Whether `sessionId` lies in the caller's descendant chain, under the same
+ * principal and tenant.
+ *
+ * Walks `parentSessionId` upward from the candidate. The current session
+ * qualifies — a request may ask about siblings it started in its own session.
+ * The walk is bounded ({@link MAX_LINEAGE_DEPTH}) so a corrupted parent cycle
+ * cannot hang a read, and every hop re-checks the principal, so a chain cannot
+ * be followed out of its tenant.
+ */
 async function isDescendantSession(
   stores: Pick<StoreRegistry, "session">,
   sessionId: string | undefined,

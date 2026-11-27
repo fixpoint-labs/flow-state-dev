@@ -12,6 +12,7 @@
  *   - drop the `branch` null check: the turn-end check reads a directory for a
  *     host that said its session has no branch.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { runAction } from "@flow-state-dev/engine";
@@ -39,14 +40,13 @@ import {
   harnessSessionStartSchema,
   harnessSessionStateSchema,
   harnessSessionTitle,
-  type HarnessSessionFeeds,
   type HarnessSessionPlace,
   type HarnessSessionState,
   type HarnessSessionWorkspace,
 } from "../src";
 
 /** A harness that asks which conversation to continue, as every harness does, then runs nothing. */
-const stubAgent = (feeds: HarnessSessionFeeds) =>
+const stubAgent = (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),
@@ -77,7 +77,7 @@ async function turn(
   sessionId: string,
   prompt: string,
   workspace = noWorkspace(),
-  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = stubAgent,
+  agent: (feeds: HarnessFeeds) => HarnessBlock = stubAgent,
 ) {
   if ((await stores.session.get(sessionId)) === undefined) {
     const now = Date.now();
@@ -149,7 +149,7 @@ describe("the turn-end pull request check", () => {
 });
 
 /** A harness that provisions its working directory, as a real one does, and waits on `gate` when given one. */
-const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds) =>
+const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessFeeds) =>
   handler({
     name: "provisioning-harness",
     inputSchema: z.object({ prompt: z.string() }),
@@ -212,7 +212,7 @@ function act(
   actionName: string,
   input: unknown,
   gate?: Promise<void>,
-  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = provisioningAgent(gate),
+  agent: (feeds: HarnessFeeds) => HarnessBlock = provisioningAgent(gate),
 ) {
   return runAction({
     flow: harnessSessionFlow({ kind: "stub-session", workspace, agent }),
@@ -542,7 +542,7 @@ describe("attaching a session to another session's worktree", () => {
     const { workspace } = recordingWorkspace();
     ownerWorktree("s-owner-e", "fix/owners-branch");
     await seed(stores, "s-attached-e", { model: "stub-model", start: { worktreeOf: "s-owner-e" } });
-    const switching = (feeds: HarnessSessionFeeds) =>
+    const switching = (feeds: HarnessFeeds) =>
       handler({
         name: "switching-harness",
         inputSchema: z.object({ prompt: z.string() }),
@@ -589,7 +589,7 @@ describe("the user's worktree rows", () => {
 
 describe("a fresh checkout's setup, on the turn that waits for it", () => {
   /** A harness that asks for its working directory, as every harness does before it runs. */
-  const cwdAgent = (feeds: HarnessSessionFeeds) =>
+  const cwdAgent = (feeds: HarnessFeeds) =>
     handler({
       name: "stub-harness",
       inputSchema: z.object({ prompt: z.string() }),
@@ -692,7 +692,7 @@ describe("what a turn changed", () => {
     git(dir, "add", ".");
     git(dir, "commit", "-q", "-m", "start");
     const workspace: HarnessSessionWorkspace = { provision: async () => dir, locate: () => dir, branch: () => null };
-    const agent = (feeds: HarnessSessionFeeds) =>
+    const agent = (feeds: HarnessFeeds) =>
       handler({
         name: "committing-harness",
         inputSchema: z.object({ prompt: z.string() }),

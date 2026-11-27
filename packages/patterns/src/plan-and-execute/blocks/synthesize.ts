@@ -79,7 +79,7 @@ export function createBuildPlanOutput(options: { name: string }) {
         collectionId,
       });
       const tasks = collection.list();
-      const goal = ctx.sequencer!.state.goal ?? "";
+      const goal = ctx.sequencer!.state.goal;
 
       const legacyTasks = tasks.map((t) => ({
         id: t.id,

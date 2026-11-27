@@ -32,9 +32,9 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
-import { projectAddressSchema, projectResourceStateSchema } from "./collections";
+import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE, projectAddressSchema, projectResourceStateSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { PROJECT_ENTRY_RESOURCES, projectResourcesAt } from "./project-address";
+import { PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
 /**
@@ -94,9 +94,9 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
     name: "set-work-project",
     inputSchema: setWorkProjectInputSchema,
     outputSchema: setWorkProjectOutputSchema,
-    resources: { ...PROJECT_ENTRY_RESOURCES },
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
-      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      const state = ctx.session.state;
       const running = state[WORKER_ID_STATE_KEY];
       if (typeof running !== "string") refuse("this session runs no worker, so it has no project to set.");
       if (input.worker !== undefined && input.worker !== running) {
@@ -110,7 +110,8 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
       const owner = ctx.session.identity.userId;
       if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
       const { visibility, id } = input.project;
-      const stored = await projectResourcesAt(ctx, visibility).getOptional(id);
+      const projects = ctx.resources[visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE];
+      const stored = await projects.getOptional(id);
       if (stored === undefined) {
         refuse(
           visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`

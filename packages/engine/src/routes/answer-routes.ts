@@ -93,7 +93,7 @@ export async function handleAnswerSuspension(
     flow === undefined ||
     owner === undefined ||
     !ownsRecord(flow, owner) ||
-    !callerReachesRequest(owner, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, owner, ctx.tenantId, ctx.principal))
   ) {
     return unknownStop(suspensionId);
   }

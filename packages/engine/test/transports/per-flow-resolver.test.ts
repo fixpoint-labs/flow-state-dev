@@ -78,7 +78,7 @@ describe("InboundTransportHost — per-flow authentication", () => {
     const principal = await host.resolvePrincipal(
       mkContext("with-resolver", { userId: "ignored_body_user", orgId: "org_test" })
     );
-    expect(principal).toEqual({ userId: "flow_user", orgId: "flow_org" });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "flow_user", orgId: "flow_org" });
     expect(flowResolver).toHaveBeenCalledTimes(1);
   });
 
@@ -107,7 +107,7 @@ describe("InboundTransportHost — per-flow authentication", () => {
     });
     const { host } = buildHost([flow]);
     const principal = await host.resolvePrincipal(mkContext("partial-resolver", {}));
-    expect(principal).toEqual({ userId: "system", orgId: "acme" });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "system", orgId: "acme" });
   });
 
   it("throws 401 when no userId is resolvable on a requireUser flow", async () => {
@@ -156,7 +156,7 @@ describe("InboundTransportHost — per-flow authentication", () => {
     // its brand), which means this app authenticates nobody and runs under the
     // development organization. `defaultUserId` still supplies the user.
     const principal = await host.resolvePrincipal(mkContext("system-flow", {}));
-    expect(principal).toEqual({ userId: "system", orgId: DEFAULT_ORG_ID });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "system", orgId: DEFAULT_ORG_ID });
     expect(fallback).toHaveBeenCalledTimes(1);
   });
 
@@ -168,7 +168,7 @@ describe("InboundTransportHost — per-flow authentication", () => {
     );
     // The fallback here is the framework default resolver, which reads the
     // body for a userId and — since FIX-1442 — never for an organization.
-    expect(principal).toEqual({ userId: "body_u", orgId: DEFAULT_ORG_ID });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "body_u", orgId: DEFAULT_ORG_ID });
   });
 
   it("propagates PrincipalResolutionError thrown by the flow's resolver", async () => {
@@ -193,6 +193,6 @@ describe("InboundTransportHost — per-flow authentication", () => {
     });
     const { host } = buildHost([flow]);
     const principal = await host.resolvePrincipal(mkContext("async-resolver", {}));
-    expect(principal).toEqual({ userId: "async_user", orgId: "org_test" });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "async_user", orgId: "org_test" });
   });
 });

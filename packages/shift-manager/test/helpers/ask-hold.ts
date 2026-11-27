@@ -4,7 +4,7 @@
  * whose session feed holds the stop with its data and whose answer route
  * records each answer. For the ask card's tests.
  */
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { InboxAsk } from "../../src/lib/inbox";
 
 /** harness-manager's `harnessReviewAnswerSchema`, as the engine stores it. */
@@ -24,7 +24,7 @@ const VERDICT_SCHEMA = {
 export function reviewHold(marked = true): InboxHold<InboxAsk> {
   const variant = marked ? "review" : "input";
   return {
-    id: "susp-1",
+    id: suspensionHoldId("req-1", "susp-1"),
     source: { kind: "suspension", flowId: "devforce-coder", sessionId: "sess-run", requestId: "req-1", suspensionId: "susp-1" },
     ask: { kind: variant, prompt: "Review the run's changes" },
     openedAt: 0,

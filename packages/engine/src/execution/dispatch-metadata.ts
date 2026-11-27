@@ -16,7 +16,7 @@
  * back `undefined` otherwise. One reader rather than a check per consumer: a
  * rule applied at three call sites is a rule the fourth call site skips.
  */
-import { INTERNAL_SOURCE, TASK_SOURCE } from "./transport-sources";
+import { isFrameworkStampedSource } from "./transport-sources";
 
 /**
  * The server-assembled provenance the seam stamps. Everything here is derived
@@ -82,7 +82,7 @@ export function readDispatchStamp(
   source: string | undefined,
   metadata: unknown
 ): DispatchStamp | undefined {
-  if (source !== INTERNAL_SOURCE && source !== TASK_SOURCE) return undefined;
+  if (!isFrameworkStampedSource(source)) return undefined;
   const dispatch = (metadata as { dispatch?: unknown } | undefined)?.dispatch;
   if (dispatch === null || typeof dispatch !== "object") return undefined;
   const candidate = dispatch as Partial<DispatchStamp> & { readonly target?: unknown };

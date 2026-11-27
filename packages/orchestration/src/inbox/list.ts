@@ -2,7 +2,7 @@
  * The Inbox list: the only place an Inbox item is built (the task-surface
  * sweep fails one built anywhere else).
  */
-import { holdOfSuspension, isOpenTask, openUserHolds, taskItemId } from "./holds";
+import { holdOfSuspension, isOpenTask, openUserHolds, suspensionHoldId, taskItemId } from "./holds";
 import type { InboxHold, InboxItem, InboxTaskInput, InboxSuspension, InboxTask } from "./types";
 
 /** An item over `holds`, oldest first, answerable when any hold is. */
@@ -35,7 +35,7 @@ export function inboxItems<TDetail = unknown>(input: {
   readonly suspensions: readonly InboxSuspension<TDetail>[];
   readonly flowOf: (sessionId: string) => string | null | undefined;
 }): InboxItem<TDetail>[] {
-  const found = new Map(input.suspensions.map((s) => [s.suspensionId, s]));
+  const found = new Map(input.suspensions.map((s) => [suspensionHoldId(s.requestId, s.suspensionId), s]));
   const byRow = new Map<InboxTaskInput, InboxHold<TDetail>[]>();
   const claimed = new Set<string>();
   const runOwner = new Map<string, InboxTaskInput>();
@@ -47,13 +47,14 @@ export function inboxItems<TDetail = unknown>(input: {
   }
   const lone: InboxItem<TDetail>[] = [];
   for (const s of input.suspensions) {
-    if (claimed.has(s.suspensionId)) continue;
+    const hold = holdOfSuspension(s);
+    if (claimed.has(hold.id)) continue;
     const owner = runOwner.get(s.requestId);
     if (owner === undefined) {
-      lone.push(itemOf(s.suspensionId, null, [holdOfSuspension(s)]));
+      lone.push(itemOf(hold.id, null, [hold]));
       continue;
     }
-    byRow.set(owner, [...(byRow.get(owner) ?? []), holdOfSuspension(s)]);
+    byRow.set(owner, [...(byRow.get(owner) ?? []), hold]);
   }
   const items = [...byRow].map(([row, holds]) =>
     itemOf(taskItemId(row.board, row.id), { board: row.board, taskId: row.id, title: row.title ?? row.goal ?? row.id, assignee: row.assignee ?? null }, holds),
