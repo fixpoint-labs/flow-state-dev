@@ -42,7 +42,7 @@ return value.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/sessions-reach/name-a-session/` · no model · run by the implementer at completion, in-process and behind a runner · verdict in the implementation PR |
-| **Signal** | Same owner: a read, a write and a list on B's copy return B's data; B's change bus carries one notice per write; twenty writes in one burst start one turn of B's entry. Each refusal case (another user, another org, another tenant, a no-org session, an own-resolver refusal, two schedules on the gateway principal, a custom-resolver target from another flow) answers exactly as an unknown id does, on read, write and list. An owner run fired by a service webhook, whose input names another session: read, list, `acrossSessions()`, a plain write and a named action other than settle are each refused alike; the settle on its claimed task's session passes |
+| **Signal** | Same owner: a read, a write and a list on B's copy return B's data; B's change bus carries one notice per write; twenty writes in one burst start one turn of B's entry. Each refusal case (another user, another org, another tenant, a no-org session, an own-resolver refusal, two schedules on the gateway principal, a custom-resolver target whose resolver did not produce the run's principal) answers exactly as an unknown id does, on read, write and list. An owner run fired by a service webhook, whose input names another session: read, list, `acrossSessions()`, a plain write and a named action other than settle are each refused alike; the settle on its claimed task's session passes |
 | **Input** | Two sessions of one owner on two flows that both declare a `notes` collection. Any other per-session definition must pass too |
 | **Anti-game** | Assert on what the block reads back and on B's bus, never on the admission function. Compare each refusal byte for byte with an unknown id's answer |
 | **Control that must fail** | `GOAL_CONTROL=owner-user-only` must FAIL *other-org reads as missing*. `GOAL_CONTROL=turn-per-write` must FAIL *one turn per burst*. `GOAL_CONTROL=webhook-source-only` must FAIL *the owner run is refused*. Today's `main` fails the same-owner row |
@@ -80,16 +80,60 @@ says when to use `ctx.sessions` instead. The resource guides follow at release.
 
 ```mermaid
 flowchart LR
-  B["block · the run's resolved principal"] --> T["tenant matches"]
-  T --> O["isOrgAttributed"]
-  O --> L["admitListedSession"]
-  L --> V["ownResolverVerdict · or the host rule"]
+  D["the door · host.resolvePrincipal"] -->|"set once"| P["principal · userId, orgId, tenantId, kind, resolvedBy"]
+  P -->|"carried unchanged"| B["block in session A"]
+  B --> K["kind is person · and A's recorded kind is person"]
+  K --> T["tenant matches · isOrgAttributed"]
+  T --> L["admitListedSession"]
+  L --> V["own resolver: resolvedBy matches · else the one owner comparison"]
   V --> W["ownsRecord · ownerPin"]
   W --> C["B's copy · the definition's checks run"]
 ```
 
-The same functions the HTTP routes use, fed the run's resolved principal instead of HTTP
-credentials. A miss at any step is a missing session.
+The same functions the HTTP routes use, fed the run's principal instead of HTTP credentials. A
+miss at any step is a missing session.
+
+**One principal.** `{ userId, orgId, tenantId, kind: "person" | "machine", resolvedBy }`, built
+on core's `ResolvedPrincipal`. `resolvedBy` names the resolver that produced it, with the host
+settings applied to its answer (`requireUser`, `defaultUserId`): the same key the HTTP list
+resolves once per. It is a value, not a function reference, so it rides a runner's envelope.
+`host.resolvePrincipal` sets the whole principal once, at the door, and dispatch, sub-flows, owner
+runs, wakes, schedules and webhooks carry it unchanged. A run started from a stored record (a
+wake, an owner run, a task) reads the principal the record stored. `RequestPrincipal`,
+`InstanceCaller`, `InternalPrincipal` and the schedule's principal shape all become this type.
+
+**Who is a machine.** The scheduled route sets `kind: "machine"` when the fire runs as the gateway
+fallback or the system principal. The webhook route sets it for a delivery's service principal.
+A static or dynamic schedule that names a real person runs as that person (`kind: "person"`),
+and reaches what that person reaches. A session records its creating principal's kind once, at
+birth. The store's write path keeps it sticky, so a stale whole-record write can't turn a
+machine's session into a person's. A run whose principal or session is a machine's reaches no
+other session. `kind` is the only machine marker: no metadata stamp, no `"system"` id check and
+no separate session flag.
+
+**One owner comparison.** User, org and tenant, exact, in one function every door calls: the
+session and request routes, the view host rule, the own-resolver verdict and a block's named
+reach. A session with no org is refused before it, by `isOrgAttributed`, as the routes already
+do.
+
+**Own-resolver targets.** A target whose flow has its own resolver admits the run when that
+resolver's identity equals the principal's `resolvedBy`, then the owner comparison runs on the
+principal. A run whose principal another resolver produced reads it as missing. A schedule's
+named person was resolved by no resolver of the target's, so it reaches host-rule targets only.
+
+**Existing sessions are backfilled, not refused.** A session written before `kind` existed is
+classified from its first request record's `source`, read in place (BP-030), with no new config:
+
+| First request | Kind |
+|---|---|
+| `http`, `mcp`, `cli`, or a record from before `source` (stores read it as `http`) | person |
+| `scheduled`, `webhook`, or any request whose `userId` is `"system"` | machine |
+| `internal` or `task` | the kind of the session that dispatched it (`parentSessionId`), read the same way |
+
+Only a session with no readable request record fails closed, as a machine's. That session has
+never run, or its records are gone, so nothing says who made it, and a guess of "person" would
+hand a webhook's or a schedule's session a person's reach. A wake or owner-run record stored
+before this carries no `resolvedBy`, so a run started from it admits no own-resolver target.
 
 ## What stays as it is
 
@@ -104,7 +148,10 @@ credentials. A miss at any step is a missing session.
 | Already here | What this does with it |
 |---|---|
 | The routes' admission: `admitListedSession`, `ownResolverVerdict` (`engine/src/routes/instance-caller.ts`), `isOrgAttributed` (`engine/src/context/org-attribution.ts`), `ownsRecord` with `ownerPin` (`engine/src/context/record-owner.ts`) | **Extends** to a block's caller ([ER-1](../../epics/FIX-2941/DECISIONS.md#who-owns-what)). No new owner check |
-| `principalOwnsRequest` (`engine/src/context/request-principal.ts`) | **Builds on.** The host rule's owner compare |
+| `principalOwnsRequest` (`engine/src/context/request-principal.ts`), and the user and org compares in `ownResolverVerdict` and the view host rule (`engine/src/routes/view-routes.ts`) | **Folds** into the one owner comparison |
+| Five principal shapes: `RequestPrincipal`, `InstanceCaller` (`engine/src/routes/instance-caller.ts`), `InternalPrincipal` (`engine/src/durability/dispatch-internal.ts`), the schedule's principal, and core's `ResolvedPrincipal` (`core/src/types/auth.ts`) | **Folds** into one principal built on `ResolvedPrincipal`, with `kind` and `resolvedBy` |
+| The HTTP list's resolve-once-per-resolver key (`createInstanceCallerResolver`) | **Builds on.** That key is `resolvedBy` |
+| `RequestRecord.source` and `SessionRecord.parentSessionId` (`engine/src/stores/types.ts`) | **Builds on** to backfill an existing session's kind |
 | The request host's session reads (`engine/src/context/request-sessions.ts`): another session's flow and readable state, `undefined` on a miss | **Leaves alone**, and copies its miss shape |
 | The resource resolver in `engine/src/context/createExecutionContext.ts`: own key, or the lineage root | **Extends** with a named session. The lineage branch stays until FIX-2947 deletes it |
 | The change bus's one publish per write (`engine/src/bus/scope-changes.ts`) and the task notice | **Builds on.** A write into B publishes on B's topics, as a local write does ([ER-2](../../epics/FIX-2941/DECISIONS.md#who-owns-what)) |
@@ -118,16 +165,17 @@ credentials. A miss at any step is a missing session.
 |---|---|---|
 | `ctx.resources.at({ session })` | The sessions handle; the parent-row read | Extends the resource accessor. The handle reaches no resources, and a second handle beside it would be a second door to sessions |
 | Block-side admission | The routes' admission functions | The same functions, fed the run's resolved principal |
+| `kind` and `resolvedBy` on the principal; a session's recorded kind | Three machine markers (a schedule metadata stamp, a `"system"` id check, a session flag), and matching an own-resolver target by flow | Two fields on the one principal, set at the door. The session keeps its creator's kind, sticky at the store |
 | A delivery origin on internal dispatches | The dispatch source; request metadata | Rides the envelope beside the source, server-set. Metadata is caller-shaped, so it can't carry it (BP-031) |
 
 | The debt | |
 |---|---|
-| **Removes** | Nothing by itself. It is what lets FIX-2946, FIX-2947 and FIX-2948 remove their workarounds |
-| **Adds** | One accessor method. Two ways to name another session, `ctx.sessions` and `ctx.resources.at`, for two jobs (not a resource, a resource), which the docs line says. The webhook refusal, and the delivery origin it reads, are a stop-gap that FIX-2686 widens to every untrusted turn |
+| **Removes** | Four principal shapes onto one, and four owner compares onto one. Beyond that, it is what lets FIX-2946, FIX-2947 and FIX-2948 remove their workarounds |
+| **Adds** | One accessor method. Two fields on the principal and one on the session record, with a backfill read for sessions from before it. Two ways to name another session, `ctx.sessions` and `ctx.resources.at`, for two jobs (not a resource, a resource), which the docs line says. The webhook refusal, and the delivery origin it reads, are a stop-gap that FIX-2686 widens to every untrusted turn |
 | **Leaves** | Tenants inside per-user data, and FIX-2065 |
 
-**Net: flat here, down across the set.** One method is added. The set removes the workarounds it
-replaces.
+**Net: down here, and down across the set.** One method and two principal fields are added; four
+principal shapes and four owner compares go. The set removes the workarounds it replaces.
 
 ## Sign off
 
