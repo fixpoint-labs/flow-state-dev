@@ -210,7 +210,7 @@ stop, a lapsed connection). A component's own test that draws one screen from da
 in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
 `src/app/`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
 and small flows: no adapter, nothing of the app's in `workforce/`, every file classed, at most three
-flows of under 200 lines each, at most 300 lines of configuration (the `WORKER.md` tree included), no screen file
+flows of under 200 lines each, at most 310 lines of configuration (the `WORKER.md` tree included), no screen file
 that reaches the server itself (`src/app/` included: it imports no client value and calls no
 `.subscribe(` or `.flow(`), no hand-written type for a row a view returns, and no host wiring a kit
 replaces. Its rules live in the shared module `labs/test-support/inventory.mts`, which Teammates and

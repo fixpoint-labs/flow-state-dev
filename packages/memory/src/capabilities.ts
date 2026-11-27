@@ -11,11 +11,10 @@
  */
 
 import { defineCapability } from '@flow-state-dev/core'
-import type { ResourceContext } from '@flow-state-dev/core'
 
-import { workingMemoryResource, type WorkingMemoryState } from './working-memory'
+import { workingMemoryResource } from './working-memory'
 import {
-  DEFAULT_WORKING_MEMORY_CONFIG,
+  resolveWorkingMemoryConfig,
   add,
   evict,
   pin,
@@ -27,17 +26,17 @@ import {
 } from './working-memory-helpers'
 import type { WorkingMemoryHelperConfig, AddEntryInput } from './working-memory-helpers'
 
-import { createEpisodicMemoryResource, type EpisodicMemoryState } from './episodic-memory'
+import { createEpisodicMemoryResource } from './episodic-memory'
 import type { MemoryResourceOptions } from './resource-options'
 import { encode, recent, markConsolidated } from './episodic-memory-helpers'
 import type { EncodeEpisodeInput } from './episodic-memory-helpers'
 
-import { createSemanticMemoryResource, type SemanticMemoryState } from './semantic-memory'
+import { createSemanticMemoryResource } from './semantic-memory'
 import type { SemanticFact } from './semantic-memory'
 import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
 import { addFact, updateFact, reinforce, removeFact, allFacts, query } from './semantic-memory-helpers'
 
-import { createDigestMemoryResource, type DigestMemoryState } from './digest-memory'
+import { createDigestMemoryResource } from './digest-memory'
 
 // ---------------------------------------------------------------------------
 // Working Memory Capability
@@ -53,20 +52,13 @@ import { createDigestMemoryResource, type DigestMemoryState } from './digest-mem
  * in the generator's `context` array alongside this capability.
  */
 export function createWorkingMemoryCapability(config?: WorkingMemoryHelperConfig) {
-  const resolved = {
-    capacity: config?.capacity ?? DEFAULT_WORKING_MEMORY_CONFIG.capacity,
-    maxPinnedSlots: config?.maxPinnedSlots ?? DEFAULT_WORKING_MEMORY_CONFIG.maxPinnedSlots,
-    decay: {
-      strategy: config?.decay?.strategy ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.strategy,
-      rate: config?.decay?.rate ?? DEFAULT_WORKING_MEMORY_CONFIG.decay.rate,
-    },
-  }
+  const resolved = resolveWorkingMemoryConfig(config)
 
   return defineCapability({
     name: 'workingMemory' as const,
     resources: { workingMemory: workingMemoryResource },
-    fns: (ctx: any) => {
-      const ref = ctx.resources.workingMemory as ResourceContext<WorkingMemoryState>
+    fns: (ctx) => {
+      const ref = ctx.resources.workingMemory
       return {
         /** Add an entry. Lowest-salience non-pinned entry is evicted if at capacity. */
         add: (entry: AddEntryInput) => add(ref, entry, resolved),
@@ -119,8 +111,8 @@ export function createEpisodicMemoryCapability(config?: EpisodicMemoryCapability
   return defineCapability({
     name: 'episodicMemory' as const,
     resources: { episodicMemory: resource },
-    fns: (ctx: any) => {
-      const ref = ctx.resources.episodicMemory as ResourceContext<EpisodicMemoryState>
+    fns: (ctx) => {
+      const ref = ctx.resources.episodicMemory
       return {
         /** Encode a new episode. Auto-evicts oldest when over capacity. */
         encode: (episode: EncodeEpisodeInput) => encode(ref, episode, maxEpisodes),
@@ -173,8 +165,8 @@ export function createSemanticMemoryCapability(config?: SemanticMemoryCapability
   return defineCapability({
     name: 'semanticMemory' as const,
     resources: { semanticMemory: resource },
-    fns: (ctx: any) => {
-      const ref = ctx.resources.semanticMemory as ResourceContext<SemanticMemoryState>
+    fns: (ctx) => {
+      const ref = ctx.resources.semanticMemory
       return {
         /** Add a new semantic fact. */
         addFact: (fact: AddSemanticFactInput) => addFact(ref, fact),
@@ -227,8 +219,8 @@ export function createDigestMemoryCapability(config?: DigestMemoryCapabilityConf
   return defineCapability({
     name: 'digestMemory' as const,
     resources: { digestMemory: resource },
-    fns: (ctx: any) => {
-      const ref = ctx.resources.digestMemory as ResourceContext<DigestMemoryState>
+    fns: (ctx) => {
+      const ref = ctx.resources.digestMemory
       return {
         /** Get the current digest, or undefined if never generated. */
         get: () => ref.state.digest,

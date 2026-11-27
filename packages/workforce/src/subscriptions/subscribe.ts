@@ -283,7 +283,7 @@ async function subscriptionIdOf(sessionId: string, provider: string, thread: str
 
 /** The tenant the running session is under, or none. */
 const tenantOf = (ctx: BlockContext): string | undefined => {
-  const tenantId = (ctx.session.identity as { tenantId?: string }).tenantId;
+  const tenantId = ctx.session.identity.tenantId;
   return tenantId === undefined || tenantId.length === 0 ? undefined : tenantId;
 };
 
@@ -366,7 +366,7 @@ export function unmatchedRefusal(input: Pick<SubscribeInput, "unmatched">, flowK
 
 function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refused: string } | { sessionId: string; worker: string; taskId?: string } {
   if (target !== undefined) return { sessionId: target.sessionId, worker: target.worker, ...(target.taskId === undefined ? {} : { taskId: target.taskId }) };
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const worker = state[WORKER_ID_STATE_KEY];
   if (typeof worker !== "string" || worker.length === 0) return { refused: "not_a_worker: this session runs no worker, so it can't subscribe." };
   const taskId = state[TASK_ID_STATE_KEY];
@@ -431,14 +431,15 @@ async function writeSubscription(
   if ("refused" in hears) return hears;
   const settings = subscriptionInputRefusal(providers, input);
   if (settings !== undefined) return { refused: settings };
-  if (write.botsScreenedBy !== undefined && botsHandedOn({ botsScreenedBy: write.botsScreenedBy, screens: input.screens ?? [] }) === undefined) {
+  const screens = input.screens ?? [];
+  if (write.botsScreenedBy !== undefined && botsHandedOn({ botsScreenedBy: write.botsScreenedBy, screens }) === undefined) {
     return { refused: `no_screen: bots are handed on to "${write.botsScreenedBy}", which this subscription doesn't list.` };
   }
   const thread = input.thread.trim();
   const provider = providers.find((p) => p.provider === input.provider)!;
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
-  const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
+  const { identity } = ctx.session;
   if (identity.userId === undefined || identity.orgId === undefined) {
     return { refused: "no_identity: a subscription needs a session that names its user and organization." };
   }
@@ -459,7 +460,7 @@ async function writeSubscription(
     provider: provider.provider,
     thread,
     ...(input.kinds === undefined ? {} : { kinds: input.kinds }),
-    screens: input.screens ?? [],
+    screens,
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
     ...(write.botsScreenedBy === undefined ? {} : { botsScreenedBy: write.botsScreenedBy }),
     ...(self === undefined ? {} : { self }),
@@ -470,7 +471,7 @@ async function writeSubscription(
     flow: flowKind ?? "",
     worker: hears.worker,
     ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
-    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const, hostScreens: input.screens ?? [] } : {}),
+    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const, hostScreens: screens } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.
@@ -511,7 +512,7 @@ async function writeSubscription(
       return { refused: `ended: its task was already ${ended.ending === "errored" ? "failed" : "cancelled"}, so it ended with it.` };
     }
   }
-  await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+  await subscriptionCursorsOf(ctx).getOrCreate(id);
   // The same id on a new thread (a declared routine's entry changed): the thread the write replaced
   // loses its entry, or its stale screen settings keep nominating it there.
   if (moved.prior.thread !== moved.now.thread) await dropFromIndex(ctx, moved.prior.thread, id);
@@ -534,7 +535,7 @@ export async function syncIndex(ctx: BlockContext, subscription: SubscriptionRes
   }
   // Other users' subscribes to this thread may write at once: `updateState`
   // runs again against the subscription that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread), { subscriptions: {} });
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread));
   const slot = indexSlotOf(subscription.userId, subscription.id);
   await retryOnConflict(() =>
     index.updateState((current) => {
@@ -555,7 +556,7 @@ export async function syncIndex(ctx: BlockContext, subscription: SubscriptionRes
  * (a declared routine's `cfg_` id) stays.
  */
 export async function dropFromIndex(ctx: BlockContext, thread: string, id: string): Promise<void> {
-  const userId = (ctx.session.identity as { userId?: string }).userId;
+  const userId = ctx.session.identity.userId;
   if (userId === undefined) return;
   const slot = indexSlotOf(userId, id);
   const mine = (subscriptions: Record<string, IndexEntry>) => subscriptions[slot] !== undefined || subscriptions[id]?.userId === userId;

@@ -1,10 +1,13 @@
 /**
- * System prompts for the rich-text-component flow's seven actions.
+ * System prompts for the rich-text-component flow's actions.
  *
  * Each prompt is specialized for one transformation. They share a common
  * `OUTPUT_ONLY` closing line — placed at the end so recency bias makes the
  * model less likely to drift into "Here is the rewritten version:" preamble.
  */
+
+import type { z } from "zod";
+import type { fixCodeInputSchema, summarizeInputSchema } from "./schemas";
 
 const OUTPUT_ONLY =
   "Output only the transformed text. No preamble, no quotes, no explanation.";
@@ -36,7 +39,7 @@ ${OUTPUT_ONLY}`;
  * hard word counts on small/fast models — labels give a target the model can
  * hit consistently without ignoring overly precise constraints.
  */
-export function summarizePrompt(length: "short" | "medium" | "long"): string {
+export function summarizePrompt({ length }: z.infer<typeof summarizeInputSchema>): string {
   const lengthGuidance = {
     short: "1-2 sentences (~30 words).",
     medium: "1 paragraph (~80 words).",
@@ -51,7 +54,7 @@ ${OUTPUT_ONLY}`;
  * Code-fix prompt with optional language hint. When the language is provided,
  * the model is told outright; otherwise it is asked to infer.
  */
-export function fixCodePrompt(language?: string): string {
+export function fixCodePrompt({ language }: z.infer<typeof fixCodeInputSchema>): string {
   const langLine = language
     ? `The code is ${language}.`
     : `Infer the language from the code.`;

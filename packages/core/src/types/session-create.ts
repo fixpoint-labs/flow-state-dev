@@ -77,8 +77,14 @@ export type SessionCreateCheckInput = {
 
 /** A create check's answer. */
 export type SessionCreateCheckResult =
-  /** Create the session with the state it was given. */
-  | { readonly ok: true }
+  /**
+   * Create the session with the state it was given, plus `state` when the
+   * check returns one: fields it derived from what it read (a display name
+   * from the record it looked up), written over the initial state as the
+   * session is born. They are the check's to set, so it should refuse a
+   * create that seeds one itself.
+   */
+  | { readonly ok: true; readonly state?: Readonly<Record<string, unknown>> }
   /**
    * Refuse the create. Nothing is written. `message` reaches the caller.
    * `status` is the HTTP status the create route answers with (default 400).

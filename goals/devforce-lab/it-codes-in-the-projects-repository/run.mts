@@ -206,7 +206,7 @@ await runGoal(async (failures) => {
   // The control: the lab's one fixed repository, which holds no marker.
   const fixed = CONTROL === "fixed-source" ? createScratchRepo("projects-repo-fixed") : undefined;
   const workspace: OpenLabOptions["workspace"] =
-    fixed === undefined ? { root, remotes: { allow: ["file"] } } : { root: fixed.root, sourceRepo: fixed.sourceRepo, baseRef: BASE_REF };
+    fixed === undefined ? { root, remotes: { allow: ["file"] } } : { root: fixed.root, repo: fixed.sourceRepo, baseRef: BASE_REF };
 
   const stub = harnessStub({ duringRun });
   const lab = await openLab({

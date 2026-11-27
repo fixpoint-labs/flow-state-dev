@@ -226,9 +226,9 @@ export type PerspectiveObservation = z.infer<typeof perspectiveObservationSchema
 /** Observations resource state: the observation log + a turn counter. */
 export const perspectiveObservationsStateSchema = z.object({
   /** All recorded observations, in insertion order. */
-  observations: z.array(perspectiveObservationSchema),
+  observations: z.array(perspectiveObservationSchema).default([]),
   /** Monotonic turn counter — bumped via `advancePerspectiveObservations`. */
-  turnCounter: z.number().int().min(0),
+  turnCounter: z.number().int().min(0).default(0),
 })
 
 export type PerspectiveObservationsState = z.infer<typeof perspectiveObservationsStateSchema>
@@ -243,7 +243,7 @@ export type PerspectiveObservationsState = z.infer<typeof perspectiveObservation
 export const perspectiveObservationsResource = defineResource({
   scope: 'session',
   stateSchema: perspectiveObservationsStateSchema,
-  default: { observations: [], turnCounter: 0 },
+  default: perspectiveObservationsStateSchema.parse({}),
   writable: true,
 })
 
@@ -297,7 +297,7 @@ export type PerspectivePosition = z.infer<typeof perspectivePositionSchema>
 /** Positions resource state: just the array of positions. */
 export const perspectivePositionsStateSchema = z.object({
   /** All recorded positions, in insertion order. */
-  positions: z.array(perspectivePositionSchema),
+  positions: z.array(perspectivePositionSchema).default([]),
 })
 
 export type PerspectivePositionsState = z.infer<typeof perspectivePositionsStateSchema>
@@ -314,7 +314,7 @@ export function createPerspectivePositionsResource(scope: 'session' | 'user' | '
   return defineResource({
     scope,
     stateSchema: perspectivePositionsStateSchema,
-    default: { positions: [] },
+    default: perspectivePositionsStateSchema.parse({}),
     writable: true,
   })
 }

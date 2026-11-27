@@ -11,7 +11,7 @@
  * the answers and on the marker file, never on the options the block built.
  *
  * Run:      pnpm tsx goals/claude-code-harness/loads-a-trusted-repos-conventions-with-hooks-off/run.mts
- * Controls: GOAL_CONTROL=hooks-on  (no `settings`; must FAIL hooks:off)
+ * Controls: GOAL_CONTROL=hooks-on  (`settings: { disableAllHooks: false }`; must FAIL hooks:off)
  *           GOAL_CONTROL=untrusted (`settingSources: []`; must FAIL conventions:code-word)
  */
 import { randomBytes } from "node:crypto";
@@ -63,7 +63,7 @@ async function ask(dir: string, prompt: string, disallowedTools: string[]): Prom
   const block = claudeCodeAgent({
     cwd: () => dir,
     settingSources: CONTROL === "untrusted" ? [] : ["project"],
-    ...(CONTROL === "hooks-on" ? {} : { settings: { disableAllHooks: true } }),
+    settings: { disableAllHooks: CONTROL !== "hooks-on" },
     disallowedTools,
     maxTurns: 3,
   });

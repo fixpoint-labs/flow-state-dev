@@ -77,7 +77,7 @@ describe("hiring a worker", () => {
     expect(alices).toEqual([{ id: "scribe", flow: FIXTURE, standard: false, description: null, forkedFrom: null, edited: false, name: null, teamName: null, settings: {} }]);
     expect(bobs).toEqual([{ id: "scribe", flow: OTHER, standard: false, description: null, forkedFrom: null, edited: false, name: null, teamName: null, settings: {} }]);
     const session = await h.client("alice").ensureWorkerSession({ worker: "scribe" });
-    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Alice's." });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Alice's.", skills: [] });
   });
 
   it("BR-5 · a worker of one organization isn't on the same user's roster in another", async () => {

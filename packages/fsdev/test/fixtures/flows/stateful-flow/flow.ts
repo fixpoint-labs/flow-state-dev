@@ -14,8 +14,7 @@ const counterHandler = handler({
   outputSchema: z.object({ count: z.number() }),
   sessionStateSchema,
   execute: async (input, ctx) => {
-    const current = ctx.session.state.count ?? 0;
-    const next = current + input.increment;
+    const next = ctx.session.state.count + input.increment;
     await ctx.session.patchState({ count: next });
     return { count: next };
   },
