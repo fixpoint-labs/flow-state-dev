@@ -3,6 +3,8 @@
  * real board, real fenced settlement and a real git checkout. Only the
  * harness is a stub, and it records what each step was handed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -28,7 +30,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   STEER_POLL_MS,
-  type HarnessFeeds,
 } from "../src";
 import { MAX_STEERS } from "@flow-state-dev/orchestration/internal";
 import { harnessTaskId } from "../src/workspace";
@@ -221,7 +222,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
         },
       },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),

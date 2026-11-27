@@ -33,7 +33,7 @@ export type TestSequencerSeed = TestTargetSeed & {
   name?: string;
 };
 
-export type TestBlockOptions<TInput> = {
+export type TestBlockOptions<TInput> = TestStateSeed & {
   input: TInput;
   /** Optional flow instance. When provided, its resource configs (including
    *  resource collections) are used instead of the auto-generated ones. */
@@ -46,10 +46,6 @@ export type TestBlockOptions<TInput> = {
    * Ignored when `flow` is supplied: that instance carries its own bag.
    */
   flowConfig?: Record<string, unknown>;
-  request?: TestRequestSeed;
-  session?: TestScopeSeed;
-  user?: TestScopeSeed;
-  org?: TestScopeSeed;
   sequencer?: TestSequencerSeed;
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;

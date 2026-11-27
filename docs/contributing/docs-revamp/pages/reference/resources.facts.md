@@ -629,7 +629,7 @@ Each row is a claim. **Carried** means true as stated or after the stated correc
 
 | # | Row (short) | Verdict | Where / why |
 |---|---|---|---|
-| 1 | Bash sync requirements: `path`, `hash`, `updatedAt`; content kept separately | **Carried, corrected.** The three fields are required string fields; content is in the content body, not state. State tracks path, content hash, last-sync timestamp. The workspace sets them; a value returned for those keys from `createState` is ignored. `FileEntryState` has string values only. | `packages/tools/src/bash/types.ts:50-66`; `capability.ts:61-67`; `apps/docs/docs/tools/bash.md:360-371` |
+| 1 | Bash sync requirements: `path`, `hash`, `updatedAt`; content kept separately | **Carried, corrected.** The three fields are required string fields; content is in the content body, not state. State tracks path, content hash, last-sync timestamp. The workspace sets them; a value returned for those keys from `createState` is ignored. `ProjectedEntryState` (workspace) has string values only. | `packages/workspace/src/types.ts`; `capability.ts:61-67`; `apps/docs/docs/tools/bash.md:360-371` |
 | 2 | Resource handle operations: `readContent`, `writeContent`, `patchState`, `state`, type error on an undeclared name | **Carried.** Wider than the row: the full table is 4.1. | res:445-531, 535-552 |
 | 3 | Identity and scope: storage keys, cross-flow sharing, `flowIsolation` | **Carried.** 5.2, 5.3. User keys carry the organization, which the row does not say. | `keys` |
 | 4 | Collection operations incl. `create` throws on existing, pattern syntax, prefix auto-prepended | **Carried.** 4.3, 8.1. Auto-prepend: a string key is appended to the static pattern prefix; `list("src/")` also prepends it. | reg:1927-1945 |

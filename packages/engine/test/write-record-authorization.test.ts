@@ -28,7 +28,7 @@ const SERVES_ADMITTED = new Set([
   "client-session.ts", // the same, for the client's session reads
   "debug-snapshot.ts", // debug reads of a session the guard checked
   "session-routes.ts", // the session listing, after ownResolverVerdict
-  "view-routes.ts" // a view's session admission: its host rule runs after admitListedSession's write-record rule (FIX-2725)
+  "view-routes.ts" // a view's session admission: its host rule runs after admitSession's write-record rule (FIX-2725)
 ]);
 
 describe("write-record authorization", () => {
@@ -61,7 +61,7 @@ describe("write-record authorization", () => {
         else if (/\.tsx?$/.test(entry.name)) {
           const source = readFileSync(path, "utf8");
           // Resolves a flow on a registry it holds (not a host's or a runtime's), then runs it.
-          if (/(?<![.\w])registry\.get\(/.test(source) && /\brunAction\(/.test(source)) entries.push(path);
+          if (/(?<![.\w])registry\.get\(/.test(source) && /\brun(Framework)?Action\(/.test(source)) entries.push(path);
         }
       }
     };

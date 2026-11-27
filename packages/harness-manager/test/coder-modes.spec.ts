@@ -10,7 +10,7 @@
  * on the flow, and the flow never reads them.
  *
  * Graded on what the kit builds and refuses at start, and on which mode a
- * task's input selects.
+ * task's checked input selects.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workerMessagesResources } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
-import type { Harness } from "../src/harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import type { CompletionRunContext, ModeSpec, PromptRunContext } from "../src/manager";
 import { scriptedHarness } from "../src/scripted-harness";
 import { modeOfTask, resolveCoderModes, runModeOfTask } from "../src/kit/coder-modes";
@@ -184,12 +184,12 @@ describe("an app that registers its modes", () => {
     expect(codingDrainBudgetMs({ ...shiftManager, checks })).toBeGreaterThan(codingDrainBudgetMs({ ...shiftManager }));
   });
 
-  it("hands a feature task to the implement manager and any other task to the answer manager", async () => {
+  it("hands an implement task to the implement manager and any other task to the answer manager", async () => {
     expect(await start(shiftManager)).toBe("started");
     const pick = (input: unknown, reviewed = "") => managerBlocks.get(routers.get(`coder-codex-by-mode${reviewed}`)!.execute({ input }));
-    expect(pick({ harnessFeature: { issue: "FIX-12" } })).toBe("coder-codex-implement");
-    expect(pick({ description: "Why?" })).toBe("coder-codex-answer");
-    expect(pick({ harnessFeature: { issue: "FIX-12" } }, "-reviewed")).toBe("coder-codex-implement-reviewed");
+    expect(pick({ mode: "implement", issue: "FIX-12" })).toBe("coder-codex-implement");
+    expect(pick({ mode: "answer", description: "Why?" })).toBe("coder-codex-answer");
+    expect(pick({ mode: "implement", issue: "FIX-12" }, "-reviewed")).toBe("coder-codex-implement-reviewed");
     expect(pick({}, "-reviewed")).toBe("coder-codex-answer-reviewed");
   });
 
@@ -204,35 +204,47 @@ describe("which mode a task runs", () => {
   const registered = resolveCoderModes(shiftManager, kitMode, "coder");
   const kitOnly = resolveCoderModes({}, kitMode, "coder");
 
-  // FIX-2878 replaces this on purpose: the mode will come from a field the server writes, and a
-  // marker only on the filer's `input` will stay on the default mode. Until then it is the
-  // accepted interim, the same rule Shift Manager's own coder follows.
-  it("pins the interim: a marker the filer wrote only on `input` runs the task as implement", async () => {
+  // FIX-2878 flips FIX-2877's pinned interim on purpose: a model writes a task's `input`, so a
+  // marker there no longer picks implement. The mode comes from the checked input the server
+  // wrote, and a stored row's marker runs as implement only through the claim's legacy read.
+  it("runs a task whose feature marker is only on the filer's `input` in the default mode, not implement", async () => {
     const filerWritten = { description: "Add a line to the README", harnessFeature: { issue: "FIX-12" } };
-    expect(modeOfTask(filerWritten, registered)).toBe("implement");
+    expect(modeOfTask(filerWritten, registered)).toBe("answer");
     expect(await start(shiftManager)).toBe("started");
     const picked = routers.get("coder-codex-by-mode")!.execute({ input: filerWritten });
-    expect(managerBlocks.get(picked)).toBe("coder-codex-implement");
+    expect(managerBlocks.get(picked)).toBe("coder-codex-answer");
   });
 
-  it("runs a task carrying the feature marker as implement, and every other task in the default mode", () => {
-    expect(modeOfTask({ harnessFeature: { issue: "FIX-12" } }, registered)).toBe("implement");
-    expect(modeOfTask({ issue: "the problem", description: "Why?" }, registered)).toBe("answer");
+  it("runs the mode the checked input names, and the default mode when it names none", () => {
+    expect(modeOfTask({ mode: "implement", issue: "FIX-12" }, registered)).toBe("implement");
+    expect(modeOfTask({ issue: "FIX-12", description: "Why?" }, registered)).toBe("answer");
     expect(modeOfTask(undefined, registered)).toBe("answer");
-    // A malformed marker goes to implement, which refuses it in the run; it never runs as an answer.
-    expect(modeOfTask({ harnessFeature: { phase: "implement" } }, registered)).toBe("implement");
+    expect(modeOfTask({ mode: "default" }, kitOnly)).toBe("default");
   });
 
-  it("runs a feature task in the kit's mode when the app registers no implement", () => {
-    expect(modeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toBe("default");
+  it("finds a stored task's run under the mode the claim reads it in, and a refused one's nowhere", () => {
+    // A stored marker reads as the mode whose old phase value its phase is: the kit's `code` is `default`.
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly, false)).toEqual({ name: "default", formerName: "code" });
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly, false)).toEqual({ name: "default", formerName: "code" });
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, registered, false)).toEqual({ name: "implement" });
+    // A row the filing check stamped runs the mode it checked.
+    expect(runModeOfTask({ mode: "implement", issue: "FIX-12" }, registered, true)).toEqual({ name: "implement" });
+    // No run is keyed by a row the claim refuses, or by a mode the app doesn't have.
+    expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered, false)).toBeUndefined();
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "review" } }, registered, false)).toBeUndefined();
+    expect(runModeOfTask({ mode: "constructor" }, registered, true)).toBeUndefined();
+    expect(runModeOfTask({}, registered, true)).toEqual({ name: "answer" });
   });
 
-  it("finds a feature task's run under its own phase, and a malformed one's nowhere", () => {
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "code" } }, kitOnly)).toEqual({ name: "code" });
-    // Only the key a run is found by: its name, and the one it was stored under before.
-    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12" } }, kitOnly)).toEqual({ name: "default", formerName: "code" });
-    expect(runModeOfTask({ harnessFeature: { phase: "x" } }, registered)).toBeUndefined();
-    expect(runModeOfTask({}, registered)).toEqual({ name: "answer" });
+  it("never lets a mode a filer wrote on a row the check didn't stamp choose the run", () => {
+    expect(runModeOfTask({ mode: "implement", issue: "FIX-12" }, registered, false)).toEqual({ name: "answer" });
+    expect(runModeOfTask({ mode: "bogus" }, registered, false)).toEqual({ name: "answer" });
+  });
+
+  it("keys no run by a row the legacy read refuses, and lets any other fault surface", () => {
+    expect(runModeOfTask({ harnessFeature: { issue: "FIX-12", phase: "review" } }, registered, false)).toBeUndefined();
+    const broken = Object.defineProperty({}, "harnessFeature", { enumerable: true, get: () => { throw new Error("the store handed back a broken row"); } });
+    expect(() => runModeOfTask(broken, registered, false)).toThrow("the store handed back a broken row");
   });
 });
 
@@ -240,7 +252,7 @@ describe("modes are refused at start, naming the mode", () => {
   it("refuses a defaultMode that isn't registered, naming the modes there are", async () => {
     const refused = await start({ ...shiftManager, defaultMode: "review" });
     expect(refused).toContain('the default mode is "review"');
-    expect(refused).toContain('"implement", "answer"');
+    expect(refused).toContain('"implement" and "answer"');
   });
 
   it("refuses modes without a default when no defaultMode names one", async () => {
@@ -251,7 +263,7 @@ describe("modes are refused at start, naming the mode", () => {
   it("refuses a mode that requires a field a task doesn't carry", async () => {
     const refused = await start({ modes: { default: { requires: ["isue" as never] } } });
     expect(refused).toContain('mode "default" requires "isue"');
-    expect(refused).toContain('"issue", "project"');
+    expect(refused).toContain('"issue" and "project"');
   });
 
   it("refuses a mode other than default with no instructions or done check", async () => {

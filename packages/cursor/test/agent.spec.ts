@@ -496,7 +496,7 @@ describe("cursorAgent — the endings", () => {
       url: null,
       outcome: "finished",
       finalMessage: "Wrote notes.md",
-      usage: { inputTokens: 1200, outputTokens: 300 },
+      usage: { inputTokens: 1400, outputTokens: 300 },
       cost: null,
       failureMessage: null,
     });
@@ -678,6 +678,22 @@ describe("cursorAgent — the endings", () => {
 
     expect((output as CursorAgentHandle).usage).toEqual({ inputTokens: 9, outputTokens: 8 });
     expect((output as CursorAgentHandle).cursorUsage?.totalTokens).toBe(17);
+  });
+
+  it("reports a cached run's whole input on the handle, cache reads and writes included", async () => {
+    const { resolve } = scripted(OK_STREAM, {
+      waitResult: {
+        status: "finished",
+        usage: { inputTokens: 100, outputTokens: 8, cacheReadTokens: 10_000, cacheWriteTokens: 50, totalTokens: 10_158 },
+      },
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve });
+    const { output } = await testBlock(block, { input: { prompt: "go" } });
+
+    // The run's spend and cost count the cached prompt; the handle's usage must
+    // agree, or a host reading `usage` sees a fraction of what it paid for.
+    expect((output as CursorAgentHandle).usage).toEqual({ inputTokens: 10_150, outputTokens: 8 });
+    expect((output as CursorAgentHandle).cursorUsage?.inputTokens).toBe(100);
   });
 
   it("prices a model core's table knows off the run's own system message", async () => {

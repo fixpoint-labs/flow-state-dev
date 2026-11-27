@@ -14,7 +14,6 @@ import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
 import { memorySystemResource } from './memory-system'
 import { cullByEffectiveConfidence, knownSubjects } from './semantic-memory-helpers'
-import { edgesOf } from './internal/helpers'
 import { episodicResourceOf, semanticResourceOf } from './internal/tier-resources'
 import { cullByTTL, markStale } from './episodic-memory-helpers'
 import type { EpisodicTTLConfig } from './episodic-memory-helpers'
@@ -76,11 +75,8 @@ export function memorySystemJanitor(
       const wmRef = ctx.resources.workingMemory
       const janRef = ctx.resources.janitor
       const currentTurn = wmRef.state.currentTurn ?? 0
-      // Semantic and episodic resources are installed conditionally above,
-      // which forces the inferred ctx type to a wider shape. Cast at the
-      // point of use to the specific helper signatures.
-      const semRef = ctx.resources.semanticMemory as any
-      const epRef = ctx.resources.episodicMemory as any
+      const semRef = ctx.resources.semanticMemory
+      const epRef = ctx.resources.episodicMemory
 
       const now = Date.now()
 
@@ -113,8 +109,8 @@ export function memorySystemJanitor(
       // subjects; pruning by a fact-subject signal would silently delete those
       // legitimate edges (often immediately, since hygiene can run right after
       // consolidation). So we skip the fact-subject prune entirely in that mode.
-      const edges = edgesOf(ctx)
-      if (edges && config.semantic?.relations && !config.semantic.relations.createImplicitEntities) {
+      const edges = semRef?.edges
+      if (semRef && edges && config.semantic?.relations && !config.semantic.relations.createImplicitEntities) {
         try {
           await edges.pruneDangling(knownSubjects(semRef))
         } catch (err) {

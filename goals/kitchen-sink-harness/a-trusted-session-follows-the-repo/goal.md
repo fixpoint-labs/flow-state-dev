@@ -25,7 +25,7 @@
 
 **Controls:** on the same command.
 
-- `GOAL_CONTROL=hooks-on`: the trusted run gets no hooks-off layer. Must FAIL `hooks:off` (and `header`, which then reads "loaded, hooks on").
+- `GOAL_CONTROL=hooks-on`: the trusted run asks for the repository's hooks (`disableAllHooks: false`). Must FAIL `hooks:off` (and `header`, which then reads "loaded, hooks on").
 - `GOAL_CONTROL=untrusted`: the server reads as untrusted whatever its settings say, while every turn still claims trust. Must FAIL `conventions:code-word`, `conventions:skill`, `keys:named` and `header`.
 
 ## Verdict log

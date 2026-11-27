@@ -89,7 +89,8 @@ describe("a coding run's brief", () => {
     const brief = codingBrief(
       {
         ...run,
-        task: { ...run.task, input: { harnessFeature: { issue: "ENG-142", phase: "code" } }, deps: { big: "x".repeat(10_000) } },
+        trackerIssue: "ENG-142",
+        task: { ...run.task, deps: { big: "x".repeat(10_000) } },
       } as PromptRunContext,
       {},
     );

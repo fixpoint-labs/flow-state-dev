@@ -56,7 +56,7 @@ export async function handleGetRequestStatus(
   const { requestId } = route;
 
   const record = await ctx.stores.request.get(requestId);
-  if (record === undefined || !callerReachesRequest(record, ctx.tenantId, ctx.principal)) {
+  if (record === undefined || !(await callerReachesRequest(ctx.stores, record, ctx.tenantId, ctx.principal))) {
     return unknownRequestResponse(requestId);
   }
 

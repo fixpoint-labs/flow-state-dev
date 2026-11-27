@@ -68,7 +68,7 @@
  */
 import { defineCapability, defineFlow, defineResourceCollection, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type {
   HarnessUsageReader,
   HarnessUsageReading,
@@ -194,12 +194,12 @@ export async function recordHarnessUsage(
 ): Promise<UsageWrite> {
   const harness = typeof harnessOrReport === "string" ? harnessOrReport : harnessOrReport.harness;
   const record = await rowOf(ctx, harness);
-  const outcome = await updateStateWith<Record<string, unknown>, UsageWrite>(record, (current) => {
+  const outcome = await updateStateWith<HarnessUsageState, UsageWrite>(record, (current) => {
     const stored = harnessUsageStateSchema.parse(current ?? {});
     const merged =
       typeof harnessOrReport === "string" ? applyReading(stored, reading!, checkedAt!) : applyRunWindow(stored, harnessOrReport);
     if (merged.result !== "recorded" && merged.result !== "kept-stored") return { state: current, result: merged.result };
-    return { state: { ...current, ...merged.state } as unknown as Record<string, unknown>, result: merged.result };
+    return { state: { ...current, ...merged.state }, result: merged.result };
   });
   return outcome ?? "refused-older";
 }
@@ -417,7 +417,7 @@ export function harnessUsageFlow(options: HarnessUsageFlowOptions) {
   const inFlight = new Map<string, Promise<boolean>>();
 
   const recheckOne = (ctx: BlockContext, harness: string, reader: HarnessUsageReader): Promise<boolean> => {
-    const flight = `${orgOf(ctx)}\u0000${userOf(ctx)}\u0000${harness}`;
+    const flight = `${ctx.request?.identity?.orgId ?? ""}\u0000${ctx.user?.identity?.userId ?? ""}\u0000${harness}`;
     const running = inFlight.get(flight);
     if (running !== undefined) return running.then(() => false);
     const started = (async () => {
@@ -471,7 +471,7 @@ export function harnessUsageFlow(options: HarnessUsageFlowOptions) {
  */
 async function claimAttempt(ctx: BlockContext, harness: string, now: number): Promise<boolean> {
   const ref = await rowOf(ctx, harness);
-  const claimed = await updateStateWith<Record<string, unknown>, boolean>(ref, (current) => {
+  const claimed = await updateStateWith<HarnessUsageState, boolean>(ref, (current) => {
     const stored = harnessUsageStateSchema.parse(current ?? {});
     if (stored.lastAttemptAt !== null && now - stored.lastAttemptAt < USAGE_REFRESH_EVERY_MS) {
       return { state: current, result: false };
@@ -509,16 +509,6 @@ async function readWithin(reader: HarnessUsageReader, harness: string, timeoutMs
   }
 }
 
-/** The caller's user id, which the collection's scope is keyed on. */
-function userOf(ctx: BlockContext): string {
-  return String((ctx.user as { identity?: { userId?: unknown } } | undefined)?.identity?.userId ?? "");
-}
-
-/** The organization the request was admitted under: a person's row is kept per organization. */
-function orgOf(ctx: BlockContext): string {
-  return String((ctx.request?.identity as { orgId?: unknown } | undefined)?.orgId ?? "");
-}
-
 /** Strip the injected `harness-usage/` prefix a stored path carries. */
 function harnessFromPath(path: string): string {
   const lead = `${HARNESS_USAGE}/`;
@@ -526,37 +516,19 @@ function harnessFromPath(path: string): string {
 }
 
 /** One record, created empty when missing, ready for a conditional write. */
-async function rowOf(ctx: BlockContext, harness: string): Promise<UsageRef> {
+function rowOf(ctx: BlockContext, harness: string) {
   const key = assertSafeSegment("harness", harness);
-  const collection = collectionOf(ctx);
-  await collection.upsert(key, {}, {});
-  const ref = await collection.getOptional(key);
-  if (ref === undefined) throw new Error(`[harness-manager] the usage record for "${key}" was not created`);
-  return ref;
-}
-
-/** One instance of the collection, with the conditional write. */
-interface UsageRef {
-  path: string;
-  state: unknown;
-  updateState(updater: (current: Record<string, unknown>) => Record<string, unknown>): Promise<void>;
-}
-
-/** The slice of the collection this module uses. Structural. */
-interface UsageCollectionRef {
-  getOptional(key: string): Promise<UsageRef | undefined>;
-  upsert(key: string, update: Record<string, unknown>, createOnly?: Record<string, unknown>): Promise<unknown>;
-  list(prefix?: string): Promise<UsageRef[]>;
+  return collectionOf(ctx).upsert(key, {});
 }
 
 /** Resolve the collection, failing loudly when the flow doesn't install it. */
-function collectionOf(ctx: BlockContext): UsageCollectionRef {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[HARNESS_USAGE];
-  if (ref === undefined || typeof (ref as UsageCollectionRef).upsert !== "function") {
+function collectionOf(ctx: BlockContext): ResourceCollectionRef<HarnessUsageState> {
+  const ref = ctx.resources?.[HARNESS_USAGE];
+  if (typeof ref !== "object" || ref === null || !("upsert" in ref) || typeof ref.upsert !== "function") {
     throw new Error(
       `[harness-manager] the "${HARNESS_USAGE}" collection is not registered on this flow; ` +
         `install it with harnessUsageFlow rather than reading usage some other way.`,
     );
   }
-  return ref as UsageCollectionRef;
+  return ref;
 }
