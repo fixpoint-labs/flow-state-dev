@@ -12,3 +12,6 @@ export * from "./service-flows/internal";
 export { conversationLedgerAt, conversationLedgerResources } from "./conversation-board/ledger";
 export { filingSessionIdOf } from "./conversation-board/filing-session";
 export { readRosterEntries, rosterResources } from "./workers/roster-view";
+// FIX-2878: whether a stored task's input was written by the filing check for a flow's current
+// declaration, so a reader trusts a filer-written field only on such a task.
+export { stampMatches } from "./task-input/filing-check";

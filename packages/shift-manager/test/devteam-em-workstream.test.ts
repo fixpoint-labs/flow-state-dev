@@ -95,7 +95,7 @@ function emModel(turns: string[], prompts: string[]): GeneratorModel {
           turns.length === 1
             ? ISSUES.map((issue) => ({
                 toolName: "createTask",
-                args: { goal: `Build ${issue}.`, assignee: CODER, input: { harnessFeature: { issue, phase: "implement" } } },
+                args: { goal: `Build ${issue}.`, assignee: CODER, input: { mode: "implement", issue } },
               }))
             : [{ toolName: "updateWorkstream", args: { report: REPORT } }];
       }
@@ -215,8 +215,8 @@ describe("the EM files from the workstream it leads", () => {
       const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.messageRequestId === undefined);
       return rows.length === ISSUES.length && rows.every((r) => r.status === "completed") ? rows : undefined;
     }, "both tasks completed", 60_000);
-    expect(settled.map((r) => r.input.harnessFeature).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
-      ISSUES.map((issue) => ({ issue, phase: "implement" })),
+    expect(settled.map((r) => ({ mode: r.input.mode, issue: r.input.issue })).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
+      ISSUES.map((issue) => ({ mode: "implement", issue })),
     );
     expect(settled.every((r) => r.assignee === CODER)).toBe(true);
     // The EM was told its workstream's project before it filed, so it never has to guess one.
