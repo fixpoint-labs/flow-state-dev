@@ -2,7 +2,8 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
-  RequestRecord
+  RequestRecord,
+  SessionRecord
 } from "./types";
 
 // FIX-1010.
@@ -79,6 +80,31 @@ export function withStoredAbortRequested<T extends RequestRecord>(
   }
   if (value.abortRequested === stored) return value;
   return { ...value, abortRequested: stored };
+}
+
+// FIX-2942.
+/**
+ * Force a session record's `principalKind` to the value already stored,
+ * whatever the incoming record says: the rule that keeps a session's creator
+ * kind as its birth wrote it. A write that omits it keeps the stored one, and
+ * one that carries another (a stale snapshot of a person's session written
+ * over a machine's reborn under the same id) cannot change it. With no kind
+ * stored, the incoming record is written as it is: that is how a birth sets
+ * it, and how a session from before the field gets its backfilled kind, once
+ * (`context/session-kind.ts`).
+ *
+ * The memory and filesystem session stores call it inside their write; the
+ * SQL adapters keep the same rule inside the write statement
+ * (`writeOnceJsonKeys`), since a read before their write protects nothing
+ * across connections.
+ */
+export function withStoredPrincipalKind<T extends SessionRecord>(
+  value: T,
+  stored: SessionRecord | undefined
+): T {
+  const kept = stored?.principalKind ?? undefined;
+  if (kept === undefined || value.principalKind === kept) return value;
+  return { ...value, principalKind: kept };
 }
 
 export function withActiveRequestSourceDefault<T extends ActiveRequestEntry | undefined>(

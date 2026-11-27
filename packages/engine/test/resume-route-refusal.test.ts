@@ -53,6 +53,7 @@ async function resume(
     flowKind: "resume-refusal",
     actionName: "go",
     userId: "u1",
+    orgId: DEFAULT_ORG_ID,
     source: "http",
     sessionId: "s1",
     status: "suspended",

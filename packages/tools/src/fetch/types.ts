@@ -38,6 +38,14 @@ export interface FetchConfig {
   provider?: FetchProviderName;
   /** Enable JS rendering when available (Firecrawl, Jina). Default: false. */
   waitForJS?: boolean;
+  /**
+   * Hostnames the tool may read from, matched exactly (`example.com` does not
+   * allow `www.example.com`). Checked on the URL the model asks for and on every
+   * redirect hop. Only the built-in provider can check redirect hops, so setting
+   * this selects it, and naming a hosted provider with it throws. Unset: any
+   * public host; an empty list allows none.
+   */
+  allowedHosts?: string[];
   /** Explicit API keys. If omitted, auto-detect from env vars. */
   keys?: {
     firecrawl?: string;
@@ -56,6 +64,8 @@ export interface FetchProviderAdapter {
       apiKey?: string;
       /** The run's signal; aborting it aborts the request. */
       signal?: AbortSignal;
+      /** See {@link FetchConfig.allowedHosts}. */
+      allowedHosts?: string[];
     }
   ): Promise<FetchResult>;
 }

@@ -190,7 +190,10 @@ async function seedStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now,
-      journal: []
+      journal: [],
+      // The kind a real session gets from the run that creates it: this
+      // context runs as an HTTP caller would, a person.
+      principalKind: "person"
     }, "any");
     await seedResourceState("session", options.sessionId, options.seed.session?.resources);
   }
@@ -445,6 +448,8 @@ export async function createTestContext<TInput = unknown>(
     sessionId,
     userId,
     orgId,
+    // As an HTTP caller's door would set it: a person.
+    principalKind: "person",
     response,
     stores,
     modelResolver,

@@ -8,13 +8,15 @@
  * answered done, or as `answer` says. The screen still reads through
  * `src/app/` and the real client; only the host behind them is stood in for.
  * `TestProvider` puts a tree under the lab's provider on a client over it,
- * merged with the scripted server's when a test hands it one.
+ * merged with the scripted server's when a test hands it one, inside an area
+ * a task's sheet draws over.
  */
 import { createElement, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { taskView, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { AppProvider, useAppClient } from "../src/app";
+import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import type { ConversationView, WindowMark } from "../src/lib/conversation";
 import type { ScriptedServer } from "./scripted-server";
 
@@ -231,7 +233,9 @@ export function stubServer(data: StubData = {}) {
  */
 export function TestProvider({ server, client, children }: { server?: ScriptedServer; client?: Client; children?: ReactNode }) {
   const merged = server === undefined ? (client ?? EMPTY()) : client === undefined ? server.client : mergedClient(server, client);
-  return createElement(AppProvider, { client: merged, connection: server?.connection, pollIntervalMs: 100 }, children);
+  // An area for a task's sheet to draw over, as the app's conversation is: a popup drawn on its own has one too.
+  const sheetArea = createElement(SessionOverlayProvider, null, createElement(SessionOverlayArea, null, children));
+  return createElement(AppProvider, { client: merged, connection: server?.connection, pollIntervalMs: 100 }, sheetArea);
 }
 
 /** One merged client per pair, so a provider that draws again keeps its client. */

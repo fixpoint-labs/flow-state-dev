@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { FileContent } from "@flow-state-dev/core/items";
 import type { RequestRecord } from "../stores/types";
+import type { PrincipalKind } from "./principal";
 
 /**
  * Inputs needed to materialize an initial request record. A structural subset
@@ -44,6 +45,10 @@ export type InitialRequestRecordInput<TState extends JsonObject = JsonObject> = 
   orgId?: string;
   /** Inbound transport provenance; defaults to `"http"` when absent. */
   source?: string;
+  /** The kind of the principal the request runs as (`Principal.kind`); recorded only when known. */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced it (`Principal.resolvedBy`); recorded only when known. */
+  resolvedBy?: string;
   metadata?: Record<string, unknown>;
   input?: unknown;
   /** The person's files, in reference form; recorded only when there are some. */
@@ -81,6 +86,8 @@ export function createInitialRequestRecord<TState extends JsonObject = JsonObjec
     sessionId: input.sessionId,
     tenantId: input.tenantId,
     orgId: input.orgId,
+    ...(input.principalKind !== undefined ? { principalKind: input.principalKind } : {}),
+    ...(input.resolvedBy !== undefined ? { resolvedBy: input.resolvedBy } : {}),
     incarnation: `inc_${randomUUID()}`,
     source: input.source ?? "http",
     status: "in_progress",

@@ -36,7 +36,7 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
  * it starts a fresh budget all the same.
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
-  const state = ctx.session.state ?? {};
+  const { state } = ctx.session;
   const taskId = state[TASK_ID_STATE_KEY];
   let mark: Record<string, unknown> = { [USER_TURN_STATE]: true };
   if (typeof taskId === "string") {

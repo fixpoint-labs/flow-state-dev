@@ -649,6 +649,9 @@ export function useSession(
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [latestRequest, setLatestRequest] = useState<SessionRequestSummary | null>(null);
+  // The last latest-request read for this session failed. With no record from
+  // an earlier one, the shown request reads its own status instead.
+  const [latestRequestFailed, setLatestRequestFailed] = useState(false);
   // The status the stream of the request the view follows last reported.
   const [streamStatus, setStreamStatus] = useState<{ id: string; status: RequestStatus } | null>(null);
   // The record of a shown request that isn't the newest, from a status read.
@@ -904,8 +907,10 @@ export function useSession(
       if (generation !== sessionGenerationRef.current) return null;
       const latest = list[0] ?? null;
       setLatestRequest(latest);
+      setLatestRequestFailed(false);
       return latest;
     } catch {
+      if (generation === sessionGenerationRef.current) setLatestRequestFailed(true);
       // Best effort — a missing latest request shouldn't surface as a
       // session-level error. Consumers see the previous value.
       return null;
@@ -1329,9 +1334,15 @@ export function useSession(
   const readState = useCallback(async () => {
     if (sessionId === undefined) return;
     const read = beginStateRead();
+    // The live changes the state response can't hold: those numbered after
+    // the count when it answered, not when the detail read answers too.
+    let changesAt = 0;
     const [nextDetail, next] = await Promise.all([
       sessionsApi.get(sessionId),
-      sessionsApi.state(sessionId, { includeItems: false })
+      sessionsApi.state(sessionId, { includeItems: false }).then((response) => {
+        changesAt = liveChangeCountRef.current;
+        return response;
+      })
     ]);
     const superseded = read.sequence <= stateAppliedSequenceRef.current;
     const state = takeState(next, read);
@@ -1339,7 +1350,7 @@ export function useSession(
     if (state === null) return;
     if (!snapshotLandedRef.current) {
       // The mount read is still out and holds older state: it loads this.
-      heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
+      heldStateRef.current = { state, detail: nextDetail, changesAt };
       return;
     }
     setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
@@ -1724,6 +1735,7 @@ export function useSession(
     sessionGenerationRef.current += 1;
     setStreamStatus(null);
     setReadFollowed(null);
+    setLatestRequestFailed(false);
 
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
@@ -2442,11 +2454,14 @@ export function useSession(
   const shownRequestId = items.at(-1)?.requestId ?? null;
 
   // A shown request the view hasn't followed (after a reload, say) and the
-  // latest-request read doesn't name: read its record once. One the view
-  // follows is read when its stream ends (see `attachToStream`).
+  // latest-request read doesn't name, or has failed to answer with no record
+  // to name it: read its record once. One the view follows is read when its
+  // stream ends (see `attachToStream`).
   const shownStreamStatus = streamStatus?.id === shownRequestId ? streamStatus.status : null;
   const unfollowedShownId =
-    shownRequestId !== null && latestRequest !== null && latestRequest.id !== shownRequestId && shownStreamStatus === null
+    shownRequestId !== null &&
+    (latestRequest !== null ? latestRequest.id !== shownRequestId : latestRequestFailed) &&
+    shownStreamStatus === null
       ? shownRequestId
       : null;
   useEffect(() => {

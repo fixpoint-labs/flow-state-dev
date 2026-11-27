@@ -47,10 +47,12 @@ import {
   createHostPlace,
   frameComponents,
   principalFromContext,
+  readableSegment,
   scopeComponents,
+  scopeFolder,
+  segmentDigest,
 } from "@flow-state-dev/workspace";
-import type { ProjectedEntryExtra, Projection, ScopePrincipal } from "@flow-state-dev/workspace";
-import { createHash } from "node:crypto";
+import type { ProjectedEntryExtra, ProjectionSession, ScopeName, ScopePrincipal } from "@flow-state-dev/workspace";
 import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
   TMP_DIR,
@@ -190,7 +192,7 @@ interface SandboxEntry {
   sandbox: Sandbox;
   hydrated: boolean;
   /** Reconciles the sandbox against the mounted collections. */
-  projection: Projection;
+  session: ProjectionSession;
   /** Mounts resolved at hydrate time, ordered longest-prefix-first. */
   mounts: Mount[];
 }
@@ -313,18 +315,17 @@ type ScopeIdentity = ScopePrincipal;
  */
 function defaultMoatRunName(identity: ScopeIdentity): string {
   const { key } = resolveScopeKey("session", identity);
-  const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
-  // Sanitized, not `safeSegment`ed. That helper ends in a digest of the
+  const digest = segmentDigest(key);
+  // `readableSegment`, not the folder encoder. That one ends in a digest of the
   // session id alone, and truncating its output to fit a run name cut that
   // digest off again — a hash computed and thrown away, and the wrong hash
   // regardless: a container must be unique per (tenant, session), which only
   // the digest below carries.
-  return `fsdev-${sanitize(identity.sessionId).slice(0, 20)}-${digest}`;
+  return `fsdev-${readableSegment(identity.sessionId).slice(0, 20)}-${digest}`;
 }
 
 function defaultMoatWorkspace(identity: ScopeIdentity): string {
-  const { scopeId } = resolveScopeKey("session", identity);
-  return path.join(process.cwd(), ".fsdev", "workspaces", "session", scopeId);
+  return workspaceFolder("session", identity);
 }
 
 /**
@@ -344,48 +345,6 @@ function defaultMoatWorkspace(identity: ScopeIdentity): string {
 export function defaultDestinationFor(provider: SandboxProvider | undefined): string {
   if (provider?.type === "vercel") return "/vercel/sandbox/workspace";
   return "/workspace";
-}
-
-// BP-031.
-/**
- * A scope id as a directory name it is safe to join onto a root.
- *
- * Scope ids reach here from caller-controllable input: the action route takes
- * `requestId` and `sessionId` straight off the request body, validating only
- * that they are strings. `scopeId` then becomes a path segment under
- * `.fsdev/workspaces/`, so `../../` in one puts a run's workspace outside the
- * workspaces root entirely — and `userId`/`orgId`, which DO come from a
- * verified principal, fall back to the session id when absent.
- *
- * **Every id is encoded. There is no pass-through branch**, and its absence is
- * the point rather than an oversight. Keeping ordinary ids readable meant a
- * second namespace that had to stay disjoint from the encoded one, and that
- * disjointness failed three times in a row: an encoding was itself a valid
- * unencoded id; an over-long id was a filename nothing could write; and on a
- * case-insensitive filesystem — macOS APFS, Windows — `ENC-a-b-<digest>` and
- * `enc-a-b-<digest>` name one directory while spelling two registry keys, so
- * two runs shared files while each believed it was isolated.
- *
- * Encoding everything removes the second namespace instead of guarding it
- * again. The digest is over the exact original and hex folds to itself, so two
- * ids that differ at all still differ here, case-insensitive filesystems
- * included. The readable prefix is a convenience for whoever reads `ls`; the
- * digest is what makes the name mean one workspace.
- *
- * The cost is that this renames existing local workspaces once. Named in the
- * changeset; they hold a run's scratch, not durable state.
- */
-const ENCODED_PREFIX = "enc-";
-
-/** The characters a path segment and a run name can both carry, and nothing else. */
-function sanitize(id: string): string {
-  return id.replace(/[^A-Za-z0-9_-]/g, "-");
-}
-
-function safeSegment(id: string): string {
-  const safe = sanitize(id).slice(0, 40) || "id";
-  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
-  return `${ENCODED_PREFIX}${safe}-${digest}`;
 }
 
 /**
@@ -417,13 +376,25 @@ export function resolveWorkspaceCwdForTest(
   scope: WorkspaceScope,
   identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
 ): string {
-  const { scopeId } = resolveScopeKey(scope, identity as ScopeIdentity);
-  return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
+  return workspaceFolder(scope, identity as ScopeIdentity);
+}
+
+/**
+ * The scope a provider actually works in.
+ *
+ * Only `local` takes a `scope`; every other provider gets one sandbox per
+ * session. Read in three places — the registry key, the cold-path predicate,
+ * and cleanup — and they have to agree: a cleanup that resolved a different
+ * scope than the lookup did would release nothing and leak the sandbox.
+ */
+function effectiveScope(provider: SandboxProvider): WorkspaceScope {
+  return provider.type === "local" ? (provider.scope ?? "session") : "session";
 }
 
 // BP-031.
 /**
- * The registry key and workspace directory a scope resolves to.
+ * The registry key a scope resolves to. Its folder comes from the same
+ * components through `scopeFolder` (see `workspaceFolder`).
  *
  * Which identities namespace a scope is not a free choice — the framework
  * already answers it. `tenantId` "namespaces session storage … so two tenants
@@ -452,51 +423,23 @@ export function resolveWorkspaceCwdForTest(
  * only the empty string and anything containing `":"` — so a request with no
  * tenant and a request whose tenant IS `"-"` would resolve to one key and one
  * directory. Presence is its own component in the key, and the directory uses
- * a segment `safeSegment` can never emit.
+ * a segment the folder encoder can never emit (`scopeFolder` in workspace).
  */
-/**
- * The scope a provider actually works in.
- *
- * Only `local` takes a `scope`; every other provider gets one sandbox per
- * session. Read in three places — the registry key, the cold-path predicate,
- * and cleanup — and they have to agree: a cleanup that resolved a different
- * scope than the lookup did would release nothing and leak the sandbox.
- */
-function effectiveScope(provider: SandboxProvider): WorkspaceScope {
-  return provider.type === "local" ? (provider.scope ?? "session") : "session";
+function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string } {
+  // The components come from core's own rule rather than a second copy of it
+  // here — the tenant boundary was wrong once already because two derivations
+  // of one identity drifted.
+  return { key: frameComponents([scope, ...scopeComponents(coreScope(scope), identity)]) };
 }
 
-function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  // `run` is this tool's name for the request. Core spells the same scope
-  // `request`, and the components come from core's own rule rather than a
-  // second copy of it here — the tenant boundary was wrong once already
-  // because two derivations of one identity drifted.
-  const parts = scopeComponents(scope === "run" ? "request" : scope, identity);
-  return {
-    key: frameComponents([scope, ...parts]),
-    scopeId: path.join(...parts.map(segment)),
-  };
+/** `run` is this tool's name for the request; core spells the same scope `request`. */
+function coreScope(scope: WorkspaceScope): ScopeName {
+  return scope === "run" ? "request" : scope;
 }
 
-/**
- * One key component, length-prefixed so its content cannot forge another.
- *
- * `undefined` is framed as its own shape rather than as some string, so an
- * absent component and a component that happens to equal the absence marker
- * stay distinct.
- */
-/**
- * One path segment for a component, absence included.
- *
- * `ABSENT_SEGMENT` is chosen so `safeSegment` cannot produce it: an id
- * spelled `enc-none` starts with the encoded prefix, so it takes the encoded
- * branch and comes out as `enc-enc-none-<digest>`. Nothing a caller can send
- * lands on the marker.
- */
-const ABSENT_SEGMENT = `${ENCODED_PREFIX}none`;
-
-function segment(component: string | undefined): string {
-  return component === undefined ? ABSENT_SEGMENT : safeSegment(component);
+/** The folder a scope's files live in: workspace's rule, so the path is written once. */
+function workspaceFolder(scope: WorkspaceScope, identity: ScopeIdentity): string {
+  return scopeFolder(process.cwd(), coreScope(scope), identity);
 }
 
 // ---------------------------------------------------------------------------
@@ -590,9 +533,7 @@ async function createScopedSandbox(
 ): Promise<Sandbox> {
   let cwd: string | undefined;
   if (provider.type === "local" && !provider.cwd) {
-    const scope = effectiveScope(provider);
-    const { scopeId } = resolveScopeKey(scope, identity);
-    cwd = path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
+    cwd = workspaceFolder(effectiveScope(provider), identity);
   }
 
   // MOAT defaults: per-session runName + workspace + persist=true.
@@ -666,12 +607,12 @@ function providerNeedsSetup(provider: SandboxProvider): boolean {
  */
 async function hydrate(entry: SandboxEntry, destination: string): Promise<void> {
   await seedWorkspaceMarkers(entry.sandbox, destination, entry.mounts);
-  await entry.projection.hydrate();
+  await entry.session.hydrate();
 }
 
 /** Flush this entry's workspace back into its collections. */
 async function flush(entry: SandboxEntry): Promise<void> {
-  await flushWithDiagnostics(entry.projection, entry.mounts, entry.sandbox.hostMountSource);
+  await flushWithDiagnostics(entry.session, entry.mounts, entry.sandbox.hostMountSource);
 }
 
 
@@ -693,7 +634,7 @@ async function routeWrittenFile(
   if (isScratch(relativePath)) return null;
   if (path.posix.basename(relativePath) === KEEP_MARKER) return null;
 
-  const outcome = await entry.projection.put(relativePath, content);
+  const outcome = await entry.session.projection.put(relativePath, content);
   if (outcome === undefined) return null;
   // Warned AND returned. The warning reaches a developer reading logs; the
   // return reaches the model, which is the party that just asked for the write
@@ -796,7 +737,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           sandbox,
           hydrated: false,
           mounts,
-          projection: createBashProjection(sandbox, destination, mounts, createState),
+          session: createBashProjection(sandbox, destination, mounts, createState),
         };
         registry.set(registryKey, created);
         return created;
@@ -1009,13 +950,13 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
             sandbox: {} as Sandbox,
             hydrated: true,
             mounts,
-            projection: createMountedProjection(
+            session: createMountedProjection(
               createHostPlace(hostMountSource),
               mounts,
               createState,
             ),
           };
-          await cold.projection.hydrate();
+          await cold.session.hydrate();
           return cold;
         })());
 

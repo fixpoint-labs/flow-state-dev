@@ -29,6 +29,7 @@ export function fetch(config: FetchConfig = {}) {
         waitForJS: config.waitForJS ?? false,
         apiKey,
         signal: ctx.signal,
+        allowedHosts: config.allowedHosts,
       });
     },
   });

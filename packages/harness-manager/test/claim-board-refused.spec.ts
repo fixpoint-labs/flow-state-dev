@@ -10,7 +10,8 @@
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { HARNESS_FEATURE_KEY } from "../src";
+// The legacy key a manager given no `trackerIssueOf` reads (BP-030): internal, no longer published.
+import { HARNESS_FEATURE_KEY } from "../src/manager";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts } from "./claim-host";
 
 afterAll(cleanUpHosts);

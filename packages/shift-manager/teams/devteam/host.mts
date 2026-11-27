@@ -962,8 +962,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   const answer = defineAnswerPhase({ workerOf: coderWorkerOf });
   // Shift Manager's coder is the harness kit's `coder` flow, in two modes: a
-  // task carrying the feature marker (`harnessFeature`) implements it, and any
-  // other is answered. The kit's own checks wrap both: on a projects
+  // task filed in mode `implement`, with its issue, implements it, and any
+  // other is answered (`defaultMode`). The kit's own checks wrap both: on a projects
   // workspace, a run that changed files is done only when its project's checks
   // pass, and the brief names them.
   const coderConfig = {
