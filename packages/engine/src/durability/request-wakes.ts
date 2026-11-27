@@ -70,6 +70,13 @@ export async function fireWakeThrough(
   // when the session is gone), and the resolver identity the wake names: its
   // writer's, kept only while every write folded into it named the same one.
   // A wake stored before the field names none, and admits no own-resolver session.
+  // `wake` is the generation the sweeper listed and claimed; a writer under
+  // another resolver may have owed into it since, which every store answers by
+  // dropping `resolvedBy`, and its write is then this turn's to read. So the
+  // resolver identity is the row's as it stands now, kept only while it is
+  // still the claimed one's (coalescing never restores a dropped one).
+  const current = wake.resolvedBy === undefined ? null : await host.stores.wakes?.get(wake);
+  const resolvedBy = current?.resolvedBy === wake.resolvedBy ? wake.resolvedBy : undefined;
   const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
   const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session, window);
   const handle = dispatchInternalAs(host, {
@@ -82,7 +89,7 @@ export async function fireWakeThrough(
       orgId: wake.orgId,
       ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
       kind,
-      ...(wake.resolvedBy !== undefined ? { resolvedBy: wake.resolvedBy } : {})
+      ...(resolvedBy !== undefined ? { resolvedBy } : {})
     },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal

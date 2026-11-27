@@ -103,6 +103,35 @@ export function matchesPattern(pattern: string, storageKey: string): boolean {
   return false;
 }
 
+/**
+ * Whether some storage key matches both patterns, by {@link matchesPattern}'s
+ * rules: a wildcard pattern is its static prefix and then one segment (`*`)
+ * or one or more (`**`); a parameterized one is its segments, each `[param]`
+ * any one segment.
+ */
+export function patternsOverlap(a: string, b: string): boolean {
+  const shape = (pattern: string): { segments: Array<string | null>; deep: boolean } => {
+    if (isParameterizedPattern(pattern)) {
+      return { segments: pattern.split("/").map((seg) => (/^\[.+\]$/.test(seg) ? null : seg)), deep: false };
+    }
+    const prefix = getPatternPrefix(pattern);
+    return { segments: [...(prefix.length > 0 ? prefix.split("/") : []), null], deep: isDeepWildcard(pattern) };
+  };
+  const left = shape(a);
+  const right = shape(b);
+  // A deep pattern's last segment stands for one or more, so it covers any longer tail.
+  if (!left.deep && !right.deep && left.segments.length !== right.segments.length) return false;
+  if (!left.deep && right.deep && left.segments.length < right.segments.length) return false;
+  if (left.deep && !right.deep && right.segments.length < left.segments.length) return false;
+  const shared = Math.min(left.segments.length, right.segments.length);
+  for (let i = 0; i < shared; i += 1) {
+    const l = left.segments[i];
+    const r = right.segments[i];
+    if (l !== null && r !== null && l !== r) return false;
+  }
+  return true;
+}
+
 function matchesParameterizedPattern(pattern: string, storageKey: string): boolean {
   // Convert pattern to regex: `[topic]/observations` → `^[^/]+/observations$`
   const regexStr = pattern

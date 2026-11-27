@@ -330,11 +330,11 @@ export type DefinedResourceCollection<
  *
  * `ResourceRef.state` is a synchronous getter on the ref itself — do NOT await it.
  */
-export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
+export interface ResourceCollectionRef<TState extends JsonObject = JsonObject, TScope extends ScopeType = ScopeType> {
   /** The collection's declared pattern. */
   pattern: string;
-  /** Scope this collection is registered in. */
-  scope: ScopeType;
+  /** Scope this collection is registered in: its declaration's, when the declaration names one literally. */
+  scope: TScope;
 
   /** Get an existing instance. Rejects if not found. */
   get(key: string | Record<string, string>): Promise<ResourceRef<TState>>;

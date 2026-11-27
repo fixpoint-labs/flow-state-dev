@@ -10,8 +10,9 @@
  * which ids exist; and a write must be heard by the session written, never
  * leak onto a topic the caller hears.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { requireRequestHost } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { createFlowRegistry, defaultBodyUserIdPrincipalResolver, runAction } from "../../src";
 import { createInboundTransportHost, createInMemoryBus, createInMemoryStores } from "../../src/host";
@@ -49,15 +50,18 @@ const inbox = defineResourceCollection({
   wakeEntry: "inboxChanged",
   reactTo: { created: react }
 });
-/** Each turn `inboxChanged` ran, with the resolver identity it ran under. */
-const woken: Array<{ session: string; entries: number }> = [];
+/** Each turn `inboxChanged` ran: its session, how many rows it read, and how its settle of the wake came out. */
+const woken: Array<{ session: string; entries: number; settled?: string }> = [];
 const inboxChanged = handler({
   name: "inbox-changed",
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
+    const wakes = requireRequestHost(ctx).wakes;
+    const read = await wakes?.read("inboxChanged");
     const entries = await (ctx.resources as any).inbox.list();
-    woken.push({ session: ctx.session.identity.id, entries: entries.length });
+    const settled = wakes !== undefined && read !== undefined ? await wakes.settle("inboxChanged", read, null) : undefined;
+    woken.push({ session: ctx.session.identity.id, entries: entries.length, ...(settled !== undefined ? { settled } : {}) });
     return {};
   }
 });
@@ -165,6 +169,11 @@ async function boot() {
   };
   return { stores, seedIn, reachFrom, reachFromDelivery, as, hear, fireDue };
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 const texts = (entries: Array<{ state: { text: string } }>) => entries.map((entry) => entry.state.text).sort();
 
@@ -281,7 +290,10 @@ describe("ctx.resources.at({ session })", () => {
     const due = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100);
     expect(due.map((w) => [w.sessionId, w.entry, w.resolvedBy])).toEqual([["b", "inboxChanged", "host:test"]]);
     await env.fireDue(Number.MAX_SAFE_INTEGER);
-    expect(woken).toEqual([{ session: "b", entries: 20 }]);
+    expect(woken.map(({ session, entries }) => ({ session, entries }))).toEqual([{ session: "b", entries: 20 }]);
+    // Owed before the writes, the wake is fenced by the writing request's
+    // lease: a turn before then holds it there, for one more, empty turn.
+    expect(woken[0]?.settled).toBe("moved");
   });
 
   it("naming the run's own session is its own copy: one cache, its reactTo, no wake", async () => {
@@ -315,5 +327,105 @@ describe("ctx.resources.at({ session })", () => {
     const byName = (await env.reachFrom(async (ctx) => ctx.resources.at({ session: "b" }).get("prefs").state)) as { error?: string };
     expect(byProperty.error).toContain("can't be reached in another session");
     expect(byName.error).toBe(byProperty.error);
+  });
+
+  // The turn is owed before the write: a write that lands always has its turn,
+  // and one whose turn can't be owed never lands.
+  it("owes the turn before the write: when the owe fails, nothing is written and the write rejects", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    vi.spyOn(env.stores.wakes!, "owe").mockRejectedValueOnce(new Error("wake store down"));
+    const got = await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create("m1", { text: "lost?" })).state.text);
+    expect(got).toMatchObject({ error: "wake store down" });
+    expect(await env.stores.resourceState.getByPrefix("session", "b", "inbox/")).toEqual({});
+    expect(await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).toEqual([]);
+  });
+
+  // A process that dies between the owe and the write leaves the debt behind:
+  // its turn runs, reads that nothing changed, and settles.
+  it("a write that dies after its owe still yields a turn there, which finds nothing new and settles", async () => {
+    woken.length = 0;
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    const set = env.stores.resourceState.set.bind(env.stores.resourceState);
+    vi.spyOn(env.stores.resourceState, "set").mockImplementation((async (...args: Parameters<typeof set>) => {
+      if (String(args[2]).startsWith("inbox/")) throw new Error("process died");
+      return set(...args);
+    }) as typeof set);
+    const got = await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create("m1", { text: "never lands" })).state.text);
+    expect(got).toMatchObject({ error: "process died" });
+    vi.mocked(env.stores.resourceState.set).mockRestore();
+    expect(await env.stores.resourceState.getByPrefix("session", "b", "inbox/")).toEqual({});
+
+    const [owed] = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100);
+    expect([owed?.sessionId, owed?.entry]).toEqual(["b", "inboxChanged"]);
+    // Fired before the fence, the turn reads nothing new and holds the wake at
+    // the fence, in case the write were still landing.
+    await env.fireDue(Number.MAX_SAFE_INTEGER);
+    expect(woken).toEqual([{ session: "b", entries: 0, settled: "moved" }]);
+    // Past the fence, that one extra turn reads nothing new and clears it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(owed!.landBy + 1);
+    await env.fireDue(Number.MAX_SAFE_INTEGER);
+    expect(woken.at(-1)).toEqual({ session: "b", entries: 0, settled: "cleared" });
+    expect(await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).toEqual([]);
+  });
+
+  it("an update and a delete into another session each owe its turn, as a create does", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    const owedNow = async () => {
+      const due = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100);
+      for (const wake of due) await env.stores.wakes!.clear(wake, wake.version);
+      return due.map((wake) => [wake.sessionId, wake.entry]);
+    };
+    await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create("m1", { text: "one" })).state.text);
+    expect(await owedNow()).toEqual([["b", "inboxChanged"]]);
+    await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.upsert("m1", { text: "two" })).state.text);
+    expect(await owedNow()).toEqual([["b", "inboxChanged"]]);
+    await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.delete("m1")) ?? null);
+    expect(await owedNow()).toEqual([["b", "inboxChanged"]]);
+    expect(await env.stores.resourceState.getByPrefix("session", "b", "inbox/")).toEqual({});
+  });
+
+  // A turn owed on an entry the target's flow doesn't declare can never run,
+  // and the sweeper would retry it forever.
+  it("refuses a write into a session whose flow doesn't declare the wake entry, owing nothing and writing nothing", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowA, "a2", "also alpha");
+    const got = (await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "a2" }).inbox.create("m1", { text: "unpayable" })).state.text)) as {
+      error?: string;
+    };
+    expect(got.error).toContain('"inboxChanged"');
+    expect(got.error).toContain("declares no internal entry");
+    expect(await env.stores.resourceState.getByPrefix("session", "a2", "inbox/")).toEqual({});
+    expect(await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 100)).toEqual([]);
+  });
+
+  // A session id deleted and taken again is another session: the admission
+  // the first one earned must not carry over to it.
+  it("a session deleted and recreated under another owner mid-run is refused through the cached copy, and nothing is written", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    const unknown = await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "an-id-nobody-holds" }).notes.create("x", { text: "y" })).state.text);
+    const got = await env.reachFrom(async (ctx) => {
+      const theirs = ctx.resources.at({ session: "b" }).notes;
+      expect(texts(await theirs.list())).toEqual(["theirs"]);
+      const before = (await env.stores.session.get("b"))!;
+      await env.stores.session.delete("b");
+      await env.stores.session.set(
+        "b",
+        { ...before, userId: "bob", createdAt: before.createdAt + 1, updatedAt: before.createdAt + 1, version: 0, lineageId: "lin_reborn" },
+        "absent"
+      );
+      return (await theirs.create("x", { text: "through the old admission" })).state.text;
+    });
+    expect(got).toEqual(unknown);
+    expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "b", "notes/"))).toEqual(["notes/n1"]);
   });
 });

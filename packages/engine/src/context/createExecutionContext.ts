@@ -103,6 +103,8 @@ import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
+import { resolveRecordOwner } from "./record-owner";
+import type { FlowRegistry } from "../registry/flow-registry";
 import { noteWakeOwed } from "../durability/request-wakes";
 
 /**
@@ -123,9 +125,17 @@ type NamedCopyTarget = {
   readonly sessionId: string;
   /** Its owner, for a lineage-shared key's user-topic notice. */
   readonly ownerUserId: string;
-  /** Owe the turn a write at `storageKey` starts there, if its declaration asks for one. */
-  wake(storageKey: string): Promise<void>;
 };
+
+/** Whether `now` is still the session record `admitted` was: the same incarnation, owner, org and tenant. */
+function isSameSessionRecord(now: SessionRecord, admitted: SessionRecord): boolean {
+  return (
+    sessionIncarnation(now) === sessionIncarnation(admitted) &&
+    now.userId === admitted.userId &&
+    (now.orgId ?? undefined) === (admitted.orgId ?? undefined) &&
+    (now.tenantId ?? undefined) === (admitted.tenantId ?? undefined)
+  );
+}
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -167,6 +177,7 @@ import {
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
+  sessionIncarnation,
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -2928,8 +2939,8 @@ export async function createExecutionContext<
    * The change handler for one scope's copy: this run's own, or, with
    * `named`, another session's copy this run reaches (`ctx.resources.at`).
    * A named copy's write publishes on that session's topics only, never on
-   * this run's stream, and starts a turn there only as a wake (`named.wake`),
-   * never by running its `reactTo` blocks inside this turn.
+   * this run's stream, and starts a turn there only as the wake its write
+   * owed before it landed, never by running its `reactTo` blocks inside this turn.
    */
   function makeResourceChangeHandler(scope: "session" | "user" | "org", named?: NamedCopyTarget) {
     const scopeConfigs =
@@ -3001,7 +3012,6 @@ export async function createExecutionContext<
     if (named !== undefined) {
       return async (resourcePath: string): Promise<void> => {
         publishChange(resourcePath);
-        await named.wake(resourcePath);
       };
     }
     if (!emitter && !hasReactive && !(stores.bus !== undefined && publishesAny)) return undefined;
@@ -3639,13 +3649,16 @@ export async function createExecutionContext<
    * on one admission per named session per run: the fence (`fenceNamedReach`),
    * then the routes' own admission fed this run's principal
    * (`admitNamedSession`). A refusal and an id no one holds answer every verb
-   * alike, with {@link SessionNotFoundError}.
+   * alike, with {@link SessionNotFoundError}. Every later verb re-reads the
+   * session record first: one deleted and taken again (another incarnation,
+   * or another owner) is admitted again from scratch, never written under the
+   * admission the first one earned.
    *
    * The admitted copy is loaded and written by the code that serves the run's
    * own (`CopyCell`): its own cache, lazily filled, and versioned writes, so
    * two sessions writing one copy conflict as two local writers do. A write
    * publishes on the named session's topics and, for a collection with a
-   * `wakeEntry`, owes a wake on that session's entry once it has landed.
+   * `wakeEntry`, owes a wake on that session's entry before it is written.
    */
   const namedPrincipal: Principal = {
     userId,
@@ -3655,25 +3668,38 @@ export async function createExecutionContext<
     ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
   };
   const namedFence = { origin: readDeliveryOrigin(options.source, options.metadata), sessionId };
-  const namedCopies = new Map<string, Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined>>();
-  const namedCopy = (target: string): Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined> => {
-    let copy = namedCopies.get(target);
-    if (copy === undefined) {
-      copy = (async () => {
-        const flows = options.requestHost?.flows;
-        if (flows === undefined || noSession) return undefined;
-        const record = await admitNamedSession(
-          { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
-          target
-        );
-        return record === undefined ? undefined : buildNamedCopy(target, record);
-      })();
-      namedCopies.set(target, copy);
-    }
+  type NamedCopy = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
+  const namedCopies = new Map<string, Promise<NamedCopy | undefined>>();
+  /** Admit `target` from scratch, and keep the answer for this run's later verbs. */
+  const admitCopy = (target: string): Promise<NamedCopy | undefined> => {
+    const copy = (async (): Promise<NamedCopy | undefined> => {
+      const flows = options.requestHost?.flows;
+      if (flows === undefined || noSession) return undefined;
+      const record = await admitNamedSession(
+        { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
+        target
+      );
+      return record === undefined ? undefined : { record, registry: buildNamedCopy(target, record, flows) };
+    })();
+    namedCopies.set(target, copy);
     return copy;
   };
-  /** The registry over `target`'s copy, admitted as `record`. */
-  const buildNamedCopy = (target: string, record: SessionRecord): ResourceRegistry<Record<string, AnyResourceRef>> => {
+  const namedCopy = async (target: string): Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined> => {
+    const kept = namedCopies.get(target);
+    if (kept === undefined) return (await admitCopy(target))?.registry;
+    const admitted = await kept;
+    if (admitted === undefined) return undefined;
+    // The record as it stands now: still the one admitted, or admitted again.
+    const now = await stores.session.get(resolveSessionStorageKey(target, options.tenantId));
+    if (now !== undefined && isSameSessionRecord(now, admitted.record)) return admitted.registry;
+    return (await admitCopy(target))?.registry;
+  };
+  /** The registry over `target`'s copy, admitted as `record`, whose owning flow `flows` resolves. */
+  const buildNamedCopy = (
+    target: string,
+    record: SessionRecord,
+    flows: Pick<FlowRegistry, "get" | "list">
+  ): ResourceRegistry<Record<string, AnyResourceRef>> => {
     const key = resolveSessionStorageKey(target, options.tenantId);
     const lineage = resolveLineageId({ id: key, lineageId: record.lineageId });
     const cell: CopyCell = {
@@ -3695,12 +3721,52 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
       if (isNamedReachable(config)) configs[accessor] = { ...config, prefetchMode: "lazy" };
     }
-    const wakeEntryOf = (storageKey: string): string | undefined =>
+    // Validated at definition: no two of these overlap with different entries.
+    const wakingConfigOf = (storageKey: string): (ResourceCollectionConfig & { wakeEntry: string }) | undefined =>
       Object.values(configs).find(
-        (config): config is ResourceCollectionConfig =>
+        (config): config is ResourceCollectionConfig & { wakeEntry: string } =>
           isCollectionConfig(config) && config.wakeEntry !== undefined && matchesPattern(config.pattern, storageKey)
-      )?.wakeEntry;
+      );
+    const owner = resolveRecordOwner(flows, record);
     const wakes = options.requestHost?.wakes !== undefined ? stores.wakes : undefined;
+    const fenceMs = options.requestHost?.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS;
+    /**
+     * The turn a write at `storageKey` starts there, owed before the write, so
+     * no crash or store error between the two can lose it. Its `landBy` is
+     * this request's lease, as every wake a request owes: a turn that runs
+     * before then and finds nothing new holds the wake there in case the write
+     * is still landing. An owe that fails throws, and the write never runs. A
+     * write that fails after its owe leaves a turn that reads nothing new.
+     *
+     * @throws When the session's flow declares no internal entry by the
+     *   collection's `wakeEntry`: such a wake could never be paid.
+     */
+    const oweTurnBeforeWrite = async (storageKey: string): Promise<void> => {
+      const config = wakingConfigOf(storageKey);
+      if (config === undefined) return;
+      const entry = config.wakeEntry;
+      if (!owner.ok || owner.flow.internal?.actions?.[entry] === undefined) {
+        throw new Error(
+          `Collection "${config.pattern}" wakes "${entry}" in the session it writes, but that session's flow ` +
+            `"${record.flowId ?? record.flowKind}" declares no internal entry "${entry}". Declare it there, or drop the collection's wakeEntry.`
+        );
+      }
+      if (wakes === undefined) return;
+      const now = Date.now();
+      const owed = await wakes.owe({
+        ...(options.tenantId !== undefined && options.tenantId.length > 0 ? { tenantId: options.tenantId } : {}),
+        sessionId: target,
+        entry,
+        flowKind: record.flowId ?? record.flowKind,
+        userId: record.userId,
+        orgId: record.orgId ?? resolvedOrgId,
+        dueAt: now + NAMED_WRITE_WAKE_DUE_MS,
+        landBy: now + fenceMs,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+      });
+      noteWakeOwed(wakes, owed.dueAt);
+    };
+    const persisters = makeKeyPersisters(cell);
     return createScopeResourceRegistry({
       orgId: resolvedOrgId,
       scope: "session",
@@ -3709,31 +3775,24 @@ export async function createExecutionContext<
       configs,
       readResources: () => cell.stateRef.current,
       readResourceContent: () => cell.contentRef.current,
-      ...makeKeyPersisters(cell),
-      onResourceChanged: makeResourceChangeHandler("session", {
-        sessionId: target,
-        ownerUserId: record.userId,
-        // a turn this write starts is a wake on the session's
-        // entry, owed once the write has landed (so the wake guards nothing
-        // still in flight), coalescing with every other write's before it runs.
-        wake: async (storageKey) => {
-          const entry = wakeEntryOf(storageKey);
-          if (entry === undefined || wakes === undefined) return;
-          const now = Date.now();
-          const owed = await wakes.owe({
-            ...(options.tenantId !== undefined && options.tenantId.length > 0 ? { tenantId: options.tenantId } : {}),
-            sessionId: target,
-            entry,
-            flowKind: record.flowId ?? record.flowKind,
-            userId: record.userId,
-            orgId: record.orgId ?? resolvedOrgId,
-            dueAt: now + NAMED_WRITE_WAKE_DUE_MS,
-            landBy: now,
-            ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
-          });
-          noteWakeOwed(wakes, owed.dueAt);
-        }
-      }),
+      ...persisters,
+      mutateResourceKey: async (storageKey, mutator, opts) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.mutateResourceKey(storageKey, mutator, opts);
+      },
+      deleteResourceKey: async (storageKey) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.deleteResourceKey(storageKey);
+      },
+      persistResourceContentKey: async (storageKey, content) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.persistResourceContentKey(storageKey, content);
+      },
+      deleteResourceContentKey: async (storageKey) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.deleteResourceContentKey(storageKey);
+      },
+      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId }),
       lazyLoad: makeLazyLoad(cell),
       recordResourceLoad,
       templateResolverRef,

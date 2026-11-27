@@ -567,8 +567,25 @@ export type ResourceRegistry<
    * For what isn't a resource (another session's flow, its readable state,
    * its history), use `ctx.sessions`.
    */
-  at: ((target: SessionReachTarget) => ResourceRegistry<TResources>) & ResourceRef<any>;
+  at: ((target: SessionReachTarget) => ResourceRegistry<SessionReachable<TResources>>) & ResourceRef<any>;
 };
+
+/**
+ * The handles `ctx.resources.at` reaches in another session: the stored
+ * collections whose scope may be `session`. A single resource, a projected
+ * collection and a collection declared at user or org scope drop out, since
+ * each throws there at runtime. A collection whose declaration doesn't name
+ * its scope literally stays, as the open registry stays whole.
+ */
+export type SessionReachable<TResources extends Record<string, AnyResourceRef>> = string extends keyof TResources
+  ? TResources
+  : {
+      [K in keyof TResources as NonNullable<TResources[K]> extends ResourceCollectionRef<any, infer TScope>
+        ? "session" extends TScope
+          ? K
+          : never
+        : never]: TResources[K];
+    };
 
 /** The session `ctx.resources.at` names: its id, as the session routes take it. */
 export type SessionReachTarget = { readonly session: string };
