@@ -51,6 +51,45 @@ export function waitsFor(task: Pick<CodingBoardTask, "asks">): "question" | "rev
   return kind === undefined ? undefined : kind === "question" || kind === "review" ? kind : "other";
 }
 
+/**
+ * Text as one plain line: control characters, line and paragraph separators
+ * and bidi overrides become spaces, runs of whitespace one space, and the ends
+ * trimmed. For words a model wrote, such as the command in a run's note, so
+ * they can't break a line or reorder what is drawn. React draws it as text.
+ */
+export function plainLine(text: string): string {
+  return text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** "PR #5661", "PR #5661, #5662": the pull requests a task waits on. */
+const pullRequestNames = (numbers: readonly (number | null)[]) =>
+  `PR ${numbers.flatMap((n) => (n === null ? [] : [`#${n}`])).join(", ")}`;
+
+/**
+ * What an open task is doing now, in one line for its card: what it waits on
+ * (your answer or review, its pull request), else what its run last said on
+ * the row (`statusNote`: harness-manager's note of the run's latest activity
+ * or phase, the same for every harness), else *Queued* before a run claims it
+ * and *Starting…* after. Plain text, one line ({@link plainLine}).
+ */
+export function nowLine(task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "statusNote">): string {
+  const hold = holdOf(task);
+  if (hold !== undefined) {
+    const kind = waitsFor(task);
+    if (kind === "review") return "Waiting on your review";
+    const prompt = plainLine(hold.ask.prompt?.split("\n").find((line) => line.trim() !== "") ?? "");
+    const what = kind === "question" ? "Waiting on your answer" : "Waiting on you";
+    return prompt === "" ? what : `${what}: ${prompt}`;
+  }
+  if (waitsOnPullRequest(task)) return `Waiting on ${pullRequestNames(task.pullRequests)}`;
+  if (task.status === "pending") return "Queued";
+  const note = plainLine(task.statusNote ?? "");
+  return note === "" ? "Starting…" : note;
+}
+
 /** The harness a coding task runs on, by the screen's name for it; none for a teammate's task. */
 export const harnessOf = (task: Pick<CodingBoardTask, "harness">): string | undefined => (task.harness == null ? undefined : harnessName(task.harness));
 

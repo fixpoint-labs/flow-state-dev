@@ -183,15 +183,16 @@ describe("a running coding task says how it's doing", () => {
       void h.act("drain");
       await h.activityReported;
       // `moves`: the note is on the row while the run is still working.
-      const running = await h.until((t) => t.statusNote !== undefined, "the first note");
-      expect(running).toMatchObject({ status: "in_progress", statusNote: "Edit: src/a.ts" });
+      const running = await h.until((t) => t.statusNote === "Editing src/a.ts", "the first note");
+      expect(running).toMatchObject({ status: "in_progress", statusNote: "Editing src/a.ts" });
       // `bounded`: none of the 50 calls after it was written in this window.
       await settle();
-      expect((await h.row()).statusNote).toBe("Edit: src/a.ts");
+      expect((await h.row()).statusNote).toBe("Editing src/a.ts");
 
       finish.open();
-      // The run's ending speaks now: the note stays as the last thing it did, beside its status.
-      await h.until((t) => t.status === "completed", "the run to complete");
+      // The run's ending speaks now: the note stays as the last thing it did, its completion check, beside its status.
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+      expect(done.statusNote).toBe("Checking the work…");
     } finally {
       // A failed check must not leave the run waiting, or the flow state never closes.
       finish.open();
@@ -206,26 +207,29 @@ describe("a running coding task says how it's doing", () => {
       await h.act("seed");
       void h.act("drain");
       await h.stepStarted;
+      // While it held the row, it said it was preparing its worktree.
+      expect((await h.row()).statusNote).toBe("Preparing worktree…");
       // `stale`: the row is claimed again while this attempt's step still runs.
       await h.claimedAgain();
       claimed.open();
       await h.activityReported;
       await settle();
-      expect((await h.row()).statusNote).toBeUndefined();
+      // Its edit never lands on the row the next attempt holds.
+      expect((await h.row()).statusNote).toBe("Preparing worktree…");
     } finally {
       claimed.open();
       await h.dispose();
     }
   }, 60_000);
 
-  it("leaves no note when the harness reports no activity", async () => {
+  it("says only the phases it went through when the harness reports no activity", async () => {
     const h = host({ activity: [] });
     try {
       await h.act("seed");
       await h.act("drain");
       const done = await h.until((t) => t.status === "completed", "the run to complete");
-      // `quiet`: nothing made up in its place.
-      expect(done.statusNote).toBeUndefined();
+      // `quiet`: nothing made up for the run, only the manager's own last phase.
+      expect(done.statusNote).toBe("Checking the work…");
     } finally {
       await h.dispose();
     }

@@ -54,6 +54,8 @@ describe("a judged run on a board read from the claim", () => {
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row.status).toBe("completed");
     expect(row.output).toMatchObject({ answer: "two packages", commits: 1, judged: true });
+    // The task said the judge was reading, the run's last phase before it settled.
+    expect(row.statusNote).toBe("Judge reviewing…");
     expect(read).toEqual([
       {
         goal: "how many packages?",

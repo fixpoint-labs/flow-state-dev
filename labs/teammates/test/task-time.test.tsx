@@ -72,8 +72,8 @@ describe("a teammate's tasks and their time", () => {
     await waitFor(() => expect(within(shown).getByRole("tab", { name: /Running/ }).textContent).toBe("Running2"));
     const card = (id: string) => within(shown).getByRole("button", { name: `Asked researcher to task ${id}` });
     expect(card("a").querySelector("[data-elapsed]")?.textContent).toMatch(/^4m 1[23]s$/);
-    // Only a run that answers draws the thin bar; a quiet one says how long it has been quiet instead.
-    expect(card("a").querySelector("[data-progress]")).not.toBeNull();
+    // No card draws a bar; a quiet one says how long it has been quiet.
+    expect(card("a").querySelector("[data-progress]")).toBeNull();
     expect(card("b").querySelector("[data-progress]")).toBeNull();
     const quiet = within(shown).getByText("quiet for 40m");
     // A run gone quiet is a problem short of failing: red, with its words, never the highlighter.
@@ -112,7 +112,7 @@ describe("a teammate's tasks and their time", () => {
     expect(within(shown).getByRole("button", { name: "Asked researcher to task c" }).querySelector("[data-elapsed]")?.textContent).toBe("12m ago");
   });
 
-  it("tags a task still open after a day Long-running, in grey, and drops its bar: someone should look at it", async () => {
+  it("tags a task still open after a day Long-running, in grey: someone should look at it", async () => {
     const now = Date.now();
     const DAY = 24 * 60 * MIN;
     const shown = await panel([
@@ -125,7 +125,6 @@ describe("a teammate's tasks and their time", () => {
     // The tag says it; the clock stays running blue, since yellow is only for what waits on a person.
     expect(stuck.querySelector("[data-long-running]")?.className).toContain("text-text-2");
     expect(stuck.querySelector("[data-elapsed]")?.className).toContain("text-brand");
-    expect(stuck.querySelector("[data-progress]")).toBeNull();
     // Under a day is ordinary work, however long it feels.
     expect(within(shown).getByRole("button", { name: "Asked researcher to task fresh" }).querySelector("[data-long-running]")).toBeNull();
   });

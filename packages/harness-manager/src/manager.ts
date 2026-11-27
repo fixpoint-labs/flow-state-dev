@@ -2234,6 +2234,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   };
 
   /**
+   * Say on the task which phase of the run this is (*Preparing worktree…*,
+   * *Checking the work…*, *Judge reviewing…*), through the same fenced
+   * `reportProgress` the harness step's notes take, so a replaced attempt's
+   * note declines. A reading, never part of the work: a failure only warns.
+   * Each phase writes once, so the row is written a bounded number of times.
+   */
+  const notePhase = async (ctx: ManagerContext, statusNote: string): Promise<void> => {
+    try {
+      const state = ctx.sequencer?.state;
+      const claim = state?.ticket ?? null;
+      const taskId = managerState(state).taskId;
+      if (claim === null || taskId === null) return;
+      const board = await runBoard(ctx);
+      await board.reportProgress?.(taskId, { statusNote }, { claim });
+    } catch (error) {
+      console.warn(`[harness-manager] noting the run's phase failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  /**
    * The attempt identity every run-record write is fenced against. On a board
    * read from the claim, the fence reads the row through the resolver at the
    * claim's ledger and partition, and compares its incarnation too.
@@ -2908,6 +2928,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     uses: [managerCapability, ...(guardedUses ?? [])],
     execute: async (input, ctx): Promise<HarnessRunInput> => {
       const state = managerState(ctx.sequencer?.state);
+      // First, so a retried task never shows its last attempt's note while this one provisions.
+      await notePhase(ctx, "Preparing worktree…");
       // FIX-2522; FIX-2519. The brief's files go to every run of the task, so
       // a re-run sees what the first run saw. A harness that declares what it
       // takes refuses any other type itself, by name, before its run starts;
@@ -3338,6 +3360,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // aborts, and the lease is let go only once the check has stopped or
         // the grace has passed. A check that honours the signal (`commandCheck`)
         // kills its running command and starts none after it.
+        // The harness step's notes stopped with it; until the check ends, the task says it is being checked.
+        await notePhase(ctx, "Checking the work…");
         const stopCheck = new AbortController();
         const checking = Promise.resolve().then(() =>
           runMode.doneWhen.check({
@@ -3421,6 +3445,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                 diff: diff?.verified === true ? diff : null,
               }
             : null;
+          // The judge step runs next on exactly this input: the task says so while it reads.
+          if (judgeInput !== null) await notePhase(ctx, "Judge reviewing…");
           return keep("complete", commits, judgeInput, verdict.checks ?? null, diff);
         }
       }

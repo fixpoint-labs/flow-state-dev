@@ -184,6 +184,18 @@ const OK_STREAM: CursorSdkMessage[] = [
   { type: "status", status: "FINISHED" },
 ];
 
+describe("cursorAgent — onActivity", () => {
+  it("reports its thinking and each started tool call, so a task can say what the run is doing now", async () => {
+    const { resolve } = scripted(OK_STREAM);
+    const seen: unknown[] = [];
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, onActivity: (activity) => seen.push(activity) });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(seen).toEqual([{ kind: "thinking" }, { kind: "tool", name: "shell", arguments: JSON.stringify({ command: "echo hi" }) }]);
+  });
+});
+
 describe("cursorAgent — what it hands the SDK", () => {
   it("creates a fresh agent in the directory the resolver named, with the agent options forwarded", async () => {
     const { resolve, rec } = scripted(OK_STREAM);

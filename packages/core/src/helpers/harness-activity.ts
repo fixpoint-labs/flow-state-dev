@@ -2,7 +2,7 @@
 /**
  * Handing a harness run's activity to its host: the one mapping
  * from a harness's translated events to {@link HarnessActivity}, shared by
- * every harness so each reports the same two kinds the same way.
+ * every harness so each reports the same three kinds the same way.
  */
 import type { HarnessActivity, HarnessActivityHook, HarnessCallbackContext, HarnessEventHook } from "../types/harness";
 
@@ -10,10 +10,15 @@ import type { HarnessActivity, HarnessActivityHook, HarnessCallbackContext, Harn
 type ActivityEvent =
   | { kind: "message" | "message_complete"; text: string }
   | { kind: "tool_call"; name: string; arguments: string }
+  | { kind: "reasoning" | "reasoning_complete"; text: string }
   | { kind: string };
 
-/** The activity an event is, or `null` for one that isn't (deltas, results, reasoning). */
+/** A whole block of reasoning, by each harness's name for it: Codex's and Cursor's `reasoning`, Claude Code's `reasoning_complete`. */
+const REASONING = new Set(["reasoning", "reasoning_complete"]);
+
+/** The activity an event is, or `null` for one that isn't (deltas, results, statuses). */
 export function harnessActivityOf(event: ActivityEvent): HarnessActivity | null {
+  if (REASONING.has(event.kind)) return { kind: "thinking" };
   if ((event.kind === "message" || event.kind === "message_complete") && "text" in event) {
     return { kind: "message", text: event.text };
   }

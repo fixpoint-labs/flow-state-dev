@@ -80,7 +80,7 @@ describe("the server going away", () => {
     expect(row().className).not.toContain(STALE);
 
     act(() => lab.setConnection("lapsed"));
-    // The whole card greys, so STALE_CLASS's pulse suppression reaches everything inside it (a running card's bar).
+    // The whole card greys, so STALE_CLASS's pulse suppression reaches everything inside it (a running card's now line).
     expect(row().className).toContain(STALE);
     expect(row().className).toContain("[&_.animate-pulse]:animate-none");
 
