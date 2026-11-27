@@ -35,18 +35,18 @@ function scripted(events: CodexThreadEvent[]) {
 }
 
 function memoryCollection() {
-  const rows = new Map<string, Record<string, unknown>>();
+  const stored = new Map<string, Record<string, unknown>>();
   return {
-    rows,
+    stored,
     async getOptional(key: string) {
-      const state = rows.get(key);
+      const state = stored.get(key);
       return state === undefined ? undefined : { state };
     },
     async upsert(key: string, update: Record<string, unknown>) {
-      rows.set(key, { ...rows.get(key), ...update });
+      stored.set(key, { ...stored.get(key), ...update });
     },
     async delete(key: string) {
-      rows.delete(key);
+      stored.delete(key);
     },
   };
 }
@@ -60,16 +60,16 @@ async function run(events: CodexThreadEvent[], options: Partial<CodexAgentOption
   ctx.resources = { [OBSERVED_PLAN]: plan, [OBSERVED_PLAN_LIST]: marker };
   await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
   const ns = harnessConversationNamespace("thr_1");
-  const rowsInOrder = [...plan.rows.entries()]
+  const planEntries = [...plan.stored.entries()]
     .filter(([key]) => key.startsWith(`${ns}/`))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, state]) => ({ title: state.title, status: state.status }));
-  return { plan, marker, ns, rowsInOrder, pointer: marker.rows.get(harnessRunNamespace(runtime.ctx as never)) };
+  return { plan, marker, ns, planEntries, pointer: marker.stored.get(harnessRunNamespace(runtime.ctx as never)) };
 }
 
 describe("recordPlan — Codex block", () => {
   it("ends with the record equal to the last todo_list Codex confirmed", async () => {
-    const { rowsInOrder, pointer } = await run([
+    const { planEntries, pointer } = await run([
       {
         type: "item.completed",
         item: {
@@ -94,7 +94,7 @@ describe("recordPlan — Codex block", () => {
         },
       },
     ]);
-    expect(rowsInOrder).toEqual([
+    expect(planEntries).toEqual([
       { title: "Read the task", status: "completed" },
       { title: "Fix the bug", status: "completed" },
       { title: "Run checks", status: "pending" },

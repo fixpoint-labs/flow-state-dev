@@ -16,13 +16,13 @@ describe("planStatusKind", () => {
 
 describe("currentPlanIndex", () => {
   it("prefers the first in-progress row, then the first pending", () => {
-    const rows = [
+    const steps = [
       { status: "completed" },
       { status: "in_progress" },
       { status: "pending" },
     ];
-    expect(currentPlanIndex(rows)).toBe(1);
-    expect(currentPlanIndex(rows.map((r) => ({ status: "completed" })))).toBe(-1);
+    expect(currentPlanIndex(steps)).toBe(1);
+    expect(currentPlanIndex(steps.map(() => ({ status: "completed" })))).toBe(-1);
     expect(currentPlanIndex([{ status: "completed" }, { status: "pending" }])).toBe(1);
   });
 });

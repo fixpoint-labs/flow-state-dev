@@ -236,9 +236,9 @@ function translateItem(
 function confirmedCodexTodoList(raw: unknown): Array<{ title: string | null; status: string | null }> | null {
   if (!Array.isArray(raw)) return null;
   return raw.map((entry) => {
-    const row = (entry ?? {}) as { text?: unknown; completed?: unknown };
-    const title = readString(row.text);
-    return { title: title ?? null, status: row.completed === true ? "completed" : "pending" };
+    const item = (entry ?? {}) as { text?: unknown; completed?: unknown };
+    const title = readString(item.text);
+    return { title: title ?? null, status: item.completed === true ? "completed" : "pending" };
   });
 }
 
