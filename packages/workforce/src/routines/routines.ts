@@ -732,14 +732,14 @@ function workerCaller(ctx: BlockContext): Caller | { refused: string } {
 export function workerRoutineVerbs(installation: WorkerInstallation) {
   // One set per installation: a flow that declares the verbs and the capability declares one collection.
   const known = workerVerbsByInstallation.get(installation);
-  if (known !== undefined) return known as ReturnType<typeof buildWorkerRoutineVerbs>;
+  if (known !== undefined) return known;
   const built = buildWorkerRoutineVerbs(installation);
   workerVerbsByInstallation.set(installation, built);
   return built;
 }
 
-const workerVerbsByInstallation = new WeakMap<object, unknown>();
-const capabilityByInstallation = new WeakMap<object, unknown>();
+const workerVerbsByInstallation = new WeakMap<WorkerInstallation, ReturnType<typeof buildWorkerRoutineVerbs>>();
+const capabilityByInstallation = new WeakMap<WorkerInstallation, ReturnType<typeof buildRoutinesCapability>>();
 
 function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
   // The poll schedules are declared whether or not the app polls: a worker flow is built before `hireWorkforce` says.
@@ -780,7 +780,7 @@ function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
  */
 export function createRoutinesCapability(installation: WorkerInstallation) {
   const known = capabilityByInstallation.get(installation);
-  if (known !== undefined) return known as ReturnType<typeof buildRoutinesCapability>;
+  if (known !== undefined) return known;
   const built = buildRoutinesCapability(installation);
   capabilityByInstallation.set(installation, built);
   return built;

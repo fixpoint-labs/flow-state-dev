@@ -78,12 +78,23 @@ export type ScopeEntry<TValue> = { topic: string; storageKey: string; value: TVa
 /** One page of a collection's entries, and the cursor of the next (absent on the last). */
 export type ScopeEntryPage<TValue> = { items: ScopeEntry<TValue>[]; nextCursor?: string };
 
+/** One entry on a collection manifest: its storage key and version, and not its value. */
+export type CollectionManifestEntry = { storageKey: string; version: number };
+
+/** One page of a collection manifest, and the cursor of the next (absent on the last). */
+export type CollectionManifestPage = { items: CollectionManifestEntry[]; nextCursor?: string };
+
 /** One user or org collection, by scope and pattern. */
 export interface ScopeCollectionHandle<TValue = JsonValue> extends ResourceSends {
   readonly scope: "user" | "org";
   readonly key: string;
-  /** One page of the caller's entries, in storage-key order. */
-  list(options?: { limit?: number; cursor?: string; topicPrefix?: string }): Promise<ScopeEntryPage<TValue>>;
+  /**
+   * One page of the caller's entries. In storage-key order, or (`order: "newest"`)
+   * newest first by each entry's `at`. `manifest` returns storage keys and
+   * versions and no values, on the same route, in storage-key order.
+   */
+  list(options: { manifest: true; limit?: number; cursor?: string; topicPrefix?: string }): Promise<CollectionManifestPage>;
+  list(options?: { limit?: number; cursor?: string; topicPrefix?: string; order?: "newest" }): Promise<ScopeEntryPage<TValue>>;
   /**
    * Every one of the caller's entries, page after page to the last. Rejects
    * with `CollectionReadStoppedError`, returning none, when the server hands
@@ -179,18 +190,30 @@ export function scopeResourceHandle<TDef extends ScopeResourceDef>(
           send<{ version: number }>("delete", { entry, version: deleteOptions?.version ?? (await read()).version })
       };
     };
-    const list: ScopeCollectionHandle<TValue>["list"] = (listOptions = {}) =>
-      t.json<ScopeEntryPage<TValue>>(`${base}/entries`, undefined, {
+    const list = (
+      listOptions: {
+        limit?: number;
+        cursor?: string;
+        topicPrefix?: string;
+        manifest?: boolean;
+        order?: "newest";
+      } = {}
+    ) =>
+      t.json<ScopeEntryPage<TValue> | CollectionManifestPage>(`${base}/entries`, undefined, {
         userId,
         ...(listOptions.limit !== undefined ? { limit: String(listOptions.limit) } : {}),
         ...(listOptions.cursor !== undefined ? { cursor: listOptions.cursor } : {}),
-        ...(listOptions.topicPrefix !== undefined ? { topicPrefix: listOptions.topicPrefix } : {})
+        ...(listOptions.topicPrefix !== undefined ? { topicPrefix: listOptions.topicPrefix } : {}),
+        ...(listOptions.manifest === true ? { manifest: "1" } : {}),
+        ...(listOptions.order !== undefined ? { order: listOptions.order } : {})
       });
     const collection: ScopeCollectionHandle<TValue> = {
       scope,
       key,
-      list,
-      listAll: (listOptions = {}) => followEveryPage((cursor) => list({ ...listOptions, ...(cursor === undefined ? {} : { cursor }) })),
+      list: list as ScopeCollectionHandle<TValue>["list"],
+      // A whole-collection read is values. The manifest option is a different answer on the same route.
+      listAll: (listOptions = {}) =>
+        followEveryPage((cursor) => list({ ...listOptions, ...(cursor === undefined ? {} : { cursor }) }) as Promise<ScopeEntryPage<TValue>>),
       entry: entryHandle,
       send
     };

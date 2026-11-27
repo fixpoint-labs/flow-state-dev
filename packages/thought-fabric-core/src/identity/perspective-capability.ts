@@ -76,18 +76,6 @@ export interface PerspectiveCapabilityConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: resource ref lookup
-// ---------------------------------------------------------------------------
-
-function getPositionsRef(ctx: any): ResourceContext<PerspectivePositionsState> {
-  return ctx.resources.perspectivePositions ?? ctx.resources.get?.('perspectivePositions')
-}
-
-function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsState> {
-  return ctx.resources.perspectiveObservations ?? ctx.resources.get?.('perspectiveObservations')
-}
-
-// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -144,9 +132,8 @@ export function createPerspectiveCapability(
   return defineCapability({
     name: 'perspective' as const,
     resources,
-    fns: (ctx: any) => {
-      const obsRef = getObservationsRef(ctx)
-      const posRef = getPositionsRef(ctx)
+    fns: (ctx) => {
+      const { perspectiveObservations: obsRef, perspectivePositions: posRef } = ctx.resources
       return {
         // -- Observations --
         /** Record an observation in the session-scoped observations resource. */
@@ -184,7 +171,7 @@ export function createPerspectiveCapability(
        */
       static: {
         context: {
-          perspective: (_input: any, _ctx: any) => formatPerspective(instance),
+          perspective: () => formatPerspective(instance),
         },
       },
       /**
@@ -195,11 +182,10 @@ export function createPerspectiveCapability(
        */
       accumulated: {
         context: {
-          'perspective-history': (_input: any, ctx: any) => {
-            const obsRef = getObservationsRef(ctx)
-            const posRef = getPositionsRef(ctx)
-            return formatPerspectiveAccumulated(obsRef, posRef)
-          },
+          'perspective-history': (_input, ctx) => formatPerspectiveAccumulated(
+            ctx.resources.perspectiveObservations as ResourceContext<PerspectiveObservationsState> | undefined,
+            ctx.resources.perspectivePositions as ResourceContext<PerspectivePositionsState> | undefined,
+          ),
         },
       },
       default: ['static', 'accumulated'],

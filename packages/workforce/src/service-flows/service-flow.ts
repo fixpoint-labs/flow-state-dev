@@ -467,7 +467,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     // slot. A copy of an event in flight (a redelivery while the first still
     // sends) stops before both, so it spends no slot and marks nothing seen:
     // the first's outcome decides, and a lost first is sent by the next copy.
-    const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [] });
+    const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription);
     const id = deliveryMessageId(event.object, row.sessionId, row.tenantId);
     // A send the recipient took after its delivery looked (an accepted
     // dispatch) is seen now, on its next copy, without a slot.
