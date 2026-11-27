@@ -10,6 +10,8 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
   return createSQLiteRecordStore<SessionRecord, SessionListOptions>(db, {
     tableName: "sessions",
     columns: ["flow_kind", "flow_id", "user_id", "org_id", "tenant_id", "parent_session_id"],
+    // FIX-2942: a session's creator kind is written at birth and kept by every later `set`.
+    preserveJsonKeys: ["principalKind"],
     toRow: (record) => [
       record.flowKind,
       record.flowId ?? null,
