@@ -483,6 +483,28 @@ describe("createScheduledEndpointAdapter — dispatch", () => {
     expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
   });
 
+  it("stamps a schedule naming the gateway's own user and org as a machine's, as the fallback is", async () => {
+    const adapter = createScheduledEndpointAdapter();
+    const flow = defineFlow({
+      kind: "reminders",
+      actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
+      schedules: {
+        static: { sweep: { cron: "0 9 * * MON", block: noopBlock, principal: { userId: "cron-gateway", orgId: "org_sys" } } }
+      }
+    });
+    const host = withFlow(
+      withActiveRegistry(
+        createMockTransportHost({ resolvePrincipal: () => ({ userId: "cron-gateway", orgId: "org_sys" }) }),
+        makeStubActiveRegistry()
+      ),
+      flow
+    );
+    const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("reminders", "sweep");
+    expect((await route.handler(request, ctx)).status).toBe(202);
+    expect(schedMeta(host.dispatchCalls[0]?.envelope).machinePrincipal).toBe(true);
+  });
+
   it("static schedule with no principal falls back to the gateway principal", async () => {
     const adapter = createScheduledEndpointAdapter();
     const host = withFlow(

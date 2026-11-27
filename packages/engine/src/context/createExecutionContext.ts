@@ -97,6 +97,7 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { principalOwnsNothing, sessionOwnsNothing } from "./machine-principal";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -1026,7 +1027,9 @@ export async function createExecutionContext<
         },
         state: options.sessionState,
         fromCaller: true,
-        via: "action"
+        via: "action",
+        // A scheduled fire as the gateway or the system user: server-set by the scheduled route.
+        machine: principalOwnsNothing(options.source, options.metadata)
       },
       () => ({
       id: sessionKey,
@@ -1238,6 +1241,7 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
+          machineOwned: sessionOwnsNothing(noSession ? undefined : sessionRecord),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),

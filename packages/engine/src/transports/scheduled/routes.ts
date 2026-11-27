@@ -23,6 +23,7 @@ import {
   type SchedulesConfig
 } from "@flow-state-dev/core/types";
 import { SCHEDULED_SOURCE as SCHEDULED_TRANSPORT_SOURCE } from "../../execution/transport-sources";
+import { SYSTEM_USER_ID } from "../../context/machine-principal";
 import { resolveSharedUserCellKey } from "../../stores";
 import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../types";
@@ -46,9 +47,6 @@ interface DispatchBody {
   /** Set when the caller sent the removed key: refused, never read. */
   idempotencyKey?: unknown;
 }
-
-/** The system principal's user (`ScheduleConfig.principal`): a machine, which owns nothing. */
-const SYSTEM_USER_ID = "system";
 
 export async function handleDispatch(
   req: Request,
@@ -204,10 +202,14 @@ export async function handleDispatch(
           orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
         };
   // FIX-2942: decided here, beside the one fallback, so it cannot diverge from
-  // the principal the run actually gets. The gateway fallback and the system
-  // principal are machines, not owners: such a run owns no session but its own
-  // (`context/named-session.ts`). A schedule naming a person reaches as that person.
-  const machinePrincipal = schedule.principal === undefined || effectivePrincipal.userId === SYSTEM_USER_ID;
+  // the principal the run actually gets. A fire whose effective principal is
+  // the gateway's (the fallback, or a schedule naming the same user in the same
+  // org) or the system user's is a machine's, not an owner's: the session it
+  // creates is born owning nothing but itself (`context/machine-principal.ts`).
+  // A schedule naming a person reaches as that person.
+  const machinePrincipal =
+    (effectivePrincipal.userId === gatewayPrincipal.userId && effectivePrincipal.orgId === gatewayPrincipal.orgId) ||
+    effectivePrincipal.userId === SYSTEM_USER_ID;
 
   // The scheduled time this fire counts against, claimed once in the store.
   const timezone = schedule.timezone ?? "UTC";

@@ -13,21 +13,24 @@
  * target is judged by the owner compare the routes apply (`principalOwnsRequest`
  * with the organization required), then the target instance's pin.
  *
- * Two principals own nothing but their own session: the gateway a schedule
- * fell back to, and the system principal (`{ userId: "system" }`). Both name a
- * machine, not a person, so two schedules on one of them never reach each
- * other's sessions. A schedule that names a person reaches as that person.
+ * A run in a session a machine created owns nothing but that session: the
+ * gateway a schedule fires as, and the system principal (`{ userId: "system" }`),
+ * name a machine, not a person, so two schedules on one of them never reach
+ * each other's sessions, and neither does a wake, task or internal run that
+ * continues one. That is read from the caller's own session record
+ * (`machine-principal.ts`), never from the run's metadata. A schedule that
+ * names a person reaches as that person.
  *
  * Every refusal reads as a missing session: {@link admitNamedSession} answers
  * `undefined`, exactly as it does for an id nobody holds, so a caller cannot
  * learn which ids exist.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
-import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import { admitSession, flowAuthenticates, type InstanceCallerResolver } from "../routes/instance-caller";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionRecord, SessionStore } from "../stores/types";
 import { pinRejectsCaller } from "./instance-pin";
+import { sessionOwnsNothing } from "./machine-principal";
 import { resolveRecordOwner } from "./record-owner";
 import { principalOwnsRequest } from "./request-principal";
 
@@ -44,23 +47,11 @@ export interface BlockCaller {
    * for an inherited principal (a dispatch, a schedule) or the host's resolver.
    */
   readonly resolvedByFlowId?: string;
-  /** The block's own session: the one session a caller that owns nothing still holds. */
+  /**
+   * The block's own session: the one session a caller that owns nothing still
+   * holds, and the record that says whether it owns anything else.
+   */
   readonly sessionId: string;
-  /** A machine principal (a schedule's gateway fallback or the system principal): owns no other session. */
-  readonly ownsNothing: boolean;
-}
-
-/**
- * Whether a run's principal is a machine's that owns nothing: a scheduled run
- * the scheduled route stamped `machinePrincipal` (the gateway's fallback, or
- * the system principal). Read only under the scheduled source, whose metadata
- * the scheduled route sets, so a caller's metadata can't claim or shed it.
- */
-export function principalOwnsNothing(source: string | undefined, metadata: unknown): boolean {
-  if (source !== SCHEDULED_SOURCE) return false;
-  const schedule = (metadata as { schedule?: { machinePrincipal?: unknown } } | undefined)?.schedule;
-  if (schedule === undefined || schedule === null || typeof schedule !== "object") return false;
-  return schedule.machinePrincipal === true;
 }
 
 /**
@@ -71,7 +62,7 @@ export function principalOwnsNothing(source: string | undefined, metadata: unkno
  */
 function createBlockCallerResolver(caller: BlockCaller): InstanceCallerResolver {
   return async (flow) =>
-    flowAuthenticates(flow) && flow.id === caller.flowId && flow.id === caller.resolvedByFlowId && !caller.ownsNothing
+    flowAuthenticates(flow) && flow.id === caller.flowId && flow.id === caller.resolvedByFlowId
       ? { userId: caller.userId, orgId: caller.orgId }
       : undefined;
 }
@@ -83,7 +74,6 @@ function createBlockCallerResolver(caller: BlockCaller): InstanceCallerResolver 
  */
 function blockHostRule(registry: Pick<FlowRegistry, "get" | "list">, caller: BlockCaller) {
   return (session: SessionRecord): boolean => {
-    if (caller.ownsNothing) return false;
     // What makes the organization required: `principalOwnsRequest` alone
     // treats a session with no org as owned.
     if (session.orgId !== caller.orgId) return false;
@@ -113,6 +103,9 @@ export async function admitNamedSession(
   // The run's own session, unchecked: `caller.sessionId` comes from the run,
   // never a payload, so it names the session this run already holds.
   if (sessionId === caller.sessionId) return record;
+  // A machine's session owns nothing else, whichever run in it asks.
+  const own = await inputs.sessions.get(resolveSessionStorageKey(caller.sessionId, caller.tenantId));
+  if (sessionOwnsNothing(own)) return undefined;
   const admitted = await admitSession(
     { registry, callerFor: createBlockCallerResolver(caller), tenantId: caller.tenantId, hostRule: blockHostRule(registry, caller) },
     record

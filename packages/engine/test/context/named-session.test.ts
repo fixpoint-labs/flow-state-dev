@@ -7,13 +7,18 @@
  * the same person, and every refusal must read as an unknown id, or a caller
  * learns which ids exist. Each refusal case below is compared with the answer
  * for an id nobody holds.
+ *
+ * Whether the caller owns anything beyond its own session is read from that
+ * session's record (`machineOwned`, written at birth), so each caller here
+ * runs in a session planted with the classification it was born with.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowRegistry } from "../../src";
 import { createInMemoryStores } from "../../src/host";
-import { admitNamedSession, principalOwnsNothing, type BlockCaller } from "../../src/context/named-session";
+import { admitNamedSession, type BlockCaller } from "../../src/context/named-session";
+import { principalOwnsNothing, sessionOwnsNothing } from "../../src/context/machine-principal";
 import { resolveSessionStorageKey } from "../../src/stores/scope-keys";
 
 const ORG = "acme";
@@ -43,7 +48,11 @@ async function boot() {
   registry.register(secureFlow("vault"));
   registry.register(secureFlow("locked"), { pin: { orgId: ORG, userId: "bob" } });
   const stores = createInMemoryStores();
-  const put = async (sessionId: string, owner: { flow: string; userId: string; orgId?: string; tenantId?: string }) => {
+  /** `machineOwned` as the birth would write it; `null` plants a record from before the field. */
+  const put = async (
+    sessionId: string,
+    owner: { flow: string; userId: string; orgId?: string; tenantId?: string; machineOwned?: boolean | null }
+  ) => {
     const id = resolveSessionStorageKey(sessionId, owner.tenantId);
     const now = Date.now();
     await stores.session.set(
@@ -59,14 +68,23 @@ async function boot() {
         userId: owner.userId,
         journal: [],
         ...(owner.orgId !== undefined ? { orgId: owner.orgId } : {}),
-        ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {})
+        ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}),
+        ...(owner.machineOwned === null ? {} : { machineOwned: owner.machineOwned ?? false })
       },
       "absent"
     );
   };
+  // Each caller's own session, as it was born: alice and carol people, the gateway a machine.
+  await put("a", { flow: "chat", userId: "alice", orgId: ORG });
+  await put("a", { flow: "chat", userId: "alice", orgId: ORG, tenantId: "t1" });
+  await put("c", { flow: "chat", userId: "carol", orgId: ORG });
+  await put("g", { flow: "chat", userId: "gateway", orgId: ORG, machineOwned: true });
   const admit = (caller: BlockCaller, sessionId: string) => admitNamedSession({ sessions: stores.session, registry, caller }, sessionId);
   return { put, admit };
 }
+
+/** A run in the gateway's session `g`. */
+const gateway: BlockCaller = { userId: "gateway", orgId: ORG, flowId: "chat", sessionId: "g" };
 
 /** Alice, running a block of `flowId` in session `a`. */
 const alice = (flowId = "chat", extra: Partial<BlockCaller> = {}): BlockCaller => ({
@@ -74,7 +92,6 @@ const alice = (flowId = "chat", extra: Partial<BlockCaller> = {}): BlockCaller =
   orgId: ORG,
   flowId,
   sessionId: "a",
-  ownsNothing: false,
   ...extra
 });
 
@@ -98,10 +115,14 @@ describe("admitNamedSession", () => {
     ["the same user in another tenant", (put) => put("b", { flow: "notes", userId: "alice", orgId: ORG, tenantId: "t2" }), alice("chat", { tenantId: "t1" })],
     ["a session stored with no org", (put) => put("b", { flow: "notes", userId: "alice" }), alice()],
     ["an own-resolver instance whose pin refuses the caller", (put) => put("b", { flow: "locked", userId: "alice", orgId: ORG }), alice("locked", { resolvedByFlowId: "locked" })],
+    ["a second schedule on the gateway principal", (put) => put("b", { flow: "notes", userId: "gateway", orgId: ORG, machineOwned: true }), gateway],
     [
-      "a second schedule on the gateway principal",
-      (put) => put("b", { flow: "notes", userId: "gateway", orgId: ORG }),
-      { userId: "gateway", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: true }
+      "anything, from a session stored before machines were classified",
+      async (put) => {
+        await put("old", { flow: "chat", userId: "gateway", orgId: ORG, machineOwned: null });
+        await put("b", { flow: "notes", userId: "gateway", orgId: ORG, machineOwned: null });
+      },
+      { ...gateway, sessionId: "old" }
     ],
     ["a target whose flow has its own resolver, from a block of another flow", (put) => put("b", { flow: "vault", userId: "alice", orgId: ORG }), alice("chat")],
     [
@@ -133,14 +154,25 @@ describe("admitNamedSession", () => {
     expect(await admit(alice("chat", { tenantId: "t1" }), "own-tenant")).toBeDefined();
     expect(await admit({ ...alice("locked", { resolvedByFlowId: "locked" }), userId: "bob" }, "own-pin")).toBeDefined();
     // A schedule naming a person (not a machine) reaches that person's sessions.
-    expect(await admit({ userId: "carol", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: false }, "own-person")).toBeDefined();
+    expect(await admit({ userId: "carol", orgId: ORG, flowId: "chat", sessionId: "c" }, "own-person")).toBeDefined();
+    // The same owner from a session born a person's is admitted: the caller's bit is the only refusal.
+    await put("g2", { flow: "chat", userId: "gateway", orgId: ORG, machineOwned: false });
+    await put("own-gateway", { flow: "notes", userId: "gateway", orgId: ORG, machineOwned: true });
+    expect(await admit({ ...gateway, sessionId: "g2" }, "own-gateway")).toBeDefined();
   });
 
   it("still gives a caller that owns nothing its own session", async () => {
-    const { put, admit } = await boot();
-    await put("a", { flow: "chat", userId: "gateway", orgId: ORG });
-    const gateway: BlockCaller = { userId: "gateway", orgId: ORG, flowId: "chat", sessionId: "a", ownsNothing: true };
-    expect((await admit(gateway, "a"))?.userId).toBe("gateway");
+    const { admit } = await boot();
+    expect((await admit(gateway, "g"))?.userId).toBe("gateway");
+  });
+});
+
+describe("sessionOwnsNothing", () => {
+  it("reads only a session born a person's as owning: a machine's, a record without the bit, or none owns nothing", () => {
+    expect(sessionOwnsNothing({ machineOwned: false })).toBe(false);
+    expect(sessionOwnsNothing({ machineOwned: true })).toBe(true);
+    expect(sessionOwnsNothing({})).toBe(true);
+    expect(sessionOwnsNothing(undefined)).toBe(true);
   });
 });
 

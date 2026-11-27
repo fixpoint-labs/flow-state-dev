@@ -92,6 +92,20 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * records can never both fall back to one id.
    */
   lineageId?: string;
+  // FIX-2942; BP-030; BP-031.
+  /**
+   * Whether the principal that created this session is a machine's: the
+   * gateway a schedule fires as, the system user, or a webhook delivery's
+   * principal. Every run in such a session owns no session but its own, so a
+   * later wake, task or internal run there is fenced as its first run was
+   * (`context/machine-principal.ts`). Written once, by the birth
+   * (`birthSession`), from the run that creates the session, never from a
+   * caller's input, and never changed after.
+   *
+   * `== null` on a record written before the field existed: read as a
+   * machine's, so an unclassified session owns nothing (fail closed).
+   */
+  machineOwned?: boolean;
   // FIX-1010; BP-030.
   /**
    * Human-readable name for the body of work a child session was

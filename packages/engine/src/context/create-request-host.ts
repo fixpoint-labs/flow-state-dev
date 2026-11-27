@@ -155,6 +155,13 @@ export type RequestHostInputs = {
   // FIX-2630 D1.
   /** Routes a dispatch to a `service` entry (see the seam's step 1); absent, such a dispatch refuses `no-dispatch-operation`. */
   serviceRoute?: ServiceRouteOperation;
+  // FIX-2942.
+  /**
+   * Whether the running request's own session is a machine's
+   * (`SessionRecord.machineOwned`, read fail-closed): a child session it
+   * dispatches into is born the same.
+   */
+  machineOwned?: boolean;
   /**
    * Resolve another flow instance registered in this process, by its exact
    * address — the flow registry, narrowed to the one question the seam asks.
@@ -413,7 +420,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             },
             ...(state !== undefined ? { state: { ...state } } : {}),
             fromCaller: false,
-            via: "dispatch"
+            via: "dispatch",
+            // A machine's session makes machine's children: the child runs as the same principal.
+            machine: inputs.machineOwned === true
           },
           () => build(ts)
         )

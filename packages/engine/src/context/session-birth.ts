@@ -24,6 +24,9 @@
  * - **Reclaiming**. A record coming into existence starts a new
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
+ * - **Classifying.** Whether a machine created the session
+ *   (`SessionRecord.machineOwned`), written once here so every later run in it
+ *   is fenced the same way (`machine-principal.ts`).
  * - **Checking.** The session's initial state, parsed through the flow's
  *   `stateSchema` (on a flow that binds its sessions, a state the schema
  *   refuses is refused; see {@link parseInitialSessionState}), the
@@ -57,6 +60,7 @@ import {
 import { toBareState } from "../stores/resource-state-views";
 import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { scopeStateSchema } from "./scope-state-defaults";
+import { SYSTEM_USER_ID } from "./machine-principal";
 
 // FIX-1000; FIX-1068.
 /**
@@ -210,6 +214,14 @@ export type SessionCreateRequest = {
    */
   fromCaller: boolean;
   via: SessionCreatePath;
+  // FIX-2942; BP-031.
+  /**
+   * Whether the run creating the session runs as a machine (a scheduled fire
+   * as the gateway, a webhook delivery, a dispatch from a machine's session).
+   * Written on the record as `machineOwned`, with the system user always a
+   * machine. Set by the server from the run, never from a caller's input.
+   */
+  machine?: boolean;
 };
 
 /**
@@ -416,7 +428,9 @@ export async function birthSession(
   const record: SessionRecord = {
     ...seed,
     state,
-    lineageId: seed.lineageId ?? generateId("lin")
+    lineageId: seed.lineageId ?? generateId("lin"),
+    // After the seed, so no record a caller shaped can set it.
+    machineOwned: request.machine === true || request.principal.userId === SYSTEM_USER_ID
   };
   const created = await stores.session.set(storageKey, record, "absent");
   if (created.ok) return { born: true, record };
