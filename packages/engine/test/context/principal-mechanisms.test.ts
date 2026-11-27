@@ -309,9 +309,10 @@ describe("backfill", () => {
     await plantSession(stores, "target", { principalKind: "person" });
     // Person: an HTTP start, and one from before `source` (read as `http`).
     await plantSession(stores, "l-http", { lineageId: "lin_http" });
-    // The birth request is written just before the session; a later turn's doesn't count.
+    // The birth request is written just before the session; a later turn's,
+    // outside the birth window, doesn't count.
     const born = (await stores.session.get("l-http"))!.createdAt;
-    await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 5 });
+    await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 60 * 60_000 });
     await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5 });
     await plantSession(stores, "l-legacy");
     await plantRequest(stores, "r-legacy", "l-legacy");

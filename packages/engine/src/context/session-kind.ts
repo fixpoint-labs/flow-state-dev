@@ -17,8 +17,9 @@
  * to a queue's wait; a session created on its own route, by a webhook
  * delivery or by a dispatch gets its first request after. So the birth
  * request is one of the candidates at or before `createdAt`, or the earliest
- * after it (one with a parent's source only for a session with a parent:
- * nothing dispatched a session that has none).
+ * after it, whatever its source: a dispatch that creates a session with its
+ * own id and state leaves it without a parent, so a dispatch request counts
+ * for a session that has none too.
  *
  * Session deletion leaves requests behind and an id can be taken again, so a
  * candidate at or before `createdAt` may be a predecessor's, and nothing on a
@@ -87,7 +88,6 @@ async function birthRequestKind(
   let firstAfter: RequestRecord | undefined;
   for (const record of candidates) {
     if (record.createdAt <= session.createdAt) continue;
-    if (session.parentSessionId == null && firstRequestKind(record) === "parent") continue;
     if (firstAfter === undefined || record.createdAt < firstAfter.createdAt) firstAfter = record;
   }
   if (firstAfter !== undefined) possible.push(firstAfter);

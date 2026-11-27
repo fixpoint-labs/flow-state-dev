@@ -411,7 +411,8 @@ await runGoal(async (failures, tell) => {
       // A person's: an HTTP birth (its record written just before the session), and one from before `source`.
       await plantSession(stores, "l-http", born, { lineageId: "lin_http" });
       await plantRequest(stores, "r-http", "l-http", born - 5, { source: "http" });
-      await plantRequest(stores, "r-http-2", "l-http", born + 5, { source: "internal" });
+      // A later turn's, outside the birth window, doesn't count.
+      await plantRequest(stores, "r-http-2", "l-http", born + 60 * 60_000, { source: "internal" });
       await plantSession(stores, "l-legacy", born);
       await plantRequest(stores, "r-legacy", "l-legacy", born - 5, { source: null });
       // A dispatched child the parent can be proven for, by the lineage it inherited.

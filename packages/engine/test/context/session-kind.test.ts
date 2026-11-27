@@ -102,6 +102,19 @@ describe("the birth request of a session from before kinds", () => {
     }
   });
 
+  it("counts a dispatch birth of a session with no parent, so a predecessor's person request in the window can't make it a person's", async () => {
+    // A dispatch that creates a session with its own id and state leaves the
+    // record without a parent, and its request is written just after the
+    // birth. Dropping it would leave the predecessor's request as the only
+    // possible birth and hand the machine's session a person's reach.
+    const stores = createInMemoryStores();
+    await request(stores, "r-predecessor", "s", BORN - 2 * MINUTE, { source: "http" });
+    await request(stores, "r-birth", "s", BORN + 1_000, { source: "internal" });
+    const session = await legacySession(stores, "s");
+    expect(await resolveSessionKind(stores, session)).toBe("machine");
+    expect((await stores.session.get("s"))?.principalKind).toBe("machine");
+  });
+
   it("is looked for as far before the session as the host lets a queued action wait", async () => {
     const stores = createInMemoryStores();
     const session = await legacySession(stores, "s");
