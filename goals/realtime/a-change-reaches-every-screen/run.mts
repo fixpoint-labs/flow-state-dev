@@ -48,7 +48,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { connect, createServer } from "node:net";
+import { connect } from "node:net";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, BrowserContext, Page } from "playwright";
@@ -69,6 +69,7 @@ import {
   type Tell
 } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { freePort, refuseIfAnswering } from "../../lib/server.mts";
 import { forkPeer, type Peer } from "../../lib/peers.mts";
 import { startPostgres, type RunningPostgres } from "../../lib/postgres.mts";
 import { buildShiftManagerPages, labRoutes, personPage, startShiftManager } from "../../lib/shift-manager.mts";
@@ -76,7 +77,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW, WORKER_ID_STATE_KEY, createWorkforceClient, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { codingBoardViewRef } from "@flow-state-dev/harness-manager/browser";
 import { createInboxClient, type InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { appCalls } from "../../../labs/claude-code-style/src/app/calls.ts";
+import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GOAL_DIR = relative(REPO_ROOT, HERE);
@@ -233,18 +234,6 @@ async function buildPage(checkout: string, out: string): Promise<void> {
     nodePaths: [join(checkout, "packages", "shift-manager", "node_modules")]
   });
   cpSync(join(app, "index.html"), join(out, "index.html"));
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => (typeof address === "object" && address !== null ? resolve(address.port) : reject(new Error("no port"))));
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -926,12 +915,10 @@ async function legB(
       // ~200 ms after its send would read 500–1000 ms (FIX-2841). Front it, and refuse to time a
       // page whose frames still don't run (`document.hasFocus()` says true either way).
       await conversationPage.bringToFront();
-      // A string, so the bundler's helpers don't reach the page. The timeout ends the count where frames stop altogether.
-      const PROBE = "new Promise((done) => { let frames = 0; const t0 = performance.now(); const rate = () => frames / ((performance.now() - t0) / 1000); const tick = () => (++frames, performance.now() - t0 < 300 ? requestAnimationFrame(tick) : done(rate())); requestAnimationFrame(tick); setTimeout(() => done(rate()), 1500); })";
       // One runner pause can stall a single 300 ms probe; a background tab stays slow on every one.
       const rates: number[] = [];
       for (let probe = 0; probe < 3; probe++) {
-        rates.push(await conversationPage.evaluate<number>(PROBE));
+        rates.push(await conversationPage.evaluate<number>(FRAME_PROBE));
         if (rates.at(-1)! >= 20) break;
       }
       if (rates.every((r) => r < 20)) throw new Error(`setup: the lead's conversation draws ${rates.map((r) => r.toFixed(1)).join(", ")} frames a second over ${rates.length} probes, a background tab's rate; its samples would time that, not the line`);
@@ -1278,6 +1265,8 @@ type ServedLab = { name: string; origin: string; log: () => string; stop(): Prom
 async function serveLab(lab: Lab, name: string, db: RunningPostgres, dir: string, repo: string): Promise<ServedLab> {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
+  // Another process can take the port between freePort and the bind; its answers would pass the readiness poll below.
+  await refuseIfAnswering(origin);
   const swap: ModulePatch = {
     module: lab.host,
     from: lab.storeLine,
@@ -1325,7 +1314,10 @@ async function serveLab(lab: Lab, name: string, db: RunningPostgres, dir: string
   throw new Error(`setup: ${name} never served on ${origin}. Log tail:\n${log.slice(-2000)}`);
 }
 
-/** The page's frame rate over 300 ms, as j2 probes it: a background tab runs a frame or two a second. */
+/**
+ * The page's frame rate over 300 ms, as j2 and the lab scenes probe it: a background tab runs a frame or two a second.
+ * A string, so the bundler's helpers don't reach the page. The timeout ends the count where frames stop altogether.
+ */
 const FRAME_PROBE = "new Promise((done) => { let frames = 0; const t0 = performance.now(); const rate = () => frames / ((performance.now() - t0) / 1000); const tick = () => (++frames, performance.now() - t0 < 300 ? requestAnimationFrame(tick) : done(rate())); requestAnimationFrame(tick); setTimeout(() => done(rate()), 1500); })";
 
 /** When the store first holds `query`'s single `status` at one of `statuses`, polled every 5 ms on the runner's own connection. */
