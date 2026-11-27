@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ClockIcon, TerminalIcon } from "lucide-react";
-import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import { useView } from "@flow-state-dev/react";
+import { listedRoutineSchema, routinesView, type ListedRoutine, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { useTasks } from "../app";
+import { useAppClient, useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
 import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
@@ -90,7 +91,9 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * active one's clock on this attempt, with a thin bar while its run answers,
  * and *Long-running* once it has been open a day; an idle one's time since it
  * last moved; an ended one's age. Then
- * what this conversation's coding tasks spent, and at the foot its routines.
+ * what this conversation's coding tasks spent, and at the foot its routines:
+ * each clock routine it files and event routine it hears, with when it next
+ * runs or what it follows, and *Paused* on a paused one.
  * The teammate's own description and *Edit* live in the conversation's header.
  */
 export function TeammatePanel({
@@ -115,6 +118,10 @@ export function TeammatePanel({
 }) {
   // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
   const board = useTasks(sessionId);
+  // Its routines: Workforce's routines view, read with no session, kept to the ones acting through this teammate.
+  const { client, pollIntervalMs } = useAppClient();
+  const listed = useView(routinesView, {}, { client, pollIntervalMs }).value;
+  const routines = useMemo(() => routinesOf(listed, worker.id), [listed, worker.id]);
   const tasks = useMemo(() => board.value ?? [], [board.value]);
   const stale = useStale(sessionId) || board.stale;
   const [cleared, clearFailed] = useCleared(sessionId);
@@ -281,6 +288,21 @@ export function TeammatePanel({
           <h2 id="routines-heading" className="text-sm font-semibold">
             Routines
           </h2>
+          {routines.length > 0 ? (
+            <ul aria-label={`${name}'s routines`} className="flex flex-col gap-2">
+              {routines.map((r) => (
+                <li key={r.id} data-routine={r.id} className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5 text-xs">
+                  <span className="flex items-center gap-2 font-medium">
+                    <ClockIcon aria-hidden className="size-3.5 shrink-0 text-text-3" />
+                    <span className="min-w-0 truncate">{r.name}</span>
+                    {r.paused ? <span className="ml-auto rounded-sm bg-muted px-1.5 text-text-3">Paused</span> : null}
+                  </span>
+                  <span className="text-text-2">{routineWhen(r)}</span>
+                  {r.description === undefined ? null : <span className="line-clamp-2 text-text-3">{r.description}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-3">
             <p className="flex items-start gap-2.5 text-xs text-text-2">
               <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-text-3">
@@ -298,6 +320,31 @@ export function TeammatePanel({
       </div>
     </aside>
   );
+}
+
+/**
+ * The routines a routines view answered that act through `workerId` (a clock
+ * routine it files, an event routine it hears), in the view's order, each
+ * parsed by Workforce's own schema; one that doesn't parse is left out.
+ */
+function routinesOf(output: unknown, workerId: string): ListedRoutine[] {
+  const rows = (output as { routines?: unknown } | null | undefined)?.routines;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    const parsed = listedRoutineSchema.safeParse(row);
+    return parsed.success && parsed.data.worker === workerId ? [parsed.data] : [];
+  });
+}
+
+/**
+ * When a routine acts, in a line: a clock routine's cron and zone, and its next
+ * run (none while paused); an event routine's thread.
+ */
+export function routineWhen(r: ListedRoutine): string {
+  if ("event" in r.trigger) return `Follows ${r.trigger.event.thread}`;
+  const { cron, timezone, nextRunAt } = r.trigger.clock;
+  const next = nextRunAt === null ? "" : ` · next ${new Date(nextRunAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
+  return `${cron} (${timezone})${next}`;
 }
 
 const PANEL_BUTTON = "w-fit rounded-md border border-border-strong px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring";
