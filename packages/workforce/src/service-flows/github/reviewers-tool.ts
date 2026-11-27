@@ -24,7 +24,7 @@
 import { boolean, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isUserTurn, typedMessageOf } from "../../standing-rules/user-turn";
+import { isUserTurn, typedMessageOf } from "../../standing-rules/user-turn-read";
 import { WORKER_ID_STATE_KEY } from "../../workers/keys";
 import { GITHUB_REVIEWERS_DOC, githubLoginsListed, reviewersDocumentOf } from "./reviewers-document";
 

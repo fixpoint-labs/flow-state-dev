@@ -37,7 +37,6 @@ import { taskLedgerResources, openOwnHolds, steerFromLine } from "@flow-state-de
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
-  harnessTaskInputSchema,
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
@@ -48,7 +47,7 @@ import { RUNS, collectionRef } from "../src/run-record";
 import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
-export const ORG_ID = "org_claim_host";
+const ORG_ID = "org_claim_host";
 export const ALICE = "alice";
 /** The fixed board's ledger id. */
 export const FIXED_BOARD = "feature-board";
@@ -83,7 +82,7 @@ export interface HarnessStep {
 }
 
 /** What the stub harness saw on one call. */
-export interface SeenRun {
+interface SeenRun {
   cwd: string;
   prompt: string;
   resume: string | null;
@@ -582,9 +581,6 @@ export function messageOf(error: unknown): string {
   const e = error as { message?: unknown; cause?: { message?: unknown } } | undefined;
   return `${String(e?.message ?? "")} ${String(e?.cause?.message ?? "")} ${JSON.stringify(error)}`;
 }
-
-/** The harness task input schema, re-exported for seeding payload rows. */
-export { harnessTaskInputSchema };
 
 /**
  * A teammate moves the upstream's `main` on (one new file, `teammate.txt`),

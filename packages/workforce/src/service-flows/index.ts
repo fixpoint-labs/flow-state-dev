@@ -18,10 +18,7 @@ export {
 } from "./github/provider";
 export { operatorGitHub, operatorGitHubToken, type OperatorGitHub, type OperatorGitHubOptions } from "./github/operator";
 export {
-  parseCommentLink,
-  reviewReplies,
   type ReviewReplies,
-  type ReviewRepliesOptions,
   type ReviewReplyDraft,
   type ReviewReplyOutcome,
   type ReviewReplyPullRequest,

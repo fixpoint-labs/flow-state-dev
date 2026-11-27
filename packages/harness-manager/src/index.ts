@@ -340,7 +340,7 @@ export {
 
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";
-export { REPLY_DIR, REPLY_MAX_BYTES, readReplyDrafts, replyFolderPath, type ReplyDraft, type ReplyDrafts, type ReviewReplyPoster } from "./replies";
+export type { ReplyDraft, ReviewReplyPoster } from "./replies";
 
 // ── Construction-time guards a host runs at its own door ─────────────────────
 export {

@@ -31,8 +31,7 @@
  * comment on the same pull request that links the one it answers.
  */
 import type { BlockContext, DeclaredResourceEntry } from "@flow-state-dev/core/types";
-import { OPERATOR_LINKS } from "../../conversation-board/board-entries";
-import { githubPullRequestLinks } from "../../conversation-board/operator-links";
+import { operatorLinked, parseCommentLink, prKey, type CommentLink } from "../../conversation-board/operator-links";
 import { isListedBot } from "./reviewers-document";
 import { canWriteTo } from "./trusted-reviewers";
 
@@ -89,46 +88,6 @@ export interface ReviewRepliesOptions {
   /** The trusted accounts, read for each post. Absent: only comments the operator linked are answered. */
   readonly reviewers?: (ctx: BlockContext) => readonly string[] | Promise<readonly string[]>;
   readonly resources?: Readonly<Record<string, DeclaredResourceEntry>>;
-}
-
-/** The kinds of comment a link can name, by its anchor. */
-type CommentKind = "inline" | "conversation" | "review";
-
-/** A comment link, parsed. */
-interface CommentLink {
-  readonly repository: string;
-  readonly number: number;
-  readonly kind: CommentKind;
-  readonly id: number;
-}
-
-/** The comment a link names, or `undefined` for anything else. Only GitHub's own `github.com` links parse. */
-export function parseCommentLink(link: string): CommentLink | undefined {
-  const m = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)(?:\/files)?#(discussion_r|issuecomment-|pullrequestreview-)(\d+)$/.exec(link.trim());
-  if (m === null) return undefined;
-  const kind: CommentKind = m[3] === "discussion_r" ? "inline" : m[3] === "issuecomment-" ? "conversation" : "review";
-  return { repository: m[1]!.toLowerCase(), number: Number(m[2]), kind, id: Number(m[4]) };
-}
-
-/** `owner/name#n`, lower-cased: how pull requests are compared. */
-const prKey = (repository: string, number: number) => `${repository.toLowerCase()}#${number}`;
-
-/** The pull requests and comments the operator linked: the filing's stamp, and steers the session's user sent. */
-function operatorLinked(task: ReviewReplyTask | undefined, user: string): { prs: Set<string>; comments: Set<string> } {
-  const stamped = task?.metadata?.[OPERATOR_LINKS];
-  const links = [
-    ...(Array.isArray(stamped) ? stamped.filter((link): link is string => typeof link === "string") : []),
-    ...(task?.steers ?? []).filter((steer) => steer.from === "user" && steer.by === user).flatMap((steer) => githubPullRequestLinks(steer.message))
-  ];
-  const prs = new Set<string>();
-  const comments = new Set<string>();
-  for (const link of links) {
-    const pr = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(link);
-    if (pr !== null) prs.add(prKey(pr[1]!, Number(pr[2])));
-    const comment = parseCommentLink(link);
-    if (comment !== undefined) comments.add(`${prKey(comment.repository, comment.number)}:${comment.kind}:${comment.id}`);
-  }
-  return { prs, comments };
 }
 
 /** The most pages of comments read for one pull request. */

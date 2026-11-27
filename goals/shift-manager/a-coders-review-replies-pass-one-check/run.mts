@@ -34,13 +34,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
-import { commitScriptedWork, harnessStub, REPLY_MAX_BYTES } from "@flow-state-dev/harness-manager";
+import { commitScriptedWork, harnessStub } from "@flow-state-dev/harness-manager";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { githubStub, REMOTE } from "../../lib/github-stub.mts";
 import { LAB_ORG_ID, LAB_USER_ID, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { REPLY_MAX_BYTES } from "../../../packages/harness-manager/src/replies.ts";
 
 stripIntentOverrides();
 

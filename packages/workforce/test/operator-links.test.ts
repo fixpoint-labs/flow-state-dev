@@ -13,7 +13,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf } from "./conversation-board-harness";
 import { OPERATOR_LINKS } from "../src/conversation-board/board-entries";
 import { operatorLinksStamp } from "../src/conversation-board/operator-links";
-import { USER_TURN_STATE } from "../src/standing-rules/user-turn";
+import { USER_TURN_STATE } from "../src/standing-rules/user-turn-read";
 
 const OUTSIDER = "https://github.com/acme/app/pull/7#discussion_r102";
 const PLANTED = "https://github.com/acme/app/pull/8#discussion_r301";

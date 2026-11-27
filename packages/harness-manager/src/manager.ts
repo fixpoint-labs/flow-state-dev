@@ -4852,7 +4852,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * (`readReplyDrafts`: a link out, or an oversized file, is refused unread),
    * removed so a replay never posts one twice, and handed to the poster with
    * the pull requests recorded for the task's run (its requests' and the ones
-   * it landed on) and the task itself. Each ends as a line in the session. A
+   * it landed on) and the task itself. At most once, deliberately: a draft
+   * GitHub then fails to take is gone from the checkout, and its session line
+   * says why it wasn't posted. Each ends as a line in the session. A
    * turn that only answers on a merged or closed pull request (`wakeNews`)
    * posts nothing, and says so. Never fails the run.
    */
