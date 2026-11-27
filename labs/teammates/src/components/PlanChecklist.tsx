@@ -46,7 +46,7 @@ export function PlanChecklist({ plan, running }: { plan: Plan; running: boolean 
                   active ? "bg-surface-raised/80 text-foreground" : "text-text-2",
                 )}
               >
-                <span className="w-20 shrink-0 text-[10px] tracking-wide text-muted-foreground uppercase" aria-hidden>
+                <span className="w-20 shrink-0 text-xs tracking-wide text-muted-foreground uppercase" aria-hidden>
                   {planStatusLabel(kind)}
                 </span>
                 <span className="min-w-0 flex-1 whitespace-pre-wrap">{row.title}</span>
@@ -55,7 +55,7 @@ export function PlanChecklist({ plan, running }: { plan: Plan; running: boolean 
           })}
         </ol>
         {truncated ? (
-          <p className="mt-1.5 font-mono text-[10px] text-muted-foreground">More steps were recorded than this view shows.</p>
+          <p className="mt-1.5 font-mono text-xs text-muted-foreground">More steps were recorded than this view shows.</p>
         ) : null}
       </CollapsibleContent>
     </Collapsible>
