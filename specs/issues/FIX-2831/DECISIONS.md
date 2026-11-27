@@ -10,7 +10,7 @@ What was considered, what was chosen, why, and what each choice locks in. Three 
 flowchart TD
   I["FIX-2831"] --> D1["D1 · the run drafts<br/>the manager posts when the turn ends"]
   D1 -.->|"rejected"| X1["a live reply tool in the run<br/>reaches Claude Code only"]
-  I --> D2["D2 · named means a link<br/>in a message the operator wrote"]
+  I --> D2["D2 · named means a link<br/>in a message the operator typed"]
   D2 -.->|"rejected"| X2["a field on the task<br/>the filing model writes it"]
   I --> D3["D3 · the shell keeps its login<br/>the recipe goes and containment follows"]
   D3 -.->|"rejected"| X3["cut the run's gh login now<br/>breaks reading and leaves git's token"]
@@ -34,13 +34,13 @@ It comes down to Codex and Cursor: a relayed tool leaves them on `gh`.
 **What would change my mind:** a reviewer flow that needs a reply before the push, or Codex and Cursor gaining relayed tools. Then a tool over the same poster is a second front door, not a second check.
 
 <a name="d2"></a>
-## D2 · "The operator named it" means a link in a message the operator wrote
+## D2 · "The operator named it" means a link in a message the operator typed
 
 | | |
 |---|---|
 | **Instead of** | A field on the task (`pullRequest`, `comments`) that the filer writes |
-| **Because** | The filer is a model reading text; a review comment it was shown could talk it into naming any pull request. The operator's own message (the one the filing turn answers, or a steer from the user on the task whose `by` is the operator) is written by the server under a server-set identity (BP-031). A pull request linked there is one the run may reply on; a comment linked there may be answered whatever its author |
-| **Locks in** | A link in the operator's words is a grant. Pasting a comment's link is how the operator opens a reply to someone outside the reviewer list |
+| **Because** | The filer is a model reading text; a review comment it was shown could talk it into naming any pull request. The operator's own message is one the server marks as typed (BP-031): the message that started a turn `isUserTurn` marks, read as `setGitHubReviewers` reads it (`typedMessageOf`), or a steer with `from: "user"` whose `by` is the session's user. "The message the filing turn answers" is not enough: a delivered GitHub comment lands as that turn's user-role message (`message-received-entry.ts`), so a comment could plant a link. A task's brief (`taskBriefOf`), a delivery, and a steer from a service or the filer count for nothing. The stamp's key is dropped from a caller's metadata like `FILED_PROJECT`, so a filing can't write it. A pull request linked there is one the run may reply on; a comment linked there may be answered whatever its author |
+| **Locks in** | A link in the operator's typed words is a grant, and a link that reaches the task any other way is not. Pasting a comment's link is how the operator opens a reply to someone outside the reviewer list |
 
 ![D2, what counts as the operator naming a pull request or a comment. Chosen: a link in the operator's own message. Instead of: a field on the task the filer writes. Decides it: who writes it, only the operator against a model that text can steer. Tie: the operator pastes a link either way. Price: a stamp read at filing. Locks in: a link in the operator's words is a grant. Flips if: replies to unlisted authors are never needed](figures/d2-a-link-the-operator-wrote.svg)
 
@@ -70,8 +70,9 @@ It comes down to what still works: cutting `gh` breaks reading and contains noth
 - **A draft names its comment by link.** Repository, pull request and id are parsed from it and then checked; nothing else in the draft is believed.
 - **An inline review comment gets a reply in its thread.** A conversation comment or a review's summary has no thread on GitHub, so it gets one comment on the same pull request that links the one it answers.
 - **One file per reply, in a folder per run beside the ask marker:** `<checkout>/.fsdev/replies/<attempt>-<run>/<any name>.md`, the path rule of `askMarkerPath`. The first line is the comment's link; the rest is the body, as written. No delimiter to parse, and the ignore rule that covers the ask marker (`**/.fsdev/`) covers it. The path carries the attempt and the run, so a stale draft is never read.
+- **A reply file is read as a spec is, not as the ask marker is.** The run writes the folder, and `readFile` follows a link, so a comment could have the run link a draft to `~/.config/gh/hosts.yml` and the poster would post the token. Read only a regular file whose real path stays under the checkout's `.fsdev/` (`readIssueSpecSection`'s rule), up to a byte cap; anything else is refused with a session line and its target is never read. A test drives each refusal.
 - **A turn FIX-2900 holds read-only posts nothing,** and says so.
-- **The operator's links are stamped on the task at filing,** like the project stamp, and read from steers from the user later.
+- **The operator's links are stamped on the task at filing,** like the project stamp, only on a turn `isUserTurn` marks, and read later from steers with `from: "user"` whose `by` is the session's user. Its key is dropped in `callerMetadata`.
 
 ## Considered and dropped
 
