@@ -24,6 +24,7 @@ import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
+import { INTERNAL_SOURCE } from "../execution/transport-sources";
 import { resolveSessionKind, type BirthWindow } from "../context/session-kind";
 import type { InboundTransportHost } from "../transports/types";
 
@@ -67,18 +68,18 @@ export async function fireWakeThrough(
   const controller = new AbortController();
   // FIX-2942: a wake stores no principal kind of its own; it runs as its
   // session's owner, with the kind that session was born with (a machine's
-  // when the session is gone), and the resolver identity the wake names: its
-  // writer's, kept only while every write folded into it named the same one.
-  // A wake stored before the field names none, and admits no own-resolver session.
-  // `wake` is the generation the sweeper listed and claimed; a writer under
-  // another resolver may have owed into it since, which every store answers by
-  // dropping `resolvedBy`, and its write is then this turn's to read. So the
-  // resolver identity is the row's as it stands now, kept only while it is
-  // still the claimed one's (coalescing never restores a dropped one).
-  const current = wake.resolvedBy === undefined ? null : await host.stores.wakes?.get(wake);
-  const resolvedBy = current?.resolvedBy === wake.resolvedBy ? wake.resolvedBy : undefined;
+  // when the session is gone).
   const session = await host.stores.session.get(resolveSessionStorageKey(wake.sessionId, wake.tenantId));
   const kind = session === undefined ? "machine" : await resolveSessionKind(host.stores, session, window);
+  // The resolver identity the turn holds is the stored wake's, read once here with no
+  // await before the dispatch, with its generation: its writers', kept
+  // only while every write folded into it named the same one. A writer under
+  // another resolver that owes after this read can't change what the dispatch
+  // carries, so the turn holds it only while its wake stays at that
+  // generation (`fenceWakeAuthority`). A wake stored before the field names
+  // none, and admits no own-resolver session.
+  const current = await host.stores.wakes?.get(wake);
+  const resolvedBy = current?.resolvedBy;
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,
@@ -91,7 +92,7 @@ export async function fireWakeThrough(
       kind,
       ...(resolvedBy !== undefined ? { resolvedBy } : {})
     },
-    metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
+    metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt, ...(current != null ? { version: current.version } : {}) } },
     signal: controller.signal
   });
   onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
@@ -162,12 +163,59 @@ export async function probeWakes(
   }
 }
 
+/**
+ * The resolver authority a run holds (`Principal.resolvedBy`), as it stands
+ * this turn. A run a wake fired holds it only while its wake stays at the
+ * generation (the wake's version) its dispatch read: {@link fenceWakeAuthority}
+ * drops it, for the rest of the turn, once the run finds its wake moved on
+ * under another resolver. Every reader of the run's `resolvedBy` after it
+ * started (a named reach, a wake it owes, a dispatch) reads it here.
+ */
+export interface WakeAuthority {
+  /** The resolver identity the run holds now. `undefined` once dropped, and for a run that never held one. */
+  resolvedBy: string | undefined;
+  /** The wake that fired this run, at the generation its dispatch read. Absent for a run no wake fired. */
+  readonly wake?: WakeGeneration;
+}
+
+/** A wake's entry and the version a fire dispatched it at. */
+export interface WakeGeneration {
+  readonly entry: string;
+  readonly version: number;
+}
+
+/**
+ * The wake generation a run was fired at, from the metadata
+ * {@link fireWakeThrough} stamps. Read only on an internal dispatch, which a
+ * caller can't start. The mark only ever narrows a run's authority, so a forged
+ * one costs the forger, never anyone else.
+ */
+export function readWakeGeneration(source: string | undefined, metadata: unknown): WakeGeneration | undefined {
+  if (source !== INTERNAL_SOURCE) return undefined;
+  const wake = (metadata as { wake?: { entry?: unknown; version?: unknown } } | undefined)?.wake;
+  return typeof wake?.entry === "string" && typeof wake.version === "number" ? { entry: wake.entry, version: wake.version } : undefined;
+}
+
+/**
+ * The generation fence: drop `authority`'s resolver identity when `current`, the
+ * run's own wake under `entry` as read now, has moved past the generation the
+ * run was fired at and no longer names that identity. A writer under another
+ * resolver owed into it, and its write is this turn's to read.
+ */
+export function fenceWakeAuthority(authority: WakeAuthority, entry: string, current: WakeRecord | null): void {
+  const fired = authority.wake;
+  if (fired === undefined || fired.entry !== entry || current === null || current.version === fired.version) return;
+  if (current.resolvedBy !== authority.resolvedBy) authority.resolvedBy = undefined;
+}
+
 /** What {@link createRequestWakes} is built from. */
 export type RequestWakesInputs = {
   store: WakeStore;
   sessions: Pick<SessionStore, "get">;
   /** The running request's server-derived identity. */
-  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string; resolvedBy?: string };
+  identity: { userId: string; tenantId: string | undefined; orgId: string; sessionId: string };
+  /** The run's resolver authority, which a wake it owes carries and its own wake's reads fence. Absent, it holds none. */
+  authority?: WakeAuthority;
   /** The running flow instance's id: the address the request's own session's wakes fire on. */
   flowId: string;
   /** How long a write this request owes may take to land: its lease. */
@@ -179,6 +227,7 @@ export type RequestWakesInputs = {
 /** Build the wake verb for one request. */
 export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
   const { store, sessions, identity } = inputs;
+  const authority = inputs.authority ?? { resolvedBy: undefined };
   const now = inputs.now ?? Date.now;
   const tenant = identity.tenantId !== undefined && identity.tenantId.length > 0 ? identity.tenantId : undefined;
   const keyOf = (sessionId: string, entry: string) => ({
@@ -214,7 +263,7 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
         flowKind,
         userId: identity.userId,
         orgId: identity.orgId,
-        ...(identity.resolvedBy !== undefined ? { resolvedBy: identity.resolvedBy } : {}),
+        ...(authority.resolvedBy !== undefined ? { resolvedBy: authority.resolvedBy } : {}),
         dueAt: spec.dueAt,
         landBy: now() + inputs.fenceMs
       });
@@ -225,6 +274,7 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
 
     async read(entry): Promise<WakeView | undefined> {
       const wake = await store.get(keyOf(identity.sessionId, entry));
+      fenceWakeAuthority(authority, entry, wake);
       return wake === null ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version };
     },
 
@@ -232,8 +282,13 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
       const key = keyOf(identity.sessionId, entry);
       // Nothing owed, but a writer may still be landing what it owes: wait for it.
       const dueAt = next ?? (now() < read.landBy ? read.landBy : null);
-      if (dueAt === null) return (await store.clear(key, read.version)) ? "cleared" : "stale";
-      if (!(await store.move(key, read.version, dueAt))) return "stale";
+      const settled = dueAt === null ? await store.clear(key, read.version) : await store.move(key, read.version, dueAt);
+      if (!settled) {
+        // Owed into since the read: the fence reads the wake as it stands.
+        fenceWakeAuthority(authority, entry, await store.get(key));
+        return "stale";
+      }
+      if (dueAt === null) return "cleared";
       // A sweeper armed for later (the fire moved the wake on before this
       // pass ran) comes forward to the new due time.
       noteWakeOwed(store, dueAt);

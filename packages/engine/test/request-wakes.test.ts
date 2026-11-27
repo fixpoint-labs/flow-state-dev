@@ -54,7 +54,8 @@ describe("RequestHost.wakes", () => {
       createRequestWakes({
         store: stores.wakes!,
         sessions: stores.session,
-        identity: { ...identity, ...(resolvedBy !== undefined ? { resolvedBy } : {}) },
+        identity,
+        authority: { resolvedBy },
         flowId: "desk",
         fenceMs: 30_000,
         maxDebtAgeMs: 86_400_000

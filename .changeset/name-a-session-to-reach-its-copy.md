@@ -15,6 +15,8 @@ A scope is how many copies exist; the owner decides who may look; name a session
 - **Flow construction checks.** `at` is a reserved resource accessor, and two session collections whose patterns overlap can't name different `wakeEntry`s.
 - **Use `ctx.sessions`** for what isn't a resource: another session's flow, readable state, history and turns.
 - **Wakes carry `resolvedBy`.** A woken run reaches the own-resolver sessions its writer's resolver admits. SQLite and Postgres add a nullable `resolved_by` column to `wakes` on start (no backfill); a wake stored before reaches no own-resolver session.
+- **A woken run keeps that reach only while its wake is unchanged.** The fire passes the wake's generation to the run. When the run reads or settles its wake and finds that a writer under another resolver has owed into it since, the run drops its `resolvedBy` for the rest of the turn, and own-resolver sessions read as missing.
+- **Sessions record a per-birth `incarnationToken`.** It tells a session id deleted and taken again apart from the session it replaced, even within one millisecond. Every session store's `set` writes it once and keeps it, like `principalKind` (the SQL stores through `writeOnceJsonKeys`). A store adapter outside this repo must do the same. A session from before the field has none and is compared by its birth time and lineage.
 
 - **The two errors, for `packages/engine/README.md`.** `SessionNotFoundError`: a named session this run may not reach, or that no one holds, with one message for both. `UntrustedReachError`: a turn a webhook delivery started named a session other than its own.
 

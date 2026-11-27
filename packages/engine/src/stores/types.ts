@@ -108,6 +108,16 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   principalKind?: PrincipalKind;
   /**
+   * A random token minted once per birth (`birthSession`): what tells two
+   * incarnations of one session id apart when their birth time (millisecond
+   * resolution) and lineage (inherited or derived) match. `set` keeps the
+   * stored value whatever a later write carries, as for {@link principalKind}.
+   *
+   * `== null` on a record written before the field: compared by its birth
+   * time and lineage instead (`sameSessionIncarnation`).
+   */
+  incarnationToken?: string;
+  /**
    * The incarnation of the session that dispatched this one
    * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
    * Binds the child to that parent record, not to its reusable bare id.

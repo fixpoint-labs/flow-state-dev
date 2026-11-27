@@ -15,9 +15,11 @@ import { defineFlow, defineResource, defineResourceCollection, handler } from "@
 import { requireRequestHost } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { createFlowRegistry, defaultBodyUserIdPrincipalResolver, runAction } from "../../src";
-import { createInboundTransportHost, createInMemoryBus, createInMemoryStores } from "../../src/host";
+import { createInboundTransportHost, createInMemoryBus, createInMemoryStores, type PrincipalResolver } from "../../src/host";
 import { dispatchInternalAs } from "../../src/durability/dispatch-internal";
 import { fireWakeThrough } from "../../src/durability/request-wakes";
+import { principalResolverIdentity } from "../../src/transports/auth/pickPrincipalResolver";
+import { birthSession } from "../../src/context/session-birth";
 import type { StoreRegistry } from "../../src/stores/types";
 
 const ORG = "acme";
@@ -50,15 +52,27 @@ const inbox = defineResourceCollection({
   wakeEntry: "inboxChanged",
   reactTo: { created: react }
 });
+type Op = (ctx: any) => Promise<unknown>;
 /** Each turn `inboxChanged` ran: its session, how many rows it read, and how its settle of the wake came out. */
 const woken: Array<{ session: string; entries: number; settled?: string }> = [];
+/** What a woken turn does around its wake read: `before` runs first, `reach` right after, its answer kept in `wokenReach`. */
+const wokenHooks: { before?: () => Promise<void>; reach?: Op } = {};
+let wokenReach: unknown;
 const inboxChanged = handler({
   name: "inbox-changed",
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
     const wakes = requireRequestHost(ctx).wakes;
+    await wokenHooks.before?.();
     const read = await wakes?.read("inboxChanged");
+    if (wokenHooks.reach !== undefined) {
+      try {
+        wokenReach = { ok: await wokenHooks.reach(ctx) };
+      } catch (error) {
+        wokenReach = { error: (error as Error).message, name: (error as Error).name };
+      }
+    }
     const entries = await (ctx.resources as any).inbox.list();
     const settled = wakes !== undefined && read !== undefined ? await wakes.settle("inboxChanged", read, null) : undefined;
     woken.push({ session: ctx.session.identity.id, entries: entries.length, ...(settled !== undefined ? { settled } : {}) });
@@ -66,7 +80,6 @@ const inboxChanged = handler({
   }
 });
 
-type Op = (ctx: any) => Promise<unknown>;
 let op: Op = async () => null;
 /** What the last `reach` got back. */
 let lastOut: unknown;
@@ -94,6 +107,10 @@ const reach = handler({
   }
 });
 
+/** A flow that resolves its callers with a resolver of its own: only a principal that resolver produced reaches its sessions. */
+const vaultResolver: PrincipalResolver = async () => ({ userId: "alice", orgId: ORG });
+const vault = defineFlow({ kind: "vault", actions: { seed }, resources: { notes }, authentication: { resolvePrincipal: vaultResolver } })();
+
 const flowA = defineFlow({ kind: "alpha", actions: { seed, reach }, internal: { actions: { reach: { block: reach } } }, resources: { notes, inbox, prefs } })();
 const flowB = defineFlow({
   kind: "beta",
@@ -106,10 +123,14 @@ async function boot() {
   const registry = createFlowRegistry();
   registry.register(flowA);
   registry.register(flowB);
+  registry.register(vault);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: createInMemoryBus() };
-  const runtimeConfig = { requestHost: { flows: registry, wakes: { maxDebtAgeMs: 86_400_000 } } };
+  const runtimeConfig = {
+    requestHost: { flows: registry, wakes: { maxDebtAgeMs: 86_400_000 } },
+    hostResolver: defaultBodyUserIdPrincipalResolver
+  };
   const as = (userId: string, orgId = ORG) => ({ userId, orgId, principalKind: "person" as const, source: "http" });
-  const seedIn = async (flow: typeof flowA | typeof flowB, sessionId: string, text: string, who = as("alice")) => {
+  const seedIn = async (flow: typeof flowA | typeof flowB | typeof vault, sessionId: string, text: string, who = as("alice")) => {
     const result = await runAction({ flow, actionName: "seed", input: { text }, sessionId, stores, runtimeConfig, ...who });
     expect(result.error).toBeUndefined();
   };
@@ -167,10 +188,13 @@ async function boot() {
     }
     await Promise.all(runs);
   };
-  return { stores, seedIn, reachFrom, reachFromDelivery, as, hear, fireDue };
+  return { stores, registry, seedIn, reachFrom, reachFromDelivery, as, hear, fireDue };
 }
 
 afterEach(() => {
+  delete wokenHooks.before;
+  delete wokenHooks.reach;
+  wokenReach = undefined;
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -391,6 +415,46 @@ describe("ctx.resources.at({ session })", () => {
     expect(await env.stores.resourceState.getByPrefix("session", "b", "inbox/")).toEqual({});
   });
 
+  // A delete of an entry with content removes two rows. One debt, owed before
+  // either, covers both: a second owe that failed between them would leave
+  // the content of an entry whose state is gone, and its delete half done.
+  it("an owe failure on a collection entry that has content deletes neither its state nor its content, and the delete rejects cleanly", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    await env.reachFrom(async (ctx) => {
+      const theirs = ctx.resources.at({ session: "b" }).inbox;
+      await (await theirs.create("m1", { text: "with content" })).writeContent("the body");
+      return null;
+    });
+    const stored = async () => ({
+      state: Object.keys(await env.stores.resourceState.getByPrefix("session", "b", "inbox/")),
+      content: Object.keys(await env.stores.content.getByPrefix("session", "b", "inbox/"))
+    });
+    expect(await stored()).toEqual({ state: ["inbox/m1"], content: ["inbox/m1"] });
+    const deleteM1 = () =>
+      env.reachFrom(async (ctx) => {
+        const theirs = ctx.resources.at({ session: "b" }).inbox;
+        await theirs.get("m1");
+        return (await theirs.delete("m1")) ?? null;
+      });
+    const owe = env.stores.wakes!.owe.bind(env.stores.wakes!);
+    const spy = vi.spyOn(env.stores.wakes!, "owe");
+
+    // The delete's one owe fails: nothing is deleted, and the delete rejects.
+    spy.mockRejectedValue(new Error("wake store down"));
+    expect(await deleteM1()).toMatchObject({ error: "wake store down" });
+    expect(await stored()).toEqual({ state: ["inbox/m1"], content: ["inbox/m1"] });
+
+    // Any owe after the first fails: the first covers both halves, so the
+    // delete lands whole, never half.
+    spy.mockReset();
+    spy.mockImplementationOnce(owe).mockRejectedValue(new Error("wake store down"));
+    expect(await deleteM1()).toEqual({ ok: null });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(await stored()).toEqual({ state: [], content: [] });
+  });
+
   // A turn owed on an entry the target's flow doesn't declare can never run,
   // and the sweeper would retry it forever.
   it("refuses a write into a session whose flow doesn't declare the wake entry, owing nothing and writing nothing", async () => {
@@ -427,5 +491,76 @@ describe("ctx.resources.at({ session })", () => {
     });
     expect(got).toEqual(unknown);
     expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "b", "notes/"))).toEqual(["notes/n1"]);
+  });
+
+  // A birth's time has millisecond resolution and a child's lineage can be
+  // derived, so a session deleted and born again in the same millisecond can
+  // match the old record on everything but its per-birth token. That rebirth
+  // is still another session, and must be admitted again from scratch.
+  it("a session deleted and born again in the same millisecond, with the same lineage and owner, is refused through the cached copy, and nothing is written", async () => {
+    const env = await boot();
+    await env.seedIn(flowA, "a", "mine");
+    await env.seedIn(flowB, "b", "theirs");
+    const unknown = await env.reachFrom(async (ctx) => (await ctx.resources.at({ session: "an-id-nobody-holds" }).notes.create("x", { text: "y" })).state.text);
+    const got = await env.reachFrom(async (ctx) => {
+      const theirs = ctx.resources.at({ session: "b" }).notes;
+      expect(texts(await theirs.list())).toEqual(["theirs"]);
+      const before = (await env.stores.session.get("b"))!;
+      await env.stores.session.delete("b");
+      // Born again through the one birth path, at the same millisecond and
+      // into the same lineage and owner, now as a session of the vault, whose
+      // own resolver didn't produce this run's principal.
+      const { born } = await birthSession(
+        env.stores,
+        "b",
+        { flow: vault, sessionId: "b", principal: { userId: "alice", orgId: ORG }, fromCaller: false, via: "dispatch", principalKind: "person" },
+        () => ({ ...before, flowKind: "vault", flowId: "vault", version: 0, journal: [] })
+      );
+      expect(born).toBe(true);
+      const reborn = (await env.stores.session.get("b"))!;
+      expect([reborn.createdAt, reborn.lineageId, reborn.userId]).toEqual([before.createdAt, before.lineageId, before.userId]);
+      return (await theirs.create("x", { text: "through the old admission" })).state.text;
+    });
+    expect(got).toEqual(unknown);
+    expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "b", "notes/"))).toEqual(["notes/n1"]);
+  });
+
+  // A woken turn holds its writers' resolver authority only while its wake
+  // stays at the generation its dispatch read. A writer under another
+  // resolver that owes after the dispatch folds its write into this turn, so
+  // the turn must not keep reaching what only the first resolver admits.
+  describe("a woken turn's resolver authority", () => {
+    type Env = Awaited<ReturnType<typeof boot>>;
+    /** Write into b's inbox from a, as a principal the vault's resolver produced; then fire b's wake. */
+    async function wokenUnderVault(before?: (env: Env) => Promise<void>): Promise<Env> {
+      woken.length = 0;
+      const env = await boot();
+      await env.seedIn(flowA, "a", "mine");
+      await env.seedIn(flowB, "b", "theirs");
+      await env.seedIn(vault, "v", "vaulted");
+      const vaultIdentity = principalResolverIdentity(env.registry, "vault", defaultBodyUserIdPrincipalResolver)!;
+      await env.reachFrom(
+        async (ctx) => (await ctx.resources.at({ session: "b" }).inbox.create("m1", { text: "from a" })).state.text,
+        { resolvedBy: vaultIdentity }
+      );
+      if (before !== undefined) wokenHooks.before = () => before(env);
+      wokenHooks.reach = async (ctx) => texts(await ctx.resources.at({ session: "v" }).notes.list());
+      await env.fireDue(Number.MAX_SAFE_INTEGER);
+      return env;
+    }
+
+    it("reaches what its writers' resolver admits while its wake is unchanged", async () => {
+      await wokenUnderVault();
+      expect(wokenReach).toEqual({ ok: ["vaulted"] });
+    });
+
+    it("a mixed owe after dispatch, before the entry reads its wake, refuses own-resolver reach for the rest of the turn", async () => {
+      await wokenUnderVault(async (env) => {
+        const [current] = await env.stores.wakes!.listDue(Number.MAX_SAFE_INTEGER, 10);
+        const { version: _v, createdAt: _c, updatedAt: _u, resolvedBy: _r, ...owed } = current!;
+        await env.stores.wakes!.owe({ ...owed, resolvedBy: "another resolver" });
+      });
+      expect(wokenReach).toMatchObject({ name: "SessionNotFoundError" });
+    });
   });
 });
