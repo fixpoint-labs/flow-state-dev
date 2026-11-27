@@ -8,6 +8,7 @@
  * that stores the id keeps that model after the alias moves on.
  */
 import type { HarnessModelInfo, HarnessModelList } from "@flow-state-dev/core/harness";
+import { applyClaudeCodeAuthPreference } from "./auth-preference";
 import { runIdleQuery } from "./idle-query";
 import type { ClaudeCodeSdkImporter } from "./sdk-client";
 
@@ -46,8 +47,10 @@ const DEFAULT_ROW = "default";
  */
 export async function listClaudeCodeModels(options: ListClaudeCodeModelsOptions): Promise<HarnessModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
+  // `FSD_CLAUDE_CODE_AUTH` applies, so the list is the one a run would see.
+  const env = await applyClaudeCodeAuthPreference(options.env, options.importSdk === undefined ? {} : { importSdk: options.importSdk });
   const asked = await runIdleQuery<ModelQuery, SdkModelEntry[]>(
-    { env: options.env, timeoutMs, importSdk: options.importSdk },
+    { env, timeoutMs, importSdk: options.importSdk },
     (handle) => handle.supportedModels(),
   );
   if (asked.status === "sdk-missing") return { status: "failed", reason: asked.reason };

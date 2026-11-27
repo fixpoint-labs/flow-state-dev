@@ -19,7 +19,8 @@
  */
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
-import { runIdleQuery } from "./idle-query";
+import { askClaudeCodeAccount } from "./account-query";
+import { applyClaudeCodeAuthPreference } from "./auth-preference";
 import { readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK, type ClaudeCodeSdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeCodeAccount} found. */
@@ -55,56 +56,18 @@ export interface ProbeClaudeCodeAccountOptions {
   importSdk?: ClaudeCodeSdkImporter;
 }
 
-/** The part of the SDK's query handle the probe uses. */
-interface AccountQuery {
-  accountInfo(): Promise<{ apiKeySource?: unknown; tokenSource?: unknown; email?: unknown; subscriptionType?: unknown }>;
-  close?: () => void;
-}
-
-/** {@link ProbeClaudeCodeAccountOptions.timeoutMs}'s default. */
-const DEFAULT_TIMEOUT_MS = 10_000;
-
 /**
  * Ask Claude Code whether it has a credential, without a model turn.
+ * `FSD_CLAUDE_CODE_AUTH` is applied to `options.env` first, so the answer is
+ * the account a run would use.
  *
  * @param options The environment to start Claude Code with, and how long to wait.
  * @returns `account` with the source(s) the SDK named, `none` with a reason,
  *   or `sdk-missing`. Never throws for any of those.
  */
 export async function probeClaudeCodeAccount(options: ProbeClaudeCodeAccountOptions): Promise<ClaudeCodeAccountProbe> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
-    {
-      env: options.env,
-      timeoutMs,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      ...(options.importSdk === undefined ? {} : { importSdk: options.importSdk }),
-    },
-    (handle) => handle.accountInfo(),
-  );
-  if (asked.status === "sdk-missing") return { status: "sdk-missing", reason: asked.reason };
-  if (asked.status === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms`, unanswered: true };
-  if (asked.status === "error") return { status: "none", reason: `Claude Code could not be asked for its account: ${asked.reason}`, unanswered: true };
-  const info = asked.value;
-  const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
-  const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
-  // A subscription sign-in names no key or token source: it comes back as who
-  // is signed in and on what plan. "Claude API" is the no-plan label, not a sign-in.
-  const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
-  const subscriptionType =
-    typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== "Claude API"
-      ? info.subscriptionType
-      : undefined;
-  if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
-    return { status: "none", reason: "Claude Code found no API key and no sign-in" };
-  }
-  return {
-    status: "account",
-    ...(apiKeySource === undefined ? {} : { apiKeySource }),
-    ...(tokenSource === undefined ? {} : { tokenSource }),
-    ...(email === undefined ? {} : { email }),
-    ...(subscriptionType === undefined ? {} : { subscriptionType }),
-  };
+  const env = await applyClaudeCodeAuthPreference(options.env, options.importSdk === undefined ? {} : { importSdk: options.importSdk });
+  return askClaudeCodeAccount({ ...options, env });
 }
 
 /** What the user does when Claude Code has no credential. */
