@@ -179,6 +179,7 @@ import {
   runPrincipal,
   type RequestIdentityContext,
 } from "./run-owner";
+import { chainTaskRunning } from "./follow-up-chain";
 
 export type { RequestIdentityContext } from "./run-owner";
 import { issueSpecOptions, readIssueSpecSection, type IssueSpecOption } from "./issue-spec";
@@ -2587,14 +2588,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const rootOf = (id: string) => followUpRootId({ id, followUpOf: board.get(id)?.followUpOf }, (other) => board.get(other));
       const rootId = rootOf(input.taskId);
       // **One task of a chain runs at a time**: two would share one checkout and
-      // one coding session. A board's one-open-task start test keeps a follow-up
-      // waiting while its root runs; on a board without one, this attempt fails
-      // and the board's retry tries again later.
-      const running = board.list().find((task) => task.id !== input.taskId && task.status === "in_progress" && rootOf(task.id) === rootId);
+      // one coding session. The claim keeps a task waiting, unclaimed and
+      // uncharged, while another task of its chain runs: Workforce's one-open-task
+      // start test, or `followUpChainClaimOrder` (`./follow-up-chain`). This is the
+      // backstop for a board wired with neither: it refuses after the claim, so
+      // the attempt is spent, and it is refused before anything is opened.
+      const running = chainTaskRunning({ id: input.taskId, followUpOf: board.get(input.taskId)?.followUpOf }, board.list());
       if (running !== undefined) {
         throw new HarnessAttemptFailed(
           `[harness-manager] task ${input.taskId} continues the run of ${rootId}, and ${running.id} is still running ` +
-            `in it. Refusing: the two would share one checkout and one coding session.`,
+            `in it. Refusing: the two would share one checkout and one coding session. Wire the board's claim ` +
+            `order with \`followUpChainClaimOrder()\` so a follow-up waits for its chain unclaimed.`,
         );
       }
       const issue = payload === undefined || claim !== null ? taskIssueSegment(rootId) : payload.issue;

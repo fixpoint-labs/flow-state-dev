@@ -31,6 +31,7 @@
  * from each request's own resolved identity and never from the row.
  */
 import type { ClaimOrder } from "@flow-state-dev/orchestration/tasks";
+import { chainTaskRunning } from "./follow-up-chain";
 import { z } from "zod";
 import type { RunPrincipal } from "./workspace";
 
@@ -162,6 +163,9 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
  * every claimable row was someone else's, the drain is refused with an error
  * naming whose run it is, rather than returning as if the board were idle.
  *
+ * It also passes over a task while another task of its follow-up chain runs,
+ * as `followUpChainClaimOrder` does, since a board takes one claim order.
+ *
  * @returns A claim order to pass as `taskBoard({ claimOrder })`.
  */
 export function runOwnerClaimOrder(): ClaimOrder {
@@ -170,7 +174,9 @@ export function runOwnerClaimOrder(): ClaimOrder {
       const principal = runPrincipal(ctx);
       let refused: { taskId: string; owner: RunOwner } | undefined;
       const claimed = await collection.claim(workerId, {
-        eligibility: (task) => {
+        eligibility: (task, tasks) => {
+          // One task of a follow-up chain runs at a time (`./follow-up-chain`).
+          if (chainTaskRunning(task, tasks) !== undefined) return false;
           const owner = runOwnerOf(task);
           if (owner === null || isRunOwner(owner, principal)) return true;
           if (refused === undefined) refused = { taskId: task.id, owner };

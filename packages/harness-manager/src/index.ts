@@ -34,6 +34,8 @@
  *   coding door kept before lines became steers onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
+ * - `followUpChainClaimOrder`, for any other board a manager drains: a task
+ *   waits, unclaimed, while another task of its follow-up chain runs.
  * - `ModeSpec` (a mode: its name, instructions and done check) and the run-context types its hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
  * - The construction-time guards a host should run at
@@ -257,6 +259,9 @@ export {
   runOwnerOf,
   type RunOwner,
 } from "./run-owner";
+
+// ── One task of a follow-up chain runs at a time ────────────────────────────
+export { followUpChainClaimOrder } from "./follow-up-chain";
 
 // ── The run record ──────────────────────────────────────────────────────────
 //

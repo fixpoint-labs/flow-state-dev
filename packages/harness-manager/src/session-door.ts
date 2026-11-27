@@ -36,9 +36,9 @@ import {
 } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
-import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
+import { readModeRunRecord, RUNS, runRecordCollection, type RunRecordState } from "./run-record";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { acquireCheckout, checkoutLeaseFromState, releaseCheckout, runBoardSegment } from "./workspace";
+import { acquireCheckout, checkoutLeaseFromState, followUpRootId, releaseCheckout, runBoardSegment } from "./workspace";
 
 /** What the door takes: the line. Shift Manager builds it without knowing the kind. */
 export const sessionDoorInputSchema = z.object({ message: z.string() });
@@ -146,6 +146,22 @@ export function sessionTask(tasks: TaskCollectionRef, sessionId: string): Task |
   return newest(here.length > 0 ? here : open.length > 0 ? open : linked);
 }
 
+/**
+ * The run record of `task`'s run, as a session reads it: keyed by the board's
+ * `runOf`. Under a mode's former key, a record any task of `task`'s follow-up
+ * chain wrote is this run's, since a follow-up takes its root's record over,
+ * so the root and each of its follow-ups read the one run.
+ */
+export async function readSessionRunRecord(ctx: BlockContext, board: SessionDoorBoard, task: Task): Promise<RunRecordState | undefined> {
+  const identity = board.runOf(task);
+  if (identity === undefined) return undefined;
+  const epic = runBoardSegment(board.tasks.collectionId, board.tasks.partition);
+  const lookup = (id: string) => board.tasks.get(id);
+  const root = followUpRootId(task, lookup);
+  const ofThisChain = (recorded: string) => followUpRootId({ id: recorded, followUpOf: lookup(recorded)?.followUpOf }, lookup) === root;
+  return (await readModeRunRecord(ctx, epic, identity.issue, identity.mode, ofThisChain)).record;
+}
+
 /** The default bound on one talk run. */
 const DEFAULT_TALK_TIMEOUT_MS = 10 * 60_000;
 
@@ -220,11 +236,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (!isTerminalStatus(row.status)) throw new SessionDoorRefused("task-running");
-      const identity = board.runOf(row);
-      const record =
-        identity === undefined
-          ? undefined
-          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
+      const record = await readSessionRunRecord(ctx, board, row);
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
       // The checkout is held for the talk, as for any run, so a follow-up
       // claimed meanwhile waits rather than resume the same session beside it.
