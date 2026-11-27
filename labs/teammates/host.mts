@@ -4,7 +4,7 @@ import type { Harness } from "@flow-state-dev/core/harness";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeCodeHarness } from "@flow-state-dev/claude-code";
+import { claudeCodeHarness, type ClaudeCodeHarnessOptions } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
 import type { ModelResolver, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 import { cursorHarness } from "@flow-state-dev/cursor";
@@ -20,6 +20,15 @@ import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { appContextFlow } from "./flows/lab-context.mts";
+
+/**
+ * Claude Code on teammate coding runs: project and server-user skills, native
+ * search, and the Skill tool pre-approved; hooks stay off via the kit harness.
+ */
+export const teammatesClaudeCodeHarnessOptions = {
+  allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill"],
+  settingSources: ["project", "user"],
+} satisfies ClaudeCodeHarnessOptions;
 
 /** What {@link openTeammates} builds the host from; the README's "The host" says what each sets. */
 export interface TeammatesOptions {
@@ -102,7 +111,11 @@ export async function openTeammates(options: TeammatesOptions) {
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
     ],
-    fill: { [harnesses.slots.harnesses]: scripted === undefined ? [claudeCodeHarness(), codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
+    fill: {
+      [harnesses.slots.harnesses]: scripted === undefined
+        ? [claudeCodeHarness(teammatesClaudeCodeHarnessOptions), codexHarness(), cursorHarness({ model: "composer-2.5" })]
+        : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
+    },
     flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,

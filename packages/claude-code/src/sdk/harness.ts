@@ -18,7 +18,11 @@ import { checkClaudeCodeReadiness } from "./account-probe";
 import { claudeCodeAgent } from "./agent";
 import { CLAUDE_CODE_PASS } from "./env-pass";
 import { listClaudeCodeModels } from "./model-list";
+import type { ClaudeCodeSettingSource } from "./types";
 import { readClaudeCodeUsage } from "./usage";
+
+const DEFAULT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Bash"] as const;
+const DEFAULT_SETTING_SOURCES = ["project"] as const satisfies readonly ClaudeCodeSettingSource[];
 
 /** Options for {@link claudeCodeHarness}. */
 export interface ClaudeCodeHarnessOptions {
@@ -28,6 +32,18 @@ export interface ClaudeCodeHarnessOptions {
    * workers of each kind.
    */
   plan?: boolean;
+  /**
+   * Tools the run may use without asking. Replaces the kit default
+   * (`Read`, `Write`, `Edit`, `Bash`) when set; the agent block still adds
+   * Claude Code's to-do tools, and under `bypassPermissions` its search tools.
+   */
+  allowedTools?: string[];
+  /**
+   * Which settings layers the run loads (`CLAUDE.md`, skills, plugins). Replaces
+   * the kit default (`project`) when set. Hooks stay off via the harness's
+   * fixed `settings.disableAllHooks`.
+   */
+  settingSources?: ClaudeCodeSettingSource[];
 }
 
 /**
@@ -41,6 +57,8 @@ export interface ClaudeCodeHarnessOptions {
  */
 export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harness {
   const plan = options.plan === true;
+  const allowedTools = options.allowedTools ?? [...DEFAULT_ALLOWED_TOOLS];
+  const settingSources = options.settingSources ?? [...DEFAULT_SETTING_SOURCES];
   const env = () => harnessEnv({ pass: CLAUDE_CODE_PASS });
   return {
     id: plan ? "claude-code-plan" : "claude-code",
@@ -51,9 +69,9 @@ export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harne
         env: env(),
         detached: true,
         recordWork: true,
-        allowedTools: ["Read", "Write", "Edit", "Bash"],
+        allowedTools,
         permissionMode: plan ? "plan" : "acceptEdits",
-        settingSources: ["project"],
+        settingSources,
         settings: { disableAllHooks: true },
       }),
     readiness: (check) => checkClaudeCodeReadiness({ env: env(), ...(check?.signal === undefined ? {} : { signal: check.signal }) }),

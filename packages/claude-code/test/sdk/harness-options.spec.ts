@@ -42,5 +42,17 @@ describe("a Claude Code run from claudeCodeHarness()", () => {
     expect(built!.settingSources).toEqual(["project"]);
     expect(built!.settings).toEqual({ disableAllHooks: true });
     expect(built!.recordWork).toBe(true);
+    expect(built!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash"]);
+  });
+
+  it("forwards host overrides of allowedTools and settingSources", () => {
+    claudeCodeHarness({
+      allowedTools: ["Read", "Grep", "Glob", "Skill"],
+      settingSources: ["project", "user"],
+    }).agent(feeds as never);
+    const [built] = seen.options;
+    expect(built!.allowedTools).toEqual(["Read", "Grep", "Glob", "Skill"]);
+    expect(built!.settingSources).toEqual(["project", "user"]);
+    expect(built!.settings).toEqual({ disableAllHooks: true });
   });
 });
