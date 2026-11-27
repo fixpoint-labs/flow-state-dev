@@ -12,22 +12,41 @@
  * A birth candidate is a request written for this record: its owner,
  * organization (a request from before organizations takes the session's),
  * tenant and flow, within the host's queued grace (`queuedGraceMs`, else
- * {@link DEFAULT_QUEUED_GRACE_MS}) either side of its `createdAt`. The request
- * that starts an action is written before the run creates the session, by up
- * to a queue's wait; a session created on its own route, by a webhook
- * delivery or by a dispatch gets its first request after. So the birth
- * request is one of the candidates at or before `createdAt`, or the earliest
- * after it, whatever its source: a dispatch that creates a session with its
- * own id and state leaves it without a parent, so a dispatch request counts
- * for a session that has none too.
+ * {@link DEFAULT_QUEUED_GRACE_MS}) either side of its `createdAt`. A request's
+ * own times are when its record was created (`createdAt`, at enqueue for a
+ * queued action) and when it was last written (`updatedAt`, or its terminal
+ * stamp): nothing on it says when its run started. The run that creates a
+ * session writes its request again after the session exists (at least its
+ * final status), so:
  *
- * Session deletion leaves requests behind and an id can be taken again, so a
- * candidate at or before `createdAt` may be a predecessor's, and nothing on a
- * request says which incarnation wrote it. The session reads as a kind only
- * when every request that could be its birth request reads as that kind;
- * when they disagree it reads as a machine's. A request from before the
- * window is a predecessor's; once retention prunes the birth request, the
- * oldest one left is a later turn's. Neither counts.
+ * - a request last written before the session's `createdAt` didn't create it;
+ * - a request created at or before `createdAt` and still live then (last
+ *   written at or after it) is a possible birth, and when there is one, only
+ *   those count: a wake or a delivery that runs moments later is a turn of
+ *   the session, not its birth;
+ * - otherwise the earliest request after `createdAt` is the birth, whatever
+ *   its source: a session created on its own route has no request of its
+ *   own, so its first turn reads as its birth, and a dispatch that creates a
+ *   session with its own id and state leaves it without a parent and writes
+ *   its request just after.
+ *
+ * Session deletion leaves requests behind and an id can be taken again, and
+ * nothing on a request says which incarnation wrote it. The session reads as
+ * a kind only when every possible birth reads as that kind; when they
+ * disagree it reads as a machine's. Once retention prunes the birth request,
+ * the oldest one left is a later turn's, and doesn't count.
+ *
+ * Two cases the stored times can't settle:
+ *
+ * - A predecessor's run still in flight while its session is deleted and the
+ *   id is taken again looks live at the birth. Against a birth written at or
+ *   before `createdAt` the two disagree and the session reads as a machine's.
+ *   Against a birth written after (a dispatch, or the session-create route's
+ *   first turn) it is the only live request, and the session reads as the
+ *   predecessor's kind.
+ * - A queued action whose run created the session and then crashed before
+ *   writing its request again looks finished before the birth; the session
+ *   reads as its first later turn's kind, or a machine's with none.
  *
  * A dispatched session (`internal`, `task`) takes the kind of the parent it
  * can prove dispatched it (`provesDispatchingParent`), walking up to
@@ -45,6 +64,7 @@ import {
   toBareSessionId
 } from "../stores/scope-keys";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
+import { terminalAtMs } from "../stores/request-ended-at";
 import { DEFAULT_QUEUED_GRACE_MS } from "../runtime-config";
 import { firstRequestKind, type PrincipalKind } from "./principal";
 
@@ -61,6 +81,11 @@ function isBirthCandidate(session: SessionRecord, request: RequestRecord, window
   if (request.flowKind !== session.flowKind) return false;
   if ((request.flowId ?? request.flowKind) !== (session.flowId ?? session.flowKind)) return false;
   return Math.abs(request.createdAt - session.createdAt) <= windowMs;
+}
+
+/** When `request`'s record was last written: its `updatedAt`, or its terminal stamp when later. */
+function lastWrittenAt(request: RequestRecord): number {
+  return Math.max(request.updatedAt, terminalAtMs(request) ?? request.updatedAt);
 }
 
 /**
@@ -83,14 +108,17 @@ async function birthRequestKind(
     flowKind: session.flowKind,
     orderBy: "none"
   });
-  const candidates = records.filter((record) => isBirthCandidate(session, record, windowMs));
+  const candidates = records.filter(
+    (record) => isBirthCandidate(session, record, windowMs) && lastWrittenAt(record) >= session.createdAt
+  );
   const possible = candidates.filter((record) => record.createdAt <= session.createdAt);
-  let firstAfter: RequestRecord | undefined;
-  for (const record of candidates) {
-    if (record.createdAt <= session.createdAt) continue;
-    if (firstAfter === undefined || record.createdAt < firstAfter.createdAt) firstAfter = record;
+  if (possible.length === 0) {
+    let firstAfter: RequestRecord | undefined;
+    for (const record of candidates) {
+      if (firstAfter === undefined || record.createdAt < firstAfter.createdAt) firstAfter = record;
+    }
+    if (firstAfter !== undefined) possible.push(firstAfter);
   }
-  if (firstAfter !== undefined) possible.push(firstAfter);
   // None stored: `firstRequestKind` says what no readable request reads as.
   if (possible.length === 0) return firstRequestKind(undefined);
   const [first, ...rest] = possible.map((record) => firstRequestKind(record));

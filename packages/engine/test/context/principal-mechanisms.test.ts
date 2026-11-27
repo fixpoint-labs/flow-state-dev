@@ -190,7 +190,7 @@ async function plantRequest(
   stores: StoreRegistry,
   id: string,
   sessionId: string,
-  fields: { source?: string; userId?: string; orgId?: string | null; at?: number } = {}
+  fields: { source?: string; userId?: string; orgId?: string | null; at?: number; endedAt?: number } = {}
 ) {
   const record = createInitialRequestRecord(
     {
@@ -205,7 +205,8 @@ async function plantRequest(
     },
     fields.at ?? Date.now()
   );
-  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now() }, "absent");
+  const ended = fields.endedAt !== undefined ? { completedAtMs: fields.endedAt, updatedAt: fields.endedAt } : {};
+  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now(), ...ended }, "absent");
 }
 
 /** A person's run in `sessionId`: what an HTTP turn in a session from before kinds carries. */
@@ -309,11 +310,11 @@ describe("backfill", () => {
     await plantSession(stores, "target", { principalKind: "person" });
     // Person: an HTTP start, and one from before `source` (read as `http`).
     await plantSession(stores, "l-http", { lineageId: "lin_http" });
-    // The birth request is written just before the session; a later turn's,
-    // outside the birth window, doesn't count.
+    // The birth request is written just before the session and its run ends
+    // after it; a later turn's doesn't count, however soon it comes.
     const born = (await stores.session.get("l-http"))!.createdAt;
-    await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 60 * 60_000 });
-    await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5 });
+    await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 5 });
+    await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5, endedAt: born + 1_000 });
     await plantSession(stores, "l-legacy");
     await plantRequest(stores, "r-legacy", "l-legacy");
     expect(await admit(personIn("l-http"), "target")).toBeDefined();
