@@ -310,23 +310,28 @@ export const runRecordStateSchema = z.object({
   sessionId: z.string().nullable().default(null),
   // BP-030.
   /**
-   * WHICH harness produced the session beside it — `claude-code/sdk`,
-   * `codex/sdk`, the `<package>/<door>` value the handle reported.
-   *
-   * Recorded rather than checked, deliberately. When a harness is chosen per
-   * task, the previous attempt's session can belong to a DIFFERENT harness, and
-   * "hand the id down only when the source matches" is what makes a per-task
-   * switch start fresh instead of resuming a foreign session. That check needs
-   * to know which harness a row is bound to, which this manager does not — one
-   * harness per manager here — so the field is written now and the check
-   * belongs to the issue that introduces the choice. One nullable column today
-   * versus a run-record migration later.
-   *
-   * A widened string, not an enum, so a handle persisted before the
-   * `<package>/<door>` convention still parses, and a harness we do not
-   * ship can name itself.
+   * The harness handle's `source` an older build wrote beside the session.
+   * Never written now, and read by nothing: `source` can't tell two harnesses
+   * apart, so the run settings frozen below decide which session a run resumes.
+   * Kept so a row stored with it still parses.
    */
   source: z.string().nullable().default(null),
+  // FIX-2878 D1, D2; BP-030.
+  /**
+   * The run settings the task's first claim froze: the harness, the model
+   * (`null` for the harness's default), the plan setting (`null` for none),
+   * the review mode and the task's mode. Written once, by the attempt that
+   * finds them unset, and kept across attempts: every later attempt, steer,
+   * message and door talk reads them, so a change to a worker's file or an
+   * app's default never reaches a task already claimed. All `null` on a row
+   * stored before this change, whose next claim freezes them and starts a
+   * fresh session (D2).
+   */
+  frozenHarness: z.string().nullable().default(null),
+  frozenModel: z.union([z.string(), z.object({ id: z.string(), params: z.record(z.string(), z.unknown()).optional() })]).nullable().default(null),
+  frozenPlan: z.boolean().nullable().default(null),
+  frozenReview: z.boolean().nullable().default(null),
+  frozenMode: z.string().nullable().default(null),
   /** The run's closing text, when it got far enough to produce one. */
   finalMessage: z.string().nullable().default(null),
   /**
@@ -423,7 +428,6 @@ export function runTopicPrefix(epic: string, issue: string): string {
  */
 const ATTEMPT_SCOPED_CLEAR = {
   sessionId: null,
-  source: null,
   finalMessage: null,
   usage: null,
   costUsd: null,
@@ -686,10 +690,21 @@ export async function openRunRecord(
     runKey?: string;
     requestIds?: string[];
     landedPullRequests?: string[];
+    /** The run settings this attempt froze: only on the attempt that finds them unset. */
+    frozen?: FrozenRunSettings;
   },
 ): Promise<RunRecordWrite> {
   return writeRunRecord(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
+    ...(opened.frozen === undefined
+      ? {}
+      : {
+          frozenHarness: opened.frozen.harness,
+          frozenModel: opened.frozen.model,
+          frozenPlan: opened.frozen.plan,
+          frozenReview: opened.frozen.review,
+          frozenMode: opened.frozen.mode,
+        }),
     workspacePath: opened.workspacePath,
     branch: opened.branch,
     childSessionId: opened.childSessionId,
@@ -698,6 +713,47 @@ export async function openRunRecord(
     ...(opened.landedPullRequests !== undefined ? { landedPullRequests: opened.landedPullRequests } : {}),
     outcome: "running",
   });
+}
+
+// FIX-2878 D1.
+/** The run settings a task's first claim freezes on its run record. */
+export const frozenRunSettingsSchema = z.object({
+  harness: z.string(),
+  model: z.union([z.string(), z.object({ id: z.string(), params: z.record(z.string(), z.unknown()).optional() })]).nullable(),
+  plan: z.boolean().nullable(),
+  review: z.boolean(),
+  mode: z.string(),
+});
+
+/** What {@link frozenRunSettingsSchema} holds. */
+export type FrozenRunSettings = z.infer<typeof frozenRunSettingsSchema>;
+
+// BP-030.
+/**
+ * The run settings a run record froze, or `undefined` for a row that froze
+ * none: one stored before this change, or one no claim opened yet. With
+ * `task`, a record another task wrote, or another incarnation of this task's
+ * id (a task deleted and filed again under it), froze none for this one. A
+ * record naming no incarnation is taken only by a task that names none either.
+ */
+export function frozenRunSettingsOf(
+  record: Partial<RunRecordState> | undefined,
+  task?: { readonly taskId: string; readonly incarnationId?: string | null },
+): FrozenRunSettings | undefined {
+  if (record == null || typeof record.frozenHarness !== "string" || typeof record.frozenMode !== "string") return undefined;
+  if (task !== undefined) {
+    if (record.taskId != null && record.taskId !== task.taskId) return undefined;
+    // A task with an incarnation never takes a record naming none: that record is from a task
+    // stored before incarnation ids, which this one, filed again under its id, is not.
+    if (task.incarnationId != null && record.incarnationId !== task.incarnationId) return undefined;
+  }
+  return {
+    harness: record.frozenHarness,
+    model: record.frozenModel ?? null,
+    plan: record.frozenPlan ?? null,
+    review: record.frozenReview === true,
+    mode: record.frozenMode,
+  };
 }
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */

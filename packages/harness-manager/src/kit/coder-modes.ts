@@ -16,7 +16,7 @@ import type { ModeDone, ModeSpec } from "../manager";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { trustedCodingInput } from "./coding-task-input";
 import { quotedList as listed } from "./quoted-list";
-import { assertSafeSegment } from "../workspace";
+import { assertSafeSegment, sameSegment } from "../workspace";
 
 /** The kit's own mode's name: what a task runs when the app registers no modes. */
 export const KIT_MODE = "default";
@@ -77,7 +77,8 @@ export interface ResolvedModes {
  * @throws When a mode's name can't key a run, a mode other than `default` lacks
  *   `instructions` or `doneWhen`, a mode's `workspace` isn't a workspace host,
  *   `requires` names a field a task doesn't
- *   carry, or `defaultMode` names a mode that isn't registered.
+ *   carry, a mode is named as another mode's `formerName`, or `defaultMode`
+ *   names a mode that isn't registered.
  */
 export function resolveCoderModes(
   options: { modes?: Readonly<Record<string, Partial<CoderMode>>>; defaultMode?: string },
@@ -118,6 +119,13 @@ export function resolveCoderModes(
       requires,
       ...(mode.project === undefined ? {} : { project: mode.project }),
     };
+  }
+  // A run stored or frozen under a mode's former name would be either mode's.
+  for (const [name, { spec }] of Object.entries(modes)) {
+    const clash = names.find((other) => other !== name && spec.formerName !== undefined && sameSegment(other, spec.formerName));
+    if (clash !== undefined) {
+      throw new Error(`${who}: mode "${clash}" is the former name of mode "${name}", whose runs were stored under it; name it something else.`);
+    }
   }
   const defaultMode = options.defaultMode ?? KIT_MODE;
   if (!Object.hasOwn(modes, defaultMode)) {

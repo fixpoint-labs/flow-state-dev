@@ -37,6 +37,7 @@ import {
   rosterResources,
 } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
+import { isCheckedCodingTask } from "./coding-task-input";
 import { CODER_FLOW } from "../coder-flow-name";
 import { landedOf, landedWorkSchema } from "../landed-work";
 import { pullRequestWait } from "../pull-request-wait";
@@ -130,10 +131,13 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
         );
         const roster = await readRosterEntries(ctx, installation);
         // The harness its runs reported, as the list folds the stored spend into the entry's view of it;
-        // only a task no run reported on takes its worker's setting today.
+        // a task no run reported on yet shows the harness the server filled on it, which its first claim
+        // runs (FIX-2878), and only one that carries none takes its worker's setting.
         const harnessOf = (entry: (typeof listed)[number], task: Task): string | null => {
           const reported = entry.spend?.harness;
           if (typeof reported === "string") return reported;
+          const filled = (task.input as { harness?: unknown } | undefined)?.harness;
+          if (isCheckedCodingTask(task) && typeof filled === "string") return filled;
           const worker = roster.find((entry) => entry.id === task.assignee && !entry.standard) ?? roster.find((entry) => entry.id === task.assignee);
           if (worker === undefined || worker.flow !== CODER_FLOW) return null;
           const setting = worker.settings.harness;

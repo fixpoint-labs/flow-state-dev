@@ -83,7 +83,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? sessionTask(board.tasks, sessionId)
           : tasksInSession(board.tasks, sessionId).find((task) => task.id === input.taskId);
       if (row === undefined) throw new HarnessRunChangesRefused(input.taskId === undefined ? "not-started" : "not-this-session");
-      const identity = board.runOf(row);
+      const identity = await board.runOf(row);
       const record =
         identity === undefined
           ? undefined

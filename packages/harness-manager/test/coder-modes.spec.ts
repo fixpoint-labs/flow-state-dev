@@ -286,6 +286,11 @@ describe("modes are refused at start, naming the mode", () => {
   it("refuses an inherited key as a default mode", () => {
     expect(() => resolveCoderModes({ defaultMode: "constructor" }, kitMode, "coder")).toThrow('the default mode is "constructor"');
   });
+
+  it("refuses a mode named as another mode's former name: a run stored or frozen under it would be either's", () => {
+    const code = { instructions: brief("code brief"), doneWhen: committed };
+    expect(() => resolveCoderModes({ modes: { default: {}, code } }, kitMode, "coder")).toThrow('mode "code" is the former name of mode "default"');
+  });
 });
 
 describe("the app's own part of the coding flow", () => {
