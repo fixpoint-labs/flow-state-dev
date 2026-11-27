@@ -109,15 +109,11 @@ export const taskQueueDemoInputSchema = z.object({
 const board = taskBoard({
   name: "task-queue-demo",
   collection: { collectionId: COLLECTION_ID },
-  // Cast: TaskWorkerRegistry expects TaskWorker<unknown, unknown>; our
-  // handlers are typed-narrower (z.object outputs). The taskBoard
-  // pipeline only reads task.input/output as `unknown`, so the runtime
-  // contract is satisfied.
   workers: {
     SEARCH: handleSearch,
     ANALYZE: handleAnalyze,
     EXTRACT: handleExtract,
-  } as Record<string, any>,
+  },
   concurrency: 1,
   claimOrder: "fifo",
   onIdle: "complete",

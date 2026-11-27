@@ -58,6 +58,20 @@ export type TaskDispatcherBlock = BlockDefinition<any, any, TaskDispatchInput, D
 export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> | TaskDispatcherBlock;
 
 /**
+ * Any one assignee, whatever its worker's payload and output: what a registry
+ * value or a board's `defaultWorker` may hold.
+ *
+ * Not `TaskAssignee`: a block's input and output types sit in both parameter
+ * and return positions of its config (`connectInput`, `onCompleted(output)`),
+ * so under `strictFunctionTypes` (any app on `strict: true`) a worker with a
+ * typed payload or output is assignable to no single concrete worker type, and
+ * every typed worker was refused (TS2322). Registry workers are heterogeneous,
+ * so the block's types are `any`, as for any other heterogeneous block list;
+ * a value that is not a block is still refused.
+ */
+export type AnyTaskAssignee = BlockDefinition<any, any, any, any> | TaskDispatcherBlock;
+
+/**
  * A worker registry whose values may also be task dispatchers.
  *
  * Deliberately **not** parameterized by the board's `TInput`/`TOutput`:
@@ -65,7 +79,7 @@ export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> 
  * heterogeneous — each declares its own payload schema and the board's
  * generics describe the collection, not every route.
  */
-export type TaskAssigneeRegistry = Record<string, TaskAssignee>;
+export type TaskAssigneeRegistry = Record<string, AnyTaskAssignee>;
 
 /**
  * True when `block` is a task dispatcher — a block carrying a `task` address —
