@@ -106,8 +106,8 @@ describe('memory/workingMemory', () => {
       expect(workingMemoryEntrySchema.safeParse(entry).success).toBe(false)
     })
 
-    it('workingMemoryStateSchema validates default empty state', () => {
-      expect(workingMemoryStateSchema.safeParse({ entries: [], currentTurn: 0 }).success).toBe(true)
+    it('workingMemoryStateSchema initializes empty state', () => {
+      expect(workingMemoryStateSchema.parse({})).toEqual({ entries: [], currentTurn: 0 })
     })
 
     it('workingMemoryResource is a valid resource definition', () => {
@@ -755,7 +755,7 @@ describe('memory/workingMemory', () => {
     ) {
       const block = workingMemoryRemember(config)
       const ctx = {
-        resources: { get: () => ref },
+        resources: { workingMemory: ref },
         response: { emit: async () => {} },
       } as any
       // The schema uses .default() for pinned and replaces, so Zod applies

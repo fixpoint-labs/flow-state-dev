@@ -7,7 +7,8 @@
  * argued in each round; the per-(round, debater) audit trail lives in a
  * sequencer-backed `TaskCollection` for DevTool visibility.
  */
-import { defineResource } from "@flow-state-dev/core";
+import { defineResource, type GeneratorSlot } from "@flow-state-dev/core";
+import type { BlockContext, ResourceRef, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** Input shape accepted by a `debate` block. */
@@ -96,6 +97,12 @@ export const debateTranscriptStateSchema = z.object({
   entries: z.array(debateContributionEntrySchema).default([]),
 });
 export type DebateTranscriptState = z.infer<typeof debateTranscriptStateSchema>;
+
+/** Keep debate state and transcript types when a generator forwards the caller's context slot. */
+export type DebateContextSlot = GeneratorSlot<unknown, BlockContext & {
+  sequencer?: StateRef<DebateState>;
+  resources: { transcript: ResourceRef<DebateTranscriptState> };
+}>;
 
 /**
  * Creates a session-scoped writable resource holding the debate

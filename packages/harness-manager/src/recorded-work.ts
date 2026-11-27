@@ -98,7 +98,7 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
     const pointers = await read(RECORDED.markers, planResourcesPrefix(run.requestId, OBSERVED_PLAN_LIST));
     const markers = (pointers?.items ?? []).map((item) => ({
       topic: item.topic,
-      conversation: fieldOf(item.clientData, "conversation") as string | null | undefined,
+      conversation: textOf(item.clientData, "conversation"),
     }));
     return read(RECORDED.plan, readPlanTarget(run.requestId, markers).resourcesPrefix);
   };
@@ -146,7 +146,10 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
 export type RecordedEntry = { topic: string; data: unknown };
 
 const fieldOf = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
-const textOf = (data: unknown, key: string) => (typeof fieldOf(data, key) === "string" ? (fieldOf(data, key) as string) : null);
+function textOf(data: unknown, key: string) {
+  const value = fieldOf(data, key);
+  return typeof value === "string" ? value : null;
+}
 /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
 const restOf = (topic: string) => topic.split("/").slice(2).join("/");
 

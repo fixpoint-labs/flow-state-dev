@@ -254,11 +254,11 @@ export type IntakeDecision =
 
 /** The running flow's report rows, or a refusal naming the accessor. */
 export function reportsOf(ctx: BlockContext): ResourceCollectionRef {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[ERROR_REPORTS_RESOURCE];
+  const ref = ctx.resources?.[ERROR_REPORTS_RESOURCE];
   if (typeof ref !== "object" || ref === null || !("getOrCreate" in ref)) {
     throw new Error(`This flow doesn't declare "${ERROR_REPORTS_RESOURCE}", so it can't keep error reports.`);
   }
-  return ref as ResourceCollectionRef;
+  return ref;
 }
 
 /** The key of a fingerprint's report. */
@@ -406,16 +406,13 @@ export async function updateReport(
 ): Promise<ReportResourceState | undefined> {
   const ref = await reports.getOptional(reportId);
   if (ref === undefined) return undefined;
-  type Landed = { readonly report: ReportResourceState | undefined; readonly before?: ReportResourceState; readonly after?: ReportResourceState };
   // Returned by the attempt that landed: `change` re-runs on a conflict, so only the last attempt's pair counts.
-  const landed = (await updateStateWith(ref as never, (current: unknown): { state: never; result: Landed } => {
+  const landed = await updateStateWith(ref, (current) => {
     const stored = parseRow(current);
     const next = stored === undefined ? undefined : change(stored);
-    if (stored === undefined || next === undefined) return { state: current as never, result: { report: stored } };
-    return { state: next as never, result: { report: next, before: stored, after: next } };
-  })) as Landed;
-  const result = landed.report;
-  if (landed.before !== undefined && landed.after !== undefined) {
+    return { state: next ?? current, result: { before: stored, after: next } };
+  });
+  if (landed?.before !== undefined && landed.after !== undefined) {
     const { before, after } = landed;
     if (before.status !== after.status || before.issue?.url !== after.issue?.url || before.issue?.identifier !== after.issue?.identifier) {
       await appendHistory(
@@ -435,7 +432,7 @@ export async function updateReport(
       );
     }
   }
-  return result as ReportResourceState | undefined;
+  return landed?.after ?? landed?.before;
 }
 
 /** Whether a row still takes repeats, or a repeat now starts a new report. */
@@ -682,16 +679,17 @@ async function claimCapSlot(
 ): Promise<{ claimed: boolean; windowStart: number }> {
   const own = Math.floor(now / limits.windowMs) * limits.windowMs;
   const capRef = await reports.getOrCreate(CAP_KEY, { windowStart: own, fingerprints: [] });
-  type Slot = { claimed: boolean; windowStart: number };
-  return updateStateWith(capRef as never, (current: unknown): { state: never; result: Slot } => {
+  const slot = await updateStateWith(capRef, (current) => {
     const parsed = capSchema.safeParse(current);
     const stored = parsed.success ? parsed.data : undefined;
     const cap = stored !== undefined && stored.windowStart >= own ? stored : { windowStart: own, fingerprints: [] };
     const windowStart = cap.windowStart;
-    if (cap.fingerprints.includes(fingerprint)) return { state: cap as never, result: { claimed: true, windowStart } };
-    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap as never, result: { claimed: false, windowStart } };
-    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] } as never, result: { claimed: true, windowStart } };
-  }) as Promise<Slot>;
+    if (cap.fingerprints.includes(fingerprint)) return { state: cap, result: { claimed: true, windowStart } };
+    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap, result: { claimed: false, windowStart } };
+    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] }, result: { claimed: true, windowStart } };
+  });
+  if (slot === undefined) throw new Error("The report cap update never ran.");
+  return slot;
 }
 
 /**
@@ -711,11 +709,11 @@ async function listOnStorm(
   }
 ): Promise<IntakeDecision> {
   const sKey = stormKey(windowStart);
-  const stormRef = await reports.getOrCreate(sKey, {});
-  const result = await updateStateWith(stormRef as never, (current: unknown) => {
+  const stormRef = await reports.getOrCreate(sKey);
+  const result = await updateStateWith(stormRef, (current) => {
     const existing = parseRow(current);
     if (existing !== undefined && o.seenKey !== undefined && existing.seen?.includes(o.seenKey)) {
-      return { state: current as never, result: { isNew: false, commentOwed: false } };
+      return { state: current, result: { isNew: false, commentOwed: false } };
     }
     const entries = existing?.storm?.entries ?? [];
     const at = entries.findIndex((entry) => entry.fingerprint === o.fingerprint);
@@ -749,10 +747,10 @@ async function listOnStorm(
       ...(o.seenKey === undefined ? {} : { seen: withSeen(row.seen, o.seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
-    return { state: next as never, result: { isNew: existing === undefined, commentOwed } };
+    return { state: next, result: { isNew: existing === undefined, commentOwed } };
   });
-  const { isNew, commentOwed } = result as { isNew: boolean; commentOwed: boolean };
-  return { decision: "storm", reportId: sKey, isNew, commentOwed };
+  if (result === undefined) throw new Error("The storm report update never ran.");
+  return { decision: "storm", reportId: sKey, ...result };
 }
 
 /** Whether a repeat now owes a filed report's issue a counted comment. */

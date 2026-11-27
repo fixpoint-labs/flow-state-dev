@@ -4,6 +4,8 @@
  * check commands. Only the harness is a stub. The check, `node check.mjs`, is
  * red until a run writes "ok" into `state.txt`.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
@@ -24,7 +26,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type ModeSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type ModeSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
@@ -142,7 +144,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     boardCollection: ledger,
     tenant: undefined,
     mode: commandCheck(basePhase, { commands: options.checks ?? ["node check.mjs"], timeoutMs: options.timeoutMs ?? 20_000 }),
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen, (cwd) => options.afterStep?.(cwd)),

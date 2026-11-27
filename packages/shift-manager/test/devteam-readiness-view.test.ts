@@ -4,13 +4,14 @@
  * coder runs on: a user reads which harnesses can run here, and
  * Re-checks, with no session found or made for the read. Each signed-in user reads the machine's entries.
  */
+import type { Harness } from "@flow-state-dev/core/harness";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { harnessStub, type Harness } from "@flow-state-dev/harness-manager";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { connect } from "../src/lib/connection";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";

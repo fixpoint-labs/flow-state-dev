@@ -49,6 +49,7 @@ import type {
   VersionedResourceState
 } from "@flow-state-dev/engine/host";
 import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import { prepareKeyPrefixRead } from "./key-prefix-range";
 
 /** A row as SQLite hands it back: state is TEXT, lifecycle is unnarrowed. */
 type RawRow = { state: string; version: number; lifecycle: string };
@@ -112,13 +113,10 @@ export function createSQLiteResourceStateStore(
     "SELECT resource_key, state, version FROM resource_state " +
       "WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'live'"
   );
-  // Prefix match via substr(...) rather than LIKE — sidesteps LIKE wildcard
-  // escaping (`%`/`_` are legal in resource keys). An empty prefix matches
-  // every key in scope (substr(key, 1, 0) = '').
-  const getByPrefixStmt = db.prepare(
+  const readByPrefix = prepareKeyPrefixRead(
+    db,
     "SELECT resource_key, state, version FROM resource_state " +
-      "WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'live' " +
-      "AND substr(resource_key, 1, length(?)) = ?"
+      "WHERE lifecycle = 'live' AND scope_type = ? AND scope_id = ?"
   );
   // Scope purge: one bulk lifecycle mark, retaining every version. Not a
   // DELETE — the retained versions are what stop a straggler from the previous
@@ -493,12 +491,11 @@ export function createSQLiteResourceStateStore(
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, VersionedResourceState>> {
-      const rows = getByPrefixStmt.all(
-        scopeType,
-        scopeId,
-        keyPrefix,
-        keyPrefix
-      ) as Array<{ resource_key: string; state: string; version: number }>;
+      const rows = readByPrefix(scopeType, scopeId, keyPrefix) as Array<{
+        resource_key: string;
+        state: string;
+        version: number;
+      }>;
       const result: Record<string, VersionedResourceState> = {};
       for (const row of rows) {
         result[row.resource_key] = {

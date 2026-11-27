@@ -17,7 +17,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
-import type { ResourceScope } from "@flow-state-dev/core/types";
+import type { JsonObject, ResourceScope } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { SKILLS_PARTITION_KEY, type SkillsPartitionFn } from "./partition";
 
@@ -53,6 +53,9 @@ export const skillStateSchema = z.object({
   _preservedFields: z.record(z.unknown()).optional(),
   seededNames: z.array(z.string()).optional(),
 }).passthrough();
+
+/** Stored state for a manifest, supporting file, or seed metadata entry. */
+export type SkillsCollectionState = JsonObject & z.output<typeof skillStateSchema>;
 
 /** Public options for the helper. */
 export interface DefineSkillsCollectionOptions {

@@ -9,8 +9,9 @@
  * the governing-flow path a user-kept file is checked by, never the host's fallback, the body, the
  * query or a header. When the declarations disagree on
  * their resolver or their client config there is no one answer to give, so the
- * read or write is refused, naming both flows. Registration still succeeds:
- * a host that runs today keeps starting.
+ * read or write is refused, naming both flows. Client configs that disagree
+ * are also refused at start-up, by the same comparison (`sameClientConfig`);
+ * resolvers that disagree are refused here only.
  *
  * A collection is addressed by its pattern, and read and written by its
  * entries: one address, the cell its entries share.
@@ -33,6 +34,7 @@ import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/default
 import { pinRejectsCaller } from "../context/instance-pin";
 import { buildResourceSnapshot, isResourceConfig } from "../routes/route-utils";
 import { isCollectionConfig } from "./is-collection-config";
+import { sameClientConfig } from "./same-client-config";
 import { resourceStorageKeys } from "./storage-keys";
 import { normalizeResourceState } from "./normalize-resource-state";
 import { resolveResourceIsolation, resolveResourceScopeId } from "../stores/scope-keys";
@@ -101,32 +103,6 @@ function declarationsOf(registry: FlowRegistry, scope: AddressScope, key: string
 /** Whether `flow` declares the shared resource or collection addressed `key` in `scope`. */
 export function flowDeclares(registry: FlowRegistry, flow: FlowInstance, scope: AddressScope, key: string): boolean {
   return declarationsOf(registry, scope, key).shared.some((entry) => entry.flow.id === flow.id);
-}
-
-/** Whether two declarations of one address project the same fields for a client and take the same writes. */
-function sameClientConfig(
-  a: ResourceConfig | ResourceCollectionConfig,
-  b: ResourceConfig | ResourceCollectionConfig
-): boolean {
-  if (a === b) return true;
-  if (isCollectionConfig(a) !== isCollectionConfig(b)) return false;
-  const ca = a.client as (ResourceConfig["client"] & ResourceCollectionConfig["client"]) | undefined;
-  const cb = b.client as (ResourceConfig["client"] & ResourceCollectionConfig["client"]) | undefined;
-  if (ca === undefined || cb === undefined) return ca === cb;
-  const owner = (config: object) => {
-    const { ownerPrivate, ownerWrites } = config as Pick<ResourceCollectionConfig, "ownerPrivate" | "ownerWrites">;
-    return JSON.stringify([ownerPrivate ?? null, ownerWrites ?? null]);
-  };
-  return (
-    ca.data === cb.data &&
-    JSON.stringify(ca.state ?? null) === JSON.stringify(cb.state ?? null) &&
-    owner(a) === owner(b) &&
-    JSON.stringify(ca.expose ?? null) === JSON.stringify(cb.expose ?? null) &&
-    JSON.stringify(ca.exclude ?? null) === JSON.stringify(cb.exclude ?? null) &&
-    JSON.stringify(a.secret ?? null) === JSON.stringify(b.secret ?? null) &&
-    JSON.stringify(a.runBy ?? null) === JSON.stringify(b.runBy ?? null) &&
-    a.canWrite === b.canWrite
-  );
 }
 
 /**

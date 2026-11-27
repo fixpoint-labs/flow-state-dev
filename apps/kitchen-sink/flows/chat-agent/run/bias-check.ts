@@ -8,7 +8,7 @@
  */
 import { sequencer } from "@flow-state-dev/core";
 import { biasAnalyzer, type BiasAnalyzerOutput } from "@thought-fabric/core/metacognition";
-import { AnalyzerResultSchema, responseAuditor } from "@flow-state-dev/patterns/response-auditor";
+import { AnalyzerResultSchema, auditorInputSchema, responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
 import type { featuresSchema } from "../shared/schemas";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
@@ -17,7 +17,7 @@ import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../lib/models";
 // to the responseAuditor contract (userInput/response → AnalyzerResult).
 const biasAnalyzerAdapter = sequencer({
   name: "bias-adapter",
-  inputSchema: z.object({ userInput: z.string(), response: z.string() }),
+  inputSchema: auditorInputSchema,
   // responseAuditor collects each analyzer's output as an AnalyzerResult.
   // The terminal `.map` below hand-builds that shape; declaring it here
   // makes the sequencer's runtime exit gate reject any drift (e.g. a score
@@ -58,7 +58,7 @@ export const biasCheck = sequencer({
   name: "bias-check",
   inputSchema: z.string(),
 })
-  .map((aiResponse: string, ctx) => ({
+  .map((aiResponse, ctx) => ({
     userInput: String(
       (ctx.parent?.input as Record<string, unknown>)?.message ?? "",
     ),

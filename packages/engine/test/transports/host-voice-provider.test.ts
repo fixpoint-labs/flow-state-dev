@@ -16,7 +16,8 @@ const runActionMock = vi.fn((_options: RunActionOptions) =>
   Promise.resolve({ output: undefined, items: [], durationMs: 0 })
 );
 vi.mock("../../src/execution/runAction", () => ({
-  runAction: (options: RunActionOptions) => runActionMock(options)
+  runAction: (options: RunActionOptions) => runActionMock(options),
+  runFrameworkAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 /** The options `runAction` was called with; fails unless it was called exactly once. */

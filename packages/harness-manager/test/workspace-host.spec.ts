@@ -11,6 +11,7 @@
  * already provisioned keeps the repository its record names when its source
  * changes underneath it.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -31,7 +32,7 @@ import {
 import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type LocalWorkspaceHostOptions, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
