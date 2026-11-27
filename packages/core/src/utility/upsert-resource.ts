@@ -1,7 +1,6 @@
 import type { z, ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
-import type { ResourceCollectionRef } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
 
 export interface UpsertResourceConfig<TInputSchema extends ZodTypeAny> {
@@ -46,10 +45,14 @@ export function upsertResource<TInputSchema extends ZodTypeAny>(
       const key = config.key(input);
       const state = config.state(input, ctx) as JsonObject;
       const content = config.content?.(input);
+      const collection = ctx.resources[config.collectionKey];
+      if (!collection || !("getOrCreate" in collection)) {
+        throw new Error(`upsertResource requires a resource collection at "${config.collectionKey}"`);
+      }
 
       // getOrCreate sets initial state only on creation; always patchState
       // afterwards so updates are applied whether the resource is new or existing.
-      const ref = await (ctx.resources[config.collectionKey] as ResourceCollectionRef).getOrCreate(key, state);
+      const ref = await collection.getOrCreate(key, state);
       await ref.patchState(state);
       if (content !== undefined) {
         await ref.writeContent(content);
