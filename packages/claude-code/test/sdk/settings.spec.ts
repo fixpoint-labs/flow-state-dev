@@ -7,6 +7,9 @@
  * settings sit above the project's, so `{ disableAllHooks: true }` there keeps
  * the conventions and stops the hooks.
  *
+ * With no `settings`, a run still starts with every hook off: a host opts the
+ * hooks back in with `{ disableAllHooks: false }`.
+ *
  * The first half drives the **installed Agent SDK** against a fake CLI that
  * records its arguments, so the claim is about how a real run is started, not
  * about the options object the block builds. The second half pins how the
@@ -83,13 +86,29 @@ describe("settings, through the installed SDK", () => {
     expect(JSON.parse(flagValue(argv, "--settings") ?? "null")).toEqual({ disableAllHooks: true });
   }, 30_000);
 
-  it("control: without settings the same run is started with the project's hooks on", async () => {
-    // BP-035, the off state: `["project"]` alone is what runs a repository's
-    // hooks, so nothing in the arguments may switch them off.
+  it("starts a run with every hook off when the host gives no settings", async () => {
+    // The default a host gets by forgetting: a repository's hooks run by
+    // themselves and show in no transcript, so they are off unless asked for.
     const argv = await argvSeenByRun({ settingSources: ["project"] });
 
     expect(flagValue(argv, "--setting-sources")).toBe("project");
-    expect(argv.join(" ")).not.toContain("disableAllHooks");
+    expect(JSON.parse(flagValue(argv, "--settings") ?? "null")).toEqual({ disableAllHooks: true });
+  }, 30_000);
+
+  it("keeps the hooks off under a host layer that does not mention them", async () => {
+    const argv = await argvSeenByRun({ settingSources: ["project"], settings: { model: "claude-haiku-4-5" } });
+
+    expect(JSON.parse(flagValue(argv, "--settings") ?? "null")).toEqual({
+      disableAllHooks: true,
+      model: "claude-haiku-4-5",
+    });
+  }, 30_000);
+
+  it("control: a host that asks for the hooks gets them", async () => {
+    // BP-035, the off state: the host's own key wins over the default.
+    const argv = await argvSeenByRun({ settingSources: ["project"], settings: { disableAllHooks: false } });
+
+    expect(JSON.parse(flagValue(argv, "--settings") ?? "null")).toEqual({ disableAllHooks: false });
   }, 30_000);
 });
 

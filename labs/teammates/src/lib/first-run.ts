@@ -5,7 +5,7 @@
  */
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { displayName, roleOf, takesTasks } from "./roster";
+import { displayName, takesTasks } from "./roster";
 
 /** The workers `worker` hands work to, by name: its declared delegates, from the roster as read. */
 export function delegatesOf(worker: RosterEntry, workers: readonly RosterEntry[], context: AppContext | undefined): RosterEntry[] {
@@ -22,7 +22,7 @@ function spoken(names: readonly string[]): string {
 
 /** The empty conversation's sentence: who the worker is, and who it hands work to when it has delegates. */
 export function emptyLine(worker: RosterEntry, delegates: readonly RosterEntry[]): string {
-  if (delegates.length === 0) return `Say hello to ${displayName(worker)}. This is your one conversation with it.${roleOf(worker) === "" ? "" : ` ${roleOf(worker)}`}`;
+  if (delegates.length === 0) return `Say hello to ${displayName(worker)}. This is your one conversation with it.${worker.description ? ` ${worker.description}` : ""}`;
   const talkers = delegates.filter((w) => !takesTasks(w)).map(displayName);
   const coders = delegates.filter(takesTasks).map(displayName);
   const parts = [

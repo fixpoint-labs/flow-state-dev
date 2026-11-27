@@ -52,8 +52,8 @@ export const result = (id: string, requestId: string, value: Record<string, unkn
 /** A board pass's task change: a record, drawn as nothing. */
 export const boardPass = (id: string, requestId: string) => data(id, requestId, "task-change", { task: { id: "t1", status: "pending" } });
 
-/** A user's approval stop, and its answer. */
-export const approval = (id: string, requestId: string, suspensionId: string, text: string) => ({ ...base(id, requestId), type: "suspension", reason: "user_approval", suspensionId, message: text });
+/** A user's approval stop (under `reason`, the current one unless a test reads a stored older one), and its answer. */
+export const approval = (id: string, requestId: string, suspensionId: string, text: string, reason = "user_approval") => ({ ...base(id, requestId), type: "suspension", reason, suspensionId, message: text });
 export const answered = (id: string, requestId: string, suspensionId: string, resolution: string) => ({ ...base(id, requestId), type: "suspension_resume", suspensionId, resolution });
 
 /** `items`' lines, as the model reads them with `turns` and the lab's registry, as the lab reads them. */

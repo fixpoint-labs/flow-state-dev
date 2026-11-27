@@ -28,8 +28,7 @@ export function createInitContributions(opts: {
     inputSchema: roundRobinInputSchema,
     resources: { [accessor]: opts.contributions },
     execute: async (_input, ctx) => {
-      // TODO: computed-key resource accessor — see round-robin follow-up
-      await (ctx.resources as any)[accessor].setState({
+      await ctx.resources[accessor].setState({
         entries: [],
       });
       // Materialize the collection so its `tasks` slot exists in

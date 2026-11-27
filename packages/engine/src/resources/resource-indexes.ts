@@ -23,8 +23,10 @@
  * store without index verbs is not asked: the caller scans instead.
  *
  * **The check** ({@link admitIndexedCollections}) runs when a flow registers:
- * one index name at two versions on overlapping patterns in one scope is
- * refused, because the two would keep clearing each other's build. Functions
+ * one index name at two versions on overlapping patterns in one cell of a
+ * scope is refused, because the two would keep clearing each other's build.
+ * Collections isolated to their flows sit in different cells and are never
+ * compared. Functions
  * cannot be compared, so name and version are the identity.
  *
  * The rule the store keeps is on `ResourceStateIndexes` (`stores/types.ts`);
@@ -61,6 +63,13 @@ export interface IndexedCollection {
   flowId: string;
   /** The cell its flow keeps `key` in (see {@link cellOfWrite}), by that flow's routing. */
   cellOf(key: string): string;
+  /**
+   * The cell the collection itself is declared into: `flow:<id>` when it is
+   * isolated to its flow, else `shared` (user and org) or `session`. Two
+   * declarations in different cells never touch the same rows, so the startup
+   * check never compares them.
+   */
+  declaredCell: string;
 }
 
 /** A flow as the index declarations read it. */
@@ -120,6 +129,20 @@ function cellRouterOf(flow: IndexedFlow, scope: IndexedCollection["scope"]): (ke
   return (key) => ((resolveOwnershipFlag(buckets, key) ?? fallback) ? `flow:${flow.id}` : "shared");
 }
 
+/**
+ * The cell a collection is declared into. A session copy has no isolation, so
+ * every flow declaring a session pattern declares into the one copy reach
+ * writes; at user and org scope the resolved isolation decides.
+ */
+function declaredCellOf(
+  flow: IndexedFlow,
+  scope: IndexedCollection["scope"],
+  flowIsolation: boolean | undefined
+): string {
+  if (scope === "session") return "session";
+  return resolveResourceIsolation(flowIsolation, toIsolationFlow(flow), scope) ? `flow:${flow.id}` : "shared";
+}
+
 /** The indexed collections among a flow's resources. */
 function indexedCollectionsOf(flow: IndexedFlow): IndexedCollection[] {
   const out: IndexedCollection[] = [];
@@ -135,6 +158,7 @@ function indexedCollectionsOf(flow: IndexedFlow): IndexedCollection[] {
       indexes,
       flowId: flow.id,
       cellOf: cellRouterOf(flow, config.scope),
+      declaredCell: declaredCellOf(flow, config.scope, (entry as { flowIsolation?: boolean }).flowIsolation),
     });
   }
   return out;
@@ -142,9 +166,11 @@ function indexedCollectionsOf(flow: IndexedFlow): IndexedCollection[] {
 
 /**
  * The startup check, for one registration. Throws when the incoming flow
- * declares an index name at a version another declaration in the same scope,
- * on a pattern that can reach the same keys, declares differently, whether
- * that declaration is the incoming flow's own or one already admitted.
+ * declares an index name at a version another declaration in the same scope
+ * and cell, on a pattern that can reach the same keys, declares differently,
+ * whether that declaration is the incoming flow's own or one already admitted.
+ * Declarations in different cells (one isolated to its flow) are separate
+ * data and are never compared.
  *
  * @returns every indexed collection the registry holds once this flow is
  * admitted. Kept for good, like the owner-key fence's declarations: the rows
@@ -159,7 +185,8 @@ export function admitIndexedCollections(
   const all = [...known];
   for (const collection of added) {
     for (const prior of all) {
-      if (prior.scope !== collection.scope || !patternsReach(prior.pattern, collection.pattern)) continue;
+      if (prior.scope !== collection.scope || prior.declaredCell !== collection.declaredCell) continue;
+      if (!patternsReach(prior.pattern, collection.pattern)) continue;
       for (const index of collection.indexes) {
         const clash = prior.indexes.find((other) => other.name === index.name && other.version !== index.version);
         if (clash === undefined) continue;

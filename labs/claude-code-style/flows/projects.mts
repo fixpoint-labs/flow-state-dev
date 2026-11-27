@@ -22,8 +22,8 @@ export { PROJECTS_FLOW };
  * use is refused when it is made, and the `checkRepository` view answers the
  * picker first, with no session.
  */
-export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck } = {}) {
-  const projects = defineProjectBlocks(options.checkRepository === undefined ? {} : { checkRepository: options.checkRepository });
+export function defineProjectsFlow({ checkRepository }: { checkRepository?: RepositoryCheck } = {}) {
+  const projects = defineProjectBlocks({ checkRepository });
   return defineFlow({
     kind: PROJECTS_FLOW,
     // Your pins and dismissals: declared on a flow the host serves, as every resource is, so the
@@ -33,6 +33,6 @@ export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck 
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,
     },
-    views: { ...projects.views },
-  } as never);
+    views: projects.views,
+  });
 }
