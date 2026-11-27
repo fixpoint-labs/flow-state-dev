@@ -32,10 +32,10 @@ let lastOut: unknown;
 
 const seed = handler({
   name: "seed",
-  inputSchema: z.object({ rows: z.array(z.object({ key: z.string(), text: z.string(), status: z.string().optional() })) }),
+  inputSchema: z.object({ entries: z.array(z.object({ key: z.string(), text: z.string(), status: z.string().optional() })) }),
   outputSchema: z.object({}),
-  execute: async ({ rows }, ctx) => {
-    for (const row of rows) await (ctx.resources as any).notes.create(row.key, { text: row.text, ...(row.status ? { status: row.status } : {}) });
+  execute: async ({ entries }, ctx) => {
+    for (const entry of entries) await (ctx.resources as any).notes.create(entry.key, { text: entry.text, ...(entry.status ? { status: entry.status } : {}) });
     return {};
   }
 });
@@ -69,10 +69,10 @@ async function boot() {
   const seedIn = async (
     flow: typeof alpha | typeof vault,
     sessionId: string,
-    rows: Array<{ key: string; text: string; status?: string }>,
+    entries: Array<{ key: string; text: string; status?: string }>,
     who: Record<string, unknown> = as("alice")
   ) => {
-    const result = await runAction({ flow, actionName: "seed", input: { rows }, sessionId, stores, runtimeConfig, ...(who as ReturnType<typeof as>) });
+    const result = await runAction({ flow, actionName: "seed", input: { entries }, sessionId, stores, runtimeConfig, ...(who as ReturnType<typeof as>) });
     expect(result.error).toBeUndefined();
   };
   /** Run `fn` as a block in alice's session `a` and return what it got back. */
@@ -132,8 +132,8 @@ const listAll: Op = async (ctx) => {
   let after: string | undefined;
   for (let pages = 0; pages < 20; pages += 1) {
     const page = await ctx.resources.acrossSessions().notes.list(after === undefined ? {} : { after });
-    sizes.push(page.rows.length);
-    for (const row of page.rows) lines.push(`${row.session} ${row.key} ${row.value.text}`);
+    sizes.push(page.entries.length);
+    for (const entry of page.entries) lines.push(`${entry.session} ${entry.key} ${entry.value.text}`);
     if (page.next === undefined) return { lines, sizes };
     after = page.next;
   }
@@ -199,21 +199,21 @@ describe("ctx.resources.acrossSessions()", () => {
     // Sixty rows of a session the read refuses (its flow resolves its own callers) sort first.
     await env.seedIn(vault, "a-vault", Array.from({ length: 60 }, (_, i) => ({ key: `secret-${String(i).padStart(2, "0")}`, text: "vaulted" })));
     await env.seedIn(beta, "b", [{ key: "1", text: "theirs" }]);
-    const pages: Array<{ rows: number; next?: string }> = [];
+    const pages: Array<{ entries: number; next?: string }> = [];
     const out = await env.reachFrom(async (ctx) => {
       let after: string | undefined;
       const lines: string[] = [];
       for (let i = 0; i < 10; i += 1) {
         const page = await ctx.resources.acrossSessions().notes.list(after === undefined ? {} : { after });
-        pages.push({ rows: page.rows.length, ...(page.next !== undefined ? { next: page.next } : {}) });
-        lines.push(...page.rows.map((row: { session: string; key: string }) => `${row.session} ${row.key}`));
+        pages.push({ entries: page.entries.length, ...(page.next !== undefined ? { next: page.next } : {}) });
+        lines.push(...page.entries.map((entry: { session: string; key: string }) => `${entry.session} ${entry.key}`));
         if (page.next === undefined) break;
         after = page.next;
       }
       return lines;
     });
     expect(out).toEqual({ ok: ["b notes/1"] });
-    expect(pages[0]).toMatchObject({ rows: 0 });
+    expect(pages[0]).toMatchObject({ entries: 0 });
     expect(pages[0]!.next).toBeTypeOf("string");
     expect(pages.at(-1)!.next).toBeUndefined();
     for (const page of pages) {
@@ -231,7 +231,7 @@ describe("ctx.resources.acrossSessions()", () => {
       const reused = await ctx.resources.acrossSessions().notes.list({ after: first.next, where: { index: "byStatus", value: "open" } }).catch((e: Error) => e.name);
       const forged = await ctx.resources.acrossSessions().notes.list({ after: "not-a-cursor" }).catch((e: Error) => e.name);
       const second = await ctx.resources.acrossSessions().notes.list({ after: first.next });
-      return { reused, forged, second: second.rows.length };
+      return { reused, forged, second: second.entries.length };
     });
     expect(out).toEqual({ ok: { reused: "AcrossSessionsCursorError", forged: "AcrossSessionsCursorError", second: 5 } });
   });
@@ -245,8 +245,8 @@ describe("ctx.resources.acrossSessions()", () => {
       const byKey = await across.list({ where: { key: "notes/t1" } });
       const done = await across.list({ where: { index: "byStatus", value: "done" } });
       return {
-        byKey: byKey.rows.map((r: { session: string; value: { text: string } }) => `${r.session} ${r.value.text}`),
-        done: done.rows.map((r: { session: string; value: { text: string } }) => `${r.session} ${r.value.text}`)
+        byKey: byKey.entries.map((r: { session: string; value: { text: string } }) => `${r.session} ${r.value.text}`),
+        done: done.entries.map((r: { session: string; value: { text: string } }) => `${r.session} ${r.value.text}`)
       };
     });
     expect(out).toEqual({ ok: { byKey: ["a a1", "b b1"], done: ["a a1", "b b2"] } });

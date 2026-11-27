@@ -572,11 +572,11 @@ export type ResourceRegistry<
   /**
    * This run's session-scoped collections read across every session the
    * run's owner has: `ctx.resources.acrossSessions().notes.list()`. One store
-   * query a page, each row with the session it belongs to. Read-only.
+   * query a page, each entry with the session it belongs to. Read-only.
    *
    * A session is answered only when `ctx.resources.at` would reach it: the
    * same owner (user, organization and tenant) and the same admission. Any
-   * other session's rows are left out, as though it held none. A turn a
+   * other session's entries are left out, as though it held none. A turn a
    * webhook delivery started can't call it.
    *
    * In a view, the read is heard on the owner's change topic for each
@@ -598,10 +598,10 @@ export type AcrossSessions<TResources extends Record<string, AnyResourceRef>> = 
 /** One collection read across the owner's sessions. */
 export interface AcrossSessionsCollection<TState extends JsonObject = JsonObject> {
   /**
-   * One page of the collection's rows, ordered by session, then by path. Pass
+   * One page of the collection's entries, ordered by session, then by path. Pass
    * the previous page's `next` as `after` for the next one; the listing ends
    * only when `next` is absent. A page can be short, even empty, while `next`
-   * is set: rows of a session the caller isn't answered are read and dropped.
+   * is set: entries of a session the caller isn't answered are read and dropped.
    *
    * @throws When `where.index` names an index the collection doesn't declare.
    */
@@ -609,7 +609,7 @@ export interface AcrossSessionsCollection<TState extends JsonObject = JsonObject
 }
 
 /**
- * What `list` reads: after a page's cursor, and filtered by the row's key
+ * What `list` reads: after a page's cursor, and filtered by the entry's key
  * (its path, one row a session) or by a declared index's value. No other filter: a
  * field filters only through an index the collection declares.
  */
@@ -619,19 +619,19 @@ export type AcrossSessionsListQuery = {
   where?: { key: string } | { index: string; value: ResourceIndexValue };
 };
 
-/** One row read across sessions: the session it belongs to, its path there, and its state. */
-export type AcrossSessionsRow<TState extends JsonObject = JsonObject> = {
+/** One entry read across sessions: the session it belongs to, its path there, and its state. */
+export type AcrossSessionsEntry<TState extends JsonObject = JsonObject> = {
   /** The session's id, as `ctx.resources.at({ session })` takes it. */
   readonly session: string;
-  /** The row's storage path in that session, as `ResourceRef.path` names it. */
+  /** The entry's storage path in that session, as `ResourceRef.path` names it. */
   readonly key: string;
   readonly value: Readonly<TState>;
 };
 
 /** One page of {@link AcrossSessionsCollection.list}. */
 export type AcrossSessionsPage<TState extends JsonObject = JsonObject> = {
-  readonly rows: readonly AcrossSessionsRow<TState>[];
-  /** An opaque cursor, while more rows may remain. It names no row. */
+  readonly entries: readonly AcrossSessionsEntry<TState>[];
+  /** An opaque cursor, while more entries may remain. It names no entry. */
   readonly next?: string;
 };
 

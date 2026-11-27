@@ -275,7 +275,7 @@ export type {
   AcrossSessionsCollection,
   AcrossSessionsListQuery,
   AcrossSessionsPage,
-  AcrossSessionsRow,
+  AcrossSessionsEntry,
   ResourceCanWrite,
   ResourceRunBy,
   ResourceWriteCheck,

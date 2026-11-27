@@ -830,10 +830,10 @@ A screen of every task in a user's sessions reads one collection across all of t
 
 ```ts
 const page = await ctx.resources.acrossSessions().notes.list({ after })
-// page.rows: [{ session, key, value }] · page.next: a cursor, while more may remain
+// page.entries: [{ session, key, value }] · page.next: a cursor, while more may remain
 ```
 
-`acrossSessions()` returns the same session-scoped, stored collections `at()` does, each with one verb, `list`. Each row carries the bare id of the session it belongs to (what `at({ session })` takes) and its storage path there (`key`, as `ResourceRef.path` names it). It is callable from any block, a view's included; a turn a webhook delivery started is refused with `UntrustedReachError`, as `at` is. The module is `context/across-sessions.ts`.
+`acrossSessions()` returns the same session-scoped, stored collections `at()` does, each with one verb, `list`. Each entry carries the bare id of the session it belongs to (what `at({ session })` takes) and its storage path there (`key`, as `ResourceRef.path` names it). It is callable from any block, a view's included; a turn a webhook delivery started is refused with `UntrustedReachError`, as `at` is. The module is `context/across-sessions.ts`.
 
 **One query a page, split owner rule.** The store answers a page with `ResourceStateStore.listAcrossSessions`: the collection's live rows under its prefix, in every session the owner holds (any parentage), joined to the sessions table on user, tenant and organization, ordered by the session's storage key and then the row's key, both in byte order. SQLite and Postgres answer it in one statement over an owner index on `sessions` (`idx_sessions_owner`, plus `idx_sessions_tenant_owner` on Postgres, where `IS NULL` is no equality for sort order) and the primary key's range on `resource_state`; memory and filesystem walk the owner's sessions. The rows also carry each session's owner and flow columns, and the engine then admits every session the page holds with the very admission `at` makes (`namedRecordAdmission` in `named-session.ts`), on those columns, so a page costs no session read. A session it refuses is left out exactly as one holding nothing. A view's run has no session of its own; its principal's kind and resolver come from the view route's door, as an action's do.
 

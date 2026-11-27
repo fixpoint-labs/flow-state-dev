@@ -35,7 +35,7 @@ import {
   type AcrossSessionsCollection,
   type AcrossSessionsListQuery,
   type AcrossSessionsPage,
-  type AcrossSessionsRow,
+  type AcrossSessionsEntry,
   type JsonObject,
   type ResourceCollectionConfig
 } from "@flow-state-dev/core/types";
@@ -134,7 +134,7 @@ type Filter =
 function filterOf(config: ResourceCollectionConfig, where: AcrossSessionsListQuery["where"]): Filter {
   if (where === undefined) return { kind: "none" };
   if ("key" in where) {
-    if (typeof where.key !== "string" || where.key.length === 0) throw new TypeError("`where.key` is a row's key, as a row read across sessions names it");
+    if (typeof where.key !== "string" || where.key.length === 0) throw new TypeError("`where.key` is an entry's key, as an entry read across sessions names it");
     return { kind: "key", key: where.key };
   }
   const index = declaredIndexes(config).find((declared) => declared.name === where.index);
@@ -185,7 +185,7 @@ async function listPage(
   }
   // Heard however few rows it answers: a row filed later, in any session, is a change to it.
   inputs.record?.(config);
-  if (filter.kind === "index" && filter.value === undefined) return { rows: [] };
+  if (filter.kind === "index" && filter.value === undefined) return { entries: [] };
   const { owner } = inputs;
   const binding = JSON.stringify([owner.userId, owner.orgId ?? null, owner.tenantId ?? null, config.pattern, filter.kind === "key" ? filter.key : filter.kind === "index" ? [filter.stored, filter.value] : null]);
   const after = query?.after === undefined ? undefined : openCursor(query.after, binding);
@@ -209,17 +209,17 @@ async function listPage(
     }
     return verdict;
   };
-  const rows: AcrossSessionsRow<JsonObject>[] = [];
-  for (const row of page) {
-    if (!matchesPattern(config.pattern, row.key)) continue;
-    if (!ownerKeyAdmits(config, row.key, inputs.actorUserId)) continue;
-    if (filter.kind === "index" && !filter.check(row.key, row.state)) continue;
-    if (!(await admitted(row.sessionKey, row.session))) continue;
-    rows.push(
+  const entries: AcrossSessionsEntry<JsonObject>[] = [];
+  for (const read of page) {
+    if (!matchesPattern(config.pattern, read.key)) continue;
+    if (!ownerKeyAdmits(config, read.key, inputs.actorUserId)) continue;
+    if (filter.kind === "index" && !filter.check(read.key, read.state)) continue;
+    if (!(await admitted(read.sessionKey, read.session))) continue;
+    entries.push(
       Object.freeze({
-        session: toBareSessionId(row.sessionKey, owner.tenantId),
-        key: row.key,
-        value: Object.freeze(cloneValue(row.state)) as JsonObject
+        session: toBareSessionId(read.sessionKey, owner.tenantId),
+        key: read.key,
+        value: Object.freeze(cloneValue(read.state)) as JsonObject
       })
     );
   }
@@ -227,6 +227,6 @@ async function listPage(
   // so paging neither stalls on dropped rows nor skips the rows after them.
   const last = page.at(-1);
   return stored.length > ACROSS_SESSIONS_PAGE && last !== undefined
-    ? { rows, next: sealCursor({ sessionKey: last.sessionKey, key: last.key }, binding) }
-    : { rows };
+    ? { entries, next: sealCursor({ sessionKey: last.sessionKey, key: last.key }, binding) }
+    : { entries };
 }

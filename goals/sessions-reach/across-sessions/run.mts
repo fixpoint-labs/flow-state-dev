@@ -159,7 +159,7 @@ const board = handler({
     for (;;) {
       const page = await (ctx.resources as any).acrossSessions().notes.list(after === undefined ? {} : { after });
       out.pages += 1;
-      for (const r of page.rows) out.rows.push(`${r.session} ${r.key} ${r.value.text}`);
+      for (const entry of page.entries) out.rows.push(`${entry.session} ${entry.key} ${entry.value.text}`);
       if (page.next === undefined) return out;
       out.cursors.push(page.next);
       after = page.next;

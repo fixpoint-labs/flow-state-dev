@@ -238,8 +238,8 @@ views.across_user = defineView({
     outputSchema: out,
     resources,
     execute: async (_input, ctx) => ({
-      v: ((await (ctx.resources as any).acrossSessions().across.list()).rows as Array<{ session: string; value: { v: string } }>)
-        .map((row) => `${row.session}=${row.value.v}`)
+      v: ((await (ctx.resources as any).acrossSessions().across.list()).entries as Array<{ session: string; value: { v: string } }>)
+        .map((entry) => `${entry.session}=${entry.value.v}`)
         .join(",")
     })
   })

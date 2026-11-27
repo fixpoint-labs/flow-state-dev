@@ -43,10 +43,10 @@ function desk(): FlowInstance {
   const board = handler({
     name: "board",
     inputSchema: z.object({}),
-    outputSchema: z.object({ rows: z.array(z.string()) }),
+    outputSchema: z.object({ entries: z.array(z.string()) }),
     execute: async (_input, ctx) => {
       const page = await (ctx.resources as any).acrossSessions().notes.list();
-      return { rows: page.rows.map((row: { session: string; value: { text: string } }) => `${row.session} ${row.value.text}`) };
+      return { entries: page.entries.map((entry: { session: string; value: { text: string } }) => `${entry.session} ${entry.value.text}`) };
     }
   });
   return defineFlow({
@@ -93,7 +93,7 @@ function boot() {
   const view = async (user = "alice", org = "acme") => {
     const res = await post(router, ["desk", "views", "board"], user, org, { input: {} });
     expect(res.status, res.body).toBe(200);
-    return JSON.parse(res.body) as { output: { rows: string[] }; hears: ViewHearing[] };
+    return JSON.parse(res.body) as { output: { entries: string[] }; hears: ViewHearing[] };
   };
   /** Every notice on `owner`'s change topic for `notes`, as the bus delivers it. */
   const hear = (userId: string, orgId: string) => {
@@ -113,7 +113,7 @@ describe("a user view reading across sessions", () => {
     await env.file("s2", "1", "second");
     await env.file("bob-s", "1", "bob's", "bob");
     const answer = await env.view();
-    expect(answer.output.rows).toEqual(["s1 first", "s2 second"]);
+    expect(answer.output.entries).toEqual(["s1 first", "s2 second"]);
     const changeTopic = answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource !== undefined);
     expect(changeTopic).toEqual({ topic: { scope: "user", resource: "/sessions/notes" }, kinds: ["resource"], paths: ["/sessions/notes"] });
   });
@@ -135,7 +135,7 @@ describe("a user view reading across sessions", () => {
     // The notice, as the socket delivers it, is one the answer's hearing hears.
     const wire = { topic: { scope: "user" as const, resource: "/sessions/notes" }, kind: "resource" as const };
     expect(hearsNotice(before.hears, wire)).toBe(true);
-    expect((await env.view()).output.rows).toEqual(["made-later late", "s1 first"]);
+    expect((await env.view()).output.entries).toEqual(["made-later late", "s1 first"]);
   });
 
   it("never publishes a write by the same user in another org on this owner's topic", async () => {
@@ -146,6 +146,6 @@ describe("a user view reading across sessions", () => {
     await settle();
     expect(acme).toEqual([]);
     expect(globex.length).toBeGreaterThan(0);
-    expect((await env.view()).output.rows).toEqual([]);
+    expect((await env.view()).output.entries).toEqual([]);
   });
 });
