@@ -123,13 +123,11 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessBlock,
+  HarnessFeeds,
   HarnessResolver,
   HarnessRunHandle,
   HarnessRunInput,
-  HarnessSessionHook,
-  HarnessSteerHook,
-  HarnessEventHook,
-  HarnessUsageHook,
+  HarnessToolApprovalHook,
 } from "@flow-state-dev/core/harness";
 import { readRequestTotalSpend, requestHostOf } from "@flow-state-dev/core/internal";
 import {
@@ -155,6 +153,7 @@ import {
   runCommandChecks,
   type CommandCheckOptions,
 } from "./command-check";
+import { worktreesOf } from "./workspace";
 import { assertPositiveInt } from "./guards";
 import { DEFAULT_IDLE_TIMEOUT_MS, resolveRunCap, runStops, type RunStops } from "./run-stops";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
@@ -166,7 +165,6 @@ import {
   toolApprovalOutcome,
   toolApprovalStop,
   toolApprovalStateSchema,
-  type HarnessToolApprovalHook,
   type HeldToolCall,
 } from "./tool-approval";
 
@@ -395,12 +393,6 @@ export interface HarnessSessionWorkspace {
   recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by?: WorktreeOwner }): Promise<unknown>;
 }
 
-/** The user's worktree rows off a block's context, when the flow has them. */
-function worktreesOf(ctx: { resources?: unknown }): WorktreeCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
-  return typeof collection?.upsert === "function" ? collection : undefined;
-}
-
 /** The session a start attaches to, when it attaches (`{ worktreeOf }`). */
 export function harnessSessionAttachedTo(start: HarnessSessionStart | undefined): string | null {
   return start !== undefined && "worktreeOf" in start ? start.worktreeOf : null;
@@ -433,55 +425,6 @@ export async function resolveHarnessSessionStart(
   return { branch: head.branch };
 }
 
-/** What the session flow hands a harness block. Spread all but `worktree` into its options. */
-export interface HarnessSessionFeeds {
-  /** The session's working directory, provisioned on the first turn and handed back after. */
-  readonly cwd: HarnessResolver<string>;
-  /** The conversation the session is bound to, or `null` on its first turn. */
-  readonly resume: HarnessResolver<string | null>;
-  /** Records the conversation the harness confirmed. */
-  readonly onSession: HarnessSessionHook;
-  /**
-   * The model this run uses: the session's pick, or the flow's default for a
-   * session stored before models could be picked. `undefined` leaves the
-   * harness on its own default.
-   */
-  readonly model: HarnessResolver<string | undefined>;
-  /**
-   * Where the session's working directory is, for a fence that names it (a
-   * sandbox's writable paths). Its real path once `cwd` has provisioned it.
-   */
-  readonly worktree: HarnessResolver<string>;
-  /**
-   * Holds the steer a running turn's harness offers, for the `steer` action.
-   * A harness that can't take a line in flight never calls it.
-   */
-  readonly onSteerable: HarnessSteerHook;
-  /**
-   * Records a subscription window the harness heard about during the run in
-   * the person's usage record, which a host serves with `harnessUsageFlow`.
-   * A harness whose vendor sends none never calls it.
-   */
-  readonly onUsage: HarnessUsageHook;
-  /**
-   * Called by a harness that asks about each tool call before it runs, with
-   * the call; it answers allow, deny or held. Handed only when the flow is
-   * built with `approveTools`; absent otherwise. A held call stops the turn,
-   * waits on the user, and the conversation resumes with the answer.
-   * Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a harness
-   * that spreads the feeds passes it on. A harness that can't ask per call
-   * ignores it.
-   */
-  readonly onToolApproval?: HarnessToolApprovalHook;
-  // FIX-2794.
-  /**
-   * Called by the harness on every event its run sends: each one starts the
-   * turn's silence window (`idleTimeoutMs`) again. A harness that never calls
-   * it is stopped once that window has passed, however busy it is.
-   */
-  readonly onEvent?: HarnessEventHook;
-}
-
 /** What the `changes` read takes: the turn, by its request id, and optionally one file. */
 export const harnessTurnChangesInputSchema = z.object({
   /** The turn's request id, as its record is keyed in `state.turns`. */
@@ -497,7 +440,7 @@ export interface HarnessSessionFlowOptions {
   /** Where sessions work. */
   readonly workspace: HarnessSessionWorkspace;
   /** Build the harness block from the feeds. */
-  readonly agent: (feeds: HarnessSessionFeeds) => HarnessBlock;
+  readonly agent: (feeds: HarnessFeeds) => HarnessBlock;
   /**
    * The model a session with none runs on (one stored before models could be
    * picked). Unset, the harness runs its own default.
@@ -672,7 +615,7 @@ export function harnessSessionFeeds(
   steering: HarnessSteering = harnessSteering(),
   inUse?: Map<string, LockLease>,
   attachedHeads: Map<string, string | null> = new Map(),
-): HarnessSessionFeeds {
+): HarnessFeeds {
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     // The person running the turn is the principal, so the window lands in their row.
@@ -793,7 +736,7 @@ export function harnessSessionFeeds(
  *   harnessSessionFlow({
  *     kind: "claude-code-session",
  *     workspace,
- *     agent: (feeds) => claudeCodeAgent({ ...feeds, permissionMode: "bypassPermissions" }),
+ *     agent: (feeds) => claudeCodeAgent({ ...feeds, permissionMode: "acceptEdits" }),
  *   });
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
@@ -816,7 +759,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // fails still hands the directory back, so it is kept for the turn and retried on the next
   // turn, not within this one. The entry goes when the turn lets its worktree go.
   const turnCwds = new Map<string, Promise<string>>();
-  const feeds: HarnessSessionFeeds = {
+  const feeds: HarnessFeeds = {
     ...sessionFeeds,
     onEvent: (ctx) => deadlines.heard(ctx),
     cwd: (ctx) => {

@@ -20,7 +20,7 @@ describe("acceptOf", () => {
 describe("reviewStopIdOf", () => {
   // Each review round is one stop: a run sent back, or a landing retried, stops under a new id.
   it("names the latest review stop, so a new round is told apart from the one an accept answered", () => {
-    const stop = (id: string) => ({ id, type: "suspension", kind: "review", data: null }) as unknown as Parameters<typeof reviewStopIdOf>[0][number];
+    const stop = (id: string) => ({ id: `item-${id}`, type: "suspension", suspensionId: id, kind: "review", data: null }) as unknown as Parameters<typeof reviewStopIdOf>[0][number];
     expect(reviewStopIdOf([stop("stop-1")])).toBe("stop-1");
     expect(reviewStopIdOf([stop("stop-1"), stop("stop-2")])).toBe("stop-2");
     expect(reviewStopIdOf([])).toBeUndefined();

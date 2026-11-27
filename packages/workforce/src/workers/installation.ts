@@ -60,8 +60,10 @@ import {
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
+  TASK_TITLE_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
+  WORKER_NAME_STATE_KEY,
   WORKSTREAM_STATE_KEY,
   WORK_PROJECT_STATE_KEY
 } from "./keys";
@@ -685,6 +687,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // another project's files (BP-031).
     for (const key of [
       TASK_ID_STATE_KEY,
+      TASK_TITLE_STATE_KEY,
       FILING_FLOW_STATE_KEY,
       FILING_WORKER_STATE_KEY,
       TASK_CHAIN_STATE_KEY,
@@ -710,6 +713,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           message: `"${key}" is written only by the server, when the session opens or a task is handed over; a caller cannot set it.`
         };
       }
+    }
+    // The worker's name is this check's to write, from the worker it reads below (FIX-2881), so it is
+    // refused on every path, a dispatch's included. `taskTitle` is the hand-over's, refused above off it.
+    if (input.state[WORKER_NAME_STATE_KEY] !== undefined) {
+      return { ok: false, status: 400, message: `"${WORKER_NAME_STATE_KEY}" is written from the worker when the session is created; no create can set it.` };
     }
     // A conversation's delegate session is opened only by the coordinator's
     // delivery, a dispatch into a child of the conversation. A caller naming
@@ -758,9 +766,17 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(found.flow, false)}.` };
     }
     const project = input.state[PROJECT_STATE_KEY];
-    if (typeof project === "string") return projectLinkCheck(input, workerId, project);
     const workstream = input.state[WORKSTREAM_STATE_KEY];
-    return typeof workstream === "string" ? workstreamLinkCheck(input, workerId, workstream) : { ok: true };
+    const linked =
+      typeof project === "string"
+        ? await projectLinkCheck(input, workerId, project)
+        : typeof workstream === "string"
+          ? await workstreamLinkCheck(input, workerId, workstream)
+          : ({ ok: true } as const);
+    if (!linked.ok) return linked;
+    // The name a reader calls the session by, from the worker just read: a label reads only the session (FIX-2881).
+    const name = found.found === "own" ? found.row.name : workerDisplayName(found.manifest);
+    return name === null || name.length === 0 ? { ok: true } : { ok: true, state: { [WORKER_NAME_STATE_KEY]: name } };
   };
 
   /**
@@ -888,12 +904,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const collection = workerCollection(ctx, "resolveWorker");
-    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
-    if (found.found === "none") {
-      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+    const worker = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (worker.found === "none") {
+      return refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
     }
-    if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
-    const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
+    if (worker.found === "unreadable") return refuse(`Worker "${workerId}" can't run: ${worker.problem}.`);
     const flow = worker.flow;
     if (flow !== flowKind) {
       refuse(
@@ -907,8 +922,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (worker.found === "own") {
       if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
       const built = manifestOfRow(workerId, worker.row);
-      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
-      manifest = (built as { manifest: WorkerManifest }).manifest;
+      if (!built.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
+      manifest = built.manifest;
       description = worker.row.description;
     } else {
       manifest = worker.manifest;
@@ -917,8 +932,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const minted = mint(manifest);
-    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
-    const instance = (minted as { worker: FlowInstance }).worker;
+    if (!minted.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
+    const instance = minted.worker;
     const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
@@ -929,8 +944,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
-    noteTaskInputSource(ctx.session as object, taskInputSource);
+    markVerifiedWorker(ctx.session, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    noteTaskInputSource(ctx.session, taskInputSource);
     return {
       id: workerId,
       standard: worker.found === "standard",
@@ -1017,19 +1032,20 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   };
 
   /**
-   * What a reader calls a worker session: its worker's name, and the task it
-   * was opened for when it was. A standard worker's name is its file's
-   * `name:`; a hired worker's is on its owner's roster, which a label cannot
-   * read, so it reads as its id. Both fields are readonly, so the session
-   * shows them.
+   * What a reader calls a worker session: its worker's name, and the title of
+   * the task it was opened for when it was. Both are written when the session
+   * is born (the name by the create check, the title by the hand-over), so the
+   * label reads only the session. A session born before they were falls back
+   * to a standard worker's file `name:`, then to the ids.
    */
   const workerSessionLabel: SessionLabel = ({ state }) => {
     const workerId = state[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string") return undefined;
-    const found = standard.get(workerId);
-    const worker = (found === undefined ? null : workerDisplayName(found)) ?? workerId;
-    const taskId = state[TASK_ID_STATE_KEY];
-    return typeof taskId === "string" ? `${worker} · ${taskId}` : worker;
+    const named = state[WORKER_NAME_STATE_KEY];
+    const file = standard.get(workerId);
+    const worker = typeof named === "string" ? named : ((file === undefined ? null : workerDisplayName(file)) ?? workerId);
+    const task = state[TASK_TITLE_STATE_KEY] ?? state[TASK_ID_STATE_KEY];
+    return typeof task === "string" ? `${worker} · ${task}` : worker;
   };
 
   const installation: WorkerInstallation = {
@@ -1048,7 +1064,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
           createCheck,
           serverOwned: SESSION_BOARD_SERVER_OWNED,
-          client: { expose: [WORK_PROJECT_STATE_KEY] },
+          client: { expose: [WORK_PROJECT_STATE_KEY, TASK_TITLE_STATE_KEY] },
           label: workerSessionLabel
         },
         sessionFields

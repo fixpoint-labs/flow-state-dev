@@ -172,16 +172,18 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
-  // The partition a resource-backed board reads and writes, checked before any storage.
-  const partition = options.backing === "resource" ? checkedPartition(options) : undefined;
+  // The engine returns the ledger declaration as the resource handle's config.
+  const config = options.backing === "resource" ? options.collection.config : undefined;
+  const ledger = isDefinedTaskCollection(config) ? config.__taskCollection : undefined;
+  const partition = options.backing === "resource" ? checkedPartition(options, ledger?.partitionBy !== undefined) : undefined;
 
   // A board notice for every committed write of a row, lifecycle change or not,
   // to the session that filed it (whose view shows the board); server-written
   // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
-  const legacyFiler = legacyFilerOf(options);
+  const legacyFiler = ledger?.delivery?.legacyFiler;
   const runningSession = (options.backing === "resource" ? options.readFor : undefined) ?? runningSessionOf(options.ctx)?.id;
   /** The session an entry's board notices go to: the one rule for the publish and for a view's read of the board. */
-  const filerOf = (task: Task): string | undefined => task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
+  const filerOf = (task: Task): string | undefined => task.filer?.sessionId ?? legacyFiler?.(task, partition) ?? runningSession;
   const onWrite = (task: Task): void => {
     const filer = filerOf(task);
     // Names the task (FIX-2625): the board's read hides no row from any reader of the session, so its id may go out.
@@ -241,20 +243,10 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     });
   }
 
-  // The ledger's ending recorder, read off the declaration the engine hands
-  // back as the handle's config, so every resolution of the ledger (a board's
-  // drain, a task entry's gate, the task tools) writes its endings through it.
-  const declared = options.collection.config;
-  const recordEnding = isDefinedTaskCollection(declared)
-    ? declared.__taskCollection.recordEnding
-    : undefined;
-  const settings = isDefinedTaskCollection(declared) ? declared.__taskCollection.settings : undefined;
-  // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
-  const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
+  const { recordEnding, settings, cascadeFiled: filed, delivery: declaredDelivery } = ledger ?? {};
   const ctx = options.ctx;
   // A ledger a board hands rows out from delivers each ending to its filer
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
-  const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
   const sessionId = runningSessionOf(ctx)?.id;
   // The engine's identity of the running request (FIX-2123), never input (BP-031).
   const requestId = ctx.request?.identity?.id;
@@ -320,24 +312,12 @@ function runningSessionOf(ctx: BlockContext): BlockContext["session"]["identity"
   }
 }
 
-/** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
-function legacyFilerOf(options: GetOrCreateTaskCollectionOptions): ((row: Task) => string | undefined) | undefined {
-  if (options.backing !== "resource") return undefined;
-  const declared = options.collection.config;
-  const legacy = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery?.legacyFiler : undefined;
-  return legacy === undefined ? undefined : (row) => legacy(row, options.partition);
-}
-
 /**
  * The partition a resource-backed resolution reads, checked against the
  * ledger's declaration: a partitioned ledger is never read whole, and an
  * unpartitioned one is never addressed by a partition.
  */
-function checkedPartition(options: ResourceBackingSpec): string | undefined {
-  // The engine hands back the declaration itself as the handle's config.
-  const declared = options.collection.config;
-  const partitioned =
-    isDefinedTaskCollection(declared) && declared.__taskCollection.partitionBy !== undefined;
+function checkedPartition(options: ResourceBackingSpec, partitioned: boolean): string | undefined {
   const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;
   if (partitioned && options.partition === undefined) {
     throw new Error(
@@ -447,7 +427,7 @@ function requestStateRef(
     // calls `state.state` to peek at the current tasks map (e.g. inside
     // the retry-on-fail branch). A frozen snapshot would silently desync.
     get state() {
-      return request.state as Record<string, unknown>;
+      return request.state;
     },
     input: undefined,
     patchState: request.patchState.bind(request),

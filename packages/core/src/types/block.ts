@@ -1469,26 +1469,17 @@ export type InferResourcesFromSchemas<T> =
     ? { [K in keyof z.infer<T>]: ResourceRef<z.infer<T>[K]> }
     : Record<string, ResourceRef<any>>;
 
-/**
- * Derive typed ResourceRef / ResourceCollectionRef records from a
- * `Record<string, DefinedResource | DefinedResourceCollection>`.
- * DefinedResource → ResourceRef, DefinedResourceCollection → ResourceCollectionRef.
- */
+// The projected branch must come first because it is also a defined collection.
+type ResourceRefFromDefinition<T> =
+  [T] extends [DefinedResourceCollection<infer S> & { projected: true }] ? ProjectedResourceCollectionRef<S>
+    : [T] extends [DefinedResourceCollection<infer S>] ? ResourceCollectionRef<S>
+    : [T] extends [DefinedResource<infer S>] ? ResourceRef<S>
+    : ResourceRef<JsonObject>;
+
+/** Derive each resource handle from its declaration, preserving optional entries. */
 export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DeclaredResourceEntry>
-    ? {
-        // All collection refs expose async reads regardless of prefetchMode
-        // — FIX-700 collapsed the eager/lazy type split. An `projected`-branded
-        // collection (FIX-858) resolves to the read-only ref, tested FIRST so
-        // the plain-collection branch doesn't swallow the narrower type.
-        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S> & { projected: true }
-          ? ProjectedResourceCollectionRef<S>
-          : T[K] extends DefinedResourceCollection<infer S>
-            ? ResourceCollectionRef<S>
-            : T[K] extends DefinedResource<infer S>
-              ? ResourceRef<S>
-              : ResourceRef<JsonObject>;
-      }
+    ? { [K in keyof T]: ResourceRefFromDefinition<Exclude<T[K], undefined>> }
     : Record<string, ResourceRef<any>>;
 
 /**
@@ -1506,7 +1497,7 @@ export type InferBlockResources<TSchemas, TDefs> =
  */
 export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
-    ? string extends keyof TSchemas
+    ? Record<string, ZodTypeAny> extends TSchemas
       // The open map (`BlockContext`'s default): any name, an untyped handle.
       ? Record<string, StateRef | undefined>
       : { [K in keyof TSchemas]: StateRef<z.infer<TSchemas[K]>> | undefined }

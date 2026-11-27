@@ -34,9 +34,9 @@ export type WorkingMemoryEntry = z.infer<typeof workingMemoryEntrySchema>
 /** Schema for the full working memory state. */
 export const workingMemoryStateSchema = z.object({
   /** All current entries in working memory. */
-  entries: z.array(workingMemoryEntrySchema),
+  entries: z.array(workingMemoryEntrySchema).default([]),
   /** The current interaction turn counter. Decay operates on turns, not wall-clock time. */
-  currentTurn: z.number().int().min(0),
+  currentTurn: z.number().int().min(0).default(0),
 })
 
 /** The full working memory state: entries + turn counter. */
@@ -54,7 +54,7 @@ export type WorkingMemoryState = z.infer<typeof workingMemoryStateSchema>
 export const workingMemoryResource = defineResource({
   scope: 'session',
   stateSchema: workingMemoryStateSchema,
-  default: { entries: [], currentTurn: 0 },
+  default: workingMemoryStateSchema.parse({}),
   writable: true,
 })
 

@@ -33,21 +33,21 @@
  */
 
 import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "./cas-retry";
 import { CHECK_REPOSITORY_VIEW, PROJECT_SETUP_VIEW } from "./project-keys";
 import {
+  PRIVATE_PROJECTS_RESOURCE,
   PROJECTS_RESOURCE,
   projectAddressSchema,
   projectIdProblem,
   projectResourceStateSchema,
   projectVisibilitySchema,
   type ProjectAddress,
-  type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
-import { projectAt, projectResourcesAt, PROJECT_ENTRY_RESOURCES } from "./project-address";
+import { projectAt, PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
@@ -239,15 +239,6 @@ export type ProjectBlocks = {
   connectorKeys: InboundTransportAdapter;
 };
 
-/** One map, shared by every write: a flow refuses two declarations under one ref. */
-const WRITE_RESOURCES = { ...PROJECT_ENTRY_RESOURCES };
-
-function refsOf(ctx: BlockContext) {
-  return {
-    projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectResourceState>
-  };
-}
-
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 
 /** Refuse a repository value no row may record. `null` and omitted are a project with none. */
@@ -284,7 +275,7 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
     name: "project-create",
     inputSchema: createProjectInputSchema,
     outputSchema: createProjectOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx): Promise<CreateProjectOutput> => {
       const problem = projectIdProblem(input.id);
       if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
@@ -296,98 +287,55 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
         throw new Error("createProject needs a session with an owner: the owner is the session's user.");
       }
       const visibility: ProjectVisibility = input.visibility ?? "shared";
-      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks, check);
-      const { projects } = refsOf(ctx);
+      const members = unique([owner, ...(input.members ?? [])]);
+      if (visibility === "private") {
+        const others = members.filter((member) => member !== owner);
+        if (others.length > 0) {
+          throw new ProjectRefusedError(
+            "private-has-members",
+            `a private project is its owner's alone, so it can't list ${others.map((m) => `"${m}"`).join(", ")}. ` +
+              `Make it shared to work on it with others.`
+          );
+        }
+      }
+      const projects = ctx.resources[visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE];
 
-      const heldBy = (row: ProjectResourceState): CreateProjectOutput => {
-        if (row.ownerUserId === owner) return { project: projectResourceStateSchema.parse(row), visibility, created: false };
-        throw new ProjectRefusedError(
-          "project-id-held",
-          `project id "${input.id}" is held by another owner. Choose another id.`
-        );
+      const existingProject = (state: Readonly<Record<string, unknown>>): CreateProjectOutput => {
+        if (visibility === "shared" && state.ownerUserId !== owner) {
+          throw new ProjectRefusedError(
+            "project-id-held",
+            `project id "${input.id}" is held by another owner. Choose another id.`
+          );
+        }
+        return { project: projectResourceStateSchema.parse(state), visibility, created: false };
       };
 
       const existing = await projects.getOptional(input.id);
-      if (existing !== undefined) return heldBy(existing.state as ProjectResourceState);
-      // Only a create that makes a row asks the host: a re-sent create hands its row back whatever the repository is now.
+      if (existing !== undefined) return existingProject(existing.state);
+      // Only a create that makes a project asks the host about the repository.
       await assertRepositoryUsable(check, input.repository);
 
-      const row: ProjectResourceState = projectResourceStateSchema.parse({
+      const project = projectResourceStateSchema.parse({
         id: input.id,
         title: input.title,
-        brief: input.brief ?? null,
+        brief: input.brief,
         ownerUserId: owner,
-        members: unique([owner, ...(input.members ?? [])]),
-        repository: input.repository ?? null,
+        members,
+        repository: input.repository,
         mcpServers,
         checks
       });
       try {
-        await projects.create(input.id, row);
+        await projects.create(input.id, project);
       } catch (error) {
-        // A duplicate create won the row: hand it back as any held id is.
-        const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
+        const winner = isAlreadyExists(error) ? await projects.getOptional(input.id) : undefined;
         if (winner === undefined) throw error;
-        return heldBy(winner as ProjectResourceState);
+        return existingProject(winner.state);
       }
-      return { project: row, visibility, created: true };
+      return { project, visibility, created: true };
     }
   });
 }
-
-/**
- * Create a private project: the row in the owner's own user scope, with the
- * owner as its only member. Nobody else writes that scope, so an id it holds
- * is the owner's own, and a re-sent create hands the row back unchanged.
- *
- * @throws `private-has-members` when the input names anyone but the owner.
- */
-async function writePrivateProject(
-  ctx: BlockContext,
-  input: CreateProjectInput,
-  owner: string,
-  mcpServers: string[],
-  checks: string[],
-  check: RepositoryCheck | undefined
-): Promise<CreateProjectOutput> {
-  const others = unique(input.members ?? []).filter((member) => member !== owner);
-  if (others.length > 0) {
-    throw new ProjectRefusedError(
-      "private-has-members",
-      `a private project is its owner's alone, so it can't list ${others.map((m) => `"${m}"`).join(", ")}. ` +
-        `Make it shared to work on it with others.`
-    );
-  }
-  const projects = projectResourcesAt(ctx, "private");
-  const done = (state: unknown, created: boolean): CreateProjectOutput => ({
-    project: projectResourceStateSchema.parse(state),
-    visibility: "private",
-    created
-  });
-  const existing = await projects.getOptional(input.id);
-  if (existing !== undefined) return done(existing.state, false);
-  await assertRepositoryUsable(check, input.repository);
-  const row: ProjectResourceState = projectResourceStateSchema.parse({
-    id: input.id,
-    title: input.title,
-    brief: input.brief ?? null,
-    ownerUserId: owner,
-    members: [owner],
-    repository: input.repository ?? null,
-    mcpServers,
-    checks
-  });
-  try {
-    await projects.create(input.id, row);
-  } catch (error) {
-    // The same owner's duplicate create won: hand its row back.
-    const winner = isAlreadyExists(error) ? await projects.getOptional(input.id) : undefined;
-    if (winner === undefined) throw error;
-    return done(winner.state, false);
-  }
-  return done(row, true);
-}
-
 
 /**
  * `setRepository`: set, change or clear a project's repository. Members only.
@@ -401,7 +349,7 @@ function defineSetRepository(check: RepositoryCheck | undefined) {
     name: "project-set-repository",
     inputSchema: setRepositoryInputSchema,
     outputSchema: setRepositoryOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
       const row = await projectRowToChange(ctx, input.project, "repository");
       assertRepository(input.repository);
@@ -449,7 +397,7 @@ function defineSetMcpServers(offered: readonly string[]) {
     name: "project-set-mcp-servers",
     inputSchema: setMcpServersInputSchema,
     outputSchema: setMcpServersOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
       const row = await projectRowToChange(ctx, input.project, "MCP servers");
       const mcpServers = checkedMcpServers(input.mcpServers, offered);
@@ -468,7 +416,7 @@ const setChecks = handler({
   name: "project-set-checks",
   inputSchema: setChecksInputSchema,
   outputSchema: setChecksOutputSchema,
-  resources: WRITE_RESOURCES,
+  resources: PROJECT_ENTRY_RESOURCES,
   execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "checks");
     const checks = checkedChecks(input.checks);
@@ -482,7 +430,7 @@ const setBrief = handler({
   name: "project-set-brief",
   inputSchema: setBriefInputSchema,
   outputSchema: setBriefOutputSchema,
-  resources: WRITE_RESOURCES,
+  resources: PROJECT_ENTRY_RESOURCES,
   execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "brief");
     await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));

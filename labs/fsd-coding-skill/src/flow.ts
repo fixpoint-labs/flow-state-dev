@@ -56,14 +56,6 @@ export interface FsdCodingHostOptions {
   claude?: ClaudeCodeAgentOptions;
 }
 
-function readStateId(
-  state: z.infer<typeof sessionStateSchema>,
-  harness: HostHarness,
-): string | null {
-  const id = state.harnessSessions[harness];
-  return typeof id === "string" && id !== "" ? id : null;
-}
-
 /**
  * Hand the stored vendor id to this resume, then drop it. `onSession` writes
  * it back only when the adapter reconfirms a live session. A failed
@@ -74,9 +66,8 @@ async function consumeStateId(ctx: HarnessCallbackContext, harness: HostHarness)
   return (await withOutcome(
     (mutator) => ctx.session.atomicState(mutator),
     (state: z.infer<typeof sessionStateSchema>) => {
-      const id = readStateId(state, harness);
-      if (id === null) return { state, result: null };
-      const { [harness]: _removed, ...rest } = state.harnessSessions;
+      const { [harness]: id, ...rest } = state.harnessSessions;
+      if (typeof id !== "string" || id === "") return { state, result: null };
       return { state: { ...state, harnessSessions: rest }, result: id };
     },
   )) ?? null;

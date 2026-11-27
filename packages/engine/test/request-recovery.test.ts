@@ -11,7 +11,8 @@ import type { runAction } from "../src/execution/runAction";
 type RunActionOptions = Parameters<typeof runAction>[0];
 const runActionMock = vi.fn((_options: RunActionOptions) => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
-  runAction: (options: RunActionOptions) => runActionMock(options)
+  runAction: (options: RunActionOptions) => runActionMock(options),
+  runFrameworkAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 function makeVoiceProvider(id: string): VoiceProvider {
@@ -402,6 +403,41 @@ describe("detectInterruptedRequests", () => {
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
     expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(routerProvider);
+  });
+
+  it("logs a retried run that fails to start instead of leaving its rejection unhandled", async () => {
+    // FIX-2895. The route answers 202 and nothing awaits the run, so a failure
+    // in its setup (a store write, an action it can't find) has no caller to
+    // reach. Unhandled, it ends a Node host's process.
+    runActionMock.mockClear();
+    runActionMock.mockImplementationOnce(() => Promise.reject(new Error("store unavailable")));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await stores.request.set("req_setup_fail", makeRequestRecord("req_setup_fail"), "any");
+      const flow = { kind: "chat", actions: { run: {} } } as never;
+      const flowRegistry = { get: vi.fn(() => flow) } as never;
+      const error = vi.fn();
+
+      const { newRequestId } = await retryRequest({
+        originalRequestId: "req_setup_fail",
+        stores,
+        flowRegistry,
+        runtimeConfig: { logger: { error } }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      expect(error).toHaveBeenCalledWith(
+        "[flow-state] retried request failed to start",
+        expect.objectContaining({ originalRequestId: "req_setup_fail", newRequestId, error: "store unavailable" })
+      );
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   it("skips entries with recent heartbeats", async () => {

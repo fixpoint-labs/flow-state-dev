@@ -87,7 +87,7 @@ async function resolveOf(
   }
   // A worker naming itself reads its conversation with the user: from a task or
   // delegate session that is another session, and core refuses only the running one.
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const worker = await installation.rosterWorker(ctx, of);
   if (worker === undefined) return { ok: false, error: `no_worker: no worker "${of}" on your roster.` };
   if (messageHearingOf(installation.workerFlows()[worker.flow]?.flow) === "task-sessions") {
