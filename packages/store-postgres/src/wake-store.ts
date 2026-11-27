@@ -35,7 +35,7 @@ function toRecord(row: Record<string, unknown>): WakeRecord {
     orgId: row.org_id as string,
     dueAt: Number(row.due_at),
     landBy: Number(row.land_by),
-    ...(row.resolved_by != null && row.resolved_by !== "" ? { resolvedBy: row.resolved_by as string } : {}),
+    ...(row.resolved_by !== "" ? { resolvedBy: row.resolved_by as string } : {}),
     version: Number(row.version),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at)
