@@ -121,6 +121,20 @@ describe("utility.upsertResource", () => {
     expect(block.name).toBe("upsert-note");
   });
 
+  it("names the missing collection when the configured key is absent", async () => {
+    const block = utility.upsertResource({
+      name: "upsert-note",
+      inputSchema: noteInputSchema,
+      collectionKey: "notes",
+      key: (input) => input.id,
+      state: (input) => ({ title: input.title, updatedAt: 0 }),
+    });
+
+    await expect(
+      runForTest(block, { id: "note-1", title: "Hello", body: "" }, createMockContext())
+    ).rejects.toThrow('upsertResource requires a resource collection at "notes"');
+  });
+
   it("creates a new resource instance when it does not exist", async () => {
     const collection = makeCollectionRef();
     const block = utility.upsertResource({
