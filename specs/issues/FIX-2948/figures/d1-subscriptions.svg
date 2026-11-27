@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, where a conversation's subscription to a thread lives. Chosen: in the session's copy. Instead of: per user, keyed by provider and thread. It comes down to two sessions on one thread: chosen, two copies keyed by thread with no session in any key; instead, the key must name the session, which ER-11 forbids. The price: a webhook's delivery writes through a named action, since a plain write is refused. Cancelling a task reads one session's copy instead of the user's whole pile. Locks in: a per-user list reads across sessions. Flips if: no app has two sessions follow one thread."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .rec    { fill:var(--surface); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does a conversation's subscription to a thread live?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The session's copy</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Per user, by provider and thread</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">TWO SESSIONS</text>
+    <text class="t-lbl" x="32" y="169">ON ONE THREAD</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Two copies, keyed by thread</text>
+    <text class="t-s" x="248" y="179">no session in any key</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The key must name the session</text>
+    <text class="t-s" x="612" y="179">what ER-11 forbids</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="226">A WEBHOOK'S</text>
+    <text class="t-lbl" x="32" y="239">DELIVERY</text>
+    <text class="mark minus" x="228" y="228">−</text>
+    <text class="t-b" x="248" y="227">Writes through a named action</text>
+    <text class="t-s" x="248" y="245">a plain write is refused</text>
+    <text class="mark plus" x="592" y="228">+</text>
+    <text class="t-b" x="612" y="227">Writes as it does today</text>
+    <text class="t-s" x="612" y="245">the user's own cell</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="284">CANCELLING</text>
+    <text class="t-lbl" x="32" y="297">A TASK</text>
+    <text class="mark plus" x="228" y="286">+</text>
+    <text class="t-b" x="248" y="285">Reads one session's copy</text>
+    <text class="t-s" x="248" y="303">its own subscriptions</text>
+    <text class="mark minus" x="592" y="286">−</text>
+    <text class="t-b" x="612" y="285">Reads the user's whole pile</text>
+    <text class="t-s" x="612" y="303">then filters by task</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A per-user list of subscriptions reads across sessions</text>
+    <text class="t-s" x="32" y="387">delivery is the one webhook write</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">No app has two sessions follow one thread</text>
+    <text class="t-s" x="494" y="387">then the row is about the thread, and stays</text>
+  </g>
+
+</svg>

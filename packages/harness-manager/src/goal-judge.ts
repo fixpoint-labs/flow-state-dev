@@ -134,7 +134,6 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     name: `${name}-run`,
     inputSchema: harnessJudgeInputSchema,
     outputSchema: harnessJudgeVerdictSchema,
-    stateSchema: z.object({}),
   })
     .step(read)
     .step(decide);

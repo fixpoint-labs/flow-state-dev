@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="Q1, open: must a write from another session go through a named action of the definition? Recommended: plain writes by default. Instead of: named actions only. It comes down to the first row: with plain writes a definition needs nothing extra to be written across sessions; with actions only every shared definition must declare an action for each such write. The price is the second row: with plain writes the owning session's history shows only what it heard, while the writer's history has the write; actions only make it complete on its own. Third row, a tie: a board's settle is an action either way. Locks in: one way to write. Flips if: audit needs the conversation alone to say who changed its data."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recd   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q1 · OPEN</text>
+    <text class="t-q" x="32" y="52">Must a write from another session go through a named action?</text>
+  </g>
+
+  <g id="options">
+    <rect class="recd" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Plain writes by default</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Named actions only</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">COST PER</text>
+    <text class="t-lbl" x="32" y="169">DEFINITION</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">None</text>
+    <text class="t-s" x="248" y="179">any definition works across sessions</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Actions for every such write</text>
+    <text class="t-s" x="612" y="179">each shared definition declares them</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="230">THE OWNING SESSION'S</text>
+    <text class="t-lbl" x="32" y="243">HISTORY</text>
+    <text class="mark minus" x="228" y="236">−</text>
+    <text class="t-b" x="248" y="235">Only what it heard</text>
+    <text class="t-s" x="248" y="253">the writer's own history has the write</text>
+    <text class="mark plus" x="592" y="236">+</text>
+    <text class="t-b" x="612" y="235">Complete on its own</text>
+    <text class="t-s" x="612" y="253">it shows who changed what</text>
+    <line class="row" x1="16" y1="264" x2="924" y2="264"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="288">A BOARD'S SETTLE</text>
+    <text class="mark tie" x="228" y="294">=</text>
+    <text class="t-b" x="248" y="293">An action either way</text>
+    <text class="t-s" x="248" y="311">a board's history is read by people</text>
+    <text class="mark tie" x="592" y="294">=</text>
+    <text class="t-b" x="612" y="293">An action</text>
+    <text class="t-s" x="612" y="311">the same</text>
+    <line class="row" x1="16" y1="322" x2="924" y2="322"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
+    <text class="t-b" x="32" y="367">One way to write, across sessions or not</text>
+    <text class="t-s" x="32" y="385">a definition may still offer actions where history matters</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
+    <text class="t-b" x="494" y="367">Audit needs the conversation alone</text>
+    <text class="t-s" x="494" y="385">to say who changed its data; then actions only</text>
+  </g>
+</svg>

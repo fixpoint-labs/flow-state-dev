@@ -128,17 +128,6 @@ function keyOf(day: string, worker: string): string {
   return `${day}/${encodeURIComponent(worker)}`;
 }
 
-/** Add one source's spend into a list of sources, matched on source, `kind` and billing. */
-const addSource = (sources: WorkerSourceSpend[], add: WorkerSourceSpend): WorkerSourceSpend[] => addRequestSpendSource(sources, add);
-
-// FIX-2288.
-/**
- * What a request spent, as the sources it adds: core's one conversion, which a
- * task's spend reads too, so the two count alike. Empty when it
- * spent nothing.
- */
-const sourcesOf = (spend: RequestSpend): WorkerSourceSpend[] => requestSpendSources(spend);
-
 /** The slice of a record ref this module uses. Structural. */
 interface UsageRef {
   path: string;
@@ -178,7 +167,7 @@ export async function recordWorkerSpend(
   spend: RequestSpend,
   at: number = Date.now()
 ): Promise<void> {
-  const added = sourcesOf(spend);
+  const added = requestSpendSources(spend);
   if (added.length === 0) return;
   const collection = collectionOn(ctx);
   if (collection === undefined) throw missingCollection();
@@ -189,7 +178,7 @@ export async function recordWorkerSpend(
   if (ref === undefined) throw new Error(`[workforce] the usage record "${key}" was not created`);
   await updateStateWith<Record<string, unknown>, void>(ref, (current) => {
     const stored = workerUsageStateSchema.parse(current ?? {});
-    const sources = added.reduce(addSource, stored.sources);
+    const sources = added.reduce(addRequestSpendSource, stored.sources);
     return { state: { ...current, worker, day, sources }, result: undefined };
   });
 }
@@ -203,9 +192,9 @@ export async function recordWorkerSpend(
  */
 export const workerSpendHook: SessionRequestEndHook = (ctx) => {
   const hook: RequestEndHook = async (ending) => {
-    const worker = (ctx.session?.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+    const worker = ctx.session?.state?.[WORKER_ID_STATE_KEY];
     if (typeof worker !== "string" || worker === "") return;
-    if (collectionOn(ctx) === undefined && sourcesOf(ending.spend).length > 0) {
+    if (collectionOn(ctx) === undefined && requestSpendSources(ending.spend).length > 0) {
       if (process.env.NODE_ENV !== "production") return { fail: missingCollection() };
       console.warn(missingCollection().message);
       return;
@@ -231,7 +220,7 @@ export async function readWorkerUsage(
 ): Promise<WorkerUsageView[]> {
   const collection = collectionOn(ctx);
   if (collection === undefined) throw missingCollection();
-  const byWorker = new Map<string, WorkerSourceSpend[]>();
+  const byWorker = new Map<string, readonly WorkerSourceSpend[]>();
   const listed = await Promise.all(
     Array.from({ length: days }, (_, back) => collection.list(`${dayOf(now - back * DAY_MS)}/`))
   );
@@ -239,7 +228,7 @@ export async function readWorkerUsage(
     for (const ref of refs) {
       const state = workerUsageStateSchema.parse(ref.state ?? {});
       if (state.worker === "") continue;
-      byWorker.set(state.worker, state.sources.reduce(addSource, byWorker.get(state.worker) ?? []));
+      byWorker.set(state.worker, state.sources.reduce(addRequestSpendSource, byWorker.get(state.worker) ?? []));
     }
   }
   const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
