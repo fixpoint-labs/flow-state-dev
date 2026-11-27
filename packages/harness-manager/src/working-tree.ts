@@ -10,9 +10,22 @@
  * lines are counted, and a patch drawn, by {@link scratchDiff} on copies in a
  * directory with no repository.
  *
+ * Every read is bounded ({@link WORKING_TREE_LIMITS}): a file whose size
+ * differs from its blob's is changed without being read, and the hashing the
+ * rest need stops at a count of files, a count of bytes and a deadline,
+ * throwing {@link WorkingTreeOverBudget}. A copy is read up to
+ * {@link MAX_COPIED_BYTES} and no further. Hashes are kept while a file's
+ * stat is unchanged, so a checkout too large for one read is finished over
+ * the next ones.
+ *
  * Raw content is what a run left on disk. A checkout that converts line
  * endings on commit (`core.autocrlf`, an `eol` attribute) reads a file whose
  * bytes differ from its blob as changed, where git would say it isn't.
+ *
+ * Each folder on a path is checked to be a real folder before the file is
+ * opened without following a link; a folder swapped for a link in between is
+ * a window this leaves (Node has no `openat`), and it can only show the
+ * person reading the changes a file of their own machine.
  */
 
 import { createHash } from "node:crypto";
@@ -25,37 +38,80 @@ import { checkoutGit, checkoutGitBytes, scratchDiff } from "./safe-git";
 /** The largest file a working-tree read copies to count its lines or draw its patch. Past it, the file is listed with no lines. */
 export const MAX_COPIED_BYTES = 4 * 1024 * 1024;
 
+/**
+ * What one working-tree read may hash before it gives up: files, bytes, and
+ * milliseconds from its start. Exported for tests, which lower them.
+ */
+export const WORKING_TREE_LIMITS = { files: 50_000, bytes: 512 * 1024 * 1024, ms: 8_000 };
+
+/** A working-tree read reached one of {@link WORKING_TREE_LIMITS} before it could tell what changed. */
+export class WorkingTreeOverBudget extends Error {
+  constructor(limit: "files" | "bytes" | "time") {
+    super(`[harness-manager] reading the run's working tree reached its ${limit} limit; its changes weren't read.`);
+    this.name = "WorkingTreeOverBudget";
+  }
+}
+
+/** One read's spending against {@link WORKING_TREE_LIMITS}. */
+class Budget {
+  private files = 0;
+  private bytes = 0;
+  private readonly until = Date.now() + WORKING_TREE_LIMITS.ms;
+
+  /** Throws once the deadline has passed. */
+  tick(): void {
+    if (Date.now() > this.until) throw new WorkingTreeOverBudget("time");
+  }
+
+  /** One more file to hash. */
+  file(): void {
+    this.tick();
+    if (++this.files > WORKING_TREE_LIMITS.files) throw new WorkingTreeOverBudget("files");
+  }
+
+  /** `count` more bytes hashed. */
+  spend(count: number): void {
+    this.tick();
+    this.bytes += count;
+    if (this.bytes > WORKING_TREE_LIMITS.bytes) throw new WorkingTreeOverBudget("bytes");
+  }
+}
+
 /** Paths from a `-z` listing. */
 const pathsOf = (out: string) => out.split("\0").filter((path) => path !== "");
 
-/** A path's blob id per `<mode> <type> <id>\t<path>` (ls-tree) or `<mode> <id> <stage>\t<path>` (ls-files -s) row; gitlinks left out. */
-function blobsOf(out: string, idField: number): Map<string, string> {
-  const blobs = new Map<string, string>();
+/** A blob a tree or the index names: its id, and its size when the listing gave one. */
+interface Blob {
+  id: string;
+  size: number | null;
+}
+
+/**
+ * Each path's blob from a `-z` listing, gitlinks left out: `ls-tree -l`
+ * (`<mode> <type> <id> <size>\t<path>`) or `ls-files -s` (`<mode> <id> <stage>\t<path>`).
+ */
+function blobsOf(out: string, idField: number, sizeField: number | null): Map<string, Blob> {
+  const blobs = new Map<string, Blob>();
   for (const record of pathsOf(out)) {
     const tab = record.indexOf("\t");
-    const fields = record.slice(0, tab).split(" ");
+    const fields = record.slice(0, tab).split(" ").filter((field) => field !== "");
     if (fields[0] === "160000") continue;
-    blobs.set(record.slice(tab + 1), fields[idField]!);
+    const size = sizeField === null ? Number.NaN : Number.parseInt(fields[sizeField] ?? "", 10);
+    blobs.set(record.slice(tab + 1), { id: fields[idField]!, size: Number.isNaN(size) ? null : size });
   }
   return blobs;
 }
 
-/** A commit's files and their blob ids. */
-async function treeOf(cwd: string, rev: string): Promise<Map<string, string>> {
-  return blobsOf(await checkoutGit(cwd, ["ls-tree", "-r", "-z", "--full-tree", rev]), 2);
+/** A commit's files, their blob ids and sizes. */
+async function treeOf(cwd: string, rev: string): Promise<Map<string, Blob>> {
+  return blobsOf(await checkoutGit(cwd, ["ls-tree", "-r", "-l", "-z", "--full-tree", rev]), 2, 3);
 }
 
 /** A segment git writes into a tree; anything else is no file the run could have. */
 const isSegment = (segment: string) => segment !== "" && segment !== "." && segment !== ".." && segment !== ".git" && !segment.includes("\0");
 
-/** One working-tree file as read raw: its blob id, and whether it's a symlink's name. `null`: not there as a file. */
-interface WorkingBlob {
-  id: string;
-  link: boolean;
-}
-
-/** Last read's ids, by checkout and path, kept while the file's stat is unchanged: a poll re-hashes only what moved. */
-const seen = new Map<string, Map<string, { stamp: string; blob: WorkingBlob }>>();
+/** Last reads' blob ids, by checkout and path, kept while the file's stat is unchanged: a poll re-hashes only what moved. */
+const seen = new Map<string, Map<string, { stamp: string; id: string }>>();
 const SEEN_CHECKOUTS = 16;
 
 const stampOf = (stat: BigIntStats) => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.mode}`;
@@ -72,13 +128,15 @@ async function openFile(full: string, stat: BigIntStats) {
 }
 
 /**
- * What the run's checkout holds at `path`, read raw. Every folder on the way
- * must be a real folder, never a link; a file at the end is read without
- * following a link, and a link is its own name.
+ * What the run's checkout holds at a path, read raw and within one read's
+ * {@link Budget}. Every folder on the way must be a real folder, never a
+ * link; a file at the end is read without following a link, and a link is
+ * its own name.
  */
 class WorkingTree {
   private readonly folders = new Map<string, boolean>();
-  private readonly ids: Map<string, { stamp: string; blob: WorkingBlob }>;
+  private readonly ids: Map<string, { stamp: string; id: string }>;
+  private readonly budget = new Budget();
 
   constructor(
     readonly root: string,
@@ -111,6 +169,7 @@ class WorkingTree {
 
   /** The file at `path`, or `null` when there's none there to read as a file (gone, a folder, a link on the way, anything but a file or link). */
   private async stat(path: string): Promise<{ full: string; stat: BigIntStats } | null> {
+    this.budget.tick();
     const segments = path.split("/");
     if (!segments.every(isSegment)) throw new Error(`"${path}" isn't a path a checkout holds.`);
     if (!(await this.reachable(segments))) return null;
@@ -120,43 +179,66 @@ class WorkingTree {
     return { full, stat };
   }
 
-  /** `path`'s blob id as the run left it, or `null`. */
-  async blob(path: string): Promise<WorkingBlob | null> {
+  /** Whether the checkout holds anything at `path` to read as a file. */
+  async exists(path: string): Promise<boolean> {
+    return (await this.stat(path)) !== null;
+  }
+
+  /**
+   * Whether `path`, as the run left it, differs from `blob` (`null`: none).
+   * A size that differs answers without reading; the rest are hashed, within
+   * the budget. A file that changes while it's hashed counts as changed.
+   */
+  async differs(path: string, blob: Blob | null): Promise<boolean> {
     const found = await this.stat(path);
-    if (found === null) return null;
-    const stamp = stampOf(found.stat);
+    if (found === null || blob === null) return (found === null) !== (blob === null);
+    // A link's lstat size is its name's length, as its blob's is.
+    if (blob.size !== null && BigInt(blob.size) !== found.stat.size) return true;
+    const id = await this.idOf(found.full, found.stat, path);
+    return id !== blob.id;
+  }
+
+  /** The blob id of what's at `full`, from the cache while its stat is unchanged; `null` when it changed while read. */
+  private async idOf(full: string, stat: BigIntStats, path: string): Promise<string | null> {
+    const stamp = stampOf(stat);
     const known = this.ids.get(path);
-    if (known?.stamp === stamp) return known.blob;
+    if (known?.stamp === stamp) return known.id;
+    this.budget.file();
     const hash = createHash(this.format);
-    let blob: WorkingBlob;
-    if (found.stat.isSymbolicLink()) {
-      const target = await readlink(found.full, { encoding: "buffer" });
-      blob = { id: hash.update(`blob ${target.length}\0`).update(target).digest("hex"), link: true };
+    if (stat.isSymbolicLink()) {
+      const target = await readlink(full, { encoding: "buffer" });
+      hash.update(`blob ${target.length}\0`).update(target);
     } else {
-      const handle = await openFile(found.full, found.stat);
+      const handle = await openFile(full, stat);
       if (handle === null) return null;
       try {
-        hash.update(`blob ${found.stat.size}\0`);
+        hash.update(`blob ${stat.size}\0`);
         const chunk = Buffer.alloc(64 * 1024);
         let read = 0n;
         for (;;) {
           const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
           if (bytesRead === 0) break;
+          this.budget.spend(bytesRead);
           read += BigInt(bytesRead);
+          // Grew past what it was measured at: changed while read.
+          if (read > stat.size) return null;
           hash.update(chunk.subarray(0, bytesRead));
         }
-        // Changed while read: a later poll reads it settled.
-        if (read !== found.stat.size) return null;
+        if (read !== stat.size) return null;
       } finally {
         await handle.close();
       }
-      blob = { id: hash.digest("hex"), link: false };
     }
-    this.ids.set(path, { stamp, blob });
-    return blob;
+    const id = hash.digest("hex");
+    this.ids.set(path, { stamp, id });
+    return id;
   }
 
-  /** `path`'s content as the run left it (a link's name for a link), or `null` when it's gone or past {@link MAX_COPIED_BYTES}. */
+  /**
+   * `path`'s content as the run left it (a link's name for a link), or
+   * `null` when it's gone, past {@link MAX_COPIED_BYTES}, or not the size it
+   * was measured at by the time it's read. Never reads past the cap.
+   */
   async content(path: string): Promise<Buffer | null> {
     const found = await this.stat(path);
     if (found === null || found.stat.size > BigInt(MAX_COPIED_BYTES)) return null;
@@ -164,7 +246,16 @@ class WorkingTree {
     const handle = await openFile(found.full, found.stat);
     if (handle === null) return null;
     try {
-      return await handle.readFile();
+      // One byte past the cap tells a file that grew from one that's exactly at it.
+      const into = Buffer.alloc(MAX_COPIED_BYTES + 1);
+      let read = 0;
+      while (read < into.length) {
+        const { bytesRead } = await handle.read(into, read, into.length - read, null);
+        if (bytesRead === 0) break;
+        read += bytesRead;
+      }
+      if (read > MAX_COPIED_BYTES || BigInt(read) !== found.stat.size) return null;
+      return into.subarray(0, read);
     } finally {
       await handle.close();
     }
@@ -180,11 +271,11 @@ export interface WorkingChange {
   uncommitted: boolean;
 }
 
-/** The blob ids a working-tree read compares with, and the checkout as read. */
+/** The blobs a working-tree read compares with, and the checkout as read. */
 interface Snapshot {
   tree: WorkingTree;
-  head: Map<string, string>;
-  index: Map<string, string>;
+  head: Map<string, Blob>;
+  index: Map<string, Blob>;
   untracked: string[];
 }
 
@@ -197,7 +288,7 @@ async function snapshot(cwd: string): Promise<Snapshot> {
   const format = await formatOf(cwd);
   const [head, index, untracked] = await Promise.all([
     treeOf(cwd, "HEAD"),
-    checkoutGit(cwd, ["ls-files", "-s", "-z"]).then((out) => blobsOf(out, 1)),
+    checkoutGit(cwd, ["ls-files", "-s", "-z"]).then((out) => blobsOf(out, 1, null)),
     checkoutGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]).then(pathsOf),
   ]);
   return { tree: new WorkingTree(cwd, format), head, index, untracked };
@@ -206,16 +297,17 @@ async function snapshot(cwd: string): Promise<Snapshot> {
 /**
  * The files the run's working tree changed against `start`, sorted by path:
  * committed and not, and new files git doesn't ignore.
+ *
+ * @throws WorkingTreeOverBudget past {@link WORKING_TREE_LIMITS}.
  */
 export async function workingChanges(cwd: string, start: string): Promise<WorkingChange[]> {
   const [base, at] = await Promise.all([treeOf(cwd, start), snapshot(cwd)]);
   const paths = [...new Set([...base.keys(), ...at.head.keys(), ...at.index.keys(), ...at.untracked])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const changes: WorkingChange[] = [];
   for (const path of paths) {
-    const work = (await at.tree.blob(path))?.id ?? null;
     const was = base.get(path) ?? null;
-    if (work === was) continue;
-    changes.push({ path, base: was, uncommitted: work !== (at.head.get(path) ?? null) });
+    if (!(await at.tree.differs(path, was))) continue;
+    changes.push({ path, base: was?.id ?? null, uncommitted: await at.tree.differs(path, at.head.get(path) ?? null) });
   }
   return changes;
 }
@@ -224,14 +316,16 @@ export async function workingChanges(cwd: string, start: string): Promise<Workin
  * Whether the run left anything in its working tree it didn't commit: a new
  * file git doesn't ignore, a staged change, or a file whose content isn't
  * HEAD's. What `git status --porcelain` would list, read without its filters.
+ *
+ * @throws WorkingTreeOverBudget past {@link WORKING_TREE_LIMITS}.
  */
 export async function workingTreeChanged(cwd: string): Promise<boolean> {
   const at = await snapshot(cwd);
   if (at.untracked.length > 0) return true;
   for (const path of new Set([...at.head.keys(), ...at.index.keys()])) {
     const head = at.head.get(path) ?? null;
-    if ((at.index.get(path) ?? null) !== head) return true;
-    if (((await at.tree.blob(path))?.id ?? null) !== head) return true;
+    if ((at.index.get(path)?.id ?? null) !== (head?.id ?? null)) return true;
+    if (await at.tree.differs(path, head)) return true;
   }
   return false;
 }
@@ -266,14 +360,13 @@ async function copySides(cwd: string, tree: WorkingTree, root: string, changes: 
   const copied: boolean[] = [];
   for (const [n, change] of changes.entries()) {
     const before = change.base === null ? null : (old.get(change.base) ?? null);
-    const after = await tree.content(change.path);
     if (change.base !== null && (before === null || before.length > MAX_COPIED_BYTES)) {
       copied.push(false);
       continue;
     }
-    // Gone, or too large to copy: the side `tree.content` couldn't give.
-    const gone = after === null && (await tree.blob(change.path)) === null;
-    if (after === null && !gone) {
+    const after = await tree.content(change.path);
+    // Not there, or there but not copyable (too large, or changed as it was read): no lines for it.
+    if (after === null && (await tree.exists(change.path))) {
       copied.push(false);
       continue;
     }
@@ -294,7 +387,7 @@ async function inScratch<T>(use: (root: string) => Promise<T>): Promise<T> {
   }
 }
 
-/** Lines added and removed in each change, `null` for binary or too large to copy. One git process for all of them. */
+/** Lines added and removed in each change, `null` for binary or not copyable. One git process for all of them. */
 export async function countLines(cwd: string, changes: readonly WorkingChange[]): Promise<Array<{ added: number | null; removed: number | null }>> {
   const counts = changes.map(() => ({ added: null as number | null, removed: null as number | null }));
   if (changes.length === 0) return counts;
@@ -316,7 +409,7 @@ export async function countLines(cwd: string, changes: readonly WorkingChange[])
 
 /**
  * One change's patch, line by line to `onLine`, its header naming `path`
- * rather than the scratch copies. Nothing for a side too large to copy.
+ * rather than the scratch copies. Nothing for a side not copyable.
  */
 export async function workingPatch(cwd: string, change: WorkingChange, onLine: (line: string) => void): Promise<void> {
   const tree = new WorkingTree(cwd, await formatOf(cwd));
@@ -324,7 +417,7 @@ export async function workingPatch(cwd: string, change: WorkingChange, onLine: (
     const [copied] = await copySides(cwd, tree, root, [change]);
     if (!copied) return;
     const old = change.base === null ? "/dev/null" : "old/0";
-    const fresh = (await tree.blob(change.path)) === null ? "/dev/null" : "new/0";
+    const fresh = (await tree.exists(change.path)) ? "new/0" : "/dev/null";
     let header = true;
     await scratchDiff(root, [old, fresh], (line) => {
       if (header && line.startsWith("@@")) header = false;
