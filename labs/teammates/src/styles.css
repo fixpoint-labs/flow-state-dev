@@ -112,6 +112,101 @@
 }
 
 /*
+ * The header's bot moves by its state (`components/Avatar.tsx`'s `BotFigure`):
+ * running sways and pulses its antenna, scans its eyes and types on its
+ * chest; done bobs and blinks; idle blinks; queued breathes under drifting
+ * z's. A bot that waits on you (`needs`) sits still beside its waiting dot:
+ * no rule here names that state. Each part turns about its own box. Nothing
+ * moves for a viewer who asks for reduced motion.
+ */
+@layer components {
+  [data-bot-figure] svg g,
+  [data-bot-figure] svg path {
+    transform-box: fill-box;
+  }
+  [data-bot-figure] .hb-antenna {
+    transform-origin: 50% 100%;
+  }
+  [data-bot-figure] .hb-blink {
+    transform-origin: 50% 50%;
+  }
+  [data-bot-figure] .hb-body {
+    transform-origin: 50% 100%;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-bot-figure][data-state="running"] .hb-antenna {
+      animation: hb-sway 1.6s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="running"] [data-tip] {
+      animation: hb-pulse 1.2s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="running"] .hb-eyes {
+      animation: hb-scan 2.4s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="running"] .hb-type circle {
+      animation: hb-type 1s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="running"] .hb-type circle:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+    [data-bot-figure][data-state="running"] .hb-type circle:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+    [data-bot-figure][data-state="done"] .hb-body {
+      animation: hb-bob 3.2s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="done"] .hb-blink,
+    [data-bot-figure][data-state="idle"] .hb-blink {
+      animation: hb-blink 4.5s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="queued"] .hb-body {
+      animation: hb-breathe 4s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="queued"] .hb-zz text {
+      animation: hb-zz 3s ease-in-out infinite;
+    }
+    [data-bot-figure][data-state="queued"] .hb-zz text:nth-child(2) {
+      animation-delay: 1.5s;
+    }
+  }
+
+  @keyframes hb-sway {
+    0%, 100% { transform: rotate(-10deg); }
+    50% { transform: rotate(10deg); }
+  }
+  @keyframes hb-pulse {
+    0%, 100% { stroke: var(--b-ink); fill: transparent; }
+    50% { stroke: var(--blue); fill: var(--blue); }
+  }
+  @keyframes hb-scan {
+    0%, 100% { transform: translateX(-2.5px); }
+    50% { transform: translateX(2.5px); }
+  }
+  @keyframes hb-type {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+  }
+  @keyframes hb-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
+  @keyframes hb-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    96% { transform: scaleY(0.1); }
+  }
+  @keyframes hb-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.025); }
+  }
+  @keyframes hb-zz {
+    0% { opacity: 0; transform: translate(0, 2px); }
+    40% { opacity: 1; }
+    100% { opacity: 0; transform: translate(3px, -5px); }
+  }
+}
+
+/*
  * A popup's status pill when the task waits on you (`Popups.tsx` marks the
  * words `data-needs-you`): the highlighter, since the user needs to act. The
  * pill is the registry's (`session-overlay`, a copy the lab can't edit), so
