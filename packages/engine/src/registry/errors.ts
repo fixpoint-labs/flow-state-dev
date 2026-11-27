@@ -88,7 +88,7 @@ export class FlowIdentityConflictError extends Error {
   }
 }
 
-export type ConflictScope = "user" | "org";
+export type ConflictScope = "user" | "org" | "session";
 
 export interface CrossFlowSchemaConflictDetails {
   scope: ConflictScope;
@@ -98,8 +98,10 @@ export interface CrossFlowSchemaConflictDetails {
   /**
    * `incompatible-default`: the two flows' scope state schemas default one
    * field to different values (the strict state check, not `compareZodSchemas`).
+   * `client-config-mismatch`: two declarations of one user or org address
+   * differ in client, `runBy` or `canWrite` settings (`sameClientConfig`).
    */
-  reason: CompatibilityReason | "incompatible-default";
+  reason: CompatibilityReason | "incompatible-default" | "client-config-mismatch";
   detail: string;
   /**
    * True when the conflicting field is a resource COLLECTION. Changes only the
@@ -132,11 +134,13 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly field: string;
   readonly flowA: string;
   readonly flowB: string;
-  readonly reason: CompatibilityReason | "incompatible-default";
+  readonly reason: CrossFlowSchemaConflictDetails["reason"];
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
-    const flag = details.scope === "user" ? "isolateUserState" : "isolateOrgState";
+    // A session copy has no flow-level isolation flag to point at.
+    const flag =
+      details.scope === "user" ? "isolateUserState" : details.scope === "org" ? "isolateOrgState" : undefined;
     const isResource = details.field.startsWith("resources.");
     const kind = details.collection === true ? "collection" : "resource";
     // A collection keys on its `pattern` and has no `ref` to change, so the
@@ -147,7 +151,14 @@ export class CrossFlowSchemaConflictError extends Error {
     const sameFlow = details.flowA === details.flowB;
 
     let message: string;
-    if (isResource && sameFlow) {
+    if (isResource && details.scope === "session" && !sameFlow) {
+      // A session copy has no flow isolation: any flow declaring the name
+      // reaches the one copy, so a distinct name is the only way apart.
+      message =
+        `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas ` +
+        `(${details.reason}: ${details.detail}). Both reach one session copy under that name, so ${identityRemedy}, ` +
+        `or reconcile the schemas.`;
+    } else if (isResource && sameFlow) {
       const ref = details.field.slice("resources.".length);
       message =
         `Flow "${details.flowA}" declares two ${details.scope}-scoped ${kind}s that both resolve to "${ref}" ` +
@@ -156,7 +167,9 @@ export class CrossFlowSchemaConflictError extends Error {
     } else {
       const remedy = isResource
         ? `Set flowIsolation: true on that ${kind} in one of the flows to opt out of cross-flow sharing, ${identityRemedy}, or reconcile the schemas.`
-        : `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`;
+        : flag === undefined
+          ? `Reconcile the schemas.`
+          : `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`;
       message =
         `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas ` +
         `(${details.reason}: ${details.detail}). ${remedy}`;

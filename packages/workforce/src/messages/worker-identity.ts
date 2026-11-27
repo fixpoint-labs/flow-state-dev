@@ -50,7 +50,7 @@ const oneLine = (text: string | null): string => {
  * roster worker (so the prompt slot drops it, never a blank line).
  */
 export async function workerIdentityPrompt(ctx: BlockContext, installation: WorkerInstallation): Promise<string | undefined> {
-  const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+  const self = ctx.session.state?.[WORKER_ID_STATE_KEY];
   if (typeof self !== "string") return undefined;
   const { self: me, messageable, taskOnly } = await workerRecipients(ctx, installation, self);
   if (me === undefined) return undefined;

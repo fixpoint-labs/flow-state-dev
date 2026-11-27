@@ -87,7 +87,7 @@ import { taskBriefMetadata } from "./task-brief";
  * conversation ledger's partition is that same value.
  */
 function filingPartitionOf(ctx: BlockContext): string | undefined {
-  const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
+  const filing = ctx.session.state[FILING_SESSION_STATE_KEY];
   return typeof filing === "string" ? filing : undefined;
 }
 
@@ -98,7 +98,7 @@ function filingPartitionOf(ctx: BlockContext): string | undefined {
  * admits only the row whose run link names this session, so it is one task.
  */
 export function sessionTaskOf(ctx: BlockContext): string | undefined {
-  const taskId = (ctx.session.state as Record<string, unknown>)[TASK_ID_STATE_KEY];
+  const taskId = ctx.session.state[TASK_ID_STATE_KEY];
   return typeof taskId === "string" ? taskId : undefined;
 }
 
@@ -108,7 +108,7 @@ export function sessionTaskOf(ctx: BlockContext): string | undefined {
  * notice goes.
  */
 function filingFlowOf(ctx: BlockContext): string | undefined {
-  const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
+  const flow = ctx.session.state[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }
 

@@ -140,6 +140,19 @@ describe("crawl tool factory", () => {
     expect(lastCrawlOptions()).toMatchObject({ maxPages: 20, maxDepth: 2 });
   });
 
+  it("hands the app's allowedHosts to the built-in adapter, even with a vendor key set", async () => {
+    process.env.FIRECRAWL_API_KEY = "fc-key";
+
+    const result = await runForTest(
+      crawl({ allowedHosts: ["docs.example"] }),
+      { url: "https://docs.example/" },
+      {} as any
+    );
+
+    expect(result.source).toBe("builtin");
+    expect(lastCrawlOptions()).toMatchObject({ allowedHosts: ["docs.example"] });
+  });
+
   it("uses the app's limits when the model names none", async () => {
     await runForTest(crawl({ maxPages: 7, maxDepth: 3 }), { url: "https://example.com" }, {} as any);
 

@@ -49,6 +49,14 @@ export interface CrawlConfig {
   excludePatterns?: string[];
   /** Enable JS rendering per page when available. Default: false. */
   waitForJS?: boolean;
+  /**
+   * Hostnames the crawl may read from, matched exactly (`example.com` does not
+   * allow `www.example.com`). Checked on the root URL and on every redirect hop
+   * of every page. Only the built-in provider can check redirect hops, so
+   * setting this selects it, and naming Firecrawl with it throws. Unset: any
+   * public host; an empty list allows none.
+   */
+  allowedHosts?: string[];
   /** Explicit API keys. */
   keys?: {
     firecrawl?: string;
@@ -70,6 +78,8 @@ export interface CrawlProviderAdapter {
       apiKey?: string;
       /** The run's signal; aborting it ends the crawl. */
       signal?: AbortSignal;
+      /** See {@link CrawlConfig.allowedHosts}. */
+      allowedHosts?: string[];
     }
   ): Promise<CrawlResult>;
 }
