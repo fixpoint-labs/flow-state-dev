@@ -838,4 +838,144 @@ describe("what a turn changed", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  describe("a turn that merged its base in", () => {
+    // FIX-2861: a turn that merges the moved-on base reads as only its own
+    // work, as a board run's diff does after FIX-2859. The base's tip comes
+    // from the host (`baseTip`), never from the checkout's own refs.
+    /**
+     * A session on its own branch (`work`, one commit past `main`), and a
+     * harness that, on "merge" or "ff", first merges `main` (a merge commit,
+     * or a fast-forward), then commits a file named by its prompt.
+     */
+    function merging(options: { baseTip?: (dir: string) => string | undefined } = {}) {
+      const dir = mkdtempSync(join(tmpdir(), "hm-session-merge-"));
+      git(dir, "init", "-q", "-b", "main");
+      writeFileSync(join(dir, "README.md"), "start\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "start");
+      git(dir, "checkout", "-q", "-b", "work");
+      const workspace: HarnessSessionWorkspace = {
+        provision: async () => dir,
+        locate: () => dir,
+        branch: () => null,
+        ...(options.baseTip !== undefined ? { baseTip: () => Promise.resolve(options.baseTip!(dir)) } : {}),
+      };
+      const agent = (feeds: HarnessFeeds) =>
+        handler({
+          name: "merging-harness",
+          inputSchema: z.object({ prompt: z.string() }),
+          execute: async (input, ctx) => {
+            const cwd = await feeds.cwd(ctx as unknown as HarnessCallbackContext);
+            if (input.prompt === "merge") git(cwd, "merge", "-q", "--no-ff", "--no-edit", "main");
+            if (input.prompt === "ff") git(cwd, "merge", "-q", "--ff-only", "main");
+            writeFileSync(join(cwd, `${input.prompt}.txt`), `${input.prompt}\n`);
+            git(cwd, "add", ".");
+            git(cwd, "commit", "-q", "-m", input.prompt);
+            return { outcome: "completed" };
+          },
+        }) as unknown as HarnessBlock;
+      return { dir, flow: harnessSessionFlow({ kind: "stub-session", workspace, agent }) };
+    }
+
+    /** `main` moves on by one commit, made in the checkout without moving the session's branch. */
+    function baseMovesOn(dir: string): string {
+      git(dir, "checkout", "-q", "main");
+      writeFileSync(join(dir, "base.txt"), "base\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "base moves on");
+      const tip = git(dir, "rev-parse", "HEAD").trim();
+      git(dir, "checkout", "-q", "work");
+      return tip;
+    }
+
+    type Read = { diff: { files: Array<{ path: string }>; verified: boolean } | null; patch: { path: string; patch: string; truncated: boolean; verified: boolean } | null };
+
+    /** Run `prompts` as turns of one session, `before` just ahead of the last; answers a read of the last turn's changes. */
+    async function lastTurn(flow: ReturnType<typeof merging>["flow"], sessionId: string, prompts: string[], before: () => void) {
+      const stores = createInMemoryStores();
+      const now = Date.now();
+      await stores.session.set(
+        sessionId,
+        { id: sessionId, flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      for (const [index, prompt] of prompts.entries()) {
+        if (index === prompts.length - 1) before();
+        await runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {} } as never);
+      }
+      const turns = ((await stores.session.get(sessionId))!.state as { turns: Record<string, { at: number; error: string | null; head: string | null }> }).turns;
+      const [last] = Object.entries(turns)
+        .sort(([, a], [, b]) => b.at - a.at)
+        .map(([id]) => id);
+      const read = (path?: string) =>
+        viewChanges({ flow, input: { turn: last, ...(path !== undefined ? { path } : {}) }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores }) as Promise<Read>;
+      return Object.assign(read, { record: turns[last!]! });
+    }
+    const paths = (read: Read) => read.diff!.files.map((file) => file.path);
+    const mainTip = (cwd: string) => git(cwd, "rev-parse", "main").trim();
+
+    it("reads a merge of the moved-on base as only the turn's own files, and opens none of the base's", async () => {
+      const { dir, flow } = merging({ baseTip: mainTip });
+      try {
+        const read = await lastTurn(flow, "s-merge", ["first", "merge"], () => baseMovesOn(dir));
+        const diff = await read();
+        expect(diff.diff).toMatchObject({ verified: true });
+        expect(paths(diff)).toEqual(["merge.txt"]);
+        expect((await read("base.txt")).patch).toEqual({ path: "base.txt", patch: "", truncated: false, verified: true });
+        expect((await read("merge.txt")).patch!.patch).toContain("+merge");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("reads a fast-forward onto the moved-on base as only the turn's own files", async () => {
+      const { dir, flow } = merging({ baseTip: mainTip });
+      try {
+        // The session's first turn starts where `main` was, so the merge is a fast-forward.
+        const read = await lastTurn(flow, "s-ff", ["ff"], () => baseMovesOn(dir));
+        expect(paths(await read())).toEqual(["ff.txt"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps the base's files in the turn for a host that can't say where its base is", async () => {
+      const { dir, flow } = merging();
+      try {
+        const read = await lastTurn(flow, "s-no-tip", ["first", "merge"], () => baseMovesOn(dir));
+        expect(paths(await read())).toEqual(["base.txt", "merge.txt"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("ends a turn as usual when the host's tip read throws, reading it from its start", async () => {
+      // A host's tip read is the host's code: a throw, even one not inside a promise, fails no turn.
+      const { dir, flow } = merging({
+        baseTip: () => {
+          throw new Error("the host fell over");
+        },
+      });
+      try {
+        const read = await lastTurn(flow, "s-tip-throws", ["first", "merge"], () => baseMovesOn(dir));
+        expect(read.record).toMatchObject({ error: null, head: git(dir, "rev-parse", "HEAD").trim() });
+        expect(paths(await read())).toEqual(["base.txt", "merge.txt"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("never takes a tip that already has the turn's own work as the base", async () => {
+      // A base pointed at the turn's head would otherwise read its work as none.
+      const { dir, flow } = merging({ baseTip: (cwd) => git(cwd, "rev-parse", "work").trim() });
+      try {
+        const read = await lastTurn(flow, "s-own-tip", ["first", "merge"], () => baseMovesOn(dir));
+        expect(paths(await read())).toEqual(["base.txt", "merge.txt"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
 });

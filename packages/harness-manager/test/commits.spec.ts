@@ -8,13 +8,13 @@
  * commits somebody else made.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { effectiveCut, readRunCommits } from "../src/commits";
+import { effectiveCut, readRunCommits, turnDiffStart } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -289,5 +289,57 @@ describe("effectiveCut", () => {
   it("answers no cut for a record with none, whatever the tip", async () => {
     const dir = repo("local");
     expect(await effectiveCut(dir, null, git(dir, "rev-parse", "HEAD").trim())).toBeNull();
+  });
+});
+
+describe("turnDiffStart", () => {
+  it("keeps a session turn's own start when merging it with the base it merged in conflicts", async () => {
+    // A conflicted merge has no start the turn's own work could be read from: more than its work, never less.
+    const dir = mkdtempSync(join(tmpdir(), "hm-turn-start-"));
+    dirs.push(dir);
+    git(dir, "init", "-q", "-b", "main");
+    commit(dir, "first");
+    git(dir, "checkout", "-q", "-b", "work");
+    writeFileSync(join(dir, "shared.txt"), "the session's\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "session");
+    const start = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "main");
+    writeFileSync(join(dir, "shared.txt"), "main's\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "main");
+    const merged = git(dir, "rev-parse", "HEAD").trim();
+    expect(await turnDiffStart(dir, start, merged)).toBe(start);
+    // The same start with a base that merges cleanly starts from the merged tree instead.
+    git(dir, "checkout", "-q", "-b", "clean", `${merged}~1`);
+    commit(dir, "clean");
+    const clean = git(dir, "rev-parse", "HEAD").trim();
+    expect(await turnDiffStart(dir, start, clean)).not.toBe(start);
+  });
+
+  it("runs no merge driver or attributes the checkout names, which a run can write", async () => {
+    // The driver would run in the merge and its output become the turn's start; here it would also leave a mark.
+    const dir = mkdtempSync(join(tmpdir(), "hm-turn-driver-"));
+    dirs.push(dir);
+    git(dir, "init", "-q", "-b", "main");
+    writeFileSync(join(dir, "shared.txt"), "one\ntwo\nthree\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "first");
+    git(dir, "checkout", "-q", "-b", "work");
+    writeFileSync(join(dir, "shared.txt"), "one\ntwo\nthree\nthe session's\n");
+    git(dir, "commit", "-qam", "session");
+    const start = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "main");
+    writeFileSync(join(dir, "shared.txt"), "main's\none\ntwo\nthree\n");
+    git(dir, "commit", "-qam", "main");
+    const merged = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "work");
+    const mark = join(dir, "driver-ran");
+    git(dir, "config", "merge.planted.driver", `touch ${mark}; printf planted > %A`);
+    writeFileSync(join(dir, ".git", "info", "attributes"), "*.txt merge=planted\n");
+    const from = await turnDiffStart(dir, start, merged);
+    expect(existsSync(mark)).toBe(false);
+    // Git's own merge of the two edits, with no driver's output in it.
+    expect(git(dir, "show", `${from}:shared.txt`)).toBe("main's\none\ntwo\nthree\nthe session's\n");
   });
 });
