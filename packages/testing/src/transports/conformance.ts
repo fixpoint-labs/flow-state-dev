@@ -85,7 +85,8 @@ export function createMockTransportHost(
     },
     async resolvePrincipal(context) {
       principalCalls.push(context);
-      return resolvePrincipal(context);
+      // The door names a person, as the real host's does.
+      return { kind: "person", ...(await resolvePrincipal(context)) };
     },
     // Suspend/resume continuation is not exercised by adapter conformance —
     // adapters call `dispatch`, not `continueRequest` (FIX-811). Return a no-op

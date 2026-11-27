@@ -100,7 +100,8 @@ import {
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError
 } from "../context/binding-errors";
-import { claimRequestRecord, principalOwnsRequest } from "../context/request-principal";
+import { claimRequestRecord } from "../context/request-principal";
+import { principalOwns, withRequestOrg, type PrincipalKind } from "../context/principal";
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
@@ -533,7 +534,7 @@ async function settleFreshRequestSetupFailure(options: {
       current !== undefined &&
       (isTerminalRequestStatus(current.status) ||
         !ownsRecord(options.flow, current) ||
-        !principalOwnsRequest(current, {
+        !principalOwns(await withRequestOrg(options.stores, current), {
           userId: options.userId,
           orgId: options.orgId,
           tenantId: options.tenantId
@@ -1381,7 +1382,7 @@ async function runActionAttempt<
   // under it is never adopted, heartbeated or written by this run.
   if (
     admittedRequest !== undefined &&
-    !principalOwnsRequest(admittedRequest, {
+    !principalOwns(await withRequestOrg(options.stores, admittedRequest), {
       userId: options.userId,
       orgId: options.orgId,
       tenantId: options.tenantId
@@ -1416,6 +1417,8 @@ async function runActionAttempt<
             tenantId: options.tenantId,
             orgId: options.orgId,
             source,
+            ...(options.principalKind !== undefined ? { principalKind: options.principalKind } : {}),
+            ...(options.resolvedBy !== undefined ? { resolvedBy: options.resolvedBy } : {}),
             metadata: options.metadata,
             input: options.input,
             attachments: options.attachments
@@ -2142,6 +2145,8 @@ async function runActionAttempt<
       orgId: options.orgId,
       tenantId: options.tenantId,
       source,
+      ...(options.principalKind !== undefined ? { principalKind: options.principalKind } : {}),
+      ...(options.resolvedBy !== undefined ? { resolvedBy: options.resolvedBy } : {}),
       metadata: options.metadata,
       resumeContext,
       input: options.input,

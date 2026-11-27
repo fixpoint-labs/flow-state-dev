@@ -48,6 +48,7 @@
  * change which failures cost one lease of latency, at the price of coupling the
  * dispatching request to the child's startup.
  */
+import type { PrincipalKind } from "./principal";
 import type { BlockDispatchType } from "@flow-state-dev/core/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { RuntimeConfig } from "../runtime-config";
@@ -100,6 +101,10 @@ export type DispatchOperation = (spec: {
    * record happened to be at that id.
    */
   orgId: string;
+  // FIX-2942.
+  /** The sending request's principal kind and resolver identity (`Principal`), carried to the child unchanged. */
+  principalKind?: PrincipalKind;
+  resolvedBy?: string;
   /**
    * Provenance stamped onto the request record — the address, the sending
    * block, and whatever server-derived facts the sender supplied (a board's
@@ -247,7 +252,12 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
         action: spec.action,
         input: spec.input,
         sessionId: spec.sessionId,
-        principal: { userId: spec.userId, orgId: spec.orgId },
+        principal: {
+          userId: spec.userId,
+          orgId: spec.orgId,
+          ...(spec.principalKind !== undefined ? { kind: spec.principalKind } : {}),
+          ...(spec.resolvedBy !== undefined ? { resolvedBy: spec.resolvedBy } : {})
+        },
         orgId: spec.orgId,
         ...(spec.tenantId !== undefined ? { tenantId: spec.tenantId } : {}),
         ...(spec.metadata !== undefined ? { metadata: spec.metadata } : {}),

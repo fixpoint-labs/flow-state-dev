@@ -14,6 +14,7 @@ export {
   type SessionCreateRequest,
   type SessionRecordSeed
 } from "./context/session-birth";
+export { type Principal, type PrincipalKind } from "./context/principal";
 export {
   type CreateExecutionContextOptions,
   type ExecutionContext,
