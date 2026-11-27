@@ -1731,7 +1731,62 @@ export interface ResourceStateStore {
    * scanning, with the same result.
    */
   indexes?: ResourceStateIndexes;
+
+  /**
+   * One collection's live rows across every session one owner has, a page at
+   * a time ({@link AcrossSessionsQuery}). Absent on a store built without the
+   * session store it joins to: the engine then refuses the read.
+   */
+  listAcrossSessions?(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]>;
 }
+
+/**
+ * The owner a read across sessions is scoped to: the same user, tenant and
+ * organization, each exact, absent matching only absent.
+ */
+export type AcrossSessionsOwner = {
+  userId: string;
+  tenantId: string | undefined;
+  orgId: string | undefined;
+};
+
+/**
+ * One page of {@link ResourceStateStore.listAcrossSessions}: the live
+ * session-scoped rows under `keyPrefix` in every session `owner` holds (any
+ * parentage), ordered by the session's storage key, then the row's key, both
+ * in byte (code-point) order. Rows strictly after `after`, at most `limit`.
+ *
+ * A SQL store answers it in one statement joined to the sessions table on the
+ * full owner; a store that keeps records in JavaScript walks the owner's
+ * sessions. Rows are a superset: the engine checks each against the
+ * collection's pattern, the owner's per-row admission and, for an `index`
+ * filter, the declared index, after the read.
+ */
+export type AcrossSessionsQuery = {
+  owner: AcrossSessionsOwner;
+  /** The collection's storage prefix: `""` or ending in `/`. */
+  keyPrefix: string;
+  /** Only the row at this exact key in each session. */
+  key?: string;
+  /**
+   * Only rows with an entry of `value` for the stored index `index` of
+   * `collection`, plus every row of a session whose index is not built there
+   * (a store without index verbs ignores it and answers every row).
+   */
+  index?: { collection: string; index: string; value: string };
+  /** The last row of the previous page, by session storage key and row key. */
+  after?: { sessionKey: string; key: string };
+  limit: number;
+};
+
+/** One row {@link ResourceStateStore.listAcrossSessions} answers. */
+export type AcrossSessionsStoredRow = {
+  /** The session's storage key (`resolveSessionStorageKey`). */
+  sessionKey: string;
+  key: string;
+  state: JsonObject;
+  version: number;
+};
 
 // FIX-401; FIX-141; see FIX-401 spec.
 /**

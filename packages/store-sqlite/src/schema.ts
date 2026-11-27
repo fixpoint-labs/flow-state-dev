@@ -72,6 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
 -- caller alike.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_tenant_owner_updated
   ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at);
+-- A read across one owner's sessions (\`listAcrossSessions\`) walks that
+-- owner's sessions in id order, every parentage, and reads each one's rows
+-- by the resource_state primary key's range. The owner leads, then the order:
+-- another owner's sessions are never walked. SQLite takes \`IS ?\` as an
+-- equality, so one index serves the bound and unbound caller alike.
+CREATE INDEX IF NOT EXISTS idx_sessions_owner
+  ON sessions(user_id, tenant_id, org_id, id);
 `;
 
 // FIX-1010: the most-recent-run index below.

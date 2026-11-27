@@ -39,6 +39,8 @@ import {
 } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
   ResourceIndexBuildStatus,
   ResourceIndexEntry,
   ResourceStateSetOptions,
@@ -481,6 +483,67 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         };
       }
       return entries;
+    },
+
+    async listAcrossSessions(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]> {
+      if (query.limit <= 0) return [];
+      // One statement per page: the owner's sessions (`idx_sessions_owner` or,
+      // bound to a tenant, `idx_sessions_tenant_owner`), walked in id order,
+      // each one's rows read by `idx_resource_state_key`'s range on the
+      // collection's prefix. Both orders are byte order (`COLLATE "C"`), the
+      // order the other stores answer in. A NULL tenant or organization is
+      // matched as `IS NULL`, an equality the indexes serve, never `IS NOT
+      // DISTINCT FROM`, which they don't.
+      const values: unknown[] = [query.owner.userId];
+      const param = (value: unknown): string => {
+        values.push(value);
+        return `$${values.length}`;
+      };
+      const nullSafe = (column: string, value: string | undefined): string =>
+        value === undefined ? `${column} IS NULL` : `${column} = ${param(value)}`;
+      const where = [
+        "s.user_id = $1",
+        nullSafe("s.tenant_id", query.owner.tenantId),
+        nullSafe("s.org_id", query.owner.orgId),
+        "rs.scope_type = 'session'",
+        "rs.scope_id = s.id",
+        "rs.lifecycle = 'live'"
+      ];
+      const range = keyPrefixRange(query.keyPrefix, values.length + 1);
+      where.push(range.sql.replaceAll("resource_key", "rs.resource_key"));
+      values.push(...range.values);
+      if (query.key !== undefined) where.push(`rs.resource_key = ${param(query.key)}`);
+      const { index, after } = query;
+      if (index !== undefined) {
+        const collection = param(index.collection);
+        const name = param(index.index);
+        const value = param(index.value);
+        where.push(
+          "(EXISTS (SELECT 1 FROM resource_index ri WHERE ri.scope_type = 'session' AND ri.scope_id = rs.scope_id " +
+            `AND ri.collection = ${collection} AND ri.index_name = ${name} ` +
+            `AND md5(ri.value) = md5(${value}::text) AND ri.value = ${value} AND ri.resource_key = rs.resource_key) ` +
+            "OR NOT EXISTS (SELECT 1 FROM resource_index_built b WHERE b.scope_type = 'session' AND b.scope_id = rs.scope_id " +
+            `AND b.collection = ${collection} AND b.index_name = ${name} AND b.status = 'built'))`
+        );
+      }
+      if (after !== undefined) {
+        const sessionKey = param(after.sessionKey);
+        where.push(`s.id COLLATE "C" >= ${sessionKey}`);
+        where.push(`(s.id COLLATE "C" > ${sessionKey} OR rs.resource_key COLLATE "C" > ${param(after.key)})`);
+      }
+      const result = await executor.query(
+        "SELECT s.id AS session_key, rs.resource_key, rs.state, rs.version " +
+          "FROM sessions s JOIN resource_state rs ON rs.scope_id = s.id " +
+          `WHERE ${where.join(" AND ")} ` +
+          `ORDER BY s.id COLLATE "C", rs.resource_key COLLATE "C" LIMIT ${param(query.limit)}`,
+        values
+      );
+      return result.rows.map((row) => ({
+        sessionKey: row.session_key as string,
+        key: row.resource_key as string,
+        state: row.state as JsonObject,
+        version: Number(row.version)
+      }));
     },
 
     async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {

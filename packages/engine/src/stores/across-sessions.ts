@@ -1,0 +1,82 @@
+/**
+ * `ResourceStateStore.listAcrossSessions` for the stores that keep records in
+ * JavaScript (memory and filesystem): the owner's sessions, every parentage,
+ * read from the session store the registry factory hands the resource-state
+ * store, walked in storage-key order, each session's rows read by the store's
+ * own prefix read. The owner predicate is the SQL adapters' `WHERE`, with
+ * `tenantId` and `orgId` always present, so an unbound owner matches only
+ * unbound sessions. Keys compare by code point, the byte order the SQL stores
+ * compare in, so the four stores answer one order.
+ */
+import { FlowStateConfigError } from "../errors/flow-error";
+import type {
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
+  SessionStore,
+  VersionedResourceState
+} from "./types";
+
+/** What a JS resource-state store reads the owner's sessions through. */
+export type AcrossSessionsSessionReads = Pick<SessionStore, "list">;
+
+/** `a` against `b` by code point: UTF-8 byte order, as SQLite `BINARY` and Postgres `COLLATE "C"` compare. */
+export function compareByCodePoint(a: string, b: string): number {
+  if (a === b) return 0;
+  const left = a[Symbol.iterator]();
+  const right = b[Symbol.iterator]();
+  for (;;) {
+    const l = left.next();
+    const r = right.next();
+    if (l.done === true) return r.done === true ? 0 : -1;
+    if (r.done === true) return 1;
+    const diff = (l.value.codePointAt(0) as number) - (r.value.codePointAt(0) as number);
+    if (diff !== 0) return diff;
+  }
+}
+
+/** The refusal a resource-state store built without its session store gives the read. */
+export function missingSessionStore(factory: string): FlowStateConfigError {
+  return new FlowStateConfigError(
+    `${factory} was built without \`sessions\`, the session store a read across sessions is joined to. ` +
+      "Pass it (`createInMemoryStores` and `createFilesystemStores` do)."
+  );
+}
+
+/**
+ * One page of the owner's rows: `rowsOf(sessionKey, prefix)` reads one
+ * session's live rows under the collection's prefix. A store without index
+ * verbs answers an `index` filter with every row; the engine checks each.
+ */
+export async function listAcrossSessions(
+  sessions: AcrossSessionsSessionReads,
+  rowsOf: (sessionKey: string, keyPrefix: string) => Promise<Record<string, VersionedResourceState>>,
+  query: AcrossSessionsQuery
+): Promise<AcrossSessionsStoredRow[]> {
+  if (query.limit <= 0) return [];
+  const owned = await sessions.list({
+    userId: query.owner.userId,
+    tenantId: query.owner.tenantId,
+    orgId: query.owner.orgId,
+    parentage: "all"
+  });
+  const after = query.after;
+  const keys = owned
+    .map((record) => record.id)
+    .filter((key) => after === undefined || compareByCodePoint(key, after.sessionKey) >= 0)
+    .sort(compareByCodePoint);
+  const rows: AcrossSessionsStoredRow[] = [];
+  for (const sessionKey of keys) {
+    const stored = await rowsOf(sessionKey, query.keyPrefix);
+    const inSession = Object.keys(stored)
+      .filter((key) => key.startsWith(query.keyPrefix))
+      .filter((key) => query.key === undefined || key === query.key)
+      .filter((key) => after === undefined || sessionKey !== after.sessionKey || compareByCodePoint(key, after.key) > 0)
+      .sort(compareByCodePoint);
+    for (const key of inSession) {
+      const row = stored[key]!;
+      rows.push({ sessionKey, key, state: row.state, version: row.version });
+      if (rows.length >= query.limit) return rows;
+    }
+  }
+  return rows;
+}
