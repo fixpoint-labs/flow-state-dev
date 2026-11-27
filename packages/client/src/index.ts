@@ -111,6 +111,8 @@ export {
 } from "./resource-client/read-every-page";
 export {
   ResourceWriteError,
+  type CollectionManifestEntry,
+  type CollectionManifestPage,
   type ScopeCollectionHandle,
   type ScopeEntry,
   type ScopeEntryHandle,
