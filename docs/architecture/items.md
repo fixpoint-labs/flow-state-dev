@@ -15,17 +15,19 @@ Every item's visibility is derived from two things: its `type` and the optional 
 - **`client`** — whether the item is sent to connected clients (browser, mobile, CLI)
 - **`history`** — whether the item is included in LLM conversation history
 
-Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool always sees everything.
+Visibility is a pure function of `(item.type, item.itemVisibility)`. The devtool can ask for client-hidden items over HTTP (`?include=trace` on a request's stream and `/continue`, `item_types` naming a hidden type on the session snapshot and stream, or `include_items=true` on the session request list), and the server honours that only while trace observability is on (`isTraceObservabilityEnabled()`: outside production, or with `FSDEV_TRACE_OBSERVABILITY=true`). Otherwise the caller gets the client view.
 
-### Three type categories
+### Four type categories
 
-Items fall into three visibility categories based on their `type`:
+Items fall into four visibility categories based on their `type`:
 
 **Trace types** (`block_trace`, `router_decision`, `state_snapshot`, `generator_step`) always resolve to `{ client: false, history: false }` by their type alone. No stamp needed — the type is sufficient.
 
 **Conversational types** (`message`, `reasoning`, `tool_output`) use `item.itemVisibility` if present, otherwise default to `{ client: true, history: true }`.
 
-**Structural types** (everything else: `component`, `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`, `continuation`) default to `{ client: true, history: false }`.
+**`data`** uses `item.itemVisibility` if present, otherwise `{ client: true, history: false }`, like a structural type. Whether a client draws it is up to its renderer registry; an emitter can still keep one off the client or put one in history.
+
+**Structural types** (everything else: `container`, `source`, `status`, `state_change`, `resource_change`, `error`, `suspension`, `suspension_resume`, `continuation`) default to `{ client: true, history: false }`.
 
 ### The `itemVisibility` field
 
@@ -55,7 +57,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 **`reasoning`** holds chain-of-thought output when a model produces thinking. Rendered as a collapsible block in the UI. Goes into LLM history.
 
-**`component`** is a structured data item rendered by a registered UI component. Use it when `message` can't express the output — a plan visualization, a search results card, a form. See [Component items](#component-items) for details.
+**`data`** is the one item kind for structured content, emitted with `ctx.emit.data(dataType, value, { key? })`. Code reads it by `dataType` (a routing decision, a task change, a received message). A client draws it only when it registers a renderer for that `dataType`, which is how generative UI works (a link card, an info card, a task plan): a "component" is a data type with a renderer, not an item kind. With no renderer, a data item stays invisible in the UI and is still readable by code. See [Data items](#data-items).
 
 **`container`** is emitted by sequencers and routers that declare a `container` config. It marks the start of a visual grouping and establishes an ownership scope — items emitted during the container's execution carry an `ownedBy` reference back to it.
 
@@ -116,13 +118,13 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 Items fall into three buckets:
 
-**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `component` items (`emit.component(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `data` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
+**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `data` items (`emit.data(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `value` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
 
 **Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `state_snapshot` are transient by default.
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emit.message`, `emit.component`, `emit.status`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emit.message` and `emit.component` (persisted), `true` for `emit.status` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_trace` traces) is suppressed. Items the block emits explicitly (via `emit.message`, `emit.data`, `emit.status`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emit.message` and `emit.data` (persisted), `true` for `emit.status` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
 
 ### Transient × keyed item matrix
 
@@ -130,12 +132,12 @@ The `transient` and `key` fields compose orthogonally — knowing one tells you 
 
 | `transient` | `key` | Semantics | Example |
 |:-----------:|:-----:|-----------|---------|
-| `false` | absent | Append-only event | A finalized message; a completed tool output; `task-board-recorder-failure` (two failures on one board must both survive, so it takes no key) |
-| `false` | present | **Keyed snapshot** — replays on reload | `task-change`, `task-board-meta`, `rb-entry` |
+| `false` | absent | Append-only event | A finalized message; a completed tool output; the `task-board-recorder-failure` data record (two failures on one board must both survive, so it takes no key) |
+| `false` | present | **Keyed snapshot** — replays on reload | the `task-change`, `task-board-meta` and `rb-entry` data records |
 | `true` | absent | Ephemeral one-shot | A debug trace |
 | `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
 
-The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The framework derives a deterministic item ID from `key` so emissions upsert in place — the persisted record holds one entry per `(requestId, key)`, and the SSE event log still appends `item.added` + `item.done` per emission for live consumers. The renderer's `deduplicateComponentItems` is a no-op on the pre-collapsed persisted-record path but still runs on the event-log replay path. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
+The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The framework derives a deterministic item ID from `key` so emissions upsert in place — the persisted record holds one entry per `(requestId, key)`, and the SSE event log still appends `item.added` + `item.done` per emission for live consumers. The renderer's `deduplicateKeyedItems` is a no-op on the pre-collapsed persisted-record path but still runs on the event-log replay path. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
@@ -174,7 +176,7 @@ Attribution is by **execution scope** — which worker/turn produced the item �
 
 The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or the turn after a person answers — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded.
 
-**Substrate components are excluded even though they carry a task id.** Three types are on that list:
+**Substrate records are excluded even though they carry a task id.** Three data types are on that list:
 
 | Type | Why it is excluded |
 | --- | --- |
@@ -186,7 +188,7 @@ The rule the list applies is **whose event it is**, not what it looks like. A re
 
 So the test for a new type emitted in task scope is not whether it is "scaffolding". It is whether the worker produced it. If the substrate emitted it *about itself*, it belongs on this list, and it owes a case in `packages/core/test/items/task-attribution.test.ts`.
 
-**A substrate component owes a second entry, in the renderer registry.** Attribution and rendering are different axes, and only the first is settled above. A `component` item is a *structural* type, so it resolves to `{ client: true, history: false }` whatever `itemVisibility` it declares — see [Visibility](#visibility) — and a component type the registry does not name falls through `ItemRenderer` to a `<pre>` of its own JSON. For an item the substrate emits about itself that fallback is a stray blob in the user's thread. So each one is named in `chatAssistantRenderers` (`packages/ui/registry/components/chat-assistant.tsx`): with a renderer where it has a card (`task-board-meta`), and with `false` where it has none (`task-change`, `task-board-recorder-failure`, `goal-seek-loop-termination`). An app that supplies its own registry owes itself the same lines. `packages/ui/test/substrate-components-never-raw.test.ts` holds the list.
+**Attribution and rendering are different axes.** A substrate record is a `data` item, so it reaches a client by default, and an unregistered data type renders nothing in `ItemRenderer`: there is no raw-JSON fallback to suppress. `chatAssistantRenderers` (`packages/ui/registry/components/chat-assistant.tsx`) names `task-board-meta` under `data:` because it has a card.
 
 One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / `itemsForTask` / `collectAttributedItemIds`) backs both the substrate (`extractTaskItems` → `task.items()`) and the UI (`<TaskPlan />` per-task expansion and the chat-thread renderer's dedup), so the two agree by construction. The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from the browser-safe `@flow-state-dev/orchestration/tasks` subpath for any consumer that wants the same attribution without going through a `TaskCollection`.
 
@@ -197,7 +199,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `message` | Generator (auto), `ctx.emit.message()` | itemVisibility | itemVisibility | Conversational | Persistent |
 | `reasoning` | Generator (auto, CoT models) | itemVisibility | itemVisibility | Conversational | Persistent |
 | `tool_output` | Generator (per tool invocation) | itemVisibility | itemVisibility | Conversational | Persistent |
-| `component` | `ctx.emit.component()` | ✓ | — | Structural | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
+| `data` | `ctx.emit.data()`, `ctx._emitDataAwaited()` | itemVisibility (default ✓) | itemVisibility (default —) | Data | Persistent (keyed: upsert in place — one entry per `(requestId, key)`). Renders only through a `data` renderer; nothing otherwise. History replays it as one assistant line, `[dataType] <value JSON>`. |
 | `container` | Sequencer/Router with `container` config | ✓ | — | Structural | Persistent |
 | `source` | Generator (provider-native tools) | ✓ | — | Structural | Persistent |
 | `status` | `ctx.emit.status()` | ✓ | — | Structural | **Always transient** |
@@ -212,7 +214,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 | `generator_step` | Generator owned loop (once per tool-calling step, before dispatch) | — | — | Trace | Persistent (replay-only; retained across resume collapse; never in `GET`/`useSession`) |
 
-**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
+**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). `data` uses `item.itemVisibility` (default `{ client: true, history: false }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
 
 ### Suspension item rendering
 
@@ -270,68 +272,106 @@ ctx.emit.status(
 
 `blocked` and `sideChainTasks` are flow-control signals — orthogonal to the human-readable message. `emit.status(undefined, { blocked: false, sideChainTasks: 0 })` is the canonical way to update signals without changing the visible text.
 
-## Component items
+## Data items
 
-Component items are more complex than other types because they support streaming updates and a container ownership model.
+A `data` item is `{ type: "data", dataType, value, key? }`. The payload is `value`, not `data`, so a reader never writes `item.data.data`. It is the one item kind for structured content: code reads it by `dataType`, and a client draws it only through a renderer registered for that `dataType`.
 
-### Emitting a component item
+```ts
+ctx.emit.data("coordinator-route", record);
+await ctx._emitDataAwaited("task-board-recorder-failure", report); // rejects if the item can't be emitted
+```
+
+- **Visibility.** With no `itemVisibility`, a data item reaches the client and never model history (`{ client: true, history: false }`). It does not inherit an enclosing generator's visibility. Pass `itemVisibility` to keep one off the client or to put one in history, where a turn replays it as one assistant line, `[dataType] <value as JSON>`.
+- **The awaited emitter** (`ctx._emitDataAwaited`, internal) is for an item whose loss must fail the caller, such as a routing decision or a failure report. Absent in a hand-built context; a caller treats absence as a failure.
+
+### Keyed snapshots
 
 ```ts
 // Emit initial state
-ctx.emit.component("plan-view", { steps: [], status: "working" }, { key: "plan" });
+ctx.emit.data("plan-view", { steps: [], status: "working" }, { key: "plan" });
 
 // Update by emitting with the same key — replaces the previous version:
-ctx.emit.component("plan-view", { steps: ["Step 1 done"], status: "working" }, { key: "plan" });
-ctx.emit.component("plan-view", { steps: ["Step 1 done", "Step 2 done"], status: "complete" }, { key: "plan" });
+ctx.emit.data("plan-view", { steps: ["Step 1 done"], status: "working" }, { key: "plan" });
+ctx.emit.data("plan-view", { steps: ["Step 1 done", "Step 2 done"], status: "complete" }, { key: "plan" });
 ```
 
-Each `emit.component()` call with the same `key` replaces the previous version in the client UI. Live clients see every update via SSE events. All versions are persisted, but the client renders only the latest for each key.
+A `key` derives the id `item_data_keyed:<key>`. Live clients see every update via SSE events; the stored record holds one entry per `(requestId, key)`, `value` replaced, not merged. `ItemsRenderer` shows only the latest item with that key per request. If each step must be independently addressable, emit them with different `key` values.
 
-If you need each step to be a distinct persisted item (e.g. a plan where each step is independently addressable), emit them as separate items with different `key` values.
-
-### Stable key for deduplication
-
-```ts
-ctx.emit.component("search-results", { results }, { key: "search" });
-```
-
-When `key` is set, `ItemsRenderer` shows only the latest item with that key per request. Use this when the component represents a stateful view you want to replace in-place — for example, incrementally updating search results rather than appending a new card for each update.
-
-When combined with `transient: false` (the default), this is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. See [Persistence](#persistence) above for the full transient × key matrix and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
+With `transient: false` (the default), this is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. See [Persistence](#persistence) above for the full transient × key matrix and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 ### Registering a renderer
 
 ```tsx
-<FlowProvider renderers={{ component: { "plan-view": PlanView } }}>
+<FlowProvider renderers={{ data: { "plan-view": PlanView } }}>
 ```
 
-`PlanView` receives `{ item: ComponentItem }`. Access the data via `item.data`.
+`PlanView` receives `{ item: DataItem }` and reads `item.value`. An unregistered data item renders nothing, never the JSON fallback. `renderers.component` is not an item slot: it holds the renderers a `suspension` item names with `render.component`.
 
-### Container components
+### Stored `component` items
+
+Sessions stored before structured content became data items can hold `{ type: "component", component, data, key? }`. The one read migration (`packages/engine/src/stores/legacy-component-items.ts`, applied by the change-bus wrapper every entry puts on the request store: `resolveStores`, `runAction`, `fsdev run` and `chat`) hands every such item back as `{ type: "data", dataType: component, value: data, key? }`, with the same status and key, from a record read and from the `item.added` and `item.done` events a replayed or resumed stream reads. A keyed item's id `item_component_keyed:<key>` reads back as `item_data_keyed:<key>`, the id a keyed data emit of that key gets, so a resumed request's next snapshot replaces it. Nothing above the request store reads the old shape, and nothing is rewritten in the store.
+
+### Container ownership
 
 When a sequencer or router declares `container: { component: "my-container" }`, it emits a `ContainerItem` at execution start. Items emitted inside the container scope carry `ownedBy: containerBlockInstanceId`.
 
-`ItemsRenderer` suppresses `component` and `tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
+`ItemsRenderer` suppresses `data` and `tool_output` items owned by a container with a registered renderer — the container renderer is responsible for displaying them. Use `useContainerItems` to access them:
 
 ```ts
-const { state, items, componentsByKey } = useContainerItems(containerItem, session);
-// state — latest ComponentItem data for the container's own component key
+const { state, items, dataByKey } = useContainerItems(containerItem, session);
+// state — `value` of the latest owned data item whose dataType is the container's component key
 // items — all items owned by this container, chronologically sorted
-// componentsByKey — latest data per unique key across owned component items
+// dataByKey — latest `value` per unique key across owned data items
 ```
 
 Primary output types (`message`, `reasoning`, `status`, `error`) always render in the main stream even when owned by a container.
 
-### Component vs native types
+### Data vs native types
 
-Use `component` when the output needs custom UI that native types can't express. For everything else, use the native type:
+Use `data` for structured content: a record code reads, or output that needs custom UI native types can't express. For everything else, use the native type:
 
 - Conversational text → `message`
 - Progress during a long operation → `status`
 - Search citations → `source`
 - Errors → `error`
 
-Using `component` for things native types cover bypasses built-in history assembly and adds renderer maintenance overhead.
+Using `data` for things native types cover bypasses built-in history assembly and adds renderer maintenance overhead.
+
+## Conversation lines
+
+A conversation screen draws **lines**, not items. React's `conversationLines(items, turns)` (`packages/react/src/components/conversation-lines.ts`) is the one model that turns a session's items, and its turns (`{ id, status, retryable }`), into them; `ItemsRenderer` draws them through the registry. An app never reads items to decide what a line is: the model decides each kind, once, and a renderer decides only how it looks.
+
+| Line (`ItemLine.kind`) | From | What the model decides |
+|---|---|---|
+| `user`, `assistant` | `message` | An assistant line is `streaming` while its turn runs, `incomplete` when its turn failed or was stopped first; a reply that ended saying nothing is no line |
+| `steps` | `tool_output`, `reasoning` | One turn's calls and the thinking between them, one after another; never spans two turns. `ended` once its turn is over. `ItemsRenderer` hands a `toolGroupRenderer` the line itself |
+| `failed` | `error` | `retryable` only on the newest turn that drew a line, and only when that turn's `retryable` (set by the engine, see [action forms](./action-forms.md)) says so |
+| `stopped` | the turn (`aborted`) | Not an item: placed after that turn's last line. The registry's `stopped` slot draws it |
+| `suspension` | `suspension` | Carries its `resolution` once a `suspension_resume` answers it |
+| `data` | `data` | Drawn by the renderer registered for its `dataType`. Given the registry in use (`renderers`), a `data` item it has no renderer for, or turns off, is a record and makes no line (no renderer, no line), so a board pass's change record never takes Retry off the failed turn before it |
+| `item` | anything else | Drawn by the registry |
+
+The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub-agent and trace items out, container-owned items left to their container). Records that draw nothing (`state_change`, `resource_change`, `suspension_resume`, `continuation`) make no line.
+
+**A tool call that wrote a line is that line, not a step.** A `data` item written inside a tool call and keyed by that call's logical id (`${requestId}:${path}`, whose last segment is `tool[name][callId]`) stands for the call, and the call's `tool_output` draws no step. Workforce writes its conversation lines this way:
+
+| `dataType` | Written by | Value |
+|---|---|---|
+| `workforce:received` | the message entry | `ReceivedMessageValue` |
+| `workforce:sent` | `sendMessage`, keyed by its call; refused sends too; a waited send is written again with its answer | `SentMessageValue` |
+| `workforce:task` | the conversation board's filing, keyed by the `createTask` call | `FiledTaskValue` |
+| `workforce:result` | the board's ending line for a task the conversation filed, keyed by the task | `TaskResultValue` |
+
+All four are client-only (`history: false`): the model reads the call and the board's message. Where a result line says a task's ending, the board's message saying it is the model's only (`{ client: false, history: true }`), so a client draws the ending once. A feed that names its item types (`itemTypes`) still receives such an item, so `conversationLines` drops every item whose `itemVisibility.client` is `false`.
+
+**The lines' look is the UI registry's, configured per screen.** Two registry items (`packages/ui/registry/components/`), installed into an app as byte-equal copies, draw every line kind but the plain `user`/`assistant` ones:
+
+- `conversation-lines`: the `failed` line (Retry when `line.retryable` and the screen gives `retry`), the `stopped` line, the approval card for a `user_approval` suspension, and `CompactSteps`, a compact `toolGroupRenderer`; the default steps look is the `tool` item's `ToolGroup`. One `LineContext` carries what each screen supplies (names, pictures, what a click opens, Retry, whether it can answer), each field optional: outside a provider a line shows ids and opens nothing.
+- `workforce-lines`: `workforceLineRenderers` for the four `dataType`s above, for a registry's `data` slot (`data: { ...workforceLineRenderers, ...appRenderers.data }`), and `withBrief(Message)`, which folds a task's brief to one line.
+
+An app keeps only what is its own in its registry, built once at module level. `workforce/react` holds no line renderers.
+
+Each line has an `id` that stays the same as it changes, for a key. The return type is `ItemLine`, not `ConversationLine`: that name is workforce's coordinator line (`coordinator-lines.ts`), a different thing.
 
 ## What doesn't belong in items
 
@@ -349,7 +389,7 @@ Using `component` for things native types cover bypasses built-in history assemb
 
 ## Adding a new item type
 
-Most new UI needs can be expressed via `component` items with a registered renderer. Before adding a new type, confirm that won't work.
+Most new UI needs and records can be expressed as `data` items, with a registered renderer where they need drawing. Before adding a new type, confirm that won't work.
 
 If a new type is genuinely needed:
 

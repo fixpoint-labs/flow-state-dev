@@ -86,7 +86,7 @@ describe("a conversation board's task actions, through the Inbox client", () => 
       await host.settled();
       expect((await stored(host, held))?.status).toBe("completed");
 
-      // Steer: an open task's row carries the words.
+      // Steer: an open task carries the words.
       const working = await file(host, conv, {
         goal: "Audit the licenses [hold:open]",
         title: "License audit",

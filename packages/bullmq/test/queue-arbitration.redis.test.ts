@@ -1,6 +1,6 @@
 /**
  * A session's concurrency policy on a BullMQ host, end to end against a real
- * Redis: `createFlowState` with `bullmqWorker`, the real enqueue → worker →
+ * Redis: `createFlowState` with `bullmqJobQueue`, the real enqueue → worker →
  * `runAction` path, and nothing stubbed.
  *
  * Each "process" is its own `createFlowState` over one shared store: its own
@@ -21,8 +21,8 @@ import {
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
-import { type WorkerMode } from "@flow-state-dev/engine/host";
-import { bullmqWorker, type BullmqWorkerOptions } from "../src/flowstate-adapter";
+import { type JobQueueMode } from "@flow-state-dev/engine/host";
+import { bullmqJobQueue, type BullmqJobQueueOptions } from "../src/flowstate-adapter";
 import { createRedisLeaseBackend, type RedisLeaseBackend } from "../src/lease-backend";
 import { REDIS_URL, describeWithRedis, isolatedPrefix, until } from "./redis-helpers";
 
@@ -78,7 +78,7 @@ function sessionFlow(kind: string, spans: Span[]) {
   return defineFlow({
     kind,
     actions: {
-      work: { block: work, inputSchema: z.object({ tag: z.string(), holdMs: z.number().optional() }) },
+      work,
       deliver: { block: deliver }
     },
     internal: { actions: { work: { block: work } } },
@@ -124,8 +124,8 @@ function conversationFlow(kind: string, spans: Span[]) {
   return defineFlow({
     kind,
     actions: {
-      reply: { block: turn, inputSchema: input, concurrency: "hold" },
-      notice: { block: turn, inputSchema: input, concurrency: "defer" }
+      reply: { block: turn, concurrency: "hold" },
+      notice: { block: turn, concurrency: "defer" }
     }
   })({ id: kind });
 }
@@ -166,11 +166,11 @@ function deployment(): Deployment {
 async function processOf(
   d: Deployment,
   flow: ReturnType<typeof sessionFlow> | ReturnType<typeof conversationFlow>,
-  mode: WorkerMode,
-  options: Partial<BullmqWorkerOptions> = {},
-  replaceLeaseBackend?: (adapter: ReturnType<typeof bullmqWorker>) => RedisLeaseBackend
+  mode: JobQueueMode,
+  options: Partial<BullmqJobQueueOptions> = {},
+  replaceLeaseBackend?: (adapter: ReturnType<typeof bullmqJobQueue>) => RedisLeaseBackend
 ) {
-  const adapter = bullmqWorker({
+  const adapter = bullmqJobQueue({
     connection: REDIS_URL!,
     prefix: d.prefix,
     queueName: d.queueName,
@@ -184,18 +184,18 @@ async function processOf(
       : { ...adapter, leaseBackend: replaceLeaseBackend(adapter) };
   // The BullMQ worker this process starts, so a case can stop it taking jobs.
   let consumer: { close(): Promise<void> } | undefined;
-  const worker =
-    base.startWorker === undefined
+  const jobQueue =
+    base.startProcessing === undefined
       ? base
       : {
           ...base,
-          startWorker: (rt: Parameters<NonNullable<typeof base.startWorker>>[0]) =>
-            (consumer = base.startWorker!(rt) as { close(): Promise<void> })
+          startProcessing: (rt: Parameters<NonNullable<typeof base.startProcessing>>[0]) =>
+            (consumer = base.startProcessing!(rt) as { close(): Promise<void> })
         };
   const state = createFlowState({
-    flows: { [d.kind]: flow },
+    flows: [flow],
     stores: { default: { primary: d.primary } },
-    worker
+    jobQueue
   });
   disposers.push(() => state.dispose());
   const runtime = await state.getRuntime();
@@ -290,9 +290,9 @@ describeWithRedis("P1 graduated · runs into one session on BullMQ, across worke
   it("run one at a time, in the order they were accepted (BR-6, V6)", async () => {
     const d = deployment();
     const flow = sessionFlow(d.kind, d.spans);
-    const web = await processOf(d, flow, "dispatch-only");
-    await processOf(d, flow, "worker-only");
-    await processOf(d, flow, "worker-only");
+    const web = await processOf(d, flow, "enqueue-only");
+    await processOf(d, flow, "process-only");
+    await processOf(d, flow, "process-only");
     await seedSession(d.store, "s_r", d.kind, "lin_1");
 
     const ids: string[] = [];
@@ -392,8 +392,8 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
     const d = deployment();
     const flow = sessionFlow(d.kind, d.spans);
     const leaseMs = 1_000;
-    const web = await processOf(d, flow, "dispatch-only", { leaseMs });
-    const workerA = await processOf(d, flow, "worker-only", { leaseMs, concurrency: 1 });
+    const web = await processOf(d, flow, "enqueue-only", { leaseMs });
+    const workerA = await processOf(d, flow, "process-only", { leaseMs, concurrency: 1 });
     await seedSession(d.store, "s_r", d.kind, "lin_1");
 
     const holder = await postWork(web.router, d.kind, "s_r", { tag: "holder", holdMs: 20_000 });
@@ -401,7 +401,7 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
     await new Promise((r) => setTimeout(r, 300));
 
     // Only now can the next run land anywhere but in worker A's one slot.
-    await processOf(d, flow, "worker-only", { leaseMs });
+    await processOf(d, flow, "process-only", { leaseMs });
     const next = await postWork(web.router, d.kind, "s_r", { tag: "next" });
     await new Promise((r) => setTimeout(r, 300));
     expect(d.spans).toEqual([]);
@@ -428,7 +428,7 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
   it("starts nothing and enqueues nothing when the lease backend cannot be reached (BR-16)", async () => {
     const d = deployment();
     const flow = sessionFlow(d.kind, d.spans);
-    const web = await processOf(d, flow, "dispatch-only", {}, (adapter) =>
+    const web = await processOf(d, flow, "enqueue-only", {}, (adapter) =>
       createRedisLeaseBackend({
         connection: {
           host: "127.0.0.1",
@@ -454,9 +454,9 @@ describeWithRedis("a reply and its notice on BullMQ workers (FIX-1836)", () => {
   it("runs the notice after the reply, waits for a reply that starts while it waits, and runs notices one at a time", async () => {
     const d = deployment();
     const flow = conversationFlow(d.kind, d.spans);
-    const web = await processOf(d, flow, "dispatch-only");
-    await processOf(d, flow, "worker-only", { concurrency: 2 });
-    await processOf(d, flow, "worker-only", { concurrency: 2 });
+    const web = await processOf(d, flow, "enqueue-only");
+    await processOf(d, flow, "process-only", { concurrency: 2 });
+    await processOf(d, flow, "process-only", { concurrency: 2 });
     await seedSession(d.store, "s_c", d.kind, "lin_1");
 
     const reply1 = await postWork(web.router, d.kind, "s_c", { tag: "reply-1", holdMs: 1_000 }, "reply");
@@ -487,14 +487,14 @@ describeWithRedis("a reply and its notice on BullMQ workers (FIX-1836)", () => {
     const d = deployment();
     const flow = conversationFlow(d.kind, d.spans);
     const leaseMs = 1_000;
-    const web = await processOf(d, flow, "dispatch-only", { leaseMs });
-    const workerA = await processOf(d, flow, "worker-only", { leaseMs, concurrency: 1 });
+    const web = await processOf(d, flow, "enqueue-only", { leaseMs });
+    const workerA = await processOf(d, flow, "process-only", { leaseMs, concurrency: 1 });
     await seedSession(d.store, "s_c", d.kind, "lin_1");
 
     await postWork(web.router, d.kind, "s_c", { tag: "reply", holdMs: 8_000, ignoreAbort: true }, "reply");
     await until(async () => (await web.adapter.queue.getActiveCount()) === 1, "the reply to start on worker A");
 
-    await processOf(d, flow, "worker-only", { leaseMs });
+    await processOf(d, flow, "process-only", { leaseMs });
     const notice = await postWork(web.router, d.kind, "s_c", { tag: "notice", holdMs: 100 }, "notice");
     await new Promise((r) => setTimeout(r, 500));
     expect(d.spans).toEqual([]);

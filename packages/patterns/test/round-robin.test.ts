@@ -393,7 +393,7 @@ describe("round-robin", () => {
     ).toThrow(/outputSchema/);
   });
 
-  it("supports an externally-provided contributions resource", async () => {
+  it("reads and writes an externally provided contributions resource at a custom key", async () => {
     const sharedContributions = createRoundRobinContributions();
     const pattern = roundRobin({
       name: "rr-shared",
@@ -401,11 +401,12 @@ describe("round-robin", () => {
       maxRounds: 1,
       synthesizer: false,
       contributions: sharedContributions,
+      accessorKey: "teamNotes",
     });
 
     const result = await testBlock(pattern, {
       input: { goal: "x" },
-      session: { resources: { contributions: { entries: [] } } },
+      session: { resources: { teamNotes: { entries: [] } } },
     });
     expect(result.error).toBeNull();
     const out = result.output as RoundRobinFinalShape;
@@ -430,7 +431,7 @@ describe("round-robin", () => {
 
     expect(result.error).toBeNull();
     const taskChanges = result.items.filter(
-      (item) => item.type === "component" && (item as any).component === "task-change",
+      (item) => item.type === "data" && (item as any).dataType === "task-change",
     );
     expect(taskChanges.length).toBeGreaterThanOrEqual(4);
   });

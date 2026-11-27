@@ -142,7 +142,7 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
   async function boot(waitDeadlines?: { defaultMs: number; minMs: number }) {
     const flow = planFlow();
     state = createFlowState({
-      flows: { "plan-hands-over": flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true,
       durabilityRetention: { sweepIntervalMs: 100 },

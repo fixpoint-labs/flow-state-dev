@@ -79,11 +79,11 @@ async function reportFor(collection: TaskCollectionRef): Promise<{
   });
   const result = await testBlock(block, { input: undefined });
   expect(result.error).toBeNull();
-  type MetaItem = { type?: string; component?: string; data?: unknown };
+  type MetaItem = { type?: string; dataType?: string; value?: unknown };
   const meta = (result.items as MetaItem[]).find(
-    (i) => i.type === "component" && i.component === "task-board-meta",
+    (i) => i.type === "data" && i.dataType === "task-board-meta",
   );
-  return meta?.data as never;
+  return meta?.value as never;
 }
 
 /** Claim the next ready task and fail it. */
@@ -220,7 +220,7 @@ describe("retry budget — the board reports it honestly", () => {
     // about a limit the caller set deliberately. The reporter reads the limit
     // off the collection, where enforcement actually lives.
     const supplied = await getOrCreateTaskCollection({
-      ctx: { emit: { component: () => {} }, response: undefined } as never,
+      ctx: { emit: { data: () => {} }, response: undefined } as never,
       backing: "state",
       collectionId: "caller-built",
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
@@ -258,7 +258,7 @@ describe("retry budget — the request backing inherits the sequencer path", () 
   it("counts AND enforces, with no separate implementation", async () => {
     const requestState: Record<string, unknown> = {};
     const ctx = {
-      emit: { component: () => {} },
+      emit: { data: () => {} },
       response: undefined,
       request: {
         identity: { id: "r1", userId: "u1" },
@@ -335,8 +335,8 @@ describe("retry budget — goal check on a real board drain", () => {
 
     type MetaItem = {
       type?: string;
-      component?: string;
-      data?: {
+      dataType?: string;
+      value?: {
         status?: string;
         terminationReason?: string;
         counts?: Record<string, number>;
@@ -345,17 +345,17 @@ describe("retry budget — goal check on a real board drain", () => {
     };
     const meta = (result.items as MetaItem[]).find(
       (i) =>
-        i.type === "component" &&
-        i.component === "task-board-meta" &&
-        i.data?.status === "completed",
+        i.type === "data" &&
+        i.dataType === "task-board-meta" &&
+        i.value?.status === "completed",
     );
 
-    expect(meta?.data?.terminationReason).toBe("retry-budget-exhausted");
-    expect(meta?.data?.counts?.retries).toBe(3);
-    expect(meta?.data?.maxTotalRetries).toBe(3);
+    expect(meta?.value?.terminationReason).toBe("retry-budget-exhausted");
+    expect(meta?.value?.counts?.retries).toBe(3);
+    expect(meta?.value?.maxTotalRetries).toBe(3);
     // The task settled rather than being parked or left pending.
-    expect(meta?.data?.counts?.errored).toBe(1);
-    expect(meta?.data?.counts?.pending).toBe(0);
-    expect(meta?.data?.counts?.in_progress).toBe(0);
+    expect(meta?.value?.counts?.errored).toBe(1);
+    expect(meta?.value?.counts?.pending).toBe(0);
+    expect(meta?.value?.counts?.in_progress).toBe(0);
   });
 });

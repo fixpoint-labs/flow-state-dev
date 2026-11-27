@@ -1,8 +1,11 @@
 /**
  * Session CRUD route handlers: create, get, list, delete.
  */
+import { isWriteSessionId, ReservedSessionIdError } from "../resources/default-write-flow";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../transports/scheduled/schedule-session-id";
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   RequestRecord,
@@ -17,10 +20,10 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
-import { getReadonlyStateKeys, mapLimit } from "@flow-state-dev/core/helpers";
+import { mapLimit } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
-import { isOrgAttributed } from "../context/org-attribution";
+import { readonlyStateFilter } from "../context/readonly-state-filter";
 import {
   asObject,
   asStringArray,
@@ -37,21 +40,23 @@ import {
   projectRequestResult,
   type ProjectedRequestResult,
   refuseUnattributedRecord,
-  sessionCreateRefusedResponse
+  sessionCreateRefusedResponse,
+  snapshotItemsOf
 } from "./route-utils";
 import {
   isSameSession,
   resolveSessionStorageKey,
-  tenantMatches,
   toBareSessionId
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
+import { sessionBlobOwner } from "../blobs/attachments";
 import { latestRequestStatus } from "./session-request-status";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
-  ownResolverVerdict,
+  admitSession,
   type InstanceCallerResolver
 } from "./instance-caller";
 
@@ -85,6 +90,8 @@ type SessionRouteContext = {
    * that acts under its own read of it (`RouteAuthResult.session`).
    */
   checkedSession?: SessionRecord | null;
+  /** The host's `publicReentrySources`: which requests the session's listing marks `retryable`. */
+  publicReentrySources?: readonly string[];
 };
 
 // FIX-1440.
@@ -190,32 +197,11 @@ function resolveStateFilter(
   const entries = [...url.searchParams.entries()].filter(([name]) => name.startsWith(STATE_FILTER_PREFIX));
   if (entries.length === 0) return {};
   const address = getString(url.searchParams.get("flowId")) ?? getString(url.searchParams.get("flowKind"));
-  const flow = address === undefined ? undefined : registry.get(address);
-  if (flow === undefined) {
-    return {
-      error:
-        "A state filter needs the flow whose readonly state fields it names: pass flowId, or " +
-        "the flowKind of a registered flow."
-    };
-  }
-  // The flow's own schema, not the merged one: the store filters the state it
-  // holds, and a field only a block declares is filled at read time, never
-  // stored at birth, so filtering on it would answer an empty list.
-  const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
-  const state: Record<string, string> = {};
-  for (const [name, value] of entries) {
-    const field = name.slice(STATE_FILTER_PREFIX.length);
-    if (!readonly.has(field)) {
-      return {
-        error:
-          `Sessions of flow "${flow.kind}" can't be filtered by state field "${field}": only ` +
-          `readonly state fields are filterable` +
-          (readonly.size === 0 ? ", and this flow declares none." : ` (${[...readonly].join(", ")}).`)
-      };
-    }
-    state[field] = value;
-  }
-  return { state };
+  // The one guard a view's `sessions.list` calls too (FIX-2725).
+  return readonlyStateFilter(
+    address === undefined ? undefined : registry.get(address),
+    Object.fromEntries(entries.map(([name, value]) => [name.slice(STATE_FILTER_PREFIX.length), value]))
+  );
 }
 
 export async function handleListSessions(
@@ -313,9 +299,9 @@ export async function handleListSessions(
   // OTHER organization predates the upgrade and is refused by the addressed
   // read, so it is withheld here for the same reason (BR-10) — the store query
   // above could not scope it, because there was no principal to scope it by.
+  // `admitSession` refuses the unattributed rows itself, before this rule is asked.
   const hostRuleAdmits = (s: SessionRecord): boolean =>
     flowVisible(s) &&
-    isOrgAttributed(s) &&
     (allowed === undefined || s.orgId === DEFAULT_ORG_ID);
 
   // Everything above is the host-level rule. A row owned by an instance with a
@@ -326,12 +312,12 @@ export async function handleListSessions(
   //
   // The store query is tenant-scoped on every path, scoped or not. The check
   // is repeated per row so neither verdict can admit a row from another tenant
-  // (FIX-682) if that ever stops being true.
+  // (FIX-682) if that ever stops being true. A write session is never shown
+  // (FIX-2624). The one admission a view's session reads take too (FIX-2725).
+  const admission = { registry: ctx.registry, callerFor: ctx.callerFor, tenantId: ctx.tenantId, hostRule: hostRuleAdmits };
   const visible: SessionRecord[] = [];
   for (const s of sessions) {
-    if (!tenantMatches(s.tenantId, ctx.tenantId)) continue;
-    const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, s);
-    if (own ?? hostRuleAdmits(s)) visible.push(s);
+    if (await admitSession(admission, s)) visible.push(s);
   }
 
   // Each visible row's latest request status, only when asked:
@@ -435,6 +421,16 @@ export async function handleCreateSession(
 
   const now = Date.now();
   const sessionId = getString(body.sessionId) ?? generateId("sess");
+  // FIX-2624: a write session is the server's; one a client made first would
+  // lock its writer out of the resource.
+  if (isWriteSessionId(sessionId)) {
+    return jsonResponse(400, { error: "reserved-session-id", message: new ReservedSessionIdError(sessionId).message });
+  }
+  // FIX-2886: a schedule session is the scheduled dispatch's to create; one a
+  // client made first would refuse every fire of the schedule.
+  if (isScheduleSessionId(sessionId)) {
+    return jsonResponse(400, { error: "reserved-session-id", message: new ScheduleSessionIdError(sessionId).message });
+  }
   const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
 
   // Pre-apply the session state schema's defaults (`z.string().default("...")`,
@@ -506,7 +502,9 @@ export async function handleCreateSession(
         principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
         ...(callerState !== undefined ? { state: callerState } : {}),
         fromCaller: true,
-        via: "create"
+        via: "create",
+        // FIX-2942: this door is a person's, whoever its resolver names.
+        principalKind: "person"
       },
       build
     );
@@ -548,7 +546,9 @@ export async function handleDeleteSession(
   // content/state) is a leak. All keyed by the namespaced session key (FIX-682).
   await Promise.all([
     ctx.stores.content.deleteAll("session", sessionKey),
-    ctx.stores.resourceState.deleteAll("session", sessionKey)
+    ctx.stores.resourceState.deleteAll("session", sessionKey),
+    // Its attachments go with it (FIX-824).
+    ctx.stores.blobs?.deleteOwner(sessionBlobOwner(sessionKey))
   ]);
   await ctx.stores.session.delete(sessionKey);
   return emptyResponse(204);
@@ -659,8 +659,16 @@ export async function handleListSessionRequests(
     withItems: includeItems
   });
 
+  // The item logs are the client's view unless trace observability is on: the
+  // DevTool's cold open reads the hidden and trace items through here.
+  const clientView = includeItems && !isTraceObservabilityEnabled();
   return jsonResponse(200, {
-    requests: requests.map((record) => withListedResult(record, includeResultOutput))
+    requests: requests.map((record) => ({
+      ...withListedResult(record, includeResultOutput),
+      ...(clientView ? { items: snapshotItemsOf(record.items) } : {}),
+      // FIX-2853: the retry route's own rule, as a session's turns carry it.
+      retryable: isRequestPublicReentryAllowed(record, ctx.publicReentrySources)
+    }))
   });
 }
 

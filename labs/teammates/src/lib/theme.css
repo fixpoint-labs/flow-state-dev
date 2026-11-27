@@ -1,76 +1,211 @@
 /*
- * The lab's own theme: a dark, quiet, chat-first look in the manner of a
- * desktop assistant like Grok Bot, rather than Shift Manager's. Labs take their
- * theme from the design system; this one keeps its own on purpose (see the
- * README), so it sets the same token names the registry's `tokens` item and the
- * lab's components read, plus the lab's two shell surfaces, the radius scale
- * and the fonts. Values only. Unlayered, so they win over the registry's base
- * layer.
+ * The lab's own theme: the Flow State look (paper, ink, highlighter) set for
+ * an app, in two themes. **Paper** is the light one; **Night** is a warm
+ * near-black, and the dark default. `lib/theme.ts` sets the theme on the
+ * page's root as `data-theme="paper" | "night"` (and the `dark` class for
+ * Night, which the registry's `dark:` variant reads). Values only, unlayered,
+ * so they win over the registry's base layer.
  *
- * One look, dark: the values sit on `:root` and `.dark` alike. Colour is
- * restrained to grey steps; `info` and `success` are soft tints for the lines
- * between workers, and `attention` keeps one meaning, a person must act.
+ * Each theme sets the design's own names first, then points the registry's
+ * token names and the lab's shell steps at them, so a component reads the
+ * one set whatever the theme:
  *
- * `--teammate-<color>` are the colors a teammate's file may name for its
- * icon (`src/lib/looks.ts`): soft tints of the same weight, so no teammate
- * shouts and each stays tellable apart on the dark surfaces.
+ * - Grounds stack in layers: `--sidebar` (darkest in Night), `--bg` (the
+ *   page), `--inspector` (the right pane), `--card`.
+ * - `--ink` … `--ink4`: text, strongest to quietest. `--ink4` still meets
+ *   4.5:1 on every ground, so the smallest grey label stays readable.
+ * - `--line` … `--line3`: hairlines, ink at set transparencies.
+ * - `--wash`, `--wash2`: ink tints for hover and quiet fills.
+ * - `--blue`: live or clickable (running work, links, the selected tab,
+ *   focus). `--done`: passed or done. `--red`: failed, always with a word.
+ * - `--hl`: the highlighter. It means the user needs to act, and only that:
+ *   a small pill or the bot's "needs you" state, never a panel.
+ * - `--mine`: your own message's bubble, a surface of its own in each theme.
+ *
+ * The registry's `warning` has no colour of its own in this look: a problem
+ * short of failing (a run gone quiet, a harness that can't run) reads in
+ * `--red`, with a word.
+ *
+ * `--team-<color>-tile | -mark | -surface` are the team palette, three
+ * strengths each: a bot's tile, a mark on the ground (a square, a dot), and a
+ * quiet surface. Yellow-green is left out on purpose, so no team reads as
+ * "needs you". On a tile the bot is drawn in `--bot-ink` in every theme, and
+ * its running eyes in `--bot-live`.
  *
  * `--thread-width` is the conversation's one column: the message list and the
- * composer both cap at it, so their edges line up, and it stays centred
- * whether the Talk pane is open or not.
+ * composer both cap at it.
  *
- * The radius values are Tailwind's own theme variables: `rounded-sm`,
- * `rounded-md` and `rounded-lg` read `--radius-sm`, `--radius-md` and
- * `--radius-lg` directly, so these set them.
+ * Fonts: Space Grotesk for text and headings, IBM Plex Mono for data only
+ * (ids, times, counts, commands, paths, model names), bundled by `styles.css`.
+ * Corners: 5–6px controls, 8px cards, 14px dialogs and the message box.
  */
 :root,
-.dark {
-  --background: #141415;
-  --foreground: #ececee;
-  --card: #1c1c1e;
-  --card-foreground: #ececee;
-  --popover: #1c1c1e;
-  --popover-foreground: #ececee;
-  --primary: #ececee;
-  --primary-foreground: #141415;
-  --secondary: #26262a;
-  --secondary-foreground: #ececee;
-  --muted: #1c1c1e;
-  --muted-foreground: #8e8e93;
-  --accent: #26262a;
-  --accent-foreground: #ececee;
-  --destructive: #f0716a;
-  --destructive-foreground: #141415;
-  --border: #2a2a2e;
-  --input: #2a2a2e;
-  --ring: #5f5f66;
-  --success: #8fcfa6;
-  --success-foreground: #141415;
-  --warning: #e3ac74;
-  --warning-foreground: #141415;
-  --info: #93b4ec;
-  --info-foreground: #141415;
-  --attention: #e6c47c;
-  --attention-foreground: #141415;
+:root[data-theme="paper"] {
+  --bg: #f7f5ef;
+  --sidebar: #efebe0;
+  --inspector: #f3f0e8;
+  --card: #fffdf8;
+  --ink: #1b1a15;
+  --ink2: #3d3a32;
+  --ink3: #5f5b50;
+  --ink4: #6e6a5e;
+  --line: #1b1a151a;
+  --line2: #1b1a1529;
+  --line3: #1b1a1547;
+  --wash: #1b1a150a;
+  --wash2: #1b1a1512;
+  --blue: #2c4f8c;
+  --bluebg: #2c4f8c17;
+  --red: #a83e28;
+  --redbg: #a83e2817;
+  --done: #3d6b3a;
+  --donebg: #aee6a959;
+  --hl: #e8f551;
+  --hlbg: #e8f55138;
+  --onhl: #1b1a15;
+  --mine: #e8e3d4;
+  --mine-line: #1b1a1524;
+  --shadow-card: 0 1px 2px rgba(27, 26, 21, 0.05), 0 4px 14px rgba(27, 26, 21, 0.05);
 
-  --sidebar: #0f0f10;
-  --inspector: #111112;
+  --team-coral-tile: #f0bcb2;
+  --team-coral-mark: #af5d4d;
+  --team-coral-surface: #fde1db;
+  --team-amber-tile: #e6c4a0;
+  --team-amber-mark: #a16922;
+  --team-amber-surface: #f7e4d2;
+  --team-mint-tile: #a8d8bd;
+  --team-mint-mark: #2d8b61;
+  --team-mint-surface: #d7efe1;
+  --team-teal-tile: #9bd8d9;
+  --team-teal-mark: #008a8f;
+  --team-teal-surface: #d0eff0;
+  --team-iris-tile: #c3c6f3;
+  --team-iris-mark: #6e6eb6;
+  --team-iris-surface: #e4e6fd;
+  --team-orchid-tile: #e0bde1;
+  --team-orchid-mark: #985f9b;
+  --team-orchid-surface: #f3e1f4;
+  --team-rose-tile: #efbac3;
+  --team-rose-mark: #ad5a6b;
+  --team-rose-surface: #fce0e4;
+  --team-slate-tile: #c3ccd4;
+  --team-slate-mark: #6b7987;
+  --team-slate-surface: #e4e8ed;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
 
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1.25rem;
+:root[data-theme="night"] {
+  --bg: #0c0b0a;
+  --sidebar: #070706;
+  --inspector: #0a0908;
+  --card: #151411;
+  --ink: #ece7da;
+  --ink2: #cbc5b5;
+  --ink3: #aea895;
+  --ink4: #8d8777;
+  --line: #ece7da14;
+  --line2: #ece7da22;
+  --line3: #ece7da45;
+  --wash: #ece7da08;
+  --wash2: #ece7da12;
+  --blue: #8fabe2;
+  --bluebg: #8fabe221;
+  --red: #e27a5f;
+  --redbg: #e27a5f21;
+  --done: #9fe39a;
+  --donebg: #9fe39a1c;
+  --hl: #e8f551;
+  --hlbg: #e8f55114;
+  --onhl: #1b1a15;
+  --mine: #1d1b17;
+  --mine-line: #ece7da1f;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.6), 0 6px 18px rgba(0, 0, 0, 0.4);
 
-  --teammate-blue: #8fb3f0;
-  --teammate-green: #8fd0a4;
-  --teammate-amber: #e5b678;
-  --teammate-rose: #ee9aa8;
-  --teammate-violet: #b9a2ee;
-  --teammate-teal: #7fcfc9;
-
-  --thread-width: 46rem;
+  --team-coral-tile: #d49183;
+  --team-coral-mark: #ed9280;
+  --team-coral-surface: #41211b;
+  --team-amber-tile: #c89b69;
+  --team-amber-mark: #dea059;
+  --team-amber-surface: #3c260d;
+  --team-mint-tile: #74b592;
+  --team-mint-mark: #65c495;
+  --team-mint-surface: #113323;
+  --team-teal-tile: #5db5b8;
+  --team-teal-mark: #38c4c8;
+  --team-teal-surface: #003334;
+  --team-iris-tile: #9c9ed9;
+  --team-iris-mark: #a2a5f5;
+  --team-iris-surface: #272844;
+  --team-orchid-tile: #c092c2;
+  --team-orchid-mark: #d394d6;
+  --team-orchid-surface: #382239;
+  --team-rose-tile: #d38e9a;
+  --team-rose-mark: #ec8ea0;
+  --team-rose-surface: #402027;
+  --team-slate-tile: #9ba6b2;
+  --team-slate-mark: #a1b0c0;
+  --team-slate-surface: #272c31;
 
   color-scheme: dark;
+}
+
+/* The registry's names and the lab's shell steps, read from the design's names above: the same in both themes. */
+:root {
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card-foreground: var(--ink);
+  --popover: var(--card);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--bg);
+  --secondary: var(--wash2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--wash);
+  --muted-foreground: var(--ink3);
+  --accent: var(--wash2);
+  --accent-foreground: var(--ink);
+  --destructive: var(--red);
+  --destructive-foreground: var(--bg);
+  --border: var(--line);
+  --input: var(--line2);
+  --ring: var(--blue);
+  --success: var(--done);
+  --success-foreground: var(--bg);
+  --warning: var(--red);
+  --warning-foreground: var(--bg);
+  --info: var(--blue);
+  --info-foreground: var(--bg);
+  --attention: var(--hl);
+  --attention-foreground: var(--onhl);
+
+  --bg-subtle: var(--inspector);
+  --surface: var(--card);
+  --surface-raised: var(--card);
+  --selected: var(--card);
+  --border-strong: var(--line2);
+  --text-2: var(--ink3);
+  --text-3: var(--ink4);
+  --brand: var(--blue);
+  --brand-foreground: var(--bg);
+  --success-text: var(--done);
+  --success-soft: var(--donebg);
+  --warning-text: var(--red);
+  --warning-soft: var(--redbg);
+  --warning-line: var(--line2);
+  --danger: var(--red);
+  --presence-idle: var(--line3);
+
+  --bot-ink: #1b1a15;
+  --bot-live: #1f3f8a;
+
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 14px;
+
+  --thread-width: 47.5rem;
 }

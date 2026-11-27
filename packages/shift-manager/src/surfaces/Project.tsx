@@ -5,9 +5,9 @@
  *
  * - **Stream** is the user's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
- *   names, linked to this project, found or started when the tab opens. It
- *   hands a line to the user's own workstreams in the project. A finished
- *   turn reads the Lab again, as every conversation does.
+ *   names, linked to this project, found when the tab opens and started by
+ *   the user's first line there, so opening the tab starts nothing. It
+ *   hands a line to the user's own workstreams in the project.
  * - **Board** draws the tasks of the user's own workstream sessions in the
  *   project, one panel per session, each read from that session alone. Another
  *   user's workstream sessions, and the Lab-wide inventory of boards, are
@@ -22,10 +22,10 @@
  * - **Brief** is the row's brief, under the repository its code lives in, or
  *   a line saying it has none and its coding work runs on its files.
  *
- * **What a project view reads**: the row and the entries, by one
- * prefix, when it opens, each time the Lab is read again, and every few
- * seconds while Board or Workstreams is on screen; never a read of
- * the whole Lab of its own. The title comes from the snapshot every level shares.
+ * **What a project view reads**: the row from the projects the page holds
+ * (`directory.tsx`), and the entries by the project's one prefix while Board
+ * or Workstreams is on screen, each kept current by its own notices; never a
+ * read of the whole Lab.
  *
  * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
@@ -36,20 +36,24 @@ import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
-import { projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import type { SessionSummary } from "@flow-state-dev/client";
+import type { ProjectSetup } from "@flow-state-dev/workforce/browser";
+import { workerStates, shiftCounts, teamsOf } from "../lib/shift";
 import { useLab } from "../lib/lab-data";
+import { useProjects, useSessions, useWorkers } from "../lib/directory";
+import { useInbox } from "../lib/inbox";
 import {
-  projectReaderOf,
-  readEntryReport,
-  readProjectSetup,
-  useProjectRead,
+  useEntryReport,
+  useProjectSetup,
+  useProjectWorkstreams,
   type ProjectAddress,
-  type ProjectRead,
-  type ProjectSetup,
+  type ProjectWorkstreams,
+  type ScreenRead,
   type WorkstreamEntry,
 } from "../lib/projects";
-import { describeFailure, type Failure, type Worker } from "../lib/reads";
-import { useRoster, withRoster } from "../lib/roster";
+import { describeFailure, type Failure } from "../lib/failure";
+import type { RosterRead } from "../lib/roster";
+import { workerOf, type Worker } from "../lib/workers";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { useWorkforce } from "../lib/workforce";
@@ -59,6 +63,14 @@ type ProjectRoute = Extract<Route, { level: "project" }>;
 
 /** A read in flight, landed, or failed. */
 type Read<T> = { value: T } | { failure: Failure } | undefined;
+
+/** A hook's read as one of those three: a value drawn wins over a later failure beside it. */
+function readOf<T>(read: ScreenRead<T>): Read<T> {
+  return read.value !== undefined ? { value: read.value } : read.failure !== undefined ? { failure: read.failure } : undefined;
+}
+
+/** No sessions, while the list is read. */
+const NO_SESSIONS: readonly SessionSummary[] = [];
 
 /** The same project at `tab`, on one of its workstreams or on none. */
 function at(route: ProjectRoute, tab: ProjectTab, entry?: { owner: string; id: string }): ProjectRoute {
@@ -71,24 +83,27 @@ function at(route: ProjectRoute, tab: ProjectTab, entry?: { owner: string; id: s
   };
 }
 
-export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: ProjectRoute; gaps: Gaps }) {
-  const { refresh } = useLab();
+export function ProjectView({ route, gaps }: { route: ProjectRoute; gaps: Gaps }) {
   const { projectId, tab } = route;
-  const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.workers) : [];
-  const states = workerStates(snapshot);
-  const view = projectsOf(snapshot);
+  const { inventory, workers } = useWorkers();
+  const inbox = useInbox().section;
+  const teams = inventory?.ok === true ? teamsOf(inventory.value) : [];
+  const states = workerStates(workers, inbox?.ok === true ? inbox.value : undefined);
+  const { section: view, refresh } = useProjects();
   const address: ProjectAddress = { visibility: route.visibility ?? "shared", id: projectId };
 
   let title = projectId;
   let body: ReactNode;
-  if (!view.ok) {
+  if (view === undefined) {
+    body = <p className="p-4 text-sm text-muted-foreground" data-testid="project-reading">Reading the project…</p>;
+  } else if (!view.ok) {
     body = (
       <div className="p-4">
-        <SectionFailure what="Projects" failure={view.failure} onRetry={() => void refresh()} testId="project-failure" />
+        <SectionFailure what="Projects" failure={view.failure} onRetry={refresh} testId="project-failure" />
       </div>
     );
   } else {
-    const found = view.value.projects.find((row) => row.id === projectId && row.visibility === address.visibility);
+    const found = view.value.find((row) => row.id === projectId && row.visibility === address.visibility);
     if (found === undefined) {
       body = (
         <EmptyState title="No such project" testId="project-missing">
@@ -101,7 +116,6 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
       body = (
         <ProjectBody
           key={`${address.visibility}/${address.id}`}
-          snapshot={snapshot}
           route={route}
           address={address}
           gaps={gaps}
@@ -115,7 +129,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project" data-project-id={projectId} data-visibility={address.visibility}>
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">
           {address.visibility === "private" ? "PRIVATE PROJECT" : "PROJECT"}
         </p>
         <ScreenTitle testId="project-title">{title}</ScreenTitle>
@@ -149,71 +163,27 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
   );
 }
 
-/** The Lab's project setup, read once per connection; `retry` reads it again after a failure. */
-function useProjectSetup(): { setup: Read<ProjectSetup | null>; retry: () => void } {
-  const { client } = useLab();
-  const [read, setRead] = useState<Read<ProjectSetup | null>>(undefined);
-  const [tries, setTries] = useState(0);
-  useEffect(() => {
-    let closed = false;
-    readProjectSetup(client)
-      .then((value) => !closed && setRead({ value }))
-      .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error) }));
-    return () => {
-      closed = true;
-    };
-  }, [client, tries]);
-  const retry = useCallback(() => setTries((n) => n + 1), []);
-  return { setup: read, retry };
-}
-
-/** A project's tabs, once the snapshot has it. */
+/** A project's tabs, once the projects read has it. */
 function ProjectBody({
-  snapshot,
   route,
   address,
   gaps,
   repository,
   brief,
 }: {
-  snapshot: LoadedSnapshot;
   route: ProjectRoute;
   address: ProjectAddress;
   gaps: Gaps;
   repository: string | null;
   brief: string | null;
 }) {
-  const { refresh } = useLab();
-  const reader = projectReaderOf(snapshot.sessions);
-  // Only Board and Workstreams draw entries; Stream and Brief never pay for the read.
-  const needsEntries = route.tab === "board" || route.tab === "workstreams";
-  const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
-  const { setup, retry: retrySetup } = useProjectSetup();
-  const roster = useRoster();
-  const { workers } = withRoster(snapshot, roster);
-  const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
-  const readFailure =
-    reader === null ? (
-      <EmptyState title="Your project reads aren't open yet" testId="project-reader-none">
-        Shift Manager reads a project through your own session on the roster, which opens with the Lab's next read.
-      </EmptyState>
-    ) : read !== undefined && "failure" in read ? (
-      <div className="p-4">
-        <SectionFailure what="The project" failure={read.failure} onRetry={reread} testId="project-read-failure" />
-      </div>
-    ) : read !== undefined && read.value === null ? (
-      <EmptyState title="This project didn't read" testId="project-unread">
-        The Lab has no project here you can read. It may have been removed since the Lab was last read.{" "}
-        <button type="button" className="underline" onClick={() => void refresh()}>
-          Read the Lab again
-        </button>
-      </EmptyState>
-    ) : null;
-  const reading = <p className="p-4 text-sm text-muted-foreground" data-testid="project-reading">Reading the project…</p>;
+  const setupRead = useProjectSetup();
+  const setup = readOf(setupRead);
+  const { workers, roster } = useWorkers();
 
   switch (route.tab) {
     case "stream":
-      return <CoordinatorStream snapshot={snapshot} address={address} setup={setup} retrySetup={retrySetup} workers={workers} gaps={gaps} />;
+      return <CoordinatorStream address={address} setup={setup} retrySetup={setupRead.refresh} workers={workers} gaps={gaps} />;
     case "brief":
       return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -230,53 +200,66 @@ function ProjectBody({
         </div>
       );
     case "board":
-      if (readFailure !== null) return readFailure;
-      if (entries === undefined) return reading;
-      return <OwnBoards entries={entries} roster={roster} workers={workers} readAt={snapshot.readAt} />;
-    case "workstreams": {
-      if (readFailure !== null) return readFailure;
-      if (entries === undefined || read === undefined || !("value" in read) || read.value === null) return reading;
-      if (route.entry !== undefined) {
-        const entry = entries.find((e) => e.owner === route.entry!.owner && e.id === route.entry!.id);
-        return (
-          <EntryView
-            key={`${route.entry.owner}/${route.entry.id}`}
-            snapshot={snapshot}
-            address={address}
-            route={route}
-            entry={entry}
-            readerSessionId={reader!}
-            roster={roster}
-            workers={workers}
-            gaps={gaps}
-          />
-        );
-      }
+      // Only Board and Workstreams draw entries; Stream and Brief never pay for the read.
+      return <Entries address={address}>{(read) => <OwnBoards entries={read.entries} roster={roster} workers={workers} />}</Entries>;
+    case "workstreams":
       return (
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-          <Progress read={read.value} />
-          <EntryList entries={entries} route={route} />
-          <OpenHint route={route} setup={setup} />
-        </div>
+        <Entries address={address}>
+          {(read) => {
+            if (route.entry !== undefined) {
+              const entry = read.entries.find((e) => e.owner === route.entry!.owner && e.id === route.entry!.id);
+              return (
+                <EntryView
+                  key={`${route.entry.owner}/${route.entry.id}`}
+                  address={address}
+                  route={route}
+                  entry={entry}
+                  roster={roster}
+                  workers={workers}
+                  gaps={gaps}
+                />
+              );
+            }
+            return (
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
+                <Progress read={read} />
+                <EntryList entries={read.entries} route={route} />
+                <OpenHint route={route} setup={setup} />
+              </div>
+            );
+          }}
+        </Entries>
       );
-    }
   }
 }
 
+/** A project's workstreams, read while this is mounted, drawn by `children` once they land. */
+function Entries({ address, children }: { address: ProjectAddress; children: (read: ProjectWorkstreams) => ReactNode }) {
+  const { value, failure, refresh } = useProjectWorkstreams(address);
+  if (value === undefined && failure !== undefined) {
+    return (
+      <div className="p-4">
+        <SectionFailure what="The project" failure={failure} onRetry={refresh} testId="project-read-failure" />
+      </div>
+    );
+  }
+  if (value === undefined) return <p className="p-4 text-sm text-muted-foreground" data-testid="project-reading">Reading the project…</p>;
+  return <>{children(value)}</>;
+}
+
 /**
- * The user's conversation with their project coordinator (S5): found or
- * started for this project when the tab opens, then the shared conversation
- * component pinned to it.
+ * The user's conversation with their project coordinator (S5): found for this
+ * project when the tab opens, then the shared conversation component pinned to
+ * it. Found none, the conversation is empty and its first line starts the
+ * session, linked to the project: reading the tab starts no session.
  */
 function CoordinatorStream({
-  snapshot,
   address,
   setup,
   retrySetup,
   workers,
   gaps,
 }: {
-  snapshot: LoadedSnapshot;
   address: ProjectAddress;
   setup: Read<ProjectSetup | null>;
   retrySetup: () => void;
@@ -284,22 +267,44 @@ function CoordinatorStream({
   gaps: Gaps;
 }) {
   const workforce = useWorkforce();
+  const sessions = useSessions().list ?? NO_SESSIONS;
   const coordinatorId = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
-  const [session, setSession] = useState<Read<string>>(undefined);
+  // `null`: the user has no session with it for this project yet.
+  const [session, setSession] = useState<Read<string | null>>(undefined);
   const [tries, setTries] = useState(0);
   useEffect(() => {
     if (coordinatorId == null) return;
     let closed = false;
     setSession(undefined);
     workforce
-      .ensureWorkerSession({ worker: coordinatorId, projectId: address })
-      .then((found) => !closed && setSession({ value: found.id }))
+      .findWorkerSession({ worker: coordinatorId, projectId: address })
+      .then((found) => !closed && setSession({ value: found?.id ?? null }))
       .catch((error: unknown) => !closed && setSession({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workforce, coordinatorId, address.visibility, address.id, tries]);
+  // Found none: look again whenever the Lab lists a new session of the coordinator, such as one
+  // another tab started, so this tab follows it. Still a lookup only; nothing is started here.
+  const unopened = session !== undefined && "value" in session && session.value === null;
+  const listed = sessions
+    .filter((s) => workerOf(s) === coordinatorId)
+    .map((s) => s.id)
+    .join("\n");
+  useEffect(() => {
+    if (coordinatorId == null || !unopened || listed === "") return;
+    let closed = false;
+    workforce
+      .findWorkerSession({ worker: coordinatorId, projectId: address })
+      .then((found) => !closed && found !== undefined && setSession({ value: found.id }))
+      // A failed look again leaves the empty conversation on screen; the next listing tries again.
+      .catch(() => undefined);
+    return () => {
+      closed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workforce, coordinatorId, address.visibility, address.id, unopened, listed]);
 
   if (setup !== undefined && "failure" in setup) {
     return (
@@ -328,11 +333,14 @@ function CoordinatorStream({
   }
   return (
     <Conversation
-      key={session.value}
+      // One per project, not per session: the conversation a first line opened here carries on
+      // as the found session, with its composer and any send in flight.
+      key={`${address.visibility}/${address.id}`}
       testId="project-stream"
       worker={worker}
-      session={session.value}
-      sessions={snapshot.sessions}
+      session={session.value ?? undefined}
+      project={address}
+      sessions={sessions}
       gaps={gaps}
       name="Project coordinator"
       emptyText="Ask about this project, or hand work to one of your workstreams in it."
@@ -342,7 +350,7 @@ function CoordinatorStream({
 
 // BR-18, BR-19.
 /** The project's progress, worked out from its entries. */
-function Progress({ read }: { read: ProjectRead }) {
+function Progress({ read }: { read: ProjectWorkstreams }) {
   const { progress } = read;
   const statuses = Object.entries(progress.byStatus);
   return (
@@ -404,25 +412,22 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
  * anyone else reads the entry and its latest report, and never its session.
  */
 function EntryView({
-  snapshot,
   address,
   route,
   entry,
-  readerSessionId,
   roster,
   workers,
   gaps,
 }: {
-  snapshot: LoadedSnapshot;
   address: ProjectAddress;
   route: ProjectRoute;
   entry: WorkstreamEntry | undefined;
-  readerSessionId: string;
-  roster: ReturnType<typeof useRoster>;
+  roster: RosterRead;
   workers: readonly Worker[];
   gaps: Gaps;
 }) {
   const { client } = useLab();
+  const sessions = useSessions().list ?? NO_SESSIONS;
   const back = (
     <RouteLink
       className="text-xs underline"
@@ -466,7 +471,7 @@ function EntryView({
             testId="project-entry"
             worker={worker}
             session={entry.sessionId}
-            sessions={snapshot.sessions}
+            sessions={sessions}
             gaps={gaps}
             name={entry.title}
             lead={<Objectives objectives={entry.objectives} />}
@@ -477,7 +482,7 @@ function EntryView({
     );
   }
   const leadName = workers.find((worker) => worker.id === entry.lead)?.displayName ?? entry.lead;
-  return <EntryDetails address={address} entry={entry} leadName={leadName} readerSessionId={readerSessionId} back={back} />;
+  return <EntryDetails address={address} entry={entry} leadName={leadName} back={back} />;
 }
 
 // BR-12.
@@ -486,27 +491,14 @@ function EntryDetails({
   address,
   entry,
   leadName,
-  readerSessionId,
   back,
 }: {
   address: ProjectAddress;
   entry: WorkstreamEntry;
   leadName: string;
-  readerSessionId: string;
   back: ReactNode;
 }) {
-  const { client } = useLab();
-  const [report, setReport] = useState<Read<string | null>>(undefined);
-  useEffect(() => {
-    let closed = false;
-    readEntryReport(client, readerSessionId, address, entry)
-      .then((value) => !closed && setReport({ value }))
-      .catch((error: unknown) => !closed && setReport({ failure: describeFailure(error) }));
-    return () => {
-      closed = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, readerSessionId, entry.key]);
+  const report = readOf(useEntryReport(address, entry));
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-2 p-4 text-sm" data-testid="project-entry-details" data-workstream-id={entry.id}>
       {back}
@@ -549,7 +541,7 @@ function Objectives({ objectives }: { objectives: WorkstreamEntry["objectives"] 
 }
 
 /** The worker a workstream's lead talks through: its worker on the user's roster, on the flow the roster names. */
-function leadWorker(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, workers: readonly Worker[]): Worker | undefined {
+function leadWorker(entry: WorkstreamEntry, roster: RosterRead, workers: readonly Worker[]): Worker | undefined {
   const onRoster = roster !== undefined && "entries" in roster ? roster.entries.find((r: RosterEntry) => r.id === entry.lead) : undefined;
   if (onRoster === undefined) return undefined;
   return workers.find((worker) => worker.id === entry.lead && worker.kind === onRoster.flow);
@@ -563,12 +555,10 @@ function OwnBoards({
   entries,
   roster,
   workers,
-  readAt,
 }: {
   entries: readonly WorkstreamEntry[];
-  roster: ReturnType<typeof useRoster>;
+  roster: RosterRead;
   workers: readonly Worker[];
-  readAt: number;
 }) {
   const { client } = useLab();
   const own = entries.filter((entry) => entry.owner === client.userId && entry.sessionId !== null);
@@ -589,7 +579,7 @@ function OwnBoards({
             {worker === undefined ? (
               <p className="text-xs text-muted-foreground">Its lead "{entry.lead}" isn't on your roster.</p>
             ) : (
-              <TasksPanel worker={worker} sessionId={entry.sessionId} readAt={readAt} />
+              <TasksPanel worker={worker} sessionId={entry.sessionId} />
             )}
           </section>
         );

@@ -1,0 +1,9 @@
+[
+  {"file":"test/fake.ts","symbol":"(file)","kind":"gone"},
+  {"file":"src/app/reads.ts","symbol":"topic","kind":"client import"},
+  {"file":"src/app/reads.ts","symbol":"load","kind":"flow call"},
+  {"file":"src/app/reads.ts","symbol":"load","kind":"flow call"},
+  {"file":"src/app/reads.ts","symbol":"watch","kind":"subscribe call"},
+  {"file":"src/app/reads.ts","symbol":"BoardTask","kind":"type"},
+  {"file":"src/app/reads.ts","symbol":"Look","kind":"type"}
+]

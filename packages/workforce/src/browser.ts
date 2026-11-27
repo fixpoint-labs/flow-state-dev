@@ -23,10 +23,29 @@ export {
   type EditWorkerInput,
   type HireWorkerInput,
   type RosterEntry,
-  type WorkerSessionEntry,
   type WorkforceClient,
   type WorkforceClientSource
 } from "./workers/client";
+export { rosterView } from "./workers/roster-view-ref";
+export { workerUsageView } from "./workers/worker-usage-ref";
+export type { RosterView } from "./workers/roster-view";
+export { sessionTurnsViewRef, workerSessionsViewRef } from "./workers/session-views-ref";
+export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsView } from "./workers/session-views";
+export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
+export type { WorkerMessagesView } from "./messages/worker-messages-view";
+export { inboxViewRef } from "./workers/inbox-view-ref";
+export type { InboxSuspensionDetail, InboxBoardTask, InboxView, InboxViewValue } from "./workers/inbox-view";
+export { boardTaskOf } from "./conversation-board/board-task";
+export type { BoardTask } from "./conversation-board/board-task";
+export { TURN_ACTIONS } from "./workers/turn-actions";
+export { delegatesViewRef } from "./delegates/delegates-view-ref";
+export type { DelegatesView } from "./delegates/worker-delegates";
+/**
+ * The history summary resource every worker's answer declares (core's, at its default name): what a
+ * screen reads with `useResource(historySummaryResource, { sessionId })` to draw the "earlier turns
+ * summarized" divider beside the turns view's `historyStart`. From core's browser-safe `types` entry.
+ */
+export { historySummaryResource } from "@flow-state-dev/core/types";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,
@@ -36,6 +55,7 @@ export {
   FILING_SESSION_STATE_KEY,
   PROJECT_STATE_KEY,
   ROSTER_FLOW,
+  SET_SESSION_FIELDS_ACTION,
   SET_WORK_PROJECT_ACTION,
   TASK_ID_STATE_KEY,
   WORK_PROJECT_STATE_KEY,
@@ -50,6 +70,7 @@ export {
   PRIVATE_WORKSTREAMS_RESOURCE,
   projectRef,
   workstreamRef,
+  WORKSTREAMS_PATTERN,
   WORKSTREAMS_RESOURCE,
   workstreamsAccessor,
   workstreamStorageKey,
@@ -71,10 +92,32 @@ export {
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
 /** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
-export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
-export { LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN } from "./schedules/keys";
-export { listedScheduleSchema, type ListedSchedule } from "./schedules/listed-schedule";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "./messages/keys";
+export type {
+  FiledTaskValue,
+  ReceivedMessageValue,
+  SentMessageTarget,
+  SentMessageValue,
+  SentMessageWait,
+  TaskResultValue
+} from "./messages/line-values";
+export { sentTargetLabel } from "./messages/sent-target";
+export { SCHEDULES_PATTERN } from "./schedules/keys";
+export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
+export { routinesView } from "./routines/routines-view-ref";
+export { workstreamReportView } from "./projects/workstream-report-view-ref";
+export { checkRepositoryView } from "./projects/check-repository-view-ref";
+export { projectSetupView } from "./projects/project-setup-view-ref";
+export type { ProjectSetup, ProjectSetupView } from "./projects/project-coordinator";
+export { CONNECTOR_KEYS_PATH, PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
+export type { ConnectorKeyStatus } from "./projects/mcp-credentials";
+// FIX-2775: the collections an app reads whole, typed by their client data.
+export { privateProjectsResource, projectsResource } from "./projects/collections";
+export { workerInventoryResource } from "./inventory/collections";
+export { workerMessagesResource } from "./messages/message-log";
+export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
+  isOpenMessage,
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
   workerMessageResourceStateSchema,

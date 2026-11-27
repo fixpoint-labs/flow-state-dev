@@ -33,6 +33,7 @@ import {
 } from "../../lib/index.mts";
 import { startPostgres, type RunningPostgres } from "../../lib/postgres.mts";
 import { forkPeer, type Peer } from "../../lib/peers.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("session-stream-across");
@@ -55,7 +56,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // Today's main: the Postgres adapter backs no bus, so each process gets an in-memory one.
   "no-bus": [
     {
-      module: "packages/store-postgres/src/index.ts",
+      module: "packages/store-postgres/src/registry.ts",
       from: String.raw`capabilities: \["primary", "bus"\]`,
       to: 'capabilities: ["primary"]'
     }
@@ -93,8 +94,6 @@ async function pair(db: RunningPostgres, tail: boolean): Promise<Pair> {
   return { p1, p2, frames, stop: async () => void (await Promise.all([p1.stop(), p2.stop()])) };
 }
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 function textOf(event: SessionStreamEvent): string | undefined {
   if (event.type !== "session.item" || event.item.type !== "message") return undefined;
   return (event.item.content as Array<{ text?: string }>)[0]?.text;
@@ -107,7 +106,7 @@ async function receivedAt(frames: Frame[], view: number, match: (e: SessionStrea
     const hit = frames.find((frame) => frame.view === view && match(frame.event));
     if (hit !== undefined) return hit.at;
     if (Date.now() > deadline) return undefined;
-    await delay(5);
+    await sleep(5);
   }
 }
 
@@ -121,7 +120,7 @@ async function until(check: () => Promise<boolean>, withinMs: number): Promise<b
   const deadline = Date.now() + withinMs;
   while (Date.now() < deadline) {
     if (await check()) return true;
-    await delay(50);
+    await sleep(50);
   }
   return false;
 }
@@ -146,11 +145,11 @@ await runGoal(async (failures, tell) => {
         await p2.call<number>("openView", { session });
         const crossed = await until(() => p2.call<boolean>("crosses"), 5_000);
         evidence.push(`p2 ${crossed ? "crosses" : "never said it crosses"}`);
-        await delay(1_500);
+        await sleep(1_500);
 
         // 2 · an idle view costs the database nothing.
         await p2.call("count", { on: true });
-        await delay(IDLE_WINDOW_MS);
+        await sleep(IDLE_WINDOW_MS);
         const idle = await p2.call<Counted>("count", { on: false });
         // Floored on everything p2 sent in the window, pings included: a count
         // that saw none of p2's connections reads nothing, not a pass.
@@ -171,7 +170,7 @@ await runGoal(async (failures, tell) => {
 
         // 1 · a run process 1 starts reaches process 2's view. After a quiet
         // interval, since a view reads at most once an interval.
-        await delay(1_500);
+        await sleep(1_500);
         await p1.call("act", { session, action: "spawn", input: { key: `bg-${RUN_STAMP}` } });
         const started = await p1.call<number>("runStartedAt", { session });
         const runAt = await receivedAt(frames, view, (e) => e.type === "session.runs" && e.runs.length > 0, 3_000);
@@ -182,7 +181,7 @@ await runGoal(async (failures, tell) => {
         await p1.call("releaseRun");
 
         // 3 · the listener is killed while the view waits: one reply, nothing after it.
-        await delay(1_500);
+        await sleep(1_500);
         const killed = await db.query<{ pid: number }>(
           "SELECT pid FROM pg_stat_activity WHERE application_name = 'goal-p2' AND query ILIKE 'LISTEN fsd_bus%'"
         );
@@ -198,7 +197,7 @@ await runGoal(async (failures, tell) => {
         const back = await until(() => p2.call<boolean>("crosses"), 10_000);
         if (!back) failures.push("3:back: p2's bus never said it crosses again within 10 s of the drop");
         else {
-          await delay(1_500);
+          await sleep(1_500);
           const afterSaved = await reply(p1, session, "the reply, after the listener is back");
           const afterGot = await receivedAt(frames, view, (e) => textOf(e) === "the reply, after the listener is back", 3_000);
           if (afterGot === undefined) failures.push("3:back: once the listener was back, p1's next reply never reached p2's view within 3 s");
@@ -217,7 +216,7 @@ await runGoal(async (failures, tell) => {
         const quiet = `${session}-no-tail`;
         await reply(p1, quiet, "opening");
         const view = await p2.call<number>("openView", { session: quiet });
-        await delay(1_500);
+        await sleep(1_500);
         const crosses = await p2.call<boolean>("crosses");
         if (crosses) failures.push("4:no-tail: with liveTailPool: null, p2's bus says it crosses processes");
         const saved = await reply(p1, quiet, "the reply, with no tail pool");

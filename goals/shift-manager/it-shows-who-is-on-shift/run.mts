@@ -26,8 +26,11 @@
  *   sidebar   the Roster entry's and the footer's counts equal the store's
  *   TEAMS     one row per team, General first, a square per worker with its status
  *   filter    a TEAMS row opens Roster for exactly that team
+ *   one answer  (spread 1) a worker off shift stops for an approval, then it is
+ *             approved from Inbox: in every state the page draws, the Inbox
+ *             lists the ask exactly when the worker's TEAMS square is on shift
  *
- * Controls rebuild Shift Manager with `src/lib/derive.ts` swapped for a module
+ * Controls rebuild Shift Manager with `src/lib/shift.ts` swapped for a module
  * under `controls/` (a Vite `resolveId` plugin; the build fails if the swap
  * never fired):
  *
@@ -35,6 +38,8 @@
  *                 worker whose only wait is an ask.
  *   count-queued  queued rows count as slots. Must fail at "slots" on the
  *                 worker with a queued row.
+ *   status-from-snapshot  status counts the snapshot's walked asks, while the
+ *                 Inbox lists the view's. Must fail at "one answer".
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=<pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  * Control:  GOAL_CONTROL=ignore-asks pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
@@ -45,9 +50,11 @@ import type { Browser, Page } from "playwright";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { pendingSeatAsks, buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { createClient } from "@flow-state-dev/client";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["ignore-asks", "count-queued"] as const;
+const CONTROLS = ["ignore-asks", "count-queued", "status-from-snapshot"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -86,7 +93,7 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 /** Build Shift Manager's pages into a scratch directory, with the control's swap if one is set. */
 async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
-  const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "derive.ts"), with: join(HERE, "controls", `${control}.ts`) };
+  const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "shift.ts"), with: join(HERE, "controls", `${control}.ts`) };
   return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
     swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with },
     logLevel: "warn"
@@ -145,6 +152,8 @@ type LabApi = ReturnType<typeof labApi>;
 /** One worker, as the store says. */
 type Worker = {
   id: string;
+  /** The flow its inventory entry names. */
+  kind: string | null;
   team: string;
   status: Status;
   /** `<boardRef>/<taskId>` of each row it holds that is running, held on a question included. */
@@ -222,6 +231,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     const myAsks = asks.filter((a) => a.seat === id);
     return {
       id,
+      kind: workerRows.find((s) => s.id === id)?.kind ?? null,
       team: id.includes(".") ? id.slice(0, id.indexOf(".")) : GENERAL,
       status: running.length > 0 || asked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
       held: [...running, ...asked].map((r) => r.key),
@@ -290,6 +300,75 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
   if (team !== null) {
     const title = (await page.getByTestId("roster-title").textContent()) ?? "";
     if (!title.endsWith(team)) fail("filter", `${where}: the title "${title}" doesn't name the team`);
+  }
+}
+
+// ---- one answer ----------------------------------------------------------------
+
+/** One state of the page, read after each change React committed to it. */
+type Frame = { count: string | null; status: string | null; listed: boolean };
+
+/**
+ * A worker off shift stops for an approval, then the person approves it from
+ * Inbox. In every state the page draws, the Inbox lists the ask exactly when
+ * the worker's TEAMS square reads on shift: they move in one update, both ways.
+ * The page's states are read by a MutationObserver, whose callback runs once
+ * per committed change, so no state is skipped and none is read half-drawn.
+ */
+async function oneAnswer(page: Page, origin: string, userId: string, store: Store, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const asker = store.workers.find((w) => w.status === "off shift" && w.kind === "seat");
+  if (asker === undefined) return fail("one answer", "setup: no worker on the seat flow is off shift to ask");
+  await open(page, origin, "/inbox");
+  const client = createClient({ userId, baseUrl: origin });
+  const sessionId = (await client.flow("seat").createSession({ state: { [WORKER_ID_STATE_KEY]: asker.id } })).id;
+  // A string, not a function: tsx names this file's functions with a helper the page doesn't have.
+  await page.evaluate(`(() => {
+    const workerId = ${JSON.stringify(asker.id)};
+    const sessionId = ${JSON.stringify(sessionId)};
+    window.__frames = [];
+    function read() {
+      return {
+        count: document.querySelector("[data-testid=nav-inbox-count]")?.textContent ?? null,
+        status: document.querySelector('[data-testid=team] [data-testid=worker][data-worker-id="' + workerId + '"]')?.getAttribute("data-status") ?? null,
+        listed: [...document.querySelectorAll("[data-testid=inbox-item]")].some((e) => e.getAttribute("data-session-id") === sessionId),
+      };
+    }
+    window.__frames.push(read());
+    new MutationObserver(() => window.__frames.push(read())).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  })()`);
+  const frames = async () => (await page.evaluate(() => (window as unknown as { __frames: Frame[] }).__frames)) as Frame[];
+  const until = async (done: (all: Frame[]) => boolean) => {
+    for (let waited = 0; waited < 20_000; waited += 100) {
+      if (done(await frames())) return true;
+      await sleep(100);
+    }
+    return false;
+  };
+  /** Every drawn state where the list and the square disagree. */
+  const split = (all: Frame[]) => all.filter((f) => f.listed !== (f.status === "on shift"));
+
+  await client.flow("seat").send("ask", { what: `${asker.id} wants to go ahead` }, { sessionId });
+  if (!(await until((all) => all.some((f) => f.listed)))) return fail("one answer", `the Inbox never listed ${asker.id}'s approval`);
+  const asked = await frames();
+  const askedSplit = split(asked);
+  if (askedSplit.length > 0) {
+    fail("one answer", `${asker.id}'s approval: ${askedSplit.length} of ${asked.length} drawn states disagree, the first ${JSON.stringify(askedSplit[0])}`);
+  }
+
+  const item = page.locator(`[data-testid=inbox-item][data-session-id="${sessionId}"]`);
+  await item.click();
+  await page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" }).first().click();
+  const from = asked.length;
+  if (!(await until((all) => all.slice(from).some((f) => !f.listed && f.status === "off shift")))) {
+    return fail("one answer", `after Approve, ${asker.id}'s approval never left the Inbox with its square off shift: last state ${JSON.stringify((await frames()).at(-1))}`);
+  }
+  const answered = (await frames()).slice(from);
+  const answeredSplit = split(answered);
+  if (answeredSplit.length > 0) {
+    fail("one answer", `after Approve: ${answeredSplit.length} of ${answered.length} drawn states disagree, the first ${JSON.stringify(answeredSplit[0])}`);
+  }
+  if (askedSplit.length === 0 && answeredSplit.length === 0) {
+    evidence.push(`one answer: ${asker.id}'s approval listed and its square on shift in one update, over ${asked.length} drawn states; after Approve both cleared together, over ${answered.length}`);
   }
 }
 
@@ -376,6 +455,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
         .map((w) => `${w.id} ${w.status} ${w.held.length} held ${w.waits.length} waits${w.queued > 0 ? ` ${w.queued} queued` : ""}`)
         .join("; ")}`,
     );
+    if (n === 1) await oneAnswer(page, served.origin, userId, store, fail, evidence);
   } finally {
     await browser?.close();
     await served.stop();

@@ -22,7 +22,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
-import { forceModelResolver } from "../../../packages/cli/src/model-override.ts";
+import { forceModelResolver } from "../../../packages/fsdev/src/model-override.ts";
 import {
   goalSessionId,
   loadFixture,
@@ -89,12 +89,12 @@ await runGoal(async (failures) => {
   }
 
   // 2) It actually went through plan-and-execute (anti-game: not some other
-  //    path). task-change / task-board-meta components are emitted only by the
+  //    path). task-change / task-board-meta data items are emitted only by the
   //    task-board substrate the pattern runs on.
-  const planItems = (res.items as { type?: string; component?: string }[]).filter(
+  const planItems = (res.items as { type?: string; dataType?: string }[]).filter(
     (i) =>
-      i.type === "component" &&
-      (i.component === "task-change" || i.component === "task-board-meta"),
+      i.type === "data" &&
+      (i.dataType === "task-change" || i.dataType === "task-board-meta"),
   );
   if (planItems.length === 0) {
     failures.push(

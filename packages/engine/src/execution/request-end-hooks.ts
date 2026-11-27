@@ -81,14 +81,25 @@ const NO_SPEND: RequestSpend = { byModel: {}, harnessRuns: [] };
 /**
  * Build one request's registry. `takeSpend` hands the request's spend since
  * the last ending to each run's hooks (the request's spend ledger).
+ * `outliveAbort` runs a hook added with `writesOutliveAbort`; a
+ * registry built without one refuses such a hook when it is added.
  */
-export function createRequestEndRegistry(takeSpend: () => RequestSpend = () => NO_SPEND): RequestEndRegistry {
+export function createRequestEndRegistry(
+  takeSpend: () => RequestSpend = () => NO_SPEND,
+  outliveAbort?: WritesOutliveAbort
+): RequestEndRegistry {
   const hooks: RequestEndHook[] = [];
   let release: (() => void) | undefined;
   const registry: RequestEndRegistry = {
     seam: {
-      add: (hook) => {
-        hooks.push(hook);
+      add: (hook, options) => {
+        if (options?.writesOutliveAbort !== true) hooks.push(hook);
+        else if (outliveAbort === undefined) {
+          // Run as any other hook, its writes would stop on the abort it asked to outlive.
+          throw new Error(
+            "[flow-state] a request-end hook asked for writesOutliveAbort, and this request's registry was built without a way to run it so"
+          );
+        } else hooks.push((ending) => outliveAbort(async () => hook(ending)));
         if (release === undefined) owed.set(registry, new Promise<void>((resolve) => (release = resolve)));
       }
     },
@@ -134,14 +145,11 @@ async function runHooks(
 
 // FIX-2145.
 /**
- * Where a request's context keeps the function that runs a request-end hook
- * with its resource writes not stopped by an explicit abort. Only
- * the session config's hook runs through it: it records what the request
- * spent, which an abort doesn't undo. Engine-internal.
+ * Run `write` with its resource writes not stopped by an explicit abort: how
+ * the registry runs a hook added with `writesOutliveAbort` (the session
+ * config's hook, which records what the request spent, and the claim gate's
+ * check). Engine-internal.
  */
-export const WRITES_OUTLIVE_ABORT: unique symbol = Symbol("@flow-state-dev/engine/writes-outlive-abort");
-
-/** Run `write` with its resource writes not stopped by an explicit abort. */
 export type WritesOutliveAbort = <T>(write: () => Promise<T>) => Promise<T>;
 
 /** The registry attached to `ctx`, when the context carries one. */

@@ -12,7 +12,8 @@
  *   `[fail:<worker>]` fails only that worker's turn, and `[slow:<worker>]`
  *   holds only that worker's answer for {@link SLOW_MS}. `[hang:<worker>]`
  *   holds that worker's first task until its run is cancelled
- *   (`cancelDelegate`).
+ *   (`cancelDelegate`) or released (`releaseHangs`), so it never answers
+ *   before a round's deadline.
  * - `quiet` takes nothing: its workers can't be delegates.
  * - `tasker` and `allround` take tasks. Their turns answer `<flow> heard it`.
  *
@@ -87,7 +88,7 @@ export const SLOW_MS = 1_500;
 /** The longest a `[hang:<worker>]` mark waits to be cancelled. */
 const HANG_MS = 10_000;
 
-function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
+function helperFlow(installation: WorkerInstallation, heard: Heard[], hangs: Map<() => void, string>) {
   const hung = new Set<string>();
   const door = handler({
     name: "helper-run",
@@ -104,11 +105,15 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
       if (input.message.includes(`[hang:${worker.id}]`) && !hung.has(worker.id)) {
         hung.add(worker.id);
         await new Promise<void>((_resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error(`${worker.id} was never cancelled`)), HANG_MS);
-          ctx.signal.addEventListener("abort", () => {
+          const end = (why: string) => {
             clearTimeout(timer);
-            reject(new Error(`${worker.id} was cancelled`));
-          });
+            hangs.delete(release);
+            reject(new Error(`${worker.id} ${why}`));
+          };
+          const release = () => end("was released at the test's end");
+          const timer = setTimeout(() => end("was never cancelled"), HANG_MS);
+          hangs.set(release, ctx.request.identity.id);
+          ctx.signal.addEventListener("abort", () => end("was cancelled"));
         });
       }
       // `[empty]`: the turn answers nothing; `[empty:<worker>]`, only that worker's.
@@ -192,18 +197,29 @@ export type HostOptions = {
   durable?: boolean;
   /** More flows to register beside the fixture ones, keyed by flow name. */
   flows?: Record<string, FlowInstance>;
+  /** The coordinator's history window, in turns. Omitted, the framework's (50). */
+  historyWindow?: number;
+  /** The default history summary's scripted model (`earlier-turns`). Omitted, a fold has no script and fails. */
+  summary?: MockGeneratorInstance;
 };
+
+/** `flow` with its session's history window set to `turns`, or as it is when `turns` is unset. */
+function withWindow(flow: FlowInstance, turns: number | undefined): FlowInstance {
+  return turns === undefined ? flow : ({ ...flow, session: { ...(flow.session ?? {}), historyWindow: { turns } } } as FlowInstance);
+}
 
 /** One host of the app over `stores`. */
 export function bootHost(options: HostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
   const heard: Heard[] = [];
+  /** The runs a `[hang:<worker>]` mark holds now: each one's release, and its request. */
+  const hangs = new Map<() => void, string>();
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
     standardWorkers: options.standard ?? standardWorkers(),
     workerFlows: () => flows as never
   });
-  const helper = helperFlow(installation, heard);
+  const helper = helperFlow(installation, heard, hangs);
   const quiet = quietFlow(installation);
   const tasker = taskingFlow(installation, "tasker");
   const allround = taskingFlow(installation, "allround");
@@ -228,7 +244,7 @@ export function bootHost(options: HostOptions = {}) {
   });
 
   const instances: Record<string, FlowInstance> = {
-    coordinator: coordinator() as unknown as FlowInstance,
+    coordinator: withWindow(coordinator() as unknown as FlowInstance, options.historyWindow),
     helper: helper() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
     tasker: tasker() as unknown as FlowInstance,
@@ -245,13 +261,14 @@ export function bootHost(options: HostOptions = {}) {
         });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     modelResolver: createMockModelResolver({
       evaluators: { [COORDINATOR_ROUTE]: route },
       generators: {
         "coordinator-judgment": judgment,
+        ...(options.summary === undefined ? {} : { "earlier-turns": options.summary }),
         ...(options.languageRoute === undefined ? {} : { "coordinator-route-ask": options.languageRoute })
       }
     }),
@@ -343,12 +360,13 @@ export function bootHost(options: HostOptions = {}) {
     }
   };
 
-  /** Every request in the store, once none is still running. */
+  /** Every request in the store, once none is still running but a run a hang mark holds. */
   const settled = async () => {
     const deadline = Date.now() + 5_000;
     for (;;) {
       const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some((r) => r.status === "in_progress")) return all;
+      const held = new Set(hangs.values());
+      if (!all.some((r) => r.status === "in_progress" && !held.has(r.id))) return all;
       if (Date.now() > deadline) throw new Error("a request never finished");
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -372,15 +390,15 @@ export function bootHost(options: HostOptions = {}) {
   const sessionState = async (sessionId: string) =>
     ((await (await state.getRuntime()).stores.session.get(sessionId))?.state ?? {}) as Record<string, any>;
 
-  /** A session's component items of `component`, and its messages, oldest first. */
+  /** A session's coordinator-route data records, and its messages, oldest first. */
   const items = async (sessionId: string) => {
     const requests = await (await state.getRuntime()).stores.request.list({ sessionId, withItems: true });
     const all = requests
       .sort((a, b) => a.createdAt - b.createdAt)
       .flatMap((request) => (request as unknown as { items?: any[] }).items ?? []);
     const records = all
-      .filter((item) => item.type === "component" && item.component === COORDINATOR_ROUTE)
-      .map((item) => item.data);
+      .filter((item) => item.type === "data" && item.dataType === COORDINATOR_ROUTE)
+      .map((item) => item.value);
     const messages = all
       .filter((item) => item.type === "message")
       .map((item) => ({ agentName: item.agentName as string | undefined, text: textOf(item) }));
@@ -415,6 +433,15 @@ export function bootHost(options: HostOptions = {}) {
     hire,
     fire,
     cancelDelegate,
+    /** Wait until `worker`'s run is held by its `[hang:<worker>]` mark. */
+    untilHung: async (worker: string) => {
+      for (let i = 0; i < 500 && !heard.some((h) => h.worker === worker); i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+      if (hangs.size === 0) throw new Error(`${worker}'s run is not held by a hang mark`);
+    },
+    /** End every run a hang mark still holds, so none outlives its test. */
+    releaseHangs: () => {
+      for (const release of [...hangs.keys()]) release();
+    },
     settled,
     sessionState,
     routedRows,

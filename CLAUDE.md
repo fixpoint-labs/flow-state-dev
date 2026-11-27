@@ -136,14 +136,14 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/node`              | Node HTTP host adapter — serve a long-lived FSD server in one call      |
 | `@flow-state-dev/bullmq`            | BullMQ host/runtime adapter — durable background jobs, native cron, full-flow worker dispatch |
 | `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
-| `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
+| `@flow-state-dev/scheduled`         | Schedule collections, resolver and schedule-index contract (the dispatch endpoint is the engine's) |
 | `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
 | `@flow-state-dev/claude-code`       | Claude Code integration — run a Claude Code agent in-process as a harness block (Agent SDK) |
 | `@flow-state-dev/codex`             | Codex integration — run OpenAI's Codex agent as a block through the Codex SDK, returning core's neutral harness handle |
 | `@flow-state-dev/cursor`            | Cursor integration — run Cursor's coding agent as a block through the Cursor SDK local runtime, returning core's neutral harness handle |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
-| `@flow-state-dev/workforce`         | Worker factory (`hireWorkforce`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
+| `@flow-state-dev/workforce`         | The workforce kit (`workforce`, from `./kit`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
 | `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
 | `@flow-state-dev/harness-manager`   | Task-board worker that turns a row into a supervised coding run — own checkout, verdict before settlement, question channel, and the coding harness as a slot |
 | `@flow-state-dev/shift-manager`     | The browser app a Workforce Lab is worked through, run as the `shift-manager` command over `fsdev dev --app` |
@@ -188,7 +188,7 @@ The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` �
 
 Development task skills live in `.agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
-> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles, and `app-review`, the fan-out of the `app-review` skill. **Run `node .agents/workflows/verify.mjs` after editing any of them.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
+> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles, `app-review`, the fan-out of the `app-review` skill, and `page-loop`, one docs page through the ten writing passes in `docs/contributing/user-docs.md`. **Run `node .agents/workflows/verify.mjs` after editing any of them.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
 
 ### Workflow skills
 
@@ -223,6 +223,7 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `agent-mailbox` | Talk to agents this session can't dispatch (Grok, Cursor, Codex, another Claude) over the `fixpoint-labs/agent-mailbox` board |
 | `project-spec` | The standing artifact for one Linear project, on a never-merged PR. **No lifecycle and no gate**; refreshed only on epic-level transitions. Written by `project-agent` |
 | `watch-pr` | Local substitute for cloud-only `subscribe_pr_activity`: a `Monitor` poll loop over PR comments, reviews and CI |
+| `preview-mode` | Several features at once: one background worktree worker per feature branch, and a local-only `preview/<user>` branch in the primary that merges them all for one dev server. Changes no lifecycle gate. `pnpm wt:prune` reclaims landed agent worktrees |
 
 > **How the orchestration fits together** — epic and issue lifecycles, roles, gates, feature/bug routes, spec-review convergence, the twelve-round PR-feedback cap, and spec retention, merge and amendment — is defined in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). Skills reference it rather than restating it. Issue/epic spec content is canonical in the repository; Linear carries status and links. [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md) defines the PR layout and reviewer contracts. **A retained issue/epic spec is a directory, not a file**: `SPEC.md` (direction, what changes, what's already here and the debt) and `DECISIONS.md`, plus owned artifacts — no build plan, since the implementer plans against the code — shaped by the [issue](docs/contributing/spec-template.md) and [epic](docs/contributing/epic-spec-template.md) templates. [`spec-figures.md`](docs/contributing/spec-figures.md) defines figures; [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) defines the fold and word budgets; [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) defines what every gate, fork and blocker asks.
 
@@ -269,6 +270,7 @@ Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex ha
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `engine` never depends on `client` or `react`
 - Kitchen Sink is glue, not a feature home: `apps/kitchen-sink/CLAUDE.md` → "What belongs here, and what belongs in the framework".
+- Resources are declared on blocks, not wired per flow: a block's `resources` map bubbles up through sequencers and routers, and `defineFlow` merges it into the flow. Including a block in a flow installs its resources (session-scoped ones included), so a block that needs a resource is portable on its own. When a design asks "how does every flow get resource X?", the answer is a block (or capability) that declares it. See `docs/architecture/state-and-scopes.md` → "Block-Level State" and `resources-and-client-data.md` → "Block-Level Resource Declarations".
 - Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
 - Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 

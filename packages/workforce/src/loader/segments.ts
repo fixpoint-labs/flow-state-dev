@@ -13,27 +13,7 @@
  * walk, and `..` in one would read a folder the caller never configured — the
  * same escape the walk's symlink refusal exists to stop.
  */
-import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
-
-/**
- * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
- * joined by single hyphens. These are the skill-name rules, adopted rather than
- * shared: the minted identity becomes a worker's id and a board key, while
- * each segment is separately a path segment on disk, and lowercase-hyphen is the
- * one shape safe in all of them.
- *
- * The allowlist excludes `.`, and that exclusion is load-bearing rather than
- * incidental: `.` is the joiner, so a dotted segment would make the minted id
- * impossible to split back into a team and a name — `a.b.lead` could be read
- * two ways. Do not relax this to admit `.`.
- */
-const SEGMENT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Longest legal team or worker folder name. */
-const MAX_SEGMENT_LENGTH = 64;
-
-/** Folder names the framework reserves. */
-const RESERVED_SEGMENTS = new Set(["_meta"]);
+import { MAX_SEGMENT_LENGTH, segmentNameProblem } from "@flow-state-dev/core/helpers";
 
 /**
  * What a segment names, for the error to say.
@@ -72,13 +52,16 @@ const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document"
 export function validateSegment(segment: string, label: SegmentLabel): void {
   const what = `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
 
-  if (segment.length > MAX_SEGMENT_LENGTH) {
+  // The rule itself is core's (`segmentNameProblem`), shared with kit names;
+  // the wording is this reader's, since it knows what the segment names.
+  const problem = segmentNameProblem(segment);
+  if (problem === "too-long") {
     throw new Error(`${what} "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`);
   }
-  if (RESERVED_SEGMENTS.has(segment)) {
+  if (problem === "reserved") {
     throw new Error(`${what} "${segment}" is reserved`);
   }
-  if (!SEGMENT_PATTERN.test(segment)) {
+  if (problem === "pattern") {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
@@ -94,19 +77,10 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
         `hyphens (not at the start or end) — ${identity}`,
     );
   }
-  // Names Windows reserves for DOS devices, which it refuses **with any
-  // extension** — `con.ts` and `nul.md` are as unopenable as `con`. They pass
-  // the pattern above (lowercase letters and digits), so without this a tree
-  // authored on macOS or Linux generates and commits cleanly, and the
-  // repository then cannot be checked out on Windows at all. The failure lands
-  // on someone who did not write the file and reads as a broken clone rather
-  // than as a naming mistake.
-  //
-  // The list is the shared one (`isWindowsReservedName`, from `contracts`),
-  // which folds case. It runs after the pattern on purpose: the pattern
-  // already refuses every non-lowercase spelling, so `CON` keeps getting the
-  // lowercase message and only a lowercase device name reaches this one.
-  if (isWindowsReservedName(segment)) {
+  // A DOS device name, refused **with any extension** on Windows: a tree
+  // authored on macOS or Linux would commit cleanly and then not check out
+  // there, landing on someone who did not write the file.
+  if (problem === "windows-device") {
     throw new Error(
       `${what} "${segment}" is a reserved device name on Windows — a tree ` +
         `containing it cannot be checked out there, whatever the extension`,

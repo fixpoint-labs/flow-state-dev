@@ -17,6 +17,11 @@
 - `j2` *writes a flow that asks:* on its own host with set deadlines, an approval reads as a no, an input fails its try, a held question goes ahead from its brief, and a user's stop cancels the task (`j2:approval-reads-no`, `j2:input-fails-try`, `j2:held-deadline-goes-ahead`, `j2:stop-cancels-task`).
 - `j3` *runs it locally:* the host crashes while six wait (`crashAndRestart`, SIGKILL to the whole process group); nothing of it is left running when the next host starts on the same store (`j3:crashed`); all six are listed once, then each is answered once and carries on the same attempt (`j3:six-after-restart`, `j3:answered-after-restart`).
 
+**Added by FIX-2774** (its spec's goal, `specs/issues/FIX-2774/SPEC.md`):
+
+- `task-equals-item`, in legs a and b: for each of the six stops, the asks the task's screen draws (its run's stops, `taskAsks`, and the questions it holds on you, `holdsOnYou`, over the same inbox view answer) are exactly its Inbox item's holds, before and after each answer (`a:task-equals-item`, `b:task-equals-item`).
+- `nc`, *no conversation* (the owner's answer to FIX-2774's Open, recommended: list it): model-free, on a host of its own in the goal's process. A run of a flow the org's inventory names as a worker's, started by the server in a one-off session (`runAction` with `oneOffSessionId()`, `source: "system"`), stops for an approval. Shift Manager's Inbox screen, drawn headless under its provider, lists it once from no named worker (`nc:listed`), with its reply box blocked, saying there is no conversation to reply into (`nc:no-reply`); its Approve answers it and the run completes (`nc:answer-resumes`). The flow is one the host registers itself, not a hired worker flow: a hired worker flow's create check refuses a one-off run (it is checked as a session create, and needs the worker's id), so no ask with no conversation arises on one today. `GOAL_LEGS=nc` runs it alone, with no model or harness.
+
 **Beside the walk** (plan rows 1, 3 and 4):
 
 - *The sweep* (`sweep:no-old-path`): `node goals/workforce-coordination/runs-on-one-task/sweep.mjs` passes; `--control` reports exactly its plants; `--at b8328ccb` (before the epic) fails.
@@ -29,9 +34,9 @@
 - *Today's `main` failing `a:six-items`.* The walk cannot build on a pre-epic commit (the stops it raises don't exist there); the sweep's pre-epic FAIL is the old-main control.
 - *A coding run's review* (FIX-2163): FIX-2156's call, outside this epic.
 
-**Anti-game:** Alice reads the Inbox through Shift Manager's pending read and answers through orchestration's Inbox client; rows are read through `getTask` / `listTasks` as Alice; no fixture writes a row. Lease and turn are read from the store only where no public read shows them. `FSDEV_TRACE_OBSERVABILITY=0`, so a step run twice shows as a work counter of 2. A structural failure is a finding on any attempt; only `a:held-filed`, `j1:filer-files` and `j1:filer-calls` (what the model chose to write) may be retried.
+**Anti-game:** Alice reads the Inbox through the inbox view Shift Manager's Inbox reads (`inboxViewRef`, FIX-2774) and answers through orchestration's Inbox client; rows are read through `getTask` / `listTasks` as Alice; no fixture writes a row. Lease and turn are read from the store only where no public read shows them. `FSDEV_TRACE_OBSERVABILITY=0`, so a step run twice shows as a work counter of 2. A structural failure is a finding on any attempt; only `a:held-filed`, `j1:filer-files` and `j1:filer-calls` (what the model chose to write) may be retried.
 
-**Run:** `pnpm tsx goals/shift-manager/every-stop-is-one-inbox-item/run.mts`, with a key serving `openai/gpt-6-luna` and Claude Code signed in (`ANTHROPIC_API_KEY`). `GOAL_LEGS=a,b,c,d,j1,j2,j3` runs some legs (b answers a's stops). On demand only, never a CI gate.
+**Run:** `pnpm tsx --tsconfig goals/tsconfig.json goals/shift-manager/every-stop-is-one-inbox-item/run.mts`, with a key serving `openai/gpt-6-luna` and Claude Code signed in (`ANTHROPIC_API_KEY`). `GOAL_LEGS=a,b,c,d,j1,j2,j3,nc` runs some legs (b answers a's stops; `nc` alone needs neither). On demand only, never a CI gate.
 
 **Controls:** scratch patches applied as the code under test loads (`goals/lib/module-patch.mts`), in the goal and in every Lab it serves, printed by the run, and refused when they never reached the code. Run with `GOAL_HARNESS=stub`.
 
@@ -41,6 +46,7 @@
 - `GOAL_CONTROL=steer-ignores-mark`: steer admission ignores the row's open hold. Must fail **`d:no-request-beside`**.
 - `GOAL_CONTROL=no-question-message` (FIX-2241's): the board's `onMidwayQuestion` hook is gone. Must fail **`j1:filer-hears`** and **`j1b:coder-heard`**.
 - `GOAL_CONTROL=default-deadline` (FIX-2129's): a stop with no deadline gets one anyway. Must fail **`a:no-deadline-waits`**.
+- `GOAL_CONTROL=session-only` (FIX-2774's): the inbox view drops every ask with no conversation (no session, or a one-off one). Must fail **`nc:listed`**.
 - `GOAL_CONTROL=wrapper-kill` (FIX-2407's): j3's crash signals only the spawned `tsx` wrapper, and the server under it keeps running on the store. Must fail **`j3:crashed`**.
 
 ## Verdict log
@@ -54,3 +60,4 @@
 | 2026-10-27 | `main` 83c444b (run 3, goal re-graded) | `openai/gpt-6-luna` + Claude Code | PASS; FAIL (each control, as required) | The goal itself changed after review: j1 now requires the filer's own `updateTask` refused as `question_is_the_users` (refused once), a second answer must get its stop's own refusal (409 for a suspension, `question_answered` for a row hold), j3 stops its Lab on an early return, and unread lines were dropped. Walk PASS twice; all five controls failed their named tags. |
 | 2026-10-28 | FIX-2241 branch on #4020 (f417cda + ff52698) | `openai/gpt-6-luna` + Claude Code | j1 PASS 3 of 3; FAIL (control, as required) | j1 amended for FIX-2241. Scripted harness PASS; `no-question-message` failed `j1:filer-hears` and `j1b:coder-heard`, as it must. Only j1 run: the amendment touches no other leg. |
 | 2026-11-03 | FIX-2407 branch on `main` a8c7ccdf | `openai/gpt-6-luna` + stub harness | j3 PASS; FAIL (control, as required) | j3 amended for FIX-2407: the crash is `crashAndRestart`. `wrapper-kill` failed `j3:crashed` ("the process group survived: 1 still running 10s after SIGKILL to group"), as it must. No Claude Code sign-in on this machine, so j3 on the Claude Code harness is still to run. |
+| 2026-11-18 | fix/FIX-2774-inbox-boards-view (pre-push) | n/a | nc PASS; FAIL (control, as required) | `nc` added for FIX-2774's Open: *"the Inbox lists the ask once, from "nc-asker, no conversation · task —" · Approve answered the ask, and the run with no conversation completed"*. `session-only` failed `nc:listed` (*"the Inbox lists 0 item(s)"*), as it must. |

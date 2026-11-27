@@ -9,6 +9,7 @@
  * is the one-read-per-host rule lost by export rather than by bug.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WireNotice } from "@flow-state-dev/client";
 import { useReadFence } from "../hooks/useReadFence";
 
 /** A read's error text: an `Error`'s own message when it has one, else the read's fallback. */
@@ -21,17 +22,20 @@ type FencedRead<T> = {
   readonly data: T;
   readonly isLoading: boolean;
   readonly error: string | null;
+  /** What the failed read threw, while `error` is set; `undefined` otherwise. */
+  readonly cause: unknown;
   readonly refresh: () => void;
 };
 
 /**
  * What starts an identity's reads, when reading once on mount is not all it
- * does. Handed the read (which settles however it went); returns what stops
- * everything it started. Held stable by the caller: a new one restarts the
- * reads. A re-read under rows already drawn shows no loading note: every
+ * does. Handed the read, which rejects when it failed and is still the
+ * newest (so a live read can try again) and resolves otherwise; returns what
+ * stops everything it started. Held stable by the caller: a new one restarts
+ * the reads. A re-read under rows already drawn shows no loading note: every
  * panel draws that only while it has no rows.
  */
-export type ReadDriver = (read: () => Promise<void>) => () => void;
+export type ReadDriver = (read: (notice?: WireNotice | null) => Promise<void>) => () => void;
 
 /** How a fenced read runs, beyond reading once on mount. */
 type FencedReadOptions = {
@@ -57,13 +61,14 @@ export function useFencedRead<T>(
   identity: readonly unknown[],
   empty: T,
   failureMessage: string,
-  load: (stillCurrent: () => boolean) => Promise<T>,
+  load: (stillCurrent: () => boolean, notice: WireNotice | null) => Promise<T>,
   options: FencedReadOptions = {}
 ): FencedRead<T> {
   const { driver, enabled = true } = options;
   const [data, setData] = useState(empty);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cause, setCause] = useState<unknown>(undefined);
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -71,12 +76,13 @@ export function useFencedRead<T>(
   const fence = useReadFence(identity, () => {
     setData(empty);
     setError(null);
+    setCause(undefined);
     setIsLoading(true);
     setHeldIdentity(null);
   });
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
-  const read = useCallback(async () => {
+  const read = useCallback(async (notice: WireNotice | null = null) => {
     // Before `begin()`, never after: taking a sequence number supersedes a
     // read in flight, and a read that may not ask must cancel nothing.
     if (!enabled) return;
@@ -84,14 +90,17 @@ export function useFencedRead<T>(
     if (stillCurrent === null) return;
     setIsLoading(true);
     setError(null);
+    setCause(undefined);
     setHeldIdentity(fence.identity);
     try {
-      const next = await loadRef.current(stillCurrent);
+      const next = await loadRef.current(stillCurrent, notice);
       if (!stillCurrent()) return;
       setData(next);
     } catch (err) {
       if (!stillCurrent()) return;
       setError(describe(err, failureMessage));
+      setCause(err);
+      throw err;
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
@@ -99,7 +108,8 @@ export function useFencedRead<T>(
 
   useEffect(() => {
     if (driver === undefined) {
-      void read();
+      // The error is drawn; a read on mount has nothing to try again on.
+      read().catch(() => undefined);
       return;
     }
     return driver(read);
@@ -109,6 +119,7 @@ export function useFencedRead<T>(
     data: holdsCurrent ? data : empty,
     isLoading: holdsCurrent ? isLoading : true,
     error: holdsCurrent ? error : null,
-    refresh: () => void read()
+    cause: holdsCurrent ? cause : undefined,
+    refresh: () => void read().catch(() => undefined)
   };
 }

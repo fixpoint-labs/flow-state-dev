@@ -6,26 +6,23 @@
  */
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Entry } from "../src/components/Entry";
-import { lookOf } from "../src/lib/looks";
+import { linesOf, LinesOf, message, received } from "./lines";
 
 afterEach(cleanup);
 
-const nameOf = (id: string) => id;
-const looks = (id: string) => lookOf({ id, name: id });
-const assistant = (text: string) =>
-  render(<Entry entry={{ kind: "assistant", id: "e1", text }} workerName="lead" nameOf={nameOf} lookOf={looks} />).container;
+const said = (text: string) => linesOf([message("e1", "r1", "assistant", text, "in_progress")], [{ id: "r1", status: "in_progress" }]);
+const assistant = (text: string) => render(<LinesOf lines={said(text)} />).container;
 
 describe("a worker's text", () => {
   it("draws an unclosed code fence as a code block while it streams, and closes it in place when the fence arrives", async () => {
     const partial = "Here is the fix:\n\n```ts\nconst launch = \"18 October\";\nconsole.log(lau";
-    const { container, rerender } = render(<Entry entry={{ kind: "assistant", id: "e1", text: partial }} workerName="lead" nameOf={nameOf} lookOf={looks} />);
+    const { container, rerender } = render(<LinesOf lines={said(partial)} />);
     await waitFor(() => expect(container.querySelector("pre code")).not.toBeNull());
     expect(container.querySelector("pre code")!.textContent).toContain("console.log(lau");
     expect(container.textContent).not.toContain("```");
     expect(container.querySelector("p")!.textContent).toBe("Here is the fix:");
 
-    rerender(<Entry entry={{ kind: "assistant", id: "e1", text: `${partial}nch);\n\`\`\`\n\nDone.` }} workerName="lead" nameOf={nameOf} lookOf={looks} />);
+    rerender(<LinesOf lines={said(`${partial}nch);\n\`\`\`\n\nDone.`)} />);
     await waitFor(() => expect(container.querySelector("pre code")!.textContent).toContain("console.log(launch);"));
     expect(container.querySelectorAll("pre").length).toBe(1);
     expect(container.textContent).toContain("Done.");
@@ -48,7 +45,7 @@ describe("a worker's text", () => {
   });
 
   it("renders a message from another worker as Markdown too", async () => {
-    const { container } = render(<Entry entry={{ kind: "received", id: "e2", messageId: "m1", from: "researcher", text: "Launch is **18 October**." }} workerName="lead" nameOf={nameOf} lookOf={looks} />);
+    const { container } = render(<LinesOf lines={linesOf([received("e2", "r1", { id: "m1", from: "researcher", text: "Launch is **18 October**." })])} />);
     await waitFor(() => expect(container.querySelector('[data-streamdown="strong"]')?.textContent).toBe("18 October"));
   });
 });

@@ -13,6 +13,10 @@ export const REMOVE_DELEGATE = "removeDelegate";
 export const SET_FALLBACK = "setFallback";
 export const LIST_DELEGATES = "listDelegates";
 
+// FIX-2776 D1.
+/** The session view that answers what `listDelegates` does, read live. **Pinned**: an app watches it by name. */
+export const DELEGATES_VIEW = "delegates";
+
 // FIX-2081 D2.
 /**
  * A worker file's `delegates: all`: the whole roster, read on

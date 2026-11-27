@@ -24,8 +24,8 @@
  *   c  no credential (no ANTHROPIC_API_KEY, no CLAUDE_CODE_OAUTH_TOKEN, an empty
  *      home), as `start` and as `dev` (`--dev`) run it: the Lab still listens
  *      with Claude Code as its coder, its log has a not-ready Claude Code row
- *      naming `ANTHROPIC_API_KEY`, and the projects flow's `harnessReadiness`
- *      action returns Claude Code not ready with that remedy (FIX-2391).
+ *      naming `ANTHROPIC_API_KEY`, and the harness kit's `readiness` view,
+ *      read with no session, returns Claude Code not ready with that remedy (FIX-2391).
  *
  * `GOAL_LEG=a,c` runs only those legs (default: all three). An empty or
  * unknown selection is refused, so no run passes by checking nothing.
@@ -49,7 +49,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "n
 import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, keysServing, modulePatchEnv, assertPatched, describePatches, runGoal, RUN_STAMP, REPO_ROOT, repoPath, type ModulePatch } from "../../lib/index.mts";
 import { buildShiftManagerPages, devteamShiftCoordinatorModel, labApi, labRoutes, servedAddresses } from "../../lib/shift-manager.mts";
-import { HARNESS_READINESS_ACTION, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
+
+/** One row of the readiness view, as this goal reads it. */
+type ReadinessRow = { harness: string; ready: boolean; remedy: string | null };
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const ALL_LEGS = ["a", "b", "c"] as const;
@@ -65,13 +69,13 @@ const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
 const SILENT_STUB: ModulePatch[] = [
   {
     module: "packages/shift-manager/teams/devteam/harness.mts",
-    from: "const harness = selectHarness\\(value, stepMs, defaultChoice\\);",
-    to: 'const harness = selectHarness("stub", stepMs, defaultChoice);',
+    from: "const harness = selectFrom\\(value, defaultChoice, runMinutes, values\\);",
+    to: 'const harness = selectFrom("stub", defaultChoice, runMinutes, values);',
   },
   {
-    module: "packages/shift-manager/teams/devteam/harness.mts",
-    from: "const table = readiness\\.read\\(\\)\\.then\\(\\(rows\\) => log\\(formatHarnessReadiness\\(rows\\)\\)\\);",
-    to: "const table = Promise.resolve();",
+    module: "packages/shift-manager/teams/devteam/host.mts",
+    from: "harnesses\\(\\{ \\.\\.\\.coderConfig, logReadiness: true \\}\\)",
+    to: "harnesses({ ...coderConfig, logReadiness: false })",
   },
 ];
 
@@ -329,14 +333,24 @@ await runGoal(async (failures) => {
         const log = started.log();
         const coderLine = log.split("\n").find((l) => l.startsWith("Coder:")) ?? "";
         if (!coderLine.includes("Claude Code")) note(`c:coder-stays-claude-code (${form})`, `start line: ${coderLine || "none"}`);
-        const row = log.split("\n").find((l) => l.includes("✗ Claude Code")) ?? "";
-        if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || log.slice(-600))}`);
+        // The harness kit logs the readiness table once its check answers, which can be after the Lab listens:
+        // read the log until the row is there, for as long as one check may take and a little more.
+        const rowOf = () => started.log().split("\n").find((l) => l.includes("✗ Claude Code"));
+        for (const until = Date.now() + 45_000; rowOf() === undefined && Date.now() < until; ) await new Promise((resolve) => setTimeout(resolve, 250));
+        const row = rowOf() ?? "";
+        if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || started.log().slice(-600))}`);
         const user = await pageUser(started.origin);
         const person = { userId: user.userId, bearer: user.bearerToken ?? "" };
-        const read = await labRoutes(started.origin, person).act(PROJECTS_FLOW, `${PROJECTS_FLOW}-own-${user.userId}`, HARNESS_READINESS_ACTION, {});
-        const claude = ((read.output as { harnesses?: Array<{ harness: string; ready: boolean; remedy: string | null }> } | undefined)?.harnesses ?? []).find((r) => r.harness === "claude-code");
-        if (read.status !== "completed" || claude?.ready !== false || !String(claude.remedy).includes("ANTHROPIC_API_KEY")) {
-          note(`c:read-says-what-to-set (${form})`, `${read.status}: ${JSON.stringify(claude ?? read.error ?? null)}`);
+        // The harness kit's readiness view, read with no session.
+        const read: { rows: ReadinessRow[]; error: string | undefined } = await connect({ userId: person.userId, baseUrl: started.origin, bearerToken: person.bearer })
+          .view(harnessReadinessViewRef("harnesses"), {})
+          .then(
+            (answer) => ({ rows: answer.value as ReadinessRow[], error: undefined }),
+            (error: unknown) => ({ rows: [], error: String(error) }),
+          );
+        const claude = read.rows.find((r) => r.harness === "claude-code");
+        if (read.error !== undefined || claude?.ready !== false || !String(claude.remedy).includes("ANTHROPIC_API_KEY")) {
+          note(`c:read-says-what-to-set (${form})`, JSON.stringify(claude ?? read.error ?? null));
         }
         evidence.push(`c (${form}): listened; "${coderLine}"; ${row.trim().slice(0, 200)}; read ${JSON.stringify(claude ?? null).slice(0, 200)}`);
       } finally {

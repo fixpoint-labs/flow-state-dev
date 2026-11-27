@@ -76,6 +76,8 @@ export {
 } from "./work-collections";
 export { ClaudeCodeSdkNotInstalledError, ClaudeCodeAgentRunError, ClaudeCodeAgentAbortedError } from "./errors";
 export { CLAUDE_CODE_HARNESS, readClaudeCodeUsage, type ReadClaudeCodeUsageOptions } from "./usage";
+// FIX-2928: Claude Code as a harness value, for the harness kit's `harnesses` slot.
+export { claudeCodeHarness, type ClaudeCodeHarnessOptions } from "./harness";
 
 export {
   createClaudeCodeWorkspaceCapability,

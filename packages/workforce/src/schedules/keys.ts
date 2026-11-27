@@ -1,6 +1,6 @@
 // FIX-2085.
 /**
- * The names recurring work pins: where a user's schedules are
+ * The names a clock routine pins: where a user's schedules are
  * stored, the accessor the roster flow declares them under, the one schedule
  * handler Workforce keeps (a row's `kind: "task"`), and the internal entry a
  * fire files its task through. A leaf module with no imports, so the session
@@ -30,6 +30,3 @@ export const TASK_SCHEDULE_HANDLER = "task";
  * Reached only by a fire's dispatch, never by a caller.
  */
 export const FILE_SCHEDULED_TASK_ENTRY = "fileScheduledTask";
-
-/** The roster flow action a screen lists the user's schedules through, each with its next run. */
-export const LIST_SCHEDULES_ACTION = "listSchedules";

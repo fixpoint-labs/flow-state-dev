@@ -24,8 +24,12 @@
  * admitted only when its id equals its kind, and is normalized to singleton.
  *
  * The registry also enforces cross-flow schema compatibility: at registration
- * time, a flow's user and org state schemas, and user/org resource schemas,
- * are validated against every other already-registered flow's declarations.
+ * time, a flow's user and org state schemas, and its user, org and session
+ * resource schemas, are validated against every other already-registered
+ * flow's declarations. Resources are compared by name: two declarations meet
+ * when one's storage key or pattern can reach the other's. Session scope is
+ * checked because a flow reaches another flow's session copy of any
+ * definition it declares, so one name must mean one shape.
  * The state schemas compared are the flow's merged ones (`scopeStateSchema`),
  * so a field a block declares counts, and they are held to the same rule
  * `defineFlow` holds one flow's declarations to: a field two flows type or
@@ -77,14 +81,22 @@ import {
 import { compareZodSchemas } from "./schema-compat";
 import {
   admitOwnerPrivateCollections,
+  patternsReach,
   refuseOwnerMarkedSingleResources,
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
 import { admitIndexedCollections, type IndexedCollection } from "../resources/resource-indexes";
+import { sameClientConfig } from "../resources/same-client-config";
 
 /**
  * Registry contract used by server routing/execution layers.
  */
+// FIX-2623.
+/** Whether any flow `registry` holds declares a view. */
+export function registryHasViews(registry: Pick<FlowRegistry, "list">): boolean {
+  return registry.list().some((flow) => flow.views !== undefined && Object.keys(flow.views).length > 0);
+}
+
 export interface FlowRegistry {
   /**
    * Admit one instance. Throws {@link FlowIdentityConflictError} for a
@@ -123,8 +135,16 @@ export interface FlowRegistry {
    * explicit id only. Nothing is guessed from an incomplete address.
    */
   get(address: string): FlowInstance | undefined;
-  /** Every admitted instance, ordered by kind then id. */
+  /** Every admitted instance, ordered by kind then id. Built-in instances are not listed. */
   list(): FlowInstance[];
+  // FIX-2624.
+  /**
+   * Hold one of the framework's own instances at its address: `get` answers
+   * it, `list` never shows it, so no catalog, listing or tool surface offers
+   * it. Idempotent per address; a held user instance at that address wins.
+   * Optional so a hand-built registry needs none.
+   */
+  registerBuiltIn?(flow: FlowInstance): void;
   /**
    * Merged cross-flow schema view — what each scope's shared storage looks
    * like once isolated declarations are excluded. Diagnostics and devtool
@@ -154,6 +174,7 @@ type ScopeParticipant = {
   flowKind: string;
   stateSchema?: ZodTypeAny;
   resourceSchemas: Record<string, ResourceDeclarations>;
+  addresses: Record<string, DeclaredResourceEntry[]>;
 };
 
 /**
@@ -177,6 +198,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
   private readonly participants: Record<ConflictScope, Map<string, ScopeParticipant>> = {
     user: new Map(),
     org: new Map(),
+    session: new Map(),
   };
 
   /**
@@ -216,14 +238,17 @@ class InMemoryFlowRegistry implements FlowRegistry {
     // durable cell with other flows and must be compared.
     const userDecl = collectScopeDeclaration(flow, "user");
     const orgDecl = collectScopeDeclaration(flow, "org");
+    const sessionDecl = collectScopeDeclaration(flow, "session");
 
     if (userDecl) this.validateScope("user", flow.kind, userDecl);
     if (orgDecl) this.validateScope("org", flow.kind, orgDecl);
+    if (sessionDecl) this.validateScope("session", flow.kind, sessionDecl);
 
     // All validation passed — commit.
     this.flowsById.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
+    this.indexParticipant("session", flow.kind, sessionDecl);
     this.ownerPrivate = ownerPrivate;
     this.indexed = indexed;
   }
@@ -292,7 +317,14 @@ class InMemoryFlowRegistry implements FlowRegistry {
    * many members, and an intentionally registered exact id wins.
    */
   get(address: string): FlowInstance | undefined {
-    return this.flowsById.get(address);
+    return this.flowsById.get(address) ?? this.builtIns.get(address);
+  }
+
+  /** The framework's own instances, by id: addressable, never listed. */
+  private readonly builtIns = new Map<string, FlowInstance>();
+
+  registerBuiltIn(flow: FlowInstance): void {
+    if (!this.builtIns.has(flow.id)) this.builtIns.set(flow.id, flow);
   }
 
   /**
@@ -335,6 +367,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
         emptySchemaMap<ResourceDeclarations>(),
         declaration.resourceSchemas
       ),
+      addresses: Object.assign(emptySchemaMap<DeclaredResourceEntry[]>(), declaration.addresses),
     });
   }
 
@@ -342,32 +375,28 @@ class InMemoryFlowRegistry implements FlowRegistry {
   /**
    * Compares an incoming declaration against every other registered kind.
    *
-   * **What the resource half compares, and the two overlaps it deliberately
+   * **What the resource half compares, and the one overlap it deliberately
    * does NOT catch.** Effective `flowIsolation` is a *participation filter*,
    * not part of the index: `collectScopeDeclaration` has already dropped the
    * isolated entries, since a flow-namespaced resource cannot collide with
-   * another flow's. What reaches here is the shared set, matched on exact
-   * `ref` within one scope. Two ways two flows can still land on one durable
-   * cell without ever being compared:
+   * another flow's. What reaches here is the shared set, matched by name within
+   * one scope: a declaration meets every other whose storage key or pattern can
+   * reach its own (`patternsReach`), so a collection at `files/*` meets a single
+   * resource at `files/a` and a collection at `files/[id]`, since
+   * `resolveCollectionKey` resolves both onto the same `ResourceStateStore`
+   * cells. A session copy has no isolation, so every session declaration
+   * reaches here.
    *
-   *   1. **Overlapping collection keyspaces.** A collection indexes under its
-   *      glob `pattern`, so a collection at `files/*` and a concrete resource
-   *      at `files/a` index under different refs — while `resolveCollectionKey`
-   *      resolves the collection's `"a"` to `files/a`, the very same
-   *      `ResourceStateStore` cell. Note this is *overlap*, not equality: two
-   *      collections sharing one pattern DO compare (see `storageRef`).
-   *   2. **Same-kind instances with differing resource overrides.**
-   *      `FlowInstanceOptions` lets each instance override `resources`, but
-   *      participants are retained per `flowKind` (first instance wins — see
-   *      `indexParticipant`) and same-kind pairs are skipped just below. Two
-   *      instances of one definition are therefore never compared, even when
-   *      their overrides disagree over a shared cell.
+   * **The overlap it deliberately does NOT catch: same-kind instances with
+   * differing resource overrides.** `FlowInstanceOptions` lets each instance
+   * override `resources`, but participants are retained per `flowKind` (first
+   * instance wins — see `indexParticipant`) and same-kind pairs are skipped
+   * just below. Two instances of one definition are therefore never compared,
+   * even when their overrides disagree over a shared cell.
    *
-   * Both are excluded **by design, not by oversight**, and both are a separate change.
-   * They are one question — what identity the check keys on — and answering it
-   * means extending the identity model, which is new capability. This check had
-   * not run at all since resources went flat; restoring it is the repair, and widening it
-   * here would turn a one-file fix into a subsystem change.
+   * Excluded **by design, not by oversight**: closing it changes what identity
+   * the check keys on (the kind, not the instance), which is a separate change.
+   * A process restart fixes the stale view it leaves (see `unregister`).
    */
   private validateScope(
     scope: ConflictScope,
@@ -385,17 +414,31 @@ class InMemoryFlowRegistry implements FlowRegistry {
         checkStatePairStrictly(scope, existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
       }
 
-      // Exact-ref comparison — exclusion 1 above. Every incoming declaration
-      // against every existing one for the cell, because compatibility is not
-      // transitive (see `ResourceDeclarations`): comparing only one from each
-      // side would admit a pair that conflicts with each other while both look
-      // compatible with the one they were checked against.
+      // By name: every existing declaration whose key or pattern can reach the
+      // incoming one's. Every incoming declaration against every existing one
+      // for the cell, because compatibility is not transitive (see
+      // `ResourceDeclarations`): comparing only one from each side would admit
+      // a pair that conflicts with each other while both look compatible with
+      // the one they were checked against.
       for (const [ref, incomingDecls] of Object.entries(incoming.resourceSchemas)) {
-        const existingDecls = existing.resourceSchemas[ref];
-        if (existingDecls === undefined) continue;
-        for (const existingDecl of existingDecls) {
-          for (const incomingDecl of incomingDecls) {
-            checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
+        for (const [existingRef, existingDecls] of Object.entries(existing.resourceSchemas)) {
+          if (!patternsReach(existingRef, ref)) continue;
+          for (const existingDecl of existingDecls) {
+            for (const incomingDecl of incomingDecls) {
+              checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
+            }
+          }
+        }
+      }
+
+      // One address at user or org scope: the same comparison the address
+      // path's 409 makes, over the declarations it reads (`addresses`), so
+      // the two can't disagree on what "the same definition" is. Overlapping
+      // names are not one address.
+      for (const [key, incomingConfigs] of Object.entries(incoming.addresses)) {
+        for (const existingConfig of existing.addresses[key] ?? []) {
+          for (const incomingConfig of incomingConfigs) {
+            checkClientConfigPair(scope, `resources.${key}`, existing.flowKind, flowKind, existingConfig, incomingConfig);
           }
         }
       }
@@ -437,6 +480,16 @@ type ResourceDeclarations = ResourceDeclaration[];
 type ScopeDeclaration = {
   stateSchema?: ZodTypeAny;
   resourceSchemas: Record<string, ResourceDeclarations>;
+  /**
+   * The shared user or org declarations at each address (a single resource's
+   * storage key, a collection's pattern), for the client-config compare.
+   * Collected by the address path's own inclusion rule (`declarationsOf` in
+   * `resources/scope-address.ts`): every collection, projected or schema-less
+   * included, and every single resource with a `stateSchema`. Wider than
+   * `resourceSchemas`, which holds only what occupies a framework cell. Empty
+   * at session scope, which has no address.
+   */
+  addresses: Record<string, DeclaredResourceEntry[]>;
 };
 
 /**
@@ -540,12 +593,15 @@ function collectScopeDeclaration(
   flow: FlowInstance,
   scope: ConflictScope
 ): ScopeDeclaration | undefined {
+  // A session's state record belongs to the session's own flow, so only its
+  // resources are compared there; and a session copy has no isolation.
   const flowIsolatesScope =
-    scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
+    scope === "session" || (scope === "user" ? flow.isolateUserState : flow.isolateOrgState);
 
   const stateSchema = flowIsolatesScope ? undefined : scopeStateSchema(flow, scope);
 
   const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
+  const addresses = emptySchemaMap<DeclaredResourceEntry[]>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
   // from `resourceSchemas` — and checked BEFORE the isolation filter below —
   // because a same-flow collision is not a cross-flow question. Isolation
@@ -560,6 +616,15 @@ function collectScopeDeclaration(
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
+    // Before the cell filters below: the address path reads projected and
+    // schema-less collections too, and 409s when their client settings differ.
+    if (
+      scope !== "session" &&
+      (isCollectionConfig(entry) || entry.stateSchema !== undefined) &&
+      !resolveResourceIsolation(entry.flowIsolation, flow, scope)
+    ) {
+      (addresses[storageRef(entry, accessor, storageKeys)] ??= []).push(entry);
+    }
     // Projected collections are read-through views over the app's own store —
     // they never occupy a framework-owned `ResourceStateStore` cell, so two
     // flows exposing the same pattern over separate backings share nothing.
@@ -569,7 +634,7 @@ function collectScopeDeclaration(
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
 
-    const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
+    const isolated = scope === "session" ? false : resolveResourceIsolation(entry.flowIsolation, flow, scope);
     const ref = storageRef(entry, accessor, storageKeys);
     const collection = isCollectionConfig(entry);
     const secret = [...(entry.secret ?? [])].sort();
@@ -609,11 +674,15 @@ function collectScopeDeclaration(
     (resourceSchemas[ref] ??= []).push(declaration);
   }
 
-  if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
+  if (
+    stateSchema === undefined &&
+    Object.keys(resourceSchemas).length === 0 &&
+    Object.keys(addresses).length === 0
+  ) {
     return undefined;
   }
 
-  return { stateSchema, resourceSchemas };
+  return { stateSchema, resourceSchemas, addresses };
 }
 
 /**
@@ -642,6 +711,32 @@ function checkResourcePair(
     reason: "secret-mismatch",
     detail: `one marks secret ${list(a.secret)}, the other ${list(b.secret)}; declare the same secret fields`,
     collection,
+  });
+}
+
+/**
+ * Two flows' declarations of one user or org address must agree on their
+ * client projection, owner rules, `runBy` and `canWrite` (`sameClientConfig`,
+ * the comparison the address path answers 409 with). Otherwise the one cell
+ * has two answers to what a client sees and who may write it.
+ */
+function checkClientConfigPair(
+  scope: ConflictScope,
+  field: string,
+  flowA: string,
+  flowB: string,
+  a: DeclaredResourceEntry,
+  b: DeclaredResourceEntry
+): void {
+  if (sameClientConfig(a, b)) return;
+  throw new CrossFlowSchemaConflictError({
+    scope,
+    field,
+    flowA,
+    flowB,
+    reason: "client-config-mismatch",
+    detail: "the two declare different client, runBy or canWrite settings; declare it once and share it",
+    collection: isCollectionConfig(a) || isCollectionConfig(b),
   });
 }
 

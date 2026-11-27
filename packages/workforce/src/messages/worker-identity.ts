@@ -50,7 +50,7 @@ const oneLine = (text: string | null): string => {
  * roster worker (so the prompt slot drops it, never a blank line).
  */
 export async function workerIdentityPrompt(ctx: BlockContext, installation: WorkerInstallation): Promise<string | undefined> {
-  const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+  const self = ctx.session.state?.[WORKER_ID_STATE_KEY];
   if (typeof self !== "string") return undefined;
   const { self: me, messageable, taskOnly } = await workerRecipients(ctx, installation, self);
   if (me === undefined) return undefined;
@@ -70,7 +70,7 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
   // reads it, else the worker's file. `createTask` unsuffixed: Workforce's
   // conversation board mounts the task tools with no `nameSuffix`, so a
   // worker on this flow always sees that name.
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const delegates: readonly string[] | "all" = Array.isArray(state[DELEGATES_STATE])
     ? currentDelegates(state, { delegates: [] }).delegates.map((record) => record.worker)
     : me.delegates;

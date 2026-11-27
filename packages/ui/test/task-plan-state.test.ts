@@ -5,10 +5,10 @@
  * happy-dom render for cases that are entirely about data shape.
  */
 import { describe, it, expect } from "vitest";
-import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
+import type { DataItem, OutputItem } from "@flow-state-dev/core/items";
 import {
-  TASK_BOARD_META_COMPONENT,
-  TASK_CHANGE_COMPONENT,
+  TASK_BOARD_META_DATA_TYPE,
+  TASK_CHANGE_DATA_TYPE,
   collectTaskOwnedItemIds,
   discoverCollections,
   extractTaskItemWindows,
@@ -47,12 +47,12 @@ function makeTaskChange(
   collectionId: string,
   task: Task,
   options?: { kind?: string; prevStatus?: TaskStatus }
-): ComponentItem {
-  const item: ComponentItem = {
+): DataItem {
+  const item: DataItem = {
     id: `item_change_${task.id}_${nextItemIndex}`,
-    type: "component",
-    component: TASK_CHANGE_COMPONENT,
-    data: {
+    type: "data",
+    dataType: TASK_CHANGE_DATA_TYPE,
+    value: {
       collectionId,
       taskId: task.id,
       kind: options?.kind ?? "added",
@@ -65,7 +65,7 @@ function makeTaskChange(
     itemIndex: nextItemIndex++,
     provenance: { blockName: "test", blockInstanceId: "test", phase: "main" },
     ts: nextTs++,
-  } as ComponentItem;
+  } as DataItem;
   return item;
 }
 
@@ -73,12 +73,12 @@ function makeBoardMeta(
   collectionId: string,
   status: string,
   counts?: Record<string, number>
-): ComponentItem {
+): DataItem {
   return {
     id: `item_meta_${collectionId}_${nextItemIndex}`,
-    type: "component",
-    component: TASK_BOARD_META_COMPONENT,
-    data: {
+    type: "data",
+    dataType: TASK_BOARD_META_DATA_TYPE,
+    value: {
       collectionId,
       status,
       ...(counts !== undefined ? { counts } : {}),
@@ -89,7 +89,7 @@ function makeBoardMeta(
     itemIndex: nextItemIndex++,
     provenance: { blockName: "test", blockInstanceId: "test", phase: "main" },
     ts: nextTs++,
-  } as ComponentItem;
+  } as DataItem;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ describe("extractTaskPlanState", () => {
     expect(state.tasks.map((e) => e.task.id)).toEqual(["a", "m", "z"]);
   });
 
-  it("ignores non-component items", () => {
+  it("ignores non-data items", () => {
     resetItemCounters();
     const messageItem = {
       id: "msg_1",
@@ -196,15 +196,15 @@ describe("extractTaskPlanState", () => {
     resetItemCounters();
     const malformed = {
       id: "item_bad",
-      type: "component",
-      component: TASK_CHANGE_COMPONENT,
-      data: { collectionId: "board-1" }, // missing taskId + task
+      type: "data",
+      dataType: TASK_CHANGE_DATA_TYPE,
+      value: { collectionId: "board-1" }, // missing taskId + task
       status: "completed",
       requestId: "req_test",
       itemIndex: 0,
       provenance: { blockName: "test", blockInstanceId: "test", phase: "main" },
       ts: 0,
-    } as ComponentItem;
+    } as DataItem;
 
     const items: OutputItem[] = [
       malformed,
@@ -322,15 +322,15 @@ describe("discoverCollections", () => {
     resetItemCounters();
     const otherComponent = {
       id: "item_other",
-      type: "component",
-      component: "some-other-thing",
-      data: { collectionId: "ignored" },
+      type: "data",
+      dataType: "some-other-thing",
+      value: { collectionId: "ignored" },
       status: "completed",
       requestId: "req_test",
       itemIndex: 0,
       provenance: { blockName: "test", blockInstanceId: "test", phase: "main" },
       ts: 0,
-    } as ComponentItem;
+    } as DataItem;
     expect(discoverCollections([otherComponent])).toEqual([]);
   });
 });
@@ -394,7 +394,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it("collectTaskOwnedItemIds returns task-owned ids and excludes substrate components + unattributed", () => {
+  it("collectTaskOwnedItemIds returns task-owned ids and excludes substrate records + unattributed", () => {
     resetItemCounters();
     const t = makeTask({ id: "t1" });
     const owned = makeSideChainMessage("owned", "t1");
@@ -410,7 +410,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const ids = collectTaskOwnedItemIds(items);
     expect(ids.has(owned.id)).toBe(true);
     expect(ids.has(orphan.id)).toBe(false);
-    // Substrate components such as task-change are never owned.
+    // Substrate records such as task-change are never owned.
     expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
   });
 
@@ -435,39 +435,5 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const ids = collectTaskOwnedItemIds(items);
     expect(ids.has(reply.id)).toBe(false);
     expect(ids.has(work.id)).toBe(true);
-  });
-});
-
-/**
- * FIX-2080 — a trace recorded before `held` replaced `blocked`. The fold reads
- * the old status and the old counts key as `held`, so a held section and the
- * counts ribbon show old traces too.
- */
-describe("extractTaskPlanState, legacy blocked items", () => {
-  it("reads a legacy blocked task status as held", () => {
-    resetItemCounters();
-    const legacy = makeTask({ id: "t1", status: "blocked" as TaskStatus });
-    const state = extractTaskPlanState([makeTaskChange("board-1", legacy, { kind: "blocked" })], "board-1");
-    expect(state.tasks[0]?.task.status).toBe("held");
-  });
-
-  it("folds a legacy blocked counts key into held", () => {
-    resetItemCounters();
-    const state = extractTaskPlanState(
-      [
-        makeBoardMeta("board-1", "completed", {
-          total: 1,
-          completed: 0,
-          errored: 0,
-          cancelled: 0,
-          blocked: 1,
-          in_progress: 0,
-          pending: 0,
-        }),
-      ],
-      "board-1"
-    );
-    expect(state.boardMeta.counts?.held).toBe(1);
-    expect(state.boardMeta.counts).not.toHaveProperty("blocked");
   });
 });

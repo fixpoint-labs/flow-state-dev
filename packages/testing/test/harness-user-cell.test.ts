@@ -16,7 +16,6 @@ import {
   defineResourceCollection,
   handler,
 } from "@flow-state-dev/core";
-import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createTestContext, testFlow } from "../src";
 import { userSeedCell } from "../src/internal/user-cell";
@@ -28,8 +27,7 @@ describe("createTestContext seeds user data where the run reads it (BR-13)", () 
       user: { state: { marker: "STATE-M" }, resources: { notes: { marker: "RES-M" } } },
     });
     expect(ctx.user.state).toMatchObject({ marker: "STATE-M" });
-    const notes = (ctx.resources as unknown as Record<string, { state: unknown }>).notes;
-    expect(notes?.state).toEqual({ marker: "RES-M" });
+    expect(ctx.resources.notes).toMatchObject({ state: { marker: "RES-M" } });
     // The run's org's cell, never the cross-org one.
     const cell = `test-user:~org:${orgId ?? DEFAULT_ORG_ID}`;
     expect((await stores.user.get(cell))?.state).toMatchObject({ marker: "STATE-M" });
@@ -37,18 +35,7 @@ describe("createTestContext seeds user data where the run reads it (BR-13)", () 
   });
 
   it("seeds a flow that isolates user state into its flow-isolated cell", async () => {
-    const flow = {
-      id: "iso-flow",
-      kind: "iso-flow",
-      cardinality: "singleton",
-      requireUser: true,
-      config: Object.freeze({}),
-      actions: {},
-      isolateUserState: true,
-      isolateOrgState: false,
-      session: {},
-      user: {},
-    } as unknown as FlowInstance;
+    const flow = defineFlow({ kind: "iso-flow", actions: {}, isolateUserState: true })();
     const { ctx } = await createTestContext({ flow, orgId: "acme", user: { state: { marker: "ISO-M" } } });
     expect(ctx.user.state).toMatchObject({ marker: "ISO-M" });
   });
@@ -61,25 +48,23 @@ const readBack = handler({
   name: "read-back",
   inputSchema: z.object({}),
   outputSchema: z.object({ state: z.unknown(), shared: z.unknown(), isolated: z.unknown() }),
+  userStateSchema: markerSchema,
   resources: {
     shared: defineResource({ scope: "user", stateSchema: markerSchema }),
     isolated: defineResource({ scope: "user", flowIsolation: true, stateSchema: markerSchema }),
   },
-  execute: async (_input, ctx) => {
-    const resources = ctx.resources as unknown as Record<string, { state: { marker: string | null } }>;
-    return {
-      state: (ctx.user.state as { marker?: string }).marker ?? null,
-      shared: resources.shared?.state.marker ?? null,
-      isolated: resources.isolated?.state.marker ?? null,
-    };
-  },
+  execute: (_input, ctx) => ({
+    state: ctx.user.state.marker,
+    shared: ctx.resources.shared.state.marker,
+    isolated: ctx.resources.isolated.state.marker,
+  }),
 });
 
 const readFlow = defineFlow({
   kind: "read-flow",
-  user: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) },
+  user: { stateSchema: markerSchema },
   org: { stateSchema: z.object({}).passthrough() },
-  actions: { read: { inputSchema: z.object({}), block: readBack } },
+  actions: { read: readBack },
 });
 
 /**
@@ -108,14 +93,12 @@ describe("userSeedCell agrees with the engine's routing", () => {
       outputSchema: z.object({ ok: z.boolean() }),
       resources,
       execute: async (_input, ctx) => {
-        const r = ctx.resources as unknown as Record<string, { patchState(s: object): Promise<void> }> &
-          Record<"notes" | "deep", ResourceCollectionRef>;
-        await r.plain!.patchState({ v: "x" });
-        await r.shared!.patchState({ v: "x" });
-        await r.private!.patchState({ v: "x" });
-        await r.me!.patchState({ v: "x" });
-        await r.notes.create("a", { v: "x" });
-        await r.deep.create("b", { v: "x" });
+        await ctx.resources.plain.patchState({ v: "x" });
+        await ctx.resources.shared.patchState({ v: "x" });
+        await ctx.resources.private.patchState({ v: "x" });
+        await ctx.resources.me.patchState({ v: "x" });
+        await ctx.resources.notes.create("a", { v: "x" });
+        await ctx.resources.deep.create("b", { v: "x" });
         return { ok: true };
       },
     });
@@ -123,8 +106,8 @@ describe("userSeedCell agrees with the engine's routing", () => {
       kind: "parity",
       isolateUserState,
       resources,
-      actions: { write: { inputSchema: z.object({}), block: write } },
-    })() as unknown as FlowInstance;
+      actions: { write },
+    })();
     const stores = createInMemoryStores();
     const result = await testFlow({ flow, action: "write", input: {}, userId: "alice", stores });
     expect(result.error).toBeUndefined();
@@ -142,7 +125,7 @@ describe("testFlow seeds user data where the run reads it (BR-13)", () => {
     ["a seeded org", { state: {} }],
   ] as const)("seeds user state, a shared and a flow-isolated resource in %s", async (_label, org) => {
     const result = await testFlow({
-      flow: readFlow() as unknown as FlowInstance,
+      flow: readFlow(),
       action: "read",
       input: {},
       userId: "alice",

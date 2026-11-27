@@ -9,7 +9,7 @@
  * lowercase message, and `com0`/`lpt0` pass, each message byte for byte.
  */
 import { describe, expect, it } from "vitest";
-import { validateSegment, type SegmentLabel } from "../src/loader";
+import { validateSegment, type SegmentLabel } from "../src/loader/readers";
 
 /** The exact message `validateSegment` throws, or `null` when it accepts. */
 function messageFor(segment: string, label: SegmentLabel): string | null {

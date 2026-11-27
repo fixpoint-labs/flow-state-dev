@@ -1,11 +1,12 @@
+// @vitest-environment happy-dom
 /**
  * Usage's labels: what a window, an age and a harness are called on screen.
- * The rows themselves are the Lab's; these only name them.
+ * The rows themselves are the Lab's; these only name them. And the usage
+ * reads (FIX-2775): the two views, through `useView`, with Re-check first.
  */
-import { describe, expect, it } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
-import type { Client } from "@flow-state-dev/client";
-import { readerSessionId } from "../src/lib/reads";
 import {
   ageLabel,
   billingLabel,
@@ -15,12 +16,12 @@ import {
   harnessName,
   levelLabel,
   percentLabel,
-  runUsageQuery,
   tokensLabel,
-  toHarnessUsage,
-  toWorkerUsage,
+  useHarnessUsage,
+  useWorkerUsage,
   USAGE_PERIODS,
   windowName,
+  type HarnessUsage,
 } from "../src/lib/usage";
 
 describe("Usage labels", () => {
@@ -56,11 +57,9 @@ describe("Usage labels", () => {
     expect(levelLabel(null, "claude-code")).not.toMatch(/\d/);
   });
 
-  it("names harnesses for the user, and keeps only rows that are rows", () => {
+  it("names harnesses for the user", () => {
     expect(harnessName("codex")).toBe("Codex");
     expect(harnessName("claude-code")).toBe("Claude Code");
-    expect(toHarnessUsage({ harnesses: [{ harness: "codex" }, null, "x"] })).toEqual([{ harness: "codex" }]);
-    expect(toHarnessUsage(undefined)).toEqual([]);
   });
 });
 
@@ -100,10 +99,8 @@ describe("Usage by worker labels", () => {
     expect(billingLabel(null)).toBeNull();
   });
 
-  it("offers today, 7 and 30 days, and keeps only rows that are rows", () => {
+  it("offers today, 7 and 30 days", () => {
     expect(USAGE_PERIODS.map((p) => p.days)).toEqual([1, 7, 30]);
-    expect(toWorkerUsage({ workers: [{ worker: "coder" }, null, 3] })).toEqual([{ worker: "coder" }]);
-    expect(toWorkerUsage(undefined)).toEqual([]);
   });
 
   it("never labels a total as left, remaining or a limit", () => {
@@ -118,54 +115,81 @@ describe("Usage by worker labels", () => {
 });
 
 /**
- * A connection whose Lab refuses `refused` (an id another organization holds,
- * which this one can't see) and answers the query on any other session.
- * `listed` is this organization's listing.
+ * The usage reads over a fake connection: what Re-check and the views answer.
+ * A Lab with no usage reads as `null`; any other refusal reaches the screen as
+ * a failure; and a Re-check that fails never hides the stored rows.
  */
-function fakeLab(refused: string | null, listed: Array<{ id: string; flowKind: string }>) {
-  const sent: string[] = [];
-  const client = {
-    userId: "alice",
-    flow: () => ({
-      send: async (_action: string, _input: unknown, options: { sessionId: string }) => {
-        sent.push(options.sessionId);
-        if (options.sessionId === refused) throw new ClientHttpError("unknown session", { status: 404, body: "" });
-        return {
-          id: `r${sent.length}`,
-          wait: async () => ({ status: "completed" }),
-          result: async () => ({ status: "completed", output: { harnesses: [{ harness: "codex" }] } }),
-        };
-      },
-    }),
-    sessions: {
-      list: async () => listed.map((session) => ({ ...session, parentSessionId: null })),
+const STORED: HarnessUsage = {
+  harness: "codex",
+  status: "windows",
+  reason: null,
+  plan: "pro",
+  windows: [],
+  checkedAt: 1,
+  ageMs: 0,
+  refreshError: null,
+};
+
+/** The page's connection, for the reads to go through. */
+let lab: { client: unknown };
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
+
+/** How many Re-checks and view reads the fake has answered, resolved or refused. */
+let answered = { recheck: 0, view: 0 };
+
+function fakeLab(answers: { recheck?: () => Promise<unknown>; view?: () => Promise<unknown> }) {
+  answered = { recheck: 0, view: 0 };
+  // Counted before the hook's own handlers run: they are chained on the promise this returns.
+  const counted = <T,>(which: keyof typeof answered, answer: () => Promise<T>) => answer().finally(() => (answered[which] += 1));
+  lab = {
+    client: {
+      userId: "alice",
+      resource: () => ({ send: () => counted("recheck", answers.recheck ?? (async () => ({ asked: [] }))) }),
+      view: () => counted("view", async () => ({ value: await (answers.view ?? (async () => ({ harnesses: [STORED], workers: [] })))(), topics: [] })),
+      // The views are kept current by their notices; none arrive here.
+      subscribe: () => ({ close: () => {} }),
     },
-  } as unknown as Client;
-  return { client, sent };
+  };
 }
 
-describe("the usage query's session", () => {
-  const reader = readerSessionId("alice", "projects");
+const refused = (status: number, error: string) => async () => {
+  throw new ClientHttpError(`Request failed (${status})`, { status, body: { error, message: error } });
+};
 
-  it("runs on the user's one reading id when this organization holds it", async () => {
-    const { client, sent } = fakeLab(null, []);
-    expect(await runUsageQuery(client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(sent).toEqual([reader]);
+/** What the harness hook settles on. */
+async function harnessRead(answers: Parameters<typeof fakeLab>[0]) {
+  fakeLab(answers);
+  const { result } = renderHook(() => useHarnessUsage());
+  // Re-check and the view settle on their own: wait for both answers, then let the hook take them.
+  await waitFor(() => expect(answered.recheck > 0 && answered.view > 0).toBe(true));
+  await act(async () => {});
+  return result.current;
+}
+
+async function workerRead(answers: Parameters<typeof fakeLab>[0]) {
+  fakeLab(answers);
+  const { result } = renderHook(() => useWorkerUsage(7));
+  await waitFor(() => expect(result.current.rows !== undefined || result.current.failure !== undefined).toBe(true));
+  return result.current;
+}
+
+describe("the usage reads", () => {
+  it("read as no usage only when nothing serves it: a 404, or a Re-check whose writer flow isn't registered", async () => {
+    expect((await harnessRead({ recheck: refused(404, "unknown_resource") })).rows).toBeNull();
+    expect((await harnessRead({ recheck: refused(409, "runby_flow_missing") })).rows).toBeNull();
+    expect((await harnessRead({ view: refused(404, "unknown_view") })).rows).toBeNull();
+    expect((await workerRead({ view: refused(404, "unknown_view") })).rows).toBeNull();
   });
 
-  it("runs on this organization's own session when another organization holds the one id", async () => {
-    const first = fakeLab(reader, []);
-    expect(await runUsageQuery(first.client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(first.sent[1]).toMatch(/^usage-own-[0-9a-f]{32}$/);
-    // Once opened, this organization lists it, and the next read finds it rather than opening another.
-    const again = fakeLab(reader, [{ id: first.sent[1]!, flowKind: "projects" }]);
-    await runUsageQuery(again.client, "projects");
-    expect(again.sent).toEqual([reader, first.sent[1]]);
+  it("pass any other 409 on to the screen, from Re-check and from either view", async () => {
+    expect((await harnessRead({ recheck: refused(409, "declarations_disagree") })).failure).toMatchObject({ httpStatus: 409 });
+    expect((await harnessRead({ view: refused(409, "declarations_disagree") })).failure).toMatchObject({ httpStatus: 409 });
+    expect((await workerRead({ view: refused(409, "runby_flow_missing") })).failure).toMatchObject({ httpStatus: 409 });
   });
 
-  it("passes a refusal on when this organization holds the one id: nothing else is opened", async () => {
-    const { client, sent } = fakeLab(reader, [{ id: reader, flowKind: "projects" }]);
-    await expect(runUsageQuery(client, "projects")).rejects.toThrow(/unknown session/);
-    expect(sent).toEqual([reader]);
+  it("still answer the stored rows when Re-check fails, with why beside them", async () => {
+    const read = await harnessRead({ recheck: refused(500, "store offline") });
+    expect(read.rows).toEqual([{ ...STORED, refreshError: "store offline" }]);
+    expect(read.failure).toBeUndefined();
   });
 });

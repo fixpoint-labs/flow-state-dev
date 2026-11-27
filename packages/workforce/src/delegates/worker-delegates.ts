@@ -23,7 +23,7 @@
  * whose file sets `editsOwnDelegates: true` ({@link
  * WorkerDelegates.toolsCapability}). Those three refuse at the call too.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
@@ -32,6 +32,7 @@ import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verif
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { DELEGATE_TAKES, createDelegateCheck, flowTakes, type DelegateTakes } from "./delegate-check";
+import { declarationOfFlow } from "../task-input/declaration";
 import { ADD_DELEGATE, ALL_DELEGATES, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 import {
   changeDelegates,
@@ -96,15 +97,34 @@ const delegateListOutputSchema = z.object({
   filingSessionId: z.string()
 });
 
+// FIX-2894 D3.
+/**
+ * What a delegate's tasks take, as `listDelegates` shows it (`inputSchema`): the input a
+ * filer may write, as JSON Schema draft-07, fully inlined, without the fields
+ * only the server writes, and whether a task needs a project. `null` for a
+ * delegate whose flow declares nothing, which takes any object.
+ */
+const delegateInputShape = z
+  .object({ jsonSchema: z.record(z.unknown()), project: z.enum(["required", "optional"]) })
+  .nullable();
+
 /**
  * What `listDelegates` answers: the list, each delegate with what it does (its
- * worker's description, or null) and what it takes now, read and never stored.
+ * worker's description, or null), what it takes now, and the input schema its
+ * tasks take, read and never stored.
  */
 const delegateReadOutputSchema = delegateListOutputSchema.extend({
   delegates: z.array(
-    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES) })
+    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES), inputSchema: delegateInputShape })
   )
 });
+
+/** A delegate's `inputSchema`, as {@link delegateInputShape} shows it, for a worker on flow `flowKind`. */
+function delegateInputSchemaOf(installation: WorkerInstallation, flowKind: string): z.infer<typeof delegateInputShape> {
+  const flows = installation.workerFlows();
+  const declaration = Object.hasOwn(flows, flowKind) ? declarationOfFlow(flows[flowKind]!.flow) : undefined;
+  return declaration === undefined ? null : { jsonSchema: { ...declaration.filerSchema }, project: declaration.project };
+}
 
 /** A session's delegates, and the session's `filingSessionId`. */
 type Listed = { list: DelegateList; filingSessionId: string };
@@ -172,7 +192,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    */
   const seeded = async (ctx: BlockContext, defaults: DelegateDefaults): Promise<DelegateDefaults> => {
     if (options.seed === undefined) return defaults;
-    if ((ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] !== null) return defaults;
+    if (ctx.session.state[DELEGATES_STATE] !== null) return defaults;
     const records = await options.seed(ctx);
     return records === undefined ? defaults : { ...defaults, records };
   };
@@ -191,7 +211,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     if (verifiedWorkerOf(ctx.session) !== undefined) {
       return withRoster(installation, ctx, await seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx))));
     }
-    const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+    const named = ctx.session.state[WORKER_ID_STATE_KEY];
     return typeof named === "string" ? ownerDefaults(ctx) : withRoster(installation, ctx, delegateDefaultsOf(turnConfigOf(ctx)));
   };
 
@@ -233,23 +253,39 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
   };
   /**
-   * The list as `listDelegates` answers it, each delegate with what it does and
-   * what it takes now, from the roster row the check reads: its worker's
-   * description and what its flow takes. One that fails the check for an add
-   * (fired, or on a flow that takes no task) takes nothing, with no description.
+   * `listed`, each delegate with what it does and what it takes now, from the
+   * roster row the check reads: its worker's description and what its flow
+   * takes. One that fails the check for an add (fired, or on a flow that takes
+   * no task) takes nothing, with no description.
    */
-  const read = async (ctx: BlockContext) => {
-    const listed = listOutput(await list(ctx));
-    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
+  const described = async (ctx: BlockContext, listed: ReturnType<typeof listOutput>) => {
+    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes; inputSchema: z.infer<typeof delegateInputShape> }> = [];
     for (const record of listed.delegates) {
       const checked = await check(ctx, record.worker, "add");
       delegates.push(
         checked.ok
-          ? { ...record, description: checked.worker.description, takes: flowTakes(installation, checked.worker.flow) }
-          : { ...record, description: null, takes: "nothing" }
+          ? {
+              ...record,
+              description: checked.worker.description,
+              takes: flowTakes(installation, checked.worker.flow),
+              inputSchema: delegateInputSchemaOf(installation, checked.worker.flow)
+            }
+          : { ...record, description: null, takes: "nothing", inputSchema: null }
       );
     }
     return { ...listed, delegates };
+  };
+  /** The list as `listDelegates` answers it: read, copying the defaults in on a first read. */
+  const read = async (ctx: BlockContext) => described(ctx, listOutput(await list(ctx)));
+  // FIX-2776 D1.
+  /**
+   * The list as the delegates view answers it: the same records and the same
+   * check as {@link read}, without its first-read write, which a view can't
+   * make. A list never written reads as the defaults it would copy in now.
+   */
+  const peek = async (ctx: BlockContext) => {
+    const list = currentDelegates(ctx.session.state, await ownerDefaults(ctx));
+    return described(ctx, listOutput({ list, filingSessionId: await filingSessionIdOf(ctx.session) }));
   };
 
   /** Throw a refusal, for the actions. */
@@ -333,6 +369,26 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     execute: async (_input, ctx) => read(ctx)
   });
 
+  // FIX-2776 D1.
+  /**
+   * The session's delegates as a session view, `delegates`: what
+   * `listDelegates` answers, read without writing, so a screen watches it
+   * with `useView` and hears every change to the session's list, the
+   * coordinator's own tool's included. A read never pins a list,
+   * `delegates: all`'s or any other: only a change, or the action's or the
+   * tool's read, does.
+   */
+  const view = defineView({
+    scope: "session",
+    block: handler({
+      name: "delegates-view",
+      inputSchema: z.object({}).strict(),
+      outputSchema: delegateReadOutputSchema,
+      ...blockBase,
+      execute: async (_input, ctx) => peek(ctx)
+    })
+  });
+
   // FIX-2083.
   /**
    * The session's delegates as a task sees them, read now: each that takes a
@@ -409,8 +465,13 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     /** The same four as tools: `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback`. The three that change refuse unless the worker manages its own. */
     tools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool] as const,
     /** The delegate tools a model's turn is offered, per call: `listDelegates`, and the three that change only where the worker manages its own. */
-    toolsCapability
+    toolsCapability,
+    /** The delegates as a session view, for the flow's `views` under `delegates` (`DELEGATES_VIEW`). */
+    view
   };
 }
+
+/** The delegates view, as {@link defineWorkerDelegates} builds it. Import as a type in client code. */
+export type DelegatesView = WorkerDelegates["view"];
 
 export type WorkerDelegates = ReturnType<typeof defineWorkerDelegates>;

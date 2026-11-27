@@ -33,16 +33,18 @@
 import path from "node:path";
 import {
   IGNORED_ENTRIES,
-  WORKERS_LEVEL,
   classify,
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+} from "@flow-state-dev/engine/folder";
+import {
+  WORKERS_LEVEL,
   validateSegment,
   walkTeams,
-} from "../loader";
-import { typescriptExtension } from "./typescript-module";
+} from "../loader/readers";
+import { moduleSpecifier, typescriptExtension } from "./typescript-module";
 
 /** The folder a block file sits in, at every level it may sit at. */
 export const BLOCKS_SLOT = "blocks";
@@ -156,7 +158,7 @@ export async function readBlocksSlot(
       continue;
     }
 
-    // `foo.ts` beside `foo.tsx` reduces to ONE name and one extensionless
+    // `foo.ts` beside `foo.tsx` reduces to ONE name and one
     // import path. Left alone the walk reports success and the render emits a
     // repeated binding and a repeated map key — a module no bundler compiles,
     // produced by a command that said it worked. The sibling doors refuse the
@@ -174,7 +176,7 @@ export async function readBlocksSlot(
     }
     claimed.set(name, entryPath);
 
-    files.push({ name, path: entryPath, importPath: `./${slotPath}/${name}` });
+    files.push({ name, path: entryPath, importPath: moduleSpecifier(`./${slotPath}/${name}`, extension) });
   }
   return files;
 }
@@ -238,7 +240,7 @@ async function refuseToolsFolder(
  * @throws If the root is symlinked, missing or unreadable.
  */
 export async function discoverWorkerBlocks(root: string): Promise<WorkerBlockDiscovery> {
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   const workerBlocks: DiscoveredWorkerBlock[] = [];
   const problems: string[] = [];

@@ -21,6 +21,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import type {
   Content,
+  FileContent,
+  DataItem,
   ItemVisibility,
   MessageItem,
   OutputItem,
@@ -35,15 +37,18 @@ import {
   failedToolResultText,
 } from "@flow-state-dev/core/models";
 import type { RequestRecord } from "../stores/types";
+import { budgetHistoryFiles } from "./history-files";
 
 /**
  * Set of item types that enter LLM context.
- * `tool_output` is the dedicated tool-result type.
+ * `tool_output` is the dedicated tool-result type. A `data` item enters only
+ * when its emitter opted it into history (`resolveItemVisibility`).
  */
 export const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "tool_output"
+  "tool_output",
+  "data"
 ]);
 
 // FIX-1772.
@@ -57,9 +62,24 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
   return `[The result of ${toolName} (${size}) was too large to keep in the conversation history.]`;
 }
 
+/** A user line's file as the history carries it: the reference and what names it, nothing else. */
+function fileReference(file: FileContent): FileContent {
+  return {
+    type: "file",
+    mediaType: file.mediaType,
+    data: file.data,
+    ...(file.filename !== undefined ? { filename: file.filename } : {})
+  };
+}
+
 // FIX-413.
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
+ *
+ * A user line with files becomes one message whose content is a text part,
+ * then a `file` part per file in reference form. Those parts are not yet what
+ * a model takes: `loadLLMHistory` budgets them, and the model call reads
+ * their bytes (`resolveHistoryFiles`, the run's `prepareMessages`).
  *
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
  * excluded. Returns an empty array for item types that don't map to
@@ -79,6 +99,17 @@ export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeI
       .filter((c) => c.type === "output_text")
       .map((c) => (c as { text: string }).text)
       .join("");
+
+    // A person's files ride on their line, after the text, in reference form;
+    // `loadLLMHistory` budgets them and reads their bytes (`history-files.ts`).
+    const files =
+      msg.role === "user"
+        ? (msg.content ?? []).filter((c): c is FileContent => c.type === "file").map(fileReference)
+        : [];
+
+    if (files.length > 0) {
+      return [{ role: msg.role, content: [...(text.length > 0 ? [{ type: "text", text }] : []), ...files] }];
+    }
 
     if (text.length === 0) {
       return [];
@@ -129,6 +160,14 @@ export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeI
       buildAssistantToolCallMessage([{ ...call, input }]),
       buildToolResultMessage(call, { type: "text", value: resultText })
     ];
+  }
+
+  if (item.type === "data") {
+    // A record its emitter opted into history: one assistant line naming the
+    // record's type, then its value as JSON. Assistant, as a handler-emitted
+    // message is: the flow recorded it, nobody said it to the flow.
+    const data = item as DataItem;
+    return [{ role: "assistant", content: `[${data.dataType}] ${JSON.stringify(data.value)}` }];
   }
 
   return [];
@@ -360,6 +399,7 @@ export async function loadLLMHistory(
   for (const turn of selectedTurns) {
     messages.push(...turn.messages);
   }
+  const earlier = messages.length;
 
   // Live items from the in-flight request are included regardless of limit
   // unless the caller opts out. This is the retry/resume guarantee.
@@ -372,7 +412,17 @@ export async function loadLLMHistory(
   // Defense-in-depth: with turn-aligned slicing orphans should be
   // structurally unreachable in normal operation, but keep the trim for
   // edge data states (e.g., a request whose items begin mid-tool-pair).
-  return trimOrphanedToolMessages(messages);
+  // A person's files stay references here, budgeted (D1): the bytes are read
+  // only at the model call (`resolveHistoryFiles`), so nothing that records
+  // this history records them.
+  // An earlier turn's documents are named rather than sent where the query
+  // says so (FIX-2636 D2). The trim's leading drop shifts where they end.
+  let leading = 0;
+  while (leading < messages.length && messages[leading]!.role === "tool") leading++;
+  return budgetHistoryFiles(trimOrphanedToolMessages(messages), {
+    earlierDocuments: query?.earlierDocuments,
+    earlier: earlier - leading
+  });
 }
 
 /**

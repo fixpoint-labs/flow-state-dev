@@ -121,8 +121,14 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const sessionId = (await fsd.sessions.list({ flowKind: "coordinator", userId: USER })).sort((a, b) => b.updatedAt - a.updatedAt)[0]!.id;
     const main = page.locator('main[aria-label="Main thread"]');
     const cardFor = (taskId: string) => main.locator(`[data-entry="thread"][data-task-id="${taskId}"]`);
-    const threadView = () => page.locator('aside[aria-label^="Task: "]');
-    const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
+    // A thread's view is a sheet over the main thread.
+    const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
+    // Back to the main thread: close the thread's sheet with its Close button, as a person does. The sheet covers the
+    // main thread, its cards included, so a step that clicks a card waits for the sheet to go.
+    const back = async () => {
+      await threadView().getByRole("button", { name: "Close", exact: true }).click();
+      await threadView().waitFor({ state: "hidden" });
+    };
 
     await box.fill(fixture.ask);
     await box.press("Enter");
@@ -195,19 +201,19 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
 
     // ── Signal 4: each result is one collapsed line that opens to the thread's reply.
     const replies: string[] = [];
-    // A thread filed with `resultTo: "conversation"` lands its answer as written, which names no task: its line has no task id.
-    let landed = 0;
+    // A thread filed with `resultTo: "conversation"` lands its answer as written: a message, with no result line.
     for (const task of filed) {
-      const routed = String(task.id).startsWith("routed:");
-      if (routed) notes.push(`"${task.title ?? task.goal}" answered into the conversation`);
-      const line = routed
-        ? main.locator('section[data-entry="result"][data-task-id=""]').nth(landed++)
-        : main.locator(`section[data-entry="result"][data-task-id="${task.id}"]`).last();
+      if (String(task.id).startsWith("routed:")) {
+        notes.push(`"${task.title ?? task.goal}" answered into the conversation`);
+        continue;
+      }
+      const line = main.locator(`section[data-entry="result"][data-task-id="${task.id}"]`).last();
       if ((await line.count()) === 0) {
         failures.push(`4: no result line for "${task.title ?? task.goal}" in the main thread`);
         continue;
       }
-      const button = line.getByRole("button");
+      // The fold's own button: a result line also offers Open task.
+      const button = line.locator("button[aria-expanded]");
       const shut = await line.textContent();
       if ((await button.getAttribute("aria-expanded")) !== "false") failures.push(`4: "${task.title ?? task.goal}"'s result line isn't collapsed`);
       await button.click();
@@ -225,7 +231,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       await cardFor(task.id).getByRole("button", { name: "View task" }).click();
       await threadView().waitFor();
       await sleep(2_500);
-      toolLines.push(...(await threadView().locator('[data-entry="tool"]').allTextContents()));
+      toolLines.push(...(await threadView().locator('[data-line="steps"]').allTextContents()));
       await back();
     }
     tell.over("4 · tool lines in the task views", toolLines);

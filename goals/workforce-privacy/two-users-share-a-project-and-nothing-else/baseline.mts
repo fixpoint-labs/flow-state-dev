@@ -14,8 +14,7 @@ import { openShiftManager, personPage } from "../../lib/shift-manager.mts";
 import type { Install } from "./install.mts";
 import { act, refusal, type Person } from "./people.mts";
 import { messageOf, type RunRecord } from "./record.mts";
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+import { sleep } from "../../lib/time.mts";
 
 export interface BaselineOptions {
   install: Install;

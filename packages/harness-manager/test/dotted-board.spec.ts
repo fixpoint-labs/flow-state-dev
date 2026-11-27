@@ -18,6 +18,8 @@
  *    status untouched; the first user's own retry lands in the same checkout,
  *    branch, run record and agent session.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +37,6 @@ import {
   harnessTaskInputSchema,
   runOwnerClaimOrder,
   runTopic,
-  type HarnessFeeds,
 } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
@@ -123,15 +124,15 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     boardCollectionId: DOTTED_BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: (run: { branch: string }) => {
+    mode: {
+      name: PHASE,
+      instructions: (run: { branch: string }) => {
         branches.push(run.branch);
         return "go";
       },
-      isDone: () => true,
+      doneWhen: { check: () => true },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: scriptedHarness(options.script, seen),
@@ -172,7 +173,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "dotted-board-host" } as never);
   const state = createFlowState({
-    flows: { "dotted-board-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -255,10 +256,9 @@ describe("a row on a dotted, organization-scoped board", () => {
     const settled = await lab.settled();
     expect(settled.status, String(settled.error ?? settled.feedback)).toBe("completed");
     expect(settled.attempts).toBe(1);
-    // The checkout the harness ran in carries the board's id as is — no
-    // translation of the dots.
+    // The run is named for its task; the board's id is in the name's hash.
     expect(lab.seen).toHaveLength(1);
-    expect(lab.seen[0]!.cwd).toContain(`/${DOTTED_BOARD_ID}/`);
+    expect(lab.seen[0]!.cwd).toMatch(/\/fix-1-implement-[0-9a-f]{6}$/);
   }, 60_000);
 });
 

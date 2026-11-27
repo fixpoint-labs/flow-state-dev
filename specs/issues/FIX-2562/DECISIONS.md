@@ -25,6 +25,36 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 <a name="d1"></a>
 ## D1 · At the wrap, the passing legs and journeys fold into `CHECKS` and gate every PR; the manifest goes
 
+> **Amended (Nov 10).** The fold is held until two cells can pass; it is still the plan. Until
+> then the manifest stays and the closure runs it whole.
+> - `first-hour.quickstart` fails on a fresh pnpm 10 install, which never builds better-sqlite3.
+>   It waits on [FIX-2610](https://linear.app/fixpoint-labs/issue/FIX-2610).
+> - `closure.j5:moved-name-named` waits on the owner's call on how release notes name removed
+>   exports, and expects `fail` until then ([#4938](https://github.com/fixpoint-labs/flow-state-dev/pull/4938)).
+>   Today the cell is aggregate, so a name that loses its changelog line still reads `fail`. Making
+>   it strict per name belongs in the PR that flips it to `pass` (Codex's finding on #4938).
+
+> **Amended (Nov 12).** The owner made the release-notes call: "I would just indicate a single
+> line that 1076 unused exports have been removed and leave it at that." So the release notes
+> carry one changeset line, on every published package whose root lost a name, saying how many
+> exports the roots lost, and no line per name. j5 now checks for that line: each dropped name
+> still must fail to compile from its old root, and each package that lost one must carry a
+> changelog line stating the real count (1,078 on `main` today; the owner's 1,076 was the count
+> when the question was asked). A missing line or a stale count fails, and the planted control
+> removes the line and fails for every such package. `closure.j5:moved-name-named` expects `pass`.
+> This supersedes the Nov 10 bullet above: there is no per-name line left to be strict about, so
+> Codex's per-name strictness finding on #4938 no longer applies. It also supersedes "the
+> package's changelog line names its new home" in [the Q1 row](#q1).
+
+> **Amended (Nov 13).** The exact count is checked at release, not on every run. Other epics'
+> PRs keep dropping root names after the line's count is set, and their own CI never sees the
+> merged rule, so the exact count turned `main` red twice in a day for drift nobody on `main`
+> caused. On a push to `main` or a dispatch, j5 still fails a dropped name that compiles and a
+> package with no summary line, but a count that differs from the measured one is a note with
+> both numbers. The Version Packages PR (head `changeset-release/main`, the signal
+> `release-docs-gate.yml` keys on) runs the goal too, and there a stale count fails. This
+> supersedes "a stale count fails" in the Nov 12 note above.
+
 | | |
 |---|---|
 | **Instead of** | Keeping the manifest after the wrap, with the journeys as its rows, as the non-gating job on `main` that the epic runs while its cells are expected to fail |
@@ -50,10 +80,16 @@ Two things in the plan depended on Q1: **which commit is pinned**, and **how man
 
 | Q1's answer | The pinned commit | j5's upgrade | *Shims* |
 |---|---|---|---|
-| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published` only |
+| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published`, `shims.human-approval-throws` and `shims.stored-human-approval` (amended Nov 10) |
 
-A retired runtime value is not refused under D4, so the closure grades no refusal; it checks that
-the changeset names the replacement, inside j5.
+A retired runtime value is not refused under D4, so the closure grades no refusal of its own; it
+checks that the changeset names the replacement, inside j5.
+
+> **Amended (Nov 10).** D4 now keeps four refusals and readers ([epic D4](../../epics/FIX-2447/DECISIONS.md#kept-refusals)),
+> the owner's ruling by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830)
+> as it was. The two `human_*` ones are manifest cells (`shims.human-approval-throws`,
+> `shims.stored-human-approval`), so the closure grades them by running the manifest whole, and
+> adds no journey for them. The *Shims* row is those two plus `shims.never-published`.
 
 ## The plan in full
 
@@ -74,6 +110,11 @@ First, the *Surface* row as the epic narrowed it: on the installed tarballs, eve
 is clean (core, engine, client, react, testing, orchestration, patterns, the three harnesses, both
 stores, and workforce's `*_ENTRY` names), and every other published root sits at or below its
 ratchet baseline.
+
+> **Amended (Nov 10).** "At or below" is measured against the epic's start, `ebec5326`, not each
+> PR's merge base: `node scripts/check-root-exports.mjs ebec5326`. Each PR passed against its own
+> merge base while workforce's and workspace's roots grew by 11 names; the ruling came with
+> [FIX-2641](https://linear.app/fixpoint-labs/issue/FIX-2641), which takes them off or justifies them.
 
 | Seam ([epic](../../epics/FIX-2447/DECISIONS.md#coordination-seams)) | Exercised as |
 |---|---|
@@ -110,7 +151,7 @@ FIX-2447 blocks this issue in Linear.
   that cell or check. Each team in the epic's table is walked by a cell, a re-run goal check or a
   kept journey ([the mapping](SPEC.md#the-journeys)).
 - **Grade the *Surface* row as narrowed** (pending the owner's sign-off on the epic): owned roots
-  clean, every other published root at or below its ratchet baseline. Cleaning those roots is
+  clean, every other published root at or below its ratchet baseline at `ebec5326` ([amended Nov 10](#the-gap-sweep)). Cleaning those roots is
   FIX-2568's and FIX-2569's, outside the epic.
 - **The journeys run on the installed project, like the legs.** A journey on workspace `src` reads
   what the adopter never installs.
@@ -150,6 +191,10 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 
 ## How it got here
 
+- **EM amendment (Nov 13)** — j5 checks the summary line's exact count on the Version Packages
+  PR only; elsewhere a stale count is a note ([D1](#d1)).
+- **Owner amendment (Nov 12)** — release notes name removed exports in one summary line with
+  the count, not one line per name; j5 grades that line ([D1](#d1)).
 - **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
   backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The Q1 section keeps only the
   break row: one pinned commit after the last child, j5 one hop with no `@deprecated` arm. The

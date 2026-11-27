@@ -26,15 +26,16 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../../lib/workers.mts";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { AskFeature } from "../../../../packages/shift-manager/teams/devteam/ask.mts";
 import { LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { EM_FLOW, EM_TURN } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { recordingHarness } from "./recording-harness.mts";
 import { EM_ANSWER, ROWS, STORE_ENV } from "./rows.mts";
+import { readyHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 
 /** How long one held attempt may run before the manager gives up on it. */
 const RUN_TIMEOUT_MS = 15 * 60_000;
@@ -45,7 +46,7 @@ const ASK_FEATURE = (
   ) as { feature: AskFeature }
 ).feature;
 
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const ems = roster.workers.filter((w) => w.declared.flow === EM_FLOW);
 if (ems.length !== 1) throw new Error(`wanted one EM worker in the DevTeam tree, found ${ems.length}`);
@@ -73,11 +74,10 @@ if (storeFile === undefined || storeFile === "") throw new Error(`${STORE_ENV} n
 const scratch = createScratchRepo("shift-manager-turn");
 const lab = await openLab({
   stores: sqliteStores({ filename: storeFile }),
-  harness: recordingHarness,
+  // The recording harness's abort ends its run at once, so a steer may stop it: its block says so.
+  harnesses: [readyHarness((feeds) => Object.assign(recordingHarness(feeds), { stopsOnAbort: true }))],
   runTimeoutMs: RUN_TIMEOUT_MS,
-  // The recording harness's abort ends its run at once, so a steer may stop it.
-  stopsOnAbort: true,
-  workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
+  workspace: { root: scratch.root, repo: scratch.sourceRepo, baseRef: BASE_REF },
   coderWorkerId,
   modelResolver,
   inventory: true,

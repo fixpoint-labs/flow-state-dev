@@ -17,12 +17,10 @@ import { createRoutingFlow } from "./src/flow";
 import { JEV, modelWithoutConfidence } from "./src/models";
 
 export default createFlowState({
-  flows: {
-    "routing-with-evaluators": createRoutingFlow({
-      confident: JEV,
-      withoutConfidence: modelWithoutConfidence(),
-    }),
-  },
+  flows: [createRoutingFlow({
+        confident: JEV,
+        withoutConfidence: modelWithoutConfidence(),
+      })],
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

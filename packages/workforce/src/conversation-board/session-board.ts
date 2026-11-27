@@ -16,8 +16,8 @@
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
- * - **The reads**: `reads`, the task list as a read named `listTasks_tasks`,
- *   which an app watches without storing a request per look.
+ * - **The view**: `views`, the task list as a session view named
+ *   `listTasks_tasks`, which an app watches with `useView`.
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
  *   worker's message arrives on, and the session state they keep
@@ -38,7 +38,7 @@
  *     session: { ...installation.session(board.sessionStateShape), serverOwned: board.serverOwned },
  *     resources: { ...installation.resources, ...board.resources },
  *     actions: { respond: { ... }, ...board.actions },
- *     reads: board.reads,
+ *     views: board.views,
  *     internal: { actions: board.entries(answer) }
  *   });
  * });
@@ -50,7 +50,9 @@ import { z } from "zod";
 import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
-import { messageHopStateShape } from "../messages/hop";
+import { DELEGATES_VIEW } from "../delegates/delegate-keys";
+import type { InferredWork } from "../coordinator/coordinator-keys";
+import { INFERRED_FORWARD_METADATA, messageHopStateShape, RECEIVED_FORWARD_STATE, turnForwardOf } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
@@ -60,11 +62,12 @@ import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-r
 import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
-import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
+import { ROUTED_FROM_STATE_KEY, TASK_TITLE_STATE_KEY, WORKER_NAME_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
+import { taskInputSourceOf } from "../task-input/checked-ledger";
 import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
@@ -94,7 +97,7 @@ export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeli
 const SCREEN_FILING_ACTION = "createTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
-export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
+const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
 
 /**
  * The session-state fields this factory's delegate list and board write, and only
@@ -112,7 +115,10 @@ export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   PLAN_WAITING_STATE,
   // Not the board's: the work-project action writes it after a membership check (FIX-2161). Here so
   // every flow declaring this list, with a board or without, refuses it on a caller's create.
-  WORK_PROJECT_STATE_KEY
+  WORK_PROJECT_STATE_KEY,
+  // Not the board's either: the create check and the hand-over write them as a session is born (FIX-2881).
+  WORKER_NAME_STATE_KEY,
+  TASK_TITLE_STATE_KEY
 ];
 
 /** What a session board is built from. */
@@ -137,6 +143,24 @@ export interface SessionBoardOptions {
    * conversation is handed here, which attaches the message.
    */
   readonly routes?: RoutedFiling;
+  // FIX-2538 D2.
+  /**
+   * What the running session may do with work nobody asked for: an inferred
+   * forward (an event no other subscription heard). `off` lands it as a line
+   * with no turn; `observe` runs the turn, and every task it files waits on
+   * the user's yes, and it sends no message; `auto` runs it as any turn. Read
+   * at the turn. Unset reads `observe`: a flow that never set it holds.
+   */
+  readonly inferredWork?: (ctx: BlockContext) => InferredWork;
+}
+
+/** The most of a goal a confirm's prompt quotes. */
+const CONFIRM_GOAL_CHARS = 600;
+
+/** The confirm an inferred task waits on: its goal, and the event it came from. */
+function inferredConfirmPrompt(goal: string, url: string): string {
+  const quoted = goal.length <= CONFIRM_GOAL_CHARS ? goal : `${goal.slice(0, CONFIRM_GOAL_CHARS - 1)}…`;
+  return `Nobody asked for this: it was inferred from ${url}. Run it? ${quoted}`;
 }
 
 /**
@@ -146,14 +170,20 @@ export interface SessionBoardOptions {
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
+  /** The running turn's inferred forward's mode, or `undefined` on any other turn (an addressed one's included). */
+  const inferredOn = (ctx: BlockContext): InferredWork | undefined =>
+    turnForwardOf(ctx)?.as === "inferred" ? (options.inferredWork?.(ctx) ?? "observe") : undefined;
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
-    // A coding flow's task is refused when it is filed with no project (FIX-2333).
-    needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
+    // What each delegate's flow takes, read off its `work` entry per call (FIX-2894), its project requirement included (FIX-2333).
+    taskInputOf: (flow) => taskInputSourceOf(options.installation)?.declarationOf(flow),
+    workerOf: async (ctx, id) => taskInputSourceOf(options.installation)?.workerOf(ctx, id),
+    // The app's session fields go down every hand-over with the filing project.
+    sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
     // And the reply-requested messages it landed that its turns never answered (FIX-2310): the pass says "no answer".
     messages: {
@@ -166,10 +196,23 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         return due.length === 0 ? undefined : Math.min(...due);
       }
     },
-    ...(options.routes === undefined ? {} : { routes: options.routes })
+    ...(options.routes === undefined ? {} : { routes: options.routes }),
+    // On an inferred turn in `observe`, every filing waits on the user's yes.
+    holdsFiling: (ctx, init) => {
+      const forward = turnForwardOf(ctx);
+      if (forward === undefined || inferredOn(ctx) !== "observe") return undefined;
+      const prompt = inferredConfirmPrompt(init.goal, forward.url);
+      // The marker names the confirm by its prompt, so a retry can tell whether the user said yes.
+      return { prompt, metadata: { [INFERRED_FORWARD_METADATA]: { ...forward, confirm: prompt } } };
+    }
   });
 
-  const messages = defineSendMessageCapability(options.installation, options.flowKind);
+  // A message would hand inferred work on without the yes the board's filings wait on.
+  const messages = defineSendMessageCapability(options.installation, options.flowKind, (ctx) =>
+    inferredOn(ctx) === "observe"
+      ? "inferred_work_waits: nobody asked for this, so what you hand on from this turn waits on the user's yes. File it as a task for a delegate; it starts once they say yes. Nothing was sent."
+      : undefined
+  );
 
   // The manager's pieces: a flow that spreads any of them declares `manager` (`../worker-roles`).
   const managerActions = { ...board.actions, ...delegates.actions };
@@ -185,7 +228,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // FIX-2131.
     /**
      * `holdTaskForUser` on a task turn, and `suspendForUser` for an approval, a review
-     * or (with no task row) input: one entry for the model block's
+     * or (with no task) input: one entry for the model block's
      * `uses`, beside `tools`.
      */
     questions: userWaits,
@@ -232,9 +275,12 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     fileRouted: board.fileRouted,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
-    // FIX-2286.
-    /** The task list as a read, `listTasks_tasks`, stored nowhere, for the flow's `reads`. */
-    reads: board.reads,
+    // FIX-2623.
+    /**
+     * The task list as a session view, `listTasks_tasks`, and the delegates as
+     * one, `delegates`, for the flow's `views`.
+     */
+    views: { ...board.views, [DELEGATES_VIEW]: delegates.view },
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */
@@ -274,7 +320,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
           "manager"
         ),
         [TASK_SETTLED_ENTRY]: markRolePiece(
-          taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
+          taskSettledEntry({
+            turn,
+            policy,
+            ...(onRouted === undefined ? {} : { onRouted }),
+            // A task filed on an inferred turn wakes its filer's turn as that forward's turn did (a No's
+            // cancel included), so the work the user declined isn't filed again unheld.
+            turnStateOf: (task) => {
+              const forward = task.metadata?.[INFERRED_FORWARD_METADATA] as { as?: unknown; url?: unknown } | undefined;
+              return forward?.as === "inferred" && typeof forward.url === "string"
+                ? { [RECEIVED_FORWARD_STATE]: { as: "inferred", url: forward.url } }
+                : undefined;
+            }
+          }),
           "manager"
         ),
         // A check of the session's waiting task, on the notices' line: what
@@ -283,7 +341,13 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn), installation: options.installation, flowKind: options.flowKind }),
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+          turn: promptedMessageTurn(turn),
+          installation: options.installation,
+          flowKind: options.flowKind,
+          // `off`: an inferred forward lands as a line, and no model runs on it.
+          landsOnly: (ctx, message) => message.forward?.as === "inferred" && (options.inferredWork?.(ctx) ?? "observe") === "off"
+        }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
           soleTaskDelegate(await delegates.taskDelegates(ctx))
         )

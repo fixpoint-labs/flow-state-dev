@@ -93,7 +93,7 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => {
       createSession: async () => undefined,
     }),
     useSession: () => session,
-    useClientData: () => ({ data: undefined }),
+    useView: () => ({ value: undefined, stale: false }),
     useResourceCollectionList: () => ({ items: [], error: undefined }),
     // The page's feeds, recorded. `useVoice` stays the real one.
     useJumpToLatest: () => useRef(makeFeed()).current,

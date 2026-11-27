@@ -35,15 +35,15 @@ import {
   type ConcurrencyLeaseBackend,
   type LeasePlace,
   type InboundTransportAdapter,
-  type WorkerAdapter,
-  type WorkerMode
+  type JobQueueAdapter,
+  type JobQueueMode
 } from "@flow-state-dev/engine/host";
 import { type ResolvePrincipalFn } from "@flow-state-dev/core/types";
 import {
-  bullmqWorker,
+  bullmqJobQueue,
   createBullmqRuntime,
   createRedisStreamBridge,
-  createWorkerRunner
+  createJobQueueRunner
 } from "@flow-state-dev/bullmq";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import {
@@ -183,7 +183,7 @@ export type QueueDeploymentOptions = {
 };
 
 /**
- * Start a BullMQ deployment hosting `flows`: a `dispatch-only` web runtime
+ * Start a BullMQ deployment hosting `flows`: a `enqueue-only` web runtime
  * served over HTTP, and two worker runtimes that each run two jobs at a
  * time. The workers are `colocated`, so work a run dispatches inside a worker
  * goes back through the queue too. Needs `REDIS_URL`.
@@ -200,25 +200,25 @@ export async function startQueueDeployment(
   const filename = join(dir, "store.db");
   const prefix = `fsdq-${randomUUID().slice(0, 8)}`;
 
-  const runtimeOf = (mode: WorkerMode): FlowState => {
-    let worker: WorkerAdapter;
+  const runtimeOf = (mode: JobQueueMode): FlowState => {
+    let jobQueue: JobQueueAdapter;
     if (leases === "local") {
-      worker = processLocalAdapter(REDIS_URL, prefix, mode);
+      jobQueue = processLocalAdapter(REDIS_URL, prefix, mode);
     } else {
-      const adapter = bullmqWorker({ connection: REDIS_URL, prefix, mode, concurrency: 2 });
+      const adapter = bullmqJobQueue({ connection: REDIS_URL, prefix, mode, concurrency: 2 });
       // Without a backend the jobs carry no place, so the worker runs them as
       // soon as it takes them.
-      worker = leases === "none" ? { ...adapter, leaseBackend: undefined } : adapter;
+      jobQueue = leases === "none" ? { ...adapter, leaseBackend: undefined } : adapter;
     }
     return createFlowState({
-      flows: Object.fromEntries(flows.map((flow) => [flow.id, flow])),
+      flows: flows,
       stores: { default: { primary: sqliteStores({ filename }) } },
       resolvePrincipal: headerPrincipal,
-      worker
+      jobQueue
     });
   };
 
-  const web = runtimeOf("dispatch-only");
+  const web = runtimeOf("enqueue-only");
   const workers = [runtimeOf("colocated"), runtimeOf("colocated")];
   await Promise.all(workers.map((w) => w.ready()));
   const handle: ServeHandle = await serve(web, {
@@ -245,24 +245,25 @@ export async function startQueueDeployment(
  * kept in this runtime's memory for both the engine and the worker: the
  * `local` control.
  */
-function processLocalAdapter(connection: string, prefix: string, mode: WorkerMode): WorkerAdapter {
+function processLocalAdapter(connection: string, prefix: string, mode: JobQueueMode): JobQueueAdapter {
   const leaseBackend = processLocalLeases();
   const runtime = createBullmqRuntime({ connection, prefix });
   const bridge = createRedisStreamBridge({ connection });
   return {
     mode,
     leaseBackend,
-    createRunner: () => createWorkerRunner({ queue: runtime.queue, bridge }),
-    startWorker: (rt) => {
-      const worker = runtime.createWorker({
+    createRunner: () => createJobQueueRunner({ queue: runtime.queue, bridge }),
+    startProcessing: (rt) => {
+      const processor = runtime.createJobProcessor({
         registry: rt.registry,
         stores: rt.stores,
         runtimeConfig: rt.runtimeConfig,
+        resolvePrincipal: rt.resolvePrincipal,
         bridge,
         concurrency: 2,
         leaseBackend
       });
-      return { close: () => worker.close() };
+      return { close: () => processor.close() };
     },
     close: () => runtime.close()
   };

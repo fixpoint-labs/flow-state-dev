@@ -39,7 +39,7 @@
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-worker-collab.
- *   optimistic-post  the one send path (`send.ts`) reads delivered and
+ *   optimistic-post  the one send path (`deliver.ts`) reads delivered and
  *                    sends nothing. Must fail at "the post is in the stored
  *                    transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
@@ -55,8 +55,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, readTree as readKitTree, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager, buildShiftManagerPages } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-worker-collab/run-scenario.mts";
@@ -135,10 +134,10 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 function swapFor(control: string): { targets: string[]; with: string } | undefined {
   const lib = (file: string) => join(SHIFT_MANAGER, "src", "lib", file);
   if (control === "static-names") {
-    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
+    return { targets: [lib("directory-reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { targets: [lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("deliver.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
@@ -155,7 +154,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const swap = swapFor(control);
   const staticSeats =
     control === "static-names"
-      ? (await readDeclaredRoster(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
+      ? (await readKitTree(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
       : [];
   return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
     swap,
@@ -177,8 +176,8 @@ const startLab = (name: LabName, pages: string, env: Record<string, string>): Pr
 type Tree = { seats: string[] };
 
 async function readTree(root: string): Promise<Tree> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the tree whole if anything did not load.
+  const roster = await readKitTree(root);
   return { seats: roster.workers.map((w) => w.id) };
 }
 
@@ -410,6 +409,9 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     /** The task frame a click just opened: titled as stored, with a panel slot, and every tab drawing. */
     const reachTaskFrame = async (row: Store["rows"][string][number], titleLeg: string) => {
       await page.getByTestId("task-frame").waitFor();
+      // The frame draws as the click lands and titles the task by its id until its row is read (one
+      // session read and the board's view): grade the title once the row has landed, or after 20 s.
+      await page.waitForFunction((id) => document.querySelector("[data-testid=task-title]")?.textContent !== id, row.id, { timeout: 20_000 }).catch(() => undefined);
       const title = await page.getByTestId("task-title").textContent();
       if (title !== row.title) fail(titleLeg, `the task frame titles ${row.id} "${title}", stored "${row.title}"`);
       if (!(await visible(page, "task-panel-slot"))) fail("reach", `the task frame for ${row.id} has no panel slot`);
@@ -441,7 +443,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       // by the tree's EM, through the projects flow Shift Manager opens one
       // with; then files one feature on that workstream session's board through
       // the EM's own `file` door, where it runs at once; then a follow-up waiting on it, queued.
-      const roster = await readDeclaredRoster(LABS.devteam.tree);
+      const roster = await readKitTree(LABS.devteam.tree);
       const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
       if (lead === undefined) throw new Error(`${name}: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
       const project = (await readStore(api, userId)).projects[0]?.id;
@@ -469,7 +471,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,
           deps: [first.id],
-          input: { harnessFeature: { issue: fixture.devteam.followUp.issue, phase: PHASE } },
+          input: { mode: PHASE, issue: fixture.devteam.followUp.issue },
         },
         userId,
       );

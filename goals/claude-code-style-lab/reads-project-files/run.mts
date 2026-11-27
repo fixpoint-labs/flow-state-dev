@@ -1,31 +1,28 @@
 /**
  * Goal check: in the Claude Code-style lab, the main session answers a
- * question about its project's code from the project's files, in its own
- * turn, with no coding run; and a session that may not see the project gets
- * the refusal a coding run gets. On a real model, over the lab's HTTP API,
- * against `fsdev dev --config labs/claude-code-style/fsdev.config.mts`.
+ * question about its repository's code from the repository's files, in its own
+ * turn, with no coding run; and a session with no repository gets the refusal
+ * a coding run gets. On a real model, over the lab's HTTP API, against
+ * `fsdev dev --config labs/claude-code-style/fsdev.config.mts`.
  *
  * Legs, each graded from what a person sees (the reply), the server's own
  * records (`listTasks`, the sessions) and the server's disk:
- *   1. a member, in a session set to the project, asks for a value that lives
- *      only inside one file's body: the reply names it, no task is filed, no
- *      harness ran, and the host's root holds one clone and no place, after
- *      two questions.
- *   2. a session with no project asks the same: no value, and its turn holds
- *      a read refused `no-project`.
- *   3. a second user, a member when they set the project and taken off its
- *      members since (the stored row edited, the server restarted), asks the
- *      same: no value, and its turn holds a read refused `not-a-member`.
- * And in the lab's own tool lines (its adapter's entries over the turn's
- * items): each of leg 1's project reads names what it read (a read its file,
- * a search its pattern, a listing its pattern); legs 2 and 3's
- * refused read reads "(failed)".
+ *   1. a session opened on the repository (the server writes it, as the lab's
+ *      open does) asks for a value that lives only inside one file's body: the
+ *      reply names it, no task is filed, no harness ran, and the host's root
+ *      holds one clone and no place, after two questions.
+ *   2. a session with no repository asks the same: no value, and its turn
+ *      holds a read refused `no-repository`.
+ * And in the lab's own tool lines (its thread's steps lines over the turn's
+ * items): each of leg 1's reads names what it read (a read its file, a search
+ * its pattern, a listing its pattern); leg 2's refused read reads "(failed)".
  *
  * Controls (`GOAL_CONTROL=<name>`, same command):
  *   - `no-read`: `desk.main`'s file names no `projectSource` preset. Leg 1 must
  *     FAIL on `value named` or `0 tasks`.
- *   - `no-gate`: the run source's membership check is patched out as the
- *     server loads it. Leg 3 must FAIL on `no value`.
+ *   - `first-repository`: the lab's run source answers the first repository it
+ *     lists, whatever the session's (`fsdev.config.mts` reads it). Leg 2 must
+ *     FAIL on `read refused`.
  *   - `old-lines`: the lab's lines are graded as its old `lib/tool-line.ts`
  *     drew them. `lines name what was read` and `refusal reads failed` must FAIL.
  *
@@ -34,21 +31,11 @@
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { createClient } from "@flow-state-dev/client";
-import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import {
-  assertPatched,
-  describePatches,
-  goalTmpDir,
-  loadFixture,
-  modulePatchEnv,
-  REPO_ROOT,
-  runGoal,
-  stopProcessGroup,
-  type ModulePatch,
-} from "../../lib/index.mts";
-import { entriesOf, type Item as LabItem } from "../../../labs/claude-code-style/src/adapter.ts";
+import { SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
+import { goalTmpDir, loadFixture, REPO_ROOT, runGoal, stopProcessGroup } from "../../lib/index.mts";
+import { conversationLines } from "@flow-state-dev/react";
+import { stepRun, stepsOf } from "../../../labs/claude-code-style/src/components/flow-state/conversation-lines.tsx";
 import { git, LAB, labCheckout, startLab } from "../lab.mts";
 
 const fixture = loadFixture<{
@@ -62,25 +49,16 @@ const fixture = loadFixture<{
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const RUNS = Number(process.env.GOAL_RUNS ?? 3);
 const USER = "u_goal";
-const OTHER = "u_goal_other";
 const MAIN = "desk.main";
 const READ_TOOLS = new Set(["globProjectSource", "readProjectSource", "grepProjectSource"]);
 const MAIN_FILE = join(LAB, "workforce", "teams", "desk", "workers", "main", "WORKER.md");
 
-/** The `no-gate` control: the run source's membership check on the project path, patched out as the server loads it. */
-const NO_GATE: ModulePatch[] = [
-  {
-    module: "packages/workforce/src/projects/run-project.ts",
-    from: String.raw` \|\| !mayWorkOn\(address\.visibility, project, owner\)`,
-    to: "",
-  },
-];
-
-type Item = LabItem;
+/** A stored item, as far as this goal reads it. */
+type Item = { id: string; type: string; role?: string; requestId?: string; status?: string; blockName?: string; content?: { text?: string }[]; output?: unknown; toolCall?: { name?: string; arguments?: string } };
 
 /**
- * The tool lines a turn's items draw in the lab: its adapter's entries, each
- * run's steps. Under `old-lines`, the lab's lines as they were before it read
+ * The tool lines a turn's items draw in the lab: its thread's steps lines (React's
+ * conversation model), each call as the registry's compact steps line words it. Under `old-lines`, the lab's lines as they were before it read
  * the registry: one fixed phrase per tool, and no step ever failed.
  */
 async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Record<string, unknown>; line: string; failed: boolean }[]> {
@@ -96,10 +74,10 @@ async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Re
     const { toolLine } = await oldToolLine();
     return calls.map((item) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: toolLine(item.blockName ?? "tool"), failed: false }));
   }
-  // The adapter draws one step per call, in the calls' order.
-  const steps = entriesOf(items).flatMap((entry) => (entry.kind === "tool" ? entry.steps : []));
+  // The thread draws one step per call, in the calls' order.
+  const steps = conversationLines(items as never).flatMap((line) => (line.kind === "steps" ? stepsOf(line.items, line.ended === true) : []));
   if (steps.length !== calls.length) throw new Error(`the lab drew ${steps.length} step(s) for ${calls.length} call(s)`);
-  return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: steps[i]!.line, failed: steps[i]!.state === "error" }));
+  return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: stepRun([steps[i]!]).label, failed: steps[i]!.state === "error" }));
 }
 
 /** The lab's `lib/tool-line.ts` from before it read the registry, written to the scratch folder and loaded. */
@@ -133,7 +111,7 @@ function namesWhatItRead(call: { tool: string; args: Record<string, unknown>; li
 /** The last commit whose lab still drew its own tool lines (`lib/tool-line.ts`). */
 const OLD_LINES_COMMIT = "f3b19ba46051525ebf31268a95050ddd30c9e82b";
 
-/** A project repository: the decoys, and the one file whose body holds the value. */
+/** A repository: the decoys, and the one file whose body holds the value. */
 function makeProjectRepository(dir: string, value: string): string {
   mkdirSync(dir, { recursive: true });
   git(dir, "init", "-q", "-b", "main");
@@ -145,15 +123,6 @@ function makeProjectRepository(dir: string, value: string): string {
   git(dir, "add", ".");
   git(dir, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "start");
   return dir;
-}
-
-/** One client per user, against one server. */
-function clientsFor(origin: string) {
-  const make = (userId: string) => {
-    const fsd = createClient({ userId, baseUrl: origin });
-    return { fsd, workforce: createWorkforceClient(fsd) };
-  };
-  return { me: make(USER), other: make(OTHER) };
 }
 
 /** Run one action and hand back its output, or throw why it failed. */
@@ -209,35 +178,6 @@ async function tasksOf(fsd: ReturnType<typeof createClient>, sessionId: string):
   return ((output as { tasks?: any[] } | undefined)?.tasks ?? []) as any[];
 }
 
-/** Take `user` off the shared project's members, in the lab's SQLite file. The package has no write that does. */
-function dropMember(dbFile: string, projectId: string, user: string): number {
-  const db = new DatabaseSync(dbFile);
-  try {
-    const rows = db.prepare("SELECT scope_type, scope_id, resource_key, state FROM resource_state WHERE resource_key = ?").all(`projects/${projectId}`) as {
-      scope_type: string;
-      scope_id: string;
-      resource_key: string;
-      state: string;
-    }[];
-    let changed = 0;
-    for (const row of rows) {
-      const state = JSON.parse(row.state) as { members?: string[] };
-      if (!state.members?.includes(user)) continue;
-      state.members = state.members.filter((member) => member !== user);
-      db.prepare("UPDATE resource_state SET state = ?, version = version + 1 WHERE scope_type = ? AND scope_id = ? AND resource_key = ?").run(
-        JSON.stringify(state),
-        row.scope_type,
-        row.scope_id,
-        row.resource_key,
-      );
-      changed += 1;
-    }
-    return changed;
-  } finally {
-    db.close();
-  }
-}
-
 /** The places and clones under the host's root. */
 function underRoot(root: string) {
   const clonesDir = join(root, ".clones");
@@ -247,37 +187,23 @@ function underRoot(root: string) {
   };
 }
 
-/** One run: a fresh lab, a fresh project, the three legs. Failures are pushed with the leg and assertion that failed. */
+/** One run: a fresh lab, a fresh repository, the two legs. Failures are pushed with the leg and assertion that failed. */
 async function oneRun(n: number, failures: string[], notes: string[]): Promise<void> {
   const scratch = goalTmpDir(`reads-project-files-${n}`);
   const data = join(scratch, "data");
   const root = join(data, "runs");
   const value = `LC-${randomInt(100_000, 999_999)}-${randomInt(100, 999)}`;
   const repo = makeProjectRepository(join(scratch, "repo"), value);
-  const projectId = `billing-${n}`;
   const labBefore = labCheckout();
-  const mark = join(scratch, "patched.txt");
-  const env = CONTROL === "no-gate" ? modulePatchEnv(NO_GATE, REPO_ROOT, mark) : {};
   const fail = (what: string) => failures.push(`run ${n} · ${what}`);
 
-  let lab = await startLab(data, USER, env);
+  const lab = await startLab(data, USER, { GOAL_CONTROL: CONTROL === "first-repository" ? CONTROL : "" });
   try {
-    const clients = clientsFor(lab.origin);
-    const { me } = clients;
-    let { other } = clients;
-    const projectsSession = (await me.fsd.flow("projects").createSession()).id;
-    await act(me.fsd, "projects", projectsSession, "createProject", {
-      id: projectId,
-      title: fixture.project,
-      visibility: "shared",
-      members: [OTHER],
-      repository: `file://${repo}`,
-    });
-    const project = { visibility: "shared" as const, id: projectId };
+    const me = { fsd: createClient({ userId: USER, baseUrl: lab.origin }) };
 
-    // ── Leg 1: a member asks, twice, in a session set to the project.
+    // ── Leg 1: a session opened on the repository asks, twice.
     const mine = (await me.fsd.flow("agent").createSession({ state: { workerId: MAIN } })).id;
-    await me.workforce.setWorkProject(MAIN, project, { sessionId: mine });
+    await act(me.fsd, "agent", mine, SET_SESSION_FIELDS_ACTION, { worker: MAIN, fields: { repository: `file://${repo}` } });
     const first = await ask(me.fsd, mine, fixture.question);
     const second = await ask(me.fsd, mine, fixture.follow);
     if (!first.reply.includes(value)) fail(`leg 1 · value named: the reply doesn't name ${value}: ${JSON.stringify(first.reply.slice(0, 300))}`);
@@ -289,7 +215,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     const fileNamed = readLines.some((line) => line.tool === "readProjectSource" && namesFile(line.line, fixture.path));
     const filed = await tasksOf(me.fsd, mine);
     if (filed.length !== 0) fail(`leg 1 · 0 tasks: the session filed ${filed.length} (${filed.map((t) => t.assignee).join(", ")})`);
-    const harness = await me.fsd.sessions.list({ flowKind: "harness-thread", userId: USER });
+    const harness = await me.fsd.sessions.list({ flowKind: "coder", userId: USER });
     if (harness.length !== 0) fail(`leg 1 · no harness: ${harness.length} harness session(s) started`);
     const others = (await me.fsd.sessions.list({ flowKind: "agent", userId: USER })).filter((s) => s.id !== mine);
     for (const session of others) {
@@ -304,40 +230,20 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
       `run ${n} leg 1: ${first.reads.length + second.reads.length} read call(s)${fileNamed ? " (one names the value's file)" : ""}, ${filed.length} task(s), ${disk.clones.length} clone, ${disk.places.length} place(s)`,
     );
 
-    // ── Leg 2: a session with no project asks the same.
+    // ── Leg 2: a session with no repository asks the same.
     const none = (await me.fsd.flow("agent").createSession({ state: { workerId: MAIN } })).id;
-    const noProject = await ask(me.fsd, none, fixture.question);
-    if (noProject.reply.includes(value)) fail("leg 2 · no value: a session with no project was told the value");
-    if (noProject.reads.length === 0) fail("leg 2 · read refused: the turn made no read call");
-    else if (!noProject.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "no-project")) {
-      fail(`leg 2 · read refused: no read was refused no-project: ${JSON.stringify(noProject.reads).slice(0, 300)}`);
+    const noRepository = await ask(me.fsd, none, fixture.question);
+    if (noRepository.reply.includes(value)) fail("leg 2 · no value: a session with no repository was told the value");
+    if (noRepository.reads.length === 0) fail("leg 2 · read refused: the turn made no read call");
+    else if (!noRepository.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "no-repository")) {
+      fail(`leg 2 · read refused: no read was refused no-repository: ${JSON.stringify(noRepository.reads).slice(0, 300)}`);
     }
-    if (!noProject.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
-      fail(`leg 2 · refusal reads failed: no tool line says failed: ${JSON.stringify(noProject.lines.map((l) => l.line)).slice(0, 300)}`);
+    if (!noRepository.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
+      fail(`leg 2 · refusal reads failed: no tool line says failed: ${JSON.stringify(noRepository.lines.map((l) => l.line)).slice(0, 300)}`);
     }
-
-    // ── Leg 3: a member sets the project, is taken off its members, and asks.
-    const theirs = (await other.fsd.flow("agent").createSession({ state: { workerId: MAIN } })).id;
-    await other.workforce.setWorkProject(MAIN, project, { sessionId: theirs });
-    stopProcessGroup(lab.child);
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-    const dropped = dropMember(join(data, "lab.db"), projectId, OTHER);
-    if (dropped !== 1) throw new Error(`setup: the project row to edit was found ${dropped} time(s) in ${join(data, "lab.db")}`);
-    lab = await startLab(data, USER, env);
-    ({ other } = clientsFor(lab.origin));
-    const offMembers = await ask(other.fsd, theirs, fixture.question);
-    if (offMembers.reply.includes(value)) fail("leg 3 · no value: a user taken off the members was told the value");
-    if (offMembers.reads.length === 0) fail("leg 3 · read refused: the turn made no read call");
-    else if (!offMembers.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "not-a-member")) {
-      fail(`leg 3 · read refused: no read was refused not-a-member: ${JSON.stringify(offMembers.reads).slice(0, 300)}`);
-    }
-    if (!offMembers.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
-      fail(`leg 3 · refusal reads failed: no tool line says failed: ${JSON.stringify(offMembers.lines.map((l) => l.line)).slice(0, 300)}`);
-    }
-    notes.push(`run ${n} legs 2-3: ${noProject.reads.length} and ${offMembers.reads.length} read call(s)`);
+    notes.push(`run ${n} leg 2: ${noRepository.reads.length} read call(s)`);
 
     if (labCheckout() !== labBefore) fail("the lab's own checkout changed");
-    if (CONTROL === "no-gate") assertPatched(NO_GATE, REPO_ROOT, mark);
   } finally {
     stopProcessGroup(lab.child);
   }
@@ -350,7 +256,6 @@ await runGoal(async (failures, tell) => {
     if (stripped === original) throw new Error("setup: desk.main's file names no projectSource preset to drop");
     writeFileSync(MAIN_FILE, stripped);
   }
-  if (CONTROL === "no-gate") console.error(describePatches(NO_GATE, REPO_ROOT));
   const notes: string[] = [];
   const graded: number[] = [];
   try {

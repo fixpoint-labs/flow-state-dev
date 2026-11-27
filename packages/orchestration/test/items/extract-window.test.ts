@@ -7,10 +7,10 @@
  * item (not timestamp windows). The fixtures stamp `taskId` the way the
  * runtime does. Cases cover the boundary conditions the substrate cares about:
  * single-task happy path, the concurrent-overlap bug, retries, abandoned
- * tasks, cross-collection isolation, and substrate-component exclusion.
+ * tasks, cross-collection isolation, and substrate-record exclusion.
  */
 import { describe, expect, it } from "vitest";
-import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";
+import type { DataItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";
 import {
   extractTaskItems,
 } from "../../src/tasks";
@@ -27,10 +27,10 @@ function taskChange(args: {
   taskId: string;
   kind: "added" | "claimed" | "completed" | "errored" | "cancelled" | "retried";
   ts: number;
-}): ComponentItem {
+}): DataItem {
   return {
-    id: nextId("item_component"),
-    type: "component",
+    id: nextId("item_data"),
+    type: "data",
     status: "completed",
     requestId: "req_1",
     itemIndex: 0,
@@ -40,8 +40,8 @@ function taskChange(args: {
       phase: "main",
     },
     ts: args.ts,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: args.collectionId,
       taskId: args.taskId,
       kind: args.kind,
@@ -49,10 +49,10 @@ function taskChange(args: {
   };
 }
 
-function taskBoardMeta(args: { collectionId: string; ts: number }): ComponentItem {
+function taskBoardMeta(args: { collectionId: string; ts: number }): DataItem {
   return {
-    id: nextId("item_component"),
-    type: "component",
+    id: nextId("item_data"),
+    type: "data",
     status: "completed",
     requestId: "req_1",
     itemIndex: 0,
@@ -62,8 +62,8 @@ function taskBoardMeta(args: { collectionId: string; ts: number }): ComponentIte
       phase: "main",
     },
     ts: args.ts,
-    component: "task-board-meta",
-    data: { collectionId: args.collectionId, status: "active" },
+    dataType: "task-board-meta",
+    value: { collectionId: args.collectionId, status: "active" },
   };
 }
 

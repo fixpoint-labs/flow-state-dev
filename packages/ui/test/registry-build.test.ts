@@ -119,7 +119,8 @@ describe("registry build", () => {
         expect(item.css ?? item.cssVars).toBeDefined();
         continue;
       }
-      expect(item.type).toBe("registry:component");
+      // A component, or a set of starter files an app copies into a kit's folder (workforce-starter).
+      expect(["registry:component", "registry:file"]).toContain(item.type);
       expect(Array.isArray(item.files)).toBe(true);
       expect(item.files.length).toBeGreaterThan(0);
     }

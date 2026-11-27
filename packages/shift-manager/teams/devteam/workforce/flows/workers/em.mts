@@ -23,9 +23,9 @@
  *
  * - **The turn**: a model, with the nine task tools and the lead's
  *   `updateWorkstream`. It takes a user's line, the project coordinator's
- *   delegated post, and each task's notice. Its own file tells it to name the
- *   feature's `issue` and `phase` under `harnessFeature` on every coder task:
- *   a task naming both there is feature work and must end in a commit.
+ *   delegated post, and each task's notice. Its own file tells it to file
+ *   every coder task in mode `implement` with the feature's `issue`: such a
+ *   task is feature work and must end in a commit.
  * - **The lab's doors** (`file`, `askToFile`, `drain`): deterministic, no
  *   model, for the checks that grade the board rather than a model's
  *   judgement. They file through the same board, one row per feature, under
@@ -41,7 +41,8 @@
  */
 
 import { defineFlow, generator, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { GeneratorTool } from "@flow-state-dev/core";
+import type { CapabilityRef, GeneratorTool } from "@flow-state-dev/core";
+import { flattenCapabilities, resolveActivePresets } from "@flow-state-dev/core/capability";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -56,7 +57,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 
-import { featureInput, featureIssueOfInput } from "../../../phase.mts";
+import { featureInput, featureIssueOfTask } from "../../../phase.mts";
 import {
   ASK_ENTRY,
   defineReadOwnFacts,
@@ -90,7 +91,7 @@ export const EM_TURN = "devforce-em-turn";
  * one would let a row be filed that the coder's manager then refuses after
  * the checkout has been cut.
  */
-export const fileInputSchema = z.object({
+const fileInputSchema = z.object({
   /** The row's identity, and the leaf of every path derived from it. */
   issue: z.string().min(1),
   /** What the row is, in a sentence. */
@@ -112,7 +113,7 @@ export const fileInputSchema = z.object({
 });
 
 /** What the asking door is handed: the feature it asks about. */
-export const askInputSchema = z.object({
+const askInputSchema = z.object({
   /** The row's identity, as {@link fileInputSchema} takes it. */
   issue: z.string().min(1),
   /** What the row is, in a sentence. Named in the ask so a user knows what they approve. */
@@ -122,19 +123,11 @@ export const askInputSchema = z.object({
 });
 
 /**
- * The feature a row is filed for: its typed payload's `issue`, or `undefined`
+ * The feature a row is filed for: its checked `issue` (`featureIssueOfTask`), or `undefined`
  * for a row that names none.
  */
-export function featureIssueOf(row: { input?: unknown }): string | undefined {
-  return featureIssueOfInput(row.input);
-}
-
-/** What the turn reads off the worker it runs as: its file's settings. */
-interface EmSettings {
-  instructions?: string;
-  teamInstructions?: string;
-  model?: string;
-  tools?: string[];
+export function featureIssueOf(row: { input?: unknown; metadata?: Record<string, unknown> }): string | undefined {
+  return featureIssueOfTask(row);
 }
 
 export interface EmWorkerFlowOptions {
@@ -154,6 +147,12 @@ export interface EmWorkerFlowOptions {
    */
   catalog: Record<string, GeneratorTool>;
   /**
+   * Capabilities the turn uses, such as the routines capability. Their
+   * resources are installed, and their default presets' tools join the
+   * catalog, so a worker names them in its `tools:` line like the catalog's.
+   */
+  uses?: CapabilityRef[];
+  /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
    * filed until a user approves"; never set outside a goal control.
@@ -165,14 +164,19 @@ export interface EmWorkerFlowOptions {
  * Build the coordinating worker flow.
  *
  * @param options The installation, the coder worker, the documents and the tool catalog.
- * @returns The flow factory `hireWorkforce` registers one copy of, which every EM worker runs on.
+ * @returns The flow factory the workforce kit registers one copy of, which every EM worker runs on.
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
   const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_FLOW));
   const factory = defineSessionBoard({ installation, flowKind: EM_FLOW });
-  const toolNames = Object.keys(options.catalog);
-  const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
+  const catalog = { ...capabilityTools(options.uses ?? []), ...options.catalog };
+  const toolNames = Object.keys(catalog);
+  const settings = workerSettingsSchema.extend({
+    model: z.string().min(1).optional(),
+    tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
+  });
+  const settingsOf = (ctx: BlockContext) => workerConfigOf(ctx) as z.infer<typeof settings>;
 
   /**
    * The turn: one model call, as the worker the session names, with its
@@ -192,23 +196,23 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
     history: routedTaskHistory,
-    uses: [factory.tools, factory.messages],
+    uses: [factory.tools, factory.messages, ...(options.uses ?? [])],
     prompt: [
       // The default-layer entry. It must change together with the first
       // `prompt` entry of Workforce's built-in agent flow's turn: when that
       // entry changes, change this one to match.
-      (_input: unknown, ctx: BlockContext) => workerIdentityPrompt(ctx, installation),
-      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
-      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
+      (_input, ctx) => workerIdentityPrompt(ctx, installation),
+      (_input, ctx) => settingsOf(ctx).teamInstructions,
+      (_input, ctx) => settingsOf(ctx).instructions,
     ],
-    model: (_input: unknown, ctx: BlockContext) => {
-      const model = settingsOf(ctx).model;
-      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
+    model: (_input, ctx) => {
+      const { model, workerId } = settingsOf(ctx);
+      if (model === undefined) throw new Error(`EM worker "${workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
-    tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => options.catalog[name]!),
-    user: (input: { message: string }) => input.message,
-  } as never);
+    tools: (_input, ctx) => (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!),
+    user: (input) => input.message,
+  });
 
   /**
    * Put one feature on the session's board, idempotently.
@@ -353,12 +357,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     // Registered once, under its flow name; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.
-    configSchema: workerSettingsSchema().extend({
-      model: z.string().min(1).optional(),
-      tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
-    }),
+    configSchema: settings,
     session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
     resources: { ...options.resources, ...installation.resources, ...factory.resources },
+    // The board's task list and the delegates, as session views a screen watches (FIX-2776).
+    views: factory.views,
     // The worker is loaded first.
     request: { onStarted: resolveEmWorker },
     actions: {
@@ -401,4 +404,20 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       },
     },
   } as never);
+}
+
+/**
+ * The tools a capability's active presets list, by name. The turn declares
+ * `tools:`, which drops a capability's own tools from it, so they are offered
+ * through the catalog instead.
+ */
+function capabilityTools(uses: CapabilityRef[]): Record<string, GeneratorTool> {
+  const tools: Record<string, GeneratorTool> = {};
+  for (const entry of flattenCapabilities(uses)) {
+    for (const { preset } of resolveActivePresets(entry)) {
+      if (!Array.isArray(preset.tools)) continue;
+      for (const tool of preset.tools) tools[String((tool as { name?: unknown }).name)] = tool as GeneratorTool;
+    }
+  }
+  return tools;
 }

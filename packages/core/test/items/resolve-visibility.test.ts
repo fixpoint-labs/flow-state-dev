@@ -5,7 +5,7 @@
  * handler-emit fallback.
  */
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { ContinuationItem, OutputItem, ItemVisibility } from "../../src/items/types";
+import type { ContinuationItem, DataItem, OutputItem, ItemVisibility } from "../../src/items/types";
 import { resolveItemVisibility } from "../../src/items";
 
 const baseProv = {
@@ -96,7 +96,6 @@ describe("resolveItemVisibility", () => {
       "status",
       "state_change",
       "resource_change",
-      "component",
       "container",
       "error",
       "source",
@@ -117,6 +116,32 @@ describe("resolveItemVisibility", () => {
         expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
       });
     }
+  });
+
+  // A data item reaches the client by default, where its renderer registry
+  // decides whether it is drawn, and never model history. Unlike a structural
+  // type, its `itemVisibility` stamp is honoured, so an emitter can keep one
+  // off the client or put one in history.
+  describe("data items", () => {
+    it("data with no itemVisibility → {client:true, history:false}", () => {
+      const item = makeItem({ type: "data", dataType: "x", value: {} });
+      expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
+    });
+
+    for (const visibility of [
+      { client: false, history: false },
+      { client: false, history: true },
+      { client: true, history: true },
+    ]) {
+      it(`data honours its stamp ${JSON.stringify(visibility)}`, () => {
+        const item = makeItem({ type: "data", dataType: "x", value: {}, itemVisibility: visibility });
+        expect(resolveItemVisibility(item)).toEqual(visibility);
+      });
+    }
+
+    it("DataItem is part of the OutputItem union", () => {
+      expectTypeOf<Extract<OutputItem, { type: "data" }>>().toEqualTypeOf<DataItem>();
+    });
   });
 
   it("ContinuationItem is part of the OutputItem union", () => {

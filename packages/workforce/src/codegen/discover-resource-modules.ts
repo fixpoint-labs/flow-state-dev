@@ -36,18 +36,20 @@
 
 import path from "node:path";
 import {
-  DOCUMENT_EXTENSION,
   IGNORED_ENTRIES,
-  REFERENCES_SLOT,
-  RESOURCES_SLOT,
   classify,
   openStructuralDirectory,
   refusedSymlink,
-  siblingSlotPath,
   unreadable,
-} from "../loader";
+} from "@flow-state-dev/engine/folder";
+import {
+  DOCUMENT_EXTENSION,
+  REFERENCES_SLOT,
+  RESOURCES_SLOT,
+  siblingSlotPath,
+} from "../loader/readers";
 import { walkResourcePlaces } from "../loader/resource-walk";
-import { typescriptExtension } from "./typescript-module";
+import { moduleSpecifier, typescriptExtension } from "./typescript-module";
 
 /** One module the walk found, and where it will be imported from. */
 export interface DiscoveredResourceModule {
@@ -256,7 +258,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
     ctx.modules.push({
       ref,
       path: entryPath,
-      importPath: `./${slotPath}/${name}`,
+      importPath: moduleSpecifier(`./${slotPath}/${name}`, extension),
       atWorkerRoot: ctx.atWorkerRoot,
     });
   }

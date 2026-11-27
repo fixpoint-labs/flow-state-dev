@@ -168,7 +168,7 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  *
  * @param history The turn's history, oldest first.
  * @param items The conversation's items, oldest first, as far back as `history`
- *   reaches: its messages, and its routing records (`coordinator-route` components).
+ *   reaches: its messages, and its routing records (`coordinator-route` data items).
  * @param coordinatorNames The `agentName`s the coordinator's own turn writes under.
  */
 export function coordinatorHistory(
@@ -211,9 +211,9 @@ export function coordinatorHistory(
 function routedPosts(items: readonly SessionItem[]): Map<string, string[]> {
   const routed = new Map<string, string[]>();
   for (const item of items) {
-    const record = (item.payload as { component?: unknown; data?: unknown } | null | undefined) ?? undefined;
-    if (item.type !== "component" || record?.component !== COORDINATOR_ROUTE) continue;
-    const data = record.data as { messageRequestId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
+    const record = (item.payload as { dataType?: unknown; value?: unknown } | null | undefined) ?? undefined;
+    if (item.type !== "data" || record?.dataType !== COORDINATOR_ROUTE) continue;
+    const data = record.value as { messageRequestId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
     if (data?.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.messageRequestId !== "string") continue;
     const reached = (Array.isArray(data.delegates) ? data.delegates : [])
       .filter((d: { outcome?: unknown; worker?: unknown }) => d?.outcome === "delivered" && typeof d.worker === "string")

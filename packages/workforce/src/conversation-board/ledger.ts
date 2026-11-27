@@ -52,6 +52,8 @@ import { filingSessionIdOf } from "./filing-session";
 import { boardAboveOf } from "./board-above";
 import { withoutReportMarkers } from "./report-owed";
 import { conversationDelivery } from "./delivery";
+import { INFERRED_FORWARD_METADATA } from "../messages/hop";
+import { FILLED_FOR } from "../task-input/filing-check";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -86,6 +88,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "goal",
   // The rest of the brief, beside the goal: a re-file from a browser's row copies it (FIX-2381 D3).
   "context",
+  // The brief's files, as references (FIX-2522): a task screen draws them through the read route.
+  "attachments",
   "status",
   "assignee",
   "run",
@@ -150,11 +154,14 @@ export const conversationLedgerResources = taskLedgerResources(conversationLedge
 
 /**
  * The ledger at `partition`, as the running user's scope holds it, or
- * `undefined` when the running flow doesn't declare it.
+ * `undefined` when the running flow doesn't declare it. A view reading a
+ * conversation's board from no session names that conversation as
+ * `readFor`: its board is heard on that conversation's topic.
  */
 export async function conversationLedgerAt(
   ctx: BlockContext,
-  partition: string
+  partition: string,
+  options: { readFor?: string } = {}
 ): Promise<TaskCollectionRef | undefined> {
   const collection = resolveResourceCollection(ctx, CONVERSATION_LEDGER_ID);
   if (collection === undefined) return undefined;
@@ -164,7 +171,8 @@ export async function conversationLedgerAt(
     collectionId: CONVERSATION_LEDGER_ID,
     collection,
     partition,
-    immutableAssignee: hasFrozenLedgerAssignee(conversationLedger)
+    immutableAssignee: hasFrozenLedgerAssignee(conversationLedger),
+    ...(options.readFor !== undefined ? { readFor: options.readFor } : {})
   });
 }
 
@@ -182,14 +190,16 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
   return conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
 }
 
-// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161.
+// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161; FIX-2894.
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
  * make a row a piece of a task, or point a row at a
  * session as its split or as the session that filed its work,
  * or set the hop count its turn starts at, or the
- * project it was filed in.
+ * project it was filed in, or set or clear the forward a task filed on an
+ * inferred turn was inferred from (the mark its approval guards read), or the
+ * flow and declaration its input was filled for.
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -197,6 +207,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [INFERRED_FORWARD_METADATA]: _inferred, [FILLED_FOR]: _filledFor, ...rest } = kept;
   return rest;
 }

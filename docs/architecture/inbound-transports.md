@@ -60,7 +60,8 @@ interface InboundRequestEnvelope {
   flowKind: string;
   action: string;
   input: unknown;
-  sessionId?: string;
+  /** Required: every run names its session. A transport with no conversation makes a one-off id (`oneOffSessionId()`). */
+  sessionId: string;
   requestId?: string;
   orgId?: string;
   principal: ResolvedPrincipal;
@@ -196,7 +197,7 @@ delivering into an *existing* session (`{ id }`) is refused with
 `external-flow-runner` on such a host, while a `{ key }` child and every
 transport dispatch take the ordinary enqueue path. The refusal is lifted when
 `host.arbitratesExternalDispatch` is true, which the host sets when its arbiter
-runs over a lease backend the worker adapter supplied: the delivery is then
+runs over a lease backend the job queue adapter supplied: the delivery is then
 fenced by its place on the session's key, which every process honours.
 
 One operation runs *from inside a block* through the same host, installed on
@@ -311,8 +312,8 @@ shared backend, the backend's own `take` order decides.
 **Where the lines live.** The arbiter keeps its lines in a lease backend
 (`transports/concurrency/lease-backend.ts`): in memory by default, which
 serializes one process, or the one a queue adapter supplies as
-`WorkerAdapter.leaseBackend`, which every process of the deployment shares.
-`bullmqWorker` supplies one on its Redis (`createRedisLeaseBackend`). An
+`JobQueueAdapter.leaseBackend`, which every process of the deployment shares.
+`bullmqJobQueue` supplies one on its Redis (`createRedisLeaseBackend`). An
 external dispatch is arbitrated only over a shared backend; that is what
 `host.arbitratesExternalDispatch` reports.
 
@@ -427,7 +428,7 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `http` | The default HTTP adapter |
 | `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
-| `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
+| `scheduled` | Scheduled dispatch (the router's built-in scheduled endpoint; `SCHEDULED_TRANSPORT_SOURCE` from `@flow-state-dev/engine`) |
 | `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
 Custom transports pick their own string, except `cli`, which is reserved for
@@ -438,8 +439,9 @@ anything else.
 
 ## The scheduled adapter shape
 
-`@flow-state-dev/scheduled` (FIX-440) is the third concrete adapter
-after HTTP and MCP. It mounts a single dispatch route per flow
+The scheduled endpoint (FIX-440; built into the router since FIX-2753) is
+the router's second built-in adapter after HTTP, mounted on every app with
+no line. It mounts a single dispatch route per flow
 (`POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`) and a
 listing sibling (`GET /api/flows/:flowKind/schedules`). Dispatch is
 fire-and-forget: the adapter builds an envelope with
@@ -469,7 +471,7 @@ the gateway principal during dispatch. The runtime resolves
 the effective principal.
 
 Source and metadata propagate through to `RequestRecord` so DevTool
-and the trace channel can distinguish scheduled work: `source =
+and the trace channel can distinguish a scheduled run: `source =
 "scheduled"` plus the namespaced `metadata.schedule = { scheduleId,
 origin, cron, nominalFireTime, dispatchedAt, timezone }`. Each transport
 namespaces its provenance the same way — `metadata.webhook`,

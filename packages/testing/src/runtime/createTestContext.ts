@@ -1,7 +1,5 @@
-import type { StateRef } from "@flow-state-dev/core/types";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineResource, type DeclaredResources } from "@flow-state-dev/core";
+import type { FlowInstance, ResourceScope, StateRef } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
@@ -15,7 +13,8 @@ import { createResponseEmitter, type ExecutionContext } from "@flow-state-dev/en
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   StateChange,
-  TestBlockOptions
+  TestBlockOptions,
+  TestStateSeed
 } from "../test-utilities/types";
 import {
   asRecord,
@@ -36,7 +35,7 @@ const STATE_OPERATIONS = [
   "atomicState"
 ] as const;
 
-type ScopeName = "request" | "session" | "user" | "org" | "block_instance";
+type ScopeName = StateChange["scope"];
 
 type ScopeOperation = (typeof STATE_OPERATIONS)[number];
 
@@ -51,7 +50,6 @@ export type CreateTestContextOptions<TInput = unknown> = Omit<
   TestBlockOptions<TInput>,
   "input"
 > & {
-  flow?: FlowInstance;
   actionName?: string;
   requestId?: string;
   sessionId?: string;
@@ -81,81 +79,41 @@ export type TestContextRuntime = {
   getItems: () => OutputItem[];
 };
 
-function nowMs(): number {
-  return Date.now();
-}
-
-function buildFlatResourceMap(
-  resources: Record<string, unknown> | undefined,
-  scope: "session" | "user" | "org"
-): Record<string, { stateSchema: z.ZodTypeAny; writable: true; scope: "session" | "user" | "org" }> {
-  if (resources === undefined) {
-    return {};
-  }
-
+function buildFlatResourceMap(resources: Record<string, unknown> | undefined, scope: ResourceScope): DeclaredResources {
   return Object.fromEntries(
-    Object.keys(resources).map((name) => [
+    Object.keys(resources ?? {}).map((name) => [
       name,
-      {
-        stateSchema: z.record(z.string(), z.unknown()),
-        writable: true,
-        scope
-      }
+      defineResource({ scope, stateSchema: z.record(z.string(), z.unknown()), writable: true })
     ])
   );
 }
 
-function createTestFlow(options: {
-  flow?: FlowInstance;
-  flowConfig?: Record<string, unknown>;
-  sessionId?: string;
-  sessionResources?: Record<string, unknown>;
-  userResources?: Record<string, unknown>;
-  orgResources?: Record<string, unknown>;
-  declaredResources?: DeclaredResources;
-}): FlowInstance {
-  if (options.flow !== undefined) {
-    // A hand-built instance may predate the config bag, or simply omit it.
-    // Production promises a block reads a value at `ctx.flow.config`, so the
-    // harness supplies the same empty bag the registry does rather than
-    // handing the block under test `undefined` (FIX-1331).
-    return (options.flow as { config?: unknown }).config === undefined
-      ? { ...options.flow, config: Object.freeze({}) }
-      : options.flow;
-  }
-
-  // FIX-435: every resource is intrinsically scoped; the test harness now
-  // emits a single flat `flow.resources` map covering all three buckets.
-  //
-  // Block-declared resources are merged first so a block that declares a
-  // resource on its `resources:` slot (e.g. round-robin/debate/routed-specialists)
-  // gets `ctx.resources.X` wired the same way production's `flow.resources` does.
-  // Explicitly-seeded scope resources are spread on top, so a test that opts to
-  // seed an accessor keeps its generic entry and existing behavior is unchanged.
-  const resources: Record<string, unknown> = {
-    ...(options.declaredResources ?? {}),
-    ...buildFlatResourceMap(options.sessionResources, "session"),
-    ...buildFlatResourceMap(options.userResources, "user"),
-    ...buildFlatResourceMap(options.orgResources, "org")
+/** Build a stand-alone flow with the resources declared or seeded by the test. */
+export function createTestFlow(options: CreateTestContextOptions): FlowInstance {
+  // Test seeds override the block's resource definitions so fixtures can supply their own values.
+  const resources = {
+    ...options.declaredResources,
+    ...buildFlatResourceMap(options.session?.resources, "session"),
+    ...buildFlatResourceMap(options.user?.resources, "user"),
+    ...buildFlatResourceMap(options.org?.resources, "org")
   };
+  const resourceKeys = new Set(Object.keys(resources));
 
   return {
     id: "testing-flow",
     kind: "testing-flow",
     cardinality: "singleton",
     requireUser: true,
-    // Frozen, like a minted instance's: production promises a block reads a
-    // value here, never `undefined`, and a harness that disagreed with the
-    // runtime it stands in for would hide exactly that.
     config: Object.freeze({ ...(options.flowConfig ?? {}) }),
     actions: {},
     isolateUserState: false,
     isolateOrgState: false,
-    resources: Object.keys(resources).length > 0 ? resources : undefined,
+    resources: resourceKeys.size > 0 ? resources : undefined,
+    flowLevelResourceKeys: resourceKeys,
     session: {},
     user: {},
-    org: options.orgResources === undefined ? undefined : {}
-  } as unknown as FlowInstance;
+    org: options.org?.resources === undefined ? undefined : {}
+  };
 }
 
 async function seedStores(options: {
@@ -167,14 +125,9 @@ async function seedStores(options: {
   userId: string;
   /** The org the run uses: the caller's, or `DEFAULT_ORG_ID`. */
   orgId: string;
-  seed: {
-    request?: { state?: Record<string, unknown> };
-    session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-  };
+  seed: TestStateSeed;
 }): Promise<void> {
-  const now = nowMs();
+  const now = Date.now();
 
   // Resource state lives in the ResourceStateStore (FIX-689), keyed per-resource
   // and separate from the scope record. Seed it there so the execution context
@@ -237,7 +190,10 @@ async function seedStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now,
-      journal: []
+      journal: [],
+      // The kind a real session gets from the run that creates it: this
+      // context runs as an HTTP caller would, a person.
+      principalKind: "person"
     }, "any");
     await seedResourceState("session", options.sessionId, options.seed.session?.resources);
   }
@@ -264,7 +220,7 @@ async function seedStores(options: {
 
 function wrapScopeStateOps(
   scope: ScopeName,
-  handle: Record<string, unknown> | undefined,
+  handle: Pick<StateRef, "state" | ScopeOperation> | undefined,
   stateChanges: StateChange[]
 ): void {
   if (handle === undefined) {
@@ -272,21 +228,14 @@ function wrapScopeStateOps(
   }
 
   for (const operation of STATE_OPERATIONS) {
-    const original = handle[operation];
-    if (typeof original !== "function") {
-      continue;
-    }
-
-    handle[operation] = async (...args: unknown[]): Promise<unknown> => {
-      const result = await (original as (...values: unknown[]) => Promise<unknown>)(
-        ...args
-      );
-
+    const original: (...args: unknown[]) => Promise<boolean> = handle[operation];
+    handle[operation] = async (...args: unknown[]) => {
+      const result = await original(...args);
       stateChanges.push({
         scope,
         operation,
         args,
-        resultingState: cloneValue(asRecord(handle.state))
+        resultingState: cloneValue(handle.state)
       });
 
       return result;
@@ -434,18 +383,17 @@ function createTargetRef(
   };
 }
 
+/**
+ * Create an isolated execution context with the given flow and scope seeds.
+ * A raw context has no block from which to collect state schemas. Pass a flow
+ * to read its scope defaults, or use `testBlock` to include a block's declarations.
+ */
 export async function createTestContext<TInput = unknown>(
   options: CreateTestContextOptions<TInput> = {}
 ): Promise<TestContextRuntime> {
-  const flow = createTestFlow({
-    flow: options.flow,
-    flowConfig: options.flowConfig,
-    sessionId: options.sessionId,
-    sessionResources: options.session?.resources,
-    userResources: options.user?.resources,
-    orgResources: options.org?.resources,
-    declaredResources: options.declaredResources
-  });
+  let flow = options.flow ?? createTestFlow(options);
+  // Hand-built instances may predate the frozen config bag available in production.
+  if (flow.config === undefined) flow = { ...flow, config: Object.freeze({}) };
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
   const sessionId = options.sessionId ?? generateId("test_session");
@@ -468,35 +416,7 @@ export async function createTestContext<TInput = unknown>(
     sessionId,
     userId,
     orgId,
-    seed: {
-      request:
-        options.request === undefined
-          ? undefined
-          : {
-              state: options.request.state
-            },
-      session:
-        options.session === undefined
-          ? undefined
-          : {
-              state: options.session.state,
-              resources: options.session.resources
-            },
-      user:
-        options.user === undefined
-          ? undefined
-          : {
-              state: options.user.state,
-              resources: options.user.resources
-            },
-      org:
-        options.org === undefined
-          ? undefined
-          : {
-              state: options.org.state,
-              resources: options.org.resources
-            }
-    }
+    seed: options
   });
 
   // A real resolver injected by the caller (e.g. the benchmark engine) wins over
@@ -528,16 +448,17 @@ export async function createTestContext<TInput = unknown>(
     sessionId,
     userId,
     orgId,
+    // As an HTTP caller's door would set it: a person.
+    principalKind: "person",
     response,
     stores,
     modelResolver,
     ...(options.signal === undefined ? {} : { signal: options.signal })
   });
 
-  wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("session", ctx.session as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("user", ctx.user as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("org", ctx.org as unknown as Record<string, unknown>, stateChanges);
+  for (const scope of ["request", "session", "user", "org"] as const) {
+    wrapScopeStateOps(scope, ctx[scope], stateChanges);
+  }
 
   const targetStateByName = new Map<string, MutableTargetState>();
 

@@ -12,6 +12,8 @@
  * request, whichever way the agent opened it, and one opened before the run is
  * not claimed as the run's. A run that failed is checked too.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,11 +25,11 @@ import {
   harnessRunHandleSchema,
   harnessRunInputSchema,
 } from "@flow-state-dev/core/harness";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";
@@ -65,7 +67,7 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function host(outcome: "completed" | "throws") {
+function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullRequestFollower) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-branch-prs-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -100,11 +102,12 @@ function host(outcome: "completed" | "throws") {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: () => "go", isDone: () => true },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    mode: { name: PHASE, instructions: () => "go", doneWhen: { check: () => true } },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness,
+    ...(onPullRequestRecorded === undefined ? {} : { onPullRequestRecorded }),
   });
   const board = taskBoard({
     name: "branch-prs-board",
@@ -132,7 +135,7 @@ function host(outcome: "completed" | "throws") {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "branch-prs-host" } as never);
   const state = createFlowState({
-    flows: { "branch-prs-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -170,6 +173,21 @@ describe("the run's pull requests, checked on its branch when it ends", () => {
     expect(Object.keys(rows)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/app/96`]);
     expect(Object.values(rows)[0]!.state).toMatchObject({ source: "branch", requestId: run!.request, title: "From the branch" });
     expect(readFileSync(ghLog, "utf8")).toMatch(/head=\{owner\}:[^&]*FIX-7/i);
+  });
+
+  // FIX-2535 D2: a coding task follows each pull request from the write that records it, as the run's session.
+  it("hands each newly recorded pull request to onPullRequestRecorded, once, in the run's session", async () => {
+    const followed: Array<{ pr: RecordedPullRequest; session: string; request: string }> = [];
+    const follower: PullRequestFollower = (ctx, pr) => {
+      followed.push({ pr, session: ctx.session.identity.id, request: ctx.request.identity.id });
+    };
+    const h = host("completed", follower);
+    await h.act("seed");
+    await h.act("drain");
+    await h.settled();
+    const [run] = h.runs;
+    expect(followed).toHaveLength(1);
+    expect(followed[0]).toMatchObject({ pr: { number: 96, key: "github.com/acme/app/96" }, session: run!.session, request: run!.request });
   });
 
   it("checks the branch of a run whose harness threw, too", async () => {

@@ -3,7 +3,7 @@
  * replaces the hand-rolled `ReadableStream` + heartbeat wrapper pair.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { createSSEStream } from "../src/streaming/sse-stream";
+import { createSSEStream, DEFAULT_MAX_BUFFERED_SSE_BYTES } from "../src/streaming/sse-stream";
 
 const decoder = new TextDecoder();
 
@@ -134,6 +134,47 @@ describe("createSSEStream", () => {
 
     const output = await readAll(handle.readable);
     expect(output).toBe("data: before\n\n");
+  });
+
+  // FIX-2675: a stream nobody reads must not hold its whole request in memory.
+  it("ends a stream nobody reads once its unread bytes pass the bound, holding at most the bound", async () => {
+    const handle = createSSEStream();
+    const frame = `data: ${"x".repeat(2042)}\n\n`; // 2 KiB
+    const writes = Math.ceil((4 * DEFAULT_MAX_BUFFERED_SSE_BYTES) / frame.length);
+    for (let i = 0; i < writes; i++) handle.writeRaw(frame);
+
+    // Ended by the writes alone, with no reader and no close().
+    expect(handle.closed).toBe(true);
+    const output = await readAll(handle.readable);
+    // What was taken before the bound is delivered whole, then the stream ends.
+    expect(output.length % frame.length).toBe(0);
+    expect(output.length).toBeGreaterThan(0);
+    expect(output.length).toBeLessThanOrEqual(DEFAULT_MAX_BUFFERED_SSE_BYTES);
+  });
+
+  it("never ends the stream of a reader that keeps up, however much passes through", async () => {
+    const handle = createSSEStream();
+    const reader = handle.readable.getReader();
+    const frame = `data: ${"x".repeat(64 * 1024)}\n\n`;
+    let received = 0;
+    for (let i = 0; i < Math.ceil((4 * DEFAULT_MAX_BUFFERED_SSE_BYTES) / frame.length); i++) {
+      handle.writeRaw(frame);
+      const { value } = await reader.read();
+      received += value?.byteLength ?? 0;
+    }
+    expect(handle.closed).toBe(false);
+    expect(received).toBeGreaterThan(4 * DEFAULT_MAX_BUFFERED_SSE_BYTES - frame.length);
+    handle.close();
+  });
+
+  it("takes a single frame larger than the bound onto an empty stream", async () => {
+    const handle = createSSEStream({ maxBufferedBytes: 16 });
+    const big = `data: ${"y".repeat(64)}\n\n`;
+    handle.writeRaw(big);
+    expect(handle.closed).toBe(false);
+    handle.writeRaw("data: z\n\n"); // past the bound with `big` still unread
+    expect(handle.closed).toBe(true);
+    expect(await readAll(handle.readable)).toBe(big);
   });
 
   it("writeComment emits `: <text>\\n\\n`", async () => {

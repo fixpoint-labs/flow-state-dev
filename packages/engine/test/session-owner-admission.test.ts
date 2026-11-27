@@ -37,7 +37,6 @@ const ALICE_SESSION = "s_7c1e";
 
 const input = z.object({ text: z.string() });
 const run = {
-  inputSchema: input,
   userMessage: (value: { text: string }) => value.text,
   block: handler({ name: "session-owner-run", inputSchema: input, execute: () => ({}) })
 };
@@ -59,7 +58,6 @@ function buildHost(stores: StoreRegistry, runner?: FlowRunner) {
         // Every dispatch of these two shares one lane, so a holder can keep a
         // queued run waiting in a session of its own.
         hold: {
-          inputSchema: input,
           concurrency: { policy: "queue", key: () => "one-lane" },
           block: handler({
             name: "session-owner-hold",

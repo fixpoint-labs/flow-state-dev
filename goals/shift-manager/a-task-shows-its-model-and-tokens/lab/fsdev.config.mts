@@ -34,10 +34,10 @@ import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS, errorReporterHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
+import { readTree } from "../../../lib/workers.mts";
+import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS, errorReporterHarness, readyHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
-import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
 import { EM_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 // @ts-expect-error A plain ES module beside this file, with no types.
 import { pause } from "./pause.mjs";
@@ -58,7 +58,7 @@ process.stderr.write(
 /** Sandbox: a project with no repository, so a run works on its files. */
 export const SANDBOX = { visibility: "shared", id: "sandbox" } as const;
 
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 const coderWorkerId = ((em?.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
@@ -241,7 +241,7 @@ if (harness === undefined) throw new Error(`TASK_SPEND_GOAL_HARNESS "${HARNESS}"
 
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
-  harness: harness as never,
+  harnesses: [readyHarness(harness as never, HARNESS)],
   runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS,
   workspace: { root: join(STORE, "..", "runs"), remotes: { allow: [] } },
   coderWorkerId,

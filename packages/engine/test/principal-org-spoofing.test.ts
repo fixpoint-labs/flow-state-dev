@@ -48,7 +48,7 @@ function buildAuthenticatedFlow(capture: { orgId?: string }) {
   });
   return defineFlow({
     kind: "org-auth-flow",
-    actions: { run: { inputSchema: z.object({}), block: probe } },
+    actions: { run: probe },
     authentication: {
       // Stands in for a real verifier: identity is derived from a trusted
       // header, never from the request body.
@@ -139,7 +139,7 @@ function buildUnauthenticatedFlow() {
   });
   return defineFlow({
     kind: "no-auth-flow",
-    actions: { run: { inputSchema: z.object({}), block: probe } }
+    actions: { run: probe }
   })();
 }
 

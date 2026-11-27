@@ -7,6 +7,7 @@
  * swappable.
  */
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createMemoryPlace } from "../src/memory-place";
 import { createProjection, hashContent } from "../src/projection";
 import { claimKey, createClaimRegistry } from "../src/claims";
@@ -588,7 +589,10 @@ describe("a mount can stamp its own state on what the projection commits", () =>
     expect(await stateOf(collection, "notes.md")).toMatchObject({ title: "notes" });
   });
 
-  it("lets the mount override a field the projection also sets", async () => {
+  it("keeps the projection's path, hash, and updatedAt when entryState sets them", async () => {
+    // Those three belong to the projection. A mount that returns them — including
+    // a numeric updatedAt — used to win, because its fields were spread last, and
+    // a collection whose schema says updatedAt is a string then refused the row.
     const collection = createFakeCollection("artifacts/**");
     const place = createMemoryPlace();
     const projection = createProjection({
@@ -598,7 +602,12 @@ describe("a mount can stamp its own state on what the projection commits", () =>
           collectionId: "artifacts",
           collection,
           writable: true,
-          entryState: () => ({ updatedAt: 1234 }),
+          entryState: (() => ({
+            title: "from-mount",
+            path: "stolen",
+            hash: "stolen",
+            updatedAt: 1234,
+          })) as unknown as Mount["entryState"],
         },
       ],
       place,
@@ -607,7 +616,15 @@ describe("a mount can stamp its own state on what the projection commits", () =>
     await place.write("artifacts/notes.md", "content");
     await projection.flush();
 
-    expect(await stateOf(collection, "notes.md")).toMatchObject({ updatedAt: 1234 });
+    const state = await stateOf(collection, "notes.md");
+    expect(state).toMatchObject({
+      title: "from-mount",
+      path: "notes.md",
+      hash: hashContent("content"),
+    });
+    expect(state?.updatedAt).toEqual(expect.any(String));
+    expect(state?.updatedAt).not.toBe(1234);
+    expect(z.string().datetime().safeParse(state?.updatedAt).success).toBe(true);
   });
 });
 

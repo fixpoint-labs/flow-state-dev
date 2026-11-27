@@ -15,10 +15,11 @@ import { test } from "node:test";
 import {
   changelogLines,
   gradeMovedNames,
+  isReleaseGrade,
   judge,
   judgeControl,
   outcomeOf,
-  plantLineRemoval,
+  plantSummaryRemoval,
   probeNeverPublished,
   ratchetFailures,
   readManifest,
@@ -48,12 +49,27 @@ test("the committed manifest is well formed and pins the 28 control tarballs", (
 });
 
 // The closure adds rows and never edits one: its journey is the seventh row,
-// expected to pass, after the epic's six.
+// after the epic's six. It passes once the release notes carry the one line
+// that says how many exports the package roots lost.
 test("the closure row is last and carries the upgrade journey, expected to pass", () => {
   const m = readManifest();
   assert.deepEqual(m.rows.slice(0, 6).map((r) => r.id), ["surface", "onepath", "first-hour", "leakage", "shims", "types"]);
   assert.deepEqual(m.rows[6], { id: "closure", title: "Closure", assertions: ["closure.j5:moved-name-named"] });
   assert.equal(m.expect["closure.j5:moved-name-named"], "pass");
+});
+
+// The journey's pass, every other cell as the manifest expects: green. The same
+// journey failing (the summary line lost or stale) or unable to run is red.
+test("the committed manifest takes the journey's pass as green, and its fail or error as red", () => {
+  const m = readManifest();
+  const asExpected = (j5) => outcomes({ ...m.expect, "closure.j5:moved-name-named": j5 });
+  assert.equal(judge(m, asExpected("pass")).ok, true);
+  const failed = judge(m, asExpected("fail"));
+  assert.equal(failed.ok, false);
+  assert.deepEqual(failed.mismatches.map((x) => x.id), ["closure.j5:moved-name-named"]);
+  const errored = judge(m, asExpected("error"));
+  assert.equal(errored.ok, false);
+  assert.deepEqual(errored.errors.map((e) => e.id), ["closure.j5:moved-name-named"]);
 });
 
 test("the all-fail starting state is green with 0 rows, and the control accepts it", () => {
@@ -151,7 +167,7 @@ test("a ratchet cell sees only its package's violations, and workforce's only it
   const violations = [
     { package: "@flow-state-dev/core", name: "x", detail: "no consumer" },
     { package: "@flow-state-dev/workforce", name: "WORKER_ENTRY", detail: "no consumer" },
-    { package: "@flow-state-dev/workforce", name: "hireWorkforce", detail: "no consumer" },
+    { package: "@flow-state-dev/workforce", name: "defineAgentWorkerFlow", detail: "no consumer" },
   ];
   assert.equal(ratchetFailures(violations, { package: "@flow-state-dev/engine" }).length, 0);
   assert.equal(ratchetFailures(violations, { package: "@flow-state-dev/core" }).length, 1);
@@ -220,90 +236,100 @@ test("a package's changelog lines are its pending changesets' and its CHANGELOG 
   assert.deepEqual(changelogLines("@flow-state-dev/core", { changesets: [], changelog: null, since: "0.4.0" }), []);
 });
 
-const dropped = (pkg, name, homes = [], extra = {}) => ({ pkg, name, homes, failsOnNew: true, ...extra });
 
-test("a moved name passes only when a changelog line of its package names it with its new home", () => {
+const dropped = (pkg, name, extra = {}) => ({ pkg, name, failsOnNew: true, ...extra });
+
+// The release notes say how many exports the package roots lost, in one line,
+// instead of naming each. The line must give the real count: a summary that
+// undercounts tells an upgrader less broke than did.
+const SUMMARY = "- 3 unused exports are removed from the roots of the published `@flow-state-dev/*` packages (FIX-123).";
+const threeNames = [dropped("@flow-state-dev/core", "A"), dropped("@flow-state-dev/core", "B"), dropped("@flow-state-dev/engine", "C")];
+
+test("dropped names pass when every package that lost one carries the summary line with the real count", () => {
   const lines = new Map([
-    ["@flow-state-dev/core", ["- Import these from `@flow-state-dev/core/types`: `Moved`, `Other`.", "- `Elsewhere` is on the root still."]],
+    ["@flow-state-dev/core", ["- Something else.", SUMMARY]],
+    ["@flow-state-dev/engine", [SUMMARY]],
   ]);
-  const failures = gradeMovedNames(
-    [
-      dropped("@flow-state-dev/core", "Moved", ["@flow-state-dev/core/types"]),
-      dropped("@flow-state-dev/core", "Elsewhere", ["@flow-state-dev/core/models"]),
-      dropped("@flow-state-dev/core", "Unnamed", ["@flow-state-dev/core/types"]),
-    ],
-    lines,
-  );
-  assert.equal(failures.length, 2);
-  assert.match(failures[0], /@flow-state-dev\/core Elsewhere: no changelog line names it with its new home \(@flow-state-dev\/core\/models\)/);
-  assert.match(failures[1], /@flow-state-dev\/core Unnamed: no changelog line names it/);
+  assert.deepEqual(gradeMovedNames(threeNames, lines), []);
+  const many = [...Array(1078)].map((_, i) => dropped("@flow-state-dev/core", `N${i}`));
+  const line = "- 1,078 unused exports are removed from the roots of the published `@flow-state-dev/*` packages (FIX-123).";
+  assert.deepEqual(gradeMovedNames(many, new Map([["@flow-state-dev/core", [line]]])), [], "a thousands separator is part of the count");
 });
 
-test("a home may be written as its short subpath or its ./ subpath, a name must be whole, and a name with no home in its package needs only its line", () => {
+test("a package that lost a name and has no summary line fails, naming the package and the count", () => {
   const lines = new Map([
-    [
-      "@flow-state-dev/engine",
-      [
-        "- On `engine/host`: `SessionStore`.",
-        "- **Moved to `./internal`** from the root: `splitFrontmatter`.",
-        "- `ValidationError` is no longer exported.",
-        "- `RequestStoreX` moved.",
-        "- `Spread` is on `./hostile`.",
-      ],
-    ],
+    ["@flow-state-dev/core", [SUMMARY]],
+    ["@flow-state-dev/engine", ["- `C` is gone.", "- 3 bugs are fixed on the root.", "- 3 exports are added to `engine/host`."]],
   ]);
-  const failures = gradeMovedNames(
-    [
-      dropped("@flow-state-dev/engine", "SessionStore", ["@flow-state-dev/engine/host"]),
-      dropped("@flow-state-dev/engine", "splitFrontmatter", ["@flow-state-dev/engine/internal"]),
-      dropped("@flow-state-dev/engine", "ValidationError"),
-      dropped("@flow-state-dev/engine", "RequestStore", ["@flow-state-dev/engine/host"]),
-      dropped("@flow-state-dev/engine", "Spread", ["@flow-state-dev/engine/host"]),
-    ],
-    lines,
-  );
-  assert.equal(failures.length, 2);
-  assert.match(failures[0], /RequestStore: no changelog line names it$/);
-  assert.match(failures[1], /Spread: no changelog line names it with its new home/, "`./hostile` is not `./host`");
+  assert.deepEqual(gradeMovedNames(threeNames, lines), [
+    "@flow-state-dev/engine: no changelog line says the 3 exports removed from the package roots",
+  ]);
 });
 
-test("a bare home specifier counts only as a whole token: a path that only starts with it is a wrong path, not the home", () => {
-  const home = ["@flow-state-dev/engine/host"];
-  const grade = (line) => gradeMovedNames([dropped("@flow-state-dev/engine", "SessionStore", home)], new Map([["@flow-state-dev/engine", [line]]]));
-  for (const wrong of [
-    "`SessionStore` moved to `@flow-state-dev/engine/host.js`",
-    "- `SessionStore` moved to @flow-state-dev/engine/host.js",
-    "- `SessionStore` moved to @flow-state-dev/engine/hostile.",
-    "- `SessionStore` moved to @flow-state-dev/engine/host/sub",
-    // A `.` never ends the token, so a bare specifier closing a sentence is not
-    // read as the home: a false fail is fixed by backticks, a false green is not seen.
-    "- `SessionStore` moved to @flow-state-dev/engine/host.",
-  ])
-    assert.match(grade(wrong).join("\n"), /no changelog line names it with its new home/, wrong);
-  for (const right of [
-    "- `SessionStore` moved to @flow-state-dev/engine/host, with the rest",
-    "- `SessionStore` moved to @flow-state-dev/engine/host",
-    "- `SessionStore` moved (see @flow-state-dev/engine/host)",
-    '- `SessionStore` moved to "@flow-state-dev/engine/host"',
-  ])
-    assert.deepEqual(grade(right), [], right);
+// Other PRs keep dropping root names after the line's count was last set, and
+// their own CI never sees the merged rule, so an exact count on every main run
+// turns main red for drift nobody on that PR caused. Off release, a stale count
+// is a note with both numbers; the summary line itself is still required.
+const STALE = "- 2 unused exports are removed from the roots of the published `@flow-state-dev/*` packages (FIX-123).";
+const staleLines = () =>
+  new Map([
+    ["@flow-state-dev/core", [STALE]],
+    ["@flow-state-dev/engine", [SUMMARY]],
+  ]);
+
+test("off release, a summary line with a stale count passes and leaves a note with both numbers", () => {
+  const notes = [];
+  assert.deepEqual(gradeMovedNames(threeNames, staleLines(), { notes }), []);
+  assert.deepEqual(notes, ["@flow-state-dev/core: its changelog says 2 exports removed from the package roots; 3 were"]);
+});
+
+// The release is what an upgrader reads, so there the count must be the real
+// one: a stale count tells them less broke than did.
+test("grading a release, a summary line with a stale count fails", () => {
+  const notes = [];
+  assert.deepEqual(gradeMovedNames(threeNames, staleLines(), { release: true, notes }), [
+    "@flow-state-dev/core: its changelog says 2 exports removed from the package roots; 3 were",
+  ]);
+  assert.deepEqual(notes, [], "at release the stale count is a failure, not a note");
+});
+
+// The release is graded on the Version Packages PR, the one PR whose head is
+// `changeset-release/main` (the same signal release-docs-gate.yml keys on).
+// Every other run, a push to main or a dispatch, is not a release.
+test("a run grades a release only on the Version Packages PR", () => {
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "changeset-release/main" }), true);
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "fix/FIX-1-something" }), false);
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "" }), false, "a push to main sets no head ref");
+  assert.equal(isReleaseGrade({}), false);
+});
+
+test("a package with no summary line fails whether or not a release is graded", () => {
+  const lines = new Map([
+    ["@flow-state-dev/core", [SUMMARY]],
+    ["@flow-state-dev/engine", ["- `C` is gone."]],
+  ]);
+  const missing = ["@flow-state-dev/engine: no changelog line says the 3 exports removed from the package roots"];
+  assert.deepEqual(gradeMovedNames(threeNames, lines), missing);
+  assert.deepEqual(gradeMovedNames(threeNames, lines, { release: true }), missing);
 });
 
 test("a dropped name that still compiles from the root fails, and a journey that walked no name fails", () => {
-  const lines = new Map([["@flow-state-dev/core", ["- `Kept` moved to `@flow-state-dev/core/types`."]]]);
-  const failures = gradeMovedNames([dropped("@flow-state-dev/core", "Kept", ["@flow-state-dev/core/types"], { failsOnNew: false })], lines);
-  assert.match(failures.join("\n"), /Kept: still compiles from the root on these tarballs/);
+  const lines = new Map([["@flow-state-dev/core", ["- 1 unused exports are removed from the package roots."]]]);
+  const failures = gradeMovedNames([dropped("@flow-state-dev/core", "Kept", { failsOnNew: false })], lines);
+  assert.deepEqual(failures, ["@flow-state-dev/core Kept: still compiles from the root on these tarballs"]);
   assert.match(gradeMovedNames([], lines).join("\n"), /walked no name/);
 });
 
-test("the planted control removes every line naming one name, and only that name then fails", () => {
-  const lines = new Map([["@flow-state-dev/core", ["- `A` and `B` are on `@flow-state-dev/core/types`.", "- `B` again, on `core/types`."]]]);
-  const names = [dropped("@flow-state-dev/core", "A", ["@flow-state-dev/core/types"]), dropped("@flow-state-dev/core", "B", ["@flow-state-dev/core/types"])];
-  assert.deepEqual(gradeMovedNames(names, lines), []);
-  const planted = plantLineRemoval(lines, names[0]);
-  assert.deepEqual(planted.get("@flow-state-dev/core"), ["- `B` again, on `core/types`."]);
+test("the planted control removes every summary line, and every package that lost a name then fails", () => {
+  const lines = new Map([
+    ["@flow-state-dev/core", ["- Something else.", SUMMARY]],
+    ["@flow-state-dev/engine", [SUMMARY]],
+  ]);
+  const planted = plantSummaryRemoval(lines);
+  assert.deepEqual(planted.get("@flow-state-dev/core"), ["- Something else."]);
   assert.equal(lines.get("@flow-state-dev/core").length, 2, "the plant copies; it does not edit the real lines");
-  const failures = gradeMovedNames(names, planted);
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], /core A: no changelog line names it/);
+  assert.deepEqual(gradeMovedNames(threeNames, planted), [
+    "@flow-state-dev/core: no changelog line says the 3 exports removed from the package roots",
+    "@flow-state-dev/engine: no changelog line says the 3 exports removed from the package roots",
+  ]);
 });

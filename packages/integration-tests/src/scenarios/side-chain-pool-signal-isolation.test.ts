@@ -28,6 +28,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { abortRequest } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 interface TaskMarker {
   ran: boolean;
@@ -99,6 +100,7 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
   })({ id: "test" });
 
   return runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

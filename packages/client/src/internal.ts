@@ -10,3 +10,7 @@
 export { pause } from "./internal/pause";
 export { followSession, type FollowSessionOptions } from "./session-client/follow-session";
 export { mayReplaceItem, readSessionHistory, type ReadSessionHistoryOptions } from "./session-client/session-history";
+export { liveRead } from "./live/live-read";
+export { followEveryPage } from "./resource-client/read-every-page";
+export { canonicalViewInput, viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatcher, type ViewWatchStop, type WatchViewOptions } from "./view/view";
+export { storageRootsOf } from "./live/paths";

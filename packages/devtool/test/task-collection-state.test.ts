@@ -31,14 +31,14 @@ function change(options: {
 }): TaskStreamItem {
   return {
     id: `item_${options.requestId}_${options.taskId}_${options.ts}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: options.requestId,
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: options.ts,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: "issues",
       taskId: options.taskId,
       kind: "metadata_changed",
@@ -62,15 +62,15 @@ function meta(options: {
 }): TaskStreamItem {
   return {
     id: `meta_${options.requestId}_${options.ts}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: options.requestId,
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: options.ts,
-    component: "task-board-meta",
+    dataType: "task-board-meta",
     key: "issues",
-    data: {
+    value: {
       collectionId: "issues",
       status: options.status,
       counts: {
@@ -222,7 +222,7 @@ describe("flattenTaskItems — the two axes a tie can fall on", () => {
 
     // A non-`task-change` item would show as its type, so the order check still fails.
     const statusOf = (item: TaskStreamItem) =>
-      item.type === "component" ? (item.data.task as { status: string }).status : item.type;
+      item.type === "data" ? (item.value.task as { status: string }).status : item.type;
     expect(items.map(statusOf)).toEqual(
       ["in_progress", "completed"]
     );
@@ -284,7 +284,7 @@ describe("the two folds composed — a tie across requests", () => {
 
 // FIX-2479 D1: the task's own hold is written `"task"`, and one stored before the rename reads
 // `"row"`. Either way an answered question no longer waits; a run's stop waits while it is on the task.
-describe("waitPrompt — the task's own hold, under either marker", () => {
+describe("waitPrompt — the task's own hold", () => {
   const answeredFirst = (kind: string) => ({
     id: "t",
     status: "in_progress",
@@ -295,8 +295,12 @@ describe("waitPrompt — the task's own hold, under either marker", () => {
     steers: [{ id: "s1", answers: "q1" }],
   });
 
-  it.each(["task", "row"])("skips an answered question and shows the next open hold (%s)", (kind) => {
-    expect(waitPrompt(answeredFirst(kind) as never)).toBe("Ship it?");
+  it("skips an answered question and shows the next open hold", () => {
+    expect(waitPrompt(answeredFirst("task") as never)).toBe("Ship it?");
+  });
+
+  it("does not treat a hold marked row as what the task waits on", () => {
+    expect(waitPrompt(answeredFirst("row") as never)).toBeUndefined();
   });
 
   it("shows a run's stop while it is on the task, whatever answers name", () => {

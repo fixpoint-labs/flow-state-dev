@@ -7,9 +7,12 @@
  * another change. Threads mode: the chip on *Codex* and a change. Each signal
  * is read from the rendered page and the board's own records (`listTasks`),
  * and the plan from the repository's and the clones' git history; never from
- * the adapter or React state. The Codex runs are graded on where they were
- * filed and how they are tagged, not on how they end, so no Codex sign-in is
- * needed.
+ * the lab's hooks or React state. The Codex runs are graded on where they were
+ * filed and how they are tagged, not on how they end, so they need no working
+ * Codex sign-in. They do need Codex to read as ready: the harness kit tells
+ * every worker to file coding work only on a ready harness, and to tell the
+ * user instead when the one they picked isn't. So the lab gets a placeholder
+ * `CODEX_API_KEY`, which Codex's readiness check accepts without a call.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants its change for
  * the run and puts it back:
@@ -33,6 +36,8 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const USER = "u_goal";
 const WORKERS = join(LAB, "workforce", "teams", "desk", "workers");
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
+/** Makes Codex read as signed in, so a worker may file to it; a run on it fails, which no signal grades. */
+const CODEX_PLACEHOLDER = { CODEX_API_KEY: "goal-placeholder-not-a-key" };
 
 /** What a control changes for its run: in which file, the text it replaces, and with what. */
 const PLANTS: Record<string, { file: string; from: string | RegExp; to: string }[]> = {
@@ -92,7 +97,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
   const repo = makeRepository(join(scratch, "repo"), { "CHANGELOG.md": "# Changelog\n\n- Started.\n" });
   const repoHead = git(repo, "rev-parse", "HEAD");
   const labBefore = labCheckout();
-  const lab = await startLab(data, USER, { CLAUDE_CODE_STYLE_REPOSITORIES: repo });
+  const lab = await startLab(data, USER, { CLAUDE_CODE_STYLE_REPOSITORIES: repo, ...CODEX_PLACEHOLDER });
   const fsd = createClient({ userId: USER, baseUrl: lab.origin });
   const rowsOf = async (flow: "agent" | "coordinator", sessionId: string): Promise<any[]> => {
     const sent = await fsd.flow(flow).send("listTasks_tasks", {}, { sessionId });

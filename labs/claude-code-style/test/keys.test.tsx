@@ -6,14 +6,21 @@
  * being text.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, seedSession, type TestApp } from "./app-host";
 
-afterEach(() => {
+let lab: TestApp;
+beforeEach(async () => {
+  lab = await openTestApp();
+  await seedSession(lab, "session", "Review the vendor shortlist");
+  await seedSession(lab, "session", "Draft the launch note");
+});
+afterEach(async () => {
   cleanup();
   // The app keeps what is open in the page's address; each test starts on a bare one.
   window.history.replaceState(null, "", "/");
+  await closeApps();
 });
 
 const list = () => screen.getByRole("navigation", { name: "Sessions" });
@@ -22,10 +29,10 @@ const press = (key: string, init: KeyboardEventInit = {}, on: Element = document
   act(() => void fireEvent.keyDown(on, { key, ...init }));
 
 async function openApp() {
-  render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+  render(lab.wrap(<App />));
   await screen.findByRole("region", { name: "Choose a project" });
   // Start every step from the list, not a text field.
-  within(list()).getByRole("button", { name: /Draft the launch note/ }).focus();
+  (await within(list()).findByRole("button", { name: /Draft the launch note/ })).focus();
 }
 
 describe("keys", () => {

@@ -10,7 +10,7 @@ import { createFlowState } from "@flow-state-dev/engine";
 import wordCountFlow from "./src/word-count-flow";
 
 export default createFlowState({
-  flows: { "word-count": wordCountFlow },
+  flows: [wordCountFlow],
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

@@ -70,7 +70,10 @@ the project-spec, deliberately has no lifecycle of its own (see below).
     after a dependency merges, and the assembled end-to-end goal.
 
   `app-review.js` lives beside them under the same contract and harness. It isn't a lifecycle
-  step; it is the fan-out of the standalone `app-review` skill.
+  step; it is the fan-out of the standalone `app-review` skill. `page-loop.js` does too: one docs
+  page through the ten writing passes and the record CI reads
+  ([`user-docs.md`](user-docs.md#writing-a-page-the-ten-passes)). Its revise rounds are capped
+  there, not by the PR-feedback cap.
 
   **A script cannot wait, prompt, subscribe, or touch the filesystem.** So every *gate*, every
   PR subscription, the `.orchestration/` store, and turn-ending stay with the coordinator; the
@@ -186,6 +189,22 @@ git checkout -B <branch> origin/main        # e.g. spec/<ISSUE-ID> or fix/<ISSUE
 
 This lives here so `issue-spec` and `issue-implement` share one guarantee rather than each
 half-solving it.
+
+### Reclaiming agent worktrees
+
+Agent worktrees pile up under `.claude/worktrees/`, each a full checkout. `pnpm wt:prune` lists the
+ones whose work has landed (the tip, branch or detached, is in the `origin/main` commit the run just
+fetched, which holds because PRs merge with merge commits); `pnpm wt:prune --yes` removes them and
+their branches and forgets worktrees whose folder is gone. If the fetch fails, `--yes` removes
+nothing. It keeps a locked worktree (a running agent), anything with uncommitted changes or commits
+not in `origin/main`, a branch listed in `git config preview.branch`, and a branch or worktree path
+named in an `.orchestration/` handle cache, since a lifecycle reclaims its own. It never considers a
+worktree outside `.claude/worktrees/`: the run checkouts apps create under `.fsdev/` belong to those
+apps. A squash-merged branch reads as unlanded and is kept, which is the safe direction.
+
+The `preview-mode` skill runs it while working on several features at once from a local-only
+`preview/<user>` branch. `.husky/pre-push` runs `scripts/check-preview-push.mjs`, which refuses to
+push a preview by name, or by its tip when that tip carries work no feature branch has.
 
 ## The epic-spec (canonical artifact)
 

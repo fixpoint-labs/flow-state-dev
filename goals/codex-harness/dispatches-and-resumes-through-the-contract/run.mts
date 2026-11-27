@@ -111,7 +111,7 @@ await runGoal(async (failures) => {
   ): Promise<{ handle?: CodexAgentHandle; threw?: Error }> {
     const flow = buildFlow(deadlineMs);
     const state = createFlowState({
-      flows: { [KIND]: flow },
+      flows: [flow],
       modelResolver: Object.assign(neverResolvesAModel, {
         resolveId: neverResolvesAModel,
       }) as never,

@@ -25,7 +25,6 @@ function buildHost(stores: SQLiteStoreRegistry) {
       kind: FLOW,
       actions: {
         write: {
-          inputSchema: input,
           userMessage: (value: { text: string }) => value.text,
           concurrency: { policy: "queue", key: "session" },
           block: handler({ name: "sqlite-owner-fence-write", inputSchema: input, execute: () => ({}) })

@@ -34,6 +34,7 @@ import {
   createInMemoryStores
 } from "../../src/host";
 import type { StoreRegistry } from "../../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A registry that declares itself shared, as a real Postgres-backed one does. */
 function withSharedRegistry(stores: StoreRegistry): StoreRegistry {
@@ -108,7 +109,7 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
 
   return defineFlow({
     kind,
-    actions: { run: { inputSchema: z.object({}), block: probe } },
+    actions: { run: probe },
     internal: { actions: { work: { block: work } } },
     request: { heartbeatIntervalMs: 10_000 }
   })();
@@ -246,7 +247,7 @@ describe("request-host seam on the shipped router path", () => {
     expect(child?.parentSessionId).toBe("s_dispatch");
   });
 
-  it("an OMITTED sessionId still gets the seam — the ephemeral session is a real session", async () => {
+  it("a one-off session gets the seam: it is a real session", async () => {
     const seen: Seen = {};
     const registry = createFlowRegistry();
     registry.register(probeFlow("shipped-ephemeral", seen, []));
@@ -256,11 +257,10 @@ describe("request-host seam on the shipped router path", () => {
       stores: withSharedRegistry(createInMemoryStores())
     });
 
-    // No `sessionId` in the body. Execution generates and PERSISTS one, so the
-    // request has a valid `ctx.session` and real lineage to authorise by.
-    // Gating the seam on `options.sessionId` withheld it from exactly these
-    // requests, and `requireRequestHost` threw inside an otherwise normal call.
-    await post(router, "shipped-ephemeral", undefined);
+    // A one-off session, as a one-shot send names: born on the run's first
+    // write, so the request has a valid `ctx.session` and real lineage to
+    // authorise by, and the seam is there like any session's.
+    await post(router, "shipped-ephemeral", oneOffSessionId());
 
     expect(seen.error).toBeUndefined();
     expect(seen.hasHost).toBe(true);
@@ -340,26 +340,26 @@ describe("request-host seam on the shipped router path", () => {
 
 /**
  * The WORKER path (FIX-999). `createFlowState` hands one runtime config to both
- * `createFlowApiRouter` and `worker.startWorker`; the BullMQ adapter forwards it
+ * `createFlowApiRouter` and `jobQueue.startProcessing`; the BullMQ adapter forwards it
  * unchanged to worker-side `runAction`. Stamping the seam onto the router's
- * local copy therefore fixed HTTP and left every colocated / worker-only
+ * local copy therefore fixed HTTP and left every colocated / process-only
  * execution without it.
  *
  * This drives the worker's call shape directly: the runtime config the adapter
- * would receive, passed to `runAction` exactly as `bullmq/src/worker.ts` does.
+ * would receive, passed to `runAction` exactly as `bullmq/src/job-processor.ts` does.
  */
 describe("request-host seam on the shipped worker path", () => {
-  it("the runtime handed to worker.startWorker carries the seam", async () => {
+  it("the runtime handed to worker.startProcessing carries the seam", async () => {
     const seen: Seen = {};
     const flow = probeFlow("worker-seam", seen, []);
 
     const state = createFlowState({
-      flows: { workerSeam: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: (() => undefined) as never
     });
 
-    // The exact object `worker.startWorker(runtime)` is given.
+    // The exact object `jobQueue.startProcessing(runtime)` is given.
     const runtime = await state.getRuntime();
 
     await runAction({

@@ -34,9 +34,9 @@
  *   coding door kept before lines became steers onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
- * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
+ * - `ModeSpec` (a mode: its name, instructions and done check) and the run-context types its hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
- * - `WorkspaceConfig`, and the construction-time guards a host should run at
+ * - The construction-time guards a host should run at
  *   its own door (`assertDistinctRepository`, `assertBaseRefExists`,
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
@@ -44,13 +44,14 @@
  * - The run record collection, so a host can build a status surface. A run's
  *   question holds its task on the board, so a host reads questions there.
  * - `harnessReadiness`, which harnesses can run on this machine, read once
- *   at start and again on request, with its action, its coordinator context
+ *   at start and again on request, with its user-scope view, its action, its coordinator context
  *   capability and its formatter.
- * - `harnessUsageAction`, the one query for how much of each harness's
- *   subscription a person has used, and the collection behind it.
- * - `harnessRunChangesRead`, the read for what a run's commits changed: each
- *   file and its lines, or one file's patch. A run review's data carries the
- *   same files; `harnessSessionFlow` declares the same read per turn.
+ * - `harnessUsageFlow`, the flow a host registers to serve how much of each
+ *   harness's subscription a person has used: its view and its Re-check, and
+ *   the collection behind them.
+ * - `harnessRunChangesView`, the session view of what a run's commits changed:
+ *   each file and its lines, or one file's patch. A run review's data carries
+ *   the same files; `harnessSessionFlow` declares the same view per turn.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -79,10 +80,6 @@ export {
   describeTenant,
   withDeadline,
   harnessTaskInputSchema,
-  HARNESS_FEATURE_KEY,
-  namesHarnessFeature,
-  harnessFeatureOf,
-  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -101,12 +98,12 @@ export {
   type HarnessJudgeVerdict,
   type HarnessReviewAnswer,
   type HarnessSlot,
-  type HarnessFeeds,
-  type PhaseSpec,
-  type PhaseRunContext,
+  type ModeSpec,
+  type ModeDone,
+  type ModeRunContext,
   type PromptRunContext,
   type CompletionRunContext,
-  type PhaseDoneVerdict,
+  type ModeDoneVerdict,
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
@@ -124,6 +121,10 @@ export {
   type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";
+
+// ── A coding run's brief: the task, the app's parts, the report it owes ─────
+export { codingBrief, type CodingBriefParts } from "./coding-brief";
+export { RUN_REPORT_HEADINGS, runReport, type RunReport, type RunReportCheck, type RunReportCheckStatus } from "./run-report";
 
 // ── Checks: the project's commands, before a run is done ────────────────────
 export {
@@ -175,7 +176,6 @@ export {
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   harnessSessionAttachedTo,
   HARNESS_SESSION_START_INVALID,
-  type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
   type HarnessSessionProvisioned,
@@ -191,11 +191,11 @@ export {
 
 // ── What a run changed: its files and lines, or one file's patch ────────────
 export {
-  harnessRunChangesRead,
+  harnessRunChangesView,
   harnessRunChangesInputSchema,
   harnessRunChangesOutputSchema,
   HarnessRunChangesRefused,
-  type HarnessRunChangesReadOptions,
+  type HarnessRunChangesViewOptions,
 } from "./run-changes";
 export {
   MAX_DIFF_FILES,
@@ -243,9 +243,6 @@ export {
   toolApprovalStop,
   toolApprovalYesSchema,
   toolGrantSchema,
-  type HarnessToolApprovalDecision,
-  type HarnessToolApprovalHook,
-  type HarnessToolApprovalRequest,
   type HeldToolCall,
   type ToolApprovalOutcome,
   type ToolGrant,
@@ -269,6 +266,7 @@ export {
 // board is the authority on. A host builds its status surface from
 // `readRunRecord` and the collection; the writes stay internal.
 export {
+  readModeRunRecord,
   readRunRecord,
   runRecordCollection,
   runRecordStateSchema,
@@ -284,7 +282,7 @@ export {
 /**
  * The board segment of a run's identity: the ledger id, plus its partition on
  * a board read from the claim. `runTopic(runBoardSegment(ledgerId, partition),
- * issue, phase)` is that run's record key.
+ * issue, mode)` is that run's record key; `readModeRunRecord` also finds a run stored under its mode's former name.
  */
 export { runBoardSegment } from "./workspace";
 /**
@@ -302,19 +300,21 @@ export { ASK_MARKER_IGNORED } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //
-// The query is the read path: a host puts `harnessUsageAction({ readers })`
-// on one flow. `recordHarnessUsage` is the collection's one writer, for a
-// harness that reports usage during a run.
+// A host registers `harnessUsageFlow({ readers })`: its view is the read path
+// and its Re-check the client's write. `recordHarnessUsage` is the
+// collection's one writer, for a harness that reports usage during a run.
 export {
   HARNESS_USAGE,
+  HARNESS_USAGE_FLOW,
   USAGE_READ_TIMEOUT_MS,
   USAGE_REFRESH_EVERY_MS,
-  harnessUsageAction,
   harnessUsageCollection,
+  harnessUsageFlow,
   harnessUsageStateSchema,
   readHarnessUsage,
   recordHarnessUsage,
-  type HarnessUsageActionOptions,
+  type HarnessUsageFlowOptions,
+  type HarnessUsageViewDefinition,
   type HarnessUsageView,
   type HarnessUsageState,
   type HarnessUsageWindowView,
@@ -324,8 +324,8 @@ export {
 // ── Which harnesses can run on this machine ─────────────────────────────────
 export {
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
+  harnessReadinessView,
   harnessReadinessViewSchema,
   formatHarnessReadiness,
   READINESS_CHECK_TIMEOUT_MS,
@@ -333,6 +333,7 @@ export {
   type HarnessReadinessOptions,
   type HarnessReadinessRead,
   type HarnessReadinessView,
+  type HarnessReadinessViewDefinition,
   type HarnessReadinessSlot,
   type ReadReadinessOptions,
 } from "./readiness";
@@ -355,7 +356,7 @@ export {
 // The TYPES a host needs to write `workspace:` and `ownership:`. The functions
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
-export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+export type { OwnershipBounds } from "./workspace";
 
 // Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

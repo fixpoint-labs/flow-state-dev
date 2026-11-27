@@ -1,39 +1,24 @@
 /**
- * Control `count-queued`: a queued row counts as a slot in use.
+ * Control `count-queued`: a queued task counts as a slot in use.
  *
- * Built into the control page in place of `src/lib/derive.ts`. Everything is
+ * Built into the control page in place of `src/lib/shift.ts`. Everything is
  * the real module except `workerStates`, whose `held` also takes each worker's
- * queued rows (`pending`, `blocked`). Statuses are left as the real rule gives
- * them. The goal must fail at "slots equal held rows" on the worker with a
- * queued row.
+ * queued tasks (`pending`, `held`) off the Inbox view's tasks. Statuses are
+ * left as the real rule gives them. The goal must fail at "slots equal held
+ * rows" on the worker with a queued task.
  */
-import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
-import {
-  allTasks,
-  rosterOf,
-  workerFor,
-  workerStates as asWritten,
-  type LoadedSnapshot,
-  type WorkerStates,
-} from "../../../../packages/shift-manager/src/lib/derive.ts";
+import { workerFor, workerStates as asWritten, type WorkerStates } from "../../../../packages/shift-manager/src/lib/shift.ts";
 
-export * from "../../../../packages/shift-manager/src/lib/derive.ts";
+export * from "../../../../packages/shift-manager/src/lib/shift.ts";
 
-const computed = new WeakMap<LoadedSnapshot, WorkerStates>();
-
-export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
-  const cached = computed.get(snapshot);
-  if (cached !== undefined) return cached;
-  const real = asWritten(snapshot);
-  const roster = rosterOf(snapshot);
+export function workerStates(...args: Parameters<typeof asWritten>): WorkerStates {
+  const [workers, view] = args;
+  const real = asWritten(...args);
   const seats = new Map([...real.workers].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
-  for (const row of allTasks(snapshot)) {
-    const status = readStatus(row.status);
-    if (status !== "pending" && status !== "held") continue;
-    const owner = workerFor(roster, row);
-    if (owner !== undefined) seats.get(owner.id)?.held.push(row);
+  for (const task of view?.tasks ?? []) {
+    if (task.status !== "pending" && task.status !== "held") continue;
+    const owner = workerFor(workers, task);
+    if (owner !== undefined) seats.get(owner.id)?.held.push(task);
   }
-  const result = { ...real, workers: seats };
-  computed.set(snapshot, result);
-  return result;
+  return { ...real, workers: seats };
 }

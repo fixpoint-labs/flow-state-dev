@@ -39,7 +39,7 @@ import { workerMessagesResources } from "../src/messages/message-log";
 
 const message = z.object({ message: z.string() });
 const turn = handler({ name: "roles-turn", inputSchema: message, outputSchema: z.object({}), execute: () => ({}) });
-const respond = { inputSchema: message, block: turn, userMessage: (i: { message: string }) => i.message };
+const respond = { block: turn, userMessage: (i: { message: string }) => i.message };
 
 /** A worker flow on `installation`: the door, plus whatever `over` adds. */
 function flowOn(installation: WorkerInstallation | undefined, flowName: string, over: Record<string, unknown> = {}) {
@@ -271,8 +271,8 @@ describe("every hire path reads the roles a flow is registered with", () => {
   // registrations of it with different roles must not share one.
   it("judges one flow under two registrations by each one's roles", () => {
     const flow = flowOn(undefined, "clerk", { task: { actions: { work: workEntry() } } });
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"], showSettings: [], needsProject: false } }))).toBe("");
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [], showSettings: [], needsProject: false } }))).toContain('"contributor"');
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"], showSettings: [] } }))).toBe("");
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [], showSettings: [] } }))).toContain('"contributor"');
   });
 });
 

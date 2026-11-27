@@ -13,13 +13,26 @@
  * call sites.
  */
 
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
+import { initializeSchema } from "./schema";
 import {
   createBadCronWarner,
   parseNextFireAt,
   type ScheduleIndex,
   type ScheduleIndexEntry
 } from "@flow-state-dev/scheduled";
+
+/**
+ * A `ScheduleIndex` in a SQLite file of its own at `filename`, its schema
+ * made on open: what a host gives each flow it ticks, since one index ticks
+ * one flow, the way `sqliteStores({ filename })` gives it its stores. The
+ * connection stays open for the life of the process.
+ */
+export function sqliteScheduleIndex(options: { filename: string }): ScheduleIndex {
+  const db = new Database(options.filename);
+  initializeSchema(db);
+  return createSQLiteScheduleIndex(db);
+}
 
 /**
  * Build a `ScheduleIndex` backed by the `schedule_index` table in the

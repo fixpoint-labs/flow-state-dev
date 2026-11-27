@@ -1,0 +1,28 @@
+/**
+ * Test fixture: a config whose `devtool` block hands the page a user and a
+ * bearer token. `fsdev dev` writes them into loopback pages only, and refuses a
+ * non-loopback host for it.
+ */
+import { createFlowState } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createMockModelResolver } from "@flow-state-dev/testing";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const pingFlow = defineFlow({
+  kind: "ping",
+  actions: {
+    ping: handler({
+        name: "ping",
+        inputSchema: z.object({}).passthrough(),
+        execute: () => undefined,
+      }),
+  },
+})();
+
+export default createFlowState({
+  flows: [pingFlow],
+  modelResolver: createMockModelResolver({}),
+  stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(createInMemoryStores()) } } },
+  devtool: { userId: "owner", bearerToken: "s3cret" },
+});

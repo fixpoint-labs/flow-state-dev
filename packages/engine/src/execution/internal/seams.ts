@@ -2,6 +2,7 @@
  * Internal extension seams for execution instrumentation and interception.
  */
 import type { FlowError } from "../../errors/flow-error";
+import { copyWrapperMarker } from "../../errors/normalize-error";
 import type { ExecutionMetadata } from "../types";
 
 export type InternalExecutionSeams = {
@@ -65,7 +66,7 @@ export function applyNormalizedErrorSeam(
   metadata: ExecutionMetadata
 ): FlowError {
   const intercepted = seams?.interceptNormalizedError?.(error, metadata);
-  return intercepted ?? error;
+  return intercepted === undefined ? error : copyWrapperMarker(error, intercepted);
 }
 
 /**

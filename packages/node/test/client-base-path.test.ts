@@ -20,14 +20,11 @@ import { serve, type ServeHandle } from "../src/serve";
 const echoFlow = defineFlow({
   kind: "echo",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "say",
         inputSchema: z.object({ text: z.string() }),
         execute: (input) => ({ heard: input.text }),
       }),
-    },
   },
 })();
 
@@ -38,11 +35,11 @@ afterEach(async () => {
 
 async function startServer(basePath?: string): Promise<string> {
   const flowState = createFlowState({
-    flows: { echo: echoFlow },
+    flows: [echoFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
-  const handle = await serve(flowState, { port: 0, basePath });
+  const handle = await serve(flowState, { port: 0, host: "127.0.0.1", basePath });
   handles.push(handle);
   await flowState.ready();
   return `http://127.0.0.1:${handle.port}`;

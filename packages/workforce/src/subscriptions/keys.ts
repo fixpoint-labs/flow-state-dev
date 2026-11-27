@@ -1,7 +1,7 @@
 // FIX-2534.
 /**
- * Subscriptions' pinned names: where the rows live, the tools, and
- * the service flow's two entries. A leaf module.
+ * Subscriptions' pinned names: where they are stored, and the service
+ * flow's two entries. A leaf module.
  */
 
 /** A session's subscriptions, one row each, at user scope. **Pinned**: persisted. */
@@ -16,6 +16,17 @@ export const SUBSCRIPTION_CURSORS_PATTERN = "workforce/subscription-cursors/*";
 /** The accessor a flow declares the cursors under. */
 export const SUBSCRIPTION_CURSORS_RESOURCE = "workforceSubscriptionCursors";
 
+// FIX-2788.
+/**
+ * One mark per task whose subscriptions ended with it (it failed or was
+ * cancelled), at user scope: a subscribe that commits after the sweep reads
+ * it and ends too. **Pinned**: persisted. Server-only.
+ */
+export const SUBSCRIPTION_TASK_ENDINGS_PATTERN = "workforce/subscription-task-endings/*";
+
+/** The accessor a flow declares the task endings under. */
+export const SUBSCRIPTION_TASK_ENDINGS_RESOURCE = "workforceSubscriptionTaskEndings";
+
 /**
  * The thread index, at org scope: one row per thread key, naming the
  * subscriptions that follow it. It nominates; it grants nothing. **Pinned**:
@@ -26,8 +37,20 @@ export const SUBSCRIPTION_INDEX_PATTERN = "workforce/subscription-index/*";
 /** The accessor a flow declares the thread index under. */
 export const SUBSCRIPTION_INDEX_RESOURCE = "workforceSubscriptionIndex";
 
-/** The two tools a session subscribes and unsubscribes with. */
-export const SUBSCRIPTION_TOOLS = { subscribe: "subscribe", unsubscribe: "unsubscribe" } as const;
+// FIX-2536 D1.
+/**
+ * The poll schedules, at user scope: one schedule resource per user and thread, keyed by
+ * the thread, firing at the user's fastest subscription's cadence. **Pinned**:
+ * persisted.
+ */
+export const SUBSCRIPTION_POLLS_PATTERN = "workforce/subscription-polls/*";
+
+/** The accessor a flow declares the poll schedules under. */
+export const SUBSCRIPTION_POLLS_RESOURCE = "workforceSubscriptionPolls";
+
+/** The schedule handler a poll schedule's `kind` names. **Pinned**: persisted. */
+export const SUBSCRIPTION_POLL_HANDLER = "subscription-poll";
+
 
 /** The service flow's routing entry: one normalized event in, run as the service. **Pinned**: an ingestion names it by this string; not on the root. */
 export const SUBSCRIPTION_ROUTE_ENTRY = "routeSubscriptionEvent";

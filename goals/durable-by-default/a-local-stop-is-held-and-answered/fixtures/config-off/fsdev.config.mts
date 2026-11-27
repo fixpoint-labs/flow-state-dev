@@ -11,7 +11,7 @@ import flow from "../flows/review/flow.ts";
 mkdirSync(".fsdev/data", { recursive: true });
 
 export default createFlowState({
-  flows: { "durable-goal": flow },
+  flows: [flow],
   stores: { default: { primary: sqliteStores({ filename: ".fsdev/data/app.db" }) } },
   durable: false,
 });

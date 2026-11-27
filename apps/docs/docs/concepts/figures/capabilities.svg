@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 401">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="330" height="300"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">CAPABILITY</text>
+<rect class="hl" fill="#e8f551" x="42" y="54" width="110" height="30"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="54" width="110" height="30"/>
+<text class="nm on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="56" y="74">orders</text>
+<rect fill="url(#hatch)" x="44" y="100" width="298" height="10"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="44" y="100" width="298" height="64"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="58" y="132">RESOURCE</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="58" y="150">orderLog</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="44" y="176" width="298" height="64"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="58" y="198">CONTEXT PRESET</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="58" y="216">quote the order number</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="44" y="252" width="298" height="64"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="58" y="274">TOOLS PRESET</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="58" y="294">lookUpOrder</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="358" y1="99" x2="530" y2="99" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="358" y1="265" x2="530" y2="265" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="530" y="24" width="362" height="150"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="546" y="46">GENERATOR</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="546" y="70">draftReply</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="546" y="92">uses: [orders]</text>
+<rect fill="url(#hatch)" x="546" y="112" width="102" height="10"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="546" y="112" width="102" height="44"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="560" y="144">RESOURCE</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="656" y="112" width="102" height="44"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="670" y="144">CONTEXT</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="766" y="112" width="102" height="44"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="780" y="144">TOOLS</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="530" y="206" width="362" height="118"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="546" y="228">GENERATOR</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="546" y="252">summarizeOrder</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="546" y="272">uses: [orders.with({ tools: false })]</text>
+<rect fill="url(#hatch)" x="546" y="282" width="102" height="10"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="546" y="282" width="102" height="32"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="560" y="307">RESOURCE</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="656" y="282" width="102" height="32"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="670" y="307">CONTEXT</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="28" y="352">summarizeOrder turns the tools preset off, so it gets two of the three parts.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="379" x2="54" y2="379" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="383">LISTED IN USES</text>
+<rect fill="url(#hatch)" x="199" y="373" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="199" y="373" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="233" y="383">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="415" y="373" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="449" y="383">THE ONE CAPABILITY</text>
+</g>
+</svg>

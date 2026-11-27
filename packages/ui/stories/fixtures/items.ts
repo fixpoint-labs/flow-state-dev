@@ -6,7 +6,7 @@
  * unit tests so stories and tests stay in shape parity.
  */
 import type {
-  ComponentItem,
+  DataItem,
   MessageItem,
   ReasoningItem,
   SourceItem,
@@ -121,32 +121,32 @@ export function toolItem(options: ToolItemOptions = {}): ToolOutputItem {
   };
 }
 
-export type ComponentItemOptions = {
+export type DataItemOptions = {
   id?: string;
-  component: string;
-  data?: Record<string, unknown>;
+  dataType: string;
+  value?: Record<string, unknown>;
   key?: string;
   requestId?: string;
 };
 
-export function componentItem(options: ComponentItemOptions): ComponentItem {
+export function dataItem(options: DataItemOptions): DataItem {
   const {
-    id = nextId("c"),
-    component,
-    data = {},
+    id = nextId("d"),
+    dataType,
+    value = {},
     key,
     requestId = "req-1",
   } = options;
   return {
     id,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId,
     itemIndex: 0,
     ts: 0,
     provenance: baseProvenance,
-    component,
-    data,
+    dataType,
+    value,
     ...(key !== undefined ? { key } : {}),
   };
 }

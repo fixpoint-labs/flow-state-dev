@@ -30,6 +30,7 @@ createInboundTransportConformanceTests({
         flowKind: "demo",
         action: "run",
         input: { value: "x" },
+        sessionId: "s_conform",
         principal
       };
     }

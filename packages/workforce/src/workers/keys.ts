@@ -14,9 +14,6 @@
  */
 export const WORKERS_PATTERN = "workforce/workers/*";
 
-/** {@link WORKERS_PATTERN}'s prefix, without its wildcard. */
-export const WORKERS_PREFIX = "workforce/workers/";
-
 /**
  * The accessor a flow declares the user's worker collection under. A worker
  * flow's create check reads the creating user's row through it, and a turn
@@ -102,6 +99,14 @@ export const WORK_PROJECT_STATE_KEY = "workProjectId";
 /** The action that sets {@link WORK_PROJECT_STATE_KEY} on the session it runs in. Every worker flow declares it. */
 export const SET_WORK_PROJECT_ACTION = "setWorkProject";
 
+/**
+ * The action that writes the app's session fields (the installation's
+ * `sessionFields`) on the user's own conversation it runs in, once each: the
+ * server's write at open. The agent and coordinator flows declare it when the
+ * app declares a field.
+ */
+export const SET_SESSION_FIELDS_ACTION = "setSessionFields";
+
 // FIX-1793 S6.
 /**
  * The session-state field that names the workstream a task session works
@@ -135,6 +140,29 @@ export const FILING_PROJECT_STATE_KEY = "filingProjectId";
  */
 export const TASK_ID_STATE_KEY = "taskId";
 
+// FIX-2881.
+/**
+ * The session-state field that holds the display name of the session's
+ * worker, as a reader sees it: its roster entry's `name`, or a standard
+ * worker's file `name:`. Written by the installation's create check from the
+ * worker it reads, on every path that creates a worker session, and by
+ * nothing else: a create that seeds it is refused. Readonly, so it is the
+ * name the worker had when the session was born. Absent when the worker has
+ * no name. Display only, never an address.
+ */
+export const WORKER_NAME_STATE_KEY = "workerName";
+
+// FIX-2881.
+/**
+ * The session-state field that holds the title of the task a worker session
+ * was opened for (its goal when it has none), written beside
+ * {@link TASK_ID_STATE_KEY} by the board's hand-over and by nothing else.
+ * Server-owned and shown to the client, not readonly: a later hand-over of
+ * the same task, after its title was edited, adopts the session rather than
+ * being refused over it. Display only, never an address.
+ */
+export const TASK_TITLE_STATE_KEY = "taskTitle";
+
 /**
  * The roster flow's flow kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session
@@ -142,6 +170,34 @@ export const TASK_ID_STATE_KEY = "taskId";
  * shows a roster session.
  */
 export const ROSTER_FLOW = "workforce-roster";
+
+// FIX-2623.
+/** The roster view's name on the roster flow (`defineRosterView`). */
+export const ROSTER_VIEW = "roster";
+
+// FIX-2725.
+/** The worker sessions view's name on the roster flow (`defineWorkerSessionsView`). */
+export const WORKER_SESSIONS_VIEW = "workerSessions";
+
+// FIX-2725.
+/** The session turns view's name on the roster flow (`defineSessionTurnsView`). */
+export const SESSION_TURNS_VIEW = "sessionTurns";
+
+// FIX-2771.
+/** The worker messages view's name on the roster flow (`defineWorkerMessagesView`). */
+export const WORKER_MESSAGES_VIEW = "workerMessages";
+
+// FIX-2624.
+/** The worker usage view's name on the roster flow (`defineWorkerUsageView`). */
+export const WORKER_USAGE_VIEW = "workerUsage";
+
+// FIX-2624.
+/** The workstream report view's name on the roster flow (`defineWorkstreamReportView`). */
+export const WORKSTREAM_REPORT_VIEW = "workstreamReport";
+
+// FIX-2774.
+/** The inbox view's name on the roster flow (`defineInboxView`). */
+export const INBOX_VIEW = "inbox";
 
 // FIX-1802.
 /**

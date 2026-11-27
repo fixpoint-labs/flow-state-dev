@@ -39,15 +39,12 @@ function flow(kind: string, authenticated: boolean) {
   const base = {
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     }
   };
   if (!authenticated) return defineFlow(base)();
@@ -309,5 +306,28 @@ describe("a session's snapshot and stream conjoin its flow as the listing does",
     const res = await snapshot(router);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("our note");
+  });
+});
+
+// FIX-2853.
+describe("session-requests listing says which requests the retry route runs again", () => {
+  /**
+   * A screen offers Retry from this flag, so it must be the retry route's own
+   * answer: a request a person sent is retried, one a notification started is
+   * refused (409), and a Retry drawn on it is a button that does nothing.
+   */
+  it("marks a person's request retryable and a notification's not", async () => {
+    const { router, stores } = build();
+    await seedSession(stores, "sess", "open");
+    await seedRequest(stores, "req_sent", "sess", "open");
+    await seedRequest(stores, "req_notified", "sess", "open");
+    const notified = await stores.request.get("req_notified");
+    await stores.request.set("req_notified", { ...notified!, source: "notification" }, "any");
+
+    const { requests } = (await (await listRequests(router, "sess")).json()) as {
+      requests: Array<RequestRecord & { retryable?: boolean }>;
+    };
+    const retryable = Object.fromEntries(requests.map((r) => [r.id, r.retryable]));
+    expect(retryable).toEqual({ req_sent: true, req_notified: false });
   });
 });

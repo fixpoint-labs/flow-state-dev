@@ -3,7 +3,7 @@
  * (FIX-1989): `sendMessage` lands a line in the recipient's own
  * conversation, opening it at the worker's derived address when needed, and
  * wakes its turn; an answer names the message it answers and goes back to the
- * session that asked. No task row, no delegate, no task-chain count.
+ * session that asked. No task, no delegate, no task-chain count.
  *
  * Everything is read from what reached each session and the store, never
  * from the tool's return value alone.
@@ -99,7 +99,7 @@ async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
 
 /** The received-message items a session holds: the client-only component a received message is drawn by. */
 async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
-  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "data" && item.dataType === "workforce:received").map((item) => item.value);
 }
 
 /** Every tool output item a session holds, oldest first. */
@@ -131,7 +131,7 @@ describe("a worker messages another worker", () => {
       // Its own item: the sender, the id and the text, drawn by the client only.
       expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5 }]);
       const items = await itemsOf(h, lead!.id);
-      expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
+      expect(items.find((item) => item.type === "data" && item.dataType === "workforce:received")?.itemVisibility).toEqual({ client: true, history: false });
       // The line the model reads, in history only.
       const line = items.find((item) => item.type === "message" && item.agentName === "otto");
       expect(line?.itemVisibility).toEqual({ client: false, history: true });
@@ -552,15 +552,33 @@ describe("the per-turn limit", () => {
  * otto's user line asks helper-a (message 1); helper-a, woken by it, files a
  * task for helper-b with `setting`; the task's turn messages otto.
  */
-/** A relay through a task helper-a files for helper-b; `unassigned`, filed with no assignee. */
+/**
+ * A relay through a task helper-a files for helper-b. `unassigned`: helper-a's
+ * turn files nothing, and {@link fileUnassigned} files the task with no owner.
+ */
 function relayThroughTask(setting: Record<string, unknown>, options: { unassigned?: boolean } = {}): MockGeneratorScriptEntry[] {
-  const assignee = options.unassigned === true ? {} : { assignee: "helper-b" };
   return [
     ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
-    ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", ...assignee, ...setting }, ""),
+    ...(options.unassigned === true
+      ? []
+      : callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b", ...setting }, "")),
     ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
     fallback
   ];
+}
+
+/**
+ * helper-a's task for otto's number, filed with no owner through its board's
+ * action, in its session as its relay turn left it: the task waits on the
+ * board until it is assigned, a hand-over held back without filing it held.
+ * Only an action files one so: a model's `createTask` with several delegates
+ * must name one (FIX-2735).
+ */
+async function fileUnassigned(h: BoardHost, setting: Record<string, unknown>): Promise<void> {
+  const helperA = await h.client("alice").ensureWorkerSession({ worker: "helper-a" });
+  const filed = await h.act("alice", helperA.id, "createTask_tasks", { goal: "Tell otto the number", ...setting }, "agent");
+  expect(filed.error, messageOf(filed.error)).toBeUndefined();
+  await h.settled();
 }
 
 /** Every tool output item any session holds. */
@@ -639,13 +657,14 @@ describe("the hop count through a delegation", () => {
     const forged = { [FILED_HOP]: { hop: 0, chain: null } };
     const h = boot({
       standard: teamWorkers({ unassignedWaits: true }),
-      agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", metadata: forged }, { unassigned: true }) })
+      agentAnswer: mockGenerator({ script: relayThroughTask({}, { unassigned: true }) })
     });
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, { session: "ongoing", metadata: forged });
       const [held] = await h.rows("alice");
       expect(held!.status).toBe("pending");
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
@@ -702,6 +721,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, setting);
       const [held] = await h.rows("alice");
       expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
@@ -746,6 +766,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, setting);
       const [held] = await h.rows("alice");
       expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       const filedIn = (held!.metadata?.[FILED_HOP] as { chain: string }).chain;
@@ -814,6 +835,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, {});
       const [filed] = await h.rows("alice");
       expect(filed!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
 
@@ -939,7 +961,7 @@ describe("who can be messaged", () => {
         kind: "coder",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
         internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
       })
     };
@@ -959,7 +981,7 @@ describe("who can be messaged", () => {
         kind: "coder",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
         internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
       })
     };

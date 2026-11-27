@@ -13,6 +13,8 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages, labRoutes, openShiftManager, personPage, startShiftManager, type LabUser } from "../../lib/shift-manager.mts";
+import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { CONTROL_NAMES, CONTROLS, type Control } from "./controls.mts";
 
@@ -118,11 +120,11 @@ await runGoal(async () => {
 
   const failures: string[] = [];
   const notes: string[] = [];
+  // The usage view, read with no session; a refresh is a Re-check sent to the usage collection first.
   const query = async (person: LabUser, refresh: boolean): Promise<Row[]> => {
-    const routes = labRoutes(served.origin, person);
-    const done = await routes.act(PROJECTS_FLOW, `${PROJECTS_FLOW}-own-${person.userId}`, "harnessUsage", refresh ? { refresh: true } : {});
-    if (done.status !== "completed") throw new Error(`harnessUsage as ${person.userId} ended ${done.status}: ${done.error ?? ""}`);
-    return (done.output as { harnesses: Row[] }).harnesses;
+    const client = connect({ userId: person.userId, baseUrl: served.origin, bearerToken: person.bearer });
+    if (refresh) await recheckHarnessUsage(client);
+    return (await client.view(harnessUsageViewRef(), {})).value.harnesses as Row[];
   };
   const codexRow = (rows: Row[]) => rows.find((row) => row.harness === "codex");
   const browser = await launchChromium();

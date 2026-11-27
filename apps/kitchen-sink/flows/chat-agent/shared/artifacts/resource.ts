@@ -31,10 +31,10 @@ export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
   extension: z.string().optional(),
-  updatedAt: z.number()
+  updatedAt: z.string()
 });
 
-type ArtifactState = z.infer<typeof artifactStateSchema>;
+export type ArtifactState = z.infer<typeof artifactStateSchema>;
 
 // ---------------------------------------------------------------------------
 // Content reaction: summarize the body whenever it is written

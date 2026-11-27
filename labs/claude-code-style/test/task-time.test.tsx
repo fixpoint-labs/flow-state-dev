@@ -13,8 +13,9 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { LabAdapter, LabTask, TaskStatus } from "../src/adapter";
+import type { CodingBoardTask, TaskStatus } from "../src/app";
+import { codingBoardTask } from "./coding-board-task";
+import { stubServer } from "./stub-server";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
 
@@ -22,21 +23,21 @@ afterEach(cleanup);
 
 const MIN = 60_000;
 
-/** A pane row as the adapter reads one from the board's `listTasks` row. */
-function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): LabTask {
+/** A pane row as the coding board view answers it: its run link's start, and its lease deadline. */
+function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): CodingBoardTask {
   const { startedAt, leaseUntil, updatedAt } = times;
-  return {
+  return codingBoardTask({
     id,
     title,
     goal: title,
     status,
     updatedAt,
-    view: taskView({ id, title, goal: title, status, board: "s1", updatedAt }),
-    ...(startedAt === undefined && leaseUntil === undefined ? {} : { run: { ...(startedAt === undefined ? {} : { startedAt }), ...(leaseUntil === undefined ? {} : { leaseUntil }) } }),
-  };
+    ...(startedAt === undefined ? {} : { run: { sessionId: `run-${id}`, requestId: `q-${id}`, attempt: 1, startedAt } }),
+    ...(leaseUntil === undefined ? {} : { leaseUntil }),
+  });
 }
 
-const adapter = { watchPins: () => () => {} } as unknown as LabAdapter;
+const wrap = stubServer().wrap;
 
 describe("a task's time in the tasks pane", () => {
   it("times a working run, marks one that stopped answering quiet, ages a finished one, and counts each state", () => {
@@ -46,7 +47,7 @@ describe("a task's time in the tasks pane", () => {
       row("t2", "Research Globex", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN }),
       row("t3", "Draft the outline", "completed", { updatedAt: now - 12 * MIN }),
     ];
-    render(<TasksPane adapter={adapter} sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    render(wrap(<TasksPane sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />));
     const pane = screen.getByRole("complementary", { name: "Background tasks" });
     expect(within(pane).getByText(/^Background tasks · 2 running · 1 done$/)).toBeTruthy();
 
@@ -62,7 +63,7 @@ describe("a task's time while the pane's read is stale", () => {
   it("never calls a run quiet from rows its last read may have left behind, and marks the pane stale", () => {
     const now = Date.now();
     const tasks = [row("t2", "Research Globex", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })];
-    render(<TasksPane adapter={adapter} sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    render(wrap(<TasksPane sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />));
     const pane = screen.getByRole("complementary", { name: "Background tasks" });
     expect(pane.hasAttribute("data-stale")).toBe(true);
     expect(within(pane).queryByText(/quiet/)).toBeNull();
@@ -72,7 +73,7 @@ describe("a task's time while the pane's read is stale", () => {
   it("never calls a run quiet on the threads board while the read is stale", () => {
     const now = Date.now();
     const tasks = [row("t2", "Research Globex", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })];
-    render(<ThreadsBoard adapter={adapter} sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    render(wrap(<ThreadsBoard sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />));
     const board = screen.getByRole("complementary", { name: "Tasks" });
     expect(within(board).queryByText(/quiet/)).toBeNull();
   });
@@ -82,7 +83,7 @@ describe("a task's time on the threads board", () => {
   it("shows a running row's clock, never an age its heartbeat keeps at now", () => {
     const now = Date.now();
     const tasks = [row("t1", "Research Acme", "in_progress", { updatedAt: now - 5_000, startedAt: now - 9 * MIN, leaseUntil: now + 100_000 })];
-    render(<ThreadsBoard adapter={adapter} sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    render(wrap(<ThreadsBoard sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />));
     const board = screen.getByRole("complementary", { name: "Tasks" });
     expect(within(board).getByText(/^working · 9m 0s$|^working · 9m 1s$/)).toBeTruthy();
     expect(within(board).queryByText("now")).toBeNull();

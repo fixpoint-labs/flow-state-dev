@@ -87,18 +87,18 @@ async function open(page: Page, name: string): Promise<void> {
 /** The flow every specialist runs on, registered as one copy at its kind. */
 const WORKER_FLOW = "agent";
 
-/** A worker's row on the roster panel, with its "Talk". */
+/** A worker's line on the roster panel, with its "Talk". */
 const rosterWorker = (page: Page, worker: string): Locator =>
   page.locator(`[data-testid="roster"]:visible [data-worker-id="${worker}"]`);
 
-/** Open the worker flow's kind and its one copy in the rail, unless already open. */
+/**
+ * Open the worker flow's one copy in the rail, unless already open. The copy
+ * is named for its kind, so the kind's line is the copy's leaf: there is no
+ * copy line to open.
+ */
 async function openWorkerCopy(page: Page): Promise<Locator> {
-  for (const button of [
-    rail(page).locator(`button[data-kind="${WORKER_FLOW}"]`),
-    rail(page).locator(`button[data-instance-id="${WORKER_FLOW}"]`),
-  ]) {
-    if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
-  }
+  const button = rail(page).locator(`button[data-kind="${WORKER_FLOW}"]`);
+  if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
   const leaf = rail(page).locator(`ul[data-leaf="${WORKER_FLOW}"]`);
   // The list is loaded once it shows a row or says it has none.
   await expect(leaf.locator("[data-session-id]").or(leaf.getByText("No sessions yet")).first()).toBeVisible();

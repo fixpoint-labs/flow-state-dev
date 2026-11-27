@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshPglite } from "./shared-pglite";
 import { initializeSchema } from "../src/schema";
-import type { QueryExecutor } from "../src/host";
+import { createPostgresWakeStore, type QueryExecutor } from "../src/host";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {
@@ -210,4 +210,49 @@ describe("project → org schema migration (postgres)", () => {
     await initializeSchema(pgliteExecutor(pglite));
     await expect(initializeSchema(pgliteExecutor(pglite))).resolves.not.toThrow();
   });
+
+  // A wake is kept per resolver identity, so a turn's resolver is its row's
+  // key and can't change under it. A database from before that keyed wakes on
+  // (tenant, session, entry) alone; its kept wakes name no resolver and must
+  // keep coalescing with each other, while a writer under a resolver gets a
+  // row of its own.
+  const OLD_WAKE_COLUMNS = `
+    tenant_key TEXT NOT NULL, session_id TEXT NOT NULL, entry TEXT NOT NULL,
+    flow_kind TEXT NOT NULL, user_id TEXT NOT NULL, org_id TEXT NOT NULL,
+    due_at BIGINT NOT NULL, land_by BIGINT NOT NULL, version BIGINT NOT NULL,
+    created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL`;
+  const oldWakeShapes = {
+    "with no resolved_by column": `CREATE TABLE wakes (${OLD_WAKE_COLUMNS}, PRIMARY KEY (tenant_key, session_id, entry));`,
+    "with a nullable resolved_by outside the key": `CREATE TABLE wakes (${OLD_WAKE_COLUMNS}, resolved_by TEXT, PRIMARY KEY (tenant_key, session_id, entry));`
+  };
+  for (const [shape, ddl] of Object.entries(oldWakeShapes)) {
+    it(`re-keys a wakes table ${shape}; its kept wake still coalesces with no resolver, and a resolver's owe is a row of its own`, async () => {
+      const pglite = await freshPglite();
+      await pglite.exec(`
+        ${ddl}
+        INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, version, created_at, updated_at)
+        VALUES ('', 's1', 'dispatch', 'desk', 'u1', 'o1', 5, 6, 1, 1, 1);
+      `);
+      const executor = pgliteExecutor(pglite);
+      await initializeSchema(executor);
+      await initializeSchema(executor);
+      const key = await pglite.query<{ attname: string }>(
+        `SELECT a.attname FROM pg_index i
+           JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+          WHERE i.indrelid = 'wakes'::regclass AND i.indisprimary
+          ORDER BY array_position(i.indkey::int[], a.attnum::int)`
+      );
+      expect(key.rows.map((r) => r.attname)).toEqual(["tenant_key", "session_id", "entry", "resolved_by"]);
+      const store = createPostgresWakeStore(executor);
+      const kept = await store.get({ sessionId: "s1", entry: "dispatch" });
+      expect(kept).toMatchObject({ dueAt: 5, landBy: 6, version: 1 });
+      expect(kept?.resolvedBy).toBeUndefined();
+      const input = { sessionId: "s1", entry: "dispatch", flowKind: "desk", userId: "u1", orgId: "o1", dueAt: 9, landBy: 9 };
+      const coalesced = await store.owe(input);
+      expect(coalesced).toMatchObject({ dueAt: 5, version: 2 });
+      expect(coalesced.resolvedBy).toBeUndefined();
+      expect(await store.owe({ ...input, resolvedBy: "vault" })).toMatchObject({ resolvedBy: "vault", dueAt: 9, version: 1 });
+      expect(await store.listDue(Number.MAX_SAFE_INTEGER, 10)).toHaveLength(2);
+    });
+  }
 }, { timeout: 30000 });

@@ -13,7 +13,7 @@ import { conversationLedgerAt } from "./ledger";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 
 function stringAt(ctx: BlockContext, key: string): string | undefined {
-  const value = ((ctx.session.state ?? {}) as Record<string, unknown>)[key];
+  const value = ctx.session.state[key];
   return typeof value === "string" ? value : undefined;
 }
 
@@ -67,7 +67,7 @@ async function linkedTaskOf(ctx: BlockContext): Promise<string | undefined> {
 
 // FIX-2161.
 /**
- * The project a task's row was stamped with when it was filed, in
+ * The project a task was stamped with when it was filed, in
  * `projectRef` form: `undefined` for a row filed with no project, and for a
  * row filed before rows carried the stamp (see {@link isStamped}).
  */
@@ -77,7 +77,7 @@ export function filedProjectOf(row: Pick<Task, "metadata"> | undefined): string 
 }
 
 // BP-030.
-/** Whether a task's row carries the project stamp, even an empty one: one filed before rows carried it doesn't. */
+/** Whether a task carries the project stamp, even an empty one: one filed before rows carried it doesn't. */
 export function isStamped(row: Pick<Task, "metadata"> | undefined): boolean {
   return row?.metadata != null && Object.hasOwn(row.metadata, FILED_PROJECT);
 }

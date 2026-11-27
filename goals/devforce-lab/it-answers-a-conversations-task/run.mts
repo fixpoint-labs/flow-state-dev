@@ -53,10 +53,11 @@ import { createModelResolver } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
+import { GOAL_JUDGE_MODEL as JUDGE_MODEL, harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["no-filing-project", "no-judge"] as const;
@@ -94,7 +95,6 @@ const LIST_TASKS = "listTasks_tasks";
 const TURN_BUDGET_MS = 10_000;
 const LINE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
 // ---- the coder's harness: the lab's stub, told what each run does ----------
@@ -488,7 +488,7 @@ await runGoal(async (failures) => {
     const lab = await openLab({
       modelResolver: scriptedResolver(),
       stores: stores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
       coderWorkerId: CODER,
@@ -670,7 +670,7 @@ await runGoal(async (failures) => {
       const lab = await openLab({
         modelResolver: liveResolver(),
         stores: stores(),
-        harness: stub.slot,
+        harnesses: [readyHarness(stub.slot)],
         runTimeoutMs: 30_000,
         workspace: { root: mkdtempSync(join(tmpdir(), "conversation-task-live-")), remotes: { allow: ["file"] } },
         coderWorkerId: CODER,

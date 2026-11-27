@@ -1,0 +1,6 @@
+{
+  "first": { "name": "ledger-api", "branch": "spike/rate-limits", "dirty": { "NOTES.md": "# Rate limit spike\n\nHalf-written, not committed.\n" } },
+  "second": { "name": "billing-web", "branch": "fix/invoice-rounding", "dirty": { "TODO.md": "- round invoice totals to the cent\n" } },
+  "title": "Round invoice totals",
+  "goal": "Round every invoice total to the nearest cent before it is shown, and add a test that a total of 10.005 shows as 10.01."
+}

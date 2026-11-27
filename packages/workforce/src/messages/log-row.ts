@@ -58,6 +58,14 @@ export const workerMessageResourceStateSchema = z.object({
   addressedBy: z.enum(["task", "session"]).optional(),
   /** The task it was addressed to, when `addressedBy` is `task`. */
   toTask: z.string().min(1).optional(),
+  // FIX-2538 D2.
+  /**
+   * A service's delivery of an event no other subscription heard, to a
+   * coordinator's unmatched subscription: `addressed` when the event asks the app's
+   * agent, `inferred` when nobody asked, and the event's link. Written by the
+   * delivery from the event, never from model input. Absent on every other message.
+   */
+  forward: z.object({ as: z.enum(["addressed", "inferred"]), url: z.string() }).strict().optional(),
   text: z.string(),
   /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
   exchange: z.string().min(1),
@@ -136,3 +144,13 @@ export const workerMessageResourceStateSchema = z.object({
 
 export type WorkerMessageResourceState = z.infer<typeof workerMessageResourceStateSchema>;
 
+// FIX-2771 D1.
+/**
+ * A message still open: on its way (`unconfirmed`), or asked for a reply that
+ * hasn't come (no `answeredBy`) and neither refused nor undeliverable. What the
+ * message log's `open` index holds, and so what the worker messages view answers.
+ */
+export function isOpenMessage(message: WorkerMessageResourceState): boolean {
+  if (message.status === "unconfirmed") return true;
+  return message.replyRequested === true && message.answeredBy === undefined && message.status !== "refused" && message.status !== "undeliverable";
+}

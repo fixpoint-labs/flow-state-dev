@@ -19,6 +19,7 @@
  * 3. **An id git cannot carry is refused when the manager is built**, naming
  *    it, before any row is claimed.
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,15 +49,16 @@ const snapshot = JSON.parse(
 const CONFIG = { root: "/ws", sourceRepo: "/src", baseRef: "main" };
 const ALICE = { orgId: "org_devforce_lab", userId: "u_devforce_lab" };
 
-function derive(epic: string, principal: RunLocation["principal"] = ALICE, orgless?: true) {
+function derive(epic: string, principal: RunLocation["principal"] = ALICE, orgless?: true, nested?: true) {
   const location: RunLocation = {
     principal,
     epic,
     issue: "FIX-1",
     phase: "implement",
     ...(orgless !== undefined ? { orgless } : {}),
+    ...(nested !== undefined ? { nested } : {}),
   };
-  return { checkout: checkoutPathFor(CONFIG, location), branch: branchFor(location) };
+  return { checkout: checkoutPathFor(CONFIG.root, location), branch: branchFor(location) };
 }
 
 /** Git's own verdict on a branch name — the consumer the grammar answers to. */
@@ -95,10 +97,13 @@ describe("every board id accepted before derives what it did", () => {
 
 describe("a dotted board id, used as is", () => {
   it("is accepted, and git accepts the branch it derives", () => {
-    const { checkout, branch } = derive("eng.feature.work");
-    expect(checkout).toContain("/eng.feature.work/");
-    expect(branch).toContain("/eng.feature.work/");
+    const { branch } = derive("eng.feature.work");
     expect(gitAcceptsBranch(branch)).toBe(true);
+    // A run already under way keeps the long shape, where the id is spelled out.
+    const nested = derive("eng.feature.work", ALICE, undefined, true);
+    expect(nested.checkout).toContain("/eng.feature.work/");
+    expect(nested.branch).toContain("/eng.feature.work/");
+    expect(gitAcceptsBranch(nested.branch)).toBe(true);
   });
 
   it("never shares a checkout or a branch with an id that differs other than in case", () => {
@@ -127,8 +132,8 @@ describe("an id git cannot carry is refused when the manager is built", () => {
         stateSchema: z.object({ issue: z.string(), phase: z.string() }),
       }),
       tenant: undefined,
-      phase: { phase: "implement", buildPrompt: () => "go", isDone: () => true },
-      workspace: { root: join(tmpdir(), "harness-manager-board-id"), sourceRepo, baseRef: "main" },
+      mode: { name: "implement", instructions: () => "go", doneWhen: { check: () => true } },
+      workspace: localRepoWorkspaceHost({ root: join(tmpdir(), "harness-manager-board-id"), repo: sourceRepo, baseRef: "main" }),
       runTimeoutMs: 30_000,
       harness: () =>
         handler({

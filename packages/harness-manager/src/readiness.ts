@@ -11,10 +11,11 @@
  *
  * - {@link formatHarnessReadiness}, the start log's table and the
  *   coordinator's context, from one formatter so the two never disagree;
- * - {@link harnessReadinessAction}, the read a screen draws chips from, with
- *   Re-check as `{ refresh: true }`;
+ * - {@link harnessReadinessView}, the user-scope view a screen draws chips
+ *   from, read with no session, with Re-check as `{ refresh: true }`;
  * - {@link harnessReadinessCapability}, a context entry a host adds to its
- *   coordinator's `uses`, so work is filed only on a ready harness;
+ *   coordinator's `uses`, so work is filed only on a ready harness, with the
+ *   app's default coder named under the rows;
  * - `refusal(harness)`, a coding flow's gate before a task starts.
  *
  * ## Rules
@@ -30,8 +31,9 @@
  * - **Opt-in.** Nothing here changes `harnessManager`; a host that installs
  *   none of it sees no difference.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** How long a check may take before it reads as unanswered: 30 s, a cold Codex start. */
@@ -231,25 +233,43 @@ export function formatHarnessReadiness(rows: readonly HarnessReadinessView[]): s
   return ["Coding harnesses on this machine:", ...lines].join("\n");
 }
 
+/** What the readiness view takes: `refresh: true` is Re-check. */
+const readinessViewInputSchema = z.object({ refresh: z.boolean().optional() });
+
+/** What the readiness view answers: one row per harness, keyed by harness. */
+const readinessViewOutputSchema = z.array(harnessReadinessViewSchema);
+
+/** The readiness view, as {@link harnessReadinessView} builds it. Import as a type in client code. */
+export type HarnessReadinessViewDefinition = ViewDefinition<
+  BlockDefinition<typeof readinessViewInputSchema, typeof readinessViewOutputSchema>,
+  "user"
+>;
+
+// FIX-2624.
 /**
- * The readiness read, as one flow-level action a host puts on a flow:
- * `actions: { harnessReadiness: harnessReadinessAction(readiness) }`.
+ * The readiness read, as a user-scope view a host installs on a flow:
+ * `views: { readiness: harnessReadinessView(readiness) }`. A screen reads it
+ * with no session (`harnessReadinessViewRef` from `/browser`).
  *
- * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Output
- * `{ harnesses }`, one {@link HarnessReadinessView} per harness. Zero-model.
+ * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Answers one
+ * {@link HarnessReadinessView} per harness, keyed by harness. The rows are this
+ * machine's, the same for every caller the flow signs in; the view reads no
+ * resource, so its answer names no topic. Zero-model.
  */
-export function harnessReadinessAction(readiness: HarnessReadinessRead) {
-  return {
+export function harnessReadinessView(readiness: HarnessReadinessRead): HarnessReadinessViewDefinition {
+  return defineView({
+    scope: "user",
+    key: (readiness) => readiness.harness,
     description:
       "Which coding harnesses can run on this machine, and what to do about one that can't. " +
       "`refresh: true` checks them again.",
     block: handler({
       name: "harness-readiness",
-      inputSchema: z.object({ refresh: z.boolean().optional() }),
-      outputSchema: z.object({ harnesses: z.array(harnessReadinessViewSchema) }),
-      execute: async (input) => ({ harnesses: await readiness.read({ refresh: input.refresh === true }) }),
+      inputSchema: readinessViewInputSchema,
+      outputSchema: readinessViewOutputSchema,
+      execute: async (input) => readiness.read({ refresh: input.refresh === true }),
     }),
-  };
+  }) as HarnessReadinessViewDefinition;
 }
 
 /** The guidance under the rows in the coordinator's context. */
@@ -258,6 +278,15 @@ export const READINESS_GUIDANCE =
   "say it isn't set up and what to run, and offer a ready one. One marked ? didn't answer its check: say so, and offer a ready one. " +
   "If the user says they have just set a harness up, start the task: starting it checks that harness again.";
 
+// FIX-2877.
+/**
+ * The line under the rows naming the app's default coder, by its label, so
+ * the coordinator starts coding work there unless the user names another.
+ */
+function defaultCoderLine(label: string): string {
+  return `${label} is this app's default coder: start coding work on the coding worker that runs on ${label}, unless the user names another.`;
+}
+
 /**
  * The readiness rows in a generator's context, for a host's coordinator:
  * `uses: [harnessReadinessCapability(readiness)]`. Reads the kept rows, so a
@@ -265,14 +294,23 @@ export const READINESS_GUIDANCE =
  * when something checks again: a Re-check, or a task start through `refusal`
  * on a harness not marked ready, which the guidance tells the coordinator to
  * try when the user says they have just signed in.
+ *
+ * @param defaultHarness The app's default coder, by harness id: named under
+ *   the rows ({@link defaultCoderLine}), by its row's label. Omitted, or a
+ *   harness with no row, names none.
  */
-export function harnessReadinessCapability(readiness: HarnessReadinessRead) {
+export function harnessReadinessCapability(readiness: HarnessReadinessRead, defaultHarness?: string) {
   return defineCapability({
     name: "harness-manager:readiness",
     presets: {
       context: {
         context: [
-          async () => ({ harnessReadiness: `${formatHarnessReadiness(await readiness.read())}\n\n${READINESS_GUIDANCE}` }),
+          async () => {
+            const entries = await readiness.read();
+            const label = entries.find((entry) => entry.harness === defaultHarness)?.label;
+            const named = label === undefined ? "" : `\n\n${defaultCoderLine(label)}`;
+            return { harnessReadiness: `${formatHarnessReadiness(entries)}${named}\n\n${READINESS_GUIDANCE}` };
+          },
         ],
       },
       default: ["context"],

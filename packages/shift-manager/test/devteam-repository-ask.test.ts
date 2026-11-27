@@ -70,7 +70,7 @@ async function open(): Promise<Lab> {
   opened = await openLab({
     modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-repository-ask-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
@@ -151,7 +151,7 @@ async function answer(lab: Lab, asked: { requestId: string; suspension: Suspensi
   throw new Error("the answered request never finished");
 }
 
-/** The stored project rows, by id. */
+/** The stored project entries, by id. */
 async function projects(lab: Lab): Promise<Record<string, { repository?: string | null; brief?: string | null }>> {
   const rows = await lab.stored("org", "");
   return Object.fromEntries(

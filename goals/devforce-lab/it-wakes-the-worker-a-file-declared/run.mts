@@ -43,8 +43,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { installWorkers, loadFixture, readTree, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   LAB_ORG_ID,
   LAB_TREE,
@@ -57,6 +56,8 @@ import {
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -120,8 +121,6 @@ const HARNESS_PACKAGES = [
   "@flow-state-dev/codex",
   "@flow-state-dev/cursor",
 ] as const;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sameSet = (seen: readonly string[], wanted: readonly string[]): boolean =>
   seen.length === wanted.length && [...seen].sort().join(",") === [...wanted].sort().join(",");
@@ -210,17 +209,17 @@ function controlOptions(): Partial<OpenLabOptions> {
 interface OpenedLab {
   lab: Lab;
   runs: StubRun[];
-  workspace: { root: string; sourceRepo: string; baseRef: string };
+  workspace: { root: string; repo: string; baseRef: string };
 }
 
 /** Open a lab over throwaway stores and a throwaway git repository. */
 async function open(label: string, over: Partial<OpenLabOptions> = {}): Promise<OpenedLab> {
   const dirs = createScratchRepo(label);
   const stub = harnessStub(stubOptions());
-  const workspace = { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF };
+  const workspace = { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF };
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     workspace,
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
@@ -478,8 +477,9 @@ await runGoal(async (failures) => {
       if (filedTaskId === undefined || filedRow?.id !== filedTaskId) {
         note(`the EM seat filed row "${filedTaskId}", and the row naming ${fixture.row.issue} is "${filedRow?.id}"`);
       }
-      if (JSON.stringify(filedRow?.input) !== JSON.stringify({ harnessFeature: { issue: fixture.row.issue, phase: fixture.row.phase } })) {
-        note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its issue and phase`);
+      const filedInput = filedRow?.input as { mode?: unknown; issue?: unknown } | undefined;
+      if (filedInput?.mode !== fixture.row.phase || filedInput?.issue !== fixture.row.issue) {
+        note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its mode and issue`);
       }
 
       const drained = await lab.drain(fixture.coordinatorSeat);
@@ -553,25 +553,30 @@ await runGoal(async (failures) => {
         // against a path this check spelled, so a change to that derivation
         // moves both sides together and the claim stays about the run's cwd
         // being THE derived checkout.
-        const expected = checkoutPathFor(workspace, {
+        const expected = checkoutPathFor(workspace.root, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
           epic,
           issue: row?.id ?? "",
           phase: PHASE,
+          // The run is named from its task: its title, led by the issue it names.
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (run.cwd !== expected) {
           note(`the run's cwd was ${run.cwd}, wanted the derived checkout ${expected}`);
         }
-        if (run.cwd === workspace.root || run.cwd === workspace.sourceRepo) {
+        if (run.cwd === workspace.root || run.cwd === workspace.repo) {
           note(`the run was given the host's own directory rather than a checkout of its own`);
         }
         // Injective over its components — a redistribution of characters
         // between the issue and the phase must not land in the same tree.
-        const shifted = checkoutPathFor(workspace, {
+        const shifted = checkoutPathFor(workspace.root, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
           epic,
           issue: (row?.id ?? "").slice(0, -1),
           phase: `${(row?.id ?? "").slice(-1)}-${PHASE}`,
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (shifted === expected) {
           note(`two different (issue, phase) pairs derive one checkout: ${expected}`);
@@ -644,8 +649,8 @@ await runGoal(async (failures) => {
     const stub = harnessStub({ finalMessage: "I ran out of room." });
     const lab = await openLab({
       stores: inMemoryStores(),
-      harness: stub.slot,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      harnesses: [readyHarness(stub.slot)],
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: fixture.assignedSeat,
       logger: silentLogger,
       withoutJudge: true,
@@ -695,8 +700,8 @@ await runGoal(async (failures) => {
         "---\nassignees: [eng.reviewer]\n---\n\nA board declared as a file. Nothing walks this.\n",
       );
     });
-    const real = await readDeclaredRoster(LAB_TREE);
-    const withDecoy = await readDeclaredRoster(decoyed);
+    const real = await readTree(LAB_TREE);
+    const withDecoy = await readTree(decoyed);
     const shape = (tree: typeof real): string =>
       JSON.stringify([
         tree.workers.map((w) => w.id).sort(),
@@ -705,14 +710,18 @@ await runGoal(async (failures) => {
     if (shape(real) !== shape(withDecoy)) {
       note(`a boards/ folder changed what the tree produced: ${shape(withDecoy)}`);
     }
-    // The other half of the same rule: an unwalked folder is neither a record
-    // nor an ERROR. Reading through the shared export rather than a helper that
-    // throws on any problem is what makes this sayable at all.
-    if (withDecoy.problems.length > 0) {
-      note(
-        `a boards/ folder produced ${withDecoy.problems.length} problem(s): ` +
-          withDecoy.problems.map((p) => `${p.layer} ${p.path}`).join(", "),
-      );
+    // The other half of the same rule: an unwalked folder is no record, and the
+    // app says so. Every file in a workforce folder is used or refused at start,
+    // by path, so the board file stops the start, named, rather than loading as
+    // nothing in silence.
+    const started = await installWorkers(decoyed).then(
+      () => undefined,
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    if (started === undefined) {
+      note("the app started on a tree holding a boards/ folder: nothing refused the board declared as a file");
+    } else if (!started.includes("teams/eng/boards")) {
+      note(`the start refused the tree, but not by the boards/ folder: ${started.slice(0, 300)}`);
     }
     // And the positive half, without which "it changed nothing" is equally
     // true of a loader that reads nothing at all: the workers/ folder beside
@@ -747,7 +756,7 @@ await runGoal(async (failures) => {
         );
       }
       evidence.push(
-        `a boards/ folder loads as nothing while the workers/ folder beside it loads, and an ` +
+        `a boards/ folder loads as nothing, and the app's start refuses it by path, while the workers/ folder beside it loads, and an ` +
           `org-less read is refused at the transport door while the same read through the same ` +
           `door, carrying a verified bearer, lands with the seat's own facts`,
       );

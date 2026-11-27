@@ -9,7 +9,7 @@
  *   layers the coordinator may cancel (FIX-2541 D1, epic ER-6). Not pass/fail:
  *   the evidence lists the cells, and an app with no sheet is a failure.
  * - **wrap**: every ask passes 3 of 3 in every app it counts in, and the
- *   sweep finds no date, "done" or length guidance an app wrote in its own
+ *   sweep finds no date or "done" guidance an app wrote in its own
  *   WORKER.md files (epic ER-3). The sweep is reported on every pass.
  *
  * On every pass, before the pass's own rule: every cell the pass counts must
@@ -104,7 +104,7 @@ await runGoal((failures, tell) => {
   const evidence = [
     `${p.pass} pass on ${p.describe}, models ${models || "(no sheets)"}: ${cells.length} cells`,
     ...rows.map((r) => `${r.ask}: ${r.per}${p.pass === "cut" ? (cut.includes(r.ask) ? " → passes everywhere (its layer may be cut)" : " → keeps its layer") : ""}`),
-    `sweep: ${swept.length === 0 ? "no app-written date, done or length guidance" : swept.join("; ")}`,
+    `sweep: ${swept.length === 0 ? "no app-written date or done guidance" : swept.join("; ")}`,
   ];
   return { failures, evidence: evidence.join("\n") };
 });

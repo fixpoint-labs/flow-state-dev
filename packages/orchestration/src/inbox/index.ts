@@ -3,8 +3,8 @@
  * `@flow-state-dev/orchestration/inbox` — the Inbox: one item type over what
  * holds a task for the user, and the one call that answers it.
  *
- * **One item type.** An item is one task row's open holds for the user, or a
- * suspension for the user in a request with no task row. Each hold says where
+ * **One item type.** An item is one task's open holds for the user, or a
+ * suspension for the user in a request with no task. Each hold says where
  * its answer goes and whether the Inbox can answer it; an item is answerable
  * when one of its holds is. {@link createInboxClient}'s `answer` routes each
  * hold by its source: a suspension to the engine's answer route
@@ -17,6 +17,8 @@
  * and cancels, steers, releases, retries and re-files its tasks through the
  * board's own actions. {@link taskActionName} is the one place an
  * app gets a board action's name, for a reader that builds a row's holder.
+ * {@link taskListViewRef} names a board's task list as a view, for a screen
+ * that watches it.
  *
  * **Where an item comes from.** A task run's stop lists under its row, never
  * from the run's session on its own. A suspension the reader found in a
@@ -30,15 +32,21 @@
 export {
   createInboxClient,
   taskActionName,
+  taskListViewRef,
   type BoardActions,
+  type BoardTaskRead,
   type BoardAt,
   type InboxClient,
   type RefileOverrides,
   type RefiledTask,
   type TaskActionTool,
 } from "./client";
+// A board's task-list view, as `taskListViewRef` types it (FIX-2623).
+export type { TaskListView } from "../skills/views/task-list-view";
 export { inboxItems } from "./list";
-// One task row as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
+// A suspension hold's id: its request and its suspension (FIX-2850).
+export { suspensionHoldId } from "./holds";
+// One task as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
 export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";

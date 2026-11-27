@@ -65,7 +65,7 @@ async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
 }
 
 async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
-  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "data" && item.dataType === "workforce:received").map((item) => item.value);
 }
 
 async function toolOutputs(h: BoardHost, sessionId: string): Promise<string[]> {

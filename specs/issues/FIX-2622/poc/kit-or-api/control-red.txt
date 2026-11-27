@@ -1,0 +1,2 @@
+RED (as required) for control:
+the served flow ids aren't today's: served [agent, harness-readiness, teammates-coder, workforce-roster], today serves [agent, harness-readiness, lab-context, teammates-coder, workforce-roster]

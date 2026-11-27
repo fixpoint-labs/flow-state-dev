@@ -9,7 +9,7 @@
  * show under it, and the session must get a title of its own. Then an ask for
  * work: a thread for `desk.thread` must be filed. Every signal reads the
  * rendered page or the server's own records (the board's `listTasks`, the
- * session's title); never the adapter or React state.
+ * session's title); never the lab's hooks or React state.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants its change for
  * the run and puts it back:
@@ -20,8 +20,8 @@
  * Run: pnpm tsx goals/claude-code-style-lab/answers-a-focus-line/run.mts
  */
 import { join } from "node:path";
-import { createClient } from "@flow-state-dev/client";
-import { taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
+import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import { goalTmpDir, loadFixture, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB, labCheckout, makeRepository, plant, sleep, startLab, until, type Plant } from "../lab.mts";
@@ -64,7 +64,7 @@ async function mainThread(page: import("playwright").Page) {
   return page.evaluate(() => {
     const thread = document.querySelector('main[aria-label="Main thread"]');
     return {
-      user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.parentElement?.textContent ?? "").trim()),
+      user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.closest("[data-request-id]")?.textContent ?? "").trim()),
       replies: [...(thread?.querySelectorAll('[data-entry="assistant"]:not([data-incomplete])') ?? [])].map((el) => (el.textContent ?? "").trim()),
       cards: [...(thread?.querySelectorAll('[data-entry="thread"]') ?? [])].length,
       rows: [...document.querySelectorAll('aside[aria-label="Tasks"] [data-task-id]')].length,
@@ -84,9 +84,14 @@ await runGoal(async (failures, tell) => {
     const repo = makeRepository(join(scratch, "repo"));
     lab = await startLab(join(scratch, "data"), USER, { CLAUDE_CODE_STYLE_REPOSITORIES: repo });
     const fsd = createClient({ userId: USER, baseUrl: lab.origin });
+    // The board's task-list view; a board it refuses (none yet) has no rows.
     const rowsOf = async (sessionId: string): Promise<any[]> => {
-      const listed = await fsd.flow(FLOW).read<{ ok: boolean; tasks: any[] }>(taskActionName("listTasks", "tasks"), {}, { sessionId });
-      return listed.ok ? listed.tasks : [];
+      try {
+        return (await fsd.view(taskListViewRef(FLOW, "tasks"), {}, { sessionId })).value;
+      } catch (error) {
+        if (error instanceof ClientHttpError && error.status === 422) return [];
+        throw error;
+      }
     };
     /** Whether a turn of the session is still running. */
     const busy = async (sessionId: string) => (await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).length > 0;

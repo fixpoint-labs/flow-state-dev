@@ -21,16 +21,18 @@
 import path from "node:path";
 import {
   IGNORED_ENTRIES,
-  PACKAGES_SLOT,
-  WORKERS_LEVEL,
   classify,
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+} from "@flow-state-dev/engine/folder";
+import {
+  PACKAGES_SLOT,
+  WORKERS_LEVEL,
   validateSegment,
   walkTeams,
-} from "../loader";
+} from "../loader/readers";
 import { BLOCKS_SLOT, readBlocksSlot } from "./discover-worker-blocks";
 
 /** Where a package's blocks may sit, as the command reports it. */
@@ -73,7 +75,7 @@ export interface PackageBlockDiscovery {
  * @throws If the root is symlinked, missing or unreadable.
  */
 export async function discoverPackageBlocks(root: string): Promise<PackageBlockDiscovery> {
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   const packageBlocks: DiscoveredPackageBlock[] = [];
   const problems: string[] = [];

@@ -94,25 +94,7 @@ const recordLayers = handler({
   }
 });
 
-const clientView = {
-  derived: {
-    ran: (ctx: {
-      state: {
-        team?: string | null;
-        teamKeyPresent?: boolean | null;
-        own?: string | null;
-        desk?: string | null;
-        runs?: number;
-      };
-    }) => ({
-      team: ctx.state.team ?? null,
-      teamKeyPresent: ctx.state.teamKeyPresent ?? null,
-      own: ctx.state.own ?? null,
-      desk: ctx.state.desk ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
+const clientView = { expose: ["team", "teamKeyPresent", "own", "desk", "runs"] as const };
 
 /**
  * Composes the contract. No model, no generator — handlers only. One copy runs

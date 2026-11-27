@@ -15,7 +15,6 @@
  */
 import { randomBytes, randomInt } from "node:crypto";
 import type { Browser } from "playwright";
-import { harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import type { Install } from "./install.mts";
 import { rowsOf, sessionOn } from "./milestone.mts";
 import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, type RosterEntry, type SessionSummary } from "./people.mts";
@@ -24,12 +23,12 @@ import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterR
 import { isRoutedTask } from "../../lib/routed-tasks.mts";
 import type { StoredItem } from "../../lib/shift-manager.mts";
 import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession, type StoredTask } from "./store.mts";
+import { sleep } from "../../lib/time.mts";
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
 const pick = <T,>(xs: readonly T[]): T => xs[randomInt(xs.length)]!;
 const word = () => pick(WORDS);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (v: unknown) => JSON.stringify(v)?.slice(0, 400);
 /** Whether a collection row's topic names `id`: the bare id, or a path ending in it. */
 const named = (topic: string, id: string) => topic === id || topic.endsWith(`/${id}`);
@@ -153,9 +152,9 @@ async function quiet(store: string, timeoutMs = 240_000, graceMs = 5_000): Promi
 /** The `coordinator-route` records for one post. */
 async function routingOf(who: Connected, sessionId: string, messageRequestId: string | null): Promise<Array<Record<string, any>>> {
   if (messageRequestId === null) return [];
-  return (await who.routes.items(sessionId, "component"))
-    .filter((i) => (i as { component?: string }).component === "coordinator-route")
-    .map((i) => i.data as Record<string, any>)
+  return (await who.routes.items(sessionId, "data"))
+    .filter((i) => (i as { dataType?: string }).dataType === "coordinator-route")
+    .map((i) => i.value as Record<string, any>)
     .filter((d) => d?.messageRequestId === messageRequestId);
 }
 
@@ -636,8 +635,11 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (filed.length === 0) r.fail("b5", "no task row sits on the workstream session's board");
         const coderish = filed.filter((t) => t.assignee === "eng.coder" || t.assignee === "eng.reviewer");
         if (coderish.length !== filed.length) r.fail("b5", `a task's assignee isn't a DevTeam standard worker: ${show(filed.map((t) => t.assignee))}`);
-        const named = filed.filter((t) => harnessFeatureOf(t.input) !== undefined);
-        if (named.length !== filed.length) r.fail("b5", `a task names no issue and phase: ${show(filed.map((t) => t.input))}`);
+        const named = filed.filter((t) => {
+          const input = t.input as { mode?: unknown; issue?: unknown } | undefined;
+          return input?.mode === "implement" && typeof input.issue === "string";
+        });
+        if (named.length !== filed.length) r.fail("b5", `a task names no mode and issue: ${show(filed.map((t) => t.input))}`);
         const unsettled = filed.filter((t) => !["completed", "errored", "cancelled", "failed"].includes(t.status));
         if (unsettled.length > 0) r.fail("b5", `task(s) never ended: ${show(unsettled.map((t) => `${t.id}:${t.status}`))}`);
         // What the session heard: the notices sent into it, not the lead's own replies that name a task.

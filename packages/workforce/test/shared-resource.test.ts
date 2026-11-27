@@ -81,14 +81,14 @@ const sharerFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    respond: { inputSchema: writeInput, block: share, userMessage: (i: { message: string }) => i.message },
-    unsigned: { inputSchema: writeInput, block: unsigned },
-    selfSigned: { inputSchema: writeInput, block: selfSigned }
+    respond: { block: share, userMessage: (i: { message: string }) => i.message },
+    unsigned,
+    selfSigned
   }
 });
 
 /** An app flow no worker runs on: a user writing through the app. */
-const appFlow = defineFlow({ kind: "app", actions: { share: { inputSchema: writeInput, block: share } } });
+const appFlow = defineFlow({ kind: "app", actions: { share } });
 
 async function withRuntime(
   flows: FlowInstance[],
@@ -103,7 +103,7 @@ async function withRuntime(
   ) => Promise<void>
 ) {
   const state = createFlowState({
-    flows: Object.fromEntries(flows.map((flow) => [flow.id, flow])),
+    flows: flows,
     stores: { default: { primary: inMemoryStores() } }
   });
   try {
@@ -174,10 +174,10 @@ describe("a shared resource", () => {
       kind: "worker-id-app",
       configSchema: z.object({ workerId: z.string() }),
       session: { stateSchema: z.object({ workerId: z.string().optional() }) },
-      actions: { share: { inputSchema: writeInput, block: share } }
+      actions: { share }
     })({ id: "worker-id-app", config: { workerId: "research.scout" } }) as unknown as FlowInstance;
     const state = createFlowState({
-      flows: { "worker-id-app": workerIdFlow },
+      flows: [workerIdFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     try {
@@ -250,7 +250,7 @@ describe("a shared resource", () => {
         return { message: JSON.stringify(entry.state) };
       }
     });
-    const readerFlow = defineFlow({ kind: "reader", actions: { read: { inputSchema: writeInput, block: reader } } })();
+    const readerFlow = defineFlow({ kind: "reader", actions: { read: reader } })();
     await withRuntime([worker, readerFlow], async (run) => {
       await run(worker, "respond", "alice", { message: "for everyone", key: "everyone" });
       const read = await run(readerFlow, "read", "bob", { message: "", key: "everyone" });

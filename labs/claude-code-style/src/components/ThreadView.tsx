@@ -1,13 +1,13 @@
-import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
+import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
-import type { LabAdapter, LabTask } from "../adapter";
-import { useWatch } from "../lib/use-watch";
-import { useDraftSend } from "../lib/use-draft-send";
-import { Entry } from "./Entry";
+import { pullRequestLinks, useApp, useTaskWork, type CodingBoardTask } from "../app";
+import { useLines, WorkLines } from "./lines";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
+import { AcceptButtons, useReviewAccept } from "./ReviewAccept";
+import { LandedOutcome } from "./flow-state/review-hold";
 import { SessionOverlay } from "./flow-state/session-overlay";
-import { WorkingLine } from "./WorkingLine";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
 import { TaskActions } from "./flow-state/task-actions";
@@ -18,8 +18,8 @@ import { HarnessTag, PULL_REQUEST_HINT, PullRequestOpen, statusColumn, statusLin
  * One task, as a sheet over the main thread, the same flyout session mode's
  * background tasks open in. Its work reads the task's run session. You can
  * talk inside a task (spec D3): your line is a steer on it, and answers its
- * open question when it has one. When it is ready for review, *Resolve*
- * accepts it and *Request changes* sends your words back. Under the header,
+ * open question when it has one. When it is ready for review, the accept
+ * lands it and *Request changes* sends your words back. Under the header,
  * the task's action row: Cancel and Release while it is open, Retry once it
  * failed or was cancelled, and Pin beside them. It has no Steer box, since the
  * composer steers. A task waiting on its pull request says *PR open · #7*,
@@ -27,53 +27,59 @@ import { HarnessTag, PULL_REQUEST_HINT, PullRequestOpen, statusColumn, statusLin
  * request again. A failed task's error shows as an error. A finished task's
  * composer is off. Cmd+Enter (Ctrl+Enter) does what the box's main button
  * does: answer or send, or request changes when it is ready for review. Plain
- * Enter is a new line.
+ * Enter is a new line. When it is ready for review, the accept offers the ways
+ * the review lists its work can land, *Open a PR* and *Merge locally*, or a plain
+ * *Resolve* when none is listed. Where the work landed shows under the header.
  */
 export function ThreadView({
-  adapter,
   sessionId,
   task,
   pinned,
+  dismissed = false,
   onClose,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
-  task: LabTask;
+  task: CodingBoardTask;
   pinned: boolean;
+  /** You dismissed this failed attempt: it no longer waits on you. */
+  dismissed?: boolean;
   onClose: () => void;
 }) {
-  const work = useWatch(
-    (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
-    [adapter, sessionId, task.id],
-  );
+  const lab = useApp();
+  const work = useTaskWork(task);
+  const lines = useLines(work?.items);
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
   const column = statusColumn(task);
-  const question = task.openHold && task.openHold.kind !== "review" ? task.openHold : undefined;
+  // The question it waits on you for, if its first open ask is one and not a review.
+  const prompt = task.asks[0]?.ask.kind === "review" ? undefined : task.asks[0]?.ask.prompt;
+  const question = prompt === undefined ? undefined : { prompt };
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
-  // Resolve and a send share the composer: nothing else goes while one is on its way.
-  const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
-  const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
-  const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
-  const held = sending || resolve.busy;
+  // Accept and a send share the composer: nothing else goes while one is on its way.
+  const accept = useReviewAccept(sessionId, task, work);
+  const pin = useSubmit(() => (pinned ? lab.unpin(task.id) : lab.pin(task.id)));
+  const dismiss = useSubmit(() => lab.dismiss(task));
+  const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
+  // The composer holds while a send or an accept is on its way. Readiness gates only the review's own buttons: a working thread still takes a steer or an answer.
+  const held = sending || accept.waiting;
 
   // Your words stay in the box until they land; a failed send says why, with Retry.
   const say = (event?: FormEvent) => {
     event?.preventDefault();
-    if (resolve.busy) return;
+    if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return adapter.sayInThread(sessionId, task.id, line);
+      return lab.sayInThread(sessionId, task, line);
     });
   };
   const requestChanges = () => {
-    if (resolve.busy) return;
+    if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return adapter.requestChanges(sessionId, task.id, line);
+      return lab.requestChanges(sessionId, task, line, work?.reviewStop);
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -101,6 +107,17 @@ export function ThreadView({
         <>
           {/* No Steer box: the composer below steers the task. */}
           <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
+          {/* A failure waits on you until you retry it or dismiss it. */}
+          {task.status === "errored" && !dismissed ? (
+            <button
+              type="button"
+              disabled={dismiss.busy}
+              onClick={() => void dismiss.submit(undefined)}
+              className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-40"
+            >
+              {dismiss.busy ? "Dismissing…" : "Dismiss"}
+            </button>
+          ) : null}
           <button
             type="button"
             aria-pressed={pinned}
@@ -137,7 +154,7 @@ export function ThreadView({
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
-                className="block w-full resize-none rounded-lg border border-border/60 bg-card px-3 py-2 text-sm outline-none focus:border-ring"
+                className="block w-full resize-none rounded-lg border border-border/60 bg-card px-3 py-2 text-base outline-none focus:border-ring"
               />
               {failure !== undefined ? (
                 <p role="alert" className="mt-1 text-xs text-destructive">
@@ -147,23 +164,16 @@ export function ThreadView({
                   </button>
                 </p>
               ) : null}
-              {resolve.error === undefined ? null : (
+              {accept.error === undefined ? null : (
                 <p role="alert" className="mt-1 text-xs text-destructive">
-                  Couldn't resolve: {resolve.error}
+                  Couldn't resolve: {accept.error}
                 </p>
               )}
               <div className="mt-2 flex justify-end gap-1.5">
                 {column === "review" ? (
                   <>
-                    <button
-                      type="button"
-                      disabled={held}
-                      onClick={() => void resolve.submit(undefined)}
-                      className="rounded-md bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
-                    >
-                      {resolve.busy ? "Resolving…" : "Resolve"}
-                    </button>
-                    <button type="button" disabled={!words || held} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
+                    <AcceptButtons lands={accept.lands} failed={accept.failed} openPullRequest={accept.openPullRequest} disabled={held || !accept.ready} busy={accept.waiting} onAccept={accept.accept} />
+                    <button type="button" disabled={!words || held || !accept.ready} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
                       Request changes
                     </button>
                   </>
@@ -178,31 +188,35 @@ export function ThreadView({
         </div>
       }
     >
+      {dismiss.error === undefined ? null : (
+        <p role="alert" className="text-xs text-destructive">
+          Couldn't dismiss: {dismiss.error}
+        </p>
+      )}
       {pin.error === undefined ? null : (
         <p role="alert" className="text-xs text-destructive">
           Couldn't {pinned ? "unpin" : "pin"}: {pin.error}
         </p>
       )}
-      {task.status === "errored" && task.error !== undefined ? (
+      {task.status === "errored" && task.error != null ? (
         <div role="alert" className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
       {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
-      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : waitsOnPullRequest(task) ? (
-        <PullRequestOpen task={task} className="block" />
+      {column === "review" || (task.status === "errored" && task.error != null) ? null : waitsOnPullRequest(task) ? (
+        <PullRequestOpen pullRequests={pullRequestLinks(task, work)} className="block" />
       ) : (
         <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>
       )}
+      {task.landed == null ? null : <LandedOutcome landed={task.landed} />}
       <LoadEarlier load={work?.loadEarlier} />
-      {work?.entries.map((entry) => (
-        <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
-      ))}
-      {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. Resolve and the request for changes stay under it. */}
+      <WorkLines lines={lines} mine={feed.mine} />
+      {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. The accept and the request for changes stay under it. */}
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
-        <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+      {task.status === "in_progress" && task.asks.length === 0 && !waitsOnPullRequest(task) ? (
+        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>
   );

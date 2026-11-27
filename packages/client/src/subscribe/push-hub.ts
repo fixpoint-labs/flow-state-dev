@@ -34,6 +34,8 @@ import {
   type WireNotice,
   type WireTopic
 } from "@flow-state-dev/contracts";
+import { noticeIdsOf, noticePartitionOf } from "@flow-state-dev/contracts/types/push-delivery";
+import { covers } from "@flow-state-dev/contracts/types/view-hearing";
 import { BACKOFF_INITIAL_MS, backoffDelay } from "../internal/backoff";
 import type { Transport } from "../internal/http";
 import type { FlowCapabilities } from "../types";
@@ -109,14 +111,17 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
   if (topic.resource !== undefined && typeof topic.resource !== "string") return undefined;
   const scoped =
     topic.scope === "session" ? typeof topic.id === "string" : topic.scope === "user" || topic.scope === "org";
-  return scoped ? (frame as PushServerFrame) : undefined;
-}
-
-/** Whether `subscribed` covers a notice under `heard`. */
-function covers(subscribed: WireTopic, heard: WireTopic): boolean {
-  if (subscribed.scope !== heard.scope) return false;
-  if (subscribed.scope === "session" && heard.scope === "session" && subscribed.id !== heard.id) return false;
-  return subscribed.resource === undefined || subscribed.resource === heard.resource;
+  if (!scoped) return undefined;
+  // FIX-2625: ids that aren't a list of strings are dropped, never the notice (`noticeIdsOf`).
+  // FIX-2750: so is a partition that isn't a string: with none, every board reads.
+  const { ids, partition, ...notice } = frame;
+  const named = noticeIdsOf(ids);
+  const key = noticePartitionOf(partition);
+  return {
+    ...notice,
+    ...(named !== undefined ? { ids: named } : {}),
+    ...(key !== undefined ? { partition: key } : {})
+  } as PushServerFrame;
 }
 
 /** The hub one client holds. */

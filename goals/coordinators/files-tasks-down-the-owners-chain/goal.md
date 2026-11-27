@@ -34,6 +34,8 @@
 
 **Before-state:** `GOAL_COMMIT=84e9e072e` is `main` just before FIX-1794's second PR merged (#2935, merge `1854a84f0`). Every leg must fail there.
 
+Since FIX-2627 the goal-local Lab (`lab/fsdev.config.mts`, legs a, c and d) installs Workforce as its kit, so this before-state can't run from it: a commit without `@flow-state-dev/workforce/kit` doesn't start. The FAIL rows below stay as history. `GOAL_CONTROL=unpartitioned` (leg c) and `GOAL_CONTROL=no-follow-up` (legs a and e) are the runnable controls that replace it.
+
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|

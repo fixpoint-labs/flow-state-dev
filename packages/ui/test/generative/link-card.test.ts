@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { emitLinkCardTool, LinkCardSchema } from "../../src/generative/tools";
 import { runForTest } from "../helpers";
 function makeCtx() {
-  const emitComponent = vi.fn();
+  const emitData = vi.fn();
   return {
-    ctx: { emit: { component: emitComponent } } as any,
-    emitComponent,
+    ctx: { emit: { data: emitData } } as any,
+    emitData,
   };
 }
 
@@ -19,9 +19,9 @@ describe("emitLinkCardTool", () => {
     expect(block.description).toMatch(/DO NOT USE FOR/);
   });
 
-  it("emits a link-card component item keyed by url by default", async () => {
+  it("emits a link-card data item keyed by url by default", async () => {
     const block = emitLinkCardTool();
-    const { ctx, emitComponent } = makeCtx();
+    const { ctx, emitData } = makeCtx();
 
     const input = {
       url: "https://example.com/article",
@@ -32,7 +32,7 @@ describe("emitLinkCardTool", () => {
 
     const output = await runForTest(block, input as any, ctx);
 
-    expect(emitComponent).toHaveBeenCalledWith(
+    expect(emitData).toHaveBeenCalledWith(
       "link-card",
       input,
       { key: "https://example.com/article" }

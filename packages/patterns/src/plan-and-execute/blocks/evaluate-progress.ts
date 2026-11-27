@@ -29,7 +29,7 @@ import {
   iterationOutputSchema,
   planAndExecuteStateSchema,
 } from "../schemas";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import { TASK_BOARD_META_DATA_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export const evaluatorOutputSchema = z
   .object({
@@ -115,8 +115,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
     outputSchema: iterationOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous = ctx.sequencer!.state.iteration ?? 0;
-      const iteration = previous + 1;
+      const iteration = ctx.sequencer!.state.iteration + 1;
       await ctx.sequencer!.patchState({ iteration });
 
       if (iteration >= maxIterations) {
@@ -243,8 +242,7 @@ export function createEvaluateProgress(
     outputSchema: evaluatorPreflightSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (_input, ctx) => {
-      const previous = ctx.sequencer!.state.iteration ?? 0;
-      const iteration = previous + 1;
+      const iteration = ctx.sequencer!.state.iteration + 1;
       await ctx.sequencer!.patchState({ iteration });
 
       if (iteration >= options.maxIterations) {
@@ -275,10 +273,10 @@ export function createEvaluateProgress(
     execute: async (verdict, ctx) => {
       if (verdict.decision !== "replan") return;
       await ctx.sequencer!.patchState({ status: "replanning" });
-      ctx.emit.component(
-        TASK_BOARD_META_COMPONENT_TYPE,
+      ctx.emit.data(
+        TASK_BOARD_META_DATA_TYPE,
         { collectionId, status: "replanning" },
-        { key: collectionId },
+        { key: collectionId, itemVisibility: { client: true, history: false } },
       );
     },
   });

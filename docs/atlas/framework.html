@@ -1328,7 +1328,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>message</code></td><td>generator (auto), <code>emit.message()</code></td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
       <tr><td><code>reasoning</code></td><td>generator (auto, CoT models)</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
       <tr><td><code>tool_output</code></td><td>generator, per invocation</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
-      <tr><td><code>component</code></td><td><code>emit.component()</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent, keyed upsert per <code>(requestId, key)</code></td></tr>
+      <tr><td><code>data</code></td><td><code>emit.data()</code></td><td class="ctr">✓ (cfg)</td><td class="ctr">— (cfg)</td><td>persistent, keyed upsert per <code>(requestId, key)</code>; drawn only through a <code>data</code> renderer</td></tr>
       <tr><td><code>container</code></td><td>sequencer / router with <code>container</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
       <tr><td><code>source</code></td><td>generator, provider-native tools</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
       <tr><td><code>status</code></td><td><code>emit.status()</code>, <code>activeStatusMessage</code></td><td class="ctr">✓</td><td class="ctr">—</td><td><strong>always transient</strong>, single request-scoped slot</td></tr>
@@ -1873,7 +1873,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>node</code></td><td>Long-lived process</td><td>Serve an FSD server in one call. 731 lines.</td></tr>
       <tr><td><code>next</code></td><td>Catch-all route</td><td>61 lines across 2 files — nearly all the work is done by <code>createFlowApiRouter</code>.</td></tr>
       <tr><td><code>vercel</code></td><td>Serverless</td><td>SSE shaping, heartbeats, runtime config. Depends on <code>store-postgres</code>.</td></tr>
-      <tr><td><code>bullmq</code></td><td>Queue + workers</td><td>Durable background jobs, native cron, full-flow worker dispatch. Three topologies: <code>colocated</code>, <code>dispatch-only</code>, <code>worker-only</code>.</td></tr>
+      <tr><td><code>bullmq</code></td><td>Job queue</td><td>Durable background jobs, native cron, full-flow job queue dispatch. Three topologies: <code>colocated</code>, <code>enqueue-only</code>, <code>process-only</code>.</td></tr>
     </tbody>
   </table></div>
 
@@ -1898,15 +1898,15 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td>custom dispatcher with <code>dispatchLocal</code></td><td>this process</td><td>registered here</td><td>no</td><td>yes, bounded</td></tr>
       <tr><td>custom dispatcher, external</td><td>wherever it routes</td><td>whatever that dispatcher confirms</td><td>its answer, not ours</td><td>no — never tracked</td></tr>
       <tr><td><code>colocated</code></td><td>a worker, possibly this one</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>claimed job: yes, <em>unbounded</em></td></tr>
-      <tr><td><code>dispatch-only</code></td><td>another container</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>no</td></tr>
-      <tr><td><code>worker-only</code></td><td>this process</td><td>registered here</td><td><strong>no</strong> — the trap</td><td>bounded for children, unbounded for a claimed job</td></tr>
+      <tr><td><code>enqueue-only</code></td><td>another container</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>no</td></tr>
+      <tr><td><code>process-only</code></td><td>this process</td><td>registered here</td><td><strong>no</strong> — the trap</td><td>bounded for children, unbounded for a claimed job</td></tr>
       <tr><td>no dispatch seam</td><td>nowhere</td><td><code>NoDispatchSeamError</code></td><td>—</td><td>—</td></tr>
     </tbody>
   </table></div>
 
   <div class="note">
     <span class="lbl">The one that bites</span>
-    <p><code>worker-only</code> is the natural place to start durable jobs and the one place they silently aren't durable: the mode consumes the queue and dispatches nothing, so a hand-off there runs the child in the worker process and enqueues nothing. A crash loses the run outright rather than costing a retry. The docs are explicit that running it in-process there is the honest interim answer, not a guarantee — for the queue to own the work, dispatch it from <code>colocated</code> or <code>dispatch-only</code>.</p>
+    <p><code>process-only</code> is the natural place to start durable jobs and the one place they silently aren't durable: the mode consumes the queue and dispatches nothing, so a hand-off there runs the child in the processing process and enqueues nothing. A crash loses the run outright rather than costing a retry. The docs are explicit that running it in-process there is the honest interim answer, not a guarantee — for the queue to own the work, dispatch it from <code>colocated</code> or <code>enqueue-only</code>.</p>
   </div>
 
   <p>Two different waits hide behind <code>dispose()</code>, and only one is bounded. The in-process child-session drain races <code>dispatchDrainTimeoutMs</code>; separately, <code>dispose()</code> awaits the worker handle, which for BullMQ is a non-forced <code>Worker.close()</code> that waits for whatever jobs the process has claimed, with no framework budget over it. <strong>Size the platform's kill timeout for the longest job, not for <code>dispatchDrainTimeoutMs</code>.</strong></p>

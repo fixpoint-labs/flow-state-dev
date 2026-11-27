@@ -22,31 +22,27 @@
  *   reported as a model's.
  * - **`codex`** / **`cursor`**: Codex or Cursor through its SDK, each handed
  *   only its own environment pass-list (`CODEX_PASS`, `CURSOR_PASS`). Neither
- *   is asked for a sign-in at start: a run with none fails, and says why, in
- *   the run itself. Neither takes the project's MCP servers the Lab relays,
- *   nor reports usage windows.
+ *   takes the project's MCP servers the Lab relays, nor reports usage windows.
  *
  * That one is the default coder, for every worker naming no harness.
- * Every real run may take {@link RUN_MINUTES_ENV} minutes,
+ * Every run may take {@link RUN_MINUTES_ENV} minutes,
  * {@link DEFAULT_RUN_MINUTES} by default.
  *
  * An unknown value is refused at startup rather than read as the default.
  * Either way, a start that goes ahead prints one line naming the coder.
  *
- * Whether Claude Code can run here never stops a start: {@link startHarness}
- * logs its readiness and what to do when it can't, and the Lab serves the
- * same rows on the projects flow's `harnessReadiness` action. Claude Code is
- * checked whichever coder runs, since the Error Reporter runs on it too.
- *
- * A `coder` worker that names a harness in its `harness` setting
- * (`claude-code`, `codex` or `cursor`) runs on that one instead:
- * {@link workerHarnesses} is the set a hire picks from.
+ * **One list.** {@link startHarness} hands the Lab all four as harness
+ * values: the harness kit's coder runs on them and its readiness view lists
+ * the same ones. A `coder` worker that names one in its `harness` setting
+ * runs on that one instead of the default. Whether a harness can run here
+ * never stops a start: the kit logs its readiness, with what to do when it
+ * can't, and refuses a task on it at once, saying why.
  */
 
 import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code";
-import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
+import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core/harness";
-import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
+import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   mcpCredentialsCapability,
   projectWorkspaceCapability,
@@ -54,13 +50,8 @@ import {
   type ProjectMcpToolsResolver,
 } from "@flow-state-dev/workforce";
 import type { HarnessBlock, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
-import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
-import {
-  formatHarnessReadiness,
-  harnessReadiness,
-  scriptedHarness as sharedScriptedHarness,
-  type HarnessReadinessRead,
-} from "@flow-state-dev/harness-manager";
+import type { Harness, HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/core/harness";
+import { scriptedHarness as sharedScriptedHarness } from "@flow-state-dev/harness-manager";
 
 /** What the scripted run does where it works; harness-manager's, re-exported for this tree's checks. */
 export { commitScriptedWork } from "@flow-state-dev/harness-manager";
@@ -83,10 +74,11 @@ export interface HarnessFeeds extends ManagerHarnessFeeds {
   mcpTools?: ProjectMcpToolsResolver;
 }
 
-/** A chosen harness: its name, the slot, and how long one run may take. */
+/** A chosen harness: its name, the coder as a harness value, how long one run may take, and what a user calls it. */
 export interface SelectedHarness {
   name: HarnessChoice;
-  slot: (feeds: HarnessFeeds) => HarnessBlock;
+  /** The coder, as a harness value for `openLab({ harnesses })`. */
+  value: Harness;
   runTimeoutMs: number;
   /** What a user calls it ("Claude Code"), for `openLab`'s `coderHarness`. */
   label: string;
@@ -120,12 +112,14 @@ export function cursorEnv(): Record<string, string> {
  * `workspace-write`: Codex's own default is read-only, and a coder that can't
  * write can't make the commit the phase waits for.
  */
-export function codexHarness({ cwd, resume, onSession, onActivity }: HarnessFeeds): HarnessBlock {
+export function codexHarness({ cwd, resume, onSession, onActivity, onEvent }: HarnessFeeds): HarnessBlock {
   return codexAgent({
     cwd,
     resume,
     onSession,
     onActivity,
+    // Every event the run sends keeps it from being stopped for silence.
+    onEvent,
     client: { env: codexEnv() },
     // A project with no repository runs in its files, outside git, which Codex refuses without `skipGitRepoCheck`.
     thread: { sandboxMode: "workspace-write", skipGitRepoCheck: true },
@@ -141,9 +135,9 @@ const CURSOR_MODEL = "default";
  * which also runs Cursor's runtime in a process of its own. Cursor's SDK
  * refuses a local agent with no model, so it names Cursor's own pick.
  */
-export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable }: HarnessFeeds): HarnessBlock {
+export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable, onEvent }: HarnessFeeds): HarnessBlock {
   // `onSteerable`: a user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
-  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
+  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, onEvent, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
 }
 
 /**
@@ -188,17 +182,9 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
     permissionMode: "acceptEdits",
-    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan).
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      append:
-        "You are working in a checkout the Lab placed you in for one task. " +
-        "Do what your instructions and your brief ask, and keep to that task. " +
-        "When the work is done, commit it with git: the task is finished only when its commit is there. " +
-        "End with a short report: what you changed, and what you checked (the commands or tests you ran and what they showed), " +
-        "or what you could not check and why.",
-    },
+    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan). The run's
+    // terms and the report it owes are in its brief (harness-manager's `codingBrief`), which every harness reads.
+    systemPrompt: { type: "preset", preset: "claude_code" },
   } as never) as unknown as HarnessBlock;
 }
 
@@ -266,6 +252,52 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
 }
 
 /**
+ * A harness value this machine always runs: a check's scripted stub under an
+ * id, which the readiness view lists as ready.
+ *
+ * @param agent The block a run runs, from the feeds its manager hands it.
+ * @param id What a worker's `harness:` names it by. Default `stub`.
+ * @param label The name a user sees. Default the id.
+ */
+export function readyHarness(agent: (feeds: HarnessFeeds) => HarnessBlock, id = "stub", label?: string): Harness {
+  return { id, ...(label === undefined ? {} : { label }), agent: agent as Harness["agent"], readiness: async () => ({ ready: true }), pass: [] };
+}
+
+/** How long the Codex readiness check waits for its account to answer, as the Codex package's own harness value waits. */
+const CODEX_READINESS_TIMEOUT_MS = 30_000;
+
+/**
+ * Every harness a served Lab can run, as harness values: the one list the
+ * coder runs on and the readiness view reports (the harness kit's
+ * `harnesses` slot). The scripted run is always ready; each other one is
+ * checked over the environment its runs get.
+ *
+ * @param stepEveryMs The scripted run's pause before each step.
+ * @param check Whether Claude Code can run here. Default the Claude Code package's check over {@link claudeCodeEnv}.
+ */
+function labHarnesses(stepEveryMs: number, check?: HarnessReadinessCheck): Record<HarnessChoice, Harness> {
+  const signalOf = (o?: { signal?: AbortSignal }) => (o?.signal === undefined ? {} : { signal: o.signal });
+  return {
+    stub: readyHarness(scriptedHarness(stepEveryMs).slot, "stub", "the scripted coder (no model)"),
+    "claude-code": {
+      id: "claude-code",
+      label: "Claude Code",
+      agent: claudeCodeHarness as Harness["agent"],
+      readiness: check ?? ((o) => checkClaudeCodeReadiness({ env: claudeCodeEnv(), ...signalOf(o) })),
+      pass: CLAUDE_CODE_PASS,
+    },
+    codex: {
+      id: "codex",
+      label: "Codex",
+      agent: codexHarness as Harness["agent"],
+      readiness: (o) => checkCodexReadiness({ env: codexEnv(), timeoutMs: CODEX_READINESS_TIMEOUT_MS, ...signalOf(o) }),
+      pass: CODEX_PASS,
+    },
+    cursor: { id: "cursor", label: "Cursor", agent: cursorHarness as Harness["agent"], readiness: () => checkCursorReadiness(cursorEnv()), pass: CURSOR_PASS },
+  };
+}
+
+/**
  * Pick the harness from the environment.
  *
  * @param value The raw choice, `process.env[HARNESS_ENV]` by default. Empty or
@@ -277,7 +309,7 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
  *   by default. Empty or absent means {@link DEFAULT_RUN_MINUTES} on a real
  *   harness and {@link SCRIPTED_RUN_TIMEOUT_MS} on the stub.
  * @returns The chosen harness. No credential is checked here: a served Lab
- *   starts through {@link startHarness}, which reports it.
+ *   starts through {@link startHarness}, whose harness kit reports it.
  * @throws When the value names no harness this Lab can run, `stepMs` is not
  *   a whole number of milliseconds, or `runMinutes` is not a positive whole
  *   number of minutes.
@@ -288,23 +320,29 @@ export function selectHarness(
   defaultChoice: HarnessChoice = "stub",
   runMinutes: string | undefined = process.env[RUN_MINUTES_ENV],
 ): SelectedHarness {
+  return selectFrom(value, defaultChoice, runMinutes, labHarnesses(readStepMs(stepMs)));
+}
+
+/** {@link selectHarness} over a given set of harness values. */
+function selectFrom(
+  value: string | undefined,
+  defaultChoice: HarnessChoice,
+  runMinutes: string | undefined,
+  values: Record<HarnessChoice, Harness>,
+): SelectedHarness {
   const choice = value === undefined || value.trim() === "" ? defaultChoice : value.trim();
   const budget = readRunMinutes(runMinutes);
-  const real = budget ?? DEFAULT_RUN_MINUTES * 60_000;
-  switch (choice) {
-    case "stub":
-      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS, label: "the scripted coder (no model)" };
-    case "claude-code":
-      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: real, label: "Claude Code" };
-    case "codex":
-      return { name: "codex", slot: codexHarness, runTimeoutMs: real, label: "Codex" };
-    case "cursor":
-      return { name: "cursor", slot: cursorHarness, runTimeoutMs: real, label: "Cursor" };
-    default:
-      throw new Error(
-        `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
-      );
+  if (!(HARNESS_CHOICES as readonly string[]).includes(choice)) {
+    throw new Error(`${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`);
   }
+  const name = choice as HarnessChoice;
+  const harness = values[name];
+  return {
+    name,
+    value: harness,
+    runTimeoutMs: budget ?? (name === "stub" ? SCRIPTED_RUN_TIMEOUT_MS : DEFAULT_RUN_MINUTES * 60_000),
+    label: harness.label ?? harness.id,
+  };
 }
 
 /** Options for {@link startHarness}. Each defaults to what a served Lab uses. */
@@ -321,26 +359,32 @@ export interface StartHarnessOptions {
   log?: (line: string) => void;
 }
 
-/** A served Lab's coder, and the read of which harnesses can run on this machine. */
+/** A served Lab's default coder, and every harness its coder runs on. */
 export interface StartedHarness extends SelectedHarness {
-  /** Claude Code's readiness, read at start and again on request (`openLab({ readiness })`). */
-  readiness: HarnessReadinessRead;
+  /**
+   * Every harness a `coder` worker may run on, the default among them, as
+   * harness values (`openLab({ harnesses })`): the one list the coder runs on
+   * and the harness kit checks, logs and serves as its readiness view.
+   */
+  harnesses: readonly Harness[];
 }
 
 /**
- * Pick a served Lab's coder at start: {@link selectHarness} with the profile's
- * default, and the readiness read over the harnesses the Lab runs.
+ * Pick a served Lab's default coder at start: {@link selectHarness} with the
+ * profile's default, beside every harness the Lab runs.
  *
- * Whether Claude Code can run here never stops the start: the table of what
- * can run, with what to run for what can't, goes to the log. On the Claude
- * Code coder it is logged before the Lab listens; on the other coders it is
- * logged when the check answers, and the start doesn't wait for it. Nothing
- * ever falls back to the scripted run: a Claude Code task on a machine that
- * can't run it fails, saying why.
+ * One run's budget is the same whichever harness runs it ({@link RUN_MINUTES_ENV},
+ * else {@link DEFAULT_RUN_MINUTES}): a worker may name a real harness whatever
+ * the default is.
+ *
+ * Whether a harness can run here never stops the start: the harness kit logs
+ * the table of what can run, with what to run for what can't, when the checks
+ * answer, and refuses a task on one that can't at once, saying why. Nothing
+ * ever falls back to the scripted run.
  *
  * @param defaultChoice The profile's coder when {@link HARNESS_ENV} names none.
  * @param options Seams for checks; a served Lab passes none.
- * @returns The chosen harness and the readiness read.
+ * @returns The chosen harness and every harness value.
  * @throws When the choice or the budget is malformed.
  */
 export async function startHarness(defaultChoice: HarnessChoice, options: StartHarnessOptions = {}): Promise<StartedHarness> {
@@ -348,23 +392,15 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   const stepMs = "stepMs" in options ? options.stepMs : process.env[STEP_MS_ENV];
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
   const runMinutes = "runMinutes" in options ? options.runMinutes : process.env[RUN_MINUTES_ENV];
-  const harness = selectHarness(value, stepMs, defaultChoice, runMinutes);
-  const check: HarnessReadinessCheck =
-    options.check ?? ((o) => checkClaudeCodeReadiness({ env: claudeCodeEnv(), ...(o?.signal === undefined ? {} : { signal: o.signal }) }));
-  const readiness = harnessReadiness({ "claude-code": { label: "Claude Code", check } });
-  const table = readiness.read().then((rows) => log(formatHarnessReadiness(rows)));
-  // The other coders never run Claude Code, so their start doesn't wait on the check:
-  // the table can land in the log after the Lab's own start lines.
-  const budget = `each run may take ${harness.runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV})`;
-  if (harness.name === "stub") {
-    log(`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`);
-  } else if (harness.name === "codex" || harness.name === "cursor") {
-    log(`Coder: ${harness.name === "codex" ? "Codex" : "Cursor"}, not checked for a sign-in at start; ${budget}.`);
-  } else {
-    log(`Coder: Claude Code; ${budget}.`);
-    await table;
-  }
-  return { ...harness, readiness };
+  const values = labHarnesses(readStepMs(stepMs), options.check);
+  const harness = selectFrom(value, defaultChoice, runMinutes, values);
+  const runTimeoutMs = readRunMinutes(runMinutes) ?? DEFAULT_RUN_MINUTES * 60_000;
+  log(
+    harness.name === "stub"
+      ? `Coder: the scripted run, no model (${HARNESS_ENV}=stub).`
+      : `Coder: ${harness.label}; each run may take ${runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV}).`,
+  );
+  return { ...harness, runTimeoutMs, harnesses: HARNESS_CHOICES.map((choice) => values[choice]) };
 }
 
 /** The budget {@link RUN_MINUTES_ENV} asks for, in milliseconds, or none; refused rather than guessed when malformed. */
@@ -383,24 +419,4 @@ function readStepMs(raw: string | undefined): number {
     throw new Error(`${STEP_MS_ENV}="${raw}" is not a whole number of milliseconds.`);
   }
   return Number(raw.trim());
-}
-
-/**
- * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
- * by name. Each is the real agent: a worker named onto one runs on it or its
- * run fails, never on the default. The coder flow builds no second slot for
- * the one the profile starts on. Only that one's account is probed at start
- * ({@link startHarness}); a worker on another harness that isn't signed in
- * fails its run with that harness's own error.
- *
- * @param runMinutes One run's budget in minutes, `process.env[RUN_MINUTES_ENV]`
- *   by default; {@link DEFAULT_RUN_MINUTES} when it names none.
- */
-export function workerHarnesses(runMinutes: string | undefined = process.env[RUN_MINUTES_ENV]) {
-  const runTimeoutMs = readRunMinutes(runMinutes) ?? DEFAULT_RUN_MINUTES * 60_000;
-  return {
-    "claude-code": { slot: claudeCodeHarness, runTimeoutMs },
-    codex: { slot: codexHarness, runTimeoutMs },
-    cursor: { slot: cursorHarness, runTimeoutMs },
-  };
 }

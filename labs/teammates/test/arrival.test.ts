@@ -5,7 +5,7 @@
  * on a timer.
  */
 import { describe, expect, it } from "vitest";
-import { answeringOf } from "../src/adapter";
+import { answeringOf } from "../src/lib/conversation";
 import { reuseById } from "../src/lib/stable";
 
 const message = (requestId: string, status: string) => ({ id: `m-${requestId}`, type: "message", role: "assistant", status, requestId });

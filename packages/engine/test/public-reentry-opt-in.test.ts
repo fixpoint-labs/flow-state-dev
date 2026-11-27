@@ -40,14 +40,11 @@ function makeFlow() {
   return defineFlow({
     kind: "custom-transport",
     actions: {
-      run: {
-        inputSchema: z.object({ value: z.string().optional() }),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({ value: z.string().optional() }),
           execute: () => undefined
         })
-      }
     }
   })({ id: "custom-transport" });
 }
@@ -87,7 +84,7 @@ async function retry(
   return router.POST(
     new Request(
       `http://localhost/api/flows/custom-transport/sessions/sess_1/requests/${requestId}/retry`,
-      { method: "POST", body: JSON.stringify({}) }
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }
     ),
     {
       params: {

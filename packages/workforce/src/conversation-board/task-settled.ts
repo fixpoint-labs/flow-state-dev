@@ -77,7 +77,10 @@ import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
+import { messageTurnStateSchema } from "../messages/hop";
 import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
+import { ENDING_FOR_THE_MODEL, resultLineOf, writeResultLine } from "./result-line";
+import type { TaskResultValue } from "../messages/line-values";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -104,6 +107,10 @@ export const conversationBoardStateShape = {
   [TASK_NOTICES_STATE]: z.array(z.string()).default([])
 } as const;
 
+export const conversationBoardStateSchema = z.object(conversationBoardStateShape);
+
+type NoticeContext = BlockContext<Record<string, unknown>, z.infer<typeof conversationBoardStateSchema>>;
+
 /** {@link conversationBoardStateShape}'s fields, for the flow's `session.serverOwned`: only the board writes them. */
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE];
 
@@ -116,7 +123,10 @@ const settledSchema = z.object({
   /** On a routed ending: what the conversation's routing is handed. */
   routed: z.unknown().optional(),
   /** On a routed ending: the notice, acknowledged once the routing's handling has run. `act` is what is said after that. */
-  notice: taskNoticeSchema.optional()
+  notice: taskNoticeSchema.optional(),
+  // FIX-2848 D1.
+  /** The ending's line for an app to draw (`workforce:result`), said with `text`. */
+  result: z.record(z.string(), z.unknown()).optional()
 });
 
 type Settled = z.infer<typeof settledSchema>;
@@ -143,6 +153,14 @@ export interface TaskSettledOptions {
    * too, and then also lands as a line and wakes that turn.
    */
   readonly onRouted?: BlockDefinition<any, any>;
+  // FIX-2538.
+  /**
+   * The request state a turn this task's ending wakes starts with, read off
+   * the settled task (its server-written metadata), or `undefined` for none:
+   * written before any turn runs, so the turn's tools read it as they would
+   * on the turn that filed the task.
+   */
+  readonly turnStateOf?: (task: Task) => Record<string, unknown> | undefined;
 }
 
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
@@ -187,12 +205,11 @@ const passLine: ConcurrencyKey = (ctx) =>
 export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const satisfies ConcurrencyConfig;
 
 /** Write a notice's dedupe key: `true` the first time. */
-function noteSeen(ctx: BlockContext, key: string) {
+function noteSeen(ctx: NoticeContext, key: string) {
   return withOutcome(
-    (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-      ctx.session.atomicState(mutator as never),
-    (state: Readonly<Record<string, unknown>>) => {
-      const seen = state[TASK_NOTICES_STATE] as string[];
+    ctx.session.atomicState,
+    (state) => {
+      const seen = state[TASK_NOTICES_STATE];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
@@ -248,7 +265,7 @@ async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise
   // A task that failed or was cancelled has nobody left to hear its events:
   // the subscriptions its session made end (FIX-2534, epic ER-7 as amended).
   // A completed task's stay, so its session hears its PR until the PR closes.
-  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending);
+  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending, notice.attempt);
   await reportFailure(ctx, notice);
 }
 
@@ -258,7 +275,7 @@ async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise
  * write: a copy that takes the notice over after it finds the key seen and
  * says nothing (at most once).
  */
-async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+async function acknowledgeOnce(ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
   const first = await noteSeen(ctx, noticeKey(notice));
   await ref.patchMetadata(row.id, clearNotice(notice));
   return first === true;
@@ -275,7 +292,7 @@ async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: T
  * a final failure: the notice stays taken by the running request, and the
  * queued copy takes it over once that request ends.
  */
-export async function settleTakenNotice(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+export async function settleTakenNotice(ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
   await beforeAcknowledge(ctx, notice);
   return acknowledgeOnce(ctx, ref, row, notice);
 }
@@ -300,11 +317,20 @@ const line = handler({
   execute: (settled: Settled, ctx) => {
     ctx.emit.message(settled.text ?? "", {
       ...(settled.worker !== undefined ? { agentName: settled.worker } : {}),
-      ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {})
+      ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {}),
+      // An ending an app draws as its result line is said to the model only.
+      ...(settled.result !== undefined ? { itemVisibility: ENDING_FOR_THE_MODEL } : {})
     });
+    if (settled.result !== undefined) writeResultLine(ctx, settled.result as TaskResultValue);
     return {};
   }
 });
+
+/** The `result` a settled line carries, when its ending is one an app draws as a result. */
+function resultField(notice: TaskNotice, task: Task, said: string): { result?: Record<string, unknown> } {
+  const result = resultLineOf(notice, task, said);
+  return result === undefined ? {} : { result };
+}
 
 /** Run the board's pass in this conversation: one at a time, never inline. */
 const runPass = handler({
@@ -353,11 +379,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    * nothing. Anything else, and any
    * ending with no routing layer, lands as a line now.
    */
-  const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
+  const settleConversationResult = async (ctx: NoticeContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
-    if (acted.includes(key)) {
+    if (ctx.session.state[TASK_NOTICES_STATE].includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       return { act: "none" };
     }
@@ -387,6 +412,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           notice: notice as Settled["notice"],
           text,
           metadata: noticeMetadata(notice, row),
+          ...resultField(notice, row, text),
           ...(row.assignee !== undefined ? { worker: row.assignee } : {})
         };
       }
@@ -397,21 +423,25 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
     const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
-    return { act, ...resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    const said = resultLine(notice, row);
+    return { act, ...said, ...resultField(notice, row, said.text), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({
     name: "conversation-task-settled",
     inputSchema: taskNoticeSchema,
     outputSchema: settledSchema,
-    sessionStateSchema: z.object(conversationBoardStateShape),
-    requestStateSchema: taskEndingReadsStateSchema,
+    sessionStateSchema: conversationBoardStateSchema,
+    requestStateSchema: taskEndingReadsStateSchema.merge(messageTurnStateSchema),
     resources: { ...taskChainResources, ...subscriptionResources },
     execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
+      // Before any path that may wake a turn: the task says how that turn runs.
+      const turnState = options.turnStateOf?.(row);
+      if (turnState !== undefined) await ctx.request.atomicState(() => turnState);
       await beforeAcknowledge(ctx, notice);
       if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.waitedOn !== true) {
         return settleConversationResult(ctx, ref, row, notice);
@@ -432,6 +462,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         act: decision.act,
         text,
         metadata: noticeMetadata(notice, row),
+        ...resultField(notice, row, text),
         ...(row.assignee !== undefined ? { worker: row.assignee } : {})
       };
     }
@@ -442,7 +473,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     name: "conversation-routed-acknowledged",
     inputSchema: settledSchema,
     outputSchema: z.object({}),
-    sessionStateSchema: z.object(conversationBoardStateShape),
+    sessionStateSchema: conversationBoardStateSchema,
     execute: async (settled: Settled, ctx) => {
       const notice = settled.notice as TaskNotice;
       const ref = await ownConversationLedger(ctx);
@@ -483,6 +514,6 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     // One turn of a task at a time in its session (FIX-2113): while another
     // request here waits on a step of its own plan, the notice stays owed,
     // and that request sends it once it answers.
-    defer: (ctx) => anotherTurnWaitsOnItsPlan(ctx)
+    defer: anotherTurnWaitsOnItsPlan
   });
 }

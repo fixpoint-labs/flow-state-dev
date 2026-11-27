@@ -39,7 +39,7 @@ import {
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
-import { PROJECT_ROW_RESOURCES } from "../src/projects/project-address";
+import { PROJECT_ENTRY_RESOURCES } from "../src/projects/project-address";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootProjectsHost, ORG } from "./projects-harness";
 
@@ -77,8 +77,8 @@ function filerFlow(installation: WorkerInstallation) {
     kind: "filer",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources, ...PROJECT_ROW_RESOURCES },
-    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    resources: { ...installation.resources, ...board.resources, ...PROJECT_ENTRY_RESOURCES },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
     internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
   } as never);
 }
@@ -154,7 +154,7 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
   } as never);
 }

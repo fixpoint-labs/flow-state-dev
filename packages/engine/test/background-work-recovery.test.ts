@@ -46,6 +46,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
 import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -122,6 +123,7 @@ describe("attached durable background-work recovery", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -208,6 +210,7 @@ describe("attached durable background-work recovery", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -345,6 +348,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     // Kick off the run but DON'T await it: the gate is parked, so the run stays
     // alive while we choreograph which iterations finish before the crash.
     const runPromise = runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -499,6 +503,7 @@ describe("attached durable background-work recovery — failed background task u
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

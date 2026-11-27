@@ -18,7 +18,7 @@ import type { DispatchType } from "@flow-state-dev/core/types";
 /** Stamped by the webhook adapter. Resolves a `webhook` entry. */
 export const WEBHOOK_SOURCE = "webhook";
 
-/** Stamped by the scheduled adapter. Resolves a `schedule` entry. */
+/** Stamped by the scheduled endpoint, the router's built-in. Resolves a `schedule` entry. */
 export const SCHEDULED_SOURCE = "scheduled";
 
 /**
@@ -46,6 +46,16 @@ export const INTERNAL_SOURCE = "internal";
  * caller-facing source.
  */
 export const CLI_SOURCE = "cli";
+
+/**
+ * Whether `source` is one the dispatch seam stamps (`internal`, `task`): the
+ * only sources whose top-level `metadata` the server assembles whole, so the
+ * only ones a reader may trust a server-set metadata entry under. The one
+ * predicate every such reader uses (`readDispatchStamp`, `readDeliveryOrigin`).
+ */
+export function isFrameworkStampedSource(source: string | undefined): boolean {
+  return source === INTERNAL_SOURCE || source === TASK_SOURCE;
+}
 
 /**
  * The dispatch type a source delivers. **A dispatch's type is decided by which

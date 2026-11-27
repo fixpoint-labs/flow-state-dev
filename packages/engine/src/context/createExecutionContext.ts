@@ -1,8 +1,9 @@
-import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
+import { attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { publishSessionOwnerRun } from "../bus/publish-writes";
+import { createScopedAsyncStorage } from "./scoped-async-storage";
 import type {
   AnyResourceRef,
   JournalEntry,
@@ -17,6 +18,7 @@ import type {
   ResourceRef,
   ResourceRegistry,
   ResourceCollectionConfig,
+  ResourceCollectionRef,
   DeclaredResourceIndex,
   SessionItem,
   SessionItemViews,
@@ -35,9 +37,10 @@ import {
 import type {
   ItemVisibility,
   BlockTraceItem,
-  ComponentItem,
   ContainerItem,
   Content,
+  DataItem,
+  FileContent,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -50,7 +53,13 @@ import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev
 import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
+  BOARD_READ_SEAM,
+  type BoardReadSeam,
   DISPATCH_SEAM,
+  ATTACHMENT_SEAM,
+  type AttachmentSeam,
+  USER_ATTACHMENT_SEAM,
+  type UserAttachmentSeam,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
@@ -60,8 +69,9 @@ import {
   buildBlockInstanceId,
   ROOT_BLOCK_PATH
 } from "@flow-state-dev/core/internal";
-import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, EmitDataOptions, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
+import { attachBuiltInHost } from "./built-in-host";
 import {
   createScopePersist,
   createScopeReread,
@@ -88,7 +98,54 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { principalOwns, withRequestOrg, type Principal } from "./principal";
+import { resolveSessionKindRecord } from "./session-kind";
+import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
+import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
+import { resolveRecordOwner } from "./record-owner";
+import type { FlowRegistry } from "../registry/flow-registry";
+import { noteWakeOwed } from "../durability/request-wakes";
+
+/**
+ * How long a wake a write from another session owes waits before its turn
+ * runs: the writes that land within it fold into that one turn. The same
+ * spacing a board's notice gives its filer.
+ */
+const NAMED_WRITE_WAKE_DUE_MS = 2_000;
+
+/** Whether a session-scoped declaration can be reached in another session (`ctx.resources.at`): a stored collection. */
+function isNamedReachable(config: ResourceConfig | ResourceCollectionConfig): config is ResourceCollectionConfig {
+  return isCollectionConfig(config) && !isProjectedResourceCollection(config);
+}
+
+/** The session whose copy a change handler serves, when it isn't the run's own. */
+type NamedCopyTarget = {
+  /** The session written, by its id. */
+  readonly sessionId: string;
+  /** Its owner, for a lineage-shared key's user-topic notice. */
+  readonly ownerUserId: string;
+};
+
+/**
+ * Whether two reads of one session id are the same birth: by the token each
+ * birth mints when both carry one, else (a record from before the token) by
+ * birth time and lineage.
+ */
+function sameSessionIncarnation(now: SessionRecord, admitted: SessionRecord): boolean {
+  if (now.incarnationToken != null && admitted.incarnationToken != null) return now.incarnationToken === admitted.incarnationToken;
+  return sessionIncarnation(now) === sessionIncarnation(admitted);
+}
+
+/** Whether `now` is still the session record `admitted` was: the same incarnation, owner, org and tenant. */
+function isSameSessionRecord(now: SessionRecord, admitted: SessionRecord): boolean {
+  return (
+    sameSessionIncarnation(now, admitted) &&
+    now.userId === admitted.userId &&
+    (now.orgId ?? undefined) === (admitted.orgId ?? undefined) &&
+    (now.tenantId ?? undefined) === (admitted.tenantId ?? undefined)
+  );
+}
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -97,6 +154,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
+import { clientVisibleStateKeys } from "./client-visible-state";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
@@ -118,7 +176,7 @@ import {
   suspendForUserOn,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
-import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
+import { HarnessAttachmentUnavailableError, type HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -129,15 +187,18 @@ import {
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
+  sessionIncarnation,
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
 import {
   isSharedToLineage,
+  reachHasFlag,
   resolveOwnershipFlag,
   sessionRoutingIndex,
-  type OwnershipBuckets
+  type OwnershipBuckets,
+  type StorageReach
 } from "../resources/lineage-scope";
 import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -149,11 +210,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import {
-  claimRequestRecord,
-  principalOwnsRequest,
-  type RequestPrincipal
-} from "./request-principal";
+import { claimRequestRecord } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
@@ -168,7 +225,20 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
-import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
+import {
+  AttachmentUnavailableError,
+  copyAttachments,
+  discardAttachments,
+  resolveAttachment,
+  sessionBlobOwner,
+  userBlobOwner,
+  type ResolvedAttachment
+} from "../blobs/attachments";
+import type { BlobStore } from "../blobs/types";
+import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
+import { resolveHistoryFiles } from "./history-files";
+import { readAttachmentText } from "../blobs/attachment-text";
+import { entryNotice, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -187,8 +257,12 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES } from "../execution/past-turns";
-import { readSettledTurns } from "./settled-turns";
+import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
+import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { SessionRequiredError } from "../transports/errors";
+import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
 // FIX-2063.
 /**
@@ -200,6 +274,29 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+// FIX-2886.
+/**
+ * Why `ctx.suspend()` refused in a schedule's session. A parked fire leaves
+ * the active registry, so the schedule's next fire may already run there,
+ * and anything that continued the parked one (an answer, a stop, a waited-on
+ * child ending, the sweep) would run it beside that fire.
+ */
+const SUSPEND_IN_SCHEDULE_SESSION =
+  "a fire in its schedule's own session can't stop or wait: the schedule's next fire may run there while it " +
+  "waits. Leave the schedule's `session` at \"per-fire\" (the default) for fires that stop or wait. Nothing was held.";
+
+// FIX-2895.
+/**
+ * Why `ctx.suspend()` refused in a dynamic schedule's fire. Its handler was
+ * made by the schedule resolver and carried only on the dispatch, so whatever
+ * continued the parked fire would re-run it from its record and find no
+ * handler: the fire would stay stopped for good.
+ */
+const SUSPEND_IN_CARRIED_CORE =
+  "a dynamic schedule's fire can't stop or wait: its handler is made by the schedule resolver at fire time " +
+  "and isn't stored, so nothing could run it again. Declare the schedule under `schedules.static` for fires " +
+  "that stop or wait. Nothing was held.";
 
 /** A block's model usage as its lean trace records it: the counts, without provider metadata. */
 function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
@@ -339,43 +436,29 @@ function createEmitMessage(
   };
 }
 
-type EmitComponentOptions = {
-  key?: string;
-  itemVisibility?: ItemVisibility;
-  agentName?: string;
-  transient?: boolean;
-};
-
-// FIX-963.
 /**
- * Build the `ComponentItem` both component emitters send. Shared so the
- * fire-and-forget emitter and the awaited one cannot drift on item
- * shape, index reservation, or keying — only on how they treat the emitter
- * promises.
+ * Build the `DataItem` both data emitters send. Shared so the
+ * fire-and-forget emitter and the awaited one cannot drift on item shape,
+ * index reservation, or keying — only on how they treat the emitter promises.
+ *
+ * Persisted by default; a `key` makes it a keyed snapshot (one entry per
+ * `(requestId, key)`, `value` replaced). Unlike every other emitter, an
+ * enclosing generator's `itemVisibility` is NOT inherited: the item takes
+ * this call's `itemVisibility`, or the data default (client, not history).
  */
-function buildComponentItem(
+function buildDataItem(
   emCtx: EmissionContext,
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-): ComponentItem {
+  dataType: string,
+  value: Record<string, unknown>,
+  options?: EmitDataOptions,
+): DataItem {
   const itemIndex = emCtx.nextItemIndex();
-  // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
-  // Default non-transient; the block's `transient` flag governs only the
-  // auto-emitted block_trace item. Per-call
-  // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
-  // with dedup).
-  // FIX-491: when a `key` is supplied, derive a deterministic item ID from
-  // the key so subsequent emissions upsert in place — `itemsById` collapses
-  // to one entry per `(requestId, key)`. The SSE event log still appends
-  // an `item.added` + `item.done` event per emission; clients reconcile by
-  // item ID and overwrite. `data` is replaced wholesale, never merged.
   return {
     id:
       options?.key !== undefined
-        ? `item_component_keyed:${options.key}`
-        : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-    type: "component",
+        ? `item_data_keyed:${options.key}`
+        : `item_data_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+    type: "data",
     status: "completed",
     transient: options?.transient === true ? true : undefined,
     requestId: emCtx.requestId,
@@ -384,27 +467,19 @@ function buildComponentItem(
     ts: Date.now(),
     ownedBy: emCtx.ownedBy,
     taskId: emCtx.taskId,
-    itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+    ...(options?.itemVisibility !== undefined ? { itemVisibility: options.itemVisibility } : {}),
     agentName: options?.agentName ?? emCtx.agentName,
-    component,
-    data,
+    dataType,
+    value,
     ...(options?.key !== undefined ? { key: options.key } : {}),
   };
 }
 
-function createEmitComponent(
+function createEmitData(
   emCtx: EmissionContext
-): (
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-) => void {
-  return function emitComponent(
-    component: string,
-    data: Record<string, unknown>,
-    options?: EmitComponentOptions,
-  ): void {
-    const item = buildComponentItem(emCtx, component, data, options);
+): (dataType: string, value: Record<string, unknown>, options?: EmitDataOptions) => void {
+  return function emitData(dataType, value, options): void {
+    const item = buildDataItem(emCtx, dataType, value, options);
     void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
   };
@@ -412,28 +487,20 @@ function createEmitComponent(
 
 // FIX-963.
 /**
- * The awaited component emitter behind `ctx._emitComponentAwaited`.
+ * The awaited data emitter behind `ctx._emitDataAwaited`.
  *
- * Identical to {@link createEmitComponent} except that it settles on the
- * emission instead of discarding it: the returned promise resolves once the
- * item has been added and completed, and **rejects** if either step does. No
+ * Identical to {@link createEmitData} except that it settles on the emission
+ * instead of discarding it: the returned promise resolves once the item has
+ * been added and completed, and **rejects** if either step does. No
  * `.catch()` — a caller reaches for this emitter precisely because it needs a
  * failed emission to be loud, and swallowing here would hand it the silence it
  * was trying to avoid.
  */
-function createEmitComponentAwaited(
+function createEmitDataAwaited(
   emCtx: EmissionContext
-): (
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-) => Promise<void> {
-  return async function emitComponentAwaited(
-    component: string,
-    data: Record<string, unknown>,
-    options?: EmitComponentOptions,
-  ): Promise<void> {
-    const item = buildComponentItem(emCtx, component, data, options);
+): (dataType: string, value: Record<string, unknown>, options?: EmitDataOptions) => Promise<void> {
+  return async function emitDataAwaited(dataType, value, options): Promise<void> {
+    const item = buildDataItem(emCtx, dataType, value, options);
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);
   };
@@ -442,7 +509,7 @@ function createEmitComponentAwaited(
 /**
  * The awaited message emitter behind `ctx._emitMessageAwaited`: as
  * {@link createEmitMessage}, but it settles on the emission and rejects if
- * either step does, as {@link createEmitComponentAwaited} does for components.
+ * either step does, as {@link createEmitDataAwaited} does for data items.
  */
 function createEmitMessageAwaited(
   emCtx: EmissionContext
@@ -502,7 +569,7 @@ function createEmitStatus(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: status defaults to transient (live-only; statuses are
     // naturally ephemeral). Per-call `{ transient: false }` opts out for
-    // symmetry with emitMessage / emitComponent. `false` produces a
+    // symmetry with emitMessage / emitData. `false` produces a
     // persisted item; `undefined` keeps the field absent.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -660,9 +727,8 @@ export async function createExecutionContext<
 
   // The request-host seam (FIX-999) is built further down, once the session
   // and org bindings have been RESOLVED — see "the request-host seam" below.
-  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
-  // session is generated below) and `options.orgId` may be absent on a request
-  // against an org-bound session, so both would be read before the authoritative
+  // It cannot be built here: `options.orgId` may be absent on a request
+  // against an org-bound session, so it would be read before the authoritative
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
@@ -711,6 +777,18 @@ export async function createExecutionContext<
     accessorScope[accessor] = scope;
   }
 
+  // FIX-2623: a user or org view has no session, so it installs none of the
+  // session's resources. Reaching for one refuses with `NoSessionError` (the
+  // flat registry below), never "not registered".
+  const noSession = options.noSession === true;
+  const sessionAccessorsWithoutSession = new Set<string>();
+  if (noSession) {
+    for (const accessor of Object.keys(sessionResourceConfigs)) {
+      sessionAccessorsWithoutSession.add(accessor);
+      delete sessionResourceConfigs[accessor];
+      delete accessorScope[accessor];
+    }
+  }
   resolveStringContentTemplates(sessionResourceConfigs);
   resolveStringContentTemplates(userResourceConfigs);
   resolveStringContentTemplates(orgResourceConfigs);
@@ -720,7 +798,35 @@ export async function createExecutionContext<
   }
 
   const userId = options.userId;
-  const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Every run names its session; nothing here makes one up. Asserted for an
+  // untyped caller, before any read or write. A view (`noSession`) has none:
+  // it loads, makes and stores no session, so the empty id below names
+  // nothing and reaches no session read.
+  if (!noSession && (typeof options.sessionId !== "string" || options.sessionId.length === 0)) {
+    throw new SessionRequiredError(flow.kind, "createExecutionContext");
+  }
+  const sessionId: string = noSession ? "" : options.sessionId;
+  // FIX-2886: a fire in its schedule's own session never parks
+  // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
+  // `wait_unavailable` before it starts any work.
+  const inScheduleSession = isScheduleSessionId(sessionId);
+  // FIX-2895: why this run may not park (SUSPEND_IN_CARRIED_CORE first, so a
+  // dynamic per-schedule fire isn't told to go per-fire), or undefined.
+  const noParkReason = options.runsCarriedCore === true
+    ? SUSPEND_IN_CARRIED_CORE
+    : inScheduleSession
+      ? SUSPEND_IN_SCHEDULE_SESSION
+      : undefined;
+  // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
+  // outside a view. The only use of the raw recorder: every read path below
+  // goes through this surface, which holds the topic rules (`view-reads.ts`).
+  // Whether a session reach touches lineage-shared storage: read through the
+  // session buckets, which are built below, when a read asks.
+  const sharesLineageRef: { current: (reach: StorageReach) => boolean } = { current: () => false };
+  const viewDependencies =
+    options.recordRead !== undefined
+      ? createViewDependencies(options.recordRead, sessionId, (reach) => sharesLineageRef.current(reach))
+      : undefined;
   const requestId = options.requestId;
 
   // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
@@ -764,10 +870,11 @@ export async function createExecutionContext<
   // Asked before the read: a run that stops ending after this has already
   // recorded what it handed on, so the read below sees it (FIX-2145).
   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
-  const [loadedSession, loadedRequest] = await Promise.all([
-    stores.session.get(sessionKey),
+  const [storedSession, loadedRequest] = await Promise.all([
+    noSession ? undefined : stores.session.get(sessionKey),
     stores.request.get(requestId)
   ]);
+  let loadedSession = storedSession;
   if (
     loadedSession !== undefined &&
     tenantMatches(loadedSession.tenantId, options.tenantId) &&
@@ -794,14 +901,30 @@ export async function createExecutionContext<
   }
   // A request id is an address: another user's record under it is never
   // adopted, however the id reached this run.
-  const requestPrincipal: RequestPrincipal = {
-    userId,
-    orgId: options.orgId,
-    tenantId: options.tenantId
-  };
-  if (loadedRequest !== undefined && !principalOwnsRequest(loadedRequest, requestPrincipal)) {
+  if (
+    loadedRequest !== undefined &&
+    !principalOwns(await withRequestOrg(stores, loadedRequest), { userId, orgId: options.orgId, tenantId: options.tenantId })
+  ) {
     throw new RequestOwnerMismatchError(requestId);
   }
+
+  // FIX-2942: who this run is, as its door set it and carried unchanged: the
+  // options' principal, else the request record's (a continuation, a queued
+  // job), else its session's own kind (a wake or an owner run, started from
+  // a stored record with no principal kind of its own). A run that has none
+  // and creates its session is a machine's. Backfilling a session from before
+  // kinds writes the kind and moves its version on, so the run builds on the
+  // record as written, not the copy read above.
+  let runKind = options.principalKind ?? loadedRequest?.principalKind ?? undefined;
+  if (runKind === undefined && loadedSession !== undefined) {
+    const resolved = await resolveSessionKindRecord(stores, loadedSession, {
+      queuedGraceMs: options.effectiveRuntimeConfig?.queuedGraceMs
+    });
+    runKind = resolved.kind;
+    loadedSession = resolved.session;
+  }
+  runKind ??= "machine";
+  const runResolvedBy = options.resolvedBy ?? loadedRequest?.resolvedBy ?? undefined;
 
   // The same filter as the session's reads; see `sessionRequestScope`.
   const turnScope = sessionRequestScope(
@@ -823,7 +946,10 @@ export async function createExecutionContext<
     // all()/client() (via priorItems) and history() (via loadLLMHistory);
     // `historyStart` names the first turn the window holds when an earlier
     // turn is out of view (FIX-1613).
-    readSettledTurns({
+    // No session, no turns: a view's history window is empty.
+    noSession
+      ? ({ window: [], retried: new Set<string>(), parked: new Set<string>(), waiting: new Set<string>(), open: [], settled: [] } as SettledTurns)
+      : readSettledTurns({
       requests: stores.request,
       scope: turnScope,
       turns: historyWindowTurns,
@@ -947,6 +1073,7 @@ export async function createExecutionContext<
   // (FIX-1068), so this request cannot overwrite a concurrent first action and
   // cannot invent a second address for the same session.
   let sessionRecord =
+    noSession ? noSessionRecord() :
     loadedSession ??
     ((await ensureSessionRecord(
       stores,
@@ -961,7 +1088,8 @@ export async function createExecutionContext<
         },
         state: options.sessionState,
         fromCaller: true,
-        via: "action"
+        via: "action",
+        principalKind: runKind
       },
       () => ({
       id: sessionKey,
@@ -978,7 +1106,7 @@ export async function createExecutionContext<
     })
     )) as typeof loadedSession & object);
 
-  ensureJournalDefaults(sessionRecord);
+  if (!noSession) ensureJournalDefaults(sessionRecord);
 
   // The binding checks run HERE, on one path, rather than inside the
   // already-existed branch. A request that loses the create race adopts the
@@ -987,7 +1115,8 @@ export async function createExecutionContext<
   // another principal's or another tenant's session. Running them
   // unconditionally costs a comparison on the branch that built the record
   // itself, where they pass by construction, and that is the cheaper mistake.
-  {
+  // A run with no session has none to bind to.
+  if (!noSession) {
     // Flow-instance binding. A record this request loaded was checked above;
     // this is for the create-race WINNER, which a losing creator adopts
     // without ever having loaded it — and which may belong to another instance
@@ -1040,10 +1169,12 @@ export async function createExecutionContext<
   // nobody ever recorded the right one. One of those is fixed by changing the
   // request and the other only by the offline migration, so they must not share
   // an answer (BR-14).
-  if (!isOrgAttributed(sessionRecord)) {
+  // With no session, the run's own org is the org: validated by the caller's
+  // principal, and the instance pin below still runs.
+  if (!noSession && !isOrgAttributed(sessionRecord)) {
     throw new UnattributedOrgError("executing against this session");
   }
-  const sessionOrgId = sessionRecord.orgId as string;
+  const sessionOrgId = noSession ? optionsOrgId : (sessionRecord.orgId as string);
   if (optionsOrgId !== sessionOrgId) {
     throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
   }
@@ -1094,7 +1225,7 @@ export async function createExecutionContext<
   // an unstamped session's lineage id were its session key the two would be
   // indistinguishable — routing unshared resources into the lineage namespace
   // along with the shared ones.
-  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
+  const lineageId = resolveLineageId({ id: sessionKey, lineageId: noSession ? undefined : sessionRecord.lineageId });
 
   const resolvedOrgKey = resolveOrgStorageKey(resolvedOrgId, flow);
   let orgRecord: OrgRecord | undefined = loadedOrg;
@@ -1143,13 +1274,8 @@ export async function createExecutionContext<
   // and inherits the parent's org, so the seam has to close over the values
   // execution actually ran with:
   //
-  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
-  //    which case an ephemeral session is generated and persisted above. Such a
-  //    request has a perfectly valid `ctx.session`, so gating the seam on
-  //    `options.sessionId` withheld it from a request that had lineage to
-  //    reason about. The approved decision — no seam without a session — is
-  //    unchanged and now checks the thing it meant: every context has a session
-  //    by this point, so the seam is present whenever the host wired it.
+  //  - `sessionId` is the session the run named (required for every run), so
+  //    the seam is present whenever the host wired it.
   //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
   //    org-bound session may omit `orgId` (only a *differing* value is
   //    rejected, above), so capturing `options.orgId` left the host unbound and
@@ -1161,8 +1287,6 @@ export async function createExecutionContext<
   // `tenantMatches` is strict equality), so the option and the resolved value
   // cannot differ. Org is the one identity field whose check permits a
   // difference, which is why it is the one that had to change.
-  const boardNoticeSeam =
-    stores.bus !== undefined ? createBoardNoticeSeam(stores.bus, { requestId, tenantId: options.tenantId }) : undefined;
   const requestHostBuild =
     options.requestHost !== undefined
       ? createRequestHost({
@@ -1176,7 +1300,24 @@ export async function createExecutionContext<
             lineageId
           },
           dispatchOperation: options.requestHost.dispatchOperation,
+          serviceRoute: options.requestHost.serviceRoute,
+          principal: {
+            userId,
+            orgId: resolvedOrgId,
+            ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+            kind: runKind,
+            ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+          } satisfies Principal,
+          deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
+          ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
+          ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
+          // FIX-2725 D1: a view's session reads record where each answers.
+          ...(viewDependencies !== undefined ? { sessionReads: sessionReadObserver(viewDependencies) } : {}),
+          // FIX-2848 D3: a turn's `retryable` reads the host's re-entry sources, as the retry route does.
+          ...((options.requestHost.publicReentrySources ?? options.effectiveRuntimeConfig?.publicReentrySources) !== undefined
+            ? { publicReentrySources: options.requestHost.publicReentrySources ?? options.effectiveRuntimeConfig?.publicReentrySources }
+            : {}),
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,
@@ -1193,7 +1334,7 @@ export async function createExecutionContext<
                 }
               }
             : {}),
-          ...(options.requestHost.waits !== undefined
+          ...(options.requestHost.waits !== undefined && noParkReason === undefined
             ? {
                 waits: {
                   provider: options.requestHost.waits.provider,
@@ -1227,6 +1368,12 @@ export async function createExecutionContext<
         })
       : undefined;
 
+  // FIX-2623 D1: the request host's reads reach stores outside `ctx.resources`
+  // and the state getters, so in a view each one is recorded or refused.
+  if (viewDependencies !== undefined && requestHostBuild !== undefined) {
+    guardViewRequestHost(requestHostBuild.host, options.viewScope ?? (noSession ? "user" : "session"));
+  }
+
   if (requestHostBuild?.livenessRefusal !== undefined) {
     // Named, not silent. An operator who never writes a capability still meets
     // this, and a capability that is quietly missing reads as a bug.
@@ -1246,12 +1393,12 @@ export async function createExecutionContext<
   // each took, and which wave/accessor triggered it — drained onto the block's
   // `block_trace` item for DevTool observability. All recording is gated by
   // `isTraceObservabilityEnabled()` so it adds zero work when observability is
-  // off. Attribution is concurrency-safe via an AsyncLocalStorage carrying the
+  // off. Attribution is concurrency-safe via a scoped async storage carrying the
   // dispatching block's instance id: wave-3 eager preloads and lazy reads fire
   // inside the block's `.run()` ALS frame and attribute to it; waves 1 & 2 run
   // before any block and land in the orphan bucket, flushed onto the request's
   // entry block.
-  const loadAttributionStorage = new AsyncLocalStorage<string>();
+  const loadAttributionStorage = createScopedAsyncStorage<string>();
   const ORPHAN_BUCKET = "__request__";
   const resourceLoadBuffer = new Map<string, ResourceLoadRecord[]>();
   // Per-target dedupe index for cache-hit collapsing: target → `source|key|
@@ -1394,6 +1541,8 @@ export async function createExecutionContext<
   // The (user, org) every user- and org-scoped resource bucket derives from:
   // a user bucket is the user's cell in the session's org (FIX-1790).
   const cellIdentity = { userId, orgId: resolvedOrgId };
+  // FIX-2624: what a built-in flow reads off its context: this runtime's stores and host resolver.
+  const builtInHost = { stores, hostResolver: options.effectiveRuntimeConfig?.hostResolver };
 
   // Per scope: which storage keys (singles) and collection prefixes carry the
   // scope's storage-routing flag. Built once from the full config maps so any
@@ -1464,6 +1613,7 @@ export async function createExecutionContext<
   if (sessionConflict !== undefined) {
     throw conflictingPrefixError("session", sessionConflict, "sharedToLineage");
   }
+  sharesLineageRef.current = (reach) => reachHasFlag(sessionIndex.buckets, reach);
   const scopeBuckets: Record<ContentScopeType, OwnershipBuckets> = {
     session: sessionIndex.buckets,
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
@@ -1578,7 +1728,8 @@ export async function createExecutionContext<
   const retainOwnedKeys = <T>(
     scope: ContentScopeType,
     scopeId: string,
-    rows: Record<string, T>
+    rows: Record<string, T>,
+    scopeIdOf: (storageKey: string) => string | undefined = (key) => resolveResourceStorageScopeId(scope, key)
   ): Record<string, T> => {
     const owned = ownKeyRecord<T>();
     const scopeConfigs = Object.values(
@@ -1586,7 +1737,7 @@ export async function createExecutionContext<
     );
     for (const [key, value] of Object.entries(rows)) {
       if (!ownerKeyMaySeed(key, userId, scopeConfigs)) continue;
-      if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
+      if (scopeIdOf(key) === scopeId) owned[key] = value;
     }
     return owned;
   };
@@ -1685,10 +1836,13 @@ export async function createExecutionContext<
         flowId: flow.id,
         actionName: options.actionName,
         userId,
-        sessionId,
+        // A view with no session records none: the label is not a session.
+        ...(noSession ? {} : { sessionId }),
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
+        principalKind: runKind,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {}),
         metadata: options.metadata,
         input: options.input,
         requestState: options.requestState
@@ -1804,8 +1958,20 @@ export async function createExecutionContext<
   }
 
   // How many writes now running record how the request ended (FIX-2145):
-  // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
+  // theirs outlive an explicit abort. See `WritesOutliveAbort`. The count is
+  // the request's, not the hook's: while one such hook runs, every resource
+  // write of the request outlives the abort. The hooks run one at a time after
+  // the request's last drain, so only work an earlier hook left running
+  // unawaited can overlap one.
   let writesOutlivingAbort = 0;
+  const outliveAbort: WritesOutliveAbort = async (write) => {
+    writesOutlivingAbort += 1;
+    try {
+      return await write();
+    } finally {
+      writesOutlivingAbort -= 1;
+    }
+  };
 
   const requestRef: { current: RequestRecord } = {
     current: requestRecord
@@ -1912,10 +2078,10 @@ export async function createExecutionContext<
   // sibling declaration owns at a different address (FIX-1068). Recording the
   // bare prefix would claim coverage the scan never had, and the next lazy read
   // of such a key would answer "absent" for a row that exists.
-  const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
-    const scopeId = resolveResourceStorageScopeId(scope, storageKey);
+  const isMissAuthoritative = (cell: CopyCell, storageKey: string): boolean => {
+    const scopeId = cell.scopeIdOf(storageKey);
     if (scopeId === undefined) return false;
-    for (const token of loadedCollectionPrefixes[scope]) {
+    for (const token of cell.loadedPrefixes) {
       const split = token.indexOf("\n");
       if (token.slice(0, split) !== scopeId) continue;
       if (storageKey.startsWith(token.slice(split + 1))) return true;
@@ -1968,32 +2134,67 @@ export async function createExecutionContext<
   const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
     scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
+  /**
+   * One copy's cache and address: what the lazy loaders and the per-key
+   * writers below read and write. A run holds its own session's, user's and
+   * org's ({@link ownCell}), and one per session a block names
+   * (`ctx.resources.at`), so a named session's copy is loaded and written by
+   * the same code as the run's own.
+   */
+  type CopyCell = {
+    readonly scope: ContentScopeType;
+    /** Namespaces the single-flight tokens, so two copies' loads never share one. */
+    readonly token: string;
+    readonly stateRef: { current: Record<string, JsonObject> };
+    readonly contentRef: { current: Record<string, string> };
+    readonly versionRef: { current: Record<string, number> };
+    readonly loadedPrefixes: Set<string>;
+    readonly missing: Set<string>;
+    readonly deletedState: Set<string>;
+    readonly deletedContent: Set<string>;
+    /** The storage `scopeId` a key routes to, by the ownership rule. */
+    scopeIdOf(storageKey: string): string | undefined;
+    /** The scope kind a resolved address stores under. */
+    storageScopeOf(scopeId: string): StorageScopeType;
+  };
+  const ownCell = (scope: ContentScopeType): CopyCell => ({
+    scope,
+    token: scope,
+    stateRef: scopeStateRef(scope),
+    contentRef: scopeContentRef(scope),
+    versionRef: scopeVersionRef(scope),
+    loadedPrefixes: loadedCollectionPrefixes[scope],
+    missing: missingResourceKeys[scope],
+    deletedState: deletedStateKeys[scope],
+    deletedContent: deletedContentKeys[scope],
+    scopeIdOf: (storageKey) => resolveResourceStorageScopeId(scope, storageKey),
+    storageScopeOf: (scopeId) => storageScopeOf(scope, scopeId)
+  });
+
   // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
   // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
   // as the eager waves, so a key fetched here and one fetched by a wave dedupe.
-  const makeLazyLoad = (scope: ContentScopeType): ScopeLazyLoad | undefined => {
-    if (scopeIdentityId(scope) === undefined) return undefined; // scope absent this request (org)
-    const stateRef = scopeStateRef(scope);
-    const contentRef = scopeContentRef(scope);
-    const versionRef = scopeVersionRef(scope);
+  const makeLazyLoad = (cell: CopyCell): ScopeLazyLoad | undefined => {
+    if (scopeIdentityId(cell.scope) === undefined) return undefined; // scope absent this request (org)
+    const { stateRef, contentRef, versionRef } = cell;
     return {
       async getInstance(storageKey: string): Promise<LazyLoadOutcome> {
         if (storageKey in stateRef.current) return { fetched: false, durationMs: 0 }; // already loaded
         // A miss under an already-bulk-loaded prefix is authoritative, and a
         // key confirmed absent earlier this request stays absent — skip the
         // store round-trip in both cases.
-        if (isMissAuthoritative(scope, storageKey)) return { fetched: false, durationMs: 0 };
-        if (missingResourceKeys[scope].has(storageKey)) return { fetched: false, durationMs: 0 };
+        if (isMissAuthoritative(cell, storageKey)) return { fetched: false, durationMs: 0 };
+        if (cell.missing.has(storageKey)) return { fetched: false, durationMs: 0 };
         // FIX-735: route to this key's isolation bucket (bare vs namespaced).
-        const scopeId = resolveResourceStorageScopeId(scope, storageKey)!;
+        const scopeId = cell.scopeIdOf(storageKey)!;
         let fetched = false;
         let durationMs = 0;
-        await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
+        await runSingleFlight(`${cell.token}:key:${storageKey}`, async () => {
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [row, content] = await Promise.all([
-            stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, storageKey),
-            stores.content.get(storageScopeOf(scope, scopeId), scopeId, storageKey)
+            stores.resourceState.get(cell.storageScopeOf(scopeId), scopeId, storageKey),
+            stores.content.get(cell.storageScopeOf(scopeId), scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
@@ -2005,7 +2206,7 @@ export async function createExecutionContext<
             versionRef.current[storageKey] = row!.version;
           } else {
             // Negatively cache: one round-trip caps repeated reads of an absent key.
-            missingResourceKeys[scope].add(storageKey);
+            cell.missing.add(storageKey);
           }
           if (typeof content === "string") {
             contentRef.current = mergeOwnKeyRecords({ [storageKey]: content }, contentRef.current);
@@ -2015,39 +2216,39 @@ export async function createExecutionContext<
       },
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
         // FIX-735: the collection's prefix resolves to its isolation bucket.
-        const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
+        const scopeId = cell.scopeIdOf(keyPrefix)!;
         // A loaded ancestor prefix (the whole collection) already covers a sub-prefix.
-        if (isMissAuthoritative(scope, keyPrefix)) return { fetched: false, durationMs: 0 };
+        if (isMissAuthoritative(cell, keyPrefix)) return { fetched: false, durationMs: 0 };
         let fetched = false;
         let durationMs = 0;
-        await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-          if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) return;
+        await runSingleFlight(`${cell.token}:prefix:${keyPrefix}`, async () => {
+          if (cell.loadedPrefixes.has(coverageToken(scopeId, keyPrefix))) return;
           const started = Date.now();
           // Same ownership re-check as the eager waves: a lazy collection is
           // fetched by prefix too, so a broad prefix sweeps up keys a narrower
           // sibling owns at a different address.
           const [rawRows, rawContent] = await Promise.all([
-            stores.resourceState.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix),
-            stores.content.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix)
+            stores.resourceState.getByPrefix(cell.storageScopeOf(scopeId), scopeId, keyPrefix),
+            stores.content.getByPrefix(cell.storageScopeOf(scopeId), scopeId, keyPrefix)
           ]);
-          const rows = retainOwnedKeys(scope, scopeId, rawRows);
-          const content = retainOwnedKeys(scope, scopeId, rawContent);
+          const rows = retainOwnedKeys(cell.scope, scopeId, rawRows, cell.scopeIdOf);
+          const content = retainOwnedKeys(cell.scope, scopeId, rawContent, cell.scopeIdOf);
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
-          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, deletedStateKeys[scope]), stateRef.current);
+          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, cell.deletedState), stateRef.current);
           // Versions for the keys this prefix read just brought in. Keys the
           // cache already held keep the version they were first read at, so a
           // later bulk load never silently re-bases an in-flight write.
           for (const [key, version] of Object.entries(toVersions(rows))) {
-            if (deletedStateKeys[scope].has(key)) continue;
+            if (cell.deletedState.has(key)) continue;
             versionRef.current[key] ??= version;
           }
           contentRef.current = mergeOwnKeyRecords(
-            withoutDeleted(content, deletedContentKeys[scope]),
+            withoutDeleted(content, cell.deletedContent),
             contentRef.current
           );
-          loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
+          cell.loadedPrefixes.add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
       }
@@ -2103,9 +2304,9 @@ export async function createExecutionContext<
       return [...new Set(found.flat())].sort();
     };
 
-  const sessionLazyLoad = makeLazyLoad("session");
-  const userLazyLoad = makeLazyLoad("user");
-  const orgLazyLoad = makeLazyLoad("org");
+  const sessionLazyLoad = makeLazyLoad(ownCell("session"));
+  const userLazyLoad = makeLazyLoad(ownCell("user"));
+  const orgLazyLoad = makeLazyLoad(ownCell("org"));
 
   // FIX-688 Waves 2 & 3; FIX-701.
   /**
@@ -2286,10 +2487,8 @@ export async function createExecutionContext<
   // `resolveResourceStorageScopeId(scope, key)` (each resource persists to its
   // own isolation bucket); the in-memory cache stays keyed by the resource key
   // regardless of which bucket backs it.
-  const makeKeyPersisters = (scope: ContentScopeType) => {
-    const stateRef = scopeStateRef(scope);
-    const versionRef = scopeVersionRef(scope);
-    const contentRef = scopeContentRef(scope);
+  const makeKeyPersisters = (cell: CopyCell) => {
+    const { stateRef, versionRef, contentRef } = cell;
     return {
       // FIX-663; FIX-992 (D10).
       /**
@@ -2323,7 +2522,7 @@ export async function createExecutionContext<
         mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
         opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
       ): Promise<{ committed: boolean; previousState: JsonObject }> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         if (scopeId === undefined) {
           // Scope absent this request — nothing was read and nothing written.
           return { committed: false, previousState: opts?.seed ?? {} };
@@ -2351,14 +2550,14 @@ export async function createExecutionContext<
             signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
               stores.resourceState.set(
-                storageScopeOf(scope, scopeId),
+                cell.storageScopeOf(scopeId),
                 scopeId,
                 key,
                 next,
                 expectedVersion,
                 ownedWrite(flow.id)
               ),
-            reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
+            reread: () => stores.resourceState.get(cell.storageScopeOf(scopeId), scopeId, key)
           });
         } catch (err) {
           // A lost create still taught us something: the store reported the
@@ -2405,7 +2604,7 @@ export async function createExecutionContext<
         return { committed: result.committed, previousState: result.previousState };
       },
       deleteResourceKey: async (key: string): Promise<boolean> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         // `!(key in stateRef.current)` is a load-state check, not a
         // correctness guarantee: it scopes the delete to keys present in the
         // cache, matching the prior whole-map reconciliation (which only ever
@@ -2420,7 +2619,7 @@ export async function createExecutionContext<
         // only re-delete something it has already been told it does not own.
         const expectedVersion = versionRef.current[key] ?? 0;
         const result = await stores.resourceState.delete(
-          storageScopeOf(scope, scopeId),
+          cell.storageScopeOf(scopeId),
           scopeId,
           key,
           expectedVersion
@@ -2477,7 +2676,7 @@ export async function createExecutionContext<
         }
         delete stateRef.current[key];
         delete versionRef.current[key];
-        deletedStateKeys[scope].add(key);
+        cell.deletedState.add(key);
         return true;
       },
       /**
@@ -2489,25 +2688,25 @@ export async function createExecutionContext<
        * would cost the same round trip as the write and still race it.
        */
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         if (scopeId === undefined) return;
-        await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
+        await stores.content.set(cell.storageScopeOf(scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
-        await stores.content.delete(storageScopeOf(scope, scopeId), scopeId, key);
+        await stores.content.delete(cell.storageScopeOf(scopeId), scopeId, key);
         delete contentRef.current[key];
-        deletedContentKeys[scope].add(key);
+        cell.deletedContent.add(key);
       }
     };
   };
 
-  const sessionKeyPersisters = makeKeyPersisters("session");
-  const userKeyPersisters = makeKeyPersisters("user");
-  const orgKeyPersisters = makeKeyPersisters("org");
+  const sessionKeyPersisters = makeKeyPersisters(ownCell("session"));
+  const userKeyPersisters = makeKeyPersisters(ownCell("user"));
+  const orgKeyPersisters = makeKeyPersisters(ownCell("org"));
 
   const requestContainer = createStateContainer<TRequestState>(
     requestRef.current.state as TRequestState,
@@ -2529,7 +2728,9 @@ export async function createExecutionContext<
     readUserState(userRef.current.state),
     userRef.current.version
   );
-  const sessionContainer = createStateContainer<TSessionState>(
+  const sessionContainer = noSession
+    ? createStateContainer<TSessionState>({} as TSessionState, 0)
+    : createStateContainer<TSessionState>(
     readSessionState(sessionRef.current.state),
     sessionRef.current.version
   );
@@ -2628,6 +2829,26 @@ export async function createExecutionContext<
   // Off the merged schema, so a readonly field a block declares is guarded too.
   const readonlyFields = getReadonlyStateKeys(scopeStateSchema(flow, "session"));
   const createdWith = sessionContainer.read() as Record<string, unknown>;
+  const persistSession = createScopePersist<TSessionState, SessionRecord>(
+    sessionRef,
+    stores.session,
+    (expectedVersion, state) => ({
+      ...sessionRef.current,
+      state: state as TSessionState,
+      version: expectedVersion + 1,
+      updatedAt: Date.now()
+    }),
+    readSessionState
+  );
+  // FIX-2754: a list of the owner's sessions shows the fields the client is
+  // shown, and hears the owner's user topic, which the store wrapper tells of
+  // whole-record writes but not of field deltas (a busy turn writes many). The
+  // wrapper can't see flow definitions to tell an exposed field from an
+  // internal one, and a delta must stay atomic (written whole, it would
+  // conflict with each of the turn's own writes), so the notice is published
+  // here, beside a delta to an exposed field, once it lands.
+  const exposedSessionFields = new Set(clientVisibleStateKeys(flow));
+  const sessionBus = stores.bus;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
     ...(readonlyFields.length === 0
@@ -2636,17 +2857,16 @@ export async function createExecutionContext<
           guard: (next: Readonly<TSessionState>) =>
             refuseReadonlyStateChange(flow.kind, sessionId, readonlyFields, createdWith, next)
         }),
-    persist: createScopePersist<TSessionState, SessionRecord>(
-      sessionRef,
-      stores.session,
-      (expectedVersion, state) => ({
-        ...sessionRef.current,
-        state: state as TSessionState,
-        version: expectedVersion + 1,
-        updatedAt: Date.now()
-      }),
-      readSessionState
-    ),
+    persist:
+      sessionBus === undefined || exposedSessionFields.size === 0
+        ? persistSession
+        : async (state, expectedVersion, hint) => {
+            const result = await persistSession(state, expectedVersion, hint);
+            if (result.ok && hint.kind !== "set" && exposedSessionFields.has(hint.path[0])) {
+              publishSessionOwnerRun(sessionBus, sessionRef.current);
+            }
+            return result;
+          },
     reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session, readSessionState)
   });
 
@@ -2697,34 +2917,55 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  /** A scope's topic id for this request: the bare session id, the user id or the org id. */
+  function scopeTopicId(scope: "session" | "user" | "org"): string {
+    return scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId;
+  }
+
   // FIX-1506.
   /**
    * Publish that `scope` changed, naming this request. The topic's
    * id is the bare session id, the user id or the org id, under the tenant.
    */
-  function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
+  function publishScopeNotice(
+    scope: "session" | "user" | "org",
+    kind: "state" | "resource",
+    narrowed: { resource?: string; ids?: string[] } = {}
+  ): void {
     publishScopeChange(stores.bus, {
       scope,
-      id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
+      id: scopeTopicId(scope),
       tenantId: options.tenantId,
       kind,
-      ...(resource !== undefined ? { resource } : {}),
+      ...narrowed,
       requestId: requestRef.current.id
     });
   }
 
-  function makeResourceChangeHandler(scope: "session" | "user" | "org") {
+  // FIX-2623 D1: read once per context, for all three scopes' handlers.
+  const hostHasViews = options.requestHost?.hostHasViews?.() === true;
+
+  /**
+   * The change handler for one scope's copy: this run's own, or, with
+   * `named`, another session's copy this run reaches (`ctx.resources.at`).
+   * A named copy's write publishes on that session's topics only, never on
+   * this run's stream, and starts a turn there only as the wake its write
+   * owed before it landed, never by running its `reactTo` blocks inside this turn.
+   */
+  function makeResourceChangeHandler(scope: "session" | "user" | "org", named?: NamedCopyTarget) {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
     const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
     const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
 
     // FIX-1506: the resources whose change another session's view may read —
-    // every resource with a `client` config, and every resource of a scope
-    // that declares `client.derived` (a derived value may read any of them).
-    // Their changes publish on the scope's topic, stream or not.
-    const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
-    const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
+    // every resource with a `client` config. Their changes publish on the
+    // scope's topic, stream or not.
+    // FIX-2623 D1: and every resource, at every scope, once any flow the host
+    // registers declares a view, whichever flow writes it. A view's run may
+    // read any of them, and the host can't know which in advance. An extra
+    // notice is allowed; a missed one is the failure.
+    const everyResourcePublishes = hostHasViews;
     const publishedSingleKeys = new Set<string>();
     const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
@@ -2739,17 +2980,50 @@ export async function createExecutionContext<
      * path is a row only its owner may read (`noticePathFor`).
      */
     const publishChange = (resourcePath: string): void => {
-      if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
-      const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
-      if (holders.length === 0) return;
-      const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
-      publishScopeNotice(scope, "resource", named ? resourcePath : undefined);
+      // The session notice, or none, by the scope's published resources.
+      let notice: { resource?: string; ids?: string[] } | undefined;
+      if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
+      else {
+        const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+        if (holders.length > 0) {
+          // An entry names its key beside its path, when the path may be named (FIX-2625).
+          // On the user topic each holder names its root: the deepest is under
+          // every other, so a view of any holder hears it (the path rule).
+          const named = holders
+            .map((cfg) => entryNotice(cfg, resourcePath, scope))
+            .filter((n) => n.resource !== undefined)
+            .sort((a, b) => b.resource!.length - a.resource!.length)[0];
+          notice = named ?? {};
+        }
+      }
+      if (scope !== "session") {
+        if (notice !== undefined) publishScopeNotice(scope, "resource", notice);
+        return;
+      }
+      // FIX-2623 D1: a session write goes through the one publish surface,
+      // which adds the owner's user topic for a lineage-shared key. Sharing is
+      // the stored key's, by the ownership rule writes route by; the owner is
+      // this session record's.
+      publishSessionResourceChange(stores.bus, {
+        sessionId: named?.sessionId ?? sessionId,
+        ownerUserId: named?.ownerUserId ?? sessionRef.current.userId,
+        tenantId: options.tenantId,
+        notice,
+        lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
+        hostHasViews,
+        requestId: requestRef.current.id
+      });
     };
 
     // Only wire a handler when there is something to do: a live emitter
     // (FIX-739 streaming), a `reactTo` binding (FIX-751), and/or a resource
     // to publish on a bus (FIX-1506). Reactive-only resources still dispatch
     // even with no emitter present.
+    if (named !== undefined) {
+      return async (resourcePath: string): Promise<void> => {
+        publishChange(resourcePath);
+      };
+    }
     if (!emitter && !hasReactive && !(stores.bus !== undefined && publishesAny)) return undefined;
 
     const dispatchReactive = hasReactive
@@ -2899,9 +3173,18 @@ export async function createExecutionContext<
         });
 
   // Populate the template resolver now that all registries exist.
+  // FIX-2623 D1: in a view, every scope searched is a dependency, the one the
+  // template was found in and each before it, and every scope when it is
+  // missing: a write to any of them changes what the view renders.
+  const templateScopes = [
+    ...(noSession ? [] : [{ scope: "session" as const, read: readSessionResourceContent }]),
+    { scope: "user" as const, read: readUserResourceContent },
+    { scope: "org" as const, read: readProjectResourceContent }
+  ];
   templateResolverRef.current = (ref: string): string | null => {
-    for (const contentFn of [readSessionResourceContent, readUserResourceContent, readProjectResourceContent]) {
-      const content = contentFn()[ref];
+    for (const { scope, read } of templateScopes) {
+      viewDependencies?.resource(scope, ref, { key: ref });
+      const content = read()[ref];
       if (typeof content === "string") return content;
     }
     return null;
@@ -2909,9 +3192,13 @@ export async function createExecutionContext<
 
 
 
-  const modelResolver = options.modelResolver ?? createModelResolver();
+  // FIX-2623 D2: a view calls no model. Every path to a model resolves
+  // through here, so refusing here refuses them all, by name.
+  const modelResolver = options.refuseModelCalls === true
+    ? refusingModelResolver()
+    : (options.modelResolver ?? createModelResolver());
   const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
-  const resolvedModelStorage = new AsyncLocalStorage<string>();
+  const resolvedModelStorage = createScopedAsyncStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
@@ -2921,6 +3208,76 @@ export async function createExecutionContext<
   if (providerOf !== undefined) {
     resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
   }
+  // A person's files reach the model at the call, through the one resolver,
+  // for this session and this person only. The history and everything a run
+  // records of it keep the references.
+  // Each file is read once per request, though every step of a tool loop
+  // sends it again. A failed read isn't kept, so the next step tries again.
+  const blobs = stores.blobs;
+  const reads = new Map<string, Promise<ResolvedAttachment>>();
+  const runUser = { userId, orgId: resolvedOrgId };
+  // A copy this run keeps names this flow instance, whose sign-in the read route checks it under.
+  const userOwner = userBlobOwner(options.tenantId, runUser, flow.id);
+  const readOnce = (store: BlobStore, file: FileContent) => {
+    const cached = reads.get(file.data);
+    if (cached !== undefined) return cached;
+    // The session's files, and the user's own scope's, whichever flow kept them: a task's brief files (FIX-2522).
+    const read = resolveAttachment(store, file, {
+      owner: sessionBlobOwner(sessionKey),
+      user: runUser,
+      userKept: { tenantId: options.tenantId }
+    });
+    reads.set(file.data, read);
+    read.catch(() => reads.delete(file.data));
+    return read;
+  };
+  resolveModel.prepareMessages = (messages: unknown[], target?: { accepts: AttachmentAccepts }) =>
+    resolveHistoryFiles(
+      messages,
+      blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file),
+      target,
+      requestRef.current.attachments ?? []
+    );
+  // The same reader for a harness handed the turn's files (FIX-2519) and for
+  // the model's read of an earlier file (FIX-2636), named in core's terms.
+  // No blob store: no reader, and a harness refuses the files.
+  const attachmentSeam: AttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : async (file: FileContent) => {
+          let resolved: ResolvedAttachment;
+          try {
+            resolved = await readOnce(blobs, file);
+          } catch (error) {
+            if (error instanceof AttachmentUnavailableError) throw new HarnessAttachmentUnavailableError(file, { cause: error });
+            throw error;
+          }
+          return {
+            mediaType: resolved.record.mediaType,
+            ...(file.filename !== undefined ? { filename: file.filename } : {}),
+            bytes: resolved.bytes,
+            base64: resolved.base64,
+            // A document's text, for a harness that doesn't read it as a file (FIX-2520).
+            text: () => readAttachmentText(file, resolved, (other: FileContent) => readOnce(blobs, other))
+          };
+        };
+  // FIX-2522. Copies of files kept in the person's own scope, read through the
+  // same resolver, so only a file this run can read is copied. No blob store:
+  // no keeper, and a caller that keeps files says so.
+  let keptSends = 0;
+  const userAttachmentSeam: UserAttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : {
+          keep: (files) =>
+            copyAttachments(blobs, files, {
+              owner: userOwner,
+              send: `keep:${requestId}:${(keptSends += 1)}`,
+              read: (file) => readOnce(blobs, file)
+            }),
+          // Only what this flow kept for this user: a reference to anything else is left alone.
+          discard: (files) => discardAttachments(blobs, files, { owner: userOwner, user: runUser })
+        };
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3011,6 +3368,9 @@ export async function createExecutionContext<
       // here: a retry, a resume or a queued run is the same request only if
       // it reads the same value.
       incarnation: resolveRequestIncarnation(requestRef.current),
+      // From the record, as the incarnation is: a resumed or queued run of
+      // this request sees the files the parse step checked.
+      attachments: requestRef.current.attachments ?? [],
       get tokenUsage() {
         return computeTokenUsage();
       },
@@ -3033,7 +3393,10 @@ export async function createExecutionContext<
       },
       ...userOpsEmitting
     },
-    () => userContainer.read()
+    () => {
+      viewDependencies?.state("user");
+      return userContainer.read();
+    }
   ) as UserScopeHandle<TUserState>;
 
   const sessionOpsEmitting = emitWrap("session", sessionOps, sessionContainer);
@@ -3083,7 +3446,7 @@ export async function createExecutionContext<
       maxAttempts
     );
   };
-  const sessionHandle = defineStateProperty(
+  const sessionHandle = noSession ? noSessionHandle<SessionScopeHandle<TSessionState>>() : defineStateProperty(
     {
       identity: {
         type: "session" as const,
@@ -3203,8 +3566,14 @@ export async function createExecutionContext<
       },
       ...sessionOpsEmitting
     },
-    () => sessionContainer.read()
+    () => {
+      viewDependencies?.state("session");
+      return sessionContainer.read();
+    }
   ) as SessionScopeHandle<TSessionState>;
+  // FIX-2623 D1: in a session view, the session's items, metadata, window and
+  // journal are reads of the session too. Its topic covers every change to them.
+  if (viewDependencies !== undefined && !noSession) recordSessionReads(sessionHandle, () => viewDependencies.session(sessionId));
 
   const orgOpsEmitting =
     orgOps === undefined || orgContainer === undefined
@@ -3224,7 +3593,10 @@ export async function createExecutionContext<
             },
             ...orgOpsEmitting
           },
-          () => orgContainer.read()
+          () => {
+            viewDependencies?.state("org");
+            return orgContainer.read();
+          }
         ) as OrgScopeHandle<TOrgState>);
 
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
@@ -3244,19 +3616,310 @@ export async function createExecutionContext<
     const handle = (registry as Record<string, AnyResourceRef>)[accessor];
     if (handle !== undefined) flatResourcesHandles[accessor] = handle;
   }
+  /** What the handle at `accessor` can reach: its storage key, or a collection's prefix. */
+  const reachOf = (accessor: string, scope: "session" | "user" | "org"): StorageReach => {
+    const config = scope === "session" ? sessionResourceConfigs[accessor] : scope === "user" ? userResourceConfigs[accessor] : orgResourceConfigs[accessor];
+    return config !== undefined && isCollectionConfig(config)
+      ? { prefix: getPatternPrefix(config.pattern) === "" ? "" : `${getPatternPrefix(config.pattern)}/` }
+      : { key: scopeStorageKeyMaps[scope][accessor] ?? accessor };
+  };
+  // FIX-2623: in a view, every resource reached through `ctx.resources` is
+  // recorded, by accessor, against its scope. The handle handed back is the
+  // same object either way: code that keys by a handle's identity runs the
+  // same branch recorded or not (FIX-2621). Every block's context shares this
+  // one registry, so a read by a child block, a step or a capability's block
+  // is recorded too.
+  const recordResource = (accessor: string): void => {
+    const scope = accessorScope[accessor];
+    if (viewDependencies === undefined || scope === undefined) return;
+    viewDependencies.resource(scope, accessor, reachOf(accessor, scope));
+  };
+  const resourceHandle = (name: string): AnyResourceRef => {
+    const handle = flatResourcesHandles[name];
+    if (handle === undefined) {
+      if (sessionAccessorsWithoutSession.has(name)) throw new NoSessionError(`read the session resource "${name}"`);
+      throw new Error(`Resource "${name}" is not registered`);
+    }
+    recordResource(name);
+    return handle;
+  };
   const flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>> = {
     ...flatResourcesHandles,
     get(name: string) {
-      const handle = flatResourcesHandles[String(name)];
-      if (handle === undefined) {
-        throw new Error(`Resource "${String(name)}" is not registered`);
-      }
-      return handle;
+      return resourceHandle(String(name));
     },
     list() {
+      for (const accessor of Object.keys(flatResourcesHandles)) recordResource(accessor);
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  /**
+   * `ctx.resources.at({ session })`: another session's copy of this flow's
+   * session-scoped collections, by this flow's definitions. Each verb waits
+   * on one admission per named session per run: the fence (`fenceNamedReach`),
+   * then the routes' own admission fed this run's principal
+   * (`admitNamedSession`). A refusal and an id no one holds answer every verb
+   * alike, with {@link SessionNotFoundError}. Every later verb re-reads the
+   * session record first: one deleted and taken again (another incarnation,
+   * or another owner) is admitted again from scratch, never written under the
+   * admission the first one earned.
+   *
+   * The admitted copy is loaded and written by the code that serves the run's
+   * own (`CopyCell`): its own cache, lazily filled, and versioned writes, so
+   * two sessions writing one copy conflict as two local writers do. A write
+   * publishes on the named session's topics and, for a collection with a
+   * `wakeEntry`, owes a wake on that session's entry before it is written.
+   */
+  const namedPrincipal: Principal = {
+    userId,
+    orgId: resolvedOrgId,
+    ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+    kind: runKind,
+    ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+  };
+  const namedFence = { origin: readDeliveryOrigin(options.source, options.metadata), sessionId };
+  type NamedCopy = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
+  const namedCopies = new Map<string, Promise<NamedCopy | undefined>>();
+  /** Admit `target` from scratch, and keep the answer for this run's later verbs. */
+  const admitCopy = (target: string): Promise<NamedCopy | undefined> => {
+    const copy = (async (): Promise<NamedCopy | undefined> => {
+      const flows = options.requestHost?.flows;
+      if (flows === undefined || noSession) return undefined;
+      const record = await admitNamedSession(
+        { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
+        target
+      );
+      return record === undefined ? undefined : { record, registry: buildNamedCopy(target, record, flows) };
+    })();
+    namedCopies.set(target, copy);
+    return copy;
+  };
+  const namedCopy = async (target: string): Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined> => {
+    const kept = namedCopies.get(target);
+    if (kept === undefined) return (await admitCopy(target))?.registry;
+    const admitted = await kept;
+    if (admitted === undefined) return undefined;
+    // The record as it stands now: still the one admitted, or admitted again.
+    const now = await stores.session.get(resolveSessionStorageKey(target, options.tenantId));
+    if (now !== undefined && isSameSessionRecord(now, admitted.record)) return admitted.registry;
+    return (await admitCopy(target))?.registry;
+  };
+  /** The registry over `target`'s copy, admitted as `record`, whose owning flow `flows` resolves. */
+  const buildNamedCopy = (
+    target: string,
+    record: SessionRecord,
+    flows: Pick<FlowRegistry, "get" | "list">
+  ): ResourceRegistry<Record<string, AnyResourceRef>> => {
+    const key = resolveSessionStorageKey(target, options.tenantId);
+    const lineage = resolveLineageId({ id: key, lineageId: record.lineageId });
+    const cell: CopyCell = {
+      scope: "session",
+      token: `session@${key}`,
+      stateRef: { current: ownKeyRecord<JsonObject>() },
+      contentRef: { current: ownKeyRecord<string>() },
+      versionRef: { current: ownKeyRecord<number>() },
+      loadedPrefixes: new Set(),
+      missing: new Set(),
+      deletedState: new Set(),
+      deletedContent: new Set(),
+      scopeIdOf: (storageKey) => (resolveOwnershipFlag(scopeBuckets.session, storageKey) === true ? lineage : key),
+      storageScopeOf: (scopeId) => (scopeId === lineage ? "lineage" : "session")
+    };
+    // Every collection reads through the lazy loaders: nothing of this copy
+    // was loaded when the run started.
+    const configs = ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
+    for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
+      if (isNamedReachable(config)) configs[accessor] = { ...config, prefetchMode: "lazy" };
+    }
+    // Validated at definition: no two of these overlap with different entries.
+    const wakingConfigOf = (storageKey: string): (ResourceCollectionConfig & { wakeEntry: string }) | undefined =>
+      Object.values(configs).find(
+        (config): config is ResourceCollectionConfig & { wakeEntry: string } =>
+          isCollectionConfig(config) && config.wakeEntry !== undefined && matchesPattern(config.pattern, storageKey)
+      );
+    const owner = resolveRecordOwner(flows, record);
+    const wakes = options.requestHost?.wakes !== undefined ? stores.wakes : undefined;
+    const fenceMs = options.requestHost?.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS;
+    /**
+     * The turn a write at `storageKey` starts there, owed before the write, so
+     * no crash or store error between the two can lose it. Its `landBy` is
+     * this request's lease, as every wake a request owes: a turn that runs
+     * before then and finds nothing new holds the wake there in case the write
+     * is still landing. An owe that fails throws, and the write never runs. A
+     * write that fails after its owe leaves a turn that reads nothing new.
+     *
+     * @throws When the session's flow declares no internal entry by the
+     *   collection's `wakeEntry`: such a wake could never be paid.
+     */
+    const oweTurnBeforeWrite = async (storageKey: string): Promise<void> => {
+      const config = wakingConfigOf(storageKey);
+      if (config === undefined) return;
+      const entry = config.wakeEntry;
+      if (!owner.ok || owner.flow.internal?.actions?.[entry] === undefined) {
+        throw new Error(
+          `Collection "${config.pattern}" wakes "${entry}" in the session it writes, but that session's flow ` +
+            `"${record.flowId ?? record.flowKind}" declares no internal entry "${entry}". Declare it there, or drop the collection's wakeEntry.`
+        );
+      }
+      if (wakes === undefined) return;
+      const now = Date.now();
+      const owed = await wakes.owe({
+        ...(options.tenantId !== undefined && options.tenantId.length > 0 ? { tenantId: options.tenantId } : {}),
+        sessionId: target,
+        entry,
+        flowKind: record.flowId ?? record.flowKind,
+        userId: record.userId,
+        orgId: record.orgId ?? resolvedOrgId,
+        dueAt: now + NAMED_WRITE_WAKE_DUE_MS,
+        landBy: now + fenceMs,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+      });
+      noteWakeOwed(wakes, owed.dueAt);
+    };
+    const persisters = makeKeyPersisters(cell);
+    /**
+     * Entries whose state a delete just removed and whose content it removes
+     * next: a collection entry's delete is two rows, and the one debt owed
+     * before the first covers both. A second owe that failed between them
+     * would leave the delete half done.
+     */
+    const contentDeletesOwed = new Set<string>();
+    return createScopeResourceRegistry({
+      orgId: resolvedOrgId,
+      scope: "session",
+      scopeId: key,
+      cellOf: (storageKey) => cell.scopeIdOf(storageKey)!,
+      configs,
+      readResources: () => cell.stateRef.current,
+      readResourceContent: () => cell.contentRef.current,
+      ...persisters,
+      mutateResourceKey: async (storageKey, mutator, opts) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.mutateResourceKey(storageKey, mutator, opts);
+      },
+      deleteResourceKey: async (storageKey) => {
+        await oweTurnBeforeWrite(storageKey);
+        const deleted = await persisters.deleteResourceKey(storageKey);
+        // The registry deletes the entry's content next, when it holds some.
+        if (deleted && storageKey in cell.contentRef.current) contentDeletesOwed.add(storageKey);
+        return deleted;
+      },
+      persistResourceContentKey: async (storageKey, content) => {
+        await oweTurnBeforeWrite(storageKey);
+        return persisters.persistResourceContentKey(storageKey, content);
+      },
+      deleteResourceContentKey: async (storageKey) => {
+        if (!contentDeletesOwed.delete(storageKey)) await oweTurnBeforeWrite(storageKey);
+        return persisters.deleteResourceContentKey(storageKey);
+      },
+      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId }),
+      lazyLoad: makeLazyLoad(cell),
+      recordResourceLoad,
+      templateResolverRef,
+      projectedResourceContext: buildProjectedResourceContext("session", target),
+      actorUserId: userId
+    });
+  };
+  const atSession = (target: { readonly session: string }): ResourceRegistry<Record<string, AnyResourceRef>> => {
+    const named = target?.session;
+    if (viewDependencies !== undefined) {
+      throw new Error("A view reads its own copies: `ctx.resources.at` is not available in a view.");
+    }
+    // The run's own session is its own copy, through the one cache it already holds.
+    if (named === sessionId) return flatResourcesRegistry;
+    /** The named copy, or the refusal every verb shares. */
+    const open = async (): Promise<ResourceRegistry<Record<string, AnyResourceRef>>> => {
+      fenceNamedReach(namedFence, named);
+      const copy = typeof named === "string" ? await namedCopy(named) : undefined;
+      if (copy === undefined) throw new SessionNotFoundError();
+      return copy;
+    };
+    const handles: Record<string, AnyResourceRef> = Object.create(null);
+    for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
+      if (accessorScope[accessor] !== "session" || !isNamedReachable(config)) continue;
+      const via = async (): Promise<ResourceCollectionRef<JsonObject>> =>
+        (await open())[accessor] as ResourceCollectionRef<JsonObject>;
+      handles[accessor] = {
+        pattern: config.pattern,
+        scope: "session",
+        config,
+        get: async (key) => (await via()).get(key),
+        getOptional: async (key) => (await via()).getOptional(key),
+        create: async (key, initial, createOptions) => (await via()).create(key, initial, createOptions),
+        getOrCreate: async (key, initial) => (await via()).getOrCreate(key, initial),
+        upsert: async (key, update, createOnly) => (await via()).upsert(key, update, createOnly),
+        list: async (prefix) => (await via()).list(prefix),
+        findBy: async (index, value) => (await via()).findBy(index, value),
+        delete: async (key) => (await via()).delete(key),
+        count: async () => (await via()).count()
+      } satisfies ResourceCollectionRef<JsonObject>;
+    }
+    const resolve = (name: string): AnyResourceRef => {
+      const handle = handles[name];
+      if (handle !== undefined) return handle;
+      if (accessorScope[name] === undefined) throw new Error(`Resource "${name}" is not registered`);
+      throw new Error(
+        `Resource "${name}" can't be reached in another session: \`ctx.resources.at\` reaches the session-scoped, stored collections`
+      );
+    };
+    const copy = {
+      ...handles,
+      get: (name: string) => resolve(String(name)),
+      list: () => Object.values(handles),
+      at: atSession
+    };
+    // Any other accessor this flow declares refuses by property, as it does by name.
+    for (const accessor of Object.keys(accessorScope)) {
+      if (accessor in copy) continue;
+      Object.defineProperty(copy, accessor, { enumerable: false, get: () => resolve(accessor) });
+    }
+    return copy as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
+  };
+  (flatResourcesRegistry as { at: unknown }).at = atSession;
+
+  // FIX-2625: a task board's ledger is named by the accessor whose handle its
+  // task collection read through, and lives at that accessor's scope.
+  const accessorOfHandle = (handle: object): string | undefined =>
+    Object.keys(flatResourcesHandles).find((accessor) => flatResourcesHandles[accessor] === handle);
+  // A board read through its task collection, in a view, is heard on its
+  // board's notices, as its ledger's scope allows (`ViewDependencies.board`).
+  const boardReadSeam: BoardReadSeam | undefined =
+    viewDependencies === undefined
+      ? undefined
+      : {
+          record(read) {
+            const covers = accessorOfHandle(read.ledger);
+            const scope = covers === undefined ? undefined : accessorScope[covers];
+            if (covers === undefined || scope === undefined) return;
+            viewDependencies.board(read.board, scope, read.sessionIds, covers, reachOf(covers, scope), read.partition);
+          }
+        };
+  // A board's changes go out on the bus; a row added to it, on its ledger's scope topic too.
+  const boardNoticeSeam =
+    stores.bus !== undefined
+      ? createBoardNoticeSeam(stores.bus, {
+          requestId,
+          tenantId: options.tenantId,
+          boardTopicOf: (ledger) => {
+            const accessor = accessorOfHandle(ledger);
+            const scope = accessor === undefined ? undefined : accessorScope[accessor];
+            if (accessor === undefined || scope === undefined) return undefined;
+            // FIX-2733: a lineage-shared session ledger's row reaches the other
+            // members' views on the owner's user topic, by the rule a
+            // lineage-shared resource write publishes by (`publishSessionResourceChange`).
+            const lineageShared = scope === "session" && hostHasViews && reachHasFlag(scopeBuckets.session, reachOf(accessor, scope));
+            return { scope, id: scopeTopicId(scope), ...(lineageShared ? { lineageOwnerUserId: sessionRef.current.userId } : {}) };
+          }
+        })
+      : undefined;
+  if (viewDependencies !== undefined || noSession) {
+    for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
+      Object.defineProperty(flatResourcesRegistry, accessor, {
+        enumerable: true,
+        get: () => resourceHandle(accessor)
+      });
+    }
+  }
 
   // FIX-573: per-block lifecycle trace items are now driven by
   // `onBlockTraceCapture` phases (added → input → generator → output).
@@ -3298,7 +3961,7 @@ export async function createExecutionContext<
   };
   responseRef.current = response;
 
-  // Emission context used by emitMessage/emitComponent/emitStatus.
+  // Emission context used by emitMessage/emitData/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
 
@@ -3324,7 +3987,7 @@ export async function createExecutionContext<
   const requestSpendLedger = interruptedEndingLive
     ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
     : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
-  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
+  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding(), outliveAbort);
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
   // A crash's continuation names no resolution: the log's latest is how the
@@ -3909,7 +4572,13 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
+      // A view's run records a board read through its task collection.
+      ...(boardReadSeam !== undefined ? { [BOARD_READ_SEAM]: boardReadSeam } : {}),
+      ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
+      ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
+      // A view's run only (FIX-2625 D1): the change it may answer for.
+      ...(options.view !== undefined ? { view: options.view } : {}),
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
@@ -4189,6 +4858,9 @@ export async function createExecutionContext<
         if (!options.durabilityEnabled) {
           throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
+        if (noParkReason !== undefined) {
+          throw new Error(noParkReason);
+        }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
@@ -4250,6 +4922,14 @@ export async function createExecutionContext<
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
+        // FIX-2623 D2: a generator and an evaluator are model calls. Refused
+        // before they start, so the error names the model call, not whatever
+        // it reaches first. An evaluator always holds a model (`model` is
+        // required), and one held inline is called directly, never through the
+        // resolver this context refuses.
+        if (options.refuseModelCalls === true && (parent.kind === "generator" || parent.kind === "evaluator")) {
+          throw new ViewModelCallError(parent.name);
+        }
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -4353,7 +5033,7 @@ export async function createExecutionContext<
         // Each scope starts with no identity. Generators that declare
         // `itemVisibility` stamp it directly on the items they emit; other
         // blocks inherit nothing — they emit structural items (status,
-        // component, container) whose visibility comes from the type
+        // data, container) whose visibility comes from the type
         // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
@@ -4422,6 +5102,7 @@ export async function createExecutionContext<
           total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
+        attachBuiltInHost(childContext, builtInHost);
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
         // `ctx._requestSideChainSignal`, not `ctx.signal`).
@@ -4674,7 +5355,7 @@ export async function createExecutionContext<
     // `_withExecutionScope` on child scopes) so trace items carry the
     // firing block's identity.
     const emitMessageImpl = createEmitMessage(activeEmCtx);
-    const emitComponentImpl = createEmitComponent(activeEmCtx);
+    const emitDataImpl = createEmitData(activeEmCtx);
     const emitStatusImpl = createEmitStatus(activeEmCtx, statusSlot);
     const traceEmitters = buildTraceEmitters(
       activeEmCtx,
@@ -4689,7 +5370,7 @@ export async function createExecutionContext<
     );
     context.emit = {
       message: emitMessageImpl,
-      component: emitComponentImpl,
+      data: emitDataImpl,
       status: emitStatusImpl,
       trace: traceEmitters,
     };
@@ -4698,10 +5379,10 @@ export async function createExecutionContext<
     // round so a tool's `activeStatusMessage` does not linger past the
     // tool's lifetime.
     context._peekStatus = (): string => statusSlot.message;
-    // FIX-963: the awaited component emitter. Deliberately NOT on `ctx.emit`
-    // — `emit.component` stays `void`, and a caller that needs delivery to be
+    // FIX-963: the awaited data emitter. Deliberately NOT on `ctx.emit` —
+    // `emit.data` stays `void`, and a caller that needs delivery to be
     // observable asks for it by name.
-    context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
+    context._emitDataAwaited = createEmitDataAwaited(activeEmCtx);
     context._emitMessageAwaited = createEmitMessageAwaited(activeEmCtx);
     // The barrier after an awaited emission: its item is in the request store.
     context._flushItems = () => stores.request.flushItems(activeEmCtx.requestId);
@@ -4789,15 +5470,8 @@ export async function createExecutionContext<
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
   (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
-  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = async (write) => {
-    writesOutlivingAbort += 1;
-    try {
-      return await write();
-    } finally {
-      writesOutlivingAbort -= 1;
-    }
-  };
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
+  attachBuiltInHost(rootContext, builtInHost);
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.

@@ -2,9 +2,9 @@
  * Goal check: in the Teammates lab, a worker's tool steps show in its
  * conversation during its turn, and fold once the turn is done (FIX-2393).
  * On a real model, against `fsdev dev --app @flow-state-dev/teammates`, graded
- * on the lab's own conversation entries: its adapter's `watchConversation`,
- * which reads the session through the client's `sessionFeed`, the surface
- * the conversation draws.
+ * on the lab's own conversation lines: what its conversation's follower
+ * reads (react's `useSessionFeed` and workforce's session turns view, under
+ * the lab's provider), the surface the conversation draws.
  *
  * Signals, per run:
  *   - steps during the turn: a view the conversation showed before the answer
@@ -12,8 +12,8 @@
  *   - folded after: once the answer lands and the turn ends, every run of
  *     steps in the turn reads done (or failed) and closed, and none is running.
  *
- * Control (`GOAL_CONTROL=popup-only`, same command): the adapter draws no
- * steps in the conversation, as before; *steps during the turn* must FAIL.
+ * Control (`GOAL_CONTROL=popup-only`, same command): the conversation's
+ * lines draw no steps, as before; *steps during the turn* must FAIL.
  *
  * Run: pnpm tsx goals/teammates-lab/shows-a-workers-steps/run.mts
  */
@@ -30,8 +30,12 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { createLabAdapter, type ConversationEntry, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
+import type { ItemLine } from "@flow-state-dev/react";
+import { stepRun, stepsOf, type StepRun, type ToolStep } from "../../../labs/teammates/src/components/flow-state/conversation-lines.tsx";
+import { textOf } from "../../../labs/teammates/src/components/lines.tsx";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { sleep, startTeammates } from "../lab.mts";
+import { teammatesScreen } from "../screen.mts";
 
 const fixture = loadFixture<{ worker: string; path: string; line: string; decoys: Record<string, string>; asks: string[] }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -45,14 +49,14 @@ const SETTLE_MS = 3_000;
 /** The `popup-only` control: the conversation draws no tool steps, as before FIX-2393; the popup still does. */
 const POPUP_ONLY: ModulePatch[] = [
   {
-    module: "labs/teammates/src/adapter.ts",
-    from: String.raw`const step = toolStep\(item, ended\);`,
-    to: "continue;",
+    module: "labs/teammates/src/app/conversations.ts",
+    from: String.raw`conversationLines\(items, lineTurns, \{ renderers: teammatesRenderers \}\)`,
+    to: `conversationLines(items, lineTurns, { renderers: teammatesRenderers }).filter((line) => line.kind !== "steps")`,
   },
 ];
 if (!["", "popup-only"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
 
-// The adapter runs in this process, so the control re-runs this file with the patch applied as it loads.
+// The screen half runs in this process, so the control re-runs this file with the patch applied as it loads.
 if (CONTROL === "popup-only" && process.env.GOAL_MODULE_PATCH === undefined) {
   process.exit(runPatchedGoal({
     patches: POPUP_ONLY,
@@ -76,18 +80,27 @@ function seedWorkdir(dir: string, value: string): string {
   return dir;
 }
 
-type Steps = Extract<ConversationEntry, { kind: "steps" }>;
+/** A steps line as the conversation draws it: its tool steps, and the one line they read as. */
+type Steps = StepRun & { steps: ToolStep[] };
+/** A line's words, when it is something said. */
+const wordsOf = (line: ItemLine) => (line.kind === "user" || line.kind === "assistant" ? textOf(line.item) : "");
+/** A steps line's tool steps and their line; thinking alone draws no run. */
+const runOf = (line: ItemLine): Steps[] => {
+  if (line.kind !== "steps") return [];
+  const steps = stepsOf(line.items, line.ended === true);
+  return steps.length === 0 ? [] : [{ ...stepRun(steps), steps }];
+};
 /** One view the conversation showed, and when. */
 type Seen = { at: number; view: ConversationView };
 
 /** What came after the question in a view: its runs of steps, and whether the answer naming the value is there. */
 function afterAsk(view: ConversationView, ask: string, value: string) {
-  const from = view.entries.findIndex((e) => e.kind === "user" && e.text === ask);
-  const turn = from < 0 ? [] : view.entries.slice(from + 1);
+  const from = view.lines.findIndex((line) => line.kind === "user" && wordsOf(line) === ask);
+  const turn = from < 0 ? [] : view.lines.slice(from + 1);
   return {
     asked: from >= 0,
-    runs: turn.filter((e): e is Steps => e.kind === "steps"),
-    answered: turn.some((e) => e.kind === "assistant" && e.text.includes(value)),
+    runs: turn.flatMap(runOf),
+    answered: turn.some((line) => line.kind === "assistant" && wordsOf(line).includes(value)),
   };
 }
 
@@ -107,13 +120,13 @@ await runGoal(async (failures, tell) => {
     const value = `ORCHID-${randomInt(1000, 9999)}`;
     const lab = await startTeammates(dir, USER, {}, seedWorkdir(join(dir, "workdir"), value));
     try {
-      const adapter = createLabAdapter(createClient({ userId: USER, baseUrl: lab.origin }));
-      const sessionId = await adapter.openConversation(fixture.worker);
+      const screen = await teammatesScreen(createClient({ userId: USER, baseUrl: lab.origin }));
+      const sessionId = await screen.calls.open(fixture.worker);
       const seen: Seen[] = [];
-      const stop = adapter.watchConversation(sessionId, (view) => seen.push({ at: Date.now(), view }));
+      const stop = screen.watch(sessionId, (view) => seen.push({ at: Date.now(), view }));
       const ask = fixture.asks[randomInt(0, fixture.asks.length)]!;
       try {
-        await adapter.send(sessionId, ask);
+        await screen.calls.send(sessionId, ask);
         // The turn is over once the conversation says it isn't answering and has held still a while.
         const until = Date.now() + TURN_MS;
         while (Date.now() < until) {
@@ -123,12 +136,13 @@ await runGoal(async (failures, tell) => {
         }
       } finally {
         stop();
+        screen.close();
       }
       const final = seen[seen.length - 1]?.view;
       if (final === undefined || !afterAsk(final, ask, value).asked) throw new Error(`run ${n}: the conversation never showed the question`);
       if (final.running) throw new Error(`run ${n}: the turn did not end within ${TURN_MS / 1000}s`);
       const end = afterAsk(final, ask, value);
-      if (!end.answered) throw new Error(`run ${n}: the answer never named ${value}, nothing to grade: ${JSON.stringify(final.entries.slice(-2)).slice(0, 400)}`);
+      if (!end.answered) throw new Error(`run ${n}: the answer never named ${value}, nothing to grade: ${JSON.stringify(final.lines.slice(-2).map(wordsOf)).slice(0, 400)}`);
 
       // ── Steps during the turn: before the answer landed, a step line named a file.
       const during = seen.map((s) => afterAsk(s.view, ask, value)).filter((a) => a.asked && !a.answered);

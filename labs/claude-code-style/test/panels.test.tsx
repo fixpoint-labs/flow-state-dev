@@ -7,14 +7,20 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, seedSession, type TestApp } from "./app-host";
 
-beforeEach(() => localStorage.clear());
-afterEach(() => {
+let lab: TestApp;
+beforeEach(async () => {
+  localStorage.clear();
+  lab = await openTestApp();
+  await seedSession(lab, "session", "Draft the launch note");
+});
+afterEach(async () => {
   cleanup();
   localStorage.clear();
   window.history.replaceState(null, "", "/");
+  await closeApps();
 });
 
 const list = () => screen.getByRole("navigation", { name: "Sessions" });
@@ -22,9 +28,9 @@ const pane = () => screen.getByRole("complementary", { name: "Background tasks",
 const press = (key: string, on: Element = document.body) => act(() => void fireEvent.keyDown(on, { key }));
 
 async function openSession() {
-  render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+  render(lab.wrap(<App />));
   await screen.findByRole("region", { name: "Choose a project" });
-  fireEvent.click(within(list()).getByRole("button", { name: /Draft the launch note/ }));
+  fireEvent.click(await within(list()).findByRole("button", { name: /Draft the launch note/ }));
   await screen.findByLabelText("Message the main session");
 }
 
@@ -57,7 +63,7 @@ describe("collapsing the sessions list", () => {
     await openSession();
     press("[");
     cleanup();
-    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    render(lab.wrap(<App />));
     await waitFor(() => expect(list().getAttribute("data-collapsed")).toBe("true"));
   });
 });
@@ -85,7 +91,7 @@ describe("collapsing the side panel", () => {
   });
 
   it("does nothing on ] with no pane to collapse", async () => {
-    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    render(lab.wrap(<App />));
     await screen.findByRole("region", { name: "Choose a project" });
     press("]");
     expect(screen.queryByRole("button", { name: /side panel/ })).toBeNull();

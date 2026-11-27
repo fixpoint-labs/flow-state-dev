@@ -2,6 +2,7 @@
  * Interrupted request detection and recovery utilities.
  */
 import { isOrgAttributed, requireAttributedOrg } from "../context/org-attribution";
+import { requireRecordSession } from "../context/record-session";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -15,8 +16,9 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { settledRecordFields } from "./request-action-result";
-import { runAction } from "./runAction";
+import { runFrameworkAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
+import { principalKindOf } from "../context/principal";
 import { bringSessionWakesForward } from "../durability/request-wakes";
 
 /**
@@ -117,7 +119,12 @@ export async function detectInterruptedRequests(options: {
     const wakes = stores.wakes;
     if (wakes === undefined || options.wakeEntriesOf === undefined || record.sessionId == null) return;
     try {
-      await bringSessionWakesForward(wakes, { tenantId: record.tenantId, sessionId: record.sessionId }, options.wakeEntriesOf(record), now);
+      await bringSessionWakesForward(
+        wakes,
+        { tenantId: record.tenantId, sessionId: record.sessionId, resolvedBy: record.resolvedBy },
+        options.wakeEntriesOf(record),
+        now
+      );
     } catch (error) {
       logRuntimeEvent(logger, "warn", "[flow-state] an interrupted request's session wakes weren't brought forward: they fire at their own due time", {
         requestId: record.id,
@@ -265,7 +272,12 @@ export async function retryRequest(
   }
   const flowId = recordOwner ?? entryOwner;
   const actionName = entry?.actionName ?? originalRecord?.actionName;
-  const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
+  // A request recorded with no session is history: never retried, and never
+  // run in a new session. Refused before anything is minted or written.
+  const sessionId = requireRecordSession(
+    { sessionId: entry?.sessionId ?? originalRecord?.sessionId },
+    "retrying this request"
+  );
   const userId = entry?.userId ?? originalRecord?.userId;
   // The organization axis, held to the same rule as `flowId` above and for the
   // same reason: the durable record is authoritative, and an active entry
@@ -327,8 +339,15 @@ export async function retryRequest(
   // RequestRecord chain is consistent. Falls back to "http" for records
   // persisted before FIX-438.
   const retrySource = entry?.source ?? originalRecord?.source ?? "http";
+  // FIX-2942: who the retry runs as is who the original ran as, read from its
+  // record, never a payload. The new id has no record of its own to say it,
+  // and its session's kind is not the request's (a machine's request can run
+  // in a person's session). A record from before the fields is a machine's,
+  // with no resolver (fail closed).
+  const retryPrincipalKind = principalKindOf(originalRecord?.principalKind);
+  const retryResolvedBy = originalRecord?.resolvedBy ?? undefined;
 
-  void runAction({
+  void runFrameworkAction({
     flow,
     actionName: actionName as keyof typeof flow.actions & string,
     input,
@@ -338,6 +357,12 @@ export async function retryRequest(
     orgId: attributedOrgId,
     tenantId,
     source: retrySource,
+    principalKind: retryPrincipalKind,
+    ...(retryResolvedBy !== undefined ? { resolvedBy: retryResolvedBy } : {}),
+    // The person's files: the retry is their turn again, so its line, its
+    // record and the model get the same references. Already the session's;
+    // nothing is claimed again.
+    attachments: originalRecord?.attachments ?? undefined,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId
@@ -347,9 +372,22 @@ export async function retryRequest(
     // Override the router-level provider with the per-flow effective value for
     // this retry; everything else forwards verbatim.
     runtimeConfig: { ...runtimeConfig, voiceProvider: effectiveVoiceProvider }
-  }).finally(() => {
-    liveStream.close();
-  });
+  })
+    // The run is started here and nothing awaits it, so a failure before it
+    // records anything (its setup throws) ends here. Left uncaught it is an
+    // unhandled rejection, which ends a Node host's process (FIX-2895).
+    .catch((error: unknown) => {
+      logRuntimeEvent(logger, "error", "[flow-state] retried request failed to start", {
+        originalRequestId: options.originalRequestId,
+        newRequestId,
+        flowKind,
+        actionName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    })
+    .finally(() => {
+      liveStream.close();
+    });
 
   logRuntimeEvent(logger, "info", "[flow-state] retrying interrupted request", {
     originalRequestId: options.originalRequestId,

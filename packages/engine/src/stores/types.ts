@@ -2,10 +2,13 @@ import type {
   JournalEntry,
   RequestStatus,
   SequencerCheckpoint,
+  PendingUserSuspension,
+  PendingUserSuspensionQuery,
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
@@ -17,6 +20,8 @@ import type {
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
+import type { BlobStore } from "../blobs/types";
+import type { PrincipalKind } from "../context/principal";
 
 export type { RequestStatus };
 
@@ -88,6 +93,37 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * records can never both fall back to one id.
    */
   lineageId?: string;
+  // FIX-2942; BP-030; BP-031.
+  /**
+   * The kind of the principal that created this session (`context/principal.ts`):
+   * a person's, or a machine's (a schedule's gateway, the system user, a
+   * delivery). A run in a machine's session reaches no session but its own.
+   * Written once, by the birth (`birthSession`), from the creating run's
+   * principal, never from a caller's input. `set` keeps the stored value
+   * whatever a later write carries, so a stale whole-record write can't
+   * change it.
+   *
+   * `== null` on a record written before the field existed: classified from
+   * its first request record instead (`context/session-kind.ts`).
+   */
+  principalKind?: PrincipalKind;
+  /**
+   * A random token minted once per birth (`birthSession`): what tells two
+   * incarnations of one session id apart when their birth time (millisecond
+   * resolution) and lineage (inherited or derived) match. `set` keeps the
+   * stored value whatever a later write carries, as for {@link principalKind}.
+   *
+   * `== null` on a record written before the field: compared by its birth
+   * time and lineage instead (`sameSessionIncarnation`).
+   */
+  incarnationToken?: string;
+  /**
+   * The incarnation of the session that dispatched this one
+   * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
+   * Binds the child to that parent record, not to its reusable bare id.
+   * `== null` on a top-level session and on a child born before the field.
+   */
+  parentIncarnation?: string;
   // FIX-1010; BP-030.
   /**
    * Human-readable name for the body of work a child session was
@@ -151,6 +187,19 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
+  /**
+   * The kind of the principal this request runs as, as its door set it
+   * (`context/principal.ts`). A run started from this record (a continuation,
+   * a queued job, a recovery) reads it, never a payload. `== null` on a
+   * record written before the field.
+   */
+  principalKind?: PrincipalKind;
+  /**
+   * The resolver identity that produced the request's principal
+   * (`Principal.resolvedBy`). `== null` → none: a run from this record
+   * reaches no target whose flow has a resolver of its own.
+   */
+  resolvedBy?: string;
   // BP-030.
   /**
    * Which request this record is, among every request that has held its id.
@@ -220,6 +269,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  // BP-030.
+  /**
+   * The files the person's message carried, in reference form, as the parse
+   * step checked them. What `ctx.request.attachments` reads, so a resumed or
+   * queued run sees the same files. `== null` → none: records written before
+   * the field have none.
+   */
+  attachments?: FileContent[];
   /**
    * The request's item log, trace rows included. Adapters that store items
    * separately may leave this `undefined` on `list()` results unless
@@ -882,6 +939,23 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * lands its own items and does not depend on a flush before it.
    */
   flushItems(requestId: string): Promise<void>;
+
+  // FIX-2676.
+  /**
+   * The request's run has finished writing under `requestId`, however it
+   * ended: drop what the store keeps in memory to make that request's item
+   * writes incremental (the persistent adapters remember the content they
+   * last wrote per item). Item writes still queued for the request land
+   * first, so none is lost and none puts the memory back afterwards.
+   *
+   * The runtime calls it once the last live attempt of the request in this
+   * process has ended, after everything that attempt writes past its
+   * terminal status (`request.onFinished`, side-chain drains, request-end
+   * hooks). A write under the id after this still lands, in full.
+   *
+   * Optional: a store that keeps no per-request item state omits it.
+   */
+  releaseItemTracking?(requestId: string): Promise<void>;
 
   // FIX-685.
   /**
@@ -1757,6 +1831,23 @@ export interface SuspensionStore {
    * partial batch (`deleted < limit`). Idempotent — nothing matching returns 0.
    */
   pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number>;
+
+  // FIX-2770 D3.
+  /**
+   * One user's pending suspensions that wait on them, in one query that
+   * joins each suspension to its request: the request's user and the
+   * suspension's both `query.userId`; the request's tenant and organization
+   * exactly `query.tenantId` and `query.orgId`, NULL-safe (an unbound
+   * principal matches only unbound requests); its flow kind in
+   * `query.flowKinds`; status `pending`; `expiresAt` absent or after
+   * `query.now`; a reason in `USER_SUSPENSION_REASONS`. A suspension whose
+   * request is missing is not returned. Oldest first by
+   * `(createdAt, requestId, suspensionId)`, strictly after `query.after`, at most
+   * `query.limit`. Each row is built with `projectUserSuspension` from the
+   * fields it names, never from a spread record. A SQL store runs this as one
+   * statement; nothing is read back and filtered.
+   */
+  listPendingForUser(query: PendingUserSuspensionQuery): Promise<PendingUserSuspension[]>;
 }
 
 // FIX-140.
@@ -1788,9 +1879,10 @@ export interface LeaseStore {
 
 // FIX-2078 D1.
 /**
- * Where a wake is kept: one per session and internal entry.
+ * Where a wake is kept: one per session, internal entry and resolver identity.
  * `tenantId` is part of the key, so two tenants' sessions under one id never
- * share a wake.
+ * share a wake; so is `resolvedBy`, so writers under two resolvers never
+ * share one either, and a wake's resolver never changes while it is kept.
  */
 export type WakeKey = {
   readonly tenantId?: string;
@@ -1798,6 +1890,14 @@ export type WakeKey = {
   readonly sessionId: string;
   /** The internal entry the wake dispatches in that session. */
   readonly entry: string;
+  /**
+   * The resolver identity that produced the writer's principal
+   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
+   * own-resolver sessions that resolver admits. Absent is a key value of its
+   * own: the wake of writers that hold none (and every wake stored before the
+   * field), whose run admits no own-resolver session.
+   */
+  readonly resolvedBy?: string;
 };
 
 /** What a writer owes a wake: the key, its owner and its due time, all server-written. */
@@ -1837,8 +1937,9 @@ export type WakeRecord = WakeInput & {
  * written before it still type-checks and loads, and a host whose stores keep
  * no wakes logs once and pays debts on its fast paths only.
  *
- * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
- *   time and the LATER `landBy`, and bumping the version.
+ * - {@link owe} writes or coalesces: one wake per key (resolver identity
+ *   included), keeping the EARLIER due time and the LATER `landBy`, and
+ *   bumping the version.
  * - {@link move} and {@link clear} are conditional on the version a pass read,
  *   so a wake written during the pass survives it. Neither bumps the version.
  */
@@ -1884,6 +1985,14 @@ export type StoreRegistry = {
    * in-memory bus when it has none (`withChangeBus`).
    */
   bus?: ChangeBus;
+  // FIX-824.
+  /**
+   * Where attachment bytes live: the profile's `blobs` slot. `createFlowState`
+   * always fills it (on disk when the sessions persist, in memory when they
+   * don't). Optional on a registry you build yourself; without it the upload
+   * and read routes answer `attachments_not_configured`.
+   */
+  blobs?: BlobStore;
 };
 
 // FIX-406 6B.

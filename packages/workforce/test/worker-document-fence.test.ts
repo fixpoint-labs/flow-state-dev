@@ -32,7 +32,7 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, toBareStates } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { readResourcesDirectory } from "../src/loader";
+import { readResourcesDirectory } from "../src/loader/readers";
 import { mintWorkers } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { resourcesFromDocs } from "../src/resources-from-docs";

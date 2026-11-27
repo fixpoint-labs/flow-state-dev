@@ -243,15 +243,12 @@ const USER_ROUTE_SCOPING: Record<string, TableEntry> = {
 const TENANT_HEADER = "x-tenant-id";
 
 const runAction = (kind: string) => ({
-  run: {
-    inputSchema: z.object({}),
-    block: handler({
+  run: handler({
       name: `${kind}-run`,
       inputSchema: z.object({}),
       outputSchema: z.object({}),
       execute: () => ({})
     })
-  }
 });
 
 /** A flow with no resolver of its own: open unless the host authenticates. */

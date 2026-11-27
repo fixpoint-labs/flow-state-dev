@@ -2,7 +2,7 @@
  * The task entries a board's assignees dispatch to, and how the flow declares
  * them (FIX-982 P2, ported to the one-dispatch-protocol design).
  *
- * A task dispatch arrives carrying a task row and nothing else — the
+ * A task dispatch arrives carrying a task and nothing else — the
  * request that made the original routing decision is gone, possibly along
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain

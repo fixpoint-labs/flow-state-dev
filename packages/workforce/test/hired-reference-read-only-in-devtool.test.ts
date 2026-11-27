@@ -75,7 +75,7 @@ function flowWith(resources: DeclaredResources) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
-    actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } },
+    actions: { ...workerDoor, run: work },
   });
 }
 
@@ -132,6 +132,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const run = await router.POST(
     new Request(`http://localhost/api/flows/${WORKER}/${SESSION}/actions/run`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "user_1", input: {} }),
     }),
     { params: { path: [WORKER, SESSION, "actions", "run"] } },

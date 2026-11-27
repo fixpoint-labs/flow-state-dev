@@ -6,7 +6,7 @@
  * about `queue` or `reject`, wait budgets or errors: that policy lives once, in
  * the arbiter (`arbiter.ts`), over whichever backend is present. A queue
  * adapter whose runs land in several processes supplies a backend those
- * processes share (the `WorkerAdapter.leaseBackend` member), so the one arbiter
+ * processes share (the `JobQueueAdapter.leaseBackend` member), so the one arbiter
  * in each process lines up behind the same keys.
  *
  * The in-memory backend is the default: one process, one line per key, and a

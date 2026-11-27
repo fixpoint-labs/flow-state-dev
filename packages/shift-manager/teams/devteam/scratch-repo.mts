@@ -112,7 +112,7 @@ function git(cwd: string, ...args: string[]): string {
  * @param label A short name, so a leftover directory says which check made it.
  * @param options `artifactRepo` to wire a durable address; `seed` to put extra
  *   files in the base commit.
- * @returns The two paths a `WorkspaceConfig` needs.
+ * @returns The two paths a fixed-repository workspace needs (its root and its repository).
  */
 export function createScratchRepo(label: string, options: ScratchRepoOptions = {}): ScratchRepo {
   const sourceRepo = mkdtempSync(join(tmpdir(), `devforce-lab-${label}-repo-`));
@@ -237,7 +237,7 @@ export function branchesUnder(repo: string, prefix: string): string[] {
 /**
  * How many commits `ref` carries that `base` does not.
  *
- * **The branch is not the work.** Provisioning cuts a `conductor/…` branch
+ * **The branch is not the work.** Provisioning cuts a `shift-manager/…` branch
  * before the harness runs, so a branch exists even for an attempt that produced
  * nothing — asking whether one appeared measures the checkout, not the run.
  * Asking how far ahead it is measures the run.

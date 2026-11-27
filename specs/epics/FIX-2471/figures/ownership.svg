@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 326" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight rules by the six children, FIX-2534 to FIX-2539, the last the closure, each rule with one owner. Child 1, subscriptions, config screens and delivery, owns one messaging API, a user hears only what they can read, one write path for subscriptions, one normalized event shape, when a task's subscription ends (pending the owner's ER-7 call), and each event seen once per subscription and delivered once per session. Child 4, custom and Jev screens, owns no generator in routing. Child 5, explicit and inferred work, owns the service flow never filing a task. Children 2 and 3, the GitHub flow and polling, own no rule and use most of them. The closure, child 6, uses every rule.">
+<svg viewBox="0 0 940 358" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: nine rules by the seven children, FIX-2534 to FIX-2539 and FIX-2614, the closure last, each rule with one owner. Child 1, subscriptions, config screens and delivery, owns one messaging API, a user hears only what they can read, one write path for subscriptions, one normalized event shape, when a task&#x27;s subscription ends (pending the owner&#x27;s ER-7 call), and each event seen once per subscription and delivered once per session. Child 4, custom and Jev screens, owns no generator in routing. Child 5, explicit and inferred work, owns the service flow never filing a task. Child 6, routines, owns one routine list over the existing rows, and uses the write path and the read rule. Children 2 and 3, the GitHub flow and polling, own no rule and use most of them; polling also uses the routine list, for its config seeds. The closure uses every rule.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -15,68 +15,79 @@
     .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
     .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="326"/>
-  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE THE CHILDREN, FIX-2534 TO FIX-2539</text>
+  <rect class="bg" x="0" y="0" width="940" height="358"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE THE CHILDREN, FIX-2534 TO FIX-2539 AND FIX-2614</text>
   <g id="columns">
     <text class="t-col" x="378" y="46">1&#183;subs</text>
-    <text class="t-col" x="468" y="46">2&#183;GitHub</text>
-    <text class="t-col" x="558" y="46">3&#183;poll</text>
-    <text class="t-col" x="648" y="46">4&#183;screens</text>
-    <text class="t-col" x="738" y="46">5&#183;modes</text>
-    <text class="t-col" x="828" y="46">6&#183;closure</text>
+    <text class="t-col" x="458" y="46">2&#183;GitHub</text>
+    <text class="t-col" x="538" y="46">3&#183;poll</text>
+    <text class="t-col" x="618" y="46">4&#183;screens</text>
+    <text class="t-col" x="698" y="46">5&#183;modes</text>
+    <text class="t-col" x="778" y="46">6&#183;routines</text>
+    <text class="t-col" x="858" y="46">closure</text>
   </g>
   <g id="er1">
     <text class="t-row" x="16" y="76">ER-1 no generator in routing</text>
     <rect class="use" x="372" y="58" width="72" height="26" rx="3"/><text class="t-use" x="378" y="75">uses</text>
-    <rect class="own" x="642" y="58" width="72" height="26" rx="3"/><text class="t-own" x="648" y="75">OWNS</text>
-    <rect class="use" x="822" y="58" width="72" height="26" rx="3"/><text class="t-use" x="828" y="75">uses</text>
+    <rect class="own" x="612" y="58" width="72" height="26" rx="3"/><text class="t-own" x="618" y="75">OWNS</text>
+    <rect class="use" x="852" y="58" width="72" height="26" rx="3"/><text class="t-use" x="858" y="75">uses</text>
   </g>
   <g id="er2">
     <text class="t-row" x="16" y="108">ER-2 the service flow never files a task</text>
-    <rect class="use" x="462" y="90" width="72" height="26" rx="3"/><text class="t-use" x="468" y="107">uses</text>
-    <rect class="own" x="732" y="90" width="72" height="26" rx="3"/><text class="t-own" x="738" y="107">OWNS</text>
-    <rect class="use" x="822" y="90" width="72" height="26" rx="3"/><text class="t-use" x="828" y="107">uses</text>
+    <rect class="use" x="452" y="90" width="72" height="26" rx="3"/><text class="t-use" x="458" y="107">uses</text>
+    <rect class="own" x="692" y="90" width="72" height="26" rx="3"/><text class="t-own" x="698" y="107">OWNS</text>
+    <rect class="use" x="852" y="90" width="72" height="26" rx="3"/><text class="t-use" x="858" y="107">uses</text>
   </g>
   <g id="er3">
     <text class="t-row" x="16" y="140">ER-3 one messaging API, sendMessage</text>
     <rect class="own" x="372" y="122" width="72" height="26" rx="3"/><text class="t-own" x="378" y="139">OWNS</text>
-    <rect class="use" x="462" y="122" width="72" height="26" rx="3"/><text class="t-use" x="468" y="139">uses</text>
-    <rect class="use" x="552" y="122" width="72" height="26" rx="3"/><text class="t-use" x="558" y="139">uses</text>
-    <rect class="use" x="822" y="122" width="72" height="26" rx="3"/><text class="t-use" x="828" y="139">uses</text>
+    <rect class="use" x="452" y="122" width="72" height="26" rx="3"/><text class="t-use" x="458" y="139">uses</text>
+    <rect class="use" x="532" y="122" width="72" height="26" rx="3"/><text class="t-use" x="538" y="139">uses</text>
+    <rect class="use" x="852" y="122" width="72" height="26" rx="3"/><text class="t-use" x="858" y="139">uses</text>
   </g>
   <g id="er4">
     <text class="t-row" x="16" y="172">ER-4 a user hears only what they can read</text>
     <rect class="own" x="372" y="154" width="72" height="26" rx="3"/><text class="t-own" x="378" y="171">OWNS</text>
-    <rect class="use" x="462" y="154" width="72" height="26" rx="3"/><text class="t-use" x="468" y="171">uses</text>
-    <rect class="use" x="552" y="154" width="72" height="26" rx="3"/><text class="t-use" x="558" y="171">uses</text>
-    <rect class="use" x="642" y="154" width="72" height="26" rx="3"/><text class="t-use" x="648" y="171">uses</text>
-    <rect class="use" x="822" y="154" width="72" height="26" rx="3"/><text class="t-use" x="828" y="171">uses</text>
+    <rect class="use" x="452" y="154" width="72" height="26" rx="3"/><text class="t-use" x="458" y="171">uses</text>
+    <rect class="use" x="532" y="154" width="72" height="26" rx="3"/><text class="t-use" x="538" y="171">uses</text>
+    <rect class="use" x="612" y="154" width="72" height="26" rx="3"/><text class="t-use" x="618" y="171">uses</text>
+    <rect class="use" x="772" y="154" width="72" height="26" rx="3"/><text class="t-use" x="778" y="171">uses</text>
+    <rect class="use" x="852" y="154" width="72" height="26" rx="3"/><text class="t-use" x="858" y="171">uses</text>
   </g>
   <g id="er5">
     <text class="t-row" x="16" y="204">ER-5 one write path: subscribe, unsubscribe</text>
     <rect class="own" x="372" y="186" width="72" height="26" rx="3"/><text class="t-own" x="378" y="203">OWNS</text>
-    <rect class="use" x="462" y="186" width="72" height="26" rx="3"/><text class="t-use" x="468" y="203">uses</text>
-    <rect class="use" x="732" y="186" width="72" height="26" rx="3"/><text class="t-use" x="738" y="203">uses</text>
+    <rect class="use" x="452" y="186" width="72" height="26" rx="3"/><text class="t-use" x="458" y="203">uses</text>
+    <rect class="use" x="532" y="186" width="72" height="26" rx="3"/><text class="t-use" x="538" y="203">uses</text>
+    <rect class="use" x="692" y="186" width="72" height="26" rx="3"/><text class="t-use" x="698" y="203">uses</text>
+    <rect class="use" x="772" y="186" width="72" height="26" rx="3"/><text class="t-use" x="778" y="203">uses</text>
+    <rect class="use" x="852" y="186" width="72" height="26" rx="3"/><text class="t-use" x="858" y="203">uses</text>
   </g>
   <g id="er6">
     <text class="t-row" x="16" y="236">ER-6 one normalized event shape</text>
     <rect class="own" x="372" y="218" width="72" height="26" rx="3"/><text class="t-own" x="378" y="235">OWNS</text>
-    <rect class="use" x="462" y="218" width="72" height="26" rx="3"/><text class="t-use" x="468" y="235">uses</text>
-    <rect class="use" x="552" y="218" width="72" height="26" rx="3"/><text class="t-use" x="558" y="235">uses</text>
-    <rect class="use" x="642" y="218" width="72" height="26" rx="3"/><text class="t-use" x="648" y="235">uses</text>
-    <rect class="use" x="822" y="218" width="72" height="26" rx="3"/><text class="t-use" x="828" y="235">uses</text>
+    <rect class="use" x="452" y="218" width="72" height="26" rx="3"/><text class="t-use" x="458" y="235">uses</text>
+    <rect class="use" x="532" y="218" width="72" height="26" rx="3"/><text class="t-use" x="538" y="235">uses</text>
+    <rect class="use" x="612" y="218" width="72" height="26" rx="3"/><text class="t-use" x="618" y="235">uses</text>
+    <rect class="use" x="852" y="218" width="72" height="26" rx="3"/><text class="t-use" x="858" y="235">uses</text>
   </g>
   <g id="er7">
-    <text class="t-row" x="16" y="268">ER-7 a subscription ends with its task · pending</text>
+    <text class="t-row" x="16" y="268">ER-7 a subscription ends with its task &#183; pending</text>
     <rect class="own" x="372" y="250" width="72" height="26" rx="3"/><text class="t-own" x="378" y="267">OWNS</text>
-    <rect class="use" x="462" y="250" width="72" height="26" rx="3"/><text class="t-use" x="468" y="267">uses</text>
-    <rect class="use" x="822" y="250" width="72" height="26" rx="3"/><text class="t-use" x="828" y="267">uses</text>
+    <rect class="use" x="452" y="250" width="72" height="26" rx="3"/><text class="t-use" x="458" y="267">uses</text>
+    <rect class="use" x="852" y="250" width="72" height="26" rx="3"/><text class="t-use" x="858" y="267">uses</text>
   </g>
   <g id="er8">
     <text class="t-row" x="16" y="300">ER-8 seen once per subscription, sent once per session</text>
     <rect class="own" x="372" y="282" width="72" height="26" rx="3"/><text class="t-own" x="378" y="299">OWNS</text>
-    <rect class="use" x="462" y="282" width="72" height="26" rx="3"/><text class="t-use" x="468" y="299">uses</text>
-    <rect class="use" x="552" y="282" width="72" height="26" rx="3"/><text class="t-use" x="558" y="299">uses</text>
-    <rect class="use" x="822" y="282" width="72" height="26" rx="3"/><text class="t-use" x="828" y="299">uses</text>
+    <rect class="use" x="452" y="282" width="72" height="26" rx="3"/><text class="t-use" x="458" y="299">uses</text>
+    <rect class="use" x="532" y="282" width="72" height="26" rx="3"/><text class="t-use" x="538" y="299">uses</text>
+    <rect class="use" x="852" y="282" width="72" height="26" rx="3"/><text class="t-use" x="858" y="299">uses</text>
+  </g>
+  <g id="er9">
+    <text class="t-row" x="16" y="332">ER-9 one routine list over the existing rows</text>
+    <rect class="use" x="532" y="314" width="72" height="26" rx="3"/><text class="t-use" x="538" y="331">uses</text>
+    <rect class="own" x="772" y="314" width="72" height="26" rx="3"/><text class="t-own" x="778" y="331">OWNS</text>
+    <rect class="use" x="852" y="314" width="72" height="26" rx="3"/><text class="t-use" x="858" y="331">uses</text>
   </g>
 </svg>

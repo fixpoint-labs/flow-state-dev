@@ -31,7 +31,7 @@ const CASES: Record<string, unknown> = {
 };
 
 /**
- * The stub `fsdev`: mirrors `packages/cli/src/parse-input.ts`'s two input
+ * The stub `fsdev`: mirrors `packages/fsdev/src/parse-input.ts`'s two input
  * paths, then records the parsed value (or the parse failure) to `$OUT`.
  */
 const STUB = `

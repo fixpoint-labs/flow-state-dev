@@ -12,7 +12,7 @@ import { createFlowState } from "@flow-state-dev/engine";
 import researchTeamFlow from "./src/flow";
 
 export default createFlowState({
-  flows: { "research-team": researchTeamFlow },
+  flows: [researchTeamFlow],
   models: {
     default: "openai/gpt-6-luna",
   },

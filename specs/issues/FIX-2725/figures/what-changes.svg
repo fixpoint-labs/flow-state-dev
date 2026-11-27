@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after. Before, the lab's adapter lists sessions through the client, reads requests, holds and task details per row, runs a harness action in another session and polls. After, the engine gives a view two more reads of the caller's own sessions, recorded on topics those writes already publish; workforce serves the worker sessions and session turns views on its roster flow; the harness kit serves the coding board on its own flow and a recorded-work view on the coding worker flow; the screen watches them."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="24">TODAY</text>
+    <rect class="n-gone" x="16" y="36" width="908" height="96" rx="6"/>
+    <text class="t-gone" x="32" y="60">The lab's adapter assembles three screens, about 1,100 lines</text>
+    <text class="t-s" x="32" y="82">sessions: listWorkerSessions per worker, then a session read, requests and a board read per row</text>
+    <text class="t-s" x="32" y="100">turns: the session's requests read again on every notice · board: holds, getTask and a harness action per task</text>
+    <text class="t-s" x="32" y="118">its own subscription, and a poll every 3 s where push can miss a change</text>
+  </g>
+
+  <g id="after-engine">
+    <text class="t-lbl" x="16" y="160">AFTER</text>
+    <rect class="n-acc" x="16" y="172" width="908" height="58" rx="6"/>
+    <text class="t-b" x="32" y="194">engine · a view reads the caller's own sessions: list, turns, read, history</text>
+    <text class="t-s" x="32" y="214">the server's owner rule decides which · list heard as run on the user topic · turns as request on the session</text>
+  </g>
+
+  <g id="after-views">
+    <rect class="n-new" x="16" y="248" width="296" height="70" rx="6"/>
+    <text class="t-lbl" x="32" y="268">WORKFORCE · ROSTER FLOW</text>
+    <text class="t-b" x="32" y="288">worker sessions view</text>
+    <text class="t-b" x="32" y="306">session turns view</text>
+    <rect class="n-new" x="328" y="248" width="296" height="70" rx="6"/>
+    <text class="t-lbl" x="344" y="268">HARNESS KIT · HARNESSES FLOW</text>
+    <text class="t-b" x="344" y="288">coding board view</text>
+    <text class="t-s" x="344" y="306">reads the user's ledger, from any flow</text>
+    <rect class="n-new" x="640" y="248" width="284" height="70" rx="6"/>
+    <text class="t-lbl" x="656" y="268">HARNESS KIT · CODING WORKER FLOW</text>
+    <text class="t-b" x="656" y="288">recorded work view</text>
+    <text class="t-s" x="656" y="306">plan and pull requests, beside changes</text>
+    <path class="edge" d="M164 230 V248 M476 230 V248 M782 230 V248"/>
+  </g>
+
+  <g id="after-screen">
+    <rect class="n-box" x="16" y="336" width="908" height="48" rx="6"/>
+    <text class="t-b" x="32" y="358">the screen · useView on each, plus sessionFeed for the words</text>
+    <text class="t-s" x="32" y="375">no listing call, no per-row reads, no poll · FIX-2628 deletes the adapter</text>
+    <path class="edge" d="M164 318 V336 M476 318 V336 M782 318 V336"/>
+  </g>
+</svg>

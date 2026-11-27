@@ -331,9 +331,7 @@ describe("a worker flow that ignores the layer", () => {
       cardinality: "collection",
       configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
       actions: { ...workerDoor,
-        run: {
-          inputSchema: noteSchema,
-          block: sequencer({ name: "quiet-work", inputSchema: noteSchema }).tap(
+        run: sequencer({ name: "quiet-work", inputSchema: noteSchema }).tap(
             handler({
               name: "quiet-step",
               inputSchema: noteSchema,
@@ -341,7 +339,6 @@ describe("a worker flow that ignores the layer", () => {
               execute: async () => undefined,
             }),
           ),
-        },
       },
     });
 

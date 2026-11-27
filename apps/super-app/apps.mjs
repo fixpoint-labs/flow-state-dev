@@ -22,8 +22,25 @@ import { join } from "node:path";
 export const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
 const TSX = join(REPO, "node_modules/.bin/tsx");
-const FSDEV = join(REPO, "packages/cli/bin/fsdev.ts");
+const FSDEV = join(REPO, "packages/fsdev/bin/fsdev.ts");
 const bin = (dir, name) => join(REPO, dir, "node_modules/.bin", name);
+const RECORD_SERVER_INPUTS = join(REPO, "apps/super-app/record-server-inputs.mjs");
+
+/** Where an app's server records the files it loaded. Under `node_modules`, so it is never committed. */
+const serverInputsDir = (id) => join(REPO, "node_modules/.cache/super-app/server-inputs", id);
+
+/**
+ * A `tsx` server step that records the files it loads into its app's record
+ * folder, so a change to them can be noticed and the app restarted. `dev` only.
+ *
+ * @param {string} id
+ * @param {Step} step  Its `cmd` is `tsx`, which passes `--import` to Node.
+ * @returns {Step}
+ */
+function recordingServer(id, step) {
+  const dir = serverInputsDir(id);
+  return { ...step, args: ["--import", RECORD_SERVER_INPUTS, ...step.args], env: { ...step.env, SUPER_APP_SERVER_INPUTS: dir }, serverInputs: dir };
+}
 
 /** Kitchen Sink's env for its sub-route build and server: `next.config.mjs` reads both. */
 export const KITCHEN_SINK_ENV = {
@@ -38,6 +55,8 @@ export const KITCHEN_SINK_ENV = {
  * @property {string} cwd
  * @property {Record<string,string>} [env]
  * @property {boolean} [background]  Runs beside the steps after it instead of before them (a watcher). `run.mjs` doesn't wait for it, and its exit doesn't stop the app.
+ * @property {string} [rebuildOnChange]  A background build's output folder: `run.mjs` runs the step again whenever a file that folder's last build recorded changes (`rebuild.mjs`), rather than once.
+ * @property {string} [serverInputs]  A server step's record folder: the server writes the files it loaded there (`record-server-inputs.mjs`), so the super app can mark it changed and offer to restart it (`lifecycle.mjs`).
  *
  * @typedef {object} HostedApp
  * @property {string} id         Log prefix and route name.
@@ -91,9 +110,9 @@ export const APPS = [
     run: (() => {
       const cwd = join(REPO, "packages/shift-manager");
       const step = { cmd: TSX, args: ["scripts/checkout.mts", "--port", "3120", "--no-open"], cwd };
-      // The checkout builds the pages once, when they're stale; the watcher rebuilds them as their source changes.
-      const pages = { cmd: bin("packages/shift-manager", "vite"), args: ["build", "--watch"], cwd, background: true };
-      return { dev: [pages, step], serve: [step] };
+      // The checkout builds the pages once, when they're stale; this rebuilds them as their source changes.
+      const pages = { cmd: bin("packages/shift-manager", "vite"), args: ["build"], cwd, background: true, rebuildOnChange: join(cwd, "dist-client") };
+      return { dev: [pages, recordingServer("shift-manager", step)], serve: [step] };
     })(),
   },
   {
@@ -108,7 +127,7 @@ export const APPS = [
       const server = { cmd: TSX, args: [FSDEV, "dev", "--app", "@flow-state-dev/teammates", "--port", "3130", "--no-open"], cwd };
       const vite = bin("labs/teammates", "vite");
       return {
-        dev: [{ cmd: vite, args: ["build"], cwd }, { cmd: vite, args: ["build", "--watch"], cwd, background: true }, server],
+        dev: [{ cmd: vite, args: ["build"], cwd }, { cmd: vite, args: ["build"], cwd, background: true, rebuildOnChange: join(cwd, "dist-client") }, recordingServer("teammates", server)],
         serve: [server],
       };
     })(),
@@ -130,8 +149,8 @@ export const APPS = [
       const lab = join(REPO, "labs/claude-code-style");
       const vite = bin("labs/claude-code-style", "vite");
       const pages = { cmd: vite, args: ["build"], cwd: lab };
-      const watch = { cmd: vite, args: ["build", "--watch"], cwd: lab, background: true };
-      return { dev: [pages, watch, server], serve: [server] };
+      const watch = { cmd: vite, args: ["build"], cwd: lab, background: true, rebuildOnChange: join(lab, "dist-client") };
+      return { dev: [pages, watch, recordingServer("claude-code-style", server)], serve: [server] };
     })(),
   },
 ];

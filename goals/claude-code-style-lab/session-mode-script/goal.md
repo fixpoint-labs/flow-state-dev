@@ -35,7 +35,7 @@ so another ask with a quick and a long piece passes a correct lab.
 
 **Anti-game:** every signal reads the rendered page (`data-entry`, `data-request-id`,
 `data-task-status`, the header) or the server's own records (requests, `listTasks_tasks`, the
-clone's git log). Nothing asserts on the adapter's return values, the fake in `test/`, or React
+clone's git log). Nothing asserts on the lab's hooks' return values or React
 state. The stop is asked for in the composer, never sent through `updateTask`. An empty timeline
 or an empty pane is CAN'T TELL, not PASS.
 

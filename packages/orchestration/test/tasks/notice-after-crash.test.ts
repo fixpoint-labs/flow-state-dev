@@ -81,7 +81,7 @@ async function eventually<T>(read: () => Promise<T | undefined>, withinMs: numbe
 
 function engine(flow: FlowInstance, primary: StoreAdapter, sweepMs: number) {
   return createFlowState({
-    flows: { "wait-board": flow },
+    flows: [flow],
     stores: { default: { primary } },
     durable: true,
     staleSweepThresholdMs: THRESHOLD_MS,

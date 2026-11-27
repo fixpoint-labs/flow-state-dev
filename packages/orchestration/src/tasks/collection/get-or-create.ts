@@ -4,16 +4,16 @@
  * One-call helper that builds a `TaskCollectionRef` against one of two
  * backings — atomic state (`"state"`: a state ref you pass, or the request
  * when you pass none) or a resource collection (`"resource"`) — and adapts
- * the substrate's `onChange` callback to the framework's component-item
- * stream via `ctx.emit.component`.
+ * the substrate's `onChange` callback to the framework's data-item
+ * stream via `ctx.emit.data`.
  *
- * Each lifecycle transition emits a `task-change` component item keyed by
+ * Each lifecycle transition emits a `task-change` data item keyed by
  * `${collectionId}/${taskId}`. The `key` ensures latest-wins replacement
  * per task in the client UI — `<Plan />` and the devtool subscribe to
- * these items, filter by `data.collectionId`, and render the board.
+ * these items, filter by `value.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import { requestHostOf, publishBoardChange } from "@flow-state-dev/core/internal";
+import { requestHostOf, publishBoardChange, publishBoardInsert, recordBoardRead } from "@flow-state-dev/core/internal";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -32,8 +32,8 @@ import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 import type { FilingStamp } from "./internal";
 
-/** Component-item type emitted on every task lifecycle transition. */
-export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
+/** Data-item type emitted on every task lifecycle transition. */
+export const TASK_CHANGE_DATA_TYPE = "task-change";
 
 /** Common options shared by both backings. */
 interface CommonOptions {
@@ -42,12 +42,10 @@ interface CommonOptions {
   now?: () => number;
   // FIX-918.
   /**
-   * Visibility stamped on the `task-change` component items emitted on every
-   * lifecycle transition. Omit for the default (client + history).
-   * A board that runs *inside* a tool-wrapped drain passes
-   * `{ client: true, history: false }` so its O(tasks × transitions) change
-   * stream still drives the live `<Plan />` UI but never re-enters the calling
-   * generator's LLM history.
+   * Visibility stamped on the `task-change` data items emitted on every
+   * lifecycle transition. Omit for the default, `{ client: true, history:
+   * false }`: the change stream drives the live `<Plan />` UI and never enters
+   * a model's history.
    */
   changeVisibility?: ItemVisibility;
 }
@@ -108,6 +106,15 @@ export interface ResourceBackingSpec extends CommonOptions {
    * `taskLedgers` resolver passes the one it is handed.
    */
   partition?: string;
+  // FIX-2725 D2.
+  /**
+   * The conversation a view reads this board for, in the running session's
+   * place: a user view runs in no session, so the board's notices are heard
+   * on this one's topic (the filer of a row with none, and of a board with no
+   * rows yet). The caller passes an id its owner check admitted, never input
+   * it didn't check. Absent, the running session.
+   */
+  readFor?: string;
 }
 
 export type GetOrCreateTaskCollectionOptions =
@@ -160,25 +167,44 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // tests wire neither handle; the field then stays absent.
   const claimIdentity = readClaimIdentity(options.ctx);
   // Who is adding tasks through this ref: the session owner, server-set.
-  const createdBy = options.ctx.session?.identity?.userId;
+  const createdBy = runningSessionOf(options.ctx)?.userId;
   // Where they file it (FIX-2133 D1), and how long a question waits when the
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
+  // The engine returns the ledger declaration as the resource handle's config.
+  const config = options.backing === "resource" ? options.collection.config : undefined;
+  const ledger = isDefinedTaskCollection(config) ? config.__taskCollection : undefined;
+  const partition = options.backing === "resource" ? checkedPartition(options, ledger?.partitionBy !== undefined) : undefined;
+
   // A board notice for every committed write of a row, lifecycle change or not,
   // to the session that filed it (whose view shows the board); server-written
   // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
-  const legacyFiler = legacyFilerOf(options);
-  const runningSession = options.ctx.session?.identity?.id;
+  const legacyFiler = ledger?.delivery?.legacyFiler;
+  const runningSession = (options.backing === "resource" ? options.readFor : undefined) ?? runningSessionOf(options.ctx)?.id;
+  /** The session an entry's board notices go to: the one rule for the publish and for a view's read of the board. */
+  const filerOf = (task: Task): string | undefined => task.filer?.sessionId ?? legacyFiler?.(task, partition) ?? runningSession;
   const onWrite = (task: Task): void => {
-    const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
-    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });
+    const filer = filerOf(task);
+    // Names the task (FIX-2625): the board's read hides no row from any reader of the session, so its id may go out.
+    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId, taskId: task.id });
   };
   const onChange = (event: TaskChangeEvent): void => {
     // The notice beside the item: the item goes on the writing session's stream.
     onWrite(event.task);
-    options.ctx.emit.component(
-      TASK_CHANGE_COMPONENT_TYPE,
+    // FIX-2625: a row added to a ledger also goes out on the ledger's own scope
+    // topic, so a view that never named its filer's session still hears it.
+    // FIX-2750: naming its partition, so a view of another partition skips it.
+    if (event.kind === "added" && options.backing === "resource") {
+      publishBoardInsert(options.ctx, {
+        board: options.collectionId,
+        taskId: event.task.id,
+        ledger: options.collection,
+        ...(partition !== undefined ? { partition } : {}),
+      });
+    }
+    options.ctx.emit.data(
+      TASK_CHANGE_DATA_TYPE,
       {
         collectionId: event.collectionId,
         taskId: event.taskId,
@@ -190,9 +216,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       },
       {
         key: `${event.collectionId}/${event.taskId}`,
-        ...(options.changeVisibility !== undefined
-          ? { itemVisibility: options.changeVisibility }
-          : {}),
+        itemVisibility: options.changeVisibility ?? { client: true, history: false },
       }
     );
   };
@@ -219,22 +243,11 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     });
   }
 
-  const partition = checkedPartition(options);
-  // The ledger's ending recorder, read off the declaration the engine hands
-  // back as the handle's config, so every resolution of the ledger (a board's
-  // drain, a task entry's gate, the task tools) writes its endings through it.
-  const declared = options.collection.config;
-  const recordEnding = isDefinedTaskCollection(declared)
-    ? declared.__taskCollection.recordEnding
-    : undefined;
-  const settings = isDefinedTaskCollection(declared) ? declared.__taskCollection.settings : undefined;
-  // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
-  const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
+  const { recordEnding, settings, cascadeFiled: filed, delivery: declaredDelivery } = ledger ?? {};
   const ctx = options.ctx;
   // A ledger a board hands rows out from delivers each ending to its filer
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
-  const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
-  const sessionId = ctx.session?.identity?.id;
+  const sessionId = runningSessionOf(ctx)?.id;
   // The engine's identity of the running request (FIX-2123), never input (BP-031).
   const requestId = ctx.request?.identity?.id;
   const delivery =
@@ -248,7 +261,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
           }),
         }
       : undefined;
-  return await createResourceBackedTaskCollection<TInput, TOutput>({
+  const ref = await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
       partition === undefined
@@ -268,14 +281,35 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
     ...(delivery !== undefined ? { delivery } : {}),
   });
+  // FIX-2625: in a view, the board is heard on its own notices, as its ledger's
+  // scope allows (the engine's `ViewDependencies.board`). Here, where every
+  // write's `onWrite` publishes one naming its task, on the session `filerOf`
+  // names (each entry's, and the running one's), and every added row's goes
+  // out on the ledger's scope topic too. An org ledger's view hears no filer.
+  const filers = [runningSession, ...ref.list().map(filerOf)].filter((id): id is string => id !== undefined);
+  // FIX-2750: at its partition, so a row added to another partition wakes no view of this one.
+  recordBoardRead(ctx, {
+    board: options.collectionId,
+    sessionIds: filers,
+    ledger: options.collection,
+    ...(partition !== undefined ? { partition } : {}),
+  });
+  return ref;
 }
 
-/** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
-function legacyFilerOf(options: GetOrCreateTaskCollectionOptions): ((row: Task) => string | undefined) | undefined {
-  if (options.backing !== "resource") return undefined;
-  const declared = options.collection.config;
-  const legacy = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery?.legacyFiler : undefined;
-  return legacy === undefined ? undefined : (row) => legacy(row, options.partition);
+// FIX-2725 D2.
+/**
+ * The running session's identity, or `undefined` where there is none: a
+ * mock context, or a user or org view, whose `ctx.session` refuses every use
+ * (`NoSessionError`). Any other failure propagates.
+ */
+function runningSessionOf(ctx: BlockContext): BlockContext["session"]["identity"] | undefined {
+  try {
+    return ctx.session?.identity;
+  } catch (error) {
+    if (error instanceof Error && error.name === "NoSessionError") return undefined;
+    throw error;
+  }
 }
 
 /**
@@ -283,11 +317,7 @@ function legacyFilerOf(options: GetOrCreateTaskCollectionOptions): ((row: Task) 
  * ledger's declaration: a partitioned ledger is never read whole, and an
  * unpartitioned one is never addressed by a partition.
  */
-function checkedPartition(options: ResourceBackingSpec): string | undefined {
-  // The engine hands back the declaration itself as the handle's config.
-  const declared = options.collection.config;
-  const partitioned =
-    isDefinedTaskCollection(declared) && declared.__taskCollection.partitionBy !== undefined;
+function checkedPartition(options: ResourceBackingSpec, partitioned: boolean): string | undefined {
   const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;
   if (partitioned && options.partition === undefined) {
     throw new Error(
@@ -347,7 +377,7 @@ function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
  */
 function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
   const requestId = ctx.request?.identity?.id;
-  const sessionId = ctx.session?.identity?.id;
+  const sessionId = runningSessionOf(ctx)?.id;
   if (requestId === undefined || sessionId === undefined) return undefined;
   const tenantId = ctx.request.identity.tenantId;
   return {
@@ -366,7 +396,7 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
  * (`RequestHost.userDeadlineMs`; none by default, the epic's D3). Server-set.
  */
 function filingStampOf(ctx: BlockContext): FilingStamp {
-  const identity = ctx.request?.identity ?? ctx.session?.identity;
+  const identity = ctx.request?.identity ?? runningSessionOf(ctx);
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
   const holdDueMs = requestHostOf(ctx)?.userDeadlineMs;
@@ -397,7 +427,7 @@ function requestStateRef(
     // calls `state.state` to peek at the current tasks map (e.g. inside
     // the retry-on-fail branch). A frozen snapshot would silently desync.
     get state() {
-      return request.state as Record<string, unknown>;
+      return request.state;
     },
     input: undefined,
     patchState: request.patchState.bind(request),

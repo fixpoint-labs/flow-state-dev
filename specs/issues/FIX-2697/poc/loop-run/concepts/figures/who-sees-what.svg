@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 514">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="24" width="864" height="360"/>
+<text class="lb" x="42" y="46">THE ORGANIZATION ACME</text>
+<rect fill="url(#hatch)" x="42" y="62" width="240" height="10"/><line class="thin" x1="42" y1="72.5" x2="282" y2="72.5"/>
+<rect class="solid" x="42" y="62" width="240" height="64"/>
+<text class="lb" x="56" y="94">ALICE · SESSION</text>
+<text class="c" x="56" y="114">topic: invoice</text>
+<rect fill="url(#hatch)" x="42" y="138" width="240" height="10"/><line class="thin" x1="42" y1="148.5" x2="282" y2="148.5"/>
+<rect class="solid" x="42" y="138" width="240" height="64"/>
+<text class="lb" x="56" y="170">ALICE · SESSION</text>
+<text class="c" x="56" y="190">topic: refund</text>
+<rect fill="url(#hatch)" x="330" y="62" width="240" height="10"/><line class="thin" x1="330" y1="72.5" x2="570" y2="72.5"/>
+<rect class="solid" x="330" y="62" width="240" height="140"/>
+<text class="lb" x="344" y="94">ALICE'S USER RECORD</text>
+<text class="c" x="344" y="120">plan: pro</text>
+<text class="sub" x="344" y="162">follows her into any session</text>
+<line class="hi" x1="42" y1="216" x2="620" y2="216"/>
+<rect fill="url(#hatch)" x="42" y="230" width="240" height="10"/><line class="thin" x1="42" y1="240.5" x2="282" y2="240.5"/>
+<rect class="solid" x="42" y="230" width="240" height="64"/>
+<text class="lb" x="56" y="262">BOB · SESSION</text>
+<text class="c" x="56" y="282">topic: login</text>
+<rect fill="url(#hatch)" x="42" y="306" width="240" height="10"/><line class="thin" x1="42" y1="316.5" x2="282" y2="316.5"/>
+<rect class="solid" x="42" y="306" width="240" height="64"/>
+<text class="lb" x="56" y="338">BOB · SESSION</text>
+<text class="c" x="56" y="358">topic: invoice</text>
+<rect fill="url(#hatch)" x="330" y="230" width="240" height="10"/><line class="thin" x1="330" y1="240.5" x2="570" y2="240.5"/>
+<rect class="solid" x="330" y="230" width="240" height="140"/>
+<text class="lb" x="344" y="262">BOB'S USER RECORD</text>
+<text class="c" x="344" y="288">plan: free</text>
+<text class="sub" x="344" y="330">follows him into any session</text>
+<rect fill="url(#hatch)" x="640" y="62" width="238" height="10"/><line class="thin" x1="640" y1="72.5" x2="878" y2="72.5"/>
+<rect class="solid" x="640" y="62" width="238" height="308"/>
+<text class="lb" x="654" y="94">ACME ORG RECORD</text>
+<rect class="hl" x="654" y="192" width="210" height="48"/><rect class="thin" x="654" y="192" width="210" height="48"/>
+<text class="c on-hl" x="759" y="221" text-anchor="middle">refundLimit: 100</text>
+<text class="sub" x="654" y="268">Alice and Bob both read</text>
+<text class="sub" x="654" y="284">and write this one record.</text>
+<line class="hi" x1="0" y1="410" x2="920" y2="410"/>
+<text class="n" x="28" y="436">01</text>
+<text class="t" x="60" y="436">Each user has a user record of their own, and neither can read the other's.</text>
+<text class="n" x="28" y="461">02</text>
+<text class="t" x="60" y="461">The org record is one record. A write by either user lands on it, and every user's next request sees it.</text>
+<g id="key">
+<rect fill="url(#hatch)" x="28" y="482" width="26" height="11"/><rect class="thin" x="28" y="482" width="26" height="11"/>
+<text class="lb" x="62" y="492">OUTLIVES THE REQUEST</text>
+<rect class="hl" x="244" y="482" width="26" height="11"/>
+<text class="lb" x="278" y="492">THE ONE SHARED RECORD</text>
+</g>
+</svg>

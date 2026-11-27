@@ -10,7 +10,6 @@ import {
   resolveOwnerFlow,
   buildResourceSnapshot,
   computeClientData,
-  createScopeResources,
   getBooleanFlag,
   getPositiveInteger,
   getString,
@@ -25,10 +24,7 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { sessionRequestScope } from "../context/session-request-scope";
 import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-state-defaults";
-import {
-  buildProjectedResourceContextFromSession,
-  getPersistedData
-} from "../resources/internal";
+import { getPersistedData } from "../resources/internal";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -162,51 +158,23 @@ export async function handleGetSessionState(
     else if (def.scope === "org") orgConfigs[accessor] = def;
   }
 
-  const sessionResources = createScopeResources({
-    scope: "session",
-    configs: sessionConfigs,
-    persisted: sessionState,
-    persistedContent: sessionContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "session", route.sessionId, request.signal),
-    userId: session.userId,
-  });
-  const userResources = createScopeResources({
-    scope: "user",
-    configs: userConfigs,
-    persisted: userState,
-    persistedContent: userContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "user", route.sessionId, request.signal),
-    userId: session.userId,
-  });
-  const orgResources = createScopeResources({
-    scope: "org",
-    configs: orgConfigs,
-    persisted: orgState,
-    persistedContent: orgContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "org", route.sessionId, request.signal),
-    userId: session.userId,
-  });
-
-  const sessionClientData = await computeClientData({
+  const sessionClientData = computeClientData({
     config: flow.session?.client,
     scope: "session",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(scopeStateSchema(flow, "session"), session.state),
-    resources: sessionResources
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "session"), session.state)
   });
-  const userClientData = await computeClientData({
+  const userClientData = computeClientData({
     config: flow.user?.client,
     scope: "user",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(scopeStateSchema(flow, "user"), user?.state),
-    resources: userResources
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "user"), user?.state)
   });
-  const orgClientData = await computeClientData({
+  const orgClientData = computeClientData({
     config: flow.org?.client,
     scope: "org",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(scopeStateSchema(flow, "org"), org?.state),
-    resources: orgResources
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "org"), org?.state)
   });
 
   // Resource snapshot — strictly client-shaped. Resources with no `client`

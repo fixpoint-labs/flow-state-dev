@@ -12,7 +12,7 @@
  * same files without making one (`./source-read`), and can run the
  * operator's setup command in each checkout it makes (`./setup`). Every git process
  * the package starts goes through `./exec` (a project's check commands too,
- * `./checkout-commands`), and the git that cuts and hands
+ * `./checkout-commands`), each with an allowlisted environment (`./child-env`), and the git that cuts and hands
  * back a run's worktree lives in `./worktree`.
  *
  * See `projection.ts` for why the baseline exists and what it costs to get
@@ -20,6 +20,8 @@
  */
 export { createProjection, hashContent } from "./projection";
 export type { Projection, ProjectionOptions } from "./projection";
+export { projectionSession } from "./projection-session";
+export type { ProjectionSession, SettledFlush } from "./projection-session";
 export { createMemoryPlace } from "./memory-place";
 export type { MemoryPlace } from "./memory-place";
 export { createHostPlace } from "./host-place";
@@ -30,6 +32,7 @@ export type {
   FlushReport,
   Mount,
   Place,
+  ProjectedEntryExtra,
   ProjectedEntryState,
 } from "./types";
 export { claimKey, createClaimRegistry, sharedClaimRegistry } from "./claims";
@@ -42,7 +45,11 @@ export {
   unscopedCollectionId,
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
+export { encodeSegment, readableSegment,
+  segmentDigest, scopeFolder, tenantSegment } from "./segments";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
+export { localRepoWorkspaceHost } from "./local-repo-host";
+export type { LocalRepoWorkspaceHostOptions } from "./local-repo-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
@@ -52,10 +59,12 @@ export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run, runToEnd } from "./ex
 export type { RunToEndResult } from "./exec";
 export {
   CHECK_OUTPUT_TAIL_CHARS,
+  checkCommandsFrom,
   checkoutCommandPassed,
   checkoutCommandProblem,
   parseCheckoutCommand,
   runCheckoutCommands,
+  setupCommandFrom,
   splitCheckoutCommand,
 } from "./checkout-commands";
 export type { CheckoutCommandResult, RunCheckoutCommandsOptions } from "./checkout-commands";
@@ -83,13 +92,13 @@ export {
 } from "./worktrees";
 export type { CheckoutSnapshot } from "./worktrees";
 export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeResourceState, WorktreeStatus } from "./worktrees";
-export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { acquireLock, refreshLock, releaseLock, sleep, tryAcquireLock } from "./lock";
+export { privateTempRoot } from "./private-temp";
 export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
-export { LAND_TIMEOUT_MS } from "./land";
-export type { Landed, LandRequest, LandTarget } from "./land";
+export type { ExistingPullRequest, Landed, LandRequest, LandTarget } from "./land";
 export type {
   ListedWorktree,
   LocalWorkspaceHostOptions,
@@ -105,6 +114,7 @@ export type {
 } from "./local-host";
 export { SOURCE_READ_FRESH_MS, SOURCE_READ_LIMITS } from "./source-read";
 export type { GrepDialect, SourceReadAt, SourceReadCut, SourceReadRequest, SourceReadResult } from "./source-read";
+export { listedRepository, sessionRepositorySource, type SessionRepositorySourceOptions } from "./session-repository";
 export type {
   FilesRunSource,
   RepoRunSource,

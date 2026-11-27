@@ -2,7 +2,7 @@
 /**
  * Jump to (⌘K; Shift+⌘K opens it in message mode): find any screen the sidebar
  * reaches, a project, a workstream, a worker, a task or a declared document,
- * from the one snapshot, and go there. A query matches a result's
+ * from the reads the page holds, and go there. A query matches a result's
  * shown name, its hint, or its id. A worker opens Roster on its team with its
  * row in view and focus. A document opens read-only. A Lab that serves no
  * document to the browser gets a line saying so, and a failed read of them, or
@@ -22,9 +22,13 @@ import type { Client } from "@flow-state-dev/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel } from "../lib/shift";
+import type { InboxBoardTask } from "../lib/inbox";
 import { handToShiftCoordinator } from "../lib/outbox";
-import { projectReaderOf, readProject, type WorkstreamEntry } from "../lib/projects";
+import { readProject, type WorkstreamEntry } from "../lib/projects";
+import type { Project } from "../lib/project";
+import { useProjects, useWorkers } from "../lib/directory";
+import { useDocuments } from "../lib/documents";
 import { navigate, type Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -48,7 +52,7 @@ const VIEWS: Entry[] = [
   { group: "Views", label: "Tasks", hint: "every board's tasks", keywords: [], to: { level: "tasks", by: "state" } },
   { group: "Views", label: "Roster", hint: "every worker", keywords: [], to: { level: "roster", team: null } },
   { group: "Views", label: "Messages", hint: "between your workers", keywords: [], to: { level: "messages" } },
-  { group: "Views", label: "Scheduled work", hint: "and its next runs", keywords: ["schedules"], to: { level: "schedules" } },
+  { group: "Views", label: "Routines", hint: "what runs for you", keywords: ["routines", "schedules", "subscriptions"], to: { level: "routines" } },
   { group: "Views", label: "Usage", hint: "what each harness has left", keywords: [], to: { level: "usage" } },
   { group: "Views", label: "Settings", hint: "your keys", keywords: [], to: { level: "settings" } },
 ];
@@ -60,19 +64,17 @@ type Workstreams = { key: string; project: string; to: (entry: WorkstreamEntry) 
  * Each project's workstreams, read once per project while the palette is open:
  * a palette open for a minute does not poll.
  */
-function useWorkstreams(snapshot: LoadedSnapshot, client: Client | undefined): Workstreams[] {
+function useWorkstreams(projects: readonly Project[], client: Client | undefined): Workstreams[] {
   const [reads, setReads] = useState<Workstreams[]>([]);
-  const reader = projectReaderOf(snapshot.sessions);
-  const projects = snapshot.projects.ok ? snapshot.projects.value.rows : [];
   const addresses = projects.map((p) => `${p.visibility}/${p.id}`).join("\n");
   useEffect(() => {
-    if (client === undefined || reader === null) return;
+    if (client === undefined) return;
     let live = true;
     void Promise.all(
       projects.map(async (project): Promise<Workstreams> => {
         const key = `${project.visibility}/${project.id}`;
         try {
-          const read = await readProject(client, reader, { visibility: project.visibility, id: project.id });
+          const read = await readProject(client, { visibility: project.visibility, id: project.id });
           const to = (entry: WorkstreamEntry): Route => ({
             level: "project",
             projectId: project.id,
@@ -89,9 +91,9 @@ function useWorkstreams(snapshot: LoadedSnapshot, client: Client | undefined): W
     return () => {
       live = false;
     };
-    // Read again only when the set of projects or the reader changes, never on a timer.
+    // Read again only when the set of projects changes, never on a timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, reader, addresses]);
+  }, [client, addresses]);
   return reads;
 }
 
@@ -109,13 +111,14 @@ function focusWhenDrawn(selector: string) {
 }
 
 export function JumpTo({
-  snapshot,
+  tasks,
   gaps,
   client,
   initialQuery = "",
   onClose,
 }: {
-  snapshot: LoadedSnapshot;
+  /** Every board row, from the inbox view; without them, Jump to lists no tasks. */
+  tasks?: readonly InboxBoardTask[];
   /** Reads each project's workstreams when the palette opens; without one, Jump to lists no workstreams. */
   client?: Client;
   gaps: Gaps;
@@ -130,11 +133,13 @@ export function JumpTo({
   // What had focus before the palette opened. The dialog only gives focus back to a trigger, and Jump to has none.
   const [opener] = useState(() => (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null)));
   const messaging = query.startsWith(MESSAGE_PREFIX);
-  const workstreams = useWorkstreams(snapshot, client);
+  const { inventory, workers } = useWorkers();
+  const projectRows = useProjects().section;
+  const projects = useMemo(() => (projectRows?.ok === true ? projectRows.value : []), [projectRows]);
+  const workstreams = useWorkstreams(projects, client);
+  const documents = useDocuments();
 
   const index = useMemo<Entry[]>(() => {
-    const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
-    const projects = snapshot.projects.ok ? snapshot.projects.value.rows : [];
     return [
       ...VIEWS,
       ...projects.map((p): Entry => ({
@@ -157,10 +162,10 @@ export function JumpTo({
         to: { level: "roster", team: w.team },
         focus: `[data-testid="roster-worker"][data-worker-id="${w.id.replace(/"/g, '\\"')}"]`,
       })),
-      ...allTasks(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
-      ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
+      ...(tasks ?? []).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...(documents?.ok === true ? documents.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
-  }, [snapshot, workstreams]);
+  }, [workers, projects, workstreams, tasks, documents]);
 
   const needle = query.trim().toLowerCase();
   const matches = (e: Entry) => needle === "" || [e.label, e.hint, ...e.keywords].some((word) => word.toLowerCase().includes(needle));
@@ -173,8 +178,8 @@ export function JumpTo({
   const sendMessage = () => {
     const message = query.slice(MESSAGE_PREFIX.length).trim();
     if (message === "") return;
-    if (!snapshot.inventory.ok) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
-    const shiftCoordinator = shiftCoordinatorOf(snapshot.inventory.value.workers);
+    if (inventory?.ok !== true) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
+    const shiftCoordinator = shiftCoordinatorOf(workers);
     if (shiftCoordinator.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
     if (shiftCoordinator.worker.door === null) return setSendFailure(`${workerLabel(shiftCoordinator.worker.id)} ${gaps.turn.noDoor}`);
     handToShiftCoordinator(message);
@@ -232,7 +237,7 @@ export function JumpTo({
           ) : (
             <CommandList aria-label="Results" className="max-h-96 p-2">
               {groups.map(([group, entries]) => (
-                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:tracking-wider">
+                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:tracking-wider">
                   {entries.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No match.</p> : null}
                   {entries.map((entry) => (
                     <JumpResult key={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`} entry={entry} onNavigate={() => went(entry)} />
@@ -244,11 +249,11 @@ export function JumpTo({
                   {read.project}'s workstreams did not load: {read.failed}
                 </p>
               ))}
-              {!snapshot.resources.ok ? (
+              {documents === undefined ? null : !documents.ok ? (
                 <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="jump-resources-failure">
-                  The Lab's documents did not load: {snapshot.resources.failure.message}
+                  The Lab's documents did not load: {documents.failure.message}
                 </p>
-              ) : snapshot.resources.value.length === 0 ? (
+              ) : documents.value.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="jump-resources-gap">
                   {gaps.resources}
                 </p>

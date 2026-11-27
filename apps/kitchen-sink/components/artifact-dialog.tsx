@@ -64,6 +64,7 @@ import {
   type RequestStreamHandle,
 } from "@flow-state-dev/client";
 import { useFlowContext } from "@flow-state-dev/react";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 import {
   CodeBlockContainer,
@@ -183,7 +184,7 @@ export type ArtifactDetail = {
   title: string;
   content: string;
   extension: string | null;
-  updatedAt: number;
+  updatedAt: string;
 };
 
 /**
@@ -389,7 +390,9 @@ function ArtifactDialogBody({
 
       void (async () => {
         try {
-          const response = await richText.send(actionId, input, { stream: true });
+          // A one-shot transform: a one-off session of its own, which the
+          // navigator folds as a one-off.
+          const response = await richText.send(actionId, input, { sessionId: oneOffSessionId(), stream: true });
           let acc = "";
           let done = false;
           const handle = createSSEClientFromResponse({

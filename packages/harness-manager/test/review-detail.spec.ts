@@ -7,6 +7,9 @@
 import { describe, expect, it } from "vitest";
 import { reviewDetail } from "../src/browser";
 
+/** The fields a review stop's data had none of before the card showed what a person decides on (FIX-2782). */
+const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
+
 describe("reviewDetail", () => {
   it("reads a full review's data", () => {
     const judge = { verdict: "done", confidence: 0.9, reason: "tests pass" };
@@ -17,7 +20,9 @@ describe("reviewDetail", () => {
       judge,
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
+      ...NONE_OF_THE_DECISION,
     });
   });
 
@@ -31,6 +36,8 @@ describe("reviewDetail", () => {
       lands: [],
       landFailed: null,
     });
+    // Each try of the last landing, oldest first, dropping what isn't one.
+    expect(reviewDetail({ branch: "b", landAttempts: [failed, { land: "deploy", message: "x" }, "y"] })?.landAttempts).toEqual([failed]);
   });
 
   it("is null for data that is no review", () => {
@@ -50,7 +57,9 @@ describe("reviewDetail", () => {
       judge: null,
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
+      ...NONE_OF_THE_DECISION,
     });
     expect(reviewDetail({ branch: "b", commits: -1 })?.commits).toBeNull();
     expect(reviewDetail({ commits: null, judge: { verdict: "not_done", confidence: 0.4 } })).toEqual({
@@ -60,7 +69,9 @@ describe("reviewDetail", () => {
       judge: { verdict: "not_done", confidence: 0.4, reason: "" },
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
+      ...NONE_OF_THE_DECISION,
     });
   });
 
@@ -76,5 +87,68 @@ describe("reviewDetail", () => {
     const ok = { command: "pnpm test", exitCode: null, timedOut: true, skipped: false, durationMs: 5, tail: "" };
     expect(reviewDetail({ branch: "b", checks: [ok, { command: 4 }, "x", { command: "c", exitCode: "0", timedOut: false, skipped: false }] })?.checks).toEqual([ok]);
     for (const checks of [undefined, null, [], "pnpm test", [{ exitCode: 0 }]]) expect(reviewDetail({ branch: "b", checks })?.checks).toBeNull();
+  });
+});
+
+// FIX-2782: what a person decides on, beside the commits: the ask, the run's summary, where to look, and this round alone.
+describe("reviewDetail: what the review card needs to decide on", () => {
+  it("reads the goal, the run's summary, the pull requests, this round's commits and the changed files", () => {
+    const pr = { number: 41, url: "https://github.com/acme/widgets/pull/41" };
+    const file = { path: "a.ts", added: 3, removed: 1 };
+    expect(
+      reviewDetail({
+        branch: "b",
+        goal: "Address the review feedback",
+        answer: "Moved the button.\n\nReplied to: https://github.com/acme/widgets/pull/41#discussion_r1",
+        pullRequests: [pr],
+        round: { commits: 1, subjects: ["Move the button"] },
+        files: [file],
+        fileCount: 1,
+        added: 3,
+        removed: 1,
+      }),
+    ).toMatchObject({
+      goal: "Address the review feedback",
+      answer: "Moved the button.\n\nReplied to: https://github.com/acme/widgets/pull/41#discussion_r1",
+      pullRequests: [pr],
+      round: { commits: 1, subjects: ["Move the button"] },
+      files: [file],
+      fileCount: 1,
+      added: 3,
+      removed: 1,
+    });
+  });
+
+  it("reads each of them it can't read as null, dropping a pull request or file it can't read", () => {
+    const detail = reviewDetail({
+      branch: "b",
+      goal: 3,
+      answer: { text: "x" },
+      pullRequests: [{ number: "41", url: "u" }, { number: 7, url: "https://x/pull/7" }, { number: 8, url: "javascript:alert(1)" }, "y"],
+      round: { commits: -1, subjects: [] },
+      files: [{ path: 1 }, { path: "bin.png", added: null, removed: null }],
+      fileCount: "2",
+    });
+    expect(detail).toMatchObject({
+      goal: null,
+      answer: null,
+      pullRequests: [{ number: 7, url: "https://x/pull/7" }],
+      round: null,
+      files: [{ path: "bin.png", added: null, removed: null }],
+      fileCount: null,
+      added: null,
+      removed: null,
+    });
+    // Data from before these fields: none of them, and the files unread.
+    expect(reviewDetail({ branch: "b" })).toMatchObject({ goal: null, answer: null, pullRequests: [], round: null, files: null });
+  });
+
+  // FIX-2920: a card that can't tell a pull request is already open from the branch offers to open a second one.
+  it("reads the pull request open from the branch, and anything that isn't one as none", () => {
+    const pr = { number: 5661, url: "https://github.com/acme/widgets/pull/5661" };
+    expect(reviewDetail({ branch: "b", openPullRequest: pr })?.openPullRequest).toEqual(pr);
+    expect(reviewDetail({ branch: "b", openPullRequest: { number: 5661, url: "javascript:alert(1)" } })?.openPullRequest).toBeNull();
+    // Data from before the field: none open.
+    expect(reviewDetail({ branch: "b" })?.openPullRequest).toBeNull();
   });
 });

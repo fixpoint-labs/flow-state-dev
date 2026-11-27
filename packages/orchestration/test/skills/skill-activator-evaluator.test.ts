@@ -106,7 +106,7 @@ async function runTurn(opts: {
     kind: `activator-${requestId}`,
     resources: { skills: defineSkillsCollection({ scope: "session" }) },
     actions: {
-      run: { inputSchema: z.object({ message: z.string() }).passthrough(), block: turn },
+      run: turn,
     },
   })();
   const classifier = opts.classifier ?? classifierMock();
@@ -703,7 +703,7 @@ function sessionHarness(
     ...(opts.historyWindow ? { session: { historyWindow: opts.historyWindow } } : {}),
     resources: { skills: defineSkillsCollection({ scope: "session" }) },
     actions: {
-      chat: { inputSchema: chatInput, userMessage: (i) => i.message, block: reply },
+      chat: { userMessage: (i) => i.message, block: reply },
       run: { inputSchema: runInput, userMessage: (i) => i.message, block: turn.step(activator) },
     },
   })();

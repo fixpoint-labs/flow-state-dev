@@ -1,40 +1,35 @@
+// FIX-2752; FIX-1442.
 /**
- * A schedule a run saves fires, through the Vercel tick, into the org it was
+ * A schedule a run saves fires, through the Vercel route, into the org it was
  * saved in.
  *
- * The chain is real except for the cron and the index store: a run writes the
- * row through the documented collection API, the collection mirrors it into
- * an in-memory index, the tick claims it and posts to the framework's real
- * router with the scheduled adapter, and the resolver reads the user's cell in
- * the org the dispatch names. The dispatch id names the org, so an org id with
- * uppercase, `.` or `/` must survive the URL, and a row naming another org, or
+ * The chain is real except for the cron, the network and the index store: a
+ * run writes the row through the documented collection API, the collection
+ * mirrors it into an in-memory index, Vercel Cron's GET reaches
+ * `vercelScheduler`'s route, the app's tick claims the row and posts it over
+ * the network (here, `fetch` answered by the same app's router) to the real
+ * scheduled endpoint, and the resolver reads the user's cell in the org the
+ * dispatch names. The dispatch id names the org in the URL path, so an org id
+ * with uppercase, `.` or `/` must survive it, and a row naming another org, or
  * none, must not fire.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import {
-  createBearerSecretPrincipalResolver,
-  createFlowApiRouter,
-  createFlowRegistry,
-  disposeFlowApiRouter,
-  runAction
-} from "@flow-state-dev/engine";
-import {
-  createInMemoryStores
-} from "@flow-state-dev/engine/host";
+import { createBearerSecretPrincipalResolver, createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
 import {
   createResourceCollectionScheduleResolver,
-  createScheduledTransportAdapter,
   defineScheduleCollection,
   type ScheduleIndex,
-  type ScheduleIndexEntry,
+  type ScheduleIndexEntry
 } from "@flow-state-dev/scheduled";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { createScheduleTickHandler } from "../src/schedules";
+import { vercelScheduler } from "../src/scheduler";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const SECRET = "scheduler-secret";
+const DEPLOYMENT = "https://reminders.example.com";
 
 /** The latest Monday 09:00 UTC already due: a time of "0 9 * * MON" that isn't stale. */
 function latestMondayNine(now = Date.now()): number {
@@ -46,20 +41,27 @@ function latestMondayNine(now = Date.now()): number {
   return slot;
 }
 
-const BASE = "http://localhost";
+const apps: FlowState[] = [];
+const realFetch = globalThis.fetch;
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.dispose()));
+  globalThis.fetch = realFetch;
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
-function boot() {
+function boot(secretFrom: "env" | "option" = "env") {
+  vi.stubEnv("CRON_SECRET", secretFrom === "env" ? SECRET : "");
   const rows: ScheduleIndexEntry[] = [];
   const index: ScheduleIndex = {
     async upsert(row) {
       rows.push(row);
     },
     async remove() {},
-    // A real index returns only rows already due, carrying the scheduled time
-    // they were due at; the latest Monday 09:00 is one of "0 9 * * MON".
+    // A real index returns only rows already due; every row here is.
     async claimDue() {
       return rows.map((row) => ({ ...row, nextFireAt: latestMondayNine() }));
-    },
+    }
   };
   const schedules = defineScheduleCollection({ pattern: "schedules/*", index });
   const ping = handler({ name: "ping", inputSchema: z.object({}).passthrough(), execute: () => ({ ok: true }) });
@@ -72,10 +74,10 @@ function boot() {
       await (ctx.resources.schedules as unknown as ResourceCollectionRef).create(input.key, {
         cron: "0 9 * * MON",
         kind: "ping",
-        enabled: true,
+        enabled: true
       });
       return { ok: true };
-    },
+    }
   });
   const flow = defineFlow({
     kind: "reminders",
@@ -85,47 +87,43 @@ function boot() {
       // borrow that organization.
       resolvePrincipal: createBearerSecretPrincipalResolver({
         secret: SECRET,
-        principal: { userId: "system", orgId: "acme" },
+        principal: { userId: "system", orgId: "acme" }
       }),
-      requireUser: true,
+      requireUser: true
     },
     schedules: {
       resolve: createResourceCollectionScheduleResolver({ collection: schedules, blocks: { ping } }),
+      index
     },
-    actions: { plan: { inputSchema: z.object({ key: z.string() }), block: plan } },
+    actions: { plan }
   })() as unknown as FlowInstance;
 
-  const registry = createFlowRegistry();
-  registry.register(flow);
-  const stores = createInMemoryStores();
-  const router = createFlowApiRouter({ registry, stores, adapters: [createScheduledTransportAdapter()] });
-  const posted = vi.fn(async (url: string, init?: RequestInit) =>
-    router.POST(new Request(url, init), { params: { path: [] } })
-  );
+  const scheduler = vercelScheduler(secretFrom === "option" ? { secret: SECRET } : {});
+  const app = createFlowState({
+    flows: [flow],
+    modelResolver: createMockModelResolver({}),
+    scheduler
+  });
+  apps.push(app);
+
+  // The network: each dispatch the tick sends reaches this app's router.
+  const statuses: number[] = [];
+  const posted = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const router = await app.getRouter();
+    const res = await router.POST(new Request(url, init), { params: { path: [] } });
+    statuses.push(res.status);
+    return res;
+  });
   globalThis.fetch = posted as unknown as typeof fetch;
 
-  const statuses: number[] = [];
-  const tick = createScheduleTickHandler({
-    flowKind: "reminders",
-    index,
-    baseUrl: BASE,
-    secret: SECRET,
-    onDispatch: (_row, status) => statuses.push(status),
-  });
-  const runTick = () =>
-    tick(new Request(`${BASE}/_cron`, { headers: { Authorization: `Bearer ${SECRET}` } }));
-
-  const planIn = (orgId: string) =>
-    runAction({
-      flow,
-      actionName: "plan",
-      input: { key: "digest" },
-      userId: "alice",
-      orgId,
-      stores,
-      runtimeConfig: { modelResolver: createMockModelResolver({}) },
-    });
+  const cron = () =>
+    scheduler.route(new Request(`${DEPLOYMENT}/api/cron/schedules`, { headers: { Authorization: `Bearer ${SECRET}` } }));
+  const planIn = async (orgId: string) => {
+    const { stores, runtimeConfig } = await app.getRuntime();
+    return runAction({ sessionId: oneOffSessionId(), flow, actionName: "plan", input: { key: "digest" }, userId: "alice", orgId, stores, runtimeConfig });
+  };
   const fired = async () => {
+    const { stores } = await app.getRuntime();
     for (let i = 0; i < 200; i++) {
       const found = (await stores.request.list({ limit: 10 })).find((r) => r.source === "scheduled");
       if (found !== undefined) return found;
@@ -133,61 +131,53 @@ function boot() {
     }
     return undefined;
   };
-  return { router, rows, posted, statuses, runTick, planIn, fired };
+  return { rows, posted, statuses, cron, planIn, fired };
 }
 
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-  vi.restoreAllMocks();
-});
+describe("a dynamic schedule fired through the Vercel route", () => {
+  // The secret that let the cron call in is the one each fire carries, or the
+  // flow's bearer check refuses every fire of an app that configures it in code.
+  it("carries the adapter's configured secret on each fire when CRON_SECRET is unset", async () => {
+    const h = boot("option");
+    await h.planIn("globex");
 
-describe("the Vercel schedule tick", () => {
-  it.each(["globex", DEFAULT_ORG_ID, "Acme.Corp/EU"])(
-    "fires a schedule a run saved in %j into that org",
-    async (orgId) => {
-      const h = boot();
-      try {
-        await h.planIn(orgId);
-        expect(h.rows).toHaveLength(1);
-        expect(h.rows[0]).toMatchObject({ orgId, userId: "alice", key: "digest" });
+    expect((await h.cron()).status).toBe(200);
+    expect(h.statuses).toEqual([202]);
+    expect((await h.fired())?.orgId).toBe("globex");
+  });
 
-        expect((await h.runTick()).status).toBe(200);
-        expect(h.statuses).toEqual([202]);
-        const fired = await h.fired();
-        expect(fired?.userId).toBe("alice");
-        expect(fired?.orgId).toBe(orgId);
-      } finally {
-        await disposeFlowApiRouter(h.router);
-      }
-    }
-  );
+  it.each(["globex", DEFAULT_ORG_ID, "Acme.Corp/EU"])("fires a schedule a run saved in %j into that org", async (orgId) => {
+    const h = boot();
+    await h.planIn(orgId);
+    expect(h.rows).toHaveLength(1);
+    expect(h.rows[0]).toMatchObject({ orgId, userId: "alice", key: "digest" });
+
+    expect((await h.cron()).status).toBe(200);
+    expect(h.posted.mock.calls.map(([url]) => String(url).startsWith(`${DEPLOYMENT}/api/flows/reminders/schedules/`))).toEqual([true]);
+    expect(h.statuses).toEqual([202]);
+    const fired = await h.fired();
+    expect(fired?.userId).toBe("alice");
+    expect(fired?.orgId).toBe(orgId);
+  });
 
   it("does not fire the same row under another org's dispatch", async () => {
     const h = boot();
-    try {
-      await h.planIn("globex");
-      h.rows[0] = { ...h.rows[0]!, orgId: "acme" };
-      await h.runTick();
-      expect(h.statuses).toEqual([404]);
-    } finally {
-      await disposeFlowApiRouter(h.router);
-    }
+    await h.planIn("globex");
+    h.rows[0] = { ...h.rows[0]!, orgId: "acme" };
+    await h.cron();
+    expect(h.statuses).toEqual([404]);
   });
 
   it("does not post a row that names no org", async () => {
     const h = boot();
+    // The default runtime logger is quiet under NODE_ENV=test; the refusal is a console line.
+    vi.stubEnv("NODE_ENV", "development");
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await h.planIn("globex");
-      const { orgId: _dropped, ...noOrg } = h.rows[0]!;
-      h.rows[0] = noOrg;
-      await h.runTick();
-      expect(h.posted).not.toHaveBeenCalled();
-      expect(h.statuses).toEqual([0]);
-    } finally {
-      err.mockRestore();
-      await disposeFlowApiRouter(h.router);
-    }
+    await h.planIn("globex");
+    const { orgId: _dropped, ...noOrg } = h.rows[0]!;
+    h.rows[0] = noOrg;
+    expect((await h.cron()).status).toBe(200);
+    expect(h.posted).not.toHaveBeenCalled();
+    expect(err.mock.calls.filter(([line]) => String(line).includes("alice/digest has no organization"))).toHaveLength(1);
   });
 });

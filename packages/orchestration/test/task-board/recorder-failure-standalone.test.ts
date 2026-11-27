@@ -35,7 +35,7 @@ const ANNOUNCE_ERROR = "change announcement blew up";
 interface Fixture {
   collection: TaskCollectionRef;
   sequencer: StateRef<{ currentClaim?: unknown }>;
-  emitted: Array<{ component: string; data: Record<string, unknown> }>;
+  emitted: Array<{ dataType: string; value: Record<string, unknown> }>;
   ctx: BlockContext;
 }
 
@@ -74,7 +74,7 @@ async function claimedWithFailingAnnouncement(
   const bodyState = createFakeSequencerState<{ currentClaim?: unknown }>({
     currentClaim: ticketForClaim("tasks", task),
   });
-  const emitted: Array<{ component: string; data: Record<string, unknown> }> =
+  const emitted: Array<{ dataType: string; value: Record<string, unknown> }> =
     [];
 
   return {
@@ -83,11 +83,11 @@ async function claimedWithFailingAnnouncement(
     emitted,
     ctx: {
       sequencer: bodyState,
-      _emitComponentAwaited: async (
-        component: string,
-        data: Record<string, unknown>
+      _emitDataAwaited: async (
+        dataType: string,
+        value: Record<string, unknown>
       ) => {
-        emitted.push({ component, data });
+        emitted.push({ dataType, value });
       },
     } as unknown as BlockContext,
   };
@@ -109,12 +109,12 @@ describe("a recorder composed with no reporting wiring raises rather than deferr
 
     // Still reported, so the entry is there for anyone who does read the stream.
     expect(fx.emitted).toHaveLength(1);
-    expect(fx.emitted[0]?.data).toMatchObject({
+    expect(fx.emitted[0]?.value).toMatchObject({
       recorder: "complete",
       verdict: "committed",
     });
     // And with no drain to scope the read to, it carries no run stamp.
-    expect(fx.emitted[0]?.data.runId).toBeUndefined();
+    expect(fx.emitted[0]?.value.runId).toBeUndefined();
   });
 
   it("recordError throws too, and `onError` does not decide it", async () => {
@@ -133,7 +133,7 @@ describe("a recorder composed with no reporting wiring raises rather than deferr
     ).rejects.toBeInstanceOf(TaskBoardRecorderFailureError);
 
     expect(fx.emitted).toHaveLength(1);
-    expect(fx.emitted[0]?.data).toMatchObject({ recorder: "fail" });
+    expect(fx.emitted[0]?.value).toMatchObject({ recorder: "fail" });
   });
 
   it("still returns quietly when a tail is declared — the drain's own case", async () => {

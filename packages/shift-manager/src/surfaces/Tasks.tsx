@@ -10,13 +10,17 @@
  * the row's start, by a clock) and COST (the vendor's charge its runs
  * reported). Columns with no shipped read say who ships them.
  * A failed row carries its error as a line under its title.
+ *
+ * The rows are workforce's inbox view's (`lib/inbox.ts`), the same answer the
+ * Inbox and its count read, each with its board owner's label.
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
-import { boardOwnerOf, openTasks, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { BoardTaskView } from "../lib/reads";
+import { workerFor, workerLabel } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
+import { openBoardTasks, useInbox, type InboxBoardTask } from "../lib/inbox";
 import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
-import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
+import { elapsed, isQueued, summaryLine } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
 import { RouteLink, isPlainClick } from "../components/RouteLink";
 import { useLab } from "../lib/lab-data";
@@ -41,31 +45,31 @@ function useNow(running: boolean): number {
 }
 
 /** A row's task screen, at its session tab. */
-function taskRoute(row: BoardTaskView): Route {
+function taskRoute(row: InboxBoardTask): Route {
   return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
 }
 
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
-const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
+const MONO_CELL = "py-2 pr-3 font-mono text-xs font-medium whitespace-nowrap";
 
 /** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
 function streamLabel(holder: string): string {
   return holder.startsWith("@") ? holder : `#${holder}`;
 }
 
-export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
-  const { refresh, stale } = useLab();
+export function Tasks({ by, gaps }: { by: TaskGrouping; gaps: Gaps }) {
+  const { stale } = useLab();
+  const inbox = useInbox();
   const [showQueued, setShowQueued] = useState(false);
-  const roster = rosterOf(snapshot);
-  const all = openTasks(snapshot);
+  const { inventory, workers, refresh } = useWorkers();
+  const all = inbox.section?.ok === true ? openBoardTasks(inbox.section.value) : [];
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
   // While the server is gone the TIME column stops where the data did.
   const now = useNow(!stale && rows.some((row) => row.status === "in_progress"));
-  const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
-  const keyOf = (row: BoardTaskView): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : boardOwnerOf(snapshot, row);
+  const keyOf = (row: InboxBoardTask): string =>
+    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(workers, row)?.id ?? row.assignee ?? "unassigned") : row.owner;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -82,11 +86,11 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             </Meta>
           </div>
           <Meta role="control" className="mt-1 block text-muted-foreground" testId="tasks-summary">
-            {tasksSummary(snapshot)}
+            {inbox.section === undefined ? "…" : summaryLine(inbox.section, workers)}
           </Meta>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11.5px] font-medium">
-          <span className="text-[10.5px] tracking-[0.12em] text-muted-foreground" data-testid="tasks-group-by-label">
+        <div className="flex items-center gap-3 font-mono text-xs font-medium">
+          <span className="text-xs tracking-[0.12em] text-muted-foreground" data-testid="tasks-group-by-label">
             GROUP BY
           </span>
           <div role="tablist" aria-label="Group by" className="flex border border-foreground" data-testid="tasks-group-by">
@@ -117,16 +121,18 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-5">
-        {failed.map(([holder, b]) =>
-          b.ok ? null : (
-            <div key={holder} className="mt-3">
-              <SectionFailure what={`The boards of ${holder}`} failure={b.failure} onRetry={() => void refresh()} />
-            </div>
-          ),
-        )}
-        {!snapshot.inventory.ok ? (
-          <SectionFailure what="The boards" failure={snapshot.inventory.failure} onRetry={() => void refresh()} />
-        ) : all.length === 0 ? (
+        {inbox.section?.ok === false ? (
+          <div className="mt-3">
+            <SectionFailure what="The boards" failure={inbox.section.failure} onRetry={inbox.refresh} />
+          </div>
+        ) : null}
+        {inventory?.ok === false ? (
+          <SectionFailure what="The boards" failure={inventory.failure} onRetry={refresh} />
+        ) : inbox.section === undefined ? (
+          <p className="mt-3 text-sm text-muted-foreground" data-testid="tasks-loading">
+            Reading the boards…
+          </p>
+        ) : !inbox.section.ok ? null : all.length === 0 ? (
           <EmptyState title="No tasks in flight" testId="tasks-empty">
             No attached board holds a row that isn't done.
           </EmptyState>
@@ -143,7 +149,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               <col className="w-[62px]" />
             </colgroup>
             <thead>
-              <tr className="border-b border-foreground/20 text-left font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground" data-testid="tasks-columns">
+              <tr className="border-b border-foreground/20 text-left font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-testid="tasks-columns">
                 <th className="px-2 pt-[9px] pb-[7px] font-medium" aria-label="State" />
                 <th className="pt-[9px] pb-[7px] font-medium">ID</th>
                 <th className="pt-[9px] pb-[7px] font-medium">TASK</th>
@@ -162,7 +168,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               <tbody key={key} data-testid="tasks-group" data-group={key}>
                 <tr>
                   <th colSpan={8} className="pt-4 pb-1 text-left text-xs font-semibold">
-                    {by === "worker" ? workerLabel(roster.workers.find((worker) => worker.id === key)?.displayName ?? key) : key}{" "}
+                    {by === "worker" ? workerLabel(workers.find((worker) => worker.id === key)?.displayName ?? key) : key}{" "}
                     <span className="font-normal text-muted-foreground">{groupRows.length}</span>
                     {by === "state" && key === "IN REVIEW" ? (
                       <span className="ml-2 font-normal text-muted-foreground" data-testid="tasks-in-review-gap">
@@ -172,7 +178,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                   </th>
                 </tr>
                 {groupRows.map((row) => {
-                  const worker = workerFor(roster, row);
+                  const worker = workerFor(workers, row);
                   const time = elapsed(row, now);
                   return (
                     <tr
@@ -195,7 +201,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id">
                         {row.id}
                       </td>
-                      <td className="truncate py-2 pr-3 text-[13.5px]" data-testid="task-row-title">
+                      <td className="truncate py-2 pr-3 text-sm" data-testid="task-row-title">
                         <RouteLink to={taskRoute(row)} className="hover:underline" data-testid="task-row-link">
                           {row.title}
                         </RouteLink>
@@ -209,9 +215,9 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         —
                       </td>
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
-                        {streamLabel(boardOwnerOf(snapshot, row))}
+                        {streamLabel(row.owner)}
                       </td>
-                      <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
+                      <td className="truncate py-2 pr-3 text-sm" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {workerLabel(worker?.displayName ?? row.assignee ?? "—")}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground", stale && STALE_CLASS)} data-testid="task-row-time">

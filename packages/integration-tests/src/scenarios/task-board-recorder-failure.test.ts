@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { resolveItemVisibility, type RuntimeItem } from "@flow-state-dev/core/items";
 import {
   taskBoard,
   taskWorkerInputSchema,
@@ -46,7 +47,7 @@ const SALT = "salt-7c02";
 const ANNOUNCE_ERROR = "change announcement blew up";
 const REPORT_ERROR = "report emission blew up";
 const POISON = "poison";
-const RECORDER_FAILURE_COMPONENT = "task-board-recorder-failure";
+const RECORDER_FAILURE_DATA_TYPE = "task-board-recorder-failure";
 
 /**
  * How much write provenance the store hands back on a read.
@@ -166,8 +167,8 @@ function buildFlow(options: {
     collection: async (ctx) => {
       if (options.breakReporting === true) {
         (
-          ctx as unknown as { _emitComponentAwaited?: unknown }
-        )._emitComponentAwaited = () =>
+          ctx as unknown as { _emitDataAwaited?: unknown }
+        )._emitDataAwaited = () =>
           Promise.reject(new Error(REPORT_ERROR));
       }
       return announcementFailingStore(
@@ -219,8 +220,8 @@ function finalStatuses(
   collectionId: string = COLLECTION_ID
 ): Record<string, string> {
   const statuses: Record<string, string> = {};
-  for (const item of itemsByType(items as never, "component")) {
-    const data = (item as { data?: Record<string, unknown> }).data;
+  for (const item of itemsByType(items as never, "data")) {
+    const data = (item as { value?: Record<string, unknown> }).value;
     if (data?.collectionId !== collectionId) continue;
     const task = data.task as { id?: string; status?: string } | undefined;
     if (task?.id === undefined || task.status === undefined) continue;
@@ -232,22 +233,22 @@ function finalStatuses(
 /** Every recorder-failure entry on the stream, in order. */
 function recorderFailureItems(items: readonly unknown[]): Array<{
   transient?: boolean;
-  data: Record<string, unknown>;
+  value: Record<string, unknown>;
 }> {
-  return itemsByType(items as never, "component")
+  return itemsByType(items as never, "data")
     .filter(
       (i) =>
-        (i as { component?: string }).component === RECORDER_FAILURE_COMPONENT
+        (i as { dataType?: string }).dataType === RECORDER_FAILURE_DATA_TYPE
     )
-    .map((i) => i as unknown as { transient?: boolean; data: Record<string, unknown> });
+    .map((i) => i as unknown as { transient?: boolean; value: Record<string, unknown> });
 }
 
 function siblingOutputs(
   items: readonly unknown[],
   collectionId: string = COLLECTION_ID
 ): string[] {
-  return itemsByType(items as never, "component")
-    .map((i) => (i as { data?: Record<string, unknown> }).data)
+  return itemsByType(items as never, "data")
+    .map((i) => (i as { value?: Record<string, unknown> }).value)
     .filter((d) => d?.collectionId === collectionId)
     .map((d) => (d?.task as { output?: { ok?: string } } | undefined)?.output?.ok)
     .filter((v): v is string => typeof v === "string");
@@ -301,7 +302,7 @@ describe("FIX-963: a recorder failure after the write committed", () => {
 
     const reports = recorderFailureItems(result.items);
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.data).toMatchObject({
+    expect(reports[0]?.value).toMatchObject({
       taskId: POISON,
       recorder: "complete",
       verdict: "committed",
@@ -310,6 +311,11 @@ describe("FIX-963: a recorder failure after the write committed", () => {
     // Persisted, not stream-only. `transient` is what decides that, and the
     // whole point is that this entry is still there afterwards.
     expect(reports[0]?.transient).toBeUndefined();
+    // Kept for the drain's tail and for tooling: it reaches no client and no model.
+    expect(resolveItemVisibility(reports[0] as unknown as RuntimeItem)).toEqual({
+      client: false,
+      history: false,
+    });
   });
 
   it("says 'undetermined' — its own value — on a store that keeps no write record", async () => {
@@ -333,9 +339,9 @@ describe("FIX-963: a recorder failure after the write committed", () => {
 
     const reports = recorderFailureItems(result.items);
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.data).toMatchObject({ verdict: "undetermined" });
+    expect(reports[0]?.value).toMatchObject({ verdict: "undetermined" });
     // Distinct from BOTH neighbours, asserted rather than assumed.
-    expect(reports[0]?.data.verdict).not.toBe("committed");
+    expect(reports[0]?.value.verdict).not.toBe("committed");
     // D1 — and it fails the run, same as a committed one.
     expect(result.error).toBeDefined();
   });
@@ -396,7 +402,7 @@ describe("FIX-963: a recorder failure after the write committed", () => {
 
     const reports = recorderFailureItems(result.items);
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.data).toMatchObject({ verdict: "undetermined" });
+    expect(reports[0]?.value).toMatchObject({ verdict: "undetermined" });
     expect(result.error).toBeDefined();
   });
 
@@ -429,7 +435,7 @@ describe("FIX-963: a recorder failure after the write committed", () => {
     expect(statuses[POISON]).not.toBe("in_progress");
     // Reported as undetermined too — the release does not make the answer
     // definite, it only keeps the row recoverable.
-    expect(recorderFailureItems(result.items)[0]?.data).toMatchObject({
+    expect(recorderFailureItems(result.items)[0]?.value).toMatchObject({
       verdict: "undetermined",
     });
   });
@@ -619,7 +625,7 @@ describe("FIX-963: a recorder failure after the write committed", () => {
     // The inner board's failure is on the stream — it was not swallowed.
     const reports = recorderFailureItems(result.items);
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.data).toMatchObject({ collectionId: INNER });
+    expect(reports[0]?.value).toMatchObject({ collectionId: INNER });
 
     // And the OUTER board drained. This is the assertion the guard exists for:
     // without it the outer fan-out rejects on the first task and the two

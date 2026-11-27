@@ -1,5 +1,6 @@
+// FIX-2379.
 /**
- * The task-row view (`taskView`, FIX-2379): the one status and *waiting on
+ * The task-row view (`taskView`): the one status and *waiting on
  * you* vocabulary every workforce app reads a row through.
  *
  * The bug it exists to remove is a row that waits on the user reading as
@@ -8,7 +9,7 @@
  * status, and the same row once the hold is answered.
  */
 import { describe, expect, it } from "vitest";
-import { inboxItems, taskView, type TaskViewInput } from "../src/inbox";
+import { inboxItems, suspensionHoldId, taskView, type TaskViewInput } from "../src/inbox";
 import type { TaskHold } from "../src/tasks";
 
 const BOARD = "s_desk.tasks";
@@ -51,11 +52,6 @@ describe("taskView: one display state per row", () => {
     expect(taskView(row({ status })).state).toBe(state);
   });
 
-  it("reads a legacy blocked row as held, the same as the board", () => {
-    const view = taskView(row({ status: "blocked" }));
-    expect(view).toMatchObject({ status: "held", state: "held" });
-  });
-
   it("keeps a stored word it doesn't know on status, and reads it queued, never hidden", () => {
     expect(taskView(row({ status: "paused" }))).toMatchObject({ status: "paused", state: "queued" });
   });
@@ -87,7 +83,7 @@ describe("taskView: a row that waits on the user says so, whatever its status", 
   it("names the oldest open hold, and lists them all oldest first", () => {
     const view = taskView(row({ run: { sessionId: "run_t1", requestId: "req_t1" }, holds: [question(), stop("req_t1", "sus_1", 100)] }));
     expect(view.hold?.ask).toMatchObject({ kind: "review", title: "Review" });
-    expect(view.holds.map((hold) => hold.id)).toEqual(["sus_1", "q1"]);
+    expect(view.holds.map((hold) => hold.id)).toEqual([suspensionHoldId("req_t1", "sus_1"), "q1"]);
   });
 
   it("without the Inbox's holds, says it can't be answered from here", () => {

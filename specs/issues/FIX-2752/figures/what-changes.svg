@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after. Before, five separate paths fire schedules: serve&#x27;s tick for indexed flows only, BullMQ&#x27;s static schedule registration and its dispatch worker, BullMQ&#x27;s per-row schedule index, Vercel&#x27;s GET-to-POST shim per static schedule, and Vercel&#x27;s tick handler per flow, plus outside crons the docs name. After, one tick in the engine fires static and dynamic schedules of every flow through the existing dispatch endpoint; a scheduler adapter only decides when the tick runs: the local cron by default, elected by a store lease, or Vercel&#x27;s one route."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  
+    .gone   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .tick   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .adp    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah     { fill:var(--ink-3); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+  <g id="before">
+    <text class="t-lbl" x="24" y="30">BEFORE · FIVE PATHS, EACH WIRED BY HAND</text>
+    <rect class="gone" x="24" y="44" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="61">serve() tick</text>
+    <text class="t-s" x="36" y="77">indexed flows only · every server</text>
+    <path class="arrow" d="M324,64 L372,206"/>
+    <rect class="gone" x="24" y="90" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="107">registerStaticSchedules</text>
+    <text class="t-s" x="36" y="123">BullMQ repeatable per static schedule</text>
+    <path class="arrow" d="M324,110 L372,206"/>
+    <rect class="gone" x="24" y="136" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="153">createScheduleDispatchWorker</text>
+    <text class="t-s" x="36" y="169">BullMQ job → POST</text>
+    <path class="arrow" d="M324,156 L372,206"/>
+    <rect class="gone" x="24" y="182" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="199">createBullmqScheduleIndex</text>
+    <text class="t-s" x="36" y="215">BullMQ repeatable per dynamic row</text>
+    <path class="arrow" d="M324,202 L372,206"/>
+    <rect class="gone" x="24" y="228" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="245">createGetToPostCronShim</text>
+    <text class="t-s" x="36" y="261">one Vercel cron entry per schedule</text>
+    <path class="arrow" d="M324,248 L372,206"/>
+    <rect class="gone" x="24" y="274" width="300" height="40" rx="4"/>
+    <text class="t-b c-gone" x="36" y="291">createScheduleTickHandler</text>
+    <text class="t-s" x="36" y="307">one Vercel route per flow</text>
+    <path class="arrow" d="M324,294 L372,206"/>
+    <rect class="gone" x="24" y="320" width="300" height="30" rx="4"/>
+    <text class="t-s" x="36" y="339">docs: EventBridge and Cloud Scheduler guides</text>
+    <rect class="box" x="374" y="180" width="96" height="52" rx="5"/>
+    <text class="t-lbl" x="384" y="200">DISPATCH</text>
+    <text class="t-lbl" x="384" y="214">ENDPOINT</text>
+  </g>
+  <line class="row" x1="490" y1="20" x2="490" y2="380"/>
+  <g id="after">
+    <text class="t-lbl" x="510" y="30">AFTER · ONE TICK, ADAPTERS SAY WHEN</text>
+    <rect class="adp" x="510" y="70" width="220" height="44" rx="4"/>
+    <text class="t-b" x="522" y="89">local cron · default</text>
+    <text class="t-s" x="522" y="105">each minute · store lease elects one</text>
+    <rect class="adp" x="510" y="136" width="220" height="44" rx="4"/>
+    <text class="t-b" x="522" y="155">vercelScheduler()</text>
+    <text class="t-s" x="522" y="171">one route · one cron entry</text>
+    <rect class="adp" x="510" y="202" width="220" height="44" rx="4"/>
+    <text class="t-b" x="522" y="221">scheduler: false</text>
+    <text class="t-s" x="522" y="237">the host calls nothing</text>
+    <path class="arrow" d="M730,92 L760,170"/>
+    <path class="arrow" d="M730,158 L760,182"/>
+    <rect class="tick" x="762" y="150" width="160" height="70" rx="5"/>
+    <text class="t-tag c-code" x="774" y="170">THE TICK · ENGINE</text>
+    <text class="t-b" x="774" y="190">static and dynamic</text>
+    <text class="t-s" x="774" y="207">every flow · last-tick record</text>
+    <path class="arrow" d="M842,220 L842,276"/>
+    <rect class="box" x="762" y="278" width="160" height="52" rx="5"/>
+    <text class="t-lbl" x="774" y="298">DISPATCH ENDPOINT</text>
+    <text class="t-s" x="774" y="316">unchanged · once per time</text>
+    <text class="t-s" x="510" y="300">BullMQ: nothing to wire (D1)</text>
+    <text class="t-s" x="510" y="318">guides for outside crons: removed</text>
+  </g>
+  <g id="heads">
+    <path class="ah" d="M366,201 L374,206 L366,211 z"/>
+    <path class="ah" d="M752,165 L761,171 L753,174 z"/>
+    <path class="ah" d="M752,177 L761,182 L752,186 z"/>
+    <path class="ah" d="M837,268 L842,277 L847,268 z"/>
+  </g>
+</svg>

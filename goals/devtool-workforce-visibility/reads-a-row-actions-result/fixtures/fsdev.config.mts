@@ -31,7 +31,7 @@ mkdirSync(".fsdev/data", { recursive: true });
 const flow = rowResultsFlow(answers)();
 
 export default createFlowState({
-  flows: { [ROW_RESULTS_KIND]: flow },
+  flows: [flow],
   stores: { default: { primary: sqliteStores({ filename: ".fsdev/data/row-results.db" }) } },
   debugEndpointsEnabled: true,
   devtool: { userId: ROW_RESULTS_USER },

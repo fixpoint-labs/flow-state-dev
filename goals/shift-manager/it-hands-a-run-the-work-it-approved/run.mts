@@ -52,9 +52,9 @@ import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-de
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_BRANCH_PREFIX, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
@@ -139,15 +139,15 @@ function stubFor(seen: SeenRun[]) {
 /** Open the DevTeam tree as the `devteam` profile does, for `ask`. */
 async function open(
   label: string,
-  harness: OpenLabOptions["harness"],
+  harness: Parameters<typeof readyHarness>[0],
   ask: Feature,
   over: Partial<OpenLabOptions> = {},
 ): Promise<{ lab: Lab; sourceRepo: string }> {
   const dirs = createScratchRepo(label);
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    harnesses: [readyHarness(harness)],
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     inventory: true,
@@ -195,7 +195,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { harnessFeature: { issue: line[1], phase: "implement" } } } }];
+            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { mode: "implement", issue: line[1] } } }];
       }
       const call = queue.shift();
       step += 1;
@@ -413,13 +413,13 @@ await runGoal(async (failures) => {
         await sleep(1_000);
       }
       if (prompts.length === 0) note("b", "the real harness was never reached");
-      const branches = git("branch", "--list", "conductor/*", "--format=%(refname:short)")
+      const branches = git("branch", "--list", `${CODER_BRANCH_PREFIX}*`, "--format=%(refname:short)")
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
       const work = branches.map((branch) => git("log", "-p", `${BASE_REF}..${branch}`)).join("\n");
       if (!work.includes(fixture.realRun.token)) {
-        note("b", `the commit does not carry the goal's token (${branches.length} branch(es) under conductor/)`);
+        note("b", `the commit does not carry the goal's token (${branches.length} branch(es) under ${CODER_BRANCH_PREFIX})`);
       } else {
         evidence.push(`a real coding run's commit on ${branches.join(", ")} carried the approved goal's token`);
       }

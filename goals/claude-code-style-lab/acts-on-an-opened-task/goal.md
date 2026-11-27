@@ -30,8 +30,8 @@ scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`, a step every 6 s).
 
 **Anti-game:** every leg grades the board's own records, read with the public client
 (`listTasks`, `getTask`, the run session's requests); the page is read only for which buttons it
-offers and, in the error leg, for the board's recorded words. Nothing asserts on the adapter, the
-fake in `test/`, or React state. The steers read and the recorded error are floored with
+offers and, in the error leg, for the board's recorded words. Nothing asserts on the lab's hooks
+or React state. The steers read and the recorded error are floored with
 `tell.over`, so an empty read is CAN'T TELL. A press that the page reports as done while the row
 doesn't change fails its leg, which is what `wrong-board` proves. The error leg can't be failed by
 `wrong-board` (it is no action of the row), so `no-error` is its own control.
@@ -43,7 +43,7 @@ fails rather than infers; nothing graded waits on it.
 
 **Controls:**
 - `GOAL_CONTROL=wrong-board`: the lab's action row bound to board `"plan"` instead of `"tasks"`
-  (`src/adapter.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
+  (`src/app/calls.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
   the refusal on the page.
 - `GOAL_CONTROL=no-error`: the sheet's error drawn with nothing (`src/components/TasksPane.tsx`).
   Must FAIL error.
@@ -54,3 +54,4 @@ fails rather than infers; nothing graded waits on it.
 | 2026-11-04 | b9da251a tree, pre-commit | n/a | FAIL (control `wrong-board`) | steer, cancel and retry only. The page showed the refusal `Request failed (500) Internal Server Error` for Steer and Cancel; no steer on the row; the row ran on to `completed`, so Retry was never offered. Error passed |
 | 2026-11-04 | b9da251a tree, pre-commit | n/a | FAIL (control `no-error`) | error only: the sheet had no alert holding the recorded `[harness-manager] the workspace host refused this run (remote-unreadable): …`. Steer, cancel and retry passed |
 | 2026-11-04 | b9da251a tree, pre-commit | n/a | PASS | steer on the row after 303 ms; row `cancelled` after 81 ms, its run's request `completed` 573 ms later and the row still `cancelled` a step after; Retry ran the same task, `in_progress`, attempt 2 (was 1); the failed task's sheet showed its recorded error |
+| 2026-11-20 | `e2c6e814b9` (FIX-2766 #5514 head with main merged) | n/a | PASS | Steer on the row after 274 ms; row cancelled after 22 ms, its run's request completed 510 ms later; Retry ran the same task, in_progress, attempt 2 (was 1); the failed task's sheet showed its recorded `[harness-manager] the workspace source refused this run (repository-unusable): …` |

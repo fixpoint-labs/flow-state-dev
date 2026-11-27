@@ -10,6 +10,9 @@
  * call did (returned, or threw with which error) before the request settles,
  * so the verdict reads the call itself, not the request's status.
  *
+ * It imports only what the pinned published tarballs also export, since the
+ * adopter-goal control runs it there too: the session id is a literal.
+ *
  * Prints `human-approval: ok`, or `human-approval: FAIL at <step>: …`.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -56,7 +59,7 @@ const flow = defineFlow({
 // for want of durable execution before the reason is read, and this would fail
 // for the wrong reason on any version.
 const flowState = createFlowState({
-  flows: { "goal-human-approval": flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
   durable: true,
 });
@@ -72,7 +75,7 @@ try {
   const res = await fetch(`${base}/api/flows/goal-human-approval/actions/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: "goal-user", input: {} }),
+    body: JSON.stringify({ userId: "goal-user", sessionId: "goal-session", input: {} }),
   });
   if (!res.ok) throw new Error(`action ${res.status}: ${(await res.text()).slice(0, 300)}`);
   for (let i = 0; i < 100 && !seen; i += 1) await new Promise((r) => setTimeout(r, 50));

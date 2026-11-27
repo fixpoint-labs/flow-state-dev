@@ -18,7 +18,7 @@ import {
   waitCall,
   waitFlow,
   finalAnswer,
-  rows,
+  storedTasks,
   runtimeFor,
   SESSION,
   statusOf,
@@ -79,7 +79,7 @@ describe("stop a turn parked on a wait", () => {
     await untilStatus(state, parked.requestId!, "aborted");
 
     expect(seen).toHaveLength(1);
-    expect(await rows(state, flow)).toEqual([
+    expect(await storedTasks(state, flow)).toEqual([
       expect.objectContaining({ status: "cancelled", resumeOwed: false })
     ]);
     // The colleague's later ending is dropped, and nothing is owed.
@@ -99,7 +99,7 @@ describe("stop a turn parked on a wait", () => {
     await untilStatus(state, parked.requestId!, "aborted");
 
     expect(seen).toHaveLength(1);
-    expect(await rows(state, flow)).toEqual([
+    expect(await storedTasks(state, flow)).toEqual([
       expect.objectContaining({ status: "completed", resumeOwed: false })
     ]);
     // The answer's resume finds the gate already resolved, and owes nothing.
@@ -116,11 +116,11 @@ describe("stop a turn parked on a wait", () => {
     await untilStatus(state, parked.requestId!, "aborted");
     expect(seen).toHaveLength(1);
     // The cancel failed, so the row is still open, and owes its cancel.
-    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
+    expect(await storedTasks(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
 
     // The next touch pays it. The stopped turn is owed nothing.
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
-    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+    expect(await storedTasks(state, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
     // The colleague's later ending is dropped.
     await expect(act(state, flow, "settle", { outcome: { kind: "complete", output: "late" } })).rejects.toThrow();
   });
@@ -130,13 +130,13 @@ describe("stop a turn parked on a wait", () => {
     const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
-    const [row] = await rows(state, flow);
+    const [row] = await storedTasks(state, flow);
 
     // No sweep has timed the wait out (a cron host between runs): it still waits.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(row!.wait!.deadline + 10 * 60_000);
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
-    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
+    expect(await storedTasks(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
     expect(await statusOf(state, parked.requestId!)).toBe("suspended");
   });
 
@@ -161,10 +161,10 @@ describe("stop a turn parked on a wait", () => {
     );
 
     await act(state, flow, "settle", { outcome: { kind: "complete", output: "the answer" } });
-    const [row] = await rows(state, flow);
+    const [row] = await storedTasks(state, flow);
     const first = (await act(state, flow, "touch")).output;
     expect(first).toEqual({ resumed: [], stillOwed: [row!.id] });
-    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "completed", resumeOwed: true })]);
+    expect(await storedTasks(state, flow)).toEqual([expect.objectContaining({ status: "completed", resumeOwed: true })]);
 
     // The turn parks on its gate again (as crash recovery's replay does).
     const current = (await stores.request.get(requestId))!;
@@ -227,7 +227,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
     const { flow, after } = await restart(filename, seen);
     await untilStatus(after, requestId, "aborted");
     expect(seen).toHaveLength(1);
-    expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+    expect(await storedTasks(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
   });
 
   it("a wait resumed at its deadline, killed before its request moved on, is driven on with the task as it stands, nothing cancelled", async () => {
@@ -248,7 +248,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
     expect(seen).toHaveLength(2);
     expect(toolResults(seen[1]!.messages)).toContain('"status":"pending"');
     // Nothing cancelled: the task runs on, and its slot was released as the request ended.
-    const [row] = await rows(after, flow);
+    const [row] = await storedTasks(after, flow);
     expect(row).toMatchObject({ status: "pending", resumeOwed: false });
     expect(row!.wait).toBeUndefined();
   });
@@ -295,7 +295,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
       await until(after, requestId, "completed");
       // The lapse lost to the ending already written: the request reads it.
       expect(toolResults(seen[1]!.messages)).toContain(`"status":"${status}"`);
-      expect((await rows(after, flow))[0]).toMatchObject({ status, resumeOwed: false });
+      expect((await storedTasks(after, flow))[0]).toMatchObject({ status, resumeOwed: false });
     });
   }
 
@@ -317,7 +317,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
     await until(after, requestId, "completed");
     expect(seen).toHaveLength(2);
     expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
-    const board = await rows(after, flow);
+    const board = await storedTasks(after, flow);
     expect(board).toHaveLength(1);
     expect(board[0]).toMatchObject({ status: "completed", resumeOwed: false });
   });

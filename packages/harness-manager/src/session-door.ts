@@ -20,7 +20,7 @@
  * finished task and a coder runs for a message about one: there is
  * one talk path. A message never steers, so the turn refuses an open task.
  */
-import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
+import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
@@ -36,9 +36,9 @@ import {
 } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
-import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
+import { acquireCheckout, checkoutLeaseFromState, releaseCheckout, runBoardSegment } from "./workspace";
 
 /** What the door takes: the line. Shift Manager builds it without knowing the kind. */
 export const sessionDoorInputSchema = z.object({ message: z.string() });
@@ -83,8 +83,13 @@ export class SessionDoorRefused extends Error {
 export interface SessionDoorBoard {
   /** The board's rows, as the managers that ran them read them. */
   readonly tasks: TaskCollectionRef;
-  /** The issue and phase a row's run is keyed by, or `undefined` for a row no manager behind this door runs. */
-  readonly runOf: (row: Task) => { issue: string; phase: string } | undefined;
+  // BP-030.
+  /**
+   * The issue and mode a row's run is keyed by, or `undefined` for a row no
+   * manager behind this door runs. A mode's `formerName` finds a run stored
+   * under it before the rename.
+   */
+  readonly runOf: (row: Task) => { issue: string; mode: { readonly name: string; readonly formerName?: string } } | undefined;
 }
 
 /** How a host builds a talk turn: the door's options but the steer's. */
@@ -112,9 +117,10 @@ export interface HarnessSessionDoorOptions extends HarnessTalkTurnOptions {
   /**
    * Called after a steer that left the task waiting on it (it was running
    * nothing): start the turn the steer is owed. A Workforce host passes
-   * `startOwedSteerTurn`.
+   * `startOwedSteerTurn`, which resolves to whether it started one; the door
+   * reads nothing from the result.
    */
-  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
+  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<unknown>;
 }
 
 /** The newest of `rows`, by filing time, then attempts. */
@@ -173,26 +179,25 @@ const talkStateSchema = z.object({
  */
 export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   const name = options.name ?? "harness-manager";
-  const capability = defineCapability({
-    name: `harness-manager-talk:${name}`,
-    // The usage record a talk's harness writes its windows into, as a run's does.
-    resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
-  }) as unknown as DefinedCapability;
-  const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
-  const stateOf = (ctx: { sequencer?: { state?: unknown } }) => (ctx.sequencer?.state ?? {}) as z.infer<typeof talkStateSchema>;
-  const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
-    const state = stateOf(ctx);
-    if (state.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
-  };
 
   // The talk's harness, fed from this turn's own state: the checkout the
   // finished run worked in and the session it confirmed. Outside any
   // attempt, so it records no session of its own.
   const talkHarness: HarnessBlock = options.harness({
-    cwd: (ctx) => stateOf(ctx).cwd ?? "",
-    resume: (ctx) => stateOf(ctx).resume,
+    cwd: ({ sequencer }) => {
+      const cwd = sequencer?.state.cwd;
+      return typeof cwd === "string" ? cwd : "";
+    },
+    worktree: ({ sequencer }) => {
+      const cwd = sequencer?.state.cwd;
+      return typeof cwd === "string" ? cwd : "";
+    },
+    resume: ({ sequencer }) => {
+      const resume = sequencer?.state.resume;
+      return typeof resume === "string" ? resume : null;
+    },
     onSession: () => undefined,
     // A talk is one turn the person waits on: a line while it runs is its own talk.
     onSteerable: () => undefined,
@@ -207,8 +212,10 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     inputSchema: harnessTalkInputSchema,
     outputSchema: talkPromptSchema,
     sequencerStateSchema: talkStateSchema,
-    uses,
-    execute: async (input, ctx: BlockContext) => {
+    // A talk reads the finished run and records its harness usage.
+    resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
+    uses: options.uses,
+    execute: async (input, ctx) => {
       const board = await options.board(ctx);
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
@@ -217,7 +224,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const record =
         identity === undefined
           ? undefined
-          : await readRunRecord(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
+          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
       // The checkout is held for the talk, as for any run, so a follow-up
       // claimed meanwhile waits rather than resume the same session beside it.
@@ -239,9 +246,9 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: harnessTalkOutputSchema,
     sequencerStateSchema: talkStateSchema,
     execute: async (value, ctx) => {
-      releaseTalkLease(ctx);
+      releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
       const handle = value as { finalMessage?: string | null };
-      return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx).taskId ?? "" };
+      return { reply: handle.finalMessage ?? null, taskId: ctx.sequencer?.state.taskId ?? "" };
     },
   });
 
@@ -257,7 +264,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
           outputSchema: z.unknown(),
           sequencerStateSchema: talkStateSchema,
           execute: (error: unknown, ctx) => {
-            releaseTalkLease(ctx);
+            releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
             throw error;
           },
         }),

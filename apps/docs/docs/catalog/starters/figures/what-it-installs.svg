@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 444">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="864" height="296"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">THE APP · TEAMMATES</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="48" y="64" width="212" height="232"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="86">WORKFORCE/</text>
+<rect class="hl" fill="#e8f551" x="62" y="100" width="184" height="130"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="62" y="100" width="184" height="130"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="122">chief-of-staff</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="141">researcher</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="160">writer</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="179">claude-code</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="198">codex</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="217">cursor</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="62" y="242" width="184" height="38"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="76" y="265">TEAM.md</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="312" y="64" width="280" height="232"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="326" y="86">KITS</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="326" y="100" width="252" height="54"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="340" y="122">workforce</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="340" y="140">the roster and the agent flow</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="326" y="164" width="252" height="54"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="340" y="186">harnesses</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="340" y="204">the coder flow and a readiness view</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="326" y="228" width="252" height="54"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="340" y="250">claudeCode</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="340" y="268">Claude Code, in harnesses' slot</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="636" y="64" width="236" height="232"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="650" y="86">CONVERSATIONS, PER USER</text>
+<rect fill="url(#hatch)" x="650" y="100" width="208" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="650" y1="110.5" x2="858" y2="110.5"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="650" y="100" width="208" height="54"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="664" y="132">you · chief-of-staff</text>
+<rect fill="url(#hatch)" x="650" y="166" width="208" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="650" y1="176.5" x2="858" y2="176.5"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="650" y="166" width="208" height="54"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="664" y="198">you · researcher</text>
+<rect fill="url(#hatch)" x="650" y="232" width="208" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="650" y1="242.5" x2="858" y2="242.5"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="650" y="232" width="208" height="54"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="664" y="264">you · writer</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="312" y1="180" x2="262" y2="180" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="592" y1="180" x2="634" y2="180" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="344" x2="920" y2="344"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="370">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="370">The six WORKER.md files are read once, when the app starts. They live in the repo, so the store holds none.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="395">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="395">A conversation is stored for its user and goes on across restarts. This app serves one user, so there is one set.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="418" x2="54" y2="418" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="422">READS · WRITES TO</text>
+<rect fill="url(#hatch)" x="222" y="412" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="222" y="412" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="256" y="422">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="438" y="412" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="472" y="422">THE PART YOU EDIT</text>
+</g>
+</svg>

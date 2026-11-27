@@ -19,8 +19,8 @@ const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json"
 };
 
 describe("@flow-state-dev/react/internal", () => {
-  it("carries the read fence", () => {
-    expect(Object.keys(internal)).toEqual(["useReadFence"]);
+  it("carries the read fence, the suspension reduction, the client and fenced read workforce's components use, and the words a failed read is shown in", () => {
+    expect(Object.keys(internal).sort()).toEqual(["deriveSuspensions", "failureOf", "useClient", "useFencedRead", "useReadFence"]);
   });
 
   it("is gone from the root, with no alias", () => {

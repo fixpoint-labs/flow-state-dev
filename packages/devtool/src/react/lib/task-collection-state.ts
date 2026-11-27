@@ -1,6 +1,6 @@
 // FIX-444 / FIX-446; FIX-445; FIX-1071.
 /**
- * Local mirror of the unified Plan/Task substrate's component-item types
+ * Local mirror of the unified Plan/Task substrate's data-item types
  * for the DevTool TaskCollections panel, plus
  * the derivation that folds a session's item stream back into boards.
  *
@@ -19,11 +19,11 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 
-/** Component-item type emitted on every per-task lifecycle event. */
-export const TASK_CHANGE_COMPONENT = "task-change";
+/** Data-item type emitted on every per-task lifecycle event. */
+const TASK_CHANGE_DATA_TYPE = "task-change";
 
-/** Component-item type emitted at board start / end. */
-export const TASK_BOARD_META_COMPONENT = "task-board-meta";
+/** Data-item type emitted at board start / end. */
+const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 /**
  * Canonical task status set from the substrate. Open-ended at the consumer
@@ -88,9 +88,9 @@ export type Task = {
 };
 
 /**
- * One hold on a task, wire-shape: the task's own question or confirm (`source.kind: "task"`, or
- * `"row"` as earlier versions stored it) or a run's stop (`"suspension"`). Read on the stop's marker,
- * so either marker of the task's own reads the same.
+ * One hold on a task, wire-shape: the task's own question or confirm (`source.kind: "task"`)
+ * or a run's stop (`"suspension"`). A stop is open while it is on the task. The task's own
+ * hold is open while no steer answers it.
  */
 export type TaskHoldWire = {
   id: string;
@@ -109,7 +109,7 @@ const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled
 export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
   if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
   const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-  return task.holds.find((hold) => hold.source.kind === "suspension" || !answered.has(hold.id))?.ask.prompt;
+  return task.holds.find((hold) => hold.source.kind === "suspension" || (hold.source.kind === "task" && !answered.has(hold.id)))?.ask.prompt;
 }
 
 /** Counts payload on `task-board-meta` completion. */
@@ -257,11 +257,11 @@ export function groupCollections(
   // One pass, counting every change and keeping the newest of everything —
   // tasks and board meta alike, both through `supersedes`.
   for (const item of items) {
-    if (item.type !== "component") continue;
-    const component = (item as { component?: string }).component;
-    const data = (item as { data?: unknown }).data;
+    if (item.type !== "data") continue;
+    const dataType = (item as { dataType?: string }).dataType;
+    const data = (item as { value?: unknown }).value;
 
-    if (component === TASK_CHANGE_COMPONENT) {
+    if (dataType === TASK_CHANGE_DATA_TYPE) {
       const change = data as TaskChangeData;
       if (
         typeof change.collectionId !== "string" ||
@@ -295,7 +295,7 @@ export function groupCollections(
       continue;
     }
 
-    if (component === TASK_BOARD_META_COMPONENT) {
+    if (dataType === TASK_BOARD_META_DATA_TYPE) {
       const meta = data as TaskBoardMetaData;
       if (typeof meta.collectionId !== "string") continue;
       const bucket = ensureBucket(byId, meta.collectionId);

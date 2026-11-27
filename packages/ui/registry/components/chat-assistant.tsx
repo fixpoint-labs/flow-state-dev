@@ -1,4 +1,4 @@
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import type { RendererRegistry } from "@flow-state-dev/react";
 import { Message } from "./message";
 import { Reasoning } from "./reasoning";
@@ -21,8 +21,8 @@ import { TaskPlan } from "./task-plan";
  * `task-change` items are read by TaskPlan internally via
  * `useSessionItems`, so they need no standalone renderer.
  */
-function TaskBoardMeta({ item }: { item: ComponentItem }) {
-  const collectionId = (item.data as { collectionId?: string } | undefined)
+function TaskBoardMeta({ item }: { item: DataItem }) {
+  const collectionId = (item.value as { collectionId?: string } | undefined)
     ?.collectionId;
   if (collectionId === undefined) return null;
   return <TaskPlan collectionId={collectionId} requestId={item.requestId} />;
@@ -35,10 +35,14 @@ function TaskBoardMeta({ item }: { item: ComponentItem }) {
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
  *
- * Component renderers (audit-annotation, task-board-meta) receive a single
- * ComponentItem with the full snapshot data. Container renderers
+ * Data renderers (audit-annotation, task-board-meta) receive a single
+ * DataItem with the full snapshot in `value`. Container renderers
  * (evented-actors, debate, routedSpecialists) receive a ContainerItem and
- * read their nested keyed component snapshot via useContainerItems.
+ * read their nested data records via useContainerItems.
+ *
+ * Every other data record (task-change, task-board-recorder-failure,
+ * goal-seek-loop-termination, debate-*) needs no entry: an unregistered data
+ * item renders nothing.
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -56,24 +60,8 @@ export const chatAssistantRenderers: RendererRegistry = {
     debate: Debate,
     routedSpecialists: RoutedSpecialists,
   },
-  component: {
+  data: {
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
-    "task-change": false,
-    // The board could not record a result it had saved. It has no card to be:
-    // the caller-visible signal is the run's own failure, and the entry exists
-    // so that failure survives the run. Named here because a component type the
-    // registry does not name falls through to the raw-JSON dev fallback —
-    // `itemVisibility` cannot suppress it, since structural items ignore it.
-    "task-board-recorder-failure": false,
-    // goalSeekLoop's stop reason and drain count, emitted once as the loop
-    // exits. It is for tests and tooling reading the stream, not for a reader.
-    "goal-seek-loop-termination": false,
-    // Debate's per-round, per-decision, and verdict items are collected
-    // and rendered by the <Debate /> container renderer above.
-    "debate-turn": false,
-    "debate-turn-pending": false,
-    "debate-decision": false,
-    "debate-verdict": false,
   },
 };

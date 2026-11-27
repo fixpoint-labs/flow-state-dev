@@ -1,0 +1,9 @@
+R1 0 Says page doesn't define app
+R2 1 Install unit, config, flows, views, slots
+R3 0.5 Vague; misses callable, streaming, typed state
+R4 0 Says page doesn't define block
+R5 0.5 (a) and (b) right; (c) missing
+P3.1 0.5 Correct No, but hedged, reasoning differs
+P3.2 1 Edit-makes-own-copy, reset, fork, hire
+P3.3 0 Says page doesn't say; refusal missed
+SCORE 3.5 / 8

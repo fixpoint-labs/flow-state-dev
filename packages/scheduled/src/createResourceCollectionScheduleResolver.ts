@@ -46,7 +46,7 @@ export interface ParsedScheduleId {
 
 export interface CreateResourceCollectionScheduleResolverOptions {
   /**
-   * The resource collection that holds schedule rows. Pass either a
+   * The resource collection that holds schedule entries. Pass either a
    * `defineResourceCollection(...)` result or any value with a
    * `pattern` string. The helper extracts the literal prefix (everything
    * before `*`) to build the storage key.
@@ -67,23 +67,19 @@ export interface CreateResourceCollectionScheduleResolverOptions {
    * {@link defaultParseScheduleId}. Return `null` to 404 the dispatch.
    */
   parseId?: (scheduleId: string) => ParsedScheduleId | null;
+  // FIX-2886.
+  /**
+   * Where every resolved schedule's fires run (`ScheduleConfig.session`).
+   * Default: `"per-fire"`, each fire a one-off run. Set for every row this
+   * resolver resolves, never read from a row, so a schedule written through
+   * a client can't pick its session.
+   */
+  session?: ScheduleConfig["session"];
 }
 
 /**
- * The dispatch id of a dynamic schedule: `<orgId>/<userId>/<key>`, each part
- * URL-encoded so an org or user id containing `/` round-trips. The inverse of
- * {@link defaultParseScheduleId}.
- *
- * Put it on a dispatch URL as one more encoded path segment, since the router
- * decodes each segment once:
- * `/api/flows/<kind>/schedules/${encodeURIComponent(formatScheduleId(...))}/dispatch`.
- */
-export function formatScheduleId(orgId: string, userId: string, key: string): string {
-  return [orgId, userId, key].map(encodeURIComponent).join("/");
-}
-
-/**
- * Default `parseId`: `<orgId>/<userId>/<key>`. Splits on the first two `/`
+ * Default `parseId`: `<orgId>/<userId>/<key>`, the inverse of core's
+ * `formatScheduleId`. Splits on the first two `/`
  * and URL-decodes each part; the key keeps any further `/`, so a hand-built
  * nested key stays whole. All three parts must be non-empty, and an id with
  * fewer parts names no org and parses as `null`.
@@ -145,10 +141,11 @@ export function createResourceCollectionScheduleResolver(
     const scopeId = ctx.userStorageKey(parsed.userId, parsed.orgId);
     // Resource state, where the collection's `create` wrote the row — not the
     // content store, which holds an instance's content body and never a
-    // schedule row (FIX-1545).
+    // schedule entry (FIX-1545).
     const row = await ctx.stores.resourceState.get("user", scopeId, resourceKey);
     if (row === undefined) return null;
-    const state = row.state as Partial<ScheduleResourceState>;
+    // Raw stored state can predate the current schema defaults.
+    const state: Partial<ScheduleResourceState> = row.state;
 
     if (state.enabled === false) return null;
     if (typeof state.cron !== "string" || typeof state.kind !== "string") {
@@ -183,6 +180,7 @@ export function createResourceCollectionScheduleResolver(
     if (typeof state.description === "string") {
       config.description = state.description;
     }
+    if (options.session !== undefined) config.session = options.session;
 
     return config;
   };

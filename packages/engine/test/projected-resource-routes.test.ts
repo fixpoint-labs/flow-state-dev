@@ -19,7 +19,7 @@ import {
   handleListCollectionState,
 } from "../src/routes/resource-routes";
 import { handleGetSessionState } from "../src/routes/state-routes";
-import { buildResourceSnapshot, createScopeResources } from "../src/routes/route-utils";
+import { buildResourceSnapshot } from "../src/routes/route-utils";
 import type { ProjectedResourceContext } from "@flow-state-dev/core/types";
 
 const positionSchema = z.object({ ticker: z.string(), shares: z.number() });
@@ -224,70 +224,6 @@ describe("projected collection — list route (search pushdown)", () => {
     const body = await res.json();
     expect(body.items).toHaveLength(1);
     expect(body.nextCursor).toBeUndefined();
-  });
-});
-
-describe("projected collection — scope clientData handle (createScopeResources)", () => {
-  const ctx: ProjectedResourceContext = {
-    scope: "user",
-    scopeId: "user_1",
-    userId: "user_1",
-    flowKind: "ext-flow",
-  };
-
-  it("renders content from the collection's template (shared ref builder — no drift)", async () => {
-    const handles = createScopeResources({
-      scope: "user",
-      configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
-      persisted: {},
-      projectedContext: ctx,
-    });
-    const portfolio = handles.portfolio as unknown as {
-      get(k: string): Promise<{ readContent(): Promise<string | null> }>;
-      getOptional(k: string): Promise<unknown>;
-      list(): Promise<unknown>;
-      count(): Promise<unknown>;
-    };
-    const ref = await portfolio.get("AAPL");
-    // The registry ref renders the template; this scope handle must too.
-    expect(await ref.readContent()).toBe("AAPL: 10");
-    expect(await portfolio.getOptional("NONE")).toBeUndefined();
-  });
-
-  it("rejects out-of-pattern keys before the read hook (matches item route + registry)", async () => {
-    const read = vi.fn(async () => ({ ticker: "AAPL", shares: 1 }));
-    const coll = defineProjectedResourceCollection({
-      pattern: "positions/*",
-      scope: "user",
-      stateSchema: positionSchema,
-      read,
-      search: async () => ({ hits: [] }),
-    });
-    const handles = createScopeResources({
-      scope: "user",
-      configs: { portfolio: coll as unknown as Record<string, unknown> },
-      persisted: {},
-      projectedContext: ctx,
-    });
-    const portfolio = handles.portfolio as unknown as { getOptional(k: string): Promise<unknown> };
-    // `positions/*` is single-level: `AAPL/history` is out of pattern.
-    expect(await portfolio.getOptional("AAPL/history")).toBeUndefined();
-    expect(read).not.toHaveBeenCalled();
-  });
-
-  it("throws on list()/count() rather than lying with []/0", async () => {
-    const handles = createScopeResources({
-      scope: "user",
-      configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
-      persisted: {},
-      projectedContext: ctx,
-    });
-    const portfolio = handles.portfolio as unknown as {
-      list(): Promise<unknown>;
-      count(): Promise<unknown>;
-    };
-    await expect(portfolio.list()).rejects.toThrow(/not supported/i);
-    await expect(portfolio.count()).rejects.toThrow(/not supported/i);
   });
 });
 

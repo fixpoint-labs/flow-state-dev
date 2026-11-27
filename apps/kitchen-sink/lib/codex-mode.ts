@@ -61,7 +61,7 @@ import {
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
-import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
@@ -230,14 +230,16 @@ export interface CodexSeams {
 }
 
 /** The Codex block's options, built from the session flow's feeds. */
-export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): CodexAgentOptions {
+export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): CodexAgentOptions {
   return {
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    // Each event the run sends keeps a working turn from being stopped as silent.
+    ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
     // A session stored before models could be picked names none; it runs
     // Codex's own default, never the model your Codex settings name.
-    model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel(seams)),
+    model: async (ctx) => (await feeds.model?.(ctx)) ?? (await codexDefaultModel(seams)),
     thread: codexThreadOptions(),
     resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
@@ -254,7 +256,7 @@ export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams 
  * neutral `HarnessBlock` (core's own note on that type). The other modes cast
  * the same way.
  */
-function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
+function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): HarnessBlock {
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -277,7 +279,7 @@ async function codexDefaultModel(seams: CodexSeams): Promise<string> {
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
   // No `defaultModel`: the block fills in Codex's own default (`codexBlockOptions`).
-  return kitchenSinkHarnessFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({ kind: CODEX_SESSION, harnessLabel: "Codex", agent: (feeds) => codexBlock(feeds, seams) });
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */

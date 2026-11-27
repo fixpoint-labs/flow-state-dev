@@ -1,0 +1,63 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes. Left, before: each child&#x27;s goal check proves its own piece on a fixture host, and the claude-code-style and teammates labs run their own scripts on a hand-written adapter. Right, after: one main commit; leg a, claude-code-style on the workforce and harnesses kits in a browser on a real model; leg b, the teammates host on the same kits; leg w reads every write both made from the stores; and the end-state inventory stays behind as a test in the lab."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .ask { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); } .bar { fill:var(--accent); }
+    .row { stroke:var(--rule); stroke-width:1; } .foot { fill:var(--surface-2); }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus { fill:var(--code); } .minus { fill:var(--gone); } .tie { fill:var(--ink-3); }
+    .c-code { fill:var(--code); } .c-mute { fill:var(--ink-3); } .c-lost { fill:var(--ink-2); } .c-acc { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+  <g id="before">
+    <text class="t-lbl" x="24" y="30">BEFORE · EACH PIECE WHERE IT WAS BUILT</text>
+    <rect class="lost" x="24" y="44" width="400" height="66" rx="5"/>
+    <text class="t-tag c-mute" x="38" y="62">SEVEN CHILDREN</text>
+    <text class="t-b" x="38" y="81">Each goal check on its own fixture host</text>
+    <text class="t-s" x="38" y="98">live read, views, resources, kits, ids, two kits, the lab</text>
+    <rect class="lost" x="24" y="124" width="400" height="66" rx="5"/>
+    <text class="t-tag c-mute" x="38" y="142">THE LABS&#x27; SCRIPTS</text>
+    <text class="t-b" x="38" y="161">Run on a 1,642-line adapter</text>
+    <text class="t-s" x="38" y="178">they pass whether or not a screen reads a view</text>
+    <rect class="lost" x="24" y="204" width="400" height="66" rx="5"/>
+    <text class="t-tag c-mute" x="38" y="222">ER-1&#x27;S INVENTORY</text>
+    <text class="t-b" x="38" y="241">Specced, never built; passes adapter.ts by path</text>
+    <text class="t-s" x="38" y="258">nothing would refuse the adapter today</text>
+  </g>
+  <path class="arrow" d="M436 160 L500 160 M490 154 L500 160 L490 166"/>
+  <g id="after">
+    <text class="t-lbl" x="516" y="30">AFTER · ONE MAIN COMMIT, THE APPS THE EPIC WAS FOR</text>
+    <rect class="chosen" x="516" y="44" width="400" height="66" rx="5"/>
+    <text class="t-tag c-code" x="530" y="62">LEG A</text>
+    <text class="t-b" x="530" y="81">claude-code-style on kits, a browser, a real model</text>
+    <text class="t-s" x="530" y="98">thread, task row changing, a pin · on screen</text>
+    <rect class="chosen" x="516" y="124" width="400" height="66" rx="5"/>
+    <text class="t-tag c-code" x="530" y="142">LEG B</text>
+    <text class="t-b" x="530" y="161">The teammates host on the same kits</text>
+    <text class="t-s" x="530" y="178">shared coding flow · a stray file refuses start</text>
+    <rect class="chosen" x="516" y="204" width="400" height="66" rx="5"/>
+    <text class="t-tag c-code" x="530" y="222">LEG W</text>
+    <text class="t-b" x="530" y="241">Every write both legs made, read from the stores</text>
+    <text class="t-s" x="530" y="258">each one a request in a flow · no direct route</text>
+    <rect class="decide" x="516" y="284" width="400" height="66" rx="5"/>
+    <text class="t-tag c-acc" x="530" y="302">KEPT AFTER THE WRAP</text>
+    <text class="t-b" x="530" y="321">The end-state inventory, a test in the lab</text>
+    <text class="t-s" x="530" y="338">paths and content: the adapter can&#x27;t grow back</text>
+  </g>
+</svg>

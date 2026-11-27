@@ -87,8 +87,9 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_BRANCH_PREFIX, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { DRAIN_ENTRY, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../../../packages/shift-manager/teams/devteam/acceptance.mts";
 import {
   BASE_REF,
@@ -99,6 +100,7 @@ import {
   createScratchRepo,
   publishArtifact,
 } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -123,7 +125,7 @@ const POST_LINE = `${ISSUE}: ${GOAL}`;
 
 
 /** The branch prefix the manager cuts work on. */
-const BRANCH_PREFIX = "conductor/";
+const BRANCH_PREFIX = CODER_BRANCH_PREFIX;
 
 /**
  * The tokens the prompt must carry, and the file each one lives in.
@@ -171,8 +173,6 @@ const SETTLE_TIMEOUT_MS = 12 * 60_000;
 const FILED_TIMEOUT_MS = 30_000;
 /** How long a control's scripted run has to reach a terminal row state. */
 const CONTROL_SETTLE_TIMEOUT_MS = 120_000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
 // Reading trees
@@ -574,12 +574,12 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
-      harness: () => unavailableHarness(),
+      harnesses: [readyHarness(() => unavailableHarness())],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -603,7 +603,7 @@ await runGoal(async (failures) => {
       // that is not `completed` for the wrong reason. A forbidden fallback that
       // finished the child a moment later would not have reddened this control.
       const row = await runBoardUntilSettled(lab, CONTROL_SETTLE_TIMEOUT_MS);
-      // **Commits, not branches.** Provisioning cuts the `conductor/…` branch
+      // **Commits, not branches.** Provisioning cuts the `shift-manager/…` branch
       // before the harness runs, so a branch exists for an attempt that did
       // nothing — asserting none appeared measured the checkout rather than the
       // run, and reddened this control for the wrong reason. Observed.
@@ -655,12 +655,12 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: REVIEWER_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
-      harness: () => inertHarness(),
+      harnesses: [readyHarness(() => inertHarness())],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -716,13 +716,13 @@ await runGoal(async (failures) => {
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
       stores,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
       coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
       requireAcceptance: true,
-      harness: ({ cwd }) => committingHarness(cwd),
+      harnesses: [readyHarness(({ cwd }) => committingHarness(cwd))],
     });
     try {
       await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
@@ -795,7 +795,7 @@ await runGoal(async (failures) => {
 
   const lab = await openLab({
     stores,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
@@ -803,7 +803,7 @@ await runGoal(async (failures) => {
     inventory: true,
     projects: [{ id: STOREFRONT.id, title: "Storefront" }],
     workstreams: [{ as: "owner", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: COORDINATOR_SEAT } }],
-    harness: ({ cwd, resume, onSession }) =>
+    harnesses: [readyHarness(({ cwd, resume, onSession }) =>
       sequencer({
         name: "devforce-ships-harness",
         inputSchema: harnessRunInputSchema,
@@ -825,7 +825,7 @@ await runGoal(async (failures) => {
               "Do what your instructions and your brief say, then commit your work with git. " +
               "Do nothing else.",
           } as never) as never,
-        ) as unknown as HarnessBlock,
+        ) as unknown as HarnessBlock, "claude-code", "Claude Code")],
   });
 
   /** Filled in once the run has been published, so the legs after `dispose` can read them. */
@@ -880,8 +880,8 @@ await runGoal(async (failures) => {
     if (filedRow.assignee !== ASSIGNED_SEAT) {
       failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted ${ASSIGNED_SEAT}`);
     }
-    const payload = (filedRow.input as { harnessFeature?: { issue?: unknown; phase?: unknown } } | undefined)?.harnessFeature;
-    if (payload?.issue !== ISSUE || payload?.phase !== "implement") {
+    const payload = filedRow.input as { issue?: unknown; mode?: unknown } | undefined;
+    if (payload?.issue !== ISSUE || payload?.mode !== "implement") {
       failures.push(`the row names ${JSON.stringify(payload)}; wanted the feature "${ISSUE}" at implement`);
     }
     if (failures.length > 0) return { failures, evidence: "" };

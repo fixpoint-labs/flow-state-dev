@@ -1,5 +1,5 @@
 ---
 description: Changes the code in the session's project, through Claude Code.
-flow: harness-thread
+flow: coder
 harness: claude-code
 ---

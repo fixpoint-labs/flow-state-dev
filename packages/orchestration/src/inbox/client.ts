@@ -11,8 +11,10 @@
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */
-import { ClientHttpError, type Client, type RequestResult } from "@flow-state-dev/client";
+import { ClientHttpError, viewRef, type Client, type RequestResult, type ViewRef } from "@flow-state-dev/client";
 import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { readTaskView } from "../skills/task-tools-capability";
+import type { TaskListView } from "../skills/views/task-list-view";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
 
@@ -53,11 +55,35 @@ export function taskActionName(tool: TaskActionTool, board: string): string {
   return `${tool}_${taskToolSuffix(board)}`;
 }
 
+// FIX-2623.
+/**
+ * The client's handle on board `board`'s task list, the session view
+ * `listTasks_<suffix>` flow `flow` declares (orchestration's
+ * `taskToolViews`): for `useView(ref, {}, { sessionId })` or
+ * `client.view(ref, {}, { sessionId })`, on the session that holds the board.
+ * Its answer is the board's rows, keyed by task id.
+ */
+export function taskListViewRef(flow: string, board: string): ViewRef<TaskListView> {
+  return viewRef<TaskListView>(flow, taskActionName("listTasks", board));
+}
+
 /** Where a board's action is sent: its flow, the session that holds the board, and the action. */
 type BoardRoute = { flowId: string; sessionId: string; action: string };
 
 /** What a board action answers: `ok`, and on a refusal the rule's words. */
 type BoardOutput = { ok?: boolean; error?: string } & Record<string, unknown>;
+
+/**
+ * A 4xx refusal as an error carrying the route's own words (its body's
+ * `error`, else its `message`), not the transport's "Request failed (409)"; any other failure as it came.
+ */
+function refusalOf(error: unknown): unknown {
+  if (!(error instanceof ClientHttpError) || error.status < 400 || error.status >= 500) return error;
+  const body = error.body as { error?: unknown; message?: unknown } | null | undefined;
+  const said = [body?.error, body?.message].find((text): text is string => typeof text === "string" && text !== "");
+  // Still the route's refusal, status and body kept: only its message is the route's own words.
+  return new ClientHttpError(said ?? error.message, { status: error.status, body: error.body });
+}
 
 /**
  * Send one board action and read what it said back: the one routine every
@@ -74,8 +100,7 @@ async function sendBoardAction(client: Client, route: BoardRoute, input: Record<
   try {
     requestId = (await flow.send(action, input, { sessionId })).id;
   } catch (error) {
-    if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
-    throw error;
+    throw refusalOf(error);
   }
   let settled: RequestResult;
   try {
@@ -140,6 +165,13 @@ export type RefileOverrides = Partial<RefiledTask> & {
  * read, so check the board before trying again.
  */
 export type BoardActions = {
+  /**
+   * Read one task as the board's `getTask` reads it: its brief (context,
+   * labels, priority) whole, its input and output cut as that read cuts them.
+   * A re-run reads its brief here before {@link refile}, so a long brief
+   * keeps every instruction.
+   */
+  get(id: string): Promise<BoardTaskRead>;
   /** Cancel a task. Resolves to the ids of the dependents the board cancelled with it. */
   cancel(id: string): Promise<string[]>;
   /** Send words to an open task: they join its brief. Uses no try, never cancels. */
@@ -155,6 +187,9 @@ export type BoardActions = {
    */
   refile(row: RefiledTask, overrides?: RefileOverrides): Promise<string>;
 };
+
+/** One task as the board's `getTask` returns it ({@link BoardActions.get}). */
+export type BoardTaskRead = ReturnType<typeof readTaskView>;
 
 /** `row`'s copied fields with `overrides` over them, as `createTask` takes them: unset and `null` fields left out. */
 function refileInput(row: RefiledTask, overrides: RefileOverrides): Record<string, unknown> {
@@ -190,7 +225,12 @@ export function createInboxClient(client: Client): InboxClient {
     const { flowId, requestId, suspensionId } = hold.source;
     if (flowId === null) throw new Error(`Inbox question "${hold.id}" names no flow`);
     const resume = resumeOf(hold.ask.kind, answer);
-    await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
+    // A refusal (the round already answered, say) rejects with the route's own words.
+    try {
+      await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
+    } catch (error) {
+      throw refusalOf(error);
+    }
   };
   return {
     answerOne,
@@ -203,6 +243,11 @@ export function createInboxClient(client: Client): InboxClient {
       const send = (tool: TaskActionTool, input: Record<string, unknown>, what: string) =>
         sendBoardAction(client, { flowId, sessionId, action: taskActionName(tool, board) }, input, what);
       return {
+        async get(id) {
+          const output = await send("getTask", { id }, "read");
+          if (typeof output.task !== "object" || output.task === null) throw new Error("The board read the task, and its answer names no task.");
+          return output.task as BoardTaskRead;
+        },
         async cancel(id) {
           const output = await send("updateTask", { id, status: "cancelled" }, "cancel");
           // The board leaves `cancelled` out when no dependent went with it; anything else there is a protocol bug, not a "none".

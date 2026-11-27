@@ -91,7 +91,7 @@ const BASE = `http://x/api/flows/sessions/${SESSION_ID}/resources/notes`;
 const CREATE_PATH = ["sessions", SESSION_ID, "resources", "notes"];
 
 function post(topic: string, content: string): Promise<Response> {
-  return router.POST(new Request(BASE, { method: "POST", body: JSON.stringify({ topic, content }) }), {
+  return router.POST(new Request(BASE, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic, content }) }), {
     params: { path: CREATE_PATH },
   });
 }

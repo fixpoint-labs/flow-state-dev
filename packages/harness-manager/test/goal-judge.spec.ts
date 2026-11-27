@@ -54,7 +54,7 @@ const RUN: HarnessJudgeInput = {
 
 async function judge(pick: { choice: string; confidence?: number; why?: string }, input: HarnessJudgeInput = RUN) {
   const { block, floor } = goalJudge({ name: "test-judge", model: "test/judge", floor: 0.6 });
-  const flow = defineFlow({ kind: "goal-judge-test", actions: { judge: { inputSchema: block.inputSchema as never, block } } } as never)();
+  const flow = defineFlow({ kind: "goal-judge-test", actions: { judge: block } } as never)();
   const { resolver, asked, states } = scripted(pick);
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,

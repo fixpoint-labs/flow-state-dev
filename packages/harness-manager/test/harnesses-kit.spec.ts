@@ -1,0 +1,202 @@
+/**
+ * The harness kit: an app lists `harnesses({ workspace })` beside workforce
+ * and fills its `harnesses` slot with harness values. It gets one coding
+ * worker flow, `coder`, every coding worker runs on, and a readiness view
+ * with one row per harness filled, with no host-side coding flow, readiness
+ * map or readiness flow.
+ *
+ * Graded on what the running app serves and refuses.
+ */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import type { Harness } from "@flow-state-dev/core/harness";
+import { scriptedHarness } from "../src/scripted-harness";
+import { codingDrainBudgetMs, harnesses } from "../src/kit";
+import { z } from "zod";
+
+const states: FlowState[] = [];
+const dirs: string[] = [];
+afterEach(async () => {
+  for (const state of states.splice(0)) await state.dispose().catch(() => undefined);
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function tree(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "fsd-harness-kit-"));
+  dirs.push(dir);
+  for (const [file, body] of Object.entries(files)) {
+    mkdirSync(join(dir, file, ".."), { recursive: true });
+    writeFileSync(join(dir, file), body);
+  }
+  return dir;
+}
+
+const worker = (name: string, extra: string) => `---\nname: ${name}\ndescription: ${name}.\n${extra}---\nYou are ${name}.`;
+const TEAM = {
+  "teams/core/workers/lead/WORKER.md": worker("Lead", ""),
+  "teams/core/workers/codex/WORKER.md": worker("Codex", "flow: coder\nharness: codex\n"),
+};
+
+/** A harness whose run is never started here: what a test of the install needs. */
+const harness = (id: string, ready: boolean): Harness => ({
+  id,
+  label: id.toUpperCase(),
+  agent: scriptedHarness({ stepEveryMs: 1 }).slot,
+  readiness: async () => (ready ? { ready: true } : { ready: false, reason: `${id} is signed out`, remedy: `sign ${id} in` }),
+  pass: [],
+});
+
+const workspace = localWorkspaceHost({ root: join(tmpdir(), "fsd-harness-kit-runs"), remotes: { allow: [] }, source: () => ({ kind: "repo", repo: tmpdir() }) });
+
+function start(kits: Parameters<typeof createFlowState>[0]["kits"], fill: Record<string, unknown>): FlowState {
+  const state = createFlowState({ kits, fill, stores: { default: { primary: inMemoryStores() } } });
+  states.push(state);
+  return state;
+}
+
+/** The readiness view's rows, read as a client reads it: through the router, with no session. */
+async function readinessEntries(state: FlowState): Promise<Array<{ harness: string; label: string; ready: boolean }>> {
+  const router = await state.getRouter();
+  const path = ["harnesses", "views", "readiness"];
+  const res = await router.POST(
+    new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "alice", input: {} }),
+    }),
+    { params: { path } },
+  );
+  expect(res.status, await res.clone().text()).toBe(200);
+  return ((await res.json()) as { output: Array<{ harness: string; label: string; ready: boolean }> }).output;
+}
+
+describe("the harness kit", () => {
+  it("serves one coding worker flow and a readiness view with one row per harness filled", async () => {
+    const directory = tree(TEAM);
+    const state = start([harnesses({ workspace }), workforce({ directory })], {
+      [harnesses.slots.harnesses]: [harness("codex", true), harness("cursor", false)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys].sort()).toEqual(["agent", "coder", "harnesses", "workforce-roster"]);
+    const entries = await readinessEntries(state);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map((entry) => [entry.harness, entry.label, entry.ready])).toEqual([
+      ["codex", "CODEX", true],
+      ["cursor", "CURSOR", false],
+    ]);
+  });
+
+  it("refuses a coding worker at hire when the kit's coding flow is switched off", async () => {
+    const directory = tree(TEAM);
+    const state = start([harnesses({ workspace }).without(workforce.slots.workerFlows, "coder"), workforce({ directory })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    const refused = await state.ready().then(
+      () => "started",
+      (error: Error) => error.message,
+    );
+    expect(refused).toContain("codex");
+    expect(refused).toContain("flow");
+  });
+
+  it("refuses to start with a harness that keeps session state beneath the task entry, naming the entry", async () => {
+    // The claim gate shares a task's child session between tasks: a block below `work` that authors
+    // session state would corrupt another's with no error, so the app is refused before anything runs.
+    const attached: Harness = {
+      ...harness("codex", true),
+      agent: () =>
+        handler({
+          name: "attached-harness",
+          inputSchema: harnessRunInputSchema,
+          outputSchema: harnessRunHandleSchema,
+          sessionStateSchema: z.object({ turns: z.number().default(0) }),
+          execute: async () => {
+            throw new Error("never runs");
+          },
+        }) as never,
+    };
+    const state = start([harnesses({ workspace }), workforce({ directory: tree(TEAM) })], { [harnesses.slots.harnesses]: [attached] });
+    const refused = await state.ready().then(
+      () => "started",
+      (error: Error) => error.message,
+    );
+    expect(refused).toMatch(/task entry "work".*sessionStateSchema/);
+  });
+
+  it("refuses a worker that names a harness nobody filled", async () => {
+    const directory = tree(TEAM);
+    const state = start([harnesses({ workspace }), workforce({ directory })], {
+      [harnesses.slots.harnesses]: [harness("cursor", true)],
+    });
+    const refused = await state.ready().then(
+      () => "started",
+      (error: Error) => error.message,
+    );
+    expect(refused).toContain("codex");
+    // Refused for the harness it names, not for a missing flow: the kit's `coder` is there.
+    expect(refused).toMatch(/harness/);
+    expect(refused).not.toMatch(/names no flow/);
+  });
+
+  it("with logReadiness, logs each harness's entry at start, with what to do for one that can't run", async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => void logged.push(String(line)));
+    try {
+      const state = start([harnesses({ workspace, logReadiness: true }), workforce({ directory: tree(TEAM) })], {
+        [harnesses.slots.harnesses]: [harness("codex", true), harness("cursor", false)],
+      });
+      await state.ready();
+      await vi.waitFor(() => expect(logged.some((line) => line.includes("CURSOR"))).toBe(true));
+    } finally {
+      spy.mockRestore();
+    }
+    const table = logged.find((line) => line.includes("CURSOR"))!;
+    expect(table).toContain("CODEX");
+    expect(table).toContain("sign cursor in");
+  });
+});
+
+// FIX-2794.
+describe("the harness kit's cap on run time", () => {
+  it("takes runTimeoutMs: 0, which turns the cap off", async () => {
+    const directory = tree(TEAM);
+    const state = start([harnesses({ workspace, runTimeoutMs: 0 }), workforce({ directory })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("coder");
+  });
+
+  // The default cap stops a looping run; it is not a wait to hold a host's
+  // shutdown for. A shutdown gives a run with the default cap, or none, the
+  // same 20 minutes, and waits out a cap the host named.
+  it("sizes a shutdown from a cap the host named, not from the 4-hour default", () => {
+    const byDefault = codingDrainBudgetMs({});
+    expect(codingDrainBudgetMs({ runTimeoutMs: 0 })).toBe(byDefault);
+    expect(codingDrainBudgetMs({ runTimeoutMs: 20 * 60_000 })).toBe(byDefault);
+    expect(byDefault).toBeLessThan(4 * 60 * 60_000);
+    expect(codingDrainBudgetMs({ runTimeoutMs: 6 * 60 * 60_000 })).toBeGreaterThan(6 * 60 * 60_000);
+  });
+});
+
+// FIX-2857.
+describe("the harness kit's branch prefix", () => {
+  it("takes an app's own prefix", async () => {
+    const state = start([harnesses({ workspace, branchPrefix: "teammates/" }), workforce({ directory: tree(TEAM) })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("coder");
+  });
+
+  it("refuses one that can't lead a branch, at the kit's config", () => {
+    expect(() => harnesses({ workspace, branchPrefix: "Teammates" })).toThrow(/branchPrefix/);
+  });
+});

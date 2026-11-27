@@ -23,7 +23,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpServers } from "@flow-state-dev/workforce";
-import { commitScriptedWork, type HarnessFeeds } from "../teams/devteam/harness.mts";
+import { commitScriptedWork, readyHarness, type HarnessFeeds } from "../teams/devteam/harness.mts";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 
@@ -133,12 +133,12 @@ afterEach(async () => {
 const servers = (): ProjectMcpServers => ({ linear: { url: mcp.url, seedEnv: "FSD_TEST_LINEAR_SEED" } });
 
 /** A Lab offering `linear` (unless told otherwise), with `notes` naming it and `plain` naming none. */
-async function open(options: Partial<OpenLabOptions> & { slot?: OpenLabOptions["harness"] } = {}) {
+async function open(options: Partial<OpenLabOptions> & { slot?: Parameters<typeof readyHarness>[0] } = {}) {
   const runs: Relayed[] = [];
   const lines: string[] = [];
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: options.slot ?? (recordingHarness(runs) as OpenLabOptions["harness"]),
+    harnesses: [readyHarness(options.slot ?? (recordingHarness(runs) as Parameters<typeof readyHarness>[0]))],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "sm-mcp-runs-")), remotes: { allow: [] } },
     coderWorkerId: CODER,
@@ -297,7 +297,7 @@ describe("the harness a Lab runs", () => {
     const { claudeCodeHarness, errorReporterHarness } = await import("../teams/devteam/harness.mts");
     process.env.FSD_TEST_LINEAR_SEED = SENTINEL;
     try {
-      const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
+      const feeds = { cwd: () => "/w", worktree: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
       claudeCodeHarness(feeds);
       claudeCodeHarness({ ...feeds, mcpTools: Object.assign(async () => ({}), { named: async () => [] }) });
       errorReporterHarness({ cwd: () => "/w" } as never);
@@ -308,14 +308,12 @@ describe("the harness a Lab runs", () => {
     const [without, withTools, reporter] = handed;
     expect(reporter).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
+      // `worktree` is a feed every runner hands (the fence's directory); Claude Code takes no option by that name.
+      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt", "worktree"].sort(),
     );
     expect(without!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob"]);
-    expect(without!.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
-    const append = (without!.systemPrompt as { append?: string }).append;
-    expect(append).toEqual(expect.any(String));
-    expect(append!.length).toBeGreaterThan(0);
-    expect(append).not.toMatch(/Do nothing else/);
+    // Claude Code's own preset, with nothing appended: the run's terms and report are in its brief, which every harness reads.
+    expect(without!.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
     // The checkout's conventions with every hook off, and never the operator's own user settings (FIX-2421 D2).
     expect(without).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     const { mcpTools, uses, ...rest } = withTools!;

@@ -36,6 +36,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
+import type { SessionFields } from "../src/workers/session-fields";
 import { ROSTER_FLOW } from "../src/workers/keys";
 
 export const ORG = "acme";
@@ -74,6 +75,8 @@ export type HostExtras = {
   models?: Parameters<typeof createMockModelResolver>[0];
   /** Durable execution, for a flow whose request parks on a wait (a worker's step in a session of its own). */
   durable?: boolean;
+  /** The app's session fields, declared on the installation. */
+  sessionFields?: SessionFields;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -116,7 +119,8 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const installation = createWorkerInstallation({
     standardWorkers: extras.standardWorkers ?? [],
     workerFlows: () => flows as never,
-    ...(extras.projectCoordinator === undefined ? {} : { projectCoordinator: extras.projectCoordinator })
+    ...(extras.projectCoordinator === undefined ? {} : { projectCoordinator: extras.projectCoordinator }),
+    ...(extras.sessionFields === undefined ? {} : { sessionFields: extras.sessionFields })
   });
   const lead = workerFlow(
     "lead",
@@ -152,7 +156,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     )
   };
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver(extras.models ?? {}),
     ...(extras.durable === true ? { durable: true } : {}),

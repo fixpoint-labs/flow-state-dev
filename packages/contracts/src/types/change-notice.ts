@@ -24,10 +24,12 @@
  * - `board` — a row on a task board changed, on the topic of the
  *   session that filed it, narrowed to the board's id. The session stream
  *   ignores it: a board is read through its own read.
+ * - `suspension` — one of the user's suspensions was written or deleted, on
+ *   their user topic. It names nothing: the topic spans their organizations.
  * - `resync` — the bus may have missed notices (it reconnected). Every
  *   subscriber reads once, whatever kinds it otherwise listens for.
  */
-export type ChangeKind = "items" | "request" | "run" | "state" | "resource" | "board" | "resync";
+export type ChangeKind = "items" | "request" | "run" | "state" | "resource" | "board" | "suspension" | "resync";
 
 /** The scopes a topic can name. No other topic exists. */
 export type TopicScope = "session" | "user" | "org";

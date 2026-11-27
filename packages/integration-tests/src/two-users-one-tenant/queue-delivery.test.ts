@@ -60,7 +60,7 @@ function inboxFlow(kind: string, policy: "queue" | "reject") {
   return defineFlow({
     kind,
     actions: {
-      work: { block: work, inputSchema: workInput },
+      work,
       deliver: {
         block: dispatcher({
           name: "deliver-work",

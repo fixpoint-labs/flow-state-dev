@@ -14,8 +14,31 @@
     // as packages/shift-manager/tsconfig.json, and the same cost: setting
     // `paths` replaces the base's source mappings, so workspace packages
     // resolve through their package exports (built first by turbo's `^build`).
-    "paths": { "@/*": ["../packages/shift-manager/src/*"] }
+    "paths": {
+      "@/*": ["../packages/shift-manager/src/*"],
+      // Harnesses copied into kitchen-sink import these. That app depends on
+      // them; this project does not. The mapping typechecks the same modules.
+      "@ai-sdk/gateway": ["../apps/kitchen-sink/node_modules/@ai-sdk/gateway/dist/index.d.ts"],
+      "@thought-fabric/core/metacognition": ["../packages/thought-fabric-core/src/metacognition/index.ts"]
+    }
   },
-  "include": ["lib/**/*.mts", "**/run.mts", "_template/*.mts", "harness-manager/host.mts"],
-  "exclude": ["node_modules", "**/harness.mts"]
+  "include": ["**/*.mts", "**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    // Copied into an app or a fresh host and executed there. Relative imports
+    // (`./lib/flowstate`, `./flows/chat-agent/flow`), the host's `@/` and its
+    // stylesheets resolve against that copy, not against this project.
+    "goal-verdict/says-when-it-cannot-tell/harness.mts",
+    "suspension/completes-via-the-resume-endpoint/harness.mts",
+    "suspension/resumes-after-a-cold-restart/harness-resume.mts",
+    "suspension/resumes-after-a-cold-restart/harness-suspend.mts",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/claude-code.tsx",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/devtool.tsx",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/registry.tsx",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/teammates.tsx",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/shift-manager/main.tsx",
+    "conversation-scroll/sent-line-rises-reply-stays/pages/shift-manager/fakes",
+    "attachments/composer-attaches-and-refuses/pages/composer.tsx",
+    "design-system/skins-reused-components-from-one-token-set/host/main.tsx"
+  ]
 }

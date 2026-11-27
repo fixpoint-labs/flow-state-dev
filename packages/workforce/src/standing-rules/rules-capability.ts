@@ -26,8 +26,8 @@ async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   try {
     list = await readStandingRules(ctx);
   } catch (error) {
-    if (!saidReadFailed.has(ctx.session as object)) {
-      saidReadFailed.add(ctx.session as object);
+    if (!saidReadFailed.has(ctx.session)) {
+      saidReadFailed.add(ctx.session);
       const reason = error instanceof Error ? error.message : String(error);
       ctx.emit?.status?.(`This turn runs without standing rules: they couldn't be read (${reason}).`, { transient: false });
     }
@@ -40,29 +40,44 @@ const listOutput = (list: StandingRules) => ({ rules: numberedRules(list).map(({
 
 const ruleSchema = z.object({ number: z.number(), text: z.string() });
 const listOutputSchema = z.object({ rules: z.array(ruleSchema), max: z.number() });
-const toolOutputSchema = z.union([
-  listOutputSchema.extend({ line: z.string() }),
-  listOutputSchema.extend({ refused: z.string() })
+// `saved` is the one field a reply may rest "saved" on: a refusal still
+// carries the list, which a model can otherwise read as the write landing.
+const toolOutputSchema = z.discriminatedUnion("saved", [
+  listOutputSchema.extend({ saved: z.literal(true), line: z.string() }),
+  listOutputSchema.extend({ saved: z.literal(false), refused: z.string() })
 ]);
+
+/** What a write tool's description says about acknowledging it. */
+const ACKNOWLEDGE =
+  " Tell the user it's done only when the result has `saved: true`. On `saved: false` nothing changed: " +
+  "say so, with the `refused` reason, and never say it was saved.";
+
+/** A refusal the model reads. The prefix lives here, so every refusal starts `Not saved:`. */
+function notSaved(list: ReturnType<typeof listOutput>, reason: string) {
+  return { ...list, saved: false as const, refused: `Not saved: ${reason}` };
+}
+
+function listNow(current: StandingRules | undefined): ReturnType<typeof listOutput> {
+  return current === undefined ? { rules: [], max: MAX_RULES } : listOutput(current);
+}
 
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isUserTurn(ctx)) {
-    const refused = "Standing rules change only on a turn a user started; this one can't edit them.";
     const current = await readStandingRules(ctx).catch(() => undefined);
-    return current === undefined ? { rules: [], max: MAX_RULES, refused } : { ...listOutput(current), refused };
+    return notSaved(listNow(current), "standing rules change only on a turn a user started; this one can't edit them.");
   }
   let outcome;
   try {
     const { version } = await readStandingRules(ctx);
     outcome = await writeStandingRules(ctx, version, edit, ctx.session.identity.id);
   } catch (error) {
-    const reason = `Not saved: ${error instanceof Error ? error.message : String(error)}`;
+    const message = error instanceof Error ? error.message : String(error);
     const current = await readStandingRules(ctx).catch(() => undefined);
     // An unreadable record is said as such, never shown as an empty list.
-    return current === undefined
-      ? { rules: [], max: MAX_RULES, refused: `${reason} The current rules couldn't be read either; this list is not them.` }
-      : { ...listOutput(current), refused: reason };
+    const reason =
+      current === undefined ? `${message} The current rules couldn't be read either; this list is not them.` : message;
+    return notSaved(listNow(current), reason);
   }
   if (!outcome.ok) {
     if (outcome.full === true) {
@@ -72,10 +87,10 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
         itemVisibility: { client: true, history: false }
       });
     }
-    return { ...listOutput(outcome.list), refused: `Refused: ${outcome.reason}.` };
+    return notSaved(listOutput(outcome.list), `${outcome.reason}.`);
   }
   ctx.emit.message(outcome.line, { agentName: STANDING_RULES_LINE, itemVisibility: { client: true, history: false } });
-  return { ...listOutput(outcome.list), line: outcome.line };
+  return { ...listOutput(outcome.list), saved: true as const, line: outcome.line };
 }
 
 const readTool = handler({
@@ -96,7 +111,7 @@ const addTool = handler({
   description:
     "Save a note this user gave you as a standing rule you follow in every later conversation with them. " +
     `Use it when they tell you how to work from now on. One line, at most 300 characters, in your words; at most ${MAX_RULES} rules. ` +
-    "If the list is full, ask them which rule to merge or drop.",
+    "If the list is full, ask them which rule to merge or drop." + ACKNOWLEDGE,
   inputSchema: z.object({ text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -106,7 +121,8 @@ const addTool = handler({
 const changeTool = handler({
   name: RULE_TOOLS.change,
   description:
-    "Rewrite one of your standing rules when this user asks you to change it. Name it by number and quote its current text exactly.",
+    "Rewrite one of your standing rules when this user asks you to change it. Name it by number and quote its current text exactly." +
+    ACKNOWLEDGE,
   inputSchema: z.object({ number: z.number().int(), current: z.string(), text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -116,7 +132,8 @@ const changeTool = handler({
 const removeTool = handler({
   name: RULE_TOOLS.remove,
   description:
-    "Drop one of your standing rules when this user asks you to. Name it by number and quote its current text exactly.",
+    "Drop one of your standing rules when this user asks you to. Name it by number and quote its current text exactly." +
+    ACKNOWLEDGE,
   inputSchema: z.object({ number: z.number().int(), current: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,

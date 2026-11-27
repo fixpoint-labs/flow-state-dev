@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 476">
+<style>
+/* Standalone fallback (GitHub, a file viewer). On the docs site the page's own
+   .drawing rules are more specific and win, so the figure follows the site theme. */
+.solid{fill:none;stroke:#1b1a15;stroke-width:1.4}.dash{fill:none;stroke:#1b1a15;stroke-width:1.4;stroke-dasharray:5 4}
+.ln{fill:none;stroke:#1b1a15;stroke-width:1.3}.thin{fill:none;stroke:#1b1a15;stroke-width:1}
+.hi{fill:none;stroke:rgba(27,26,21,.25);stroke-width:1}.hatch-line{stroke:rgba(27,26,21,.45);stroke-width:1}
+.ground{fill:#f0ece1}.ink{fill:#1b1a15}.hl{fill:#e8f551}
+text{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;fill:#3d3a32}
+.lb{font-size:10px;letter-spacing:1.5px;fill:#57544a}.nm{font-size:15px;fill:#1b1a15}.sub{font-size:10.5px;fill:#57544a}
+.c{font-size:12.5px;fill:#1b1a15}.t{font-size:12px;fill:#3d3a32}text.on-hl{fill:#1b1a15}
+@media (prefers-color-scheme:dark){
+.solid,.dash,.ln,.thin{stroke:#ece7da}.hi{stroke:rgba(236,231,218,.25)}.hatch-line{stroke:rgba(236,231,218,.45)}
+.ground{fill:#16150f}.ink{fill:#ece7da}text{fill:#cbc5b5}.lb,.sub{fill:#a6a08f}.nm,.c{fill:#ece7da}.t{fill:#cbc5b5}text.on-hl{fill:#1b1a15}}
+</style>
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="24" width="540" height="72"/>
+<text class="lb" x="42" y="46">YOU RUN IT</text>
+<text class="nm" x="42" y="68">A starter</text>
+<text class="sub" x="42" y="85">pages · a team of workers · config, all in your repo</text>
+<line class="ln" x1="568" y1="60" x2="604" y2="60"/>
+<text class="t" x="616" y="56">Change a worker by editing</text>
+<text class="t" x="616" y="73">its Markdown file.</text>
+
+<rect class="solid" x="28" y="112" width="540" height="116"/>
+<rect class="hl" x="38" y="136" width="52" height="24"/>
+<text class="lb" x="42" y="130">YOU INSTALL THEM</text>
+<text class="nm on-hl" x="42" y="153">Kits</text>
+<text class="sub" x="100" y="153">a feature in one line of config</text>
+<rect class="thin" x="42" y="176" width="150" height="36"/>
+<text class="c" x="117" y="198" text-anchor="middle">workforce</text>
+<line class="ln" x1="222" y1="194" x2="194" y2="194" marker-end="url(#ah)"/>
+<rect class="thin" x="222" y="176" width="150" height="36"/>
+<text class="c" x="297" y="198" text-anchor="middle">harnesses</text>
+<line class="ln" x1="402" y1="194" x2="374" y2="194" marker-end="url(#ah)"/>
+<rect class="thin" x="402" y="176" width="150" height="36"/>
+<text class="c" x="477" y="198" text-anchor="middle">claude-code</text>
+<line class="ln" x1="568" y1="170" x2="604" y2="170"/>
+<text class="t" x="616" y="158">An arrow is one kit filling</text>
+<text class="t" x="616" y="175">a slot that another kit</text>
+<text class="t" x="616" y="192">opened.</text>
+
+<rect class="solid" x="28" y="244" width="540" height="72"/>
+<text class="lb" x="42" y="266">YOU CALL THEM</text>
+<text class="nm" x="42" y="288">Flows</text>
+<text class="sub" x="42" y="305">actions · views · state · resources</text>
+<line class="ln" x1="568" y1="280" x2="604" y2="280"/>
+<text class="t" x="616" y="276">Every feature is a flow you</text>
+<text class="t" x="616" y="293">can run from a terminal.</text>
+
+<rect class="solid" x="28" y="332" width="540" height="72"/>
+<text class="lb" x="42" y="354">YOU WRITE THEM</text>
+<text class="nm" x="42" y="376">Blocks</text>
+<text class="sub" x="42" y="393">generator · handler · sequencer · router · evaluator</text>
+<line class="ln" x1="568" y1="368" x2="604" y2="368"/>
+<text class="t" x="616" y="364">One typed contract:</text>
+<text class="t" x="616" y="381">input in, output out.</text>
+
+<rect fill="url(#hatch)" x="28" y="420" width="540" height="36"/>
+<rect class="thin" x="28" y="420" width="540" height="36"/>
+<rect class="ground" x="40" y="429" width="402" height="18"/>
+<text class="c" x="46" y="442">The engine: serves, streams, stores, resumes</text>
+</svg>

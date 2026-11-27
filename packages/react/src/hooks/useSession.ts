@@ -20,6 +20,7 @@ import {
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
+  FileContent,
   ItemVisibility,
   MessageItem,
   OutputItem,
@@ -31,7 +32,8 @@ import type {
   StateChangeItem,
   SuspensionItem
 } from "@flow-state-dev/core/items";
-import { followSession, mayReplaceItem, readSessionHistory } from "@flow-state-dev/client/internal";
+import { followSession, mayReplaceItem, readSessionHistory, liveRead, storageRootsOf } from "@flow-state-dev/client/internal";
+import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
 import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.
@@ -39,8 +41,6 @@ import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import { answerStop } from "../internal/answerStop";
-import { coalescedReads } from "../internal/coalescedReads";
-import { LIVE_POLL_MS, mayBelongTo } from "../internal/scopeNotices";
 import {
   isReducibleStateChange,
   isReplayableStateChange,
@@ -433,10 +433,16 @@ export type SessionView = {
   getItemsByAgent: (agentName: string) => OutputItem[];
   /** Returns items matching the given visibility predicate. */
   getItemsByVisibility: (predicate: Partial<ItemVisibility>) => OutputItem[];
+  /**
+   * Send an action on this session. `userMessage` shows the person's line at
+   * once, before the server's copy arrives. `attachments` are the message's
+   * files, as `upload` returned them, sent beside the input: the line shown
+   * at once holds them after the text, as the server's will.
+   */
   sendAction: (
     action: string,
     input: unknown,
-    options?: { metadata?: Record<string, unknown>; userMessage?: string }
+    options?: { metadata?: Record<string, unknown>; userMessage?: string; attachments?: FileContent[] }
   ) => Promise<ExecuteActionResponse>;
   /** Abort the currently in-flight request. No-op if nothing is in flight. */
   abortRequest: () => Promise<void>;
@@ -643,6 +649,9 @@ export function useSession(
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [latestRequest, setLatestRequest] = useState<SessionRequestSummary | null>(null);
+  // The last latest-request read for this session failed. With no record from
+  // an earlier one, the shown request reads its own status instead.
+  const [latestRequestFailed, setLatestRequestFailed] = useState(false);
   // The status the stream of the request the view follows last reported.
   const [streamStatus, setStreamStatus] = useState<{ id: string; status: RequestStatus } | null>(null);
   // The record of a shown request that isn't the newest, from a status read.
@@ -898,8 +907,10 @@ export function useSession(
       if (generation !== sessionGenerationRef.current) return null;
       const latest = list[0] ?? null;
       setLatestRequest(latest);
+      setLatestRequestFailed(false);
       return latest;
     } catch {
+      if (generation === sessionGenerationRef.current) setLatestRequestFailed(true);
       // Best effort — a missing latest request shouldn't surface as a
       // session-level error. Consumers see the previous value.
       return null;
@@ -1317,32 +1328,46 @@ export function useSession(
   /**
    * Re-read the session's state and detail, and no items: one state read
    * with `includeItems: false`, merged into the snapshot on screen through
-   * the same state half a full read uses. Best effort, like
-   * `refreshLatestRequest`: a failed read leaves state as it was, and the
-   * next read of either kind brings it current.
+   * the same state half a full read uses. Rejects when the read fails, so the
+   * live read can try again on its own; a failed read leaves state as it was.
    */
-  const refreshState = useCallback(async () => {
+  const readState = useCallback(async () => {
     if (sessionId === undefined) return;
     const read = beginStateRead();
+    // The live changes the state response can't hold: those numbered after
+    // the count when it answered, not when the detail read answers too.
+    let changesAt = 0;
+    const [nextDetail, next] = await Promise.all([
+      sessionsApi.get(sessionId),
+      sessionsApi.state(sessionId, { includeItems: false }).then((response) => {
+        changesAt = liveChangeCountRef.current;
+        return response;
+      })
+    ]);
+    const superseded = read.sequence <= stateAppliedSequenceRef.current;
+    const state = takeState(next, read);
+    if (!superseded && snapshotLandedRef.current) setDetail(nextDetail);
+    if (state === null) return;
+    if (!snapshotLandedRef.current) {
+      // The mount read is still out and holds older state: it loads this.
+      heldStateRef.current = { state, detail: nextDetail, changesAt };
+      return;
+    }
+    setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+  }, [sessionId, sessionsApi, beginStateRead, takeState]);
+
+  /**
+   * {@link readState}, best effort, like `refreshLatestRequest`: a failed
+   * read leaves state as it was, and the next read of either kind brings it
+   * current.
+   */
+  const refreshState = useCallback(async () => {
     try {
-      const [nextDetail, next] = await Promise.all([
-        sessionsApi.get(sessionId),
-        sessionsApi.state(sessionId, { includeItems: false })
-      ]);
-      const superseded = read.sequence <= stateAppliedSequenceRef.current;
-      const state = takeState(next, read);
-      if (!superseded && snapshotLandedRef.current) setDetail(nextDetail);
-      if (state === null) return;
-      if (!snapshotLandedRef.current) {
-        // The mount read is still out and holds older state: it loads this.
-        heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
-        return;
-      }
-      setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+      await readState();
     } catch {
       // Best effort: see above.
     }
-  }, [sessionId, sessionsApi, beginStateRead, takeState]);
+  }, [readState]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -1617,6 +1642,19 @@ export function useSession(
             readRecordOf(requestId);
           }
         },
+        onClose: () => {
+          // The inline stream ended with no terminal event: the server cut off
+          // a reader that fell behind, or the connection ended early. The
+          // request runs on, so follow it on its own stream from the last
+          // event this view applied; that stream resumes itself from then on.
+          // A stream the view closed (a stop, a terminal status, a new
+          // request) never gets here.
+          if (streamHandleRef.current !== handle || !followingInline) return;
+          followingInline = false;
+          const last = lastStreamEventRef.current;
+          handle = follow(last?.requestId === requestId ? last.sequence : startAfter);
+          streamHandleRef.current = handle;
+        },
         onError: () => {
           // Capture the in-flight requestId BEFORE clearing the active ref so
           // the watchdog and any subsequent dismissRequest() call still have a
@@ -1639,12 +1677,13 @@ export function useSession(
         }
       };
 
-      const handle = inlineResponse !== undefined
+      const startAfter = startingAfter !== undefined ? Number(startingAfter) : undefined;
+      const follow = (after: number | undefined): RequestStreamHandle =>
+        flow.request(requestId).stream({ startingAfter: after, ...sseCallbacks });
+      let followingInline = inlineResponse !== undefined;
+      let handle: RequestStreamHandle = inlineResponse !== undefined
         ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
-        : flow.request(requestId).stream({
-            startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
-            ...sseCallbacks
-          });
+        : follow(startAfter);
 
       streamHandleRef.current = handle;
       streamRequestIdRef.current = requestId;
@@ -1696,6 +1735,7 @@ export function useSession(
     sessionGenerationRef.current += 1;
     setStreamStatus(null);
     setReadFollowed(null);
+    setLatestRequestFailed(false);
 
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
@@ -1958,18 +1998,16 @@ export function useSession(
   // (FIX-1506). After the first snapshot, one subscription to the session's,
   // the user's and the org's topics. It acts on `state` and `resource` only;
   // items, requests and runs are the session stream's. A notice this view's
-  // own request made is skipped. Reads go one in flight and one waiting.
-  const refreshStateRef = useRef(refreshState);
-  refreshStateRef.current = refreshState;
+  // own request made is skipped. Each resource change is handed to the
+  // resource hooks as it arrives; the scope's state is read again through the
+  // client's live read: one in flight, one waiting, a failed one tried again.
+  const readStateRef = useRef(readState);
+  readStateRef.current = readState;
   const snapshotNowRef = useRef(snapshot);
   snapshotNowRef.current = snapshot;
 
   useEffect(() => {
     if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId) return;
-
-    const stateReads = coalescedReads(async () => {
-      await refreshStateRef.current();
-    });
 
     /** Hand resource changes to the resource hooks, as the view's own stream does. */
     const announce = (paths: readonly string[]): void => {
@@ -1991,18 +2029,15 @@ export function useSession(
     /**
      * Whether a resource change may move the scope's state read: the
      * snapshot holds a resource the change may belong to (a single, or a
-     * collection's count), or the scope's client data may derive from it.
+     * collection's count). Client data is exposed state fields only, which a
+     * resource change can't move.
      * The view doesn't know its resources' storage paths (`roster` stores
      * under `workforce/workers/…`), so any held resource can't be ruled out.
      */
     const stateCarries = (scope: "session" | "user" | "org", path: string): boolean => {
-      const current = snapshotNowRef.current;
-      const held = current?.resources?.[scope] ?? {};
-      if (Object.keys(held).some((ref) => mayBelongTo(path, ref, undefined))) return true;
-      // Any client data: a derived value may read any of the scope's
-      // resources, so the cost is an extra read, never a stale view.
-      const clientData = current?.clientData?.[scope];
-      return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
+      const held = snapshotNowRef.current?.resources?.[scope] ?? {};
+      // No manifest here, so each held resource's roots are unknown.
+      return Object.keys(held).some((ref) => mayHold(path, storageRootsOf(undefined, ref)));
     };
 
     /** Whether this view's own stream will still deliver the change `requestId` made. */
@@ -2010,39 +2045,48 @@ export function useSession(
       pendingOwnRef.current.has(requestId) ||
       (streamHandleRef.current !== null && streamRequestIdRef.current === requestId);
 
-    const onChange = (notice: WireNotice | null): void => {
-      // A connect, a reconnect, a tick, or a bus that may have missed some:
-      // read everything this view reads from the scopes.
-      if (notice === null || notice.kind === "resync") {
-        announce(everyResource());
-        stateReads.request();
-        return;
-      }
-      if (notice.kind !== "state" && notice.kind !== "resource") return;
-      if (notice.origin !== undefined && carriedByOwnStream(notice.origin.requestId)) return;
-      if (notice.kind === "state") {
-        stateReads.request();
-        return;
-      }
+    /** A notice another session's change made, which this view's stream won't carry. */
+    const fromElsewhere = (notice: WireNotice): boolean =>
+      (notice.kind === "state" || notice.kind === "resource") &&
+      !(notice.origin !== undefined && carriedByOwnStream(notice.origin.requestId));
+
+    /**
+     * Hand each change to the resource hooks as it arrives, before the live
+     * read filters and merges it: a connect, a reconnect, a tick, or a bus
+     * that may have missed some, hands them everything the view holds. This
+     * reads nothing itself.
+     */
+    const handOn = (notice: WireNotice | null): void => {
+      if (notice === null || notice.kind === "resync") return announce(everyResource());
+      if (notice.kind !== "resource" || !fromElsewhere(notice)) return;
       const path = notice.topic.resource;
-      if (path === undefined) {
-        announce(everyResource());
-        stateReads.request();
-        return;
+      announce(path === undefined ? everyResource() : [path]);
+    };
+
+    // The scope's state, read again on a `state` notice, and on a `resource`
+    // notice its state may carry. A connect, a tick and a `resync` read too.
+    const stateReads = liveRead(
+      (topics, options) =>
+        fsd.subscribe(topics, {
+          ...options,
+          onChange: (notice) => {
+            handOn(notice);
+            options.onChange(notice);
+          }
+        }),
+      [topic.session(sessionId), topic.user(), topic.org()],
+      {
+        read: () => readStateRef.current(),
+        readNow: false,
+        hear: (notice) => {
+          if (!fromElsewhere(notice)) return false;
+          const path = notice.topic.resource;
+          return notice.kind === "state" || path === undefined || stateCarries(notice.topic.scope, path);
+        }
       }
-      announce([path]);
-      if (stateCarries(notice.topic.scope, path)) stateReads.request();
-    };
+    );
 
-    const subscription = fsd.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
-      onChange,
-      pollIntervalMs: LIVE_POLL_MS
-    });
-
-    return () => {
-      subscription.close();
-      stateReads.close();
-    };
+    return () => stateReads.close();
   }, [live, sessionId, snapshotAppliedFor, fsd]);
 
   // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
@@ -2158,7 +2202,7 @@ export function useSession(
     async (
       action: string,
       input: unknown,
-      actionOptions?: { metadata?: Record<string, unknown>; userMessage?: string }
+      actionOptions?: { metadata?: Record<string, unknown>; userMessage?: string; attachments?: FileContent[] }
     ): Promise<ExecuteActionResponse> => {
       if (sessionId === undefined) {
         throw new Error("useSession.sendAction requires a sessionId");
@@ -2219,7 +2263,7 @@ export function useSession(
           itemIndex: -1,
           provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
           ts: Date.now(),
-          content: [{ type: "output_text", text: actionOptions.userMessage }]
+          content: [{ type: "output_text", text: actionOptions.userMessage }, ...(actionOptions.attachments ?? [])]
         } as OutputItem;
 
         storeRef.current.upsert(optimisticItem);
@@ -2236,6 +2280,7 @@ export function useSession(
           sessionId,
           requestId,
           metadata: actionOptions?.metadata,
+          attachments: actionOptions?.attachments,
           stream: true
         });
 
@@ -2409,11 +2454,14 @@ export function useSession(
   const shownRequestId = items.at(-1)?.requestId ?? null;
 
   // A shown request the view hasn't followed (after a reload, say) and the
-  // latest-request read doesn't name: read its record once. One the view
-  // follows is read when its stream ends (see `attachToStream`).
+  // latest-request read doesn't name, or has failed to answer with no record
+  // to name it: read its record once. One the view follows is read when its
+  // stream ends (see `attachToStream`).
   const shownStreamStatus = streamStatus?.id === shownRequestId ? streamStatus.status : null;
   const unfollowedShownId =
-    shownRequestId !== null && latestRequest !== null && latestRequest.id !== shownRequestId && shownStreamStatus === null
+    shownRequestId !== null &&
+    (latestRequest !== null ? latestRequest.id !== shownRequestId : latestRequestFailed) &&
+    shownStreamStatus === null
       ? shownRequestId
       : null;
   useEffect(() => {

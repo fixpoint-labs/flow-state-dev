@@ -176,7 +176,7 @@ function underControl(raw: StoreRegistry): StoreRegistry {
 async function boot(raw: StoreRegistry) {
   const stores = underControl(raw);
   const state = createFlowState({
-    flows: { "find-rows": flow } as never,
+    flows: [flow] as never,
     stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(stores) } } }
   });
   const runtime = await state.getRuntime();

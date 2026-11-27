@@ -13,6 +13,14 @@ const encoder = new TextEncoder();
 const PING_FRAME = encoder.encode(": ping\n\n");
 
 /**
+ * Default ceiling on the bytes a stream holds that its reader has not taken
+ * yet. 4 MiB is sixteen records at the emitter's default 256 KiB record limit
+ * (`maxRecordedValueBytes`): far more than a reader that keeps up ever has
+ * waiting, and small enough that a stream nobody reads costs little.
+ */
+export const DEFAULT_MAX_BUFFERED_SSE_BYTES = 4 * 1024 * 1024;
+
+/**
  * Writable surface over an SSE-shaped readable stream.
  */
 export interface SSEStreamHandle {
@@ -56,6 +64,16 @@ export interface CreateSSEStreamOptions {
    * intentional default; see `docs/architecture/streaming.md`.)
    */
   signal?: AbortSignal;
+  /**
+   * Most bytes the stream holds that its reader has not taken yet. A write
+   * that would pass it ends the stream instead: what was already written is
+   * delivered, then the stream closes. A reader of a request stream that
+   * falls this far behind resumes from its last sequence number (see
+   * `docs/architecture/streaming.md`). One frame is always taken onto an
+   * empty stream, however large. Default
+   * {@link DEFAULT_MAX_BUFFERED_SSE_BYTES}; `Infinity` disables the bound.
+   */
+  maxBufferedBytes?: number;
 }
 
 /**
@@ -65,7 +83,15 @@ export interface CreateSSEStreamOptions {
  * abort, or the first failed write.
  */
 export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHandle {
-  const transform = new TransformStream<Uint8Array, Uint8Array>();
+  const maxBufferedBytes = opts.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_SSE_BYTES;
+  // Counted in bytes, so the writer's `desiredSize` is the bound less what the
+  // reader has not taken yet (the readable side holds nothing past that).
+  const transform = new TransformStream<Uint8Array, Uint8Array>(
+    undefined,
+    Number.isFinite(maxBufferedBytes)
+      ? new ByteLengthQueuingStrategy({ highWaterMark: maxBufferedBytes })
+      : undefined
+  );
   const writer = transform.writable.getWriter();
 
   let closed = false;
@@ -88,6 +114,16 @@ export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHan
 
   function tryWrite(chunk: Uint8Array): void {
     if (closed) return;
+    if (Number.isFinite(maxBufferedBytes)) {
+      const spare = writer.desiredSize ?? 0;
+      // Something is waiting and this would pass the bound: end the stream.
+      // This check, not the queuing strategy (which only measures), is what
+      // delivers what is buffered and then ends with no terminal event.
+      if (spare < maxBufferedBytes && chunk.byteLength > spare) {
+        cleanup();
+        return;
+      }
+    }
     // Multiple in-flight writes can each reject if the consumer cancels;
     // `cleanup` is idempotent (`if (closed) return`) so duplicate calls
     // from racing rejections are safe.

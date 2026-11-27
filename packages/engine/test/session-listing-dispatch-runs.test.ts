@@ -34,10 +34,7 @@ import { type SessionRecord } from "../src/host";
 const reports = defineFlow({
   kind: "reports",
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "run", inputSchema: z.object({}), execute: () => ({}) })
   }
 });
 

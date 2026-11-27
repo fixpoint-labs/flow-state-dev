@@ -7,14 +7,14 @@ import {
 } from "../src/registry/block-renderers";
 
 describe("renderer map utilities", () => {
-  it("resolves keyed component renderers", () => {
+  it("resolves data renderers by dataType", () => {
     const chartRenderer = () => "chart";
     const registry: RendererRegistry = {
-      component: { chart: chartRenderer }
+      data: { chart: chartRenderer }
     };
 
-    expect(resolveRenderer(registry, "component", "chart")).toBe(chartRenderer);
-    expect(resolveRenderer(registry, "component", "missing")).toBeUndefined();
+    expect(resolveRenderer(registry, "data", "chart")).toBe(chartRenderer);
+    expect(resolveRenderer(registry, "data", "missing")).toBeUndefined();
   });
 
   it("resolves type-level renderers", () => {
@@ -38,13 +38,13 @@ describe("renderer map utilities", () => {
     expect(resolveRenderer(registry, "error")).toBeUndefined();
   });
 
-  it("returns false for suppressed keyed component renderers", () => {
+  it("returns false for suppressed data renderers", () => {
     const registry: RendererRegistry = {
-      component: { chart: false }
+      data: { chart: false }
     };
 
-    expect(resolveRenderer(registry, "component", "chart")).toBe(false);
-    expect(resolveRenderer(registry, "component", "other")).toBeUndefined();
+    expect(resolveRenderer(registry, "data", "chart")).toBe(false);
+    expect(resolveRenderer(registry, "data", "other")).toBeUndefined();
   });
 });
 

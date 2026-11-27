@@ -22,8 +22,7 @@
 import { join } from "node:path";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { act, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
-import { claudeCodeSettings } from "../model.mts";
+import { act, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 
 const OWNER = LAB_USERS.owner;
 // Organization-level workers carry no team prefix.
@@ -38,8 +37,7 @@ const driver: AppDriver = {
   plant: (d, p) => skillFiles(join(tree(p.root), "org", "workers", "shift-coordinator"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = join(scratch, "devteam.sqlite");
-    // On Haiku, the project settings set the coder's Claude Code runs to Haiku.
-    const repo = gitRepository(join(scratch, "repo"), { ...d.files, [d.coder.file]: d.coder.script, ...claudeCodeSettings(p.model) });
+    const repo = coderRepository(join(scratch, "repo"), d, p.model);
     const served = await serveFsdev({
       root: p.root,
       cwd: team(p.root),
@@ -75,7 +73,7 @@ const driver: AppDriver = {
             line: `${d.lines.coder} The work is in the shared project "${projectId}".`,
             budgetMs: 30 * 60_000,
           });
-          return { ...turn, checks: runChecks(store) };
+          return { ...turn, ...(await settledRunChecks(store)) };
         },
       },
     };

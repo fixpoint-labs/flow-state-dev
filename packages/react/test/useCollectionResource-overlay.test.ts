@@ -51,7 +51,8 @@ function readItem(
   return { topic, clientData: liveEntry.clientData };
 }
 
-describe("useCollectionResource live overlay (FIX-739)", () => {
+// FIX-739.
+describe("useCollectionResource live overlay", () => {
   const baseSnapshot: SessionStateSnapshotResponse = {
     sessionId: "sess",
     flowKind: "test",

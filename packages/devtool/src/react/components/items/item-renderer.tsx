@@ -12,8 +12,8 @@ import { MessageItemView } from "./message-item";
 import { ReasoningItemView } from "./reasoning-item";
 import { BlockTraceItemView } from "./block-output-item";
 import { ErrorItemView } from "./error-item";
-import { StatusItemView } from "./status-item";
-import { ComponentItemView } from "./component-item";
+import { StatusItemView, statusItemLabel } from "./status-item";
+import { DataItemView } from "./data-item";
 import { ContainerItemView } from "./container-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
@@ -42,6 +42,9 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
 
   const isTier3 = TIER_3_TYPES.has(item.type);
   if (isTier3 && !isDebugMode) return null;
+  // A status item with no label would leave a blank, clickable row. Debug mode
+  // keeps it, since its raw JSON overlay is the only way to inspect it.
+  if (item.type === "status" && !isDebugMode && statusItemLabel(item) === null) return null;
 
   const isMessage = item.type === "message";
   const isError = item.type === "error";
@@ -107,8 +110,8 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <ErrorItemView item={item} />;
     case "status":
       return <StatusItemView item={item} />;
-    case "component":
-      return <ComponentItemView item={item} />;
+    case "data":
+      return <DataItemView item={item} />;
     case "container":
       return <ContainerItemView item={item} />;
     case "state_change":

@@ -24,7 +24,7 @@ going to focus on Claude Code Style UX improvements"), and one ask for work. It 
 - Throughout: the page throws nothing and the lab's checkout is untouched.
 
 **Anti-game:** every signal reads the rendered page or the server's own records. Nothing asserts
-on the adapter, the fake in `test/`, or React state. Both lines are typed in the browser.
+on the lab's hooks or React state. Both lines are typed in the browser.
 
 **Retries:** none. Whether the lead files a focus line is the thing graded.
 

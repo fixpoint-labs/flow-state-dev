@@ -43,6 +43,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createPostgresStores, type QueryExecutor } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Wrap PGlite to match the QueryExecutor interface (same shape as stores.test.ts). */
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
@@ -137,6 +138,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
     const storesA = await createPostgresStores({ executor });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

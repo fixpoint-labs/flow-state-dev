@@ -13,12 +13,13 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
-import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef, JsonObject } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { getPersistedData } from "../src/resources/internal";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const verified = {
   resolvePrincipal: (context: { request?: Request }) => {
@@ -56,7 +57,7 @@ const resources = {
 
 const userConfig = {
   stateSchema: z.object({ marker: z.string().nullable().default(null) }),
-  client: { derived: { mine: (ctx: { state: JsonObject }) => ({ marker: ctx.state.marker }) } },
+  client: { expose: ["marker"] as const },
 };
 
 const save = handler({
@@ -102,8 +103,8 @@ const delegate = dispatcher({
 });
 
 const actions = {
-  save: { inputSchema: noteInput, block: save },
-  read: { inputSchema: tagInput, block: read },
+  save,
+  read,
 };
 
 const workerKind = defineFlow({
@@ -142,7 +143,7 @@ const BOB_ACME: Who = { user: "bob", org: "acme" };
 async function boot(options: { debug?: boolean } = {}) {
   const stores = inMemoryStores();
   const state = createFlowState({
-    flows: { app: appFlow() },
+    flows: [appFlow()],
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
@@ -355,6 +356,7 @@ describe("the fence around the cell", () => {
 
     for (const [who, reason] of [[BOB_ACME, "owning-user"], [ALICE_GLOBEX, "owning-org"]] as const) {
       const refused = runAction({
+        sessionId: oneOffSessionId(),
         flow: worker,
         actionName: "save",
         input: { tag: "x", marker: "REFUSED-M" },
@@ -403,7 +405,7 @@ describe("the fence around the cell", () => {
 
       const stateView = await h.call("GET", ["sessions", session, "state"], ALICE_ACME);
       expect(stateView.status).toBe(200);
-      expect(stateView.json.clientData.user.mine).toEqual({ marker: "RUN-M" });
+      expect(stateView.json.clientData.user.marker).toBe("RUN-M");
 
       const resourceView = await h.call("GET", ["sessions", session, "resources", "notes"], ALICE_ACME);
       expect(resourceView.status).toBe(200);

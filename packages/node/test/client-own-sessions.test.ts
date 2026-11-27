@@ -18,10 +18,7 @@ import { serve, type ServeHandle } from "../src/serve";
 const notesFlow = defineFlow({
   kind: "notes",
   actions: {
-    note: {
-      inputSchema: z.object({}),
-      block: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
-    },
+    note: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
   },
 })();
 
@@ -33,11 +30,11 @@ afterEach(async () => {
 /** A host with no sign-in, holding one session each for Alice and Bob. */
 async function hostWithTwoUsers(): Promise<string> {
   const flowState = createFlowState({
-    flows: { notes: notesFlow },
+    flows: [notesFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
-  const handle = await serve(flowState, { port: 0 });
+  const handle = await serve(flowState, { port: 0, host: "127.0.0.1" });
   handles.push(handle);
   await flowState.ready();
   const baseUrl = `http://127.0.0.1:${handle.port}`;

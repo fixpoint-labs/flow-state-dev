@@ -197,6 +197,8 @@ export interface ProjectedResourceRef<TState extends JsonObject = JsonObject> {
   readonly scope: ResourceScope;
   /** Fully qualified identifier — `${scope}/${path}`. */
   readonly uri: string;
+  /** The owning collection's read flag, as a store-backed instance ref carries its collection's config. */
+  readonly config?: Readonly<{ llmReadable?: boolean }>;
   /** The record state (validated through `stateSchema`). Synchronous. */
   readonly state: Readonly<TState>;
   /** Rendered content (template applied to state), or `null` when none. */
@@ -284,9 +286,9 @@ export function defineProjectedResourceCollection<
 >(
   config: TConfig
 ): DefinedProjectedResourceCollection<
-  AsStateObject<TStateSchema["_output"]>,
-  TStateSchema,
-  ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+  AsStateObject<TConfig["stateSchema"]["_output"]>,
+  TConfig["stateSchema"],
+  ProjectedClient<AsStateObject<TConfig["stateSchema"]["_output"]>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
 
@@ -355,9 +357,9 @@ export function defineProjectedResourceCollection<
     __brand: "ResourceCollection" as const,
     projected: true as const,
   }) as unknown as DefinedProjectedResourceCollection<
-    AsStateObject<TStateSchema["_output"]>,
-    TStateSchema,
-    ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
+    AsStateObject<TConfig["stateSchema"]["_output"]>,
+    TConfig["stateSchema"],
+    ProjectedClient<AsStateObject<TConfig["stateSchema"]["_output"]>, TConfig["client"]>
   >;
 }
 

@@ -1,6 +1,6 @@
 import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
-import type { LabHarness, LabProject, RepositoryCheck } from "../adapter";
+import type { AppHarness, AppProject, RepositoryCheck } from "../app";
 import { PICKER_COPY, repositoryDisclosure } from "../lib/first-run";
 import type { ModeId } from "../modes";
 import { HarnessReadiness } from "./flow-state/harness-readiness";
@@ -28,12 +28,12 @@ export function ProjectPicker({
   onCreate,
 }: {
   mode: ModeId;
-  projects: LabProject[];
+  projects: AppProject[];
   /** The coding harnesses' readiness, or `undefined` while it is read. */
-  harnesses: LabHarness[] | undefined;
+  harnesses: AppHarness[] | undefined;
   onRecheck: () => Promise<unknown>;
   onCheckRepository: (repository: string) => Promise<RepositoryCheck>;
-  onPick: (project: LabProject) => Promise<void>;
+  onPick: (project: AppProject) => Promise<void>;
   onCreate: (name: string, repository: string) => Promise<void>;
 }) {
   const [name, setName] = useState("");
@@ -104,9 +104,9 @@ export function ProjectPicker({
             }}
             className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
           />
-          <p className="text-[11px] text-muted-foreground">A git repository on this machine, as a file:// address. Its committed .gitignore must ignore .fsdev/.</p>
+          <p className="text-xs text-muted-foreground">A git repository on this machine, as a file:// address. Its committed .gitignore must ignore .fsdev/.</p>
           {current === undefined ? null : current.usable ? (
-            <p className="text-[11px] text-muted-foreground" data-testid="repository-disclosure">
+            <p className="text-xs text-muted-foreground" data-testid="repository-disclosure">
               {repositoryDisclosure(current.how)}
             </p>
           ) : (

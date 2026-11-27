@@ -14,6 +14,7 @@
  *           GOAL_CONTROL=keep-ready  (must FAIL d:removed, and nothing else)
  *           GOAL_CONTROL=one-org     (must FAIL e:other-org, and nothing else)
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,6 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,
-  type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
@@ -54,7 +54,7 @@ const OTHER = "u_other";
 const ORG = "org_goal_a";
 const OTHER_ORG = "org_goal_b";
 /** Who a request is: the user and organization headers this check's principal resolver reads, never the body. */
-const as = (userId: string, orgId: string) => ({ "x-user": userId, "x-org": orgId });
+const as = (userId: string, orgId: string) => ({ "content-type": "application/json", "x-user": userId, "x-org": orgId });
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=goal@example.com", "-c", "user.name=goal", ...args], { cwd, encoding: "utf8", timeout: 30_000 }).trim();
@@ -110,7 +110,7 @@ const workspace: HarnessSessionWorkspace = {
 };
 
 // ---- the stub harness: commits once a turn; "switch" commits twice, then leaves the branch
-const stubAgent = (feeds: HarnessSessionFeeds) =>
+const stubAgent = (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),

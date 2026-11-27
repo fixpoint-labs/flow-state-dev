@@ -192,9 +192,10 @@ type Place = { readonly ok: true; readonly id: string; readonly chain: string; r
  * here, for all its sends. The per-request count is taken first and given back
  * if the chain has no place left, so a refused send spends nothing. A `given`
  * id already paid for (a send repeated after a crash) pays nothing
- * again: neither count takes it twice.
+ * again: neither count takes it twice. A publish pays here too, once however
+ * many hear it.
  */
-async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
+export async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
   const limits = messageLimitsOf(installation);
   const chains = messageChainsOf(ctx);
   const floor = turnHopOf(ctx) + 1;
@@ -207,12 +208,12 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   /** The place a send takes in a chain that already holds `sent`. */
   const placeAfter = (sent: number) => Math.max(floor, sent + 1);
   const known = turnChainOf(ctx);
-  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
+  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator);
   const paidOf = (current: Readonly<Record<string, unknown>>): string[] =>
     Array.isArray(current[TURN_PAID_STATE]) ? (current[TURN_PAID_STATE] as string[]) : [];
   const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
-    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
+    const sent = typeof current[TURN_SENT_STATE] === "number" ? current[TURN_SENT_STATE] : 0;
+    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? current[TURN_CHAIN_STATE] : (known ?? newChainId());
     const paid = paidOf(current);
     if (given !== undefined && paid.includes(given)) return { state: {}, result: turnChain };
     if (sent >= limits.perTurn) return { state: {}, result: undefined };
@@ -226,14 +227,14 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   }
   const chain = reserved;
   const id = given ?? newMessageId();
-  const chainRow = await chains.getOrCreate(chain, { sent: [] });
+  const chainRow = await chains.getOrCreate(chain);
   await chainRow.updateState((row) =>
     row.sent.includes(id) || placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {
     await atomicRequest((current) => {
-      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
+      const sent = typeof current[TURN_SENT_STATE] === "number" ? current[TURN_SENT_STATE] : 1;
       return { [TURN_SENT_STATE]: Math.max(0, sent - 1), [TURN_PAID_STATE]: paidOf(current).filter((paid) => paid !== id) };
     });
     return budgetRefusal(placeAfter(chainRow.state.sent.length));
@@ -250,8 +251,16 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
  * exempt send in one request shares that hop, intentionally: none is a reply
  * to another, and the hop limit still bounds what each one draws.
  */
-function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
+function exemptPlace(ctx: BlockContext, given: string | undefined, after?: HopAt): Place {
+  // FIX-2630 D2: a published event's delivery lands in its publisher's chain, one past the publishing turn.
+  if (after !== undefined) return { ok: true, id: given ?? newMessageId(), chain: after.chain, hop: after.hop + 1 };
   return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
+}
+
+/** A turn's place in an exchange: its hop count and its chain. */
+interface HopAt {
+  readonly hop: number;
+  readonly chain: string;
 }
 
 // FIX-2241; FIX-2310; FIX-2318.
@@ -283,7 +292,7 @@ export async function sendMessage(
   from: string,
   options: SendOptions = {}
 ): Promise<SendOutcome> {
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const sender = state[WORKER_ID_STATE_KEY];
   if (typeof sender !== "string" || sender.length === 0) return refuse("not_a_worker: this session runs no worker, so it can't send a message.");
   const repeated = await checkTextAndRepeat(ctx, installation, flowKind, input.text, from, options.id);
@@ -346,18 +355,23 @@ export async function sendMessage(
 interface ServiceMessage {
   /** Where the sending worker would stand: `service:<provider>`. */
   readonly sender: string;
-  /** A live subscription's session, the worker it runs, and its flow: the subscription row is the recipient check. */
-  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string };
+  /** A live subscription's session, the worker it runs, and its flow: the subscription entry is the recipient check. */
+  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string; readonly state?: Record<string, string> };
   readonly text: string;
   /** The server-chosen id, so a repeat lands once. */
   readonly id: string;
+  /** An unheard event forwarded to an unmatched subscription: how it reached it, and its link. */
+  readonly forward?: WorkerMessageResourceState["forward"];
+  // FIX-2630 D2.
+  /** A published event's publishing turn: the message lands in its chain, one hop past it, instead of the delivering run's. */
+  readonly after?: HopAt;
 }
 
 /**
  * Send a service's delivery to a subscription's session: the server's own
  * message (no budget), from `service:<provider>`, to the session the
- * subscription row names. That row is its recipient check, not the roster's
- * or `checkTargetSession`'s. Set by server code from a subscription row,
+ * subscription entry names. That row is its recipient check, not the roster's
+ * or `checkTargetSession`'s. Set by server code from a subscription entry,
  * never by a model.
  */
 export async function sendServiceMessage(
@@ -375,12 +389,13 @@ export async function sendServiceMessage(
     flowKind,
     { text: message.text },
     from,
-    { id: message.id, exempt: true },
+    { id: message.id, exempt: true, ...(message.after === undefined ? {} : { after: message.after }) },
     {
       sender: message.sender,
       recipientId: message.to.worker,
-      destination: { sessionId: message.to.sessionId, flow: message.to.flow },
-      addressed: { addressedBy: "session" as const }
+      destination: { sessionId: message.to.sessionId, flow: message.to.flow, ...(message.to.state === undefined ? {} : { state: message.to.state }) },
+      addressed: { addressedBy: "session" as const },
+      ...(message.forward === undefined ? {} : { forward: message.forward })
     }
   );
 }
@@ -389,6 +404,8 @@ export async function sendServiceMessage(
 interface SendOptions {
   readonly id?: string;
   readonly exempt?: true;
+  /** With `exempt`: the place is one past this turn's, in its chain (a published event's delivery). */
+  readonly after?: HopAt;
   readonly replyRequested?: { readonly deadlineAt?: number };
   readonly noAnswer?: true;
 }
@@ -439,6 +456,8 @@ interface Resolved {
   readonly destination: MessageAddress;
   readonly exchange?: string;
   readonly addressed: Pick<WorkerMessageResourceState, "addressedBy" | "toTask">;
+  /** A service's forward: the mark the message carries. */
+  readonly forward?: WorkerMessageResourceState["forward"];
 }
 
 /** Every send's tail, once its recipient is checked: the budget, the owed id, the row, then one dispatch. */
@@ -454,7 +473,7 @@ async function sendTo(
   const { destination } = resolved;
   // ---- the budget ----------------------------------------------------------
   // The server's own message costs none (FIX-2241); every other send pays its place.
-  const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
+  const paid = options.exempt === true ? exemptPlace(ctx, options.id, options.after) : await payPlace(ctx, installation, options.id);
   if (!paid.ok) return paid;
   const { id, chain, hop } = paid;
 
@@ -466,6 +485,7 @@ async function sendTo(
     from: resolved.sender,
     to: resolved.recipientId,
     ...resolved.addressed,
+    ...(resolved.forward === undefined ? {} : { forward: resolved.forward }),
     text: input.text,
     exchange: resolved.exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),

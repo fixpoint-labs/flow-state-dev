@@ -32,7 +32,7 @@ the card's words on the page against the board's own `listTasks` row.
   request as interrupted after 5 minutes (the 4 down plus one), not one. Reading still starts
   as the server starts.
 
-**Anti-game:** read the page, never the adapter, the test double or React state. Every read is
+**Anti-game:** read the page, never the lab's hooks or React state. Every read is
 compared with the board's row. A row the board took back before the page could be read is CAN'T
 TELL (`tell.over`), not PASS; so are no reads of the alive card.
 
@@ -62,3 +62,4 @@ each runs only the leg it must fail):
 | 2026-11-04 | 2d5b2b75 | n/a | FAIL (control `never-quiet`) | quiet only: 217 fresh reads of a row lapsed by up to 180 s read `working · …`, last `5m 0s`; the board took it back 58.3 s after the server answered |
 | 2026-11-05 | e8c6a3e0 (the task read's stale gate) | n/a | PASS | clock 1 s against 1 s, then 5 s; alive 80 reads over 240 s, all working, 6 lease deadlines; quiet `quiet for 4m` 244 s after the kill, lease lapsed 127 s before |
 | 2026-11-05 | e8c6a3e0 | n/a | FAIL (control `never-quiet`) | quiet only: 212 fresh reads of a row lapsed by up to 181 s read `working · …`, last `5m 0s` |
+| 2026-11-20 | `e2c6e814b9` (FIX-2766 #5514 head with main merged) | n/a | PASS | FIX-2766: the time signal reads the view's `state`. Clock 1 s against 1 s since the retry's run started, then 5 s; alive 80 reads over 240 s of one step, all working, 6 lease deadlines; quiet `quiet for 4m` 245 s after the kill, lease lapsed 128 s before |

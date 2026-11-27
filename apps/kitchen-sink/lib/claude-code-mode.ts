@@ -47,7 +47,7 @@ import {
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
-import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
@@ -76,7 +76,7 @@ export function claudeCodeEnv(
 /** What a Claude Code run loads from the repository: its setting sources and a settings layer above them. */
 export interface ClaudeCodeRepoOptions {
   readonly settingSources: ["project"] | [];
-  readonly settings?: { readonly disableAllHooks: true };
+  readonly settings?: { readonly disableAllHooks: boolean };
 }
 
 /**
@@ -85,14 +85,13 @@ export interface ClaudeCodeRepoOptions {
  * settings, `CLAUDE.md` and skills, with a settings layer above them that turns
  * every hook off. Never the operator's own user settings.
  *
- * The goal control `hooks-on` drops the layer, so the goal leg that no hook
- * runs can be seen to fail.
+ * The goal control `hooks-on` asks for the hooks (`disableAllHooks: false`;
+ * leaving the layer out would still run with them off), so the goal leg that
+ * no hook runs can be seen to fail.
  */
 export function claudeCodeRepoOptions(trust: HarnessTrust = harnessTrust()): ClaudeCodeRepoOptions {
   if (!trust.trusted) return { settingSources: [] };
-  return goalControl() === "hooks-on"
-    ? { settingSources: ["project"] }
-    : { settingSources: ["project"], settings: { disableAllHooks: true } };
+  return { settingSources: ["project"], settings: { disableAllHooks: goalControl() !== "hooks-on" } };
 }
 
 /** The header's line for a Claude Code session, read off the options its run gets. */
@@ -133,7 +132,7 @@ export interface ClaudeCodeSeams {
  * Code's own preset. A plain string there would turn off its planning tool,
  * and the plan panel would never fill.
  */
-export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
+export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
   const trust = harnessTrust();
   return claudeCodeAgent({
@@ -141,6 +140,8 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     resume: feeds.resume,
     onSession: feeds.onSession,
     model: feeds.model,
+    // Each event the run sends keeps a working turn from being stopped as silent.
+    ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
     detached: true,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordWork: goalControl() !== "no-record",
@@ -170,6 +171,7 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // Claude Code's own default, as it did.
   return kitchenSinkHarnessFlow({
     kind: CLAUDE_CODE_SESSION,
+    harnessLabel: "Claude Code",
     // On, unless a test without durable execution turns it off (the seam) or
     // the `no-approval` goal control does, so goal leg **a** can be seen to fail.
     approveTools: seams.approveTools !== false && goalControl() !== "no-approval",

@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 352" role="img" aria-label="Before and after for the Inbox, the sidebar count, Tasks, the shift summary and a task's asks. Before: each draws from the snapshot, which the browser builds by reading every worker session's asks, the whole board ledger and the session list, and re-reads after an answer. After: each reads one inbox view on the roster flow, which joins the pending-asks read, the board ledger and orchestration's inboxItems on the server; the snapshot's three sections and the answer's follow are struck through"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .scr   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .pkg   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .strike{ stroke:var(--gone); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .ah    { fill:var(--ink-3); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="352"/>
+
+  <g id="screens">
+    <text class="t-lbl" x="380" y="26">THE SCREENS · UNCHANGED</text>
+    <rect class="scr" x="380" y="36" width="180" height="300" rx="6"/>
+    <text class="t-b" x="396" y="66">Inbox list</text>
+    <text class="t-b" x="396" y="104">Sidebar count</text>
+    <text class="t-b" x="396" y="142">Tasks board</text>
+    <text class="t-b" x="396" y="180">Shift summary</text>
+    <text class="t-b" x="396" y="218">A task's asks</text>
+    <text class="t-s" x="396" y="256">and Jump to's tasks,</text>
+    <text class="t-s" x="396" y="272">the answer on every card</text>
+  </g>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE · BUILT IN THE BROWSER</text>
+    <rect class="gone" x="16" y="36" width="320" height="138" rx="6"/>
+    <text class="t-b" x="32" y="60">The snapshot · reads.ts</text>
+    <text class="t-g" x="32" y="82">inbox, asks and boards sections</text>
+    <line class="strike" x1="32" y1="78" x2="208" y2="78"/>
+    <text class="t-s" x="32" y="104">every worker session's items, six at a time</text>
+    <text class="t-s" x="32" y="122">the whole board ledger, through one session</text>
+    <text class="t-s" x="32" y="140">the session list, which hears every turn</text>
+    <text class="t-s" x="32" y="160">read again on a notice, or every 30 s</text>
+    <rect class="gone" x="16" y="196" width="320" height="76" rx="6"/>
+    <text class="t-b" x="32" y="220">After an answer · lab-data.tsx</text>
+    <text class="t-g" x="32" y="242">a whole read, then settled, then another</text>
+    <line class="strike" x1="32" y1="238" x2="252" y2="238"/>
+    <text class="t-s" x="32" y="260">one allowlist entry: settled</text>
+    <path class="arrow" d="M336,105 L378,140"/><circle class="ah" cx="378" cy="140" r="3"/>
+    <path class="arrow" d="M336,234 L378,200"/><circle class="ah" cx="378" cy="200" r="3"/>
+    <text class="t-s" x="16" y="300">FIX-2775's roster keeps reading the snapshot;</text>
+    <text class="t-s" x="16" y="316">FIX-2777 deletes it.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="604" y="26">AFTER · ONE ANSWER ON THE SERVER</text>
+    <rect class="new" x="604" y="36" width="320" height="94" rx="6"/>
+    <text class="t-c" x="620" y="60">inbox view · workforce roster flow</text>
+    <text class="t-s" x="620" y="82">user scope, no session, no input</text>
+    <text class="t-s" x="620" y="100">answers { items, tasks }, typed by the view</text>
+    <text class="t-s" x="620" y="118">kept current by the server</text>
+    <path class="arrow" d="M602,90 L562,140"/><circle class="ah" cx="562" cy="140" r="3"/>
+    <rect class="pkg" x="604" y="150" width="320" height="186" rx="6"/>
+    <text class="t-lbl" x="620" y="172">COMPOSES · NOTHING NEW UNDER IT</text>
+    <text class="t-b" x="620" y="196">sessions.userSuspensions</text>
+    <text class="t-s" x="620" y="212">FIX-2770 · heard on suspension only</text>
+    <text class="t-b" x="620" y="238">the conversation ledger</text>
+    <text class="t-s" x="620" y="254">every row, read once</text>
+    <text class="t-b" x="620" y="280">sessions.read, per ask and per board</text>
+    <text class="t-s" x="620" y="296">worker, flow, owner label · its own topic</text>
+    <text class="t-b" x="620" y="322">orchestration's inboxItems</text>
+    <path class="arrow" d="M764,150 L764,132"/><circle class="ah" cx="764" cy="132" r="3"/>
+  </g>
+</svg>

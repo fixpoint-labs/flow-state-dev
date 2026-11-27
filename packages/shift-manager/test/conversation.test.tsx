@@ -13,8 +13,8 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
-import type { Worker } from "../src/lib/reads";
-import { TurnNotDelivered } from "../src/lib/send";
+import type { Worker } from "../src/lib/workers";
+import { TurnNotDelivered } from "../src/lib/deliver";
 
 const read = vi.fn();
 const sendTurn = vi.fn();
@@ -25,30 +25,69 @@ const lab = {
   refresh: vi.fn(),
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
-const workforce = { ensureWorkerSession };
+const upload = vi.fn();
+const retryTurn = vi.fn();
+const workforce = { organization: async () => "org_1", ensureWorkerSession, upload, retryTurn };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+/** The session's turns, as workforce's session turns view reads them: how each ended, and whether the engine retries it. */
+let turns: Array<{ id: string; status: string; retryable?: boolean }> = [];
+vi.mock("@flow-state-dev/react", async (original) => {
+  const real = await original<typeof import("@flow-state-dev/react")>();
+  const turnsView = (await import("@flow-state-dev/workforce/browser")).sessionTurnsViewRef().view;
+  type Rest = Parameters<typeof real.useView> extends [unknown, ...infer R] ? R : never;
+  return { ...real, useView: (ref: { view: string }, ...rest: Rest) => (ref.view === turnsView ? { value: turns } : real.useView(ref as never, ...rest)) };
+});
 /**
  * Each follow a mounted conversation opened: the session, where its items go, and whether it
  * stopped. The follow's first answer is `read`'s; a case pushes what the session stream brings.
  */
 type Follower = { onRead(read: { items: unknown[]; truncated: boolean; loadEarlier?: () => Promise<void> }): void; onFailure(failure: { message: string }): void };
 const follows: Array<{ sessionId: string; to: Follower; closed: boolean }> = [];
-vi.mock("../src/lib/run", async (original) => ({
-  ...(await original<typeof import("../src/lib/run")>()),
-  followSessionItems: (client: unknown, sessionId: string, to: Follower) => {
-    const entry = { sessionId, to, closed: false };
-    follows.push(entry);
-    Promise.resolve(read(client, sessionId)).then(
-      (got) => !entry.closed && to.onRead(got),
-      (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
-    );
-    return () => void (entry.closed = true);
-  },
-}));
+/** Each mounted feed's restart, as the page's Retry calls it. */
+const restarts = new Set<() => void>();
+// The page's one feed for a session (`useSharedSessionFeed`), stood in for: its first answer is `read`'s,
+// and a case pushes what the session stream brings. A failure after items landed keeps them, as the feed does.
+vi.mock("../src/lib/session-feeds", async () => {
+  const { useEffect, useState } = await import("react");
+  return {
+    // Retry opens the session's feed anew: here, a new follow whose first answer is `read`'s again.
+    useRetrySessionFeed: () => () => {
+      for (const restart of [...restarts]) restart();
+    },
+    useSharedSessionFeed: (sessionId: string | null) => {
+      const [generation, setGeneration] = useState(0);
+      useEffect(() => {
+        const restart = () => setGeneration((n) => n + 1);
+        restarts.add(restart);
+        return () => void restarts.delete(restart);
+      }, []);
+      const [held, setHeld] = useState<{ sessionId: string; items?: unknown[]; hasEarlier: boolean; loadEarlier: () => Promise<void>; error: Error | null } | undefined>();
+      useEffect(() => {
+        if (sessionId === null) return;
+        const to: Follower = {
+          onRead: (got) => setHeld({ sessionId, items: got.items, hasEarlier: got.truncated, loadEarlier: got.loadEarlier ?? (async () => {}), error: null }),
+          onFailure: (why) => setHeld((was) => (was?.items !== undefined ? was : { sessionId, hasEarlier: false, loadEarlier: async () => {}, error: new Error(why.message) })),
+        };
+        const entry = { sessionId, to, closed: false };
+        follows.push(entry);
+        Promise.resolve(read(lab.client, sessionId)).then(
+          (got) => !entry.closed && to.onRead(got),
+          (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
+        );
+        return () => void (entry.closed = true);
+      }, [sessionId, generation]);
+      return held === undefined || held.sessionId !== sessionId ? undefined : { ...held, state: "live", runs: null, followResponse: () => {} };
+    },
+  };
+});
 /** What the session stream brings to the open follow. */
 const streamed = (items: unknown[]) => act(async () => follows.filter((f) => !f.closed).at(-1)!.to.onRead({ items, truncated: false }));
-vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof import("../src/lib/send")>()), sendTurn: (...a: unknown[]) => sendTurn(...a) }));
+// The one send path (`useDeliverLine`), stood in for: `sendTurn(client, target, message, options)`.
+vi.mock("../src/lib/deliver", async (original) => ({
+  ...(await original<typeof import("../src/lib/deliver")>()),
+  useDeliverLine: () => (to: unknown, message: string, options: unknown) => sendTurn(lab.client, to, message, options),
+}));
 // A page with no Web Crypto can't hash a derived address: this worker's derivation fails the way it would there.
 const UNHASHABLE = "eng.unhashable";
 vi.mock("@flow-state-dev/workforce/browser", async (original) => {
@@ -62,7 +101,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { RECEIVED_MESSAGE_COMPONENT, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -71,7 +110,7 @@ const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "a
 const worker = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Worker;
 const session = (id: string): SessionSummary =>
   ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer" }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
-const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
+const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text, content: [{ type: "output_text", text }] });
 const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {
@@ -82,6 +121,9 @@ beforeEach(() => {
   ensureWorkerSession.mockResolvedValue({ id: s1 });
   lab.refresh.mockReset();
   read.mockResolvedValue({ items: [], truncated: false });
+  retryTurn.mockReset();
+  retryTurn.mockResolvedValue(undefined);
+  turns = [];
 });
 afterEach(() => cleanup());
 
@@ -93,7 +135,8 @@ const drawnElement = (sessions: SessionSummary[], over: Partial<Parameters<typeo
     name="Reviewer"
     testId="rev"
     emptyText="Nothing said to the reviewer yet."
-    renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
+    // The view draws the worker's messages its own way and leaves every other line to the registry, as a real view does.
+    renderItem={(it) => (it.type === "message" ? <span data-testid="mine">{(it as unknown as { text: string }).text}</span> : undefined)}
     {...over}
   />
 );
@@ -129,8 +172,8 @@ describe("what a view of its own draws", () => {
   });
 
   it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {
-    // A project's Stream opens its coordinator session as the tab opens, so the
-    // session exists and reads empty: the screen must still say what it is.
+    // A session can exist and read empty (its first line failed after it opened, or a
+    // standing-rules read wrote only undrawn items): the screen must still say what it is.
     drawn([], { session: "s1" });
     expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(read.mock.calls[0]![1]).toBe("s1");
@@ -192,21 +235,22 @@ describe("what a view of its own draws", () => {
     const received = {
       id: "m",
       requestId: "r",
-      type: "component",
-      component: RECEIVED_MESSAGE_COMPONENT,
+      type: "data",
+      dataType: RECEIVED_MESSAGE_DATA_TYPE,
       ts: Date.UTC(2026, 9, 7, 17, 33),
-      data: { id: "msg_1", from: "eng.author", text: "the codename?", inReplyTo: "msg_0" },
+      value: { id: "msg_1", from: "eng.author", text: "the codename?", inReplyTo: "msg_0" },
     };
     read.mockResolvedValue({ items: [received, item("a", "BLUE-HERON")], truncated: false });
     drawn([session(s1)]);
     await screen.findAllByTestId("mine");
     // The view's renderItem draws its own messages, never another worker's.
     expect(screen.getAllByTestId("mine").map((n) => n.textContent)).toEqual(["BLUE-HERON"]);
-    const drawnMessage = screen.getByTestId("received-message");
-    expect(drawnMessage.textContent).toContain("ENG.AUTHOR");
+    const drawnMessage = document.querySelector<HTMLElement>("[data-line=received]")!;
+    // Under the sender's name; the label is set in capitals by its style, not its text.
+    expect(drawnMessage.textContent).toContain("eng.author");
     expect(drawnMessage.textContent).toContain("the codename?");
-    expect(screen.getByTestId("received-message-answers")).toBeTruthy();
-    expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
+    expect(drawnMessage.textContent).toContain("· reply");
+    expect(screen.getAllByTestId("messages-link")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
   });
 
@@ -225,6 +269,48 @@ describe("what a view of its own draws", () => {
   it("says the worker has the line while one from this page is in flight", () => {
     drawn([], { working: true });
     expect(screen.getByTestId("rev-working").textContent).toContain("Reviewer is working on it");
+  });
+});
+
+describe("a turn that didn't finish", () => {
+  const typed = { id: "u1", requestId: "q1", type: "message", role: "user", status: "completed", ts: 1, content: [{ type: "input_text", text: "Ship it." }] };
+  const failure = { id: "e1", requestId: "q1", type: "error", status: "failed", ts: 2, message: "The model provider is down.", code: "PROVIDER_ERROR" };
+
+  it("says why it failed, with Retry when the engine retries it, which retries that turn in this session", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: true }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    const line = await screen.findByTestId("request-recovery");
+    expect(line.textContent).toContain("The model provider is down.");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
+    expect(retryTurn).toHaveBeenCalledWith(s1, "q1");
+  });
+
+  it("offers no Retry on a turn the engine won't retry", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: false }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    expect((await screen.findByTestId("request-recovery")).textContent).toContain("The model provider is down.");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+
+  it("says you stopped it, after its last line", async () => {
+    turns = [{ id: "q1", status: "aborted" }];
+    read.mockResolvedValue({ items: [typed, item("a", "Half an ans")].map((it) => ({ ...it, requestId: "q1" })), truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const lines = screen.getAllByTestId("rev-item");
+    expect(lines.at(-1)!.textContent).toContain("Interrupted by you");
+  });
+});
+
+describe("a task this worker filed", () => {
+  it("draws its result where the board ended it", async () => {
+    const ended = { id: "res1", requestId: "q2", type: "data", status: "completed", ts: 3, dataType: TASK_RESULT_DATA_TYPE, value: { taskId: "t1", from: "eng.coder", title: "Fix the flaky test", text: "Fixed: the retry raced the timer.", ending: "done" } };
+    read.mockResolvedValue({ items: [ended], truncated: false });
+    drawn([session(s1)]);
+    await waitFor(() => expect(screen.getAllByTestId("rev-item")).toHaveLength(1));
+    expect(screen.getByTestId("rev-item").textContent).toContain("Fixed: the retry raced the timer.");
   });
 });
 
@@ -298,7 +384,8 @@ describe("an open conversation", () => {
     expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
   });
 
-  it("follows again on Retry after a first read failed, and stops the follow it replaced", async () => {
+  // A feed whose first read gave up never reads again on its own: Retry opens it anew.
+  it("opens the session's feed anew on Retry after a first read failed, and stops the feed it replaced", async () => {
     read.mockRejectedValueOnce(new Error("down"));
     drawn([session(s1)]);
     fireEvent.click(await screen.findByRole("button", { name: /retry/i }));
@@ -333,6 +420,49 @@ describe("a draft is kept per conversation", () => {
     drawn([session("sess-project-a"), session("sess-project-b")], { session: "sess-project-a" });
     expect((await box()).value).toBe("for project a only");
   });
+
+  it("keeps a project conversation's draft once its session exists (a reload after the first line, or another tab opened it)", async () => {
+    // Before its first line a project's conversation keeps its draft under the project; once the
+    // session is found, under the session. A line typed in between must not be lost on the move.
+    const apollo = { visibility: "shared", id: "apollo" } as const;
+    const before = drawn([], { project: apollo });
+    fireEvent.change(await box(), { target: { value: "the second line, unsent" } });
+    before.unmount();
+
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("the second line, unsent");
+  });
+
+  it("drops a first line that went out while the composer reopened on the session's key", async () => {
+    // Her first line opens the session; she leaves the Stream and comes back before the session
+    // holds it, so the composer reopens on the session's key and takes the line with it. Once
+    // the send lands, the line is gone from the draft: left there, a second Send repeats the work.
+    const apollo = { visibility: "shared", id: "apollo" } as const;
+    ensureWorkerSession.mockResolvedValue({ id: "sess-pc" });
+    let land: (() => void) | undefined;
+    sendTurn.mockImplementation(
+      (_client: unknown, _target: unknown, _message: unknown, on: { onHeld: () => void }) =>
+        new Promise((resolve) => {
+          land = () => {
+            on.onHeld();
+            resolve(delivered);
+          };
+        }),
+    );
+    const before = drawn([], { project: apollo });
+    fireEvent.change(await box(), { target: { value: "the first line" } });
+    fireEvent.click(screen.getByTestId("rev-composer-send"));
+    await waitFor(() => expect(land).toBeDefined());
+    before.unmount();
+
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("the first line");
+    await act(async () => land!());
+    await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe(""));
+    cleanup();
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("");
+  });
 });
 
 describe("sending", () => {
@@ -341,7 +471,7 @@ describe("sending", () => {
     drawn([session(s1)]);
     await send("ship it?");
     // To the worker's flow, never an address carrying the worker; the session names the worker.
-    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: s1, flowId: "agent", door: "talk" });
+    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: s1 });
     expect(ensureWorkerSession).not.toHaveBeenCalled();
     expect(sendTurn.mock.calls[0]![2]).toBe("ship it?");
   });
@@ -366,11 +496,13 @@ describe("sending", () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {
+  // FIX-2775: what a turn changes elsewhere reaches each screen through that read's own notices, so a send
+  // reads nothing of the Lab after it, refused or not.
+  it("shows the reason when the door refuses, keeping the line, and reads nothing of the Lab after it", async () => {
     sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
     drawn([session(s1)]);
     await send("nope");
-    expect(lab.refresh).toHaveBeenCalled();
+    expect(lab.refresh).not.toHaveBeenCalled();
     expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
     expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
   });
@@ -420,5 +552,23 @@ describe("sending", () => {
     await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe(""));
     expect(taken).toHaveBeenCalledTimes(1);
     expect(sendTurn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A worker flow that signs in its own callers holds an upload for the user
+// its sends resolve only when the upload goes through that flow: the Lab-wide
+// upload route runs the host's sign-in, and the send would then find no file.
+describe("a line's files", () => {
+  it("upload through workforce's upload, by the worker, which goes through the worker's own flow", async () => {
+    upload.mockReset();
+    upload.mockResolvedValue({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_viaflow000001" });
+    drawn([]);
+    const input = screen.getByTestId("rev-composer-input");
+    const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "bug.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.paste(input, { clipboardData: { items: [{ kind: "file", getAsFile: () => shot }], files: [shot] } });
+    });
+    await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    expect(upload.mock.calls[0]![0]).toBe("eng.reviewer");
   });
 });

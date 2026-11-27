@@ -36,6 +36,20 @@
  * session id: a copy conductor reads to say where a run was, never the source
  * anything resolves from.
  *
+ * ## A run's name
+ *
+ * The branch is `<prefix><name>` and the folder `<root>/<name>`, where the
+ * name is a slug of the task's title and 6 hex of everything that keeps one
+ * run apart from another (`runName`). The principal and the board are in the
+ * hex rather than spelled out, so the ref stays short whatever the identity:
+ * the long shape put three full digests in it and passed GitHub's 255-byte
+ * limit. Six hex can collide, so a new run takes the first spelling the host
+ * reserves for it, one no other run holds and no worktree or branch already has
+ * (`freeRunLocation`), and a run its record
+ * names a branch for is found from that branch (`locationFor`). That is the
+ * one thing read back: the record, which the run writes before its checkout
+ * exists, so a retry finds its tree whenever the run ever had one.
+ *
  * ## The derivation's inputs are not model-writable
  *
  * `issue` and `phase` ride on the task's typed `input` payload. The model-facing
@@ -45,62 +59,27 @@
  * against a strict grammar before they reach a path, so a task filed by some
  * future caller that skips the schema still cannot escape the root.
  */
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { createHash } from "node:crypto";
 import { resolve, sep } from "node:path";
 import {
   acquireLock,
-  localWorkspaceHost,
+  encodeSegment,
+  refreshLock,
   releaseLock,
+  tenantSegment,
   WorkspaceRefusedError,
+  WORKTREES,
   worktreeLockPath,
   type IgnoredDirectory,
+  type WorktreeCollection,
   type WorkspaceHost,
-  type WorkspaceSetup,
+  type RunSourceAnswer,
 } from "@flow-state-dev/workspace";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
 export { isStrictlyInside } from "@flow-state-dev/workspace";
-
-/** Where checkouts and their lock files live, and what they are cut from. */
-export interface WorkspaceConfig {
-  /** Directory holding every issue-phase checkout. Host-set, never per-task. */
-  root: string;
-  /** The repository checkouts are cut from. Host-set. */
-  sourceRepo: string;
-  /** The ref a fresh checkout branches from. */
-  baseRef: string;
-  /**
-   * How long **the whole of provisioning** may take, in milliseconds.
-   *
-   * One budget for the operation, not one per git call. That distinction is the
-   * entire point: provisioning runs up to three git commands back to back
-   * (`worktree prune`, a `rev-parse` to test the branch, then `worktree add`),
-   * so a per-call timeout of N bounds the operation at 3N. The ownership
-   * arithmetic reads this number as the longest provisioning can hold the lock,
-   * and a number that is wrong by a factor of the command count is worse than no
-   * number: a live attempt could still be inside `worktree add` when its lock is
-   * declared stale, letting a reclaimed attempt steal the tree and edit the same
-   * checkout concurrently.
-   *
-   * Expressing it as one deadline also means adding a fourth git command cannot
-   * silently widen the bound.
-   */
-  provisionTimeoutMs?: number;
-  /**
-   * A command run in each fresh checkout before a run gets it, such as
-   * `pnpm install`. Passed to the workspace host as its `setup`; it draws from
-   * `provisionTimeoutMs`. Absent, nothing runs.
-   */
-  setup?: WorkspaceSetup;
-  /**
-   * The GitHub repository (`host/owner/name`) the source repository's pinned
-   * remote URL stands for, for an accept that opens a pull request. Passed to
-   * the workspace host as its `pullRequestRepo`. Absent, it is read from a
-   * GitHub-shaped URL, and a remote that names none offers no pull request.
-   */
-  pullRequestRepo?: (url: string) => string | undefined;
-}
 
 /** One provisioned checkout. */
 export interface Checkout {
@@ -335,92 +314,9 @@ function principalSegments(location: RunLocation): string[] {
     : [tenantSegment(principal.tenantId), encodeSegment(principal.orgId), encodeSegment(principal.userId)];
 }
 
-/**
- * One tenant, as one identity component. **Presence is tagged, never
- * defaulted.**
- *
- * `t0` for an untenanted request, `t1<digest>` for a tenanted one — so an
- * absent tenant and a tenant *named* like whatever placeholder someone picks
- * can never produce the same component.
- *
- * This exists as a shared function because collapsing absence into a value is a
- * bug that was fixed here and then reintroduced one file away: the board's
- * identity used `?? "single-tenant"`, which made a real tenant called
- * `single-tenant` indistinguishable from no tenant at all. Same user id, same
- * user-scoped board, each able to claim the other's rows — while THIS function
- * kept them in different checkouts, so a task could execute and report against
- * a tree that was not its own.
- *
- * Absent and `"single-tenant"` are different facts. The type carries that
- * (`string | undefined`), and every derivation reads it through here.
- */
-export function tenantSegment(tenantId: string | undefined): string {
-  return tenantId === undefined ? "t0" : `t1${encodeSegment(tenantId)}`;
-}
-
-/**
- * Encode an identifier into one path segment. **Encode, never validate.**
- *
- * The framework's user and tenant ids are unrestricted strings — `auth0|abc`
- * and `alice@example.com` are ordinary values, and neither matches a filesystem
- * grammar. Validating them would fail every attempt during workspace derivation
- * and burn the retry budget on a configuration mismatch the run cannot fix.
- *
- * Worse, a grammar is a rule someone else's identifier space never agreed to,
- * and enforcing it is a list that is never finished: separators, `..`, trailing
- * dots (Windows strips them, so `acme` and `acme.` are one directory), reserved
- * device names, case folding. Encoding removes the list — the output is
- * injective, so two distinct ids can never share a directory, and its alphabet
- * contains nothing any filesystem treats specially.
- *
- * A SHA-256 digest in hex, behind a literal `h`: `h[0-9a-f]{64}`, which cannot
- * spell a reserved device name, cannot end in a dot, and cannot contain a
- * separator or the identity frame.
- *
- * **A digest and not a reversible encoding, because the output has to be
- * bounded.** Hex of the input doubles it, so a 128-character id — an ordinary
- * length for an opaque subject claim — produced a 257-character component.
- * Measured: a filesystem name is refused at 256, and `ENAMETOOLONG` arrives
- * from `worktree add`, which is to say *after* the row is claimed. Every retry
- * would then be spent on a length no retry can change. A fixed 65 characters
- * cannot do that.
- *
- * The cost is honest: the path no longer says which user it belongs to. What it
- * keeps is the property the derivation actually needs — distinct ids give
- * distinct components — since a SHA-256 collision is not a failure mode this
- * system will meet.
- *
- * **The prefix is load-bearing, not decoration.** A bare digest of an empty id
- * is still a digest, but the prefix keeps the alphabet closed under `h[0-9a-f]`
- * for every input including the empty one, and it is what a reader recognises
- * as "this segment is derived, not typed".
- *
- * **The issue and phase segments stay validated.** Those identifiers are ours,
- * the grammar is one we set, and rejecting a malformed issue key is a real
- * signal rather than an imposition.
- */
-export function encodeSegment(value: string): string {
-  // **`utf16le`, and the encoding is the load-bearing part.**
-  //
-  // A JavaScript string is a sequence of UTF-16 code units, lone surrogates
-  // included. UTF-8 has no representation for a lone surrogate, so encoding
-  // through it substitutes U+FFFD BEFORE the hash runs — measured:
-  // `"\ud800"`, `"\ud801"`, `"\udfff"` and a literal `"\ufffd"` produce ONE
-  // digest, so four distinct caller-supplied identifiers share one checkout and
-  // one lock.
-  //
-  // This is not the collision the digest's safety argument covers. That
-  // argument is about SHA-256, and it holds. This is a collision in the
-  // TRANSCODING STEP UPSTREAM of the hash — deliberate, trivial to reproduce,
-  // and available to anyone who can supply an identifier. Collision resistance
-  // is simply not the property that was broken.
-  //
-  // `utf16le` is total over the domain: every JavaScript string has an exact
-  // representation, so there is no substitution left to collapse anything. The
-  // general rule, and the one worth carrying: **never transcode an identifier
-  // through an encoding that cannot represent it.**
-  return `h${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
-}
+// The checkout encoder (`encodeSegment`, `tenantSegment`) is workspace's, imported
+// above and re-exported here for `./checkout` and this package's tests.
+export { encodeSegment, tenantSegment };
 
 /**
  * Everything that makes one run's state distinct from another's.
@@ -462,6 +358,172 @@ export interface RunLocation {
    * it off for a run whose record names the branch without it.
    */
   trackerIssue?: string;
+  /**
+   * The task's title as filed, which the run's name is a slug of
+   * ({@link runName}). A run found from its record takes its name from the
+   * branch the record names, so a retitle never moves a tree.
+   */
+  title?: string;
+  /**
+   * The name's slug exactly as the run's record names it, so a run found
+   * again keeps it whatever its title says now. Set by {@link locationFor}.
+   */
+  slug?: string;
+  /**
+   * Which free spelling of the name the run took ({@link freeRunLocation}):
+   * absent for the first, 1 for `-2`, and so on. Read back from the record.
+   */
+  bump?: number;
+  /**
+   * What the run's branch starts with ({@link branchFor}): the app's own, such
+   * as `teammates/`, else {@link DEFAULT_BRANCH_PREFIX}. A run found from its
+   * record keeps the prefix its branch was cut with. Not part of the run's
+   * identity: two runs that differ only here are the same run.
+   */
+  branchPrefix?: string;
+  /**
+   * Derive the place and branch in the long shape every run had before runs
+   * were named: the principal, board and issue-phase as nested segments, with
+   * full digests. **Only for a run whose record already names that branch**
+   * ({@link locationFor} decides), so a run under way keeps its tree. Implied
+   * by {@link orgless}. Never set it for a new run: its ref can pass GitHub's
+   * 255-byte limit, and the push is refused.
+   */
+  nested?: true;
+}
+
+/** The long shape: {@link RunLocation.nested}, or the older {@link RunLocation.orgless}. */
+function isNested(location: RunLocation): boolean {
+  return location.nested === true || location.orgless === true;
+}
+
+/** How long a run name's slug may be. */
+const MAX_NAME_SLUG = 32;
+
+/** Hex characters of a run name's suffix. */
+const NAME_HASH_LENGTH = 6;
+
+/** What a run's branch starts with when its app names no prefix of its own. */
+const DEFAULT_BRANCH_PREFIX = "fsd/";
+
+/** What the long shape's branches start with, kept so a run recorded on one finds it. */
+const LONG_SHAPE_BRANCH_PREFIX = "conductor/";
+
+/** How long a branch prefix may be, so a run's ref stays short. */
+const MAX_BRANCH_PREFIX = 32;
+
+/** A branch prefix: lower-case segments of letters and digits with single `-` or `_`, each ending in `/`. */
+const BRANCH_PREFIX_PATTERN = /^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*\/)+$/;
+
+/**
+ * `prefix` when it can lead a run's branch: lower-case letters and digits,
+ * single `-` or `_`, `/` between segments and at the end (`teammates/`), at
+ * most 32 characters.
+ *
+ * @throws When it can't, naming the value.
+ */
+export function assertBranchPrefix(prefix: string): string {
+  if (prefix.length > MAX_BRANCH_PREFIX || !BRANCH_PREFIX_PATTERN.test(prefix)) {
+    throw new Error(
+      `[harness-manager] branchPrefix ${JSON.stringify(prefix)} can't lead a branch: use lower-case letters and ` +
+        `digits with single "-" or "_", end it with "/" (such as "teammates/"), and keep it to ${MAX_BRANCH_PREFIX} characters.`,
+    );
+  }
+  return prefix;
+}
+
+/** A run's name as a branch carries it: a slug, 6 hex, and an optional bump. */
+const RUN_NAME = /^([a-z0-9]+(?:-[a-z0-9]+)*)-([0-9a-f]{6})(?:-([2-9]|[1-9][0-9]+))?$/;
+
+/**
+ * A slug of `text`: lower-case letters and digits, single dashes, at most 32,
+ * cut at a word's end when a word ends past the first half.
+ */
+function slugOf(text: string): string {
+  const whole = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (whole.length <= MAX_NAME_SLUG) return whole;
+  const cut = whole.slice(0, MAX_NAME_SLUG + 1);
+  const end = cut.lastIndexOf("-");
+  return (end > MAX_NAME_SLUG / 2 ? cut.slice(0, end) : cut.slice(0, MAX_NAME_SLUG)).replace(/-+$/g, "");
+}
+
+/**
+ * The hex that keeps two runs' names apart: a digest of every segment the
+ * long shape spelled out in full (tenant, organization, user, board with its
+ * partition, issue, phase, and the tracker issue), so two runs that the long
+ * shape kept apart differ here too, but for a 6-hex collision, which
+ * {@link freeRunLocation} turns into a bump rather than a shared tree.
+ */
+function nameHash(location: RunLocation): string {
+  return runIdentityKey(location).slice(0, NAME_HASH_LENGTH);
+}
+
+/**
+ * The whole digest a run's name hash is cut from: the same for every attempt of
+ * one run and different for any other run, however its name comes out. What a
+ * host's `reserve` records as a name's holder, so two runs whose 6 hex collide
+ * still tell each other apart.
+ */
+export function runIdentityKey(location: RunLocation): string {
+  const identity = [
+    ...locationSegments({ ...location, orgless: undefined }),
+    issuePhaseSegment(location),
+    location.trackerIssue === undefined ? "i0" : `i1${assertSafeSegment("issue", location.trackerIssue)}`,
+  ];
+  return createHash("sha256").update(joinIdentity(...identity), "utf8").digest("hex");
+}
+
+/**
+ * A run's name: a slug of the task's title (or of its issue-phase, when the
+ * title has none), led by the tracker issue when the task names one, then 6 hex of its identity, then `-<n>` when it was bumped.
+ * The branch is `<prefix><name>` and the folder is `<root>/<name>`, so
+ * `refs/heads/<prefix><name>` is at most 81 bytes however deep the run's
+ * identity is.
+ */
+export function runName(location: RunLocation): string {
+  // The tracker issue leads, so a pull request from the branch links to it.
+  const subject = slugOf(location.title ?? "") || slugOf(issuePhaseSegment(location)) || "run";
+  const slug =
+    location.slug ?? (location.trackerIssue === undefined ? subject : slugOf(`${location.trackerIssue}-${subject}`));
+  const bump = location.bump === undefined || location.bump < 1 ? "" : `-${location.bump + 1}`;
+  return `${slug}-${nameHash(location)}${bump}`;
+}
+
+/**
+ * The name a run's worktree carries in the `worktrees` resource: the run's own
+ * name, so the entry, the branch and the folder read alike. `undefined` for a
+ * run on the long shape, whose entry keeps the name the host gives it.
+ */
+export function worktreeNameFor(location: RunLocation): string | undefined {
+  return isNested(location) ? undefined : runName(location);
+}
+
+/** How many spellings {@link freeRunLocation} tries before it refuses. */
+const MAX_NAME_BUMPS = 8;
+
+/**
+ * The location a NEW run takes: its derived name, or the first bumped one
+ * (`-2`, `-3`, …) that `reserve` holds for this run. A host's reservation is
+ * atomic, so two runs whose names collide while neither has a checkout yet
+ * still get different names, and it names its holder, so a crash before the
+ * run records its branch takes the same name again. Ask it only for a run
+ * whose record names no branch; a recorded run is found with {@link locationFor}.
+ */
+export async function freeRunLocation(
+  location: RunLocation,
+  reserve: (candidate: RunLocation) => Promise<boolean>,
+): Promise<RunLocation> {
+  for (let bump = 0; bump < MAX_NAME_BUMPS; bump++) {
+    const candidate: RunLocation = bump === 0 ? location : { ...location, bump };
+    if (await reserve(candidate)) return candidate;
+  }
+  throw new Error(
+    `[harness-manager] every name tried for this run, from "${runName(location)}", is held by ` +
+      `another run or is already a worktree or a branch in the repository. Remove the stale ones and try again.`,
+  );
 }
 
 /**
@@ -494,15 +556,37 @@ function locationSegments(location: RunLocation): string[] {
  * older place through it.
  */
 export function locationFor(
-  location: Omit<RunLocation, "orgless">,
+  location: Omit<RunLocation, "orgless" | "nested" | "bump" | "slug">,
   recordedBranch: string | null | undefined,
 ): RunLocation {
   if (recordedBranch == null) return location;
-  // A run recorded before its branch led with the task's issue keeps that branch.
+  // A run that already has a short name keeps it: the record's own spelling,
+  // bump and prefix included, so a retitle or an app's new prefix never moves
+  // the tree. A run cut as `conductor/<name>` keeps that branch.
+  const cut = recordedBranch.lastIndexOf("/") + 1;
+  const named = cut > 0 ? RUN_NAME.exec(recordedBranch.slice(cut)) : null;
+  if (named !== null) {
+    const kept: RunLocation = {
+      ...location,
+      branchPrefix: recordedBranch.slice(0, cut),
+      slug: named[1]!,
+      ...(named[3] !== undefined ? { bump: Number(named[3]) - 1 } : {}),
+    };
+    // The slug is the record's own, so only the hex has to agree: with the
+    // tracker issue, or without it for a run recorded before it named one.
+    if (branchFor(kept) === recordedBranch) return kept;
+    const { trackerIssue: _tracked, ...untracked } = kept;
+    if (location.trackerIssue !== undefined && branchFor(untracked) === recordedBranch) return untracked;
+  }
+  // A run recorded in the long shape keeps it: with the tracker issue leading
+  // its leaf, without it, or from before the organization was a segment.
   const { trackerIssue: _issue, ...unlabelled } = location;
+  if (location.trackerIssue !== undefined && recordedBranch === branchFor({ ...location, nested: true })) {
+    return { ...location, nested: true };
+  }
+  if (recordedBranch === branchFor({ ...unlabelled, nested: true })) return { ...unlabelled, nested: true };
   const orgless: RunLocation = { ...unlabelled, orgless: true };
   if (recordedBranch === branchFor(orgless)) return orgless;
-  if (location.trackerIssue !== undefined && recordedBranch === branchFor(unlabelled)) return unlabelled;
   return location;
 }
 
@@ -517,11 +601,11 @@ function issuePhaseSegment(location: RunLocation): string {
  * A pure function of the durable task, the authenticated identity, and the
  * epic whose board filed it.
  */
-export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation): string {
+export function checkoutPathFor(root: string, location: RunLocation): string {
   // **Absolute, always.** The derived path is consumed from two different
   // working directories: the lock, the existence checks, the recorded path and
   // the agent's `cwd` all resolve it against the dispatcher's directory, while
-  // `git worktree add` runs with `cwd: config.sourceRepo`. A relative
+  // `git worktree add` runs with `cwd` set to the source repository. A relative
   // `workspace.root` therefore split in two — reproduced: the worktree lands
   // under the SOURCE REPO while everything else looks for it under the
   // dispatcher, so the agent is handed a directory that does not exist and no
@@ -539,7 +623,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
   // from. This comment used to say a host "should" pass an absolute one and call
   // the rest unguarded — which is the unenforced convention every other guard at
   // that door exists to replace.
-  return resolve(config.root, ...locationSegments(location), issuePhaseSegment(location));
+  return resolve(root, ...placeFor(location));
 }
 
 /** An encoded {@link taskIssueSegment}: `h-` and a {@link hashKeySegment}. */
@@ -592,15 +676,18 @@ export function runBoardSegment(ledgerId: string, partition: string | undefined)
 }
 
 /**
- * This issue-phase's branch, for this principal.
+ * This issue-phase's branch, for this principal: `<prefix><name>`
+ * ({@link RunLocation.branchPrefix}, {@link runName}), or the long shape,
+ * under `conductor/`, for a run recorded on it.
  *
- * Carries the principal for the same reason the path does, and it is the half
- * that is easier to miss: two users could be given separate directories and
+ * Carries the principal (in the name's hex) for the same reason the path
+ * does, and it is the half that is easier to miss: two users could be given separate directories and
  * still share a branch, at which point one user's commits land on the other's
  * branch and a pull request opened by either can satisfy the other's completion
  * check. Separate trees pushing one ref is not isolation.
  */
 export function branchFor(location: RunLocation): string {
+  if (!isNested(location)) return `${location.branchPrefix ?? DEFAULT_BRANCH_PREFIX}${runName(location)}`;
   const scope = locationSegments(location).join("/");
   // The same leaf the checkout path uses. It was spelled with a SINGLE dash
   // here while the path used `--`, so the branch aliased on inputs the path
@@ -608,16 +695,16 @@ export function branchFor(location: RunLocation): string {
   // agree, which is the whole reason the leaf is now derived in one function.
   const leaf = issuePhaseSegment(location);
   return location.trackerIssue === undefined
-    ? `conductor/${scope}/${leaf}`
-    : `conductor/${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
+    ? `${LONG_SHAPE_BRANCH_PREFIX}${scope}/${leaf}`
+    : `${LONG_SHAPE_BRANCH_PREFIX}${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
 }
 /**
- * The place segments of a run, under whatever root its host keeps: the same
- * segments {@link checkoutPathFor} resolves, so a fixed-repository run's place
- * is exactly the checkout this module has always derived.
+ * The place segments of a run, under whatever root its host keeps: the run's
+ * name alone ({@link runName}), or the nested segments of the long shape for a
+ * run recorded on it. {@link checkoutPathFor} resolves the same segments.
  */
 export function placeFor(location: RunLocation): string[] {
-  return [...locationSegments(location), issuePhaseSegment(location)];
+  return isNested(location) ? [...locationSegments(location), issuePhaseSegment(location)] : [runName(location)];
 }
 
 /** The lock file guarding one checkout. Beside it, not inside — see `acquireCheckout`. */
@@ -643,53 +730,28 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
 };
 
 /**
- * The workspace host a fixed repository runs through: `sourceRepo` is a
- * repository on this machine the operator named, so the host cuts worktrees
- * from it directly and keeps every run's branch in it. It reaches only the
- * base's upstream, to cut a new branch from the newer of the two. The run
- * source is constant.
- */
-export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
-  // Absolute, because the host takes only an absolute path as a repository on
-  // this machine; a relative `sourceRepo` would otherwise be judged a remote.
-  const sourceRepo = resolve(config.sourceRepo);
-  return localWorkspaceHost({
-    root: config.root,
-    remotes: { allow: [] },
-    localRepositories: [sourceRepo],
-    source: () => ({ kind: "repo", repo: sourceRepo, baseRef: config.baseRef }),
-    ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
-    ...(config.setup !== undefined ? { setup: config.setup } : {}),
-    ...(config.pullRequestRepo !== undefined ? { pullRequestRepo: config.pullRequestRepo } : {}),
-    now,
-  });
-}
-
-/**
- * Give this issue-phase a checkout of `config.sourceRepo`, or hand back the
- * one the last attempt left.
+ * Give this issue-phase a checkout from `host`, or hand back the one the last
+ * attempt left.
  *
  * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
  * runs every git command: idempotent, never resets, forces or discards work,
- * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
- * and a checkout whose branch was deleted or that was cut from another
- * repository is refused rather than recreated. A checkout a run switched to
- * another branch is moved back onto the run's branch, keeping what the run made
- * on the other, so the attempt commits where the prompt says. One left there
- * with uncommitted changes is refused (`checkout-moved`): those changes are the
- * run's to commit, stash or discard. The checkout is exactly
- * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
+ * one budget for the whole operation (the host's `provisionTimeoutMs`), and a
+ * checkout whose branch was deleted or that was cut from another repository is
+ * refused rather than recreated. A checkout a run switched to another branch is
+ * moved back onto the run's branch, keeping what the run made on the other, so
+ * the attempt commits where the prompt says. One left there with uncommitted
+ * changes is refused (`checkout-moved`): those changes are the run's to commit,
+ * stash or discard. For a host built by `localRepoWorkspaceHost`, the checkout
+ * is exactly {@link checkoutPathFor}'s path under the host's root and the
+ * branch lives in its repository.
  */
 export async function provisionCheckout(
-  config: WorkspaceConfig,
+  host: WorkspaceHost,
+  answer: RunSourceAnswer,
   location: RunLocation,
-  now: () => number = Date.now,
 ): Promise<Checkout> {
   const branch = branchFor(location);
-  const place = await hostForConfig(config, now).provision(
-    { kind: "repo", repo: resolve(config.sourceRepo), baseRef: config.baseRef },
-    { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
-  );
+  const place = await host.provision(answer, { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED });
   if (place.repo?.offBranch !== undefined) {
     throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
   }
@@ -708,6 +770,18 @@ export interface CheckoutLease {
   token: string;
 }
 
+/** The user's worktree collection when the host registered it on this flow. */
+export function worktreesOf(ctx: Pick<BlockContext, "resources">): WorktreeCollection | undefined {
+  const collection = ctx.resources?.[WORKTREES] as WorktreeCollection | undefined;
+  return typeof collection?.upsert === "function" ? collection : undefined;
+}
+
+/** Read the lock and its ownership token from the state persisted by a manager run or a talk turn. */
+export function checkoutLeaseFromState(state: Readonly<Record<string, unknown>> | undefined): CheckoutLease | undefined {
+  if (typeof state?.lockPath !== "string" || typeof state.leaseToken !== "string") return undefined;
+  return { lockPath: state.lockPath, token: state.leaseToken };
+}
+
 /**
  * Release a checkout lease — the one place a lock this process took is
  * removed, called from every exit. Never unlinks a lock that is not this
@@ -722,6 +796,15 @@ export function releaseCheckout(lease: CheckoutLease | undefined): void {
   }
 }
 
+// FIX-2794.
+/**
+ * Mark a held checkout live now: its run is still sending events. Touches
+ * nothing that isn't this acquisition's, and never throws.
+ */
+export function refreshCheckout(lease: CheckoutLease): void {
+  refreshLock({ path: lease.lockPath, token: lease.token });
+}
+
 /** How ownership is bounded. Sized against the renewal lag that causes overlap. */
 export interface OwnershipBounds {
   /** How long to wait for a live holder to finish before failing the attempt. */
@@ -729,11 +812,13 @@ export interface OwnershipBounds {
   /** How often to re-check. */
   pollMs: number;
   /**
-   * A lock older than this belongs to a process that is gone.
+   * A lock not marked live for this long belongs to a process that is gone.
    *
-   * Sized past the run's own wall-clock deadline plus provisioning, so a lock
-   * is only ever declared stale once no live attempt could still be holding
-   * it. That is what lets this work without a heartbeat.
+   * Sized past the longest a live attempt goes without marking it — its run's
+   * silence window plus provisioning, since every event the run sends marks
+   * it (`refreshCheckout`) and a run silent for the window is stopped — so a
+   * lock is only ever declared stale once no live attempt could still be
+   * holding it.
    */
   staleAfterMs: number;
 }
@@ -753,7 +838,8 @@ export interface OwnershipBounds {
  * host's own lock (that one is held only while provisioning). Built on the
  * same lock file mechanism (`acquireLock` in `@flow-state-dev/workspace`):
  * atomic create, a stale steal that re-checks the file it judged, a token
- * release. No heartbeat: `staleAfterMs` outlasts the longest legitimate hold.
+ * release. No timer refreshes it: the run's events do (`refreshCheckout`), and
+ * `staleAfterMs` outlasts the longest a live holder goes between them.
  * The lock sits BESIDE the checkout, so `git worktree add` never meets a
  * non-empty directory. A cancelled `signal` stops the wait at once.
  */

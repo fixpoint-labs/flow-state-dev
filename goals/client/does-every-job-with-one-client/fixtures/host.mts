@@ -20,7 +20,7 @@ export function goalHost() {
   // better-sqlite3 does not create the directory.
   mkdirSync(dirname(filename), { recursive: true });
   return createFlowState({
-    flows: goalFlows(notesId),
+    flows: Object.values(goalFlows(notesId)),
     stores: { default: { primary: sqliteStores({ filename }) } },
     staleSweepThresholdMs: 2_000,
     staleSweepIntervalMs: 500,

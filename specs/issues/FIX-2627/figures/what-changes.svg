@@ -1,0 +1,120 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Before: each host reads the workforce tree, builds the installation on a callback, copies a coding flow, builds a readiness map and flow, hires, and spreads the copies with casts. After: the host lists the workforce kit, the harness kit and Claude Code's kit and fills the harness slot with Codex and Cursor; the workforce kit reads its folder through the claim pass and installs the workers and the roster view; the harness kit contributes one coding worker flow into workforce's workerFlows slot and installs the readiness and coding board views."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .kit   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ext   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .slot  { stroke:var(--code); stroke-width:1.4; fill:none; stroke-dasharray:5 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="before">
+    <rect class="panel" x="16" y="16" width="300" height="438" rx="6"/>
+    <text class="t-lbl" x="32" y="38">BEFORE · IN EVERY HOST</text>
+    <rect class="gone" x="32" y="52" width="268" height="48" rx="5"/>
+    <text class="t-g" x="44" y="72">readDeclaredRoster, own refusal</text>
+    <text class="t-s" x="44" y="88">a stray file loads nothing</text>
+    <rect class="gone" x="32" y="110" width="268" height="48" rx="5"/>
+    <text class="t-g" x="44" y="130">createWorkerInstallation</text>
+    <text class="t-s" x="44" y="146">workerFlows: () =&gt; flows</text>
+    <rect class="gone" x="32" y="168" width="268" height="48" rx="5"/>
+    <text class="t-g" x="44" y="188">a coding worker flow, copied</text>
+    <text class="t-s" x="44" y="204">346 and 213 lines</text>
+    <rect class="gone" x="32" y="226" width="268" height="48" rx="5"/>
+    <text class="t-g" x="44" y="246">a readiness map and flow</text>
+    <text class="t-s" x="44" y="262">four hosts</text>
+    <rect class="gone" x="32" y="284" width="268" height="48" rx="5"/>
+    <text class="t-g" x="44" y="304">hireWorkforce, spread, as never</text>
+    <text class="t-s" x="44" y="320">into createFlowState</text>
+    <rect class="ext" x="32" y="356" width="268" height="80" rx="5"/>
+    <text class="t-lbl" x="44" y="376">EACH HARNESS PACKAGE</text>
+    <text class="t-b" x="44" y="396">five loose pieces</text>
+    <text class="t-s" x="44" y="412">agent · readiness · pass</text>
+    <text class="t-s" x="44" y="426">usage · models</text>
+  </g>
+
+  <g id="after-host">
+    <rect class="app" x="336" y="16" width="588" height="62" rx="6"/>
+    <text class="t-lbl" x="352" y="36">AFTER · THE HOST</text>
+    <text class="t-b" x="352" y="56">kits: [workforce, harnesses, claudeCode] · fill harnesses: codex, cursor</text>
+    <text class="t-s" x="352" y="70">plus the app's own flows</text>
+  </g>
+
+  <g id="after-workforce">
+    <rect class="kit" x="336" y="100" width="280" height="200" rx="6"/>
+    <text class="t-lbl" x="352" y="120">WORKFORCE KIT</text>
+    <rect class="n-box" x="352" y="132" width="248" height="42" rx="4"/>
+    <text class="t-b" x="364" y="150">workforce/ · claim pass</text>
+    <text class="t-s" x="364" y="165">every file used or refused</text>
+    <rect class="n-box" x="352" y="182" width="248" height="42" rx="4"/>
+    <text class="t-b" x="364" y="200">slots · workerFlows, uses</text>
+    <text class="t-s" x="364" y="215">keyed · list</text>
+    <rect class="n-box" x="352" y="232" width="248" height="52" rx="4"/>
+    <text class="t-b" x="364" y="250">installs workers, roster view</text>
+    <text class="t-s" x="364" y="265">hire and installation internal</text>
+    <text class="t-s" x="364" y="278">/browser views · /react components</text>
+  </g>
+
+  <g id="after-harnesses">
+    <rect class="kit" x="644" y="100" width="280" height="200" rx="6"/>
+    <text class="t-lbl" x="660" y="120">HARNESS KIT · harness-manager/kit</text>
+    <rect class="n-box" x="660" y="132" width="248" height="42" rx="4"/>
+    <text class="t-b" x="672" y="150">slot · harnesses, keyed</text>
+    <text class="t-s" x="672" y="165">one harness value each</text>
+    <rect class="n-box" x="660" y="182" width="248" height="42" rx="4"/>
+    <text class="t-b" x="672" y="200">one coding worker flow</text>
+    <text class="t-s" x="672" y="215">review · PR wait · checks as config</text>
+    <rect class="n-box" x="660" y="232" width="248" height="52" rx="4"/>
+    <text class="t-b" x="672" y="250">readiness view</text>
+    <text class="t-s" x="672" y="265">coding board view</text>
+    <text class="t-s" x="672" y="278">requires workforce</text>
+  </g>
+
+  <g id="contribution">
+    <path class="slot" d="M660 203 C 636 203, 636 203, 600 203"/>
+    <text class="t-c" x="604" y="320">coder into workerFlows</text>
+    <path class="arrow" d="M630 312 L 630 210"/>
+  </g>
+
+  <g id="harness-values">
+    <rect class="ext" x="644" y="340" width="134" height="96" rx="5"/>
+    <text class="t-lbl" x="656" y="360">CODEX · CURSOR</text>
+    <text class="t-b" x="656" y="380">a harness value</text>
+    <text class="t-s" x="656" y="396">id · label · agent</text>
+    <text class="t-s" x="656" y="410">readiness · pass</text>
+    <text class="t-s" x="656" y="424">usage · models</text>
+    <rect class="ext" x="790" y="340" width="134" height="96" rx="5"/>
+    <text class="t-lbl" x="802" y="360">CLAUDE CODE</text>
+    <text class="t-b" x="802" y="380">a small kit</text>
+    <text class="t-s" x="802" y="396">its collections</text>
+    <text class="t-s" x="802" y="410">fills the same slot</text>
+    <path class="slot" d="M711 340 L 711 302"/>
+    <path class="slot" d="M857 340 L 857 302"/>
+  </g>
+
+  <g id="moved">
+    <rect class="n-box" x="336" y="340" width="280" height="96" rx="5"/>
+    <text class="t-lbl" x="352" y="360">MOVED FIRST · THE CENSUS</text>
+    <text class="t-b" x="352" y="380">7 files nothing reads</text>
+    <text class="t-s" x="352" y="396">claude-code-style workforce/flows/ · 5</text>
+    <text class="t-s" x="352" y="410">kitchen-sink workforce/hire.ts</text>
+    <text class="t-s" x="352" y="424">a Shift Manager fixture's piece.mts</text>
+  </g>
+</svg>

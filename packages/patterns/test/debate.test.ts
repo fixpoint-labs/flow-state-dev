@@ -6,9 +6,8 @@
  * audit task emission, and the bias-mitigation toggles.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
-import { makeSchemaStrict } from "@flow-state-dev/core";
-import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { defineFlow, handler, makeSchemaStrict } from "@flow-state-dev/core";
+import { createTestContext, mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
 import { z, type ZodTypeAny } from "zod";
 import {
   debate,
@@ -287,7 +286,7 @@ describe("debate", () => {
     expect(result.error).not.toBeNull();
   });
 
-  it("emits debate-turn, debate-decision, and debate-verdict component items for the UI renderer", async () => {
+  it("emits debate-turn, debate-decision, and debate-verdict data items for the UI renderer", async () => {
     const moderator = handler({
       name: "moderator-emits",
       inputSchema: z.any(),
@@ -335,15 +334,15 @@ describe("debate", () => {
 
     expect(result.error).toBeNull();
     const turns = result.items.filter(
-      (i) => i.type === "component" && (i as any).component === "debate-turn",
+      (i) => i.type === "data" && (i as any).dataType === "debate-turn",
     );
     const decisions = result.items.filter(
       (i) =>
-        i.type === "component" && (i as any).component === "debate-decision",
+        i.type === "data" && (i as any).dataType === "debate-decision",
     );
     const verdicts = result.items.filter(
       (i) =>
-        i.type === "component" && (i as any).component === "debate-verdict",
+        i.type === "data" && (i as any).dataType === "debate-verdict",
     );
     expect(turns).toHaveLength(2);
     expect(decisions).toHaveLength(1);
@@ -351,13 +350,13 @@ describe("debate", () => {
     // Spot-check shape of one turn and the verdict — the UI renderer
     // depends on these fields.
     const firstTurn = turns[0] as any;
-    expect(firstTurn.data).toMatchObject({
+    expect(firstTurn.value).toMatchObject({
       round: 1,
       agentName: "a",
       stance: "for",
     });
-    expect(typeof firstTurn.data.text).toBe("string");
-    expect((verdicts[0] as any).data).toEqual({
+    expect(typeof firstTurn.value.text).toBe("string");
+    expect((verdicts[0] as any).value).toEqual({
       verdict: "v",
       winner: "for",
       reasoning: "r",
@@ -383,7 +382,7 @@ describe("debate", () => {
 
     expect(result.error).toBeNull();
     const taskChanges = result.items.filter(
-      (item) => item.type === "component" && (item as any).component === "task-change",
+      (item) => item.type === "data" && (item as any).dataType === "task-change",
     );
     // 2 rounds × 2 debaters = 4 turns; each turn emits at least one
     // task-change item.
@@ -536,6 +535,10 @@ describe("debate", () => {
       ],
       maxRounds: 2,
       synthesizer: false,
+      context: {
+        priorTurns: (_input, ctx) => `Recorded turns: ${ctx.resources.transcript.state.entries.length}`,
+      },
+      instructions: async (_input, ctx) => `Use the notes for round ${ctx.sequencer?.state.round}.`,
     });
 
     const result = await testBlock(pattern, {
@@ -553,6 +556,9 @@ describe("debate", () => {
     // Inspect debater B's round-2 prompt: it should reference stances
     // [for] / [against] but not the debater names "a" / "b".
     const round2BMessages = JSON.stringify(debaterMockB.calls[1]?.input ?? "");
+    expect(round2BMessages).toContain("Recorded turns: 3");
+    expect(round2BMessages).toContain("Use the notes for round 2.");
+    expect(JSON.stringify(judgeMock.calls[0]?.input)).toContain("Recorded turns: 4");
     expect(round2BMessages).toContain("[for]");
     expect(round2BMessages).toContain("[against]");
     // Not super-strict — names are stable identifiers and could appear
@@ -690,6 +696,46 @@ describe("debate", () => {
       });
       return { block, getCount: () => count };
     }
+
+    it("resumes a debate whose saved moderator history is null", async () => {
+      const moderator = handler({
+        name: "wait-for-speaker",
+        outputSchema: debateModeratorOutputSchema,
+        execute: async (_input, ctx) => {
+          await ctx.suspendForUser({ kind: "approval", prompt: "Hear from B?" });
+          return { nextSpeakers: ["b"], briefing: null, newAngle: null, done: true };
+        },
+      });
+      const block = debate({
+        name: "resume-debate",
+        debaters: [
+          { name: "a", stance: "for", block: makeDebater("a", "for") },
+          { name: "b", stance: "against", block: makeDebater("b", "against") },
+        ],
+        moderator,
+        judge: makeJudgeOnce().block,
+        synthesizer: false,
+      });
+      const flow = defineFlow({ kind: "debate", actions: { run: block } })({ id: "debate" });
+      const { stores } = await createTestContext();
+      const run = await testFlow({ flow, action: "run", input: { question: "Q?" }, userId: "u", stores });
+      expect(run.status).toBe("suspended");
+      const stop = await stores.suspensions.get(run.requestId, run.suspension!.suspensionId);
+      const checkpoint = await stores.checkpoints.latest(run.requestId, stop!.blockInstanceId);
+      expect(checkpoint?.state).toMatchObject({ round: 1, moderatorDecisions: [] });
+      await stores.checkpoints.write({
+        ...checkpoint!,
+        state: { question: "Q?", round: 1, moderatorDecisions: null },
+      });
+
+      const resumed = await run.answer({ action: "approve" });
+      expect(resumed.status).toBe("completed");
+      expect(resumed.output).toMatchObject({
+        rounds: 1,
+        transcript: [{ agentName: "b" }],
+        moderatorDecisions: [{ round: 1, nextSpeakers: ["b"] }],
+      });
+    });
 
     it("each moderator decision opens its own round (moderator runs at the top)", async () => {
       const moderator = makeScriptedModerator([

@@ -65,6 +65,15 @@ export const captureContext = handler({
   },
 });
 
+const aggregateResultSchema = z.object({
+  results: z.array(AnalyzerResultSchema),
+  overallScore: z.number(),
+});
+
+const thresholdResultSchema = aggregateResultSchema.extend({
+  surfacedResults: z.array(AnalyzerResultSchema),
+});
+
 /**
  * Collects analyzer results and computes an overall score (average of all
  * analyzer scores).
@@ -72,10 +81,7 @@ export const captureContext = handler({
 export const aggregateResults = handler({
   name: "aggregate-results",
   inputSchema: z.array(AnalyzerResultSchema),
-  outputSchema: z.object({
-    results: z.array(AnalyzerResultSchema),
-    overallScore: z.number(),
-  }),
+  outputSchema: aggregateResultSchema,
   sequencerStateSchema: responseAuditorStateSchema,
   execute: async (results, ctx) => {
     const overallScore =
@@ -96,15 +102,8 @@ export const aggregateResults = handler({
 function createApplyThreshold(threshold: number) {
   return handler({
     name: "apply-threshold",
-    inputSchema: z.object({
-      results: z.array(AnalyzerResultSchema),
-      overallScore: z.number(),
-    }),
-    outputSchema: z.object({
-      results: z.array(AnalyzerResultSchema),
-      surfacedResults: z.array(AnalyzerResultSchema),
-      overallScore: z.number(),
-    }),
+    inputSchema: aggregateResultSchema,
+    outputSchema: thresholdResultSchema,
     sequencerStateSchema: responseAuditorStateSchema,
     execute: async (input, ctx) => {
       const surfacedResults = input.results.filter(
@@ -113,17 +112,13 @@ function createApplyThreshold(threshold: number) {
 
       await ctx.sequencer!.patchState({ surfacedResults });
 
-      return {
-        results: input.results,
-        surfacedResults,
-        overallScore: input.overallScore,
-      };
+      return { ...input, surfacedResults };
     },
   });
 }
 
 /**
- * Emits the surfaced audit results as an `audit-annotation` component item so a
+ * Emits the surfaced audit results as an `audit-annotation` data record so a
  * registered renderer (the `@flow-state-dev/ui` audit card, wired into
  * `chatAssistantRenderers`) can display them. Side-effect only: it forwards the
  * threshold output unchanged (composed via `.tapIf`).
@@ -133,12 +128,9 @@ function createApplyThreshold(threshold: number) {
  */
 const emitAuditAnnotation = handler({
   name: "emit-audit-annotation",
-  // `.tapIf`'s value is already the apply-threshold step's validated output —
-  // re-declaring that shape here would just be a second copy to keep in sync
-  // (debate's equivalent emit tap uses the same z.any() convention).
-  inputSchema: z.any(),
+  inputSchema: thresholdResultSchema,
   execute: (input, ctx) => {
-    ctx.emit.component("audit-annotation", input as Record<string, unknown>);
+    ctx.emit.data("audit-annotation", input, { itemVisibility: { client: true, history: false } });
   },
 });
 
@@ -206,7 +198,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   // 4. map filters out nulls from failed analyzers
   // 5. aggregateResults computes overall score
   // 6. applyThreshold filters to surfaced results
-  // 7. emit an audit-annotation component item when anything surfaced
+  // 7. emit an audit-annotation data record when anything surfaced
 
   return sequencer({
     name: "response-auditor",
@@ -214,15 +206,11 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     stateSchema: responseAuditorStateSchema,
   })
     .tap(captureContext)
-    .map((input: { userInput: string; response: string }) =>
+    .map((input) =>
       analyzers.map(() => ({ userInput: input.userInput, response: input.response })),
     )
-    .forEach(
-      (_item: { userInput: string; response: string }, index: number) =>
-        safeAnalyzers[index],
-      { maxConcurrency: config.maxConcurrency },
-    )
-    .map((results: unknown[]) => results.filter(Boolean))
+    .forEach((_item, index) => safeAnalyzers[index], { maxConcurrency: config.maxConcurrency })
+    .map((results) => results.filter(Boolean))
     .step(aggregateResults)
     .step(thresholdBlock)
     .tapIf((out) => out.surfacedResults.length > 0, emitAuditAnnotation);

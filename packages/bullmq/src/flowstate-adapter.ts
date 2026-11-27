@@ -1,50 +1,50 @@
 /**
- * bullmqWorker — the one-option `createFlowState` integration.
+ * bullmqJobQueue — the one-option `createFlowState` integration.
  *
- * Composes the queue runtime, the Redis stream bridge, the worker runner
- * (enqueue side), and the flow worker (processing side) into a single
- * `WorkerAdapter` for `createFlowState({ worker: bullmqWorker({...}) })`.
- * The lower-level factories (`createBullmqRuntime`, `createFlowWorker`,
- * `createWorkerRunner`, `createRedisStreamBridge`) remain public as the
+ * Composes the queue runtime, the Redis stream bridge, the job queue runner
+ * (enqueue side), and the job processor (processing side) into a single
+ * `JobQueueAdapter` for `createFlowState({ jobQueue: bullmqJobQueue({...}) })`.
+ * The lower-level factories (`createBullmqRuntime`, `createJobProcessor`,
+ * `createJobQueueRunner`, `createRedisStreamBridge`) remain public as the
  * extension layer for custom topologies; this is the setup path.
  *
  * It also supplies the engine a lease backend on the same Redis
  * (`createRedisLeaseBackend`), so a flow's `queue` / `reject` concurrency
- * policy holds across every web and worker process of the deployment, and a
+ * policy holds across every enqueuing and processing process of the deployment, and a
  * delivery into an existing session is accepted rather than refused.
  */
 import type { Queue } from "bullmq";
 import type {
   FlowStateRuntime,
-  WorkerAdapter,
-  WorkerMode
+  JobQueueAdapter,
+  JobQueueMode
 } from "@flow-state-dev/engine/host";
 import { createBullmqRuntime, type BullmqRuntime } from "./runtime";
 import { createRedisStreamBridge } from "./stream-bridge";
-import { createWorkerRunner } from "./runner";
+import { createJobQueueRunner } from "./runner";
 import { createRedisLeaseBackend } from "./lease-backend";
 import type { BullmqConnectionOptions, RetryConfig } from "./types";
 
-export interface BullmqWorkerOptions extends BullmqConnectionOptions {
+export interface BullmqJobQueueOptions extends BullmqConnectionOptions {
   /** Queue name. Default "fsd-flows". */
   queueName?: string;
-  /** Retry/backoff/DLQ config applied to enqueued jobs and the worker. */
+  /** Retry/backoff/DLQ config applied to enqueued jobs and the job processor. */
   retry?: RetryConfig;
-  /** Concurrent jobs per worker. Default 2. */
+  /** Concurrent jobs per processing process. Default 2. */
   concurrency?: number;
   /** Job lock duration (ms). Default 300000 — LLM calls are slow. */
   lockDuration?: number;
   /** Redis pub/sub channel prefix for the stream bridge. Default "fsd:stream". */
   channelPrefix?: string;
   /**
-   * Which sides this process runs: `"colocated"` (default — dispatch and
-   * process in one process), `"dispatch-only"` (web process; a separate
-   * worker container consumes the queue), or `"worker-only"` (dedicated
-   * worker process; call `flowstate.ready()` to start consuming).
+   * Which sides this process runs: `"colocated"` (default — enqueue and
+   * process in one process), `"enqueue-only"` (web process; a separate
+   * processing container consumes the queue), or `"process-only"` (dedicated
+   * processing process; call `flowstate.ready()` to start consuming).
    */
-  mode?: WorkerMode;
+  mode?: JobQueueMode;
   /**
-   * How long a concurrency place lives past its last renewal (ms). A worker
+   * How long a concurrency place lives past its last renewal (ms). A process
    * that stops renewing (it died, or lost Redis) frees the session's key
    * within this; a running holder that cannot renew is stopped at half of
    * it. Default 10000.
@@ -53,15 +53,15 @@ export interface BullmqWorkerOptions extends BullmqConnectionOptions {
 }
 
 /**
- * The adapter handed to `createFlowState({ worker })`, with the underlying
+ * The adapter handed to `createFlowState({ jobQueue })`, with the underlying
  * queue/runtime exposed for admin consoles (Bull Board) and direct
  * `enqueueAction` use.
  */
-export interface BullmqWorkerAdapter extends WorkerAdapter {
-  readonly mode: WorkerMode;
+export interface BullmqJobQueueAdapter extends JobQueueAdapter {
+  readonly mode: JobQueueMode;
   /** Underlying BullMQ queue — e.g. for Bull Board. */
   readonly queue: Queue;
-  /** The composed runtime handle (`enqueueAction`, `createWorker`, `close`). */
+  /** The composed runtime handle (`enqueueAction`, `createJobProcessor`, `close`). */
   readonly runtime: BullmqRuntime;
 }
 
@@ -69,11 +69,11 @@ export interface BullmqWorkerAdapter extends WorkerAdapter {
  * Build a BullMQ execution-backend adapter for `createFlowState`.
  *
  * `createFlowState` hands both sides the same resolved
- * `{ registry, stores, runtimeConfig }` the router uses, so worker writes
+ * `{ registry, stores, runtimeConfig }` the router uses, so processed jobs' writes
  * are always visible to streaming, refresh, and the devtool — there is no
  * way to wire a mismatched store registry through this path.
  */
-export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter {
+export function bullmqJobQueue(options: BullmqJobQueueOptions): BullmqJobQueueAdapter {
   const runtime = createBullmqRuntime({
     connection: options.connection,
     prefix: options.prefix,
@@ -98,27 +98,29 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
     leaseBackend,
 
     createRunner: () =>
-      createWorkerRunner({
+      createJobQueueRunner({
         queue: runtime.queue,
         bridge,
         retryConfig: options.retry,
       }),
 
-    startWorker: (rt: FlowStateRuntime) => {
-      const worker = runtime.createWorker({
+    startProcessing: (rt: FlowStateRuntime) => {
+      const processor = runtime.createJobProcessor({
         registry: rt.registry,
         stores: rt.stores,
         runtimeConfig: rt.runtimeConfig,
+        // The host's own resolver, so the processor's built-in flows agree with the host (FIX-2624).
+        resolvePrincipal: rt.resolvePrincipal,
         bridge,
         concurrency: options.concurrency,
         lockDuration: options.lockDuration,
         leaseBackend,
       });
-      return { close: () => worker.close() };
+      return { close: () => processor.close() };
     },
 
-    // Closes workers created via runtime.createWorker and the queue(s).
-    // FlowState.dispose() closes the worker handle first; BullMQ's
+    // Closes processors created via runtime.createJobProcessor and the queue(s).
+    // FlowState.dispose() closes the processing handle first; BullMQ's
     // Worker.close() is idempotent, so the double close is benign.
     close: async () => {
       await runtime.close();

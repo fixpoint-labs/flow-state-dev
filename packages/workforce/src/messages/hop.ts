@@ -74,6 +74,26 @@ export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
 /** The request-state field naming the reply-requested message an `onMessageReceived` request landed, so its turn's end answers it. */
 export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
 
+// FIX-2538 D2.
+/**
+ * The request-state field carrying the forward mark of the message an
+ * `onMessageReceived` request landed (`addressed` or `inferred`, and the event's
+ * link), copied from its message: what the board's write and the send tool read
+ * on that turn. Absent on every other turn.
+ */
+export const RECEIVED_FORWARD_STATE = "workforceReceivedForward";
+
+/**
+ * The metadata key a task filed on an inferred turn carries: the forward it
+ * was inferred from. Written by the board's filing, server-side. A turn its
+ * ending wakes runs as that forward's turn did, so work the user declined
+ * can't be filed again unheld.
+ */
+export const INFERRED_FORWARD_METADATA = "workforceInferredFrom";
+
+/** The request-state field saying the landed message runs no turn (the flow's `landsOnly` said so): its reply step reads it. */
+export const RECEIVED_TURNLESS_STATE = "workforceReceivedTurnless";
+
 /** The request state the hop and the per-turn count are kept in. */
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
@@ -81,8 +101,16 @@ export const messageTurnStateSchema = z.object({
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
   [TURN_PAID_STATE]: z.array(z.string()).optional(),
   [RECEIVED_LANDED_STATE]: z.boolean().optional(),
-  [RECEIVED_REPLY_OWED_STATE]: z.string().optional()
+  [RECEIVED_REPLY_OWED_STATE]: z.string().optional(),
+  [RECEIVED_FORWARD_STATE]: z.object({ as: z.enum(["addressed", "inferred"]), url: z.string() }).optional(),
+  [RECEIVED_TURNLESS_STATE]: z.boolean().optional()
 });
+
+/** The forward mark of the message the running request landed, or `undefined` on any other turn. */
+export function turnForwardOf(ctx: Pick<BlockContext, "request">): { readonly as: "addressed" | "inferred"; readonly url: string } | undefined {
+  const parsed = messageTurnStateSchema.shape[RECEIVED_FORWARD_STATE].safeParse(ctx.request?.state?.[RECEIVED_FORWARD_STATE]);
+  return parsed.success ? parsed.data : undefined;
+}
 
 /** A session's current hop count: 0 for one that keeps none. */
 export function sessionHopOf(state: unknown): number {
@@ -92,7 +120,7 @@ export function sessionHopOf(state: unknown): number {
 
 /** The running turn's hop count: what its start copied to request state, else the session's. */
 export function turnHopOf(ctx: Pick<BlockContext, "request" | "session">): number {
-  const value = (ctx.request?.state as Record<string, unknown> | undefined)?.[TURN_HOP_STATE];
+  const value = ctx.request?.state?.[TURN_HOP_STATE];
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
   return sessionHopOf(ctx.session.state);
 }
@@ -116,7 +144,7 @@ export function sessionChainOf(state: unknown): string | undefined {
 
 /** The running turn's chain id: what its start copied to request state, else the session's. */
 export function turnChainOf(ctx: Pick<BlockContext, "request" | "session">): string | undefined {
-  const request = ctx.request?.state as Record<string, unknown> | undefined;
+  const request = ctx.request?.state;
   if (request !== undefined && Object.hasOwn(request, TURN_CHAIN_STATE)) {
     const value = request[TURN_CHAIN_STATE];
     return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -199,13 +227,13 @@ export async function startTurnAtHop(
   if (sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain) {
     const fields = { [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain };
     await (alsoSession === undefined
-      ? ctx.session.patchState(fields as never)
-      : ctx.session.atomicState(((state: Readonly<Record<string, unknown>>) => ({ ...fields, ...alsoSession(state) })) as never));
+      ? ctx.session.patchState(fields)
+      : ctx.session.atomicState((state) => ({ ...fields, ...alsoSession(state) })));
   }
   await ctx.request.patchState({
     ...also,
     [TURN_HOP_STATE]: hop,
     [TURN_CHAIN_STATE]: chain,
     [TURN_SENT_STATE]: 0
-  } as never);
+  });
 }

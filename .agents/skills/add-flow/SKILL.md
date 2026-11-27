@@ -16,7 +16,7 @@ You are a development agent creating a new flow in the flow-state-dev framework.
 
 Parse $ARGUMENTS to determine:
 1. What is the flow's `kind` (URL-safe identifier)?
-2. What actions does it need? (Each action is an entry point with its own inputSchema and block pipeline)
+2. What actions does it need? (Each action is an entry point onto a block pipeline; it takes the block's input schema)
 3. What state does it manage? (session state, user state, org state)
 4. What resources does it need? (persisted typed data containers)
 5. Does it use capabilities? (bundled resources + helpers from patterns or shared infra)
@@ -53,7 +53,10 @@ src/flows/<flow-kind>/
 
 **Key decisions:**
 
-1. **Actions**: Each action is an entry point with `inputSchema`, `block`, and optional `userMessage`. Chat actions typically have `userMessage`; system/background actions don't.
+1. **Actions**: Each action is an entry point onto a block. Write the block alone (`actions: { summarize }`) when the action sets nothing else; use `{ block, ... }` when it sets `userMessage`, `mcp`, `concurrency`, hooks or a token budget. Chat actions typically have `userMessage`; system/background actions don't. The same shorthand works for `reads` and for `internal` / `task` entries.
+
+   - **`inputSchema`** defaults to the block's own. Set it only when the action's input really differs: a narrower public contract (`.strict()`), an escape hatch (`z.unknown()`), or richer MCP `.describe()` text.
+   - **`description`** defaults to the block's own `description`. An MCP-exposed action needs one or the other; set it on the action when the public tool needs wording of its own.
 
 2. **Scope state**: Use `session.stateSchema` for conversational state (message count, mode, preferences). Use `user.stateSchema` for cross-session user state. Use `org.stateSchema` for shared team state.
 
@@ -134,7 +137,7 @@ export const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chat
  * <What this flow does in 2-3 sentences.>
  */
 import { defineFlow } from "@flow-state-dev/core";
-import { chatInputSchema, sessionStateSchema } from "./schemas";
+import { sessionStateSchema } from "./schemas";
 import { chatPipeline } from "./blocks/chat";
 
 const <flowKind>Flow = defineFlow({
@@ -143,7 +146,6 @@ const <flowKind>Flow = defineFlow({
 
   actions: {
     chat: {
-      inputSchema: chatInputSchema,
       block: chatPipeline,
       userMessage: (input) => input.message,
     },
@@ -274,7 +276,6 @@ Action-level hooks fire per-action:
 ```typescript
 actions: {
   chat: {
-    inputSchema: chatInputSchema,
     block: chatPipeline,
     userMessage: (input) => input.message,
     onCompleted: notifySuccess,      // This action succeeded
@@ -310,7 +311,6 @@ Per-action token controls:
 ```typescript
 actions: {
   research: {
-    inputSchema: researchInputSchema,
     block: researchPipeline,
     tokenBudget: {
       maxTotalTokens: 100000,

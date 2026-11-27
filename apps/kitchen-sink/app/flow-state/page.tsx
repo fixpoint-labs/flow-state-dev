@@ -10,18 +10,20 @@ import {
   clearDraft,
   useDraft,
   useFlow,
+  useHarnessLines,
   useSession,
-  useClientData,
   useResourceCollectionList,
+  useView,
   useVoice,
   type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
+  type HarnessWaitingLine,
 } from "@flow-state-dev/react";
-import { createClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, viewRef, type ClientFetch } from "@flow-state-dev/client";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Button } from "@/components/ui/button";
-import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
+import { Menu, MessageSquareText, Package, Plus, RotateCcw, SquareIcon, Users, Wrench, X } from "lucide-react";
 
 import {
   Conversation,
@@ -31,10 +33,14 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputAttachButton,
+  PromptInputAttachments,
+  PromptInputButton,
   PromptInputTextarea,
   PromptInputSubmit,
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
+import { useAttachments, type Attachments } from "@/components/flow-state/attachments";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
@@ -62,27 +68,33 @@ import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
-import { ChatAgentFailedTurn, FailedTurnRetryProvider, useFailedTurnRetry } from "@/components/chat-agent/failed-turn";
+import { useTurnLines } from "@/components/chat-agent/turn-lines";
 import { useSendingSession, useSendSignal, useSignalledFeed, type SendSignal } from "@/components/chat-feed";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { FailedLine, LineContext, StoppedLine } from "@/components/flow-state/conversation-lines";
+import { workforceLineRenderers } from "@/components/flow-state/workforce-lines";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 import { SESSION_DRAFT } from "@/lib/session-draft";
-import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
+import { useSessionControls } from "@/lib/use-session-controls";
+import type { modeStatusView, preferencesView } from "@/flows/chat-agent/views";
 
-import type { RendererRegistry } from "@flow-state-dev/react";
+import type { LineTurn, RendererRegistry } from "@flow-state-dev/react";
 import { BASE_PATH } from "@/lib/base-path";
 
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: ChatAgentMessage,
   block_trace: AgentResponseCard,
-  // A failed turn's reason with Retry; which request gets Retry is the chat
-  // panel's call, handed down through `FailedTurnRetryProvider`.
-  error: ChatAgentFailedTurn,
+  // A failed turn and a stopped one are the registry's lines, as in the other apps.
+  error: FailedLine,
+  stopped: StoppedLine,
+  // A worker's sends, the tasks it filed and their endings are workforce's lines; the calls that
+  // wrote them draw as those lines, not as steps.
+  data: { ...workforceLineRenderers, ...chatAssistantRenderers.data },
 };
 
 
@@ -131,10 +143,9 @@ const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
 
-const CLIENT_DATA_OPTIONS = {
-  session: ["modeStatus", "workingMemory"] as string[],
-  user: ["preferences"] as string[],
-};
+/** The flow's two views the page watches, named by type only: the browser holds no block. */
+const MODE_STATUS = viewRef<typeof modeStatusView>("chat-agent", "modeStatus");
+const PREFERENCES = viewRef<typeof preferencesView>("chat-agent", "preferences");
 
 export default function Page() {
   // useSearchParams() must be wrapped in Suspense in Next.js app router —
@@ -180,6 +191,9 @@ function writeSessionAddress(sessionId: string, how: AddressWrite): void {
 function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
   const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
+  // Where the composer uploads a file as it is attached: the assistant's own flow, so its route's checks apply.
+  // Through this page's one client: no public hook hands out the provider's.
+  const assistantUploads = useMemo(() => fsd.flow("chat-agent"), [fsd]);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row.
@@ -259,6 +273,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
+  // The draft's files, held here like its text: the panel is drawn in both responsive trees, and
+  // each composer's own would send, and clear, only the files attached in that drawing. A switch of
+  // session drops them; keyed on the session asked for, not its snapshot's, which arrives late and
+  // would drop a file attached first.
+  const draftFiles = useAttachments({ client: assistantUploads, sessionId: flow.activeSessionId ?? null });
   const messageRef = useRef(message);
   messageRef.current = message;
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -313,7 +332,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // A worker's composer and Retry each land a line of the user's in the picked conversation: they tell
   // `pickedSignal`, which each drawing's feed hears.
   const pickedSignal = useSendSignal();
-  const pickedRetry = useFailedTurnRetry(useSendingSession(pickedSession, pickedSignal));
+  const pickedTurns = useTurnLines(useSendingSession(pickedSession, pickedSignal), "Assistant");
   // A composer settles a send on that request's own status, read from the
   // picked flow, rather than on the session's stream closing.
   const pickedAddress = picked?.address;
@@ -331,29 +350,31 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // stay fenced on it.
   const railSessionSource = useMemo(() => railSessions(fsd, workforce), [fsd, workforce]);
 
-  const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
-  const modeStatus = clientData.session?.modeStatus as (RecordedSessionControls & { activeSkills?: Array<{ name: string; source: string }> }) | undefined;
   // Mode, thinking style and features are the session's: seeded from what it
-  // last ran with. Until its own snapshot arrives, the previous session's
-  // record is still on screen, so nothing is passed.
+  // last ran with. The view answers nothing until the open session's own
+  // answer lands, so another session's record is never passed.
+  const { value: modeStatus } = useView(MODE_STATUS, {}, {
+    enabled: flow.activeSessionId !== undefined,
+    ...(flow.activeSessionId !== undefined ? { sessionId: flow.activeSessionId } : {}),
+  });
   const { mode, setMode, thinkingStyle, setThinkingStyle, features, setFeatures } = useSessionControls(
     flow.activeSessionId,
-    session.snapshot?.sessionId === flow.activeSessionId ? modeStatus : undefined,
+    modeStatus,
   );
-  const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
+  const { value: userPrefs } = useView(PREFERENCES);
 
   // Derive artifact summaries from the paginated artifact list. Content is
   // loaded lazily via item.fetchContent() when an artifact is opened.
   const artifacts = useMemo(() => {
     return artifactItems.map((item) => {
-      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      const data = item.clientData as { title: string; summary: string; updatedAt: string; extension: string | null; content: string } | undefined;
       return {
         id: item.topic.replace("artifacts/", ""),
         title: data?.title ?? "Untitled",
         summary: data?.summary ?? "",
-        updatedAt: data?.updatedAt ?? 0,
+        updatedAt: data?.updatedAt ?? "",
         extension: data?.extension ?? null,
         content: data?.content ?? "",
         _handle: item,
@@ -407,26 +428,29 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     };
   }, [selectedArtifactMeta, artifactContent]);
 
+  // A line sent while a turn runs waits for it: `run` is `defer`, and the hook keeps one waiting
+  // turn on the server at a time, so lines run in the order typed while the view stays on the
+  // running answer. Mode, thinking style and features are read when the line is sent.
+  const lines = useHarnessLines(session, {
+    turnAction: "run",
+    input: (line) => ({ message: line, mode, thinkingStyle, features }),
+    sendOne: (line, _running, sender) => sender.turn(line).then(() => "turn"),
+  });
+
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       const sessionId = flow.activeSessionId;
-      if (!sessionId || text.length === 0) return;
-      try {
-        await session.sendAction("run", {
-          message: text,
-          mode,
-          thinkingStyle,
-          features,
-        }, { userMessage: text });
-        // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
-        clearDraft(SESSION_DRAFT, sessionId, text);
-        if (messageRef.current.trim() === text) setMessage("");
-      } catch {
-        // Keep the persisted draft so a failed send can be retried.
-      }
+      // Not sent, so this rejects: the composer clears its files only on a send that resolves.
+      // A run takes a message, so files with no line wait for one.
+      if (!sessionId || text.length === 0) throw new Error("nothing to send");
+      // A failed send throws here, so the persisted draft and the files stay for a retry.
+      await lines.send(text, { attachments: msg.attachments });
+      // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
+      clearDraft(SESSION_DRAFT, sessionId, text);
+      if (messageRef.current.trim() === text) setMessage("");
     },
-    [flow.activeSessionId, mode, thinkingStyle, features, session, setMessage]
+    [flow.activeSessionId, lines, setMessage]
   );
 
   const handleNewSession = useCallback(
@@ -527,7 +551,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [flow.activeSessionId, session]
   );
 
+  // Model, thinking and voice save or send through `sendAction`, which would leave the running
+  // answer's stream: they wait for the turn to end. The text box, mode, thinking style and
+  // features stay live, since a line sent now waits for the turn.
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
+  const composerDisabled = !flow.activeSessionId || flow.isLoading;
   const conversationLoading = flow.isLoading || session.isLoading;
 
   const chatPanel = (
@@ -539,8 +567,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       thinkingEnabled={thinkingEnabled}
       features={features}
       isDisabled={isDisabled}
+      composerDisabled={composerDisabled}
+      waiting={lines.waiting}
       conversationLoading={conversationLoading}
       session={session}
+      draftFiles={draftFiles}
       sendSignal={chatSignal}
       voice={voice}
       ttsEnabled={ttsEnabled}
@@ -567,7 +598,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         onSent={pickedSignal.notify}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
-          <FailedTurnRetryProvider value={pickedRetry.retryFor}>
+          <LineContext.Provider value={pickedTurns.lineContext}>
           {/* Stays mounted across picks: the feed's key opens each picked session at its end. */}
           <SignalledConversation className="min-h-0 flex-1" data-testid="conversation" resetKey={picked.sessionId} signal={pickedSignal}>
             <ConversationBody
@@ -576,13 +607,14 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
               isFinishing={pickedSession.isFinishing}
               statusMessage={pickedSession.statusMessage}
               isLoading={pickedSession.isLoading}
-              error={pickedRetry.shownError}
+              turns={pickedTurns.turns}
+              error={pickedTurns.shownError}
               emptyTitle="Nothing here yet"
               emptyDescription={`This ${picked.kind} session has no turns yet.`}
             />
             <ConversationScrollButton />
           </SignalledConversation>
-          </FailedTurnRetryProvider>
+          </LineContext.Provider>
           )
         }
       />
@@ -826,9 +858,16 @@ interface ChatPanelProps {
   selectedModel: ModelId;
   thinkingEnabled: boolean;
   features: Features;
+  /** Locks the controls that save or send through `sendAction`: model, thinking, voice. */
   isDisabled: boolean;
+  /** Locks the text box, mode, thinking style and features: only with no session to send to. */
+  composerDisabled: boolean;
+  /** The lines waiting for the running turn, oldest first. */
+  waiting: readonly HarnessWaitingLine[];
   conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
+  /** The draft's files, one state for both drawings of the panel. */
+  draftFiles: Attachments;
   /** The assistant conversation's "the user sent", heard by every drawing's feed. */
   sendSignal: SendSignal;
   /** The page's one voice: recording sends through it, and it plays each reply once. */
@@ -860,6 +899,7 @@ const ConversationBody = memo(function ConversationBody({
   isFinishing,
   statusMessage,
   isLoading,
+  turns,
   error,
   emptyTitle = "Kitchen Sink",
   emptyDescription = "A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use.",
@@ -869,6 +909,8 @@ const ConversationBody = memo(function ConversationBody({
   isFinishing: boolean;
   statusMessage: string;
   isLoading: boolean;
+  /** The session's turns, which decide the failed turn's Retry (`useTurnLines`). */
+  turns: readonly LineTurn[];
   error: { message: string } | null;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -889,6 +931,7 @@ const ConversationBody = memo(function ConversationBody({
                 isStreaming={isStreaming}
                 isFinishing={isFinishing}
                 statusMessage={statusMessage}
+                turns={turns}
               />
             </>
           )}
@@ -952,6 +995,21 @@ function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
   );
 }
 
+/** The lines waiting for the running turn, under the conversation: a waiting line has no item until its turn starts. */
+function WaitingLines({ lines }: { lines: readonly HarnessWaitingLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <ol className="mx-auto max-w-3xl space-y-1 px-3 pt-2 text-sm sm:px-4" aria-label="Waiting lines" data-testid="waiting-lines">
+      {lines.map((line) => (
+        <li key={line.key} className="flex items-baseline justify-end gap-2" data-testid="waiting-line">
+          <span className="min-w-0 truncate">{line.text ?? "A line sent earlier"}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">runs when this turn ends</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ChatPanel({
   message,
   mode,
@@ -960,8 +1018,11 @@ function ChatPanel({
   thinkingEnabled,
   features,
   isDisabled,
+  composerDisabled,
+  waiting,
   conversationLoading,
   session,
+  draftFiles,
   sendSignal,
   voice,
   ttsEnabled,
@@ -978,7 +1039,7 @@ function ChatPanel({
   // feed and the other tree's hear: Retry through the session below, the composer through `send`, voice
   // through the page's `useVoice`.
   const feed = useSignalledFeed(session.snapshot?.sessionId ?? null, sendSignal);
-  const { retryFor, shownError } = useFailedTurnRetry(useSendingSession(session, sendSignal));
+  const { turns, lineContext, shownError } = useTurnLines(useSendingSession(session, sendSignal), "Assistant");
   const { notify } = sendSignal;
   const send = useCallback(
     (msg: PromptInputMessage) => {
@@ -992,7 +1053,7 @@ function ChatPanel({
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
     // continuation into the chat live, without a page refresh.
     <SuspensionResolverProvider resolve={session.answerSuspension}>
-    <FailedTurnRetryProvider value={retryFor}>
+    <LineContext.Provider value={lineContext}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
         <ConversationBody
@@ -1001,6 +1062,7 @@ function ChatPanel({
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={conversationLoading}
+          turns={turns}
           // A failed turn shows as its own line in the stream; this box is for
           // errors no item carries, such as a refused send.
           error={shownError}
@@ -1009,8 +1071,9 @@ function ChatPanel({
       </Conversation>
 
       <div className="border-t">
+        <WaitingLines lines={waiting} />
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={isDisabled} />
+          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={composerDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
@@ -1022,14 +1085,16 @@ function ChatPanel({
         <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
-            <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
-            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
+            <ModeSelector mode={mode} onModeChange={onSetMode} disabled={composerDisabled} />
+            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={composerDisabled} />
             <ModelSelector value={selectedModel} onValueChange={onSelectedModelChange} disabled={isDisabled} />
             <ThinkingToggle value={thinkingEnabled} onValueChange={onThinkingEnabledChange} disabled={isDisabled} />
-            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={composerDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
-          <PromptInput onSubmit={send}>
+          <PromptInput onSubmit={send} attachments={draftFiles}>
+            <PromptInputAttachments />
+            <PromptInputAttachButton className="ml-2 sm:ml-4" disabled={composerDisabled} />
             <PromptInputTextarea
               name="message"
               placeholder={
@@ -1040,19 +1105,28 @@ function ChatPanel({
               }
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
-              disabled={isDisabled}
+              disabled={composerDisabled}
             />
+            {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
+            {session.isStreaming && (
+              <PromptInputButton
+                aria-label="Stop"
+                data-testid="turn-stop"
+                onClick={() => void (session.isStuck ? session.dismissRequest() : session.abortRequest())}
+              >
+                <SquareIcon className="size-4" />
+              </PromptInputButton>
+            )}
             <PromptInputSubmit
               className="mr-2 sm:mr-4"
-              status={session.isStreaming ? "streaming" : "ready"}
-              disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
-              onStop={session.isStuck ? () => session.dismissRequest() : session.abortRequest}
+              status="ready"
+              disabled={composerDisabled || message.trim().length === 0}
             />
           </PromptInput>
         </div>
       </div>
     </section>
-    </FailedTurnRetryProvider>
+    </LineContext.Provider>
     </SuspensionResolverProvider>
   );
 }

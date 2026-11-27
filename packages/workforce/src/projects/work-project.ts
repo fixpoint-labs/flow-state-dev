@@ -32,9 +32,9 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
-import { projectAddressSchema, projectResourceStateSchema } from "./collections";
+import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE, projectAddressSchema, projectResourceStateSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "./project-address";
+import { PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
 /**
@@ -67,6 +67,16 @@ const LINKED: ReadonlyArray<readonly [string, string]> = [
   [WORKSTREAM_STATE_KEY, "a workstream lead's session, which works in its workstream's project"]
 ];
 
+/**
+ * What the session whose state is `state` is, when it isn't a user's own
+ * conversation (a project coordinator's, a task's, a delegate's or a
+ * workstream lead's session): such a session takes what it works in from
+ * where it was created, filed or opened. `undefined` for a user's own.
+ */
+export function linkedSessionOf(state: Record<string, unknown>): string | undefined {
+  return LINKED.find(([key]) => state[key] !== undefined)?.[1];
+}
+
 function refuse(message: string): never {
   throw new Error(`Refused: ${message}`);
 }
@@ -84,24 +94,24 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
     name: "set-work-project",
     inputSchema: setWorkProjectInputSchema,
     outputSchema: setWorkProjectOutputSchema,
-    resources: { ...PROJECT_ROW_RESOURCES },
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
-      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      const state = ctx.session.state;
       const running = state[WORKER_ID_STATE_KEY];
       if (typeof running !== "string") refuse("this session runs no worker, so it has no project to set.");
       if (input.worker !== undefined && input.worker !== running) {
         refuse(`this session runs "${running}", not "${input.worker}". Name the session's own worker.`);
       }
-      for (const [key, what] of LINKED) {
-        if (state[key] !== undefined) refuse(`this is ${what}. Its project can't be set.`);
-      }
+      const linked = linkedSessionOf(state);
+      if (linked !== undefined) refuse(`this is ${linked}. Its project can't be set.`);
       const other = otherSession(ctx.session.identity.id);
       if (other !== undefined) refuse(`this is ${other}. Its project can't be set.`);
       const user = ctx.user?.identity?.userId;
       const owner = ctx.session.identity.userId;
       if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
       const { visibility, id } = input.project;
-      const stored = await projectResourcesAt(ctx, visibility).getOptional(id);
+      const projects = ctx.resources[visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE];
+      const stored = await projects.getOptional(id);
       if (stored === undefined) {
         refuse(
           visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`

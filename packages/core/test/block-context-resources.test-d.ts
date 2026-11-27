@@ -15,9 +15,9 @@
  */
 import { expectTypeOf } from "vitest";
 import { z } from "zod";
-import { defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core";
-import type { AnyResourceRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import type { AnyResourceRef, ProjectedResourceCollectionRef, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 const notes = defineResource({ scope: "session", stateSchema: z.object({ count: z.number() }) });
 const skills = defineResourceCollection({
@@ -65,8 +65,8 @@ handler({
 
     // The declared ref keeps its own type, by property and through `get`;
     // it is not widened to the `AnyResourceRef` union.
-    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<any>>();
-    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<any>>();
+    expectTypeOf(ctx.resources.notes).toEqualTypeOf<ResourceRef<{ count: number }>>();
+    expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<{ count: number }>>();
     // @ts-expect-error `get` accepts only a declared name.
     ctx.resources.get("missing");
     // @ts-expect-error an undeclared name is a missing property.
@@ -118,10 +118,57 @@ handler({
   execute: (input, ctx) => {
     readsAnyCtx(ctx);
     readsOpenRegistry(ctx.resources);
-    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<any>>();
+    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<{ name: string }, "session">>();
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<
-      Array<ResourceRef<any> | ResourceCollectionRef<any>>
+      Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }, "session">>
     >();
+    return input;
+  },
+});
+
+const portfolio = defineProjectedResourceCollection({
+  pattern: "positions/*",
+  scope: "user",
+  stateSchema: z.object({ shares: z.number() }),
+  read: async () => null,
+  search: async () => ({ hits: [] }),
+});
+declare const showPortfolio: boolean;
+
+handler({
+  name: "declares-optional-portfolio",
+  resources: { ...(showPortfolio ? { portfolio } : {}) },
+  execute: (_input, ctx) => {
+    readsAnyCtx(ctx);
+    type PortfolioRef = ProjectedResourceCollectionRef<{ shares: number }>;
+    expectTypeOf(ctx.resources.portfolio).toEqualTypeOf<PortfolioRef | undefined>();
+    expectTypeOf(ctx.resources.get("portfolio")).toEqualTypeOf<PortfolioRef>();
+    expectTypeOf(ctx.resources.list()).toEqualTypeOf<PortfolioRef[]>();
+  },
+});
+
+/**
+ * `ctx.resources.at({ session })` reaches only the session-scoped, stored
+ * collections: anything else throws at runtime, so it must not compile.
+ */
+const prefs = defineResourceCollection({ pattern: "prefs/*", scope: "user", stateSchema: z.object({ theme: z.string() }) });
+handler({
+  name: "reaches-another-session",
+  inputSchema: z.string(),
+  outputSchema: z.string(),
+  resources: { notes, skills, prefs, portfolio },
+  execute: (input, ctx) => {
+    readsAnyCtx(ctx);
+    const theirs = ctx.resources.at({ session: "s2" });
+    expectTypeOf(theirs.skills.list).returns.resolves.items.toHaveProperty("state");
+    // @ts-expect-error a single resource can't be reached in another session.
+    void theirs.notes.state;
+    // @ts-expect-error a user-scoped collection is no one session's copy.
+    void theirs.prefs.list;
+    // @ts-expect-error a projected collection can't be reached in another session.
+    void theirs.portfolio.get;
+    // @ts-expect-error `get` names only what `at` reaches.
+    theirs.get("notes");
     return input;
   },
 });

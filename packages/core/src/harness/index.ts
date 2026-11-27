@@ -20,6 +20,7 @@ export {
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
+  harnessSchema,
   harnessUsageWindowSchema,
   reportHarnessSpend,
 } from "../types/harness";
@@ -28,10 +29,13 @@ export type {
   HarnessActivity,
   HarnessActivityHook,
   HarnessBilling,
+  HarnessEventHook,
+  Harness,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessCostBasis,
   HarnessFailureKind,
+  HarnessFeeds,
   HarnessModelInfo,
   HarnessModelList,
   HarnessReadiness,
@@ -49,6 +53,9 @@ export type {
   HarnessSource,
   HarnessSteer,
   HarnessSteerHook,
+  HarnessToolApprovalDecision,
+  HarnessToolApprovalHook,
+  HarnessToolApprovalRequest,
   HarnessUsageHook,
   HarnessUsageLevel,
   HarnessUsageReader,
@@ -56,6 +63,18 @@ export type {
   HarnessUsageReport,
   HarnessUsageWindow,
 } from "../types/harness";
+
+// FIX-2519, FIX-2520.
+/** A turn's files, as a harness reads and refuses them. */
+export {
+  HarnessAttachmentRefusedError,
+  HarnessAttachmentUnavailableError,
+  readHarnessAttachments,
+  promptWithTurnText,
+  readHarnessTurnFiles,
+  refuseUnacceptedAttachments,
+} from "../types/harness-attachments";
+export type { HarnessAttachmentBytes, HarnessTurnFiles } from "../types/harness-attachments";
 
 /**
  * The run's plan record: the shape every harness writes its to-do list into,
@@ -105,13 +124,24 @@ export type {
   ObservedPullRequestState,
   PullRequestCollection,
   PullRequestLink,
+  FollowingRun,
+  PullRequestFollower,
+  PullRequestRecordedCallback,
+  RecordedPullRequest,
   PullRequestRef,
   PullRequestRule,
   PullRequestSource,
   PullRequestToolCall,
   WritePullRequestsOptions,
 } from "../types/pull-requests";
-export { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "../helpers/pull-request-recorder";
+export {
+  followRecordedPullRequests,
+  pullRequestRecordedOf,
+  pullRequestRecorder,
+  pullRequestWritesSettled,
+  recordPullRequests,
+  whenPullRequestRecorded,
+} from "../helpers/pull-request-recorder";
 export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "../helpers/pull-request-recorder";
 
 /** The allowlisted environment for a harness's child process, and the base every harness's list starts from. */
@@ -121,6 +151,6 @@ export type { HarnessEnvOptions } from "../helpers/harness-env";
 export { harnessSteering } from "../helpers/harness-steering";
 export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "../helpers/harness-steering";
 /** A harness's activity events, read off its stream and reported to the host's hook. */
-export { harnessActivityOf, reportHarnessActivity } from "../helpers/harness-activity";
+export { harnessActivityOf, reportHarnessActivity, reportHarnessEvent } from "../helpers/harness-activity";
 /** A run's duration, formatted the way every harness reports it. */
 export { formatRunDuration } from "../helpers/run-duration";

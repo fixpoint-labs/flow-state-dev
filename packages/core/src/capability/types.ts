@@ -226,6 +226,19 @@ export interface CapabilityConfigDef<TConfigOut = any, TSessionState = any> {
 /** Infer state type from a ZodTypeAny, falling back to `any`. */
 export type InferSessionState<T> = T extends ZodTypeAny ? import("zod").infer<T> : any;
 
+/** The consuming block's context, with handles inferred from the capability's own declarations. */
+type CapabilityFnsContext<TResources> = string extends keyof TResources
+  ? BlockContext
+  : TResources extends Record<string, DeclaredResourceEntry>
+    ? BlockContext<
+        Record<string, unknown>,
+        Record<string, unknown>,
+        Record<string, unknown>,
+        Record<string, unknown>,
+        InferResourcesFromDefinitions<TResources>
+      >
+    : BlockContext;
+
 export interface CapabilityConfig<
   TName extends string = string,
   TFns extends Record<string, (...args: any[]) => any> = Record<string, (...args: any[]) => any>,
@@ -294,7 +307,7 @@ export interface CapabilityConfig<
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
 
   // Helper function factory — produces ctx.cap.{name}
-  fns?: (ctx: BlockContext) => TFns;
+  fns?: (ctx: CapabilityFnsContext<TResources>) => TFns;
 
   // Optional surface — named bundles of block config fields.
   // `default` is a reserved key listing which presets are on by default.

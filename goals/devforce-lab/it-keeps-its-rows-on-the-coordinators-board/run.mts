@@ -41,11 +41,12 @@ import { runGoal, silentLogger } from "../../lib/index.mts";
 import { labApi, labRoutes } from "../../lib/shift-manager.mts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { readProject } from "../../../packages/shift-manager/src/lib/projects.ts";
-import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { DRAIN_ENTRY, EM_FLOW, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["em-session"] as const;
@@ -66,7 +67,6 @@ const GOAL = "Add a greeting module to the repository.";
 const LIST_TASKS = "listTasks_tasks";
 const SETTLE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown): string => JSON.stringify(value)?.slice(0, 400) ?? "undefined";
 
 /** What the harness "did": write a file and commit it, so the run completes. */
@@ -90,8 +90,8 @@ await runGoal(async (failures) => {
   const stub = harnessStub({ duringRun: commitWork });
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    harnesses: [readyHarness(stub.slot)],
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: CODER,
     logger: silentLogger,
     // Model-free: the stub answers nothing a judge could pass.
@@ -162,8 +162,7 @@ await runGoal(async (failures) => {
     const before = failures.length;
     for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
       const client = connect({ userId: user.userId, baseUrl: origin, bearerToken: user.bearer });
-      await createLabReader(client).read();
-      const read = await readProject(client, readerSessionId(user.userId, PROJECT_READER_FLOW), STOREFRONT);
+      const read = await readProject(client, STOREFRONT);
       const entry = read?.entries.find((e) => e.owner === LAB_USERS.owner.userId && e.id === "feature");
       if (entry === undefined) {
         note("b:reads-the-entry", `${label} reads Storefront's entries as ${show(read?.entries.map((e) => [e.owner, e.id]))}, without Alice's feature`);
@@ -196,8 +195,11 @@ await runGoal(async (failures) => {
       const mine = Object.keys(stored).filter((key) => key.endsWith(`/${row.id}`));
       if (mine.length !== 1 || !mine[0]!.startsWith(partition)) {
         note("d:stored-once", `Alice's storage holds the row under ${show(mine)}, wanted one key under ${partition}`);
-      } else if (show((stored[mine[0]!] as Task).input) !== show({ harnessFeature: { issue: ISSUE, phase: "implement" } })) {
-        note("d:names-its-work", `the stored row's payload is ${show((stored[mine[0]!] as Task).input)}, wanted its issue and phase`);
+      } else {
+        const input = (stored[mine[0]!] as Task).input as { mode?: unknown; issue?: unknown } | undefined;
+        if (input?.mode !== "implement" || input.issue !== ISSUE) {
+          note("d:names-its-work", `the stored row's payload is ${show(input)}, wanted its mode and issue`);
+        }
       }
       const inOrg = Object.keys(await lab.stored("org")).filter((key) => key.endsWith(`/${row.id}`));
       if (inOrg.length > 0) note("d:no-org-copy", `the organization's storage holds the row under ${show(inOrg)}`);

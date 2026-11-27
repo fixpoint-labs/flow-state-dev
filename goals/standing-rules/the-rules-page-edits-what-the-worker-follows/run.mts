@@ -4,8 +4,8 @@ import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY, createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { shiftCoordinatorOf } from "../../../packages/shift-manager/src/lib/derive.ts";
-import type { Worker } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { shiftCoordinatorOf } from "../../../packages/shift-manager/src/lib/shift.ts";
+import type { Worker } from "../../../packages/shift-manager/src/lib/workers.ts";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import {
@@ -18,6 +18,7 @@ import {
   type Patch,
   type StoredItem,
 } from "../../lib/shift-manager.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROL !== "page-does-not-save") throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; this goal knows page-does-not-save`);
@@ -45,7 +46,6 @@ const CONTROL_PATCHES: Patch[] = [
   },
 ];
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 const edges = (reply: string) => reply.trim().replace(/^[*_`"“]+/, "").trim();
 

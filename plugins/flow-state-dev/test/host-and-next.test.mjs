@@ -20,7 +20,7 @@ import {
   resolveNextSettings,
 } from "../skills/install-fsd/detect/next-project.mjs";
 import { cleanupTrees, makeTree, manifest, nextManifest } from "./helpers.mjs";
-import { renderNextSteps } from "../../../packages/cli/src/next-steps.ts";
+import { renderNextSteps } from "../../../packages/fsdev/src/next-steps.ts";
 
 afterAll(cleanupTrees);
 

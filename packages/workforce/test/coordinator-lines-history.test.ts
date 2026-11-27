@@ -69,11 +69,11 @@ describe("the coordinator turn's history", () => {
     const post = (payload: string, requestId: string) => ({ ...message("user", payload), requestId }) as SessionItem;
     const record = (messageRequestId: string, by: string, workers: string[]) =>
       ({
-        type: "component",
+        type: "data",
         requestId: messageRequestId,
         payload: {
-          component: "coordinator-route",
-          data: { messageRequestId, round: 0, by, delegates: workers.map((worker) => ({ worker, outcome: "delivered" })) }
+          dataType: "coordinator-route",
+          value: { messageRequestId, round: 0, by, delegates: workers.map((worker) => ({ worker, outcome: "delivered" })) }
         }
       }) as unknown as SessionItem;
     const items = [post("file it", "r1"), record("r1", "evaluated", ["eng.em"]), post("everyone?", "r2"), record("r2", "everyone", ["a", "b"]), post("hire", "r3"), record("r3", "judgment", [])];

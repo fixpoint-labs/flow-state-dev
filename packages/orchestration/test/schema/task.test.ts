@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  taskHoldSchema,
   taskSchema,
   taskStatusSchema,
   isTerminalStatus,
@@ -62,6 +63,18 @@ describe("task schema", () => {
         "cancelled",
       ])
     );
+  });
+
+  it("reads a stored task only in the current shape", () => {
+    // A row stored `blocked`, or a hold stored `source.kind: "row"`, is not a current task.
+    expect(taskSchema.safeParse({ ...baseTask(), status: "blocked" }).success).toBe(false);
+    expect(taskHoldSchema.safeParse({
+      id: "q1",
+      actor: "user",
+      openedAt: 1,
+      source: { kind: "row", closedBy: [{ by: "answer" }] },
+      ask: { kind: "question", prompt: "Which region?" },
+    }).success).toBe(false);
   });
 
 });

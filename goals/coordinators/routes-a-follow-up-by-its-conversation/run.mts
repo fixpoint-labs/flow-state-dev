@@ -20,25 +20,21 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createModelResolver } from "@flow-state-dev/core";
-import type { EvaluationModel, FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
+import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
-import {
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineCoordinatorFlow,
-  hireWorkforce
-} from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   DEFAULT_MODEL,
   gatewayModel,
   goalAttempts,
   keysServing,
   loadFixture,
+  readTree,
   runGoal,
   silentLogger,
   stripIntentOverrides
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the answers' model under the resolver.
 stripIntentOverrides();
@@ -61,8 +57,6 @@ const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 type Thread = { on: string; opener: string; followUp: string };
 
 type Message = { role: string; text: string };
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The app's model resolver, on the Vercel AI Gateway. */
 async function gatewayResolver(apiKey: string): Promise<ModelResolver> {
@@ -101,27 +95,22 @@ async function routeModelFor(resolver: ModelResolver): Promise<string | Evaluati
   } as unknown as EvaluationModel;
 }
 
-/** The app: the fixture's workers, one copy of each worker flow, served on fresh in-memory stores. */
+/**
+ * The app: the workforce kit over the fixture's tree, which serves one copy of
+ * each worker flow, on fresh in-memory stores. The kit's start refuses a file
+ * it can't load.
+ */
 async function startApp(resolver: ModelResolver) {
-  const read = await readWorkforce(TREE);
-  if (read.errors.length > 0) throw new Error(`the tree did not load: ${JSON.stringify(read.errors).slice(0, 600)}`);
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: read.workers, workerFlows: () => flows as never });
-  const agent = defineAgentWorkerFlow({ installation });
-  flows = {
-    agent,
-    coordinator: defineCoordinatorFlow({ installation, routeModel: await routeModelFor(resolver) })
-  };
-  const copies = hireWorkforce(installation) as FlowInstance[];
+  const { workers } = await readTree(TREE);
   const state: FlowState = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    kits: [workforce({ directory: TREE, coordinator: { routeModel: await routeModelFor(resolver) } })],
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }),
     modelResolver: resolver
   } as never);
   // The runtime's own narration, off, so the attempts and the verdict are what the run prints.
   (await state.getRuntime()).runtimeConfig.logger = silentLogger;
-  return { state, router: await state.getRouter(), workers: read.workers };
+  return { state, router: await state.getRouter(), workers };
 }
 
 type App = Awaited<ReturnType<typeof startApp>>;
@@ -161,7 +150,7 @@ function reader(app: App) {
         .map((item) => ({ author: item.agentName as string, text: textOf(item) })),
     /** The conversation's routing records, oldest first. */
     recordsIn: async (conversation: string) =>
-      (await itemsOf(conversation)).filter((item) => item.type === "component" && item.component === "coordinator-route").map((item) => item.data),
+      (await itemsOf(conversation)).filter((item) => item.type === "data" && item.dataType === "coordinator-route").map((item) => item.value),
     /** The messages of each of a delegate's conversations under this one. */
     conversationsOf: async (delegate: string, conversation: string): Promise<Message[][]> => {
       const listed = await call(

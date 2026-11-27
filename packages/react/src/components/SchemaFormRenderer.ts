@@ -12,7 +12,8 @@
  * route to an author-supplied `render.component` renderer instead.
  */
 import { createElement, type ReactNode } from "react";
-import { useSuspensionForm, type SchemaField } from "../hooks/useSuspensionForm";
+import type { SchemaField } from "@flow-state-dev/contracts/types/suspension";
+import { useSuspensionForm } from "../hooks/useSuspensionForm";
 import {
   renderActions,
   renderErrorLine,

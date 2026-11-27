@@ -131,18 +131,18 @@ async function journey(origin: string, alice: Person, world: World, walked: Walk
       r.failures.push(`j1:own-item — setup: scene ac left no call to look for`);
     } else {
       await conversation(researcher.id);
-      const shown = page.locator(`[data-testid=received-message][data-message-id="${walked.crashedCall}"]`);
+      const shown = page.locator(`[data-line=received][data-message-id="${walked.crashedCall}"]`);
       const count = await shown.count();
       const from = count === 1 ? await shown.getAttribute("data-from") : null;
-      const marked = count === 1 ? await shown.locator("[data-testid=received-message-reply-requested]").count() : 0;
+      const marked = count === 1 ? (await shown.getAttribute("data-reply-requested")) === "true" ? 1 : 0 : 0;
       r.notes.push(`j1: Researcher's conversation draws call ${walked.crashedCall} ${count} time(s), from ${from}, with ${marked} call mark(s)`);
       if (count !== 1 || from !== HELPER_A) r.failures.push(`j1:own-item — Researcher's conversation draws call ${walked.crashedCall} ${count} time(s), from ${from}, not once from ${HELPER_A}`);
       else if (marked !== 1) r.failures.push(`j1:own-item — Researcher's conversation draws call ${walked.crashedCall} from ${HELPER_A} with no mark saying it asks for a reply`);
       // Helper A's side: the call's tool line answered with the reply, never its answer again as a received item (FIX-2318).
       // Leg e's answer comes after its deadline, so it does land there as a message: only the crashed call's answer is graded.
       await conversation(helperA.id);
-      const answered = await page.locator(`[data-testid=message-call][data-to="${RESEARCHER}"] [data-testid=message-call-answer][data-status=answered]`).count();
-      const received = walked.crashedAnswer === undefined ? 0 : await page.locator(`[data-testid=received-message][data-message-id="${walked.crashedAnswer}"]`).count();
+      const answered = await page.locator(`[data-line=sent][data-to="${RESEARCHER}"] [data-part=answer]`).filter({ hasNotText: /^No answer/ }).count();
+      const received = walked.crashedAnswer === undefined ? 0 : await page.locator(`[data-line=received][data-message-id="${walked.crashedAnswer}"]`).count();
       r.notes.push(`j1: Helper A's conversation draws ${answered} answered call line(s) to Researcher and ${received} received item(s) from it`);
       if (answered === 0 || received > 0) r.failures.push(`j1:own-item — Helper A's conversation draws ${answered} answered call line(s) to Researcher and ${received} received item(s) from it`);
     }

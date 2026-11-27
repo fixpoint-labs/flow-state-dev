@@ -14,6 +14,8 @@
  * a real git checkout. Only the harness is a stub, scripted per call, and it
  * records what it was fed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +24,7 @@ import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessRunInput } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
@@ -39,11 +41,11 @@ import {
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
-  type HarnessFeeds,
   type PromptRunContext,
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
+import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
 export const ORG_ID = "org_claim_host";
@@ -83,6 +85,9 @@ export interface SeenRun {
   cwd: string;
   prompt: string;
   resume: string | null;
+  // FIX-2522.
+  /** The files the run was handed beside the prompt, when it was handed any. */
+  attachments?: HarnessRunInput["attachments"];
 }
 
 /** Commit `count` new files in the checkout `cwd`. */
@@ -95,16 +100,16 @@ function commitIn(cwd: string, count: number, tag: string): void {
   }
 }
 
-function stubHarness(script: HarnessStep[], seen: SeenRun[]) {
+function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlock["accepts"]) {
   return (feeds: HarnessFeeds): HarnessBlock =>
-    handler({
+    Object.assign(handler({
       name: "claim-host-harness",
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
         const cwd = await feeds.cwd(ctx as never);
         const resume = await feeds.resume(ctx as never);
-        seen.push({ cwd, prompt: input.prompt, resume });
+        seen.push({ cwd, prompt: input.prompt, resume, ...(input.attachments !== undefined ? { attachments: input.attachments } : {}) });
         const step = script[seen.length - 1] ?? {};
         const sessionId = resume ?? `sess_${seen.length}`;
         await feeds.onSession(sessionId, ctx as never);
@@ -129,7 +134,7 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[]) {
           cost: null,
         };
       },
-    }) as unknown as HarnessBlock;
+    }), accepts === undefined ? {} : { accepts }) as unknown as HarnessBlock;
 }
 
 /** The claim a test puts on the manager's input, playing the entry adapter. */
@@ -143,7 +148,13 @@ export interface HostOptions {
   /** `fixed` builds the manager on `FIXED_BOARD`; `claim` builds it with a resolver. */
   mode: "fixed" | "claim";
   script?: HarnessStep[];
-  /** The phase's done-condition. Default: always done. */
+  /** The file types the stub harness says it takes. Default: none, as a harness that declares nothing. */
+  accepts?: HarnessBlock["accepts"];
+  /** The mode's name, which keys its runs. Default `PHASE`. */
+  modeName?: string;
+  /** The segment the mode's runs were stored under before it took `modeName` (`ModeSpec.formerName`). */
+  formerName?: string;
+  /** The mode's done check. Default: always done. */
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
@@ -158,6 +169,16 @@ export interface HostOptions {
    * restart: a new manager and engine over the same rows, records and checkouts.
    */
   restartOf?: { readonly dir: string; readonly stores: unknown };
+  /**
+   * Give the repository's `main` an upstream: a bare repository on disk as
+   * `origin`, set before the host pins its fetch settings, so a teammate can
+   * move the base on while a run works.
+   */
+  upstream?: boolean;
+  /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
+  baseTip?: () => Promise<string | undefined>;
+  /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
+  gateLedger?: (ref: TaskCollectionRef) => TaskCollectionRef;
 }
 
 /** Build one host. */
@@ -168,6 +189,13 @@ export function claimHost(options: HostOptions) {
     dirs.push(dir);
     mkdirSync(sourceRepo, { recursive: true });
     seedRepo(sourceRepo);
+    if (options.upstream === true) {
+      const git = (...args: string[]) => execFileSync("git", args, { cwd: sourceRepo, stdio: "pipe" });
+      execFileSync("git", ["clone", "-q", "--bare", sourceRepo, join(dir, "origin.git")]);
+      git("remote", "set-url", "origin", join(dir, "origin.git"));
+      git("fetch", "-q", "origin");
+      git("branch", "-q", "--set-upstream-to=origin/main", "main");
+    }
   }
 
   const fixedLedger = defineTaskCollection({ id: FIXED_BOARD, scope: "user" as const });
@@ -198,14 +226,16 @@ export function claimHost(options: HostOptions) {
 
   const seen: SeenRun[] = [];
   const answersSeen: Array<string | null | undefined> = [];
+  const host = localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 });
   const manager = harnessManager({
     ...(options.mode === "fixed"
       ? { boardCollectionId: FIXED_BOARD, boardCollection: fixedLedger }
       : { ledgers }),
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: async (run: PromptRunContext) => {
+    mode: {
+      name: options.modeName ?? PHASE,
+      ...(options.formerName === undefined ? {} : { formerName: options.formerName }),
+      instructions: async (run: PromptRunContext) => {
         await options.beforePrompt?.(run.ctx);
         return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
@@ -214,16 +244,18 @@ export function claimHost(options: HostOptions) {
           `ASK: ${run.askMarkerPath}`,
         ].join("\n");
       },
-      isDone: (run: CompletionRunContext) => {
-        const answer = (run as { answer?: string | null }).answer;
-        answersSeen.push(answer);
-        return options.isDone?.({ answer }) ?? true;
+      doneWhen: {
+        check: (run: CompletionRunContext) => {
+          const answer = (run as { answer?: string | null }).answer;
+          answersSeen.push(answer);
+          return options.isDone?.({ answer }) ?? true;
+        },
       },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script ?? [], seen),
+    harness: stubHarness(options.script ?? [], seen, options.accepts),
     ...(options.manager ?? {}),
   } as never);
 
@@ -240,9 +272,11 @@ export function claimHost(options: HostOptions) {
       partition: z.string().optional(),
       id: z.string(),
       goal: z.string(),
+      title: z.string().optional(),
       input: z.unknown().optional(),
       maxAttempts: z.number().optional(),
       deps: z.array(z.string()).optional(),
+      attachments: z.array(z.unknown()).optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
@@ -252,9 +286,11 @@ export function claimHost(options: HostOptions) {
         await ref.createTask({
           id: input.id,
           goal: input.goal,
+          ...(input.title !== undefined ? { title: input.title } : {}),
           assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
           ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.attachments !== undefined ? { attachments: input.attachments as never } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }
@@ -292,10 +328,25 @@ export function claimHost(options: HostOptions) {
     uses: [ledgerResources],
     execute: async (input, ctx) => {
       const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      const task = ref.get(input.id);
+      const hold = task === undefined ? undefined : openOwnHolds(task)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+    },
+  });
+  // A message from outside the app answering the task's external wait, as a delivery from a followed pull request writes it
+  // (workforce's `answerExternalWait`): its words from `"service"`, by the sender's handle.
+  const deliver = handler({
+    name: "claim-host-deliver",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
       const hold = row === undefined ? undefined : openOwnHolds(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
-      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+      return ref.answer!(input.id, { questionId: hold.id, message: input.message, from: "service", by: "github", key: `message:${hold.id}` });
     },
   });
   // A line typed in the task's session, as its door writes it (`steerFromLine`): a steer, or the answer to what the row waits on.
@@ -337,6 +388,17 @@ export function claimHost(options: HostOptions) {
     resources: { runs: runRecordCollection },
     execute: async (input, ctx) => (await readRunRecord(ctx as never, input.topic)) ?? null,
   });
+  // The user's worktrees resource, as the host wrote it.
+  const worktreeRows = handler({
+    name: "claim-host-worktrees",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    resources: { [WORKTREES]: worktreesCollection },
+    execute: async (_input, ctx) => {
+      const refs = await (ctx.resources as unknown as Record<string, WorktreeCollection>)[WORKTREES]!.list();
+      return refs.map((entry) => entry.state);
+    },
+  });
   // Write a run record as it stands, as an earlier version of the manager left it.
   const putRecordBlock = handler({
     name: "claim-host-put-record",
@@ -357,9 +419,11 @@ export function claimHost(options: HostOptions) {
       row: { block: rowAction },
       answer: { block: answer },
       line: { block: line },
+      deliver: { block: deliver },
       steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },
+      worktrees: { block: worktreeRows },
       putRecord: { block: putRecordBlock },
     },
     task: {
@@ -368,12 +432,15 @@ export function claimHost(options: HostOptions) {
           block: manager as BlockDefinition,
           from: taskLedgers({
             name: "claim-host-door",
-            resolve: async (ledgerId, ctx, partition) =>
-              ledgerId === FIXED_BOARD && partition === undefined
-                ? ledgerAt(ctx, ledgerId, undefined)
-                : ledgerId === CONVERSATIONS && partition !== undefined
-                  ? ledgerAt(ctx, ledgerId, partition)
-                  : undefined,
+            resolve: async (ledgerId, ctx, partition) => {
+              const ref =
+                ledgerId === FIXED_BOARD && partition === undefined
+                  ? await ledgerAt(ctx, ledgerId, undefined)
+                  : ledgerId === CONVERSATIONS && partition !== undefined
+                    ? await ledgerAt(ctx, ledgerId, partition)
+                    : undefined;
+              return ref === undefined || options.gateLedger === undefined ? ref : options.gateLedger(ref);
+            },
             uses: [ledgerResources],
           }),
         },
@@ -382,7 +449,7 @@ export function claimHost(options: HostOptions) {
   } as never)({ id: "claim-host" } as never);
   const stores = options.restartOf?.stores ?? inMemoryStores();
   const state = createFlowState({
-    flows: { "claim-host": flow },
+    flows: [flow],
     stores: { test: { primary: stores } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -451,8 +518,11 @@ export function claimHost(options: HostOptions) {
         payload: {
           taskId: id,
           goal: claimed.goal,
+          ...(claimed.title !== undefined ? { title: claimed.title } : {}),
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
+          // As the board packs a run's input (`packWorkerInput`): the brief's files, every attempt.
+          ...(claimed.attachments !== undefined ? { attachments: claimed.attachments } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
           ...(onInput !== null ? { claim: onInput } : {}),
         },
@@ -466,6 +536,9 @@ export function claimHost(options: HostOptions) {
 
   const record = async (topic: string): Promise<RunRecordState | null> =>
     (await act("records", { topic })).output as RunRecordState | null;
+
+  const worktrees = async (): Promise<WorktreeResourceState[]> =>
+    (await act("worktrees", {})).output as WorktreeResourceState[];
 
   const putRecord = async (topic: string, state: Record<string, unknown>): Promise<void> => {
     await act("putRecord", { topic, state });
@@ -482,12 +555,15 @@ export function claimHost(options: HostOptions) {
     row,
     runAttempt,
     record,
+    worktrees,
     putRecord,
     inOrg,
     seen,
     answersSeen,
     dir,
     stores,
+    /** The bare upstream, when the host was given one (`upstream`). */
+    upstream: join(dir, "origin.git"),
   };
 }
 
@@ -499,3 +575,23 @@ export function messageOf(error: unknown): string {
 
 /** The harness task input schema, re-exported for seeding payload rows. */
 export { harnessTaskInputSchema };
+
+/**
+ * A teammate moves the upstream's `main` on (one new file, `teammate.txt`),
+ * and the run merges it into its branch in `cwd`, as a coder brings its branch
+ * up to date before a pull request.
+ */
+export function mergeTeammateWork(upstream: string, cwd: string): void {
+  const elsewhere = mkdtempSync(join(tmpdir(), "harness-manager-teammate-"));
+  dirs.push(elsewhere);
+  const git = (at: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.email=mate@example.test", "-c", "user.name=Mate", ...args], { cwd: at, stdio: "pipe" });
+  git(elsewhere, "clone", "-q", upstream, "work");
+  const work = join(elsewhere, "work");
+  writeFileSync(join(work, "teammate.txt"), "a teammate's work\n");
+  git(work, "add", "teammate.txt");
+  git(work, "commit", "-q", "-m", "a teammate's change");
+  git(work, "push", "-q", "origin", "HEAD:main");
+  git(cwd, "fetch", "-q", upstream, "main");
+  git(cwd, "merge", "-q", "--no-edit", "-m", "merge main", "FETCH_HEAD");
+}

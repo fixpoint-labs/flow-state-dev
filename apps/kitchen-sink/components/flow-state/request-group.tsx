@@ -9,14 +9,14 @@
  * Items emitted inside a task-board's per-task execution window are
  * hidden from the chat thread — they render under the task in
  * `<TaskPlan />` instead, mounted at the position of the
- * `task-board-meta` ComponentItem. This avoids duplication
+ * `task-board-meta` data item. This avoids duplication
  * (e.g., 6 individual searches under the task plus a "Ran 6 searches"
  * rollup outside it).
  */
 
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
+import { conversationLines, ItemsRenderer, useFlowContext, type ItemLine, type LineTurn } from "@flow-state-dev/react";
 import { useConversationFeed } from "./conversation";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
@@ -76,6 +76,12 @@ type RequestGroupRendererProps = {
    *  began (and when it completed, for those that say), so it can fall short
    *  of the true end after a long final message. */
   latestCompletedAtMs?: number;
+  /** The session's turns, for `conversationLines`: which turn failed or was
+   *  stopped, and which failed one offers Retry (`retryable`). Only the last
+   *  group offers Retry, as `conversationLines` offers it on the newest turn
+   *  only, and a stopped request draws its stopped line once, after its last
+   *  group. Without them no line offers Retry and no turn draws as stopped. */
+  turns?: readonly LineTurn[];
 };
 
 /**
@@ -83,11 +89,12 @@ type RequestGroupRendererProps = {
  * holds the user's message is marked as their line, by that message's id,
  * so a send the app reports with `feed.sent()` rises to near the top.
  */
-export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false, latestCompletedAtMs }: RequestGroupRendererProps) {
+export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false, latestCompletedAtMs, turns = NO_TURNS }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
   // Read over every item, not one request's: a task plan and its tasks' work
   // can sit in different requests.
   const owned = useMemo(() => collectTaskOwnedItemIds(items), [items]);
+  const groupTurns = useMemo(() => turnsByGroup(groups, turns), [groups, turns]);
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
@@ -112,8 +119,29 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
         isFinishing={isFinishing}
         showWorkedFor={showWorkedFor}
         completedAtMs={isLast ? latestCompletedAtMs : undefined}
+        turns={groupTurns[index]!}
       />
     );
+  });
+}
+
+/** No turns: a stable default, so a group's lines aren't read again each render. */
+const NO_TURNS: readonly LineTurn[] = [];
+
+/**
+ * The turn each group's lines read. Each group reads its own lines, so a
+ * turn goes only to its request's last group: an earlier group of a stopped
+ * request would draw a second stopped line. And `retryable` stays only in the
+ * last group overall: `conversationLines` offers Retry on the newest turn only,
+ * and an older group would be the newest in itself.
+ */
+function turnsByGroup(groups: readonly RequestGroup[], turns: readonly LineTurn[]): (readonly LineTurn[])[] {
+  const byId = new Map(turns.map((turn) => [turn.id, turn]));
+  const lastOf = new Map(groups.map((group, index) => [group.requestId, index]));
+  return groups.map((group, index) => {
+    const turn = byId.get(group.requestId);
+    if (turn === undefined || lastOf.get(group.requestId) !== index) return NO_TURNS;
+    return [index === groups.length - 1 ? turn : { ...turn, retryable: false }];
   });
 }
 
@@ -123,16 +151,15 @@ function settledAt(item: OutputItem): number {
 }
 
 /**
- * Whether the stream ends on a run of tool calls and thoughts with one still
+ * Whether the stream ends on a steps line with a call or thought still
  * running. The group's own line names that step, so the indicator would repeat
- * it. Read from the same render stream the group draws, so an item it drops
+ * it. Read from the same lines the group draws, so an item they drop
  * (a trace, a hidden step, one a container owns) is not counted, and a call
  * running behind one that finished is.
  */
-function endsOnRunningStep(items: OutputItem[], renderers: RendererRegistry | undefined): boolean {
-  const stream = buildItemRenderStream(items, renderers, { groupToolCalls: true });
-  const last = stream[stream.length - 1];
-  return last?.kind === "group" && last.items.some((item) => item.status === "in_progress");
+function endsOnRunningStep(lines: readonly ItemLine[]): boolean {
+  const last = lines.at(-1);
+  return last?.kind === "steps" && last.items.some((item) => item.status === "in_progress");
 }
 
 function RequestGroup({
@@ -144,6 +171,7 @@ function RequestGroup({
   isFinishing,
   showWorkedFor,
   completedAtMs,
+  turns,
 }: {
   group: RequestGroup;
   /** Items that render under their task in `<TaskPlan />` (`collectTaskOwnedItemIds`). */
@@ -157,6 +185,8 @@ function RequestGroup({
   showWorkedFor?: boolean;
   /** The request record's end, for the last group only. */
   completedAtMs?: number;
+  /** See `RequestGroupRendererProps.turns`. */
+  turns: readonly LineTurn[];
 }) {
   // Items inside a task-board window render under the task in
   // <TaskPlan /> — hide them from the chat-thread stream so we don't
@@ -167,10 +197,8 @@ function RequestGroup({
   }, [group.items, owned]);
 
   const { renderers } = useFlowContext();
-  const stepInFlight = useMemo(
-    () => isLast && isStreaming && endsOnRunningStep(filteredItems, renderers),
-    [isLast, isStreaming, filteredItems, renderers],
-  );
+  const lines = useMemo(() => conversationLines(filteredItems, turns, { renderers }), [filteredItems, turns, renderers]);
+  const stepInFlight = isLast && isStreaming && endsOnRunningStep(lines);
 
   // The request began at its first item. Re-emitted keyed items can pull
   // that earlier than the request really started, which only lengthens the count.
@@ -195,7 +223,7 @@ function RequestGroup({
       className="flex flex-col gap-2"
       {...(feed && userItem ? feed.mine(userItem.requestId) : undefined)}
     >
-      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
+      <ItemsRenderer lines={lines} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
       {/* While a step runs, its own line says what it is doing, so the indicator
           drops its words (not itself): the line keeps one stable label and the

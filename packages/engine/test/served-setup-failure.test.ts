@@ -35,7 +35,6 @@ function pingFlow(options: { userMessage?: () => string } = {}) {
     kind: "ping",
     actions: {
       run: {
-        inputSchema: z.object({}),
         ...(options.userMessage !== undefined
           ? { userMessage: options.userMessage }
           : {}),

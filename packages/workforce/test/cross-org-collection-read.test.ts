@@ -149,7 +149,6 @@ function harnessOver(router: any): Harness {
 
 /** A flow carrying one public no-op, so a session can be opened on it. */
 const noopAction = {
-  inputSchema: z.object({}),
   block: handler({
     name: "noop",
     inputSchema: z.object({}),
@@ -176,7 +175,7 @@ async function buildInventoryHarness(options: { fill?: boolean; taskDoor?: strin
   // The same app without the writer — V2's other state.
   const plain = defineFlow({ kind: PLAIN_KIND, actions: { noop: noopAction } });
   const state = createFlowState({
-    flows: { [WRITER_KIND]: writer, [PLAIN_KIND]: plain },
+    flows: [writer, plain],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
     // Host-level, so both flows resolve the same principal. The org comes from
@@ -292,7 +291,8 @@ async function listAll(
 }
 
 describe("FIX-1502 · the worker inventory's client read", () => {
-  it("V1 · each organization's session lists only its own worker rows (BR-1, BR-2, BR-4)", async () => {
+  // V1; BR-1, BR-2, BR-4.
+  it("each organization's session lists only its own worker entries", async () => {
     const h = await buildInventoryHarness();
 
     // The positive record first: both organizations' rows are in storage.
@@ -359,7 +359,7 @@ describe("FIX-1502 · the worker inventory's client read", () => {
       authentication: { resolvePrincipal: verifiedHeaderPrincipal((org) => `user-of-${org}`) }
     });
     const state = createFlowState({
-      flows: { "inventory-unread": flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({})
     });

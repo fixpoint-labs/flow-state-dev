@@ -1,7 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { z } from "zod";
 import { hashContent } from "@flow-state-dev/workspace";
 import { createBashTool } from "../src/bash/create-bash-tool";
-import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
+import { createBashCapability } from "../src/bash/capability";
+import type { Sandbox, CommandResult } from "../src/bash/types";
+import type { ProjectedEntryState } from "@flow-state-dev/workspace";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 import { runForTest } from "@flow-state-dev/testing";
@@ -48,29 +51,29 @@ function createMockSandbox(
 
 interface MockResourceEntry {
   name: string;
-  state: FileEntryState;
+  state: ProjectedEntryState;
   content: string | null;
 }
 
 function createMockCollection(
   entries: MockResourceEntry[] = [],
-): ResourceCollectionRef<FileEntryState> {
+): ResourceCollectionRef<ProjectedEntryState> {
   const store = new Map<string, MockResourceEntry>();
   for (const entry of entries) {
     store.set(entry.name, entry);
   }
 
-  const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> =>
+  const makeRef = (entry: MockResourceEntry): ResourceRef<ProjectedEntryState> =>
     // Deliberate partial: only the ref methods the bash tool calls.
     ({
       path: entry.name,
       scope: "session",
       uri: `session/${entry.name}`,
       state: entry.state,
-      patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
-        entry.state = { ...entry.state, ...updates } as FileEntryState;
+      patchState: vi.fn(async (updates: Partial<ProjectedEntryState>) => {
+        entry.state = { ...entry.state, ...updates } as ProjectedEntryState;
       }),
-      setState: vi.fn(async (next: FileEntryState) => {
+      setState: vi.fn(async (next: ProjectedEntryState) => {
         entry.state = next;
       }),
       updateState: vi.fn(async (updater) => {
@@ -82,24 +85,24 @@ function createMockCollection(
         entry.content = content;
       }),
       config: { scope: "session", stateSchema: {} as any },
-    }) as unknown as ResourceRef<FileEntryState>;
+    }) as unknown as ResourceRef<ProjectedEntryState>;
 
   return {
     pattern: "files/*",
     scope: "session",
 
-    async get(key: string): Promise<ResourceRef<FileEntryState>> {
+    async get(key: string): Promise<ResourceRef<ProjectedEntryState>> {
       const entry = store.get(key);
       if (!entry) throw new Error(`Not found: ${key}`);
       return makeRef(entry);
     },
 
-    async getOptional(key: string): Promise<ResourceRef<FileEntryState> | undefined> {
+    async getOptional(key: string): Promise<ResourceRef<ProjectedEntryState> | undefined> {
       const entry = store.get(key);
       return entry ? makeRef(entry) : undefined;
     },
 
-    create: vi.fn(async (key: string, initial?: Partial<FileEntryState>) => {
+    create: vi.fn(async (key: string, initial?: Partial<ProjectedEntryState>) => {
       if (store.has(key)) throw new Error(`Already exists: ${key}`);
       const entry: MockResourceEntry = {
         name: key,
@@ -114,7 +117,7 @@ function createMockCollection(
       return makeRef(entry);
     }),
 
-    getOrCreate: vi.fn(async (key: string, initial?: Partial<FileEntryState>) => {
+    getOrCreate: vi.fn(async (key: string, initial?: Partial<ProjectedEntryState>) => {
       const existing = store.get(key);
       if (existing) return makeRef(existing);
       const entry: MockResourceEntry = {
@@ -130,7 +133,7 @@ function createMockCollection(
       return makeRef(entry);
     }),
 
-    async list(): Promise<ResourceRef<FileEntryState>[]> {
+    async list(): Promise<ResourceRef<ProjectedEntryState>[]> {
       return Array.from(store.values()).map(makeRef);
     },
 
@@ -147,7 +150,7 @@ function createMockCollection(
     // Expose internals for assertions
     _store: store,
     // Deliberate partial: the bash tool never calls upsert.
-  } as unknown as ResourceCollectionRef<FileEntryState> & { _store: Map<string, MockResourceEntry> };
+  } as unknown as ResourceCollectionRef<ProjectedEntryState> & { _store: Map<string, MockResourceEntry> };
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +330,7 @@ describe("createBashTool", () => {
           },
         ]),
         pattern: "tmp/**",
-      } as ResourceCollectionRef<FileEntryState>;
+      } as ResourceCollectionRef<ProjectedEntryState>;
       const customSandbox = createMockSandbox();
       const { tools } = await createBashTool({
         collections: { scratch: collection },
@@ -1005,12 +1008,12 @@ describe("createBashBlocks", () => {
   function buildCtx(
     sessionId: string,
     scopes: {
-      session?: Record<string, ResourceCollectionRef<FileEntryState>>;
-      user?: Record<string, ResourceCollectionRef<FileEntryState>>;
-      org?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      session?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
+      user?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
+      org?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
     } = {},
   ) {
-    const resources: Record<string, ResourceCollectionRef<FileEntryState>> = {
+    const resources: Record<string, ResourceCollectionRef<ProjectedEntryState>> = {
       ...(scopes.session ?? {}),
       ...(scopes.user ?? {}),
       ...(scopes.org ?? {}),
@@ -1040,10 +1043,24 @@ describe("createBashBlocks", () => {
   function createMockCollectionWithPattern(
     pattern: string,
     entries: MockResourceEntry[] = [],
-  ): ResourceCollectionRef<FileEntryState> {
+  ): ResourceCollectionRef<ProjectedEntryState> {
     const base = createMockCollection(entries);
-    return { ...base, pattern } as ResourceCollectionRef<FileEntryState>;
+    return { ...base, pattern } as ResourceCollectionRef<ProjectedEntryState>;
   }
+
+  // The host shell runs real commands on the machine, and its guards are a
+  // best-effort fence, not a boundary. Reaching it must be a choice the
+  // caller wrote down, so the zero-config path is the in-process emulator.
+  it("runs in the just-bash emulator when no provider is given", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { createJustBashSandbox } = await import("../src/bash/adapters/just-bash");
+    vi.mocked(createJustBashSandbox).mockClear();
+
+    const { bashCommand } = createBashBlocks();
+    await runForTest(bashCommand, { command: "ls" }, buildCtx("default-provider-1"));
+
+    expect(createJustBashSandbox).toHaveBeenCalledTimes(1);
+  });
 
   it("auto-discovers every collection on ctx and mounts each at its pattern prefix", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
@@ -1941,5 +1958,105 @@ describe("createBashBlocks", () => {
 
     expect(warn.mock.calls.flat().join(" ")).not.toContain("0 files under writable mounts");
     warn.mockRestore();
+  });
+
+  /**
+   * A collection that stores whatever state it is given, and refuses a state
+   * whose `updatedAt` is not a string — the schema the bash types document.
+   */
+  function createStringUpdatedAtCollection(pattern: string) {
+    const schema = z
+      .object({
+        path: z.string(),
+        hash: z.string(),
+        updatedAt: z.string(),
+      })
+      .passthrough();
+    const store = new Map<string, { state: z.infer<typeof schema>; content: string | null }>();
+
+    const parse = (value: unknown) => {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues.map((issue) => issue.message).join("; "));
+      }
+      return parsed.data;
+    };
+
+    const refFor = (key: string) => {
+      const entry = store.get(key)!;
+      return {
+        path: key,
+        get state() {
+          return entry.state;
+        },
+        patchState: async (updates: Record<string, unknown>) => {
+          entry.state = parse({ ...entry.state, ...updates });
+        },
+        readContent: async () => entry.content,
+        writeContent: async (content: string) => {
+          entry.content = content;
+        },
+      };
+    };
+
+    return {
+      pattern,
+      scope: "session" as const,
+      async get(key: string) {
+        const ref = store.has(key) ? refFor(key) : undefined;
+        if (!ref) throw new Error(`Not found: ${key}`);
+        return ref;
+      },
+      async getOptional(key: string) {
+        return store.has(key) ? refFor(key) : undefined;
+      },
+      async getOrCreate(key: string, initial?: Record<string, unknown>) {
+        if (!store.has(key)) store.set(key, { state: parse(initial), content: null });
+        return refFor(key);
+      },
+      async list() {
+        return [...store.keys()].map(refFor);
+      },
+      async count() {
+        return store.size;
+      },
+      async delete(key: string) {
+        store.delete(key);
+      },
+      config: { pattern, stateSchema: schema },
+    } as unknown as ResourceCollectionRef<ProjectedEntryState>;
+  }
+
+  function blocksOf(cap: ReturnType<typeof createBashCapability>) {
+    const tools =
+      (cap as unknown as { __presetDefs?: { tools?: { tools?: unknown[] } } }).__presetDefs?.tools
+        ?.tools ?? [];
+    const byName = new Map<string, unknown>();
+    for (const tool of tools) {
+      const named = tool as { config?: { name?: string }; name?: string };
+      const name = named.config?.name ?? named.name;
+      if (name) byName.set(name, tool);
+    }
+    return byName;
+  }
+
+  it("saves every file into a collection whose updatedAt is a string", async () => {
+    const artifacts = createStringUpdatedAtCollection("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const cap = createBashCapability({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const write = blocksOf(cap).get("bash-write-file");
+    const ctx = buildCtx("string-updated-at", { session: { artifacts } });
+
+    await runForTest(write as never, { path: "artifacts/notes.md", content: "one" }, ctx);
+    await runForTest(write as never, { path: "artifacts/other.txt", content: "two" }, ctx);
+
+    for (const key of ["notes.md", "other.txt"]) {
+      const state = (await artifacts.get(key)).state;
+      expect(z.string().datetime().safeParse(state.updatedAt).success).toBe(true);
+    }
+    expect((await artifacts.get("notes.md")).state.title).toBe("notes.md");
   });
 });

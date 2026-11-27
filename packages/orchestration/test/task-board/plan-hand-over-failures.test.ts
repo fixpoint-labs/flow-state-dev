@@ -302,7 +302,7 @@ describe("a plan drain that fails after handing a row over", () => {
   async function boot(options: { seamThrows?: boolean; filer?: GeneratorModel } = {}) {
     const flow = planFlow(options.filer);
     state = createFlowState({
-      flows: { "plan-hand-over-fails": flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true,
       durabilityRetention: { sweepIntervalMs: 100 },

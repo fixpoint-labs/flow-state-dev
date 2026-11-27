@@ -119,7 +119,7 @@ fallback: support.general
 ---
 ```
 
-`flow: coordinator` puts it on Workforce's coordinator flow, which `workforce/hire.ts` registers with `defineCoordinatorFlow`, naming the built-in agent flow as the one its delegates answer on and `ROUTE_MODEL` as the model it picks with. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
+`flow: coordinator` puts it on Workforce's coordinator flow, which the workforce kit builds from its `coordinator` config in `lib/workforce-kit.ts`, naming the built-in agent flow as the one its delegates answer on and `ROUTE_MODEL` as the model it picks with. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
 
 `ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models). The specialists answer on the [`chat` intent](../docs/docs/fundamentals/models.md#intents) under `models.intents` in `fsdev.config.ts`, because no `WORKER.md` names a `model:` of its own.
 
@@ -165,7 +165,7 @@ Your posts are the `user` messages. Each specialist's answer is a message whose 
 
 ### Where the pieces come from
 
-Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: `buildKitchenSinkWorkforce()` walks `workforce/teams/` and reads a worker per `WORKER.md`. Adding a specialist means a folder, a line in the coordinator's `delegates:`, and a restart. Adding a tool means a file and `fsdev gen`.
+Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: the workforce kit (`kitchenSinkWorkforce()` in `lib/workforce-kit.ts`) reads `workforce/` and a worker per `WORKER.md`, and refuses to start on a file it doesn't read. Adding a specialist means a folder, a line in the coordinator's `delegates:`, and a restart. Adding a tool means a file and `fsdev gen`.
 
 A conversation copies the coordinator's `delegates:` the first time it routes a post, and keeps its own list after that, so a specialist added to the file later reaches new conversations, not ones already under way.
 
@@ -215,6 +215,7 @@ A hired worker doesn't show in the rail and doesn't join `support.help`'s routin
 - **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
 - **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.
+- **Sending while it answers**: While the assistant answers, you can keep typing, and change mode, thinking style and features. Stop and Send are two buttons. A line you send then shows under the conversation, marked *runs when this turn ends*, and the answer you're watching keeps streaming. When the turn ends, the waiting lines run in the order you typed them, however long the turn took. The model and the thinking toggle stay locked until the turn ends, since each saves to the server at once. The page keeps one waiting line on the server and the rest in the page, so a reload loses all but the first (`useHarnessLines` from `@flow-state-dev/react`).
 - **The page's address** names the open conversation, the assistant's or one picked in the rail (`/flow-state?session=<id>`), so a reload or a link reopens it, and Back returns to the one you had open before. A link to a session that is gone opens the assistant's latest.
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
@@ -307,6 +308,7 @@ A multi-modal AI assistant — the flagship flow. Showcases:
 - Session resources (`artifacts`) with typed resource reads/writes
 - clientData on `session` and `user` scopes
 - Action-level `userMessage` for automatic user message emission
+- `concurrency: "defer"` on `run`: a turn sent while one runs waits for it, with no time limit
 - Lifecycle handling via `onCompleted`
 
 Exported as `chatAgentFlow` (`kind: "chat-agent"`). Mounted at `/`.

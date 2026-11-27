@@ -11,7 +11,15 @@
  * (`resolveInProcessPrincipal`), through the same code, and this
  * module is the only place `source: "cli"` can be produced.
  */
+import {
+  installBuiltIns,
+  DEFAULT_WRITE_FLOW,
+  isServerResourceSend,
+  isWriteSessionId,
+  ReservedSessionIdError
+} from "../../resources/default-write-flow";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../scheduled/schedule-session-id";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../../stores/types";
@@ -39,7 +47,7 @@ import {
   UserBindingMismatchError
 } from "../../context/binding-errors";
 import { isOrgAttributed } from "../../context/org-attribution";
-import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
+import { claimRequestRecord } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
@@ -57,7 +65,8 @@ import {
 import { generateId } from "../../utils/generate-id";
 import {
   OrgRequiredError,
-  PrincipalResolutionError
+  PrincipalResolutionError,
+  SessionRequiredError
 } from "../errors";
 import {
   continuationDecision,
@@ -66,7 +75,8 @@ import {
   type ConcurrencyAdmission,
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
-import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
+import { pickPrincipalResolver, principalResolverIdentity } from "../auth/pickPrincipalResolver";
+import { principalOwns, type Principal } from "../../context/principal";
 import {
   defaultBodyUserIdPrincipalResolver,
   isDefaultBodyUserIdPrincipalResolver
@@ -74,7 +84,8 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
 import { refuseRetiredDispatcherOption } from "../runner";
-import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { CLI_SOURCE, isFrameworkStampedSource, SCHEDULED_SOURCE } from "../../execution/transport-sources";
+import { isFrameworkDispatch, withoutDeliveryOrigin } from "../../execution/delivery-origin";
 import {
   createInProcessRunner,
   isInProcessRunner,
@@ -86,8 +97,7 @@ import type {
   InboundRequestEnvelope,
   InboundTransportHost,
   PrincipalResolutionContext,
-  PrincipalResolver,
-  ResolvedPrincipal
+  PrincipalResolver
 } from "../types";
 
 // FIX-999.
@@ -186,7 +196,7 @@ const inProcessWaits = new WeakSet<PrincipalResolutionContext>();
 
 /** An answer to "who is this caller", with whether the framework supplied it. */
 type PrincipalResolution = {
-  principal: ResolvedPrincipal;
+  principal: Principal;
   /**
    * True when the resolver that ran is the framework default, so the
    * organization is the reserved development one rather than a verified value.
@@ -340,8 +350,16 @@ function createPrincipalResolution(options: {
       );
     }
 
+    // FIX-2942: the door names a person, and which resolver answered, with
+    // the settings it applied. A door that fires for a machine says so itself.
+    const resolvedBy = principalResolverIdentity(registry, context.envelope.flowKind, resolvePrincipal);
     return {
-      principal: { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) },
+      principal: {
+        userId,
+        orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId),
+        kind: "person",
+        ...(resolvedBy !== undefined ? { resolvedBy } : {})
+      },
       isDevelopmentDefault
     };
   };
@@ -364,7 +382,7 @@ export interface InProcessPrincipalQuestion {
 }
 
 /** Who an in-process caller is, and where that answer came from. */
-export interface InProcessPrincipal extends ResolvedPrincipal {
+export interface InProcessPrincipal extends Principal {
   /**
    * `resolver` when a configured resolver named the organization;
    * `development-default` when the flow authenticates nobody and the framework
@@ -434,11 +452,42 @@ export async function resolveInProcessPrincipal(
  * `InboundDispatchHandle` lets the adapter consume the live stream synchronously
  * (HTTP+SSE) or await `finished` for a final result (webhook, schedule).
  */
+// FIX-2624; FIX-2886; BP-031.
+/**
+ * Refuse a dispatch, from any transport, that names no session, or names a
+ * write session or the default write flow, unless it is the server's own
+ * resource send. The default write flow answers as an address this process
+ * does not hold.
+ *
+ * A schedule session is admitted only from the scheduled transport, whose
+ * `source` the transport sets and no caller can. Checked ahead of the
+ * resource-send pass, so a resource send can't reach one either.
+ */
+function refuseReservedAddress(envelope: InboundRequestEnvelope): void {
+  // Every run names its session: an envelope with none (an untyped caller) is
+  // refused by name, before anything is written or enqueued.
+  if (typeof envelope.sessionId !== "string" || envelope.sessionId.length === 0) {
+    throw new SessionRequiredError(envelope.flowKind, "host.dispatch");
+  }
+  if (isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
+    throw new ScheduleSessionIdError(envelope.sessionId);
+  }
+  if (isServerResourceSend(envelope)) return;
+  if (envelope.flowKind === DEFAULT_WRITE_FLOW) throw new UnknownFlowError(envelope.flowKind);
+  if (isWriteSessionId(envelope.sessionId)) {
+    throw new ReservedSessionIdError(envelope.sessionId);
+  }
+}
+
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
   refuseRetiredDispatcherOption(options, "createInboundTransportHost");
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
+  // FIX-2624: the default write flow is the framework's, held from the start
+  // on every host, so a write record never depends on a first write having
+  // registered it in this process.
+  installBuiltIns(registry);
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 
@@ -565,32 +614,29 @@ export function createInboundTransportHost(
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope
   ): Promise<SessionRecord | undefined> => {
-    let session: SessionRecord | undefined;
-    if (dispatchEnvelope.sessionId !== undefined) {
-      session = await stores.session.get(
-        resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    const session = await stores.session.get(
+      resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    );
+    assertSessionAdmitted(flow, session, {
+      sessionId: dispatchEnvelope.sessionId,
+      userId: dispatchEnvelope.userId,
+      tenantId: dispatchEnvelope.tenantId
+    });
+    // The organization binding the run enforces at execution, checked here
+    // too so a request from another organization is refused before it takes
+    // a place on the session's key. An unattributed session is left to the
+    // execution-time check, which names that condition itself.
+    if (
+      session !== undefined &&
+      tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+      isOrgAttributed(session) &&
+      session.orgId !== dispatchEnvelope.orgId
+    ) {
+      throw new OrgBindingMismatchError(
+        dispatchEnvelope.sessionId,
+        session.orgId as string,
+        dispatchEnvelope.orgId as string
       );
-      assertSessionAdmitted(flow, session, {
-        sessionId: dispatchEnvelope.sessionId,
-        userId: dispatchEnvelope.userId,
-        tenantId: dispatchEnvelope.tenantId
-      });
-      // The organization binding the run enforces at execution, checked here
-      // too so a request from another organization is refused before it takes
-      // a place on the session's key. An unattributed session is left to the
-      // execution-time check, which names that condition itself.
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        isOrgAttributed(session) &&
-        session.orgId !== dispatchEnvelope.orgId
-      ) {
-        throw new OrgBindingMismatchError(
-          dispatchEnvelope.sessionId,
-          session.orgId as string,
-          dispatchEnvelope.orgId as string
-        );
-      }
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
@@ -603,7 +649,7 @@ export function createInboundTransportHost(
         refusal.reason
       );
     }
-    if (active !== undefined && !principalOwnsRequest(active, dispatchEnvelope)) {
+    if (active !== undefined && !principalOwns(active, dispatchEnvelope)) {
       throw new RequestOwnerMismatchError(dispatchEnvelope.requestId);
     }
     return session;
@@ -658,7 +704,7 @@ export function createInboundTransportHost(
     // flow, is another session this request was never admitted to. A child
     // created since admission found none is new, so a view of its parent finds
     // it by its update time already.
-    if (dispatchEnvelope.sessionId !== undefined && admitted !== undefined) {
+    if (admitted !== undefined) {
       const sessionKey = resolveSessionStorageKey(
         dispatchEnvelope.sessionId,
         dispatchEnvelope.tenantId
@@ -688,6 +734,7 @@ export function createInboundTransportHost(
   };
 
   const dispatch = (envelope: InboundRequestEnvelope): InboundDispatchHandle => {
+    refuseReservedAddress(envelope);
     // Exact instance address: a singleton's kind, or a collection member's
     // explicit id. The address travels on `flowKind` unchanged; the records
     // written below carry the resolved instance's actual kind and its id.
@@ -707,11 +754,25 @@ export function createInboundTransportHost(
       sessionId: envelope.sessionId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
       tenantId: envelope.tenantId,
+      // FIX-2942: the door's principal, carried unchanged to the run.
+      ...(envelope.principal.kind != null ? { principalKind: envelope.principal.kind } : {}),
+      ...(envelope.principal.resolvedBy != null ? { resolvedBy: envelope.principal.resolvedBy } : {}),
       source: envelope.source,
-      metadata: envelope.metadata,
-      resolvedActionCore: envelope.resolvedActionCore
+      // An adapter's envelope cannot carry a delivery origin: only one the
+      // engine built and marked keeps it (`delivery-origin.ts`, BP-031).
+      metadata: isFrameworkDispatch(envelope) ? envelope.metadata : withoutDeliveryOrigin(envelope.metadata),
+      resolvedActionCore: envelope.resolvedActionCore,
+      ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {})
     };
 
+    // FIX-2752: a carried core (a dynamic schedule's fire) is a block made at
+    // dispatch time, which a queue job cannot carry: an external runner would
+    // drop it and run nothing. So it runs here, in this process, whatever
+    // runner is installed. Every other dispatch goes to the installed runner.
+    const runner: FlowRunner | InProcessRunner =
+      envelope.resolvedActionCore !== undefined ? inProcessRunner : effectiveRunner;
+    const runsExternally = !isInProcessRunner(runner);
+    const arbitratesThisDispatch = runsExternally && arbiter.arbitratesAcrossProcesses;
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
     // one the host was never built with — `fsdev run` does, so `--model` reaches
@@ -737,7 +798,7 @@ export function createInboundTransportHost(
     // flows never detach is unaffected. This fires only at the exact dispatch
     // that loses the override.
     if (
-      isExternalRunner &&
+      runsExternally &&
       envelope.runtimeConfig !== undefined &&
       envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
     ) {
@@ -782,7 +843,7 @@ export function createInboundTransportHost(
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
     const decision =
-      isExternalRunner && !arbitratesExternalDispatch
+      runsExternally && !arbitratesThisDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
@@ -913,7 +974,7 @@ export function createInboundTransportHost(
       // instead of an inline SSE response, so creating a live stream here would
       // be an empty pipe that never receives events.
       liveStream =
-        envelope.responseEmitter === undefined && !isExternalRunner
+        envelope.responseEmitter === undefined && !runsExternally
           ? createLiveRequestStream({
               requestId,
               maxBufferSize: maxResponseBufferSize,
@@ -935,7 +996,7 @@ export function createInboundTransportHost(
       // Delegate to the runner. InProcessRunner uses dispatchLocal
       // (carries non-serializable context); external runners use the
       // generic dispatch interface.
-      if ("dispatchLocal" in effectiveRunner) {
+      if ("dispatchLocal" in runner) {
         // The in-process milestones, held here rather than read off the handle
         // because `gateStart` owns *when* the run is started and the handle does
         // not exist until it does (FIX-982). The `queue` branch below has its own,
@@ -969,7 +1030,7 @@ export function createInboundTransportHost(
           // A run holding its turn on a shared backend is stopped once its
           // place can no longer be kept: another process may take the key.
           const lost = held?.lost;
-          const handle = (effectiveRunner as InProcessRunner).dispatchLocal(
+          const handle = (runner as InProcessRunner).dispatchLocal(
             dispatchEnvelope,
             {
               signal:
@@ -1005,8 +1066,7 @@ export function createInboundTransportHost(
         // become durable together. Under `allow` the gate below is a passthrough,
         // so the run still starts immediately — only what `accepted` waits for
         // changes.
-        const isDispatched =
-          envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
+        const isDispatched = isFrameworkStampedSource(envelope.source);
 
         // A `defer` run waits for its key like a `queue` run, so it needs the
         // same discoverable stub, heartbeat and cancel watch while it waits.
@@ -1286,7 +1346,7 @@ export function createInboundTransportHost(
         // writes commit AND the runner accepts the job. The response path
         // awaits the exposed `accepted` view before acking, so the 202 means
         // "discoverable and enqueued" — not merely "record written". Crucially the
-        // enqueue (`effectiveRunner.dispatch`) is inside this promise, so an
+        // enqueue (`runner.dispatch`) is inside this promise, so an
         // enqueue failure rejects the ack (failing the POST / reverting the
         // resume) rather than landing in the detached `finished` chain after a 202
         // already went out.
@@ -1329,7 +1389,7 @@ export function createInboundTransportHost(
                   : decision.policy === "defer"
                     ? { kind: "when-free", key: decision.key }
                     : undefined;
-            const handle = await effectiveRunner.dispatch({
+            const handle = await runner.dispatch({
               ...dispatchEnvelope,
               ...(place !== undefined ? { leasePlace: place } : {}),
               ...(leaseTurn !== undefined ? { leaseTurn } : {})
@@ -1423,7 +1483,7 @@ export function createInboundTransportHost(
    * parked request for the sweep.
    */
   const startContinuationInTurn = async (
-    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    { flow, record, orgId, sessionId }: { flow: FlowInstance; record: RequestRecord; orgId: string; sessionId: string },
     start: (signal?: AbortSignal) => Promise<ExecutionResult>,
     leaseId: string | undefined
   ): Promise<ExecutionResult> => {
@@ -1437,7 +1497,7 @@ export function createInboundTransportHost(
               actionName: record.actionName,
               input: record.input,
               userId: record.userId,
-              sessionId: record.sessionId,
+              sessionId,
               orgId,
               tenantId: record.tenantId,
               source: record.source,
@@ -1530,6 +1590,7 @@ export function createInboundTransportHost(
   const validateDispatch = async (
     envelope: InboundRequestEnvelope
   ): Promise<void> => {
+    refuseReservedAddress(envelope);
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
       throw new UnknownFlowError(envelope.flowKind);
@@ -1561,7 +1622,7 @@ export function createInboundTransportHost(
 
   const resolve = async (
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal> => (await resolution(context)).principal;
+  ): Promise<Principal> => (await resolution(context)).principal;
 
   return {
     registry,

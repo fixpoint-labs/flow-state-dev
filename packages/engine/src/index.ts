@@ -10,6 +10,7 @@
  * its readers import it from; core and contracts names are imported from core.
  */
 export { createExecutionContext } from "./context/createExecutionContext";
+export { SessionNotFoundError, UntrustedReachError } from "./context/named-session";
 export {
   type CapabilitySlot,
   type CapabilitySlotMap,
@@ -34,8 +35,7 @@ export {
   createFlowApiRouter,
   createInProcessFetch,
   decodePathSegments,
-  disposeFlowApiRouter,
-  PUBLIC_REENTRY_SOURCES
+  disposeFlowApiRouter
 } from "./routes";
 export {
   createBearerSecretPrincipalResolver,
@@ -47,6 +47,7 @@ export {
   extractBearerToken,
   githubWebhookVerifier,
   PrincipalResolutionError,
+  SCHEDULED_TRANSPORT_SOURCE,
   slackWebhookVerifier,
   stripeWebhookVerifier
 } from "./transports";
@@ -54,3 +55,4 @@ export { type ErrorCaptureEvent } from "./errors/error-capture";
 export { voiceContext } from "./voice";
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export { resolveDurabilityProvider } from "./durability/default-durability";
+export { localBlobStores, type LocalBlobStoreOptions } from "./blobs/local-blob-store";

@@ -12,7 +12,8 @@
  * store-sqlite would work too but is not a kitchen-sink dependency, so it can't
  * be resolved from a file executed with that app as cwd.
  *
- * Not typechecked by `goals/tsconfig.json`. See goals/README.md → "Harnesses".
+ * Excluded from `goals/tsconfig.json`: copied into kitchen-sink, so
+ * `./flows/chat-agent/flow` resolves there and not in goals/.
  */
 import {
   createCheckpointDurabilityProvider,
@@ -25,8 +26,10 @@ import flow from "./flows/chat-agent/flow";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 
 const out = (r: unknown) => console.log("__GOAL__" + JSON.stringify(r));
+const rootDir = process.env.KS_GOAL_DIR;
+if (rootDir === undefined || rootDir === "") throw new Error("KS_GOAL_DIR is not set");
 const stores = createFilesystemStores({
-  rootDir: process.env.KS_GOAL_DIR,
+  rootDir,
   developmentOnly: true,
 });
 
@@ -72,6 +75,6 @@ main()
     }),
   )
   .finally(() => {
-    if (typeof stores.close === "function") stores.close();
+    if ("close" in stores && typeof stores.close === "function") stores.close();
     process.exit(0);
   });

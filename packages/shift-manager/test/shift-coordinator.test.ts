@@ -6,10 +6,14 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { shiftCoordinatorOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { shiftCoordinatorOf } from "../src/lib/shift";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { GENERAL_TEAM, inboxSection, toWorker, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
+import { inboxSection, type Ask } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import type { Worker } from "../src/lib/workers";
+import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -63,7 +67,7 @@ describe("which worker is the Shift Coordinator (V2, D2)", () => {
     });
   });
 
-  it("reads an org worker's row, which has no team, without error", () => {
+  it("reads an org worker's entry, which has no team, without error", () => {
     expect(toWorker({ id: "shift-coordinator", kind: "agent", door: "run" })).toEqual({
       id: "shift-coordinator",
       kind: "agent",
@@ -87,6 +91,7 @@ const row = (ownerSessionId: string, id: string, status: string): BoardTaskView 
   title: id,
   goal: null,
   context: null,
+  attachments: [],
   status,
   assignee: null,
   priority: null,

@@ -32,29 +32,32 @@
  * `projectChecks()`.
  */
 
-import { handler } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
+import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "./cas-retry";
+import { CHECK_REPOSITORY_VIEW, PROJECT_SETUP_VIEW } from "./project-keys";
 import {
+  PRIVATE_PROJECTS_RESOURCE,
   PROJECTS_RESOURCE,
   projectAddressSchema,
   projectIdProblem,
   projectResourceStateSchema,
   projectVisibilitySchema,
   type ProjectAddress,
-  type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
-import { projectAt, projectResourcesAt, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
 import { listProjects, readProject } from "./project-read";
-import { projectOfWrite } from "./project-coordinator";
+import { defineProjectSetupView, projectOfWrite, type ProjectSetupView } from "./project-coordinator";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 import { checkedMcpServers } from "./mcp-server-name";
+import { connectorKeysAdapter } from "./mcp-credentials";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine/host";
 import { checkoutCommandProblem } from "@flow-state-dev/workspace";
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
@@ -152,10 +155,17 @@ export interface ProjectBlocksOptions {
    * Whether a run on a repository would get a checkout on this machine (a
    * workspace host's `checkRepository`). Given: `createProject` and
    * `setRepository` refuse an unusable one `repository-unusable` with the
-   * host's words, and a read-only `checkRepository` action asks first. Absent:
-   * no refusal and no action.
+   * host's words, and a `checkRepository` view asks first, with no session.
+   * Absent: no refusal and no view.
    */
   checkRepository?: RepositoryCheck;
+  // FIX-2775 D3.
+  /**
+   * The worker each user's project coordinator runs as (an installation's
+   * `projectCoordinator()?.worker ?? null`), asked on each read of the
+   * `projectSetup` view. Absent: the view answers `null`.
+   */
+  projectCoordinator?: () => string | null;
 }
 
 /** The host's answer for one repository: where a run's checkout would be, or why there would be none. */
@@ -181,7 +191,17 @@ export type SetBriefInput = z.infer<typeof setBriefInputSchema>;
 /** What setting a project's brief returns: the row as written. */
 export const setBriefOutputSchema = z.object({ project: projectResourceStateSchema });
 
-/** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
+/** The repository check as a view, as {@link defineProjectBlocks} builds it from the host's check. */
+export type CheckRepositoryView = ViewDefinition<
+  BlockDefinition<typeof checkRepositoryInputSchema, typeof repositoryCheckAnswerSchema>,
+  "user"
+>;
+
+/**
+ * The project writes, the project read and the project files read, the same
+ * blocks as an `actions` map, the repository check and the project setup as a
+ * `views` map, and the connector keys route as a transport adapter.
+ */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof defineWriteProject>;
   setRepository: ReturnType<typeof defineSetRepository>;
@@ -200,19 +220,24 @@ export type ProjectBlocks = {
     readProject: ActionConfig;
     listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
+  };
+  // FIX-2624.
+  views: {
     /** Present only when the host gave `checkRepository`. */
-    checkRepository?: ActionConfig;
+    checkRepository?: CheckRepositoryView;
+    // FIX-2775 D3.
+    /** Always: the host's project coordinator, `null` when it gave none. */
+    projectSetup: ProjectSetupView;
   };
+  // FIX-2775 D3.
+  /**
+   * The connector keys route, for `createFlowState({ adapters })`: each user's
+   * own key for a server in `mcpServers`, read, set and cleared at
+   * `CONNECTOR_KEYS_PATH`, the caller verified by the projects flow's sign-in.
+   * Serves no route when the host offers none.
+   */
+  connectorKeys: InboundTransportAdapter;
 };
-
-/** One map, shared by every write: a flow refuses two declarations under one ref. */
-const WRITE_RESOURCES = { ...PROJECT_ROW_RESOURCES };
-
-function refsOf(ctx: BlockContext) {
-  return {
-    projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectResourceState>
-  };
-}
 
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 
@@ -250,7 +275,7 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
     name: "project-create",
     inputSchema: createProjectInputSchema,
     outputSchema: createProjectOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx): Promise<CreateProjectOutput> => {
       const problem = projectIdProblem(input.id);
       if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
@@ -262,98 +287,55 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
         throw new Error("createProject needs a session with an owner: the owner is the session's user.");
       }
       const visibility: ProjectVisibility = input.visibility ?? "shared";
-      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks, check);
-      const { projects } = refsOf(ctx);
+      const members = unique([owner, ...(input.members ?? [])]);
+      if (visibility === "private") {
+        const others = members.filter((member) => member !== owner);
+        if (others.length > 0) {
+          throw new ProjectRefusedError(
+            "private-has-members",
+            `a private project is its owner's alone, so it can't list ${others.map((m) => `"${m}"`).join(", ")}. ` +
+              `Make it shared to work on it with others.`
+          );
+        }
+      }
+      const projects = ctx.resources[visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE];
 
-      const heldBy = (row: ProjectResourceState): CreateProjectOutput => {
-        if (row.ownerUserId === owner) return { project: projectResourceStateSchema.parse(row), visibility, created: false };
-        throw new ProjectRefusedError(
-          "project-id-held",
-          `project id "${input.id}" is held by another owner. Choose another id.`
-        );
+      const existingProject = (state: Readonly<Record<string, unknown>>): CreateProjectOutput => {
+        if (visibility === "shared" && state.ownerUserId !== owner) {
+          throw new ProjectRefusedError(
+            "project-id-held",
+            `project id "${input.id}" is held by another owner. Choose another id.`
+          );
+        }
+        return { project: projectResourceStateSchema.parse(state), visibility, created: false };
       };
 
       const existing = await projects.getOptional(input.id);
-      if (existing !== undefined) return heldBy(existing.state as ProjectResourceState);
-      // Only a create that makes a row asks the host: a re-sent create hands its row back whatever the repository is now.
+      if (existing !== undefined) return existingProject(existing.state);
+      // Only a create that makes a project asks the host about the repository.
       await assertRepositoryUsable(check, input.repository);
 
-      const row: ProjectResourceState = projectResourceStateSchema.parse({
+      const project = projectResourceStateSchema.parse({
         id: input.id,
         title: input.title,
-        brief: input.brief ?? null,
+        brief: input.brief,
         ownerUserId: owner,
-        members: unique([owner, ...(input.members ?? [])]),
-        repository: input.repository ?? null,
+        members,
+        repository: input.repository,
         mcpServers,
         checks
       });
       try {
-        await projects.create(input.id, row);
+        await projects.create(input.id, project);
       } catch (error) {
-        // A duplicate create won the row: hand it back as any held id is.
-        const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
+        const winner = isAlreadyExists(error) ? await projects.getOptional(input.id) : undefined;
         if (winner === undefined) throw error;
-        return heldBy(winner as ProjectResourceState);
+        return existingProject(winner.state);
       }
-      return { project: row, visibility, created: true };
+      return { project, visibility, created: true };
     }
   });
 }
-
-/**
- * Create a private project: the row in the owner's own user scope, with the
- * owner as its only member. Nobody else writes that scope, so an id it holds
- * is the owner's own, and a re-sent create hands the row back unchanged.
- *
- * @throws `private-has-members` when the input names anyone but the owner.
- */
-async function writePrivateProject(
-  ctx: BlockContext,
-  input: CreateProjectInput,
-  owner: string,
-  mcpServers: string[],
-  checks: string[],
-  check: RepositoryCheck | undefined
-): Promise<CreateProjectOutput> {
-  const others = unique(input.members ?? []).filter((member) => member !== owner);
-  if (others.length > 0) {
-    throw new ProjectRefusedError(
-      "private-has-members",
-      `a private project is its owner's alone, so it can't list ${others.map((m) => `"${m}"`).join(", ")}. ` +
-        `Make it shared to work on it with others.`
-    );
-  }
-  const projects = projectResourcesAt(ctx, "private");
-  const done = (state: unknown, created: boolean): CreateProjectOutput => ({
-    project: projectResourceStateSchema.parse(state),
-    visibility: "private",
-    created
-  });
-  const existing = await projects.getOptional(input.id);
-  if (existing !== undefined) return done(existing.state, false);
-  await assertRepositoryUsable(check, input.repository);
-  const row: ProjectResourceState = projectResourceStateSchema.parse({
-    id: input.id,
-    title: input.title,
-    brief: input.brief ?? null,
-    ownerUserId: owner,
-    members: [owner],
-    repository: input.repository ?? null,
-    mcpServers,
-    checks
-  });
-  try {
-    await projects.create(input.id, row);
-  } catch (error) {
-    // The same owner's duplicate create won: hand its row back.
-    const winner = isAlreadyExists(error) ? await projects.getOptional(input.id) : undefined;
-    if (winner === undefined) throw error;
-    return done(winner.state, false);
-  }
-  return done(row, true);
-}
-
 
 /**
  * `setRepository`: set, change or clear a project's repository. Members only.
@@ -367,7 +349,7 @@ function defineSetRepository(check: RepositoryCheck | undefined) {
     name: "project-set-repository",
     inputSchema: setRepositoryInputSchema,
     outputSchema: setRepositoryOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
       const row = await projectRowToChange(ctx, input.project, "repository");
       assertRepository(input.repository);
@@ -378,22 +360,31 @@ function defineSetRepository(check: RepositoryCheck | undefined) {
   });
 }
 
+const checkRepositoryInputSchema = z.object({ repository: z.string() }).strict();
+
+// FIX-2624.
 /**
  * `checkRepository`: the same question `createProject` and `setRepository`
- * ask, as a read a page asks before either, so its answer and the write's
- * refusal are one answer. A value no row may record answers its problem too.
+ * ask, as a view a page reads before either, with no session, so its answer
+ * and the write's refusal are one answer. A value no row may record answers
+ * its problem too.
  */
-function defineCheckRepository(check: RepositoryCheck) {
-  return handler({
-    name: "project-check-repository",
-    inputSchema: z.object({ repository: z.string() }).strict(),
-    outputSchema: repositoryCheckAnswerSchema,
-    execute: async (input): Promise<RepositoryCheckAnswer> => {
-      const problem = repositoryProblem(input.repository);
-      if (problem !== undefined) return { usable: false, problem: `${problem}.` };
-      return await check(input.repository);
-    }
-  });
+function defineCheckRepositoryView(check: RepositoryCheck): CheckRepositoryView {
+  return defineView({
+    scope: "user",
+    description:
+      "Whether a coding run on this repository would get a checkout on this machine, and why not. The same check createProject and setRepository refuse with.",
+    block: handler({
+      name: "project-check-repository",
+      inputSchema: checkRepositoryInputSchema,
+      outputSchema: repositoryCheckAnswerSchema,
+      execute: async (input): Promise<RepositoryCheckAnswer> => {
+        const problem = repositoryProblem(input.repository);
+        if (problem !== undefined) return { usable: false, problem: `${problem}.` };
+        return await check(input.repository);
+      }
+    })
+  }) as CheckRepositoryView;
 }
 
 /**
@@ -406,7 +397,7 @@ function defineSetMcpServers(offered: readonly string[]) {
     name: "project-set-mcp-servers",
     inputSchema: setMcpServersInputSchema,
     outputSchema: setMcpServersOutputSchema,
-    resources: WRITE_RESOURCES,
+    resources: PROJECT_ENTRY_RESOURCES,
     execute: async (input, ctx) => {
       const row = await projectRowToChange(ctx, input.project, "MCP servers");
       const mcpServers = checkedMcpServers(input.mcpServers, offered);
@@ -425,7 +416,7 @@ const setChecks = handler({
   name: "project-set-checks",
   inputSchema: setChecksInputSchema,
   outputSchema: setChecksOutputSchema,
-  resources: WRITE_RESOURCES,
+  resources: PROJECT_ENTRY_RESOURCES,
   execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "checks");
     const checks = checkedChecks(input.checks);
@@ -439,7 +430,7 @@ const setBrief = handler({
   name: "project-set-brief",
   inputSchema: setBriefInputSchema,
   outputSchema: setBriefOutputSchema,
-  resources: WRITE_RESOURCES,
+  resources: PROJECT_ENTRY_RESOURCES,
   execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "brief");
     await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
@@ -459,15 +450,21 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
 
 /**
  * Build the project writes, the project read, the caller's project list and
- * the project files read.
+ * the project files read. Register them on a flow at `PROJECTS_FLOW`:
+ * the projects collections' `runBy` names that flow, so a client's project
+ * write runs there. Mount `connectorKeys` among the host's adapters, so each
+ * user can set their key for the servers a project names.
  *
  * @param options `mcpServers`: the MCP server names this host offers its
- *   projects. Absent: none, and a project can name no server.
+ *   projects, and the connectors the keys route takes keys for. Absent: none,
+ *   a project can name no server, and the route serves nothing.
  *   `checkRepository`: the host's repository check (see
- *   `ProjectBlocksOptions.checkRepository`).
+ *   `ProjectBlocksOptions.checkRepository`). `projectCoordinator`: what the
+ *   `projectSetup` view answers.
  * @example
  *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
- *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } });
+ *   createFlowState({ flows, adapters: [projects.connectorKeys] });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
   const offered = [...(options.mcpServers ?? [])];
@@ -520,16 +517,12 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
       readProjectFiles: {
         block: readProjectFiles,
         description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
-      },
-      ...(options.checkRepository === undefined
-        ? {}
-        : {
-            checkRepository: {
-              block: defineCheckRepository(options.checkRepository),
-              description:
-                "Whether a coding run on this repository would get a checkout on this machine, and why not. The same check createProject and setRepository refuse with."
-            }
-          })
-    }
+      }
+    },
+    views: {
+      ...(options.checkRepository === undefined ? {} : { [CHECK_REPOSITORY_VIEW]: defineCheckRepositoryView(options.checkRepository) }),
+      [PROJECT_SETUP_VIEW]: defineProjectSetupView(options.projectCoordinator)
+    },
+    connectorKeys: connectorKeysAdapter(offered)
   };
 }

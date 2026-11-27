@@ -1,0 +1,9 @@
+R1 0 says page does not say
+R2 1 installable, flows, slots all matched
+R3 0.5 misses HTTP calls, streaming, typed state
+R4 0.5 typed unit but misses flow-building, kinds
+R5 0.5 only (b) right; (a),(c) wrong
+P2.1 0.5 right overall; adds retry claim, "skipped"
+P2.2 1 not by itself, resource scope, redrain
+P2.3 0.5 deps right; misses input.deps keyed by id
+SCORE 4 / 8

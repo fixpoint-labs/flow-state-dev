@@ -269,6 +269,29 @@ describe("the session flow, for every mode", () => {
 });
 
 /**
+ * A package's public entry, imported when the cell that reads it runs. The
+ * specifier is a value, not a literal, so Vite leaves it to run time: a
+ * literal `import("…")` is resolved when the file is transformed, and an
+ * entry that doesn't exist (a control tree's) would fail the whole file
+ * instead of the cells that read it.
+ */
+const entryOf = (pkg: string): Promise<Record<string, any>> => import(/* @vite-ignore */ pkg);
+
+/**
+ * The per-entry export index, walked once while the file is collected. The
+ * walk parses every workspace package's entries (most of a second idle,
+ * several under load), so it runs outside any one cell's time budget, as
+ * core's subpath tests do, and the surface cells only read it.
+ */
+const entryIndex = await (async () => {
+  const { fsReader, packageEntryExports } = (await import(join(import.meta.dirname, "../../../scripts/mechanism-exports.mjs"))) as {
+    fsReader: (root: string) => unknown;
+    packageEntryExports: (read: unknown) => Map<string, Map<string, Map<string, unknown>>>;
+  };
+  return packageEntryExports(fsReader(join(import.meta.dirname, "../../..")));
+})();
+
+/**
  * The contract every harness owes a HOST (FIX-2458): the jobs an app does with
  * a harness before and around a run, done the same way for all three, so an
  * app that offers more than one coding agent writes each job once.
@@ -287,6 +310,19 @@ describe("the session flow, for every mode", () => {
  * a plain `Error`, and every SDK-version readiness cell. The Codex list cell,
  * the pass-list cells, Claude Code's reason-less stop and every not-a-stop
  * cell pass there, which shows the block reaches the code.
+ *
+ * The SDK-version readiness cells' control is `584a9b77a`, main at the merge
+ * base of the change that added them. This file runs there with one line
+ * changed, since `engine/host` came later (its stores were on the engine root):
+ *
+ *   git archive 584a9b77a | tar -x -C "$CTL" && (cd "$CTL" && pnpm install --frozen-lockfile --ignore-scripts)
+ *   sed 's#"@flow-state-dev/engine/host"#"@flow-state-dev/engine"#' apps/kitchen-sink/test/harness-parity.test.ts \
+ *     > "$CTL/apps/kitchen-sink/test/harness-parity.test.ts"
+ *   (cd "$CTL/apps/kitchen-sink" && npx vitest run harness-parity)
+ *
+ * Codex's and Cursor's version cells fail there on the reason (it names the
+ * sign-in, not the version), Claude Code's on its missing `"."` entry; the
+ * Codex and Cursor not-a-stop cells pass.
  *
  * A block's own build-time refusal of an SDK outside its range is held in each
  * package's tests, not here: the reader that refusal reads is deliberately off
@@ -325,7 +361,7 @@ describe("the contract every harness owes a host", () => {
   const HOSTED = [
     {
       mode: "claude-code",
-      entry: () => import("@flow-state-dev/claude-code") as Promise<Record<string, unknown>>,
+      entry: () => entryOf("@flow-state-dev/claude-code"),
       pass: "CLAUDE_CODE_PASS",
       list: "listClaudeCodeModels",
       // The SDK importer: Claude Code's `supportedModels()`, the default as its own row.
@@ -349,7 +385,7 @@ describe("the contract every harness owes a host", () => {
     },
     {
       mode: "codex",
-      entry: () => import("@flow-state-dev/codex") as Promise<Record<string, unknown>>,
+      entry: () => entryOf("@flow-state-dev/codex"),
       pass: "CODEX_PASS",
       list: "listCodexModels",
       // The program option: Codex's app-server, answering `model/list`.
@@ -357,7 +393,7 @@ describe("the contract every harness owes a host", () => {
     },
     {
       mode: "cursor",
-      entry: () => import("@flow-state-dev/cursor") as Promise<Record<string, unknown>>,
+      entry: () => entryOf("@flow-state-dev/cursor"),
       pass: "CURSOR_PASS",
       list: "listCursorModels",
       // The SDK module the asking process loads: Cursor's `Cursor.models.list()`, which marks no model default.
@@ -373,7 +409,7 @@ describe("the contract every harness owes a host", () => {
   ] as const;
 
   it("core holds one environment base: the 13 names every harness's child needs", async () => {
-    const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+    const { HARNESS_BASE_PASS } = await entryOf("@flow-state-dev/core/harness");
     expect(Array.isArray(HARNESS_BASE_PASS), "core/harness exports HARNESS_BASE_PASS").toBe(true);
     expect([...(HARNESS_BASE_PASS as string[])].sort()).toEqual(
       ["PATH", "HOME", "USER", "SHELL", "TMPDIR", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"].sort(),
@@ -382,7 +418,7 @@ describe("the contract every harness owes a host", () => {
 
   describe.each(HOSTED)("$mode", (harness) => {
     it("its pass-list holds every name of core's environment base", async () => {
-      const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+      const { HARNESS_BASE_PASS } = await entryOf("@flow-state-dev/core/harness");
       const pass = (await harness.entry())[harness.pass] as readonly string[] | undefined;
       expect(pass, `${harness.mode} exports ${harness.pass}`).toBeDefined();
       for (const name of (HARNESS_BASE_PASS as string[] | undefined) ?? []) expect(pass, name).toContain(name);
@@ -413,7 +449,7 @@ describe("the contract every harness owes a host", () => {
     {
       mode: "claude-code",
       block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
-        const { claudeCodeAgent, createDefaultResolveClaudeCodeAgent } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        const { claudeCodeAgent, createDefaultResolveClaudeCodeAgent } = await entryOf("@flow-state-dev/claude-code");
         return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeCodeAgent) });
       },
       absent: (create: any) => ({ resolveClaudeAgent: create(async () => Promise.reject(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"))) }),
@@ -421,7 +457,7 @@ describe("the contract every harness owes a host", () => {
     {
       mode: "codex",
       block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
-        const { codexAgent, createDefaultResolveCodexClient } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        const { codexAgent, createDefaultResolveCodexClient } = await entryOf("@flow-state-dev/codex");
         return codexAgent({ resolveCodexClient: scriptedCodex(), cwd: () => repo, ...seam(createDefaultResolveCodexClient) });
       },
       absent: (create: any) => ({ resolveCodexClient: create({}, async () => Promise.reject(new Error("Cannot find module '@openai/codex-sdk'"))) }),
@@ -429,7 +465,7 @@ describe("the contract every harness owes a host", () => {
     {
       mode: "cursor",
       block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
-        const { cursorAgent, createDefaultResolveCursorClient } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        const { cursorAgent, createDefaultResolveCursorClient } = await entryOf("@flow-state-dev/cursor");
         return cursorAgent({ resolveCursorClient: scriptedCursor(), cwd: () => repo, model: "composer-2.5", ...seam(createDefaultResolveCursorClient) });
       },
       absent: (create: any) => ({ resolveCursorClient: create(async () => Promise.reject(new Error("Cannot find module '@cursor/sdk'"))) }),
@@ -486,13 +522,13 @@ describe("the contract every harness owes a host", () => {
     });
 
     it.each(STOPS)("a stop with $reason is abort-like", async ({ stop }) => {
-      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const { isAbortLike } = await entryOf("@flow-state-dev/core");
       const thrown = await failureOf(harness, "[slow] do some work", { stop });
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(true);
     }, 15_000);
 
     it("a run that failed is not abort-like", async () => {
-      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const { isAbortLike } = await entryOf("@flow-state-dev/core");
       // Codex's `[fail]` is a failed turn it reports, not a throw; `[fail-early]` throws.
       const thrown = await failureOf(harness, harness.mode === "codex" ? "[fail-early] do some work" : "[fail] do some work");
       expect(String(thrown)).toMatch(/fail/i);
@@ -500,15 +536,15 @@ describe("the contract every harness owes a host", () => {
     });
 
     it("an absent SDK is not abort-like", async () => {
-      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const { isAbortLike } = await entryOf("@flow-state-dev/core");
       const thrown = await failureOf(harness, "do some work", { absent: true });
       expect(String(thrown)).toMatch(/install/i);
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
     });
 
     it("a refused resume is not abort-like, and reads as an unknown conversation", async () => {
-      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
-      const { harnessFailureKind } = (await import("@flow-state-dev/core/harness")) as Record<string, any>;
+      const { isAbortLike } = await entryOf("@flow-state-dev/core");
+      const { harnessFailureKind } = await entryOf("@flow-state-dev/core/harness");
       // Claude Code takes a conversation to resume only as background work: in a session its own state owns it.
       const resume = { resume: () => "conversation-gone", ...(harness.mode === "claude-code" ? { detached: true } : {}) };
       const thrown = await failureOf(harness, "[refuse] go on", { options: resume });
@@ -530,7 +566,7 @@ describe("the contract every harness owes a host", () => {
       below: "0.3.315",
       above: "0.4.0",
       ready: async (read: unknown) => {
-        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        const { checkClaudeCodeReadiness } = await entryOf("@flow-state-dev/claude-code");
         return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
       },
     },
@@ -541,7 +577,7 @@ describe("the contract every harness owes a host", () => {
       below: "0.163.0",
       above: "0.164.1",
       ready: async (read: unknown) => {
-        const { checkCodexReadiness } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        const { checkCodexReadiness } = await entryOf("@flow-state-dev/codex");
         return checkCodexReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
       },
     },
@@ -552,7 +588,7 @@ describe("the contract every harness owes a host", () => {
       below: "1.0.39",
       above: "1.0.41",
       ready: async (read: unknown) => {
-        const { checkCursorReadiness } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        const { checkCursorReadiness } = await entryOf("@flow-state-dev/cursor");
         return checkCursorReadiness({}, { readInstalledSdkVersion: read });
       },
     },
@@ -657,27 +693,23 @@ describe("the contract every harness owes a host", () => {
   const INTERNALS = /translate|Translate|emit[A-Z]|Emit|finalizeOpenItems|closeStreamingItems|drainUnsettledObservations/;
 
   /** A package's entries and each one's names, from the per-entry export index. */
-  async function surfaceOf(pkg: string): Promise<Map<string, string[]>> {
-    const { fsReader, packageEntryExports } = (await import(join(import.meta.dirname, "../../../scripts/mechanism-exports.mjs"))) as {
-      fsReader: (root: string) => unknown;
-      packageEntryExports: (read: unknown) => Map<string, Map<string, Map<string, unknown>>>;
-    };
-    const entries = packageEntryExports(fsReader(join(import.meta.dirname, "../../.."))).get(pkg) ?? new Map();
+  function surfaceOf(pkg: string): Map<string, string[]> {
+    const entries = entryIndex.get(pkg) ?? new Map();
     return new Map([...entries].map(([subpath, names]) => [subpath, [...names.keys()]]));
   }
 
   describe.each(SURFACES)("$mode, its published surface", (harness) => {
-    it("is one entry, the package root", async () => {
-      expect([...(await surfaceOf(harness.pkg)).keys()]).toEqual(["."]);
+    it("is one entry, the package root", () => {
+      expect([...surfaceOf(harness.pkg).keys()]).toEqual(["."]);
     });
 
-    it("exports no translation or emitter name", async () => {
-      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+    it("exports no translation or emitter name", () => {
+      const names = [...surfaceOf(harness.pkg).values()].flat();
       expect(names.filter((name) => INTERNALS.test(name))).toEqual([]);
     });
 
-    it("spells every name it owns with its package's name", async () => {
-      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+    it("spells every name it owns with its package's name", () => {
+      const names = [...surfaceOf(harness.pkg).values()].flat();
       expect(names.filter((name) => !harness.spelling.test(name))).toEqual([]);
     });
 

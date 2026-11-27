@@ -2,7 +2,8 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
-  RequestRecord
+  RequestRecord,
+  SessionRecord
 } from "./types";
 
 // FIX-1010.
@@ -79,6 +80,38 @@ export function withStoredAbortRequested<T extends RequestRecord>(
   }
   if (value.abortRequested === stored) return value;
   return { ...value, abortRequested: stored };
+}
+
+// FIX-2942.
+/** The session record fields a birth writes once and every later `set` keeps: {@link withWriteOnceSessionFields}. */
+const WRITE_ONCE_SESSION_FIELDS = ["principalKind", "incarnationToken"] as const;
+
+/**
+ * Force a session record's write-once fields ({@link WRITE_ONCE_SESSION_FIELDS}:
+ * its creator's `principalKind` and its `incarnationToken`) to the values
+ * already stored, whatever the incoming record says: the rule that keeps them
+ * as its birth wrote them. A write that omits one keeps the stored one, and
+ * one that carries another (a stale snapshot of an earlier session written
+ * over one reborn under the same id) cannot change it. With none stored, the
+ * incoming value is written as it is: that is how a birth sets it, and how a
+ * session from before `principalKind` gets its backfilled kind, once
+ * (`context/session-kind.ts`).
+ *
+ * The memory and filesystem session stores call it inside their write; the
+ * SQL adapters keep the same rule inside the write statement
+ * (`writeOnceJsonKeys`), since a read before their write protects nothing
+ * across connections.
+ */
+export function withWriteOnceSessionFields<T extends SessionRecord>(
+  value: T,
+  stored: SessionRecord | undefined
+): T {
+  let kept = value;
+  for (const field of WRITE_ONCE_SESSION_FIELDS) {
+    const was = stored?.[field] ?? undefined;
+    if (was !== undefined && kept[field] !== was) kept = { ...kept, [field]: was };
+  }
+  return kept;
 }
 
 export function withActiveRequestSourceDefault<T extends ActiveRequestEntry | undefined>(

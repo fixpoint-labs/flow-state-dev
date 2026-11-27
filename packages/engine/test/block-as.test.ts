@@ -27,6 +27,7 @@ import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Keys under which an item or a suspension record names a block. */
 const NAME_KEYS = new Set([
@@ -75,6 +76,7 @@ async function runApprovingAll(flow: FlowInstance, input: unknown, action: "appr
   const response = createResponseEmitter({ requestId: "req_block_as", now: () => Date.now() });
 
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",

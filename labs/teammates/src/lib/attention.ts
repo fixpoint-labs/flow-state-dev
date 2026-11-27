@@ -11,7 +11,7 @@
  * title counts is wider, a teammate with an unread line or a need, once.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardTask } from "../adapter";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { endedAt, type Need } from "./status";
 
 /** The page's own name, the title with nothing waiting. */
@@ -35,13 +35,13 @@ export interface TeammateAttention {
 }
 
 /** A row's attention, from its name, its unread count, what it needs from you and its coding tasks that just ended. */
-export function teammateAttention(name: string, loaded: boolean, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): TeammateAttention {
+export function teammateAttention(name: string, loaded: boolean, unread: number, needs: readonly Need[], endings: readonly CodingBoardTask[]): TeammateAttention {
   return {
     asks: unread > 0 || needs.length > 0,
     loaded,
     alerts: [
       ...needs.map((n) => ({ key: n.key, text: n.kind === "approval" ? `${name} needs your OK: ${n.text}` : `${name} is waiting on you: ${n.text}` })),
-      ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "failed" ? "failed" : "finished"}: ${t.title}` })),
+      ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "errored" ? "failed" : "finished"}: ${t.title}` })),
     ],
   };
 }

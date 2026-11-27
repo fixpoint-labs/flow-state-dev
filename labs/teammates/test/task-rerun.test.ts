@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * What a task's buttons send, and where. Each goes to the board of the
  * conversation that filed the task, through the Inbox client's
@@ -7,9 +8,18 @@
  * with no idea what it replaces, and its result never reaches the
  * conversation that asked for the first.
  */
+import { createElement, type ReactNode } from "react";
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createLabAdapter, toBoardTask } from "../src/adapter";
+import { useTaskActions } from "../src/app";
+import { codingTask, TestProvider } from "./stub-server";
+
+/** The board's actions the popup sends, as `useTaskActions` hands them, over `client`. */
+function actionsOn(client: Client) {
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(TestProvider, { client }, children);
+  return renderHook(() => useTaskActions("wks_cos"), { wrapper }).result.current;
+}
 
 /**
  * A client that takes every board action, answering `answer`, and keeps each one sent.
@@ -36,7 +46,7 @@ function boardClient(answer: Record<string, unknown>, held?: Record<string, unkn
   return { client, sent };
 }
 
-/** A coding task on Cursor that failed, as the board's read carries it. */
+/** A coding task on Cursor that failed, as the board's `getTask` reads it, its brief whole. */
 const failedRow = {
   id: "task_1",
   title: "Fix the typo",
@@ -48,12 +58,14 @@ const failedRow = {
   status: "errored",
   error: "Cursor isn't set up on this machine.",
 };
+/** The same task as the coding board view lists it: no brief. */
+const listed = (fields: Record<string, unknown> = {}) =>
+  codingTask({ id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status, harness: "cursor", error: failedRow.error, ...fields });
 
 describe("a task's buttons act on the board of the conversation that filed it", () => {
   it("re-run files the task again on the other worker, the old brief kept and a line naming the old task by title", async () => {
     const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
-    const task = toBoardTask(failedRow, () => "cursor");
-    const id = await createLabAdapter(client).taskActions("wks_cos").rerun(task, "teammates.claude-code");
+    const id = await actionsOn(client).rerun(listed(), "teammates.claude-code");
 
     expect(id).toBe("task_2");
     expect(sent.map((s) => s.action)).toEqual(["getTask_tasks", "createTask_tasks"]);
@@ -69,29 +81,19 @@ describe("a task's buttons act on the board of the conversation that filed it", 
   it("re-run of a task filed with no brief carries just the line naming it", async () => {
     const { context: _, ...bare } = failedRow;
     const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, { ...bare, status: "cancelled" });
-    await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask({ ...bare, status: "cancelled" }), "teammates.codex");
+    await actionsOn(client).rerun(listed({ status: "cancelled", harness: null }), "teammates.codex");
     expect(sent[1]!.input.context).toBe('This re-runs the task "Fix the typo", which was cancelled.');
-  });
-
-  it("re-run reads the whole task first, so an old task whose brief the conversation no longer holds keeps it", async () => {
-    // Only what the board's list read carries: an old task's history copy is past the loaded window.
-    const listed = { id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status };
-    const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
-    await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(listed, () => "cursor"), "teammates.claude-code");
-    const filed = sent.find((s) => s.action === "createTask_tasks")!;
-    expect(filed.input).toMatchObject({ labels: ["docs"], priority: 2 });
-    expect(String(filed.input.context).startsWith(`${failedRow.context}\n\n`)).toBe(true);
   });
 
   it("re-run files nothing when the whole task can't be read", async () => {
     const { client, sent } = boardClient({ ok: false, error: "No task task_1 on this board." });
-    await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/No task task_1/);
+    await expect(actionsOn(client).rerun(listed(), "teammates.claude-code")).rejects.toThrow(/No task task_1/);
     expect(sent.map((s) => s.action)).toEqual(["getTask_tasks"]);
   });
 
   it("cancel, steer, release and retry go to the same board's own actions", async () => {
     const { client, sent } = boardClient({ ok: true });
-    const actions = createLabAdapter(client).taskActions("wks_cos");
+    const actions = actionsOn(client);
     await actions.cancel("task_1");
     await actions.steer("task_1", "Only line 1.");
     await actions.release("task_1");
@@ -106,113 +108,6 @@ describe("a task's buttons act on the board of the conversation that filed it", 
 
   it("a refusal shows as the board's own words", async () => {
     const { client } = boardClient({ ok: false, error: 'already_open: task "Fix the typo" (task_2) is this same work for teammates.claude-code' }, failedRow);
-    await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/^already_open: /);
-  });
-});
-
-describe("a task as the popup reads it", () => {
-  it("keeps a failed task's error apart from its result, and carries its board status and brief", () => {
-    const task = toBoardTask(failedRow);
-    expect(task).toMatchObject({ status: "failed", boardStatus: "errored", error: failedRow.error, goal: failedRow.goal, context: failedRow.context, labels: ["docs"], priority: 2 });
-    expect(task.result).toBeUndefined();
-    const done = toBoardTask({ ...failedRow, status: "completed", error: undefined, output: { answer: "Fixed it." } });
-    expect([done.result, done.error]).toEqual(["Fixed it.", undefined]);
-  });
-});
-
-describe("a task's brief, which the board's list read leaves out", () => {
-  it("comes from the conversation's copy of the row, so a re-run keeps it whether the task is open or ended", async () => {
-    // The board's `listTasks` read carries no context, labels or priority; the conversation's `task-change` copy does.
-    const stored = { ...failedRow, status: "in_progress" };
-    const item = {
-      id: "task-change:board/task_1",
-      requestId: "req_1",
-      type: "component",
-      component: "task-change",
-      ts: 1,
-      itemIndex: 0,
-      status: "completed",
-      data: { collectionId: "tasks", taskId: "task_1", kind: "added", task: stored },
-    };
-    let listed: Record<string, unknown> = { id: "task_1", title: stored.title, goal: stored.goal, assignee: stored.assignee, status: "in_progress", attempts: 1 };
-    const subscriptions: Array<(notice: unknown) => void> = [];
-    const client = {
-      subscribe: (_topics: unknown, options: { onChange: (notice: unknown) => void }) => (subscriptions.push(options.onChange), { close() {} }),
-      sessions: {
-        state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
-        stream: () => ({ close() {} }),
-        get: async () => ({ id: "wks_cos", flowKind: "agent" }),
-      },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
-    } as unknown as Client;
-    let tasks: ReturnType<typeof toBoardTask>[] = [];
-    const until = async (check: () => boolean) => {
-      for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
-    };
-    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
-    await until(() => tasks[0]?.boardStatus === "in_progress" && subscriptions.length > 0);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(tasks[0]).toMatchObject({ context: failedRow.context, labels: ["docs"], priority: 2 });
-
-    listed = { ...listed, status: "cancelled", updatedAt: 9 };
-    for (const hear of subscriptions) hear({ topic: { scope: "session", id: "wks_cos", resource: "tasks" }, kind: "board" });
-    await until(() => tasks[0]?.boardStatus === "cancelled");
-    stop();
-    expect(tasks[0]).toMatchObject({ boardStatus: "cancelled", context: failedRow.context, labels: ["docs"], priority: 2 });
-  });
-});
-
-describe("a task retried after its run ended", () => {
-  it("follows the new attempt's run, so the first attempt's error doesn't stay beside the retry's result", async () => {
-    // Attempt 1 failed on run_1; Retry ran it again as attempt 2 on run_2, which finished.
-    const failed = { ...failedRow, attempts: 1, run: { sessionId: "run_1" } };
-    const fixed = { ...failedRow, status: "completed", error: undefined, attempts: 2, run: { sessionId: "run_2" }, output: { answer: "Fixed it." } };
-    const change = (task: Record<string, unknown>, at: number) => ({
-      id: `task-change:board/task_1#${at}`,
-      requestId: `req_${at}`,
-      type: "component",
-      component: "task-change",
-      ts: at,
-      itemIndex: 0,
-      status: "completed",
-      data: { collectionId: "tasks", taskId: "task_1", kind: "updated", task },
-    });
-    const history: Record<string, unknown[]> = { wks_cos: [change(failed, 1)], run_1: [change(failed, 1)], run_2: [change(fixed, 2)] };
-    const { output: _, error: __, ...fixedListed } = fixed;
-    let listed: Record<string, unknown> = { ...failed, error: undefined };
-    const subscriptions: Array<(notice: unknown) => void> = [];
-    const client = {
-      subscribe: (_topics: unknown, options: { onChange: (notice: unknown) => void }) => (subscriptions.push(options.onChange), { close() {} }),
-      sessions: {
-        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: history[id] ?? [], pagination: { hasMore: false, nextOffset: (history[id] ?? []).length } }),
-        stream: () => ({ close() {} }),
-        get: async (id: string) => ({ id, flowKind: "agent" }),
-      },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
-    } as unknown as Client;
-    let tasks: ReturnType<typeof toBoardTask>[] = [];
-    const until = async (check: () => boolean) => {
-      for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
-    };
-    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
-    await until(() => tasks[0]?.error === failedRow.error && subscriptions.length > 0);
-    expect(tasks[0]).toMatchObject({ boardStatus: "errored", error: failedRow.error });
-
-    // Retried: attempt 2 claimed the row on run_2, whose own copy says it finished.
-    const notice = () => {
-      for (const hear of subscriptions) hear({ topic: { scope: "session", id: "wks_cos", resource: "tasks" }, kind: "board" });
-    };
-    listed = { ...fixedListed, status: "in_progress", updatedAt: 8 };
-    notice();
-    await until(() => tasks[0]?.boardStatus === "in_progress");
-    await new Promise((r) => setTimeout(r, 100));
-    expect(tasks[0]!.error).toBeUndefined();
-
-    listed = { ...fixedListed, updatedAt: 9 };
-    notice();
-    await until(() => tasks[0]?.result === "Fixed it.");
-    stop();
-    expect(tasks[0]).toMatchObject({ boardStatus: "completed", result: "Fixed it." });
-    expect(tasks[0]!.error).toBeUndefined();
+    await expect(actionsOn(client).rerun(listed(), "teammates.claude-code")).rejects.toThrow(/^already_open: /);
   });
 });

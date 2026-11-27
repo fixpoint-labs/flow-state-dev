@@ -3,12 +3,12 @@
  * `onChange` callback after every successful mutation.
  *
  * The substrate is transport-agnostic: it emits `TaskChangeEvent`s, and the
- * factory in `get-or-create.ts` adapts them to the framework's component-item
- * stream via `ctx.emit.component("task-change", …)`. Earlier revisions emitted
+ * factory in `get-or-create.ts` adapts them to the framework's data-item
+ * stream via `ctx.emit.data("task-change", …)`. Earlier revisions emitted
  * a custom `task_change` `OutputItem` directly; that bypassed `items.md`'s
  * documented type-registration process and required the substrate to build
- * provenance frames itself. Component items keep the substrate clean and
- * reuse the framework's existing emission infrastructure.
+ * provenance frames itself. Data items keep the substrate clean and reuse the
+ * framework's existing emission infrastructure.
  */
 import type { Task, TaskStatus } from "../schema/task";
 
@@ -146,9 +146,9 @@ export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer", "file
  * Project a task for client emission — the whole row minus
  * {@link SERVER_ONLY_TASK_FIELDS}.
  *
- * Applied where the component-item payload is built, because **schema
+ * Applied where the data-item payload is built, because **schema
  * membership is itself a publication**: the collection factory spreads the
- * post-mutation row into a `task-change` component item and a board can mark
+ * post-mutation row into a `task-change` data item and a board can mark
  * that stream client-visible, so a field on `Task` reaches a
  * browser with no consumer required.
  *

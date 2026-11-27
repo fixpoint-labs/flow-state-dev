@@ -15,6 +15,10 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
   return createPgRecordStore<SessionRecord, SessionListOptions>(executor, {
     tableName: "sessions",
     columns: ["flow_kind", "flow_id", "user_id", "org_id", "tenant_id", "parent_session_id"],
+    // A session's creator kind and its incarnation token are written
+    // once (at birth, or a kind's backfill for a session from before the
+    // field) and kept by every later `set`.
+    writeOnceJsonKeys: ["principalKind", "incarnationToken"],
     toRow: (record) => [
       record.flowKind,
       record.flowId ?? null,

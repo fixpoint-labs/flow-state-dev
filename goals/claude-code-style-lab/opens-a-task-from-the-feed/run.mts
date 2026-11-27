@@ -41,8 +41,8 @@ const LABEL: Record<string, string> = { pending: "queued", in_progress: "running
 const src = (...path: string[]) => join(LAB, "src", ...path);
 /** What a control changes for its run. */
 const PLANTS: Record<string, Plant[]> = {
-  "no-feed-open": [{ file: src("components", "Thread.tsx"), from: "{ rows: tasks, open: onOpenThread }", to: "{ rows: tasks, open: () => {} }" }],
-  "frozen-dot": [{ file: src("components", "Entry.tsx"), from: "const dot = row?.status ?? reported;", to: "const dot = reported;" }],
+  "no-feed-open": [{ file: src("components", "Thread.tsx"), from: "openTask: onOpenThread,", to: "openTask: () => {}," }],
+  "frozen-dot": [{ file: src("components", "lines.tsx"), from: "<StatusDot status={task?.status ?? reported} />", to: "<StatusDot status={reported} />" }],
   "done-shut": [{ file: src("components", "TasksPane.tsx"), from: "if (openInDone !== undefined) setDoneOpen(true);", to: "if (openInDone !== undefined) setDoneOpen(false);" }],
 };
 
@@ -183,12 +183,9 @@ await runGoal(async (failures, tell) => {
 /** opens-from-start-line: the line that started the task has Open task, which opens that task's sheet, and its dot is the row's status. */
 async function legStartLine(page: Page, session: string, board: ReturnType<typeof boardOf>, failures: string[], tell: Tell, notes: string[]) {
   const thread = page.getByRole("main", { name: "Main thread" });
-  const step = thread.locator('[data-entry="tool"] [data-task-id]');
-  const found = await until(async () => {
-    // A finished turn's run of calls folds; open each folded run so its steps are drawn.
-    for (const folded of await thread.locator('[data-entry="tool"] > button[aria-expanded="false"]').all()) await folded.click().catch(() => undefined);
-    return (await step.count()) > 0 ? true : undefined;
-  }, MODEL_BOUND_MS, 2_000);
+  // The line a task's filing wrote, where the call that filed it was.
+  const step = thread.locator('[data-entry="task"] [data-task-id]');
+  const found = await until(async () => ((await step.count()) > 0 ? true : undefined), MODEL_BOUND_MS, 2_000);
   const rows = await board.rows(session);
   tell.over("leg 2 · the board's rows", rows);
   tell.over("leg 2 · a line that started a task", found === undefined ? [] : [true]);

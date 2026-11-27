@@ -81,7 +81,7 @@ async function until(predicate: () => boolean, label: string): Promise<void> {
 async function boot(kind: string) {
   const observed: Observed = { runs: [], checks: [] };
   const flow = bornFlow(kind, observed);
-  const state = createFlowState({ flows: { [kind]: flow }, stores: { default: { primary: inMemoryStores() } } });
+  const state = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
   const runtime = await state.getRuntime();
   return { observed, flow, runtime, state };
 }

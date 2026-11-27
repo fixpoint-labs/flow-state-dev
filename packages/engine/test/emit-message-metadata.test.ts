@@ -12,6 +12,7 @@ import { z } from "zod";
 import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { itemToLLMMessages } from "../src/context/history";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const DATA = { taskNotice: { taskId: "task_1", ending: "completed" } };
 
@@ -19,9 +20,7 @@ function flow() {
   return defineFlow({
     kind: "message-metadata",
     actions: {
-      say: {
-        inputSchema: z.object({}),
-        block: handler({
+      say: handler({
           name: "say",
           inputSchema: z.object({}),
           execute: async (_input, ctx) => {
@@ -31,7 +30,6 @@ function flow() {
             return {};
           }
         })
-      }
     }
   })();
 }
@@ -41,6 +39,7 @@ describe("a message's metadata", () => {
     const stores = createInMemoryStores();
     const streamed: MessageItem[] = [];
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: flow(),
       actionName: "say",

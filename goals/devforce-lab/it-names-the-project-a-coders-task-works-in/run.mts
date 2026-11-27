@@ -42,6 +42,8 @@ import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentL
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["no-project-list"] as const;
@@ -67,7 +69,6 @@ const SHIFT_COORDINATOR = "shift-coordinator";
 const COORDINATOR_FLOW = "coordinator";
 const LIST_TASKS = "listTasks_tasks";
 const LIST_PROJECTS = "listProjects";
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
 /** A real model for every turn, and the gateway's evaluation model for the Shift Coordinator's routing. */
@@ -188,7 +189,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     modelResolver: liveResolver(),
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "names-the-project-")), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

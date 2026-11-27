@@ -1,14 +1,13 @@
 // FIX-858.
 /**
- * Shared builder for a read-only projected-collection instance ref.
+ * Builder for a read-only projected-collection instance ref.
  *
- * Both the execution-context registry (`createExternalCollectionHandle`) and the
- * client-route scope handle (`createScopeResources`) resolve an app record and
- * expose it as a read-only `ProjectedResourceRef`. Factored here so the ref shape
- * — `path` / `scope` / `uri` / synchronous `state`, and content rendered from
- * `contentTemplate` / `contentTemplateRef` — has ONE definition and the two call
- * sites can't drift (they did: the route copy ignored templates). The read+
- * validate step is `readProjectedRecord` in core; this owns only the ref shape.
+ * The execution-context registry (`createExternalCollectionHandle`) resolves an
+ * app record and exposes it as a read-only `ProjectedResourceRef` through this:
+ * the ref shape — `path` / `scope` / `uri` / synchronous `state`, and content
+ * rendered from `contentTemplate` / `contentTemplateRef` — has one definition
+ * here. The read+validate step is `readProjectedRecord` in core; this owns only
+ * the ref shape.
  */
 import type { ProjectedResourceRef, JsonObject, ResourceScope } from "@flow-state-dev/core/types";
 import {
@@ -29,12 +28,16 @@ export function buildProjectedResourceRef(args: {
   contentTemplateRef?: string;
   /** Resolve a `contentTemplateRef` path to raw template text (`null` when unavailable). */
   resolveTemplateRef?: (ref: string) => string | null;
+  /** The collection's `llmReadable`, carried on the ref as a store-backed instance carries its collection's config. */
+  llmReadable?: boolean;
 }): ProjectedResourceRef<JsonObject> {
-  const { scope, storageKey, readState, contentTemplate, contentTemplateRef, resolveTemplateRef } = args;
+  const { scope, storageKey, readState, contentTemplate, contentTemplateRef, resolveTemplateRef, llmReadable } = args;
   return {
     path: storageKey,
     scope,
     uri: `${scope}/${storageKey}`,
+    // The read tool's gate (`isLlmReadable`) reads the collection's flag off the instance ref.
+    config: { llmReadable: llmReadable === true },
     get state() {
       return readState();
     },

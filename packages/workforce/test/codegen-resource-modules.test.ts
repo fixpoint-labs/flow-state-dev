@@ -25,7 +25,7 @@ import {
   renderWorkforceCode,
   type DiscoveredResourceModule,
 } from "../src/codegen";
-import { readResourcesDirectory } from "../src/loader";
+import { readResourcesDirectory } from "../src/loader/readers";
 import { RESOURCE_SLOT_PATTERNS, walkResourcePlaces } from "../src/loader/resource-walk";
 
 const roots: string[] = [];
@@ -221,6 +221,16 @@ describe("where the modules are found", () => {
     expect(found(resourceModules)).toEqual([
       "teams/engineering/dashboard",
       "teams/engineering/research",
+    ]);
+  });
+
+  it("finds a .mts module, imported as the .mjs it compiles to", async () => {
+    const root = tree({ "teams/engineering/resources/digest.mts": MODULE });
+
+    const { resourceModules } = await discoverWorkforceCode(root);
+
+    expect(resourceModules.map((module) => [module.ref, module.importPath])).toEqual([
+      ["teams/engineering/digest", "./teams/engineering/resources/digest.mjs"],
     ]);
   });
 

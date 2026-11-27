@@ -45,7 +45,8 @@ export {
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,
-  PrincipalResolutionError
+  PrincipalResolutionError,
+  SessionRequiredError
 } from "./errors";
 
 export {
@@ -105,3 +106,11 @@ export {
   type CreateWebhookTransportAdapterOptions,
   type WebhookProviderDefinition
 } from "./webhook/createWebhookTransportAdapter";
+
+// FIX-2753.
+/**
+ * The source the router's built-in scheduled endpoint stamps on every fire,
+ * and resolves principals under: a principal resolver reads it to admit the
+ * schedule tick. One constant with the runtime's own.
+ */
+export { SCHEDULED_SOURCE as SCHEDULED_TRANSPORT_SOURCE } from "../execution/transport-sources";

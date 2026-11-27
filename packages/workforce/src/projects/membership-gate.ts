@@ -18,7 +18,7 @@ import type { ProjectResourceState } from "./collections";
 /**
  * Whether `sessionOwner` is one of the project's members.
  *
- * @param row The project row, as stored.
+ * @param row The project entry, as stored.
  * @param sessionOwner The session's owner from the engine's session record:
  *   `ctx.session.identity.userId`. A session with no owner is never a member.
  */

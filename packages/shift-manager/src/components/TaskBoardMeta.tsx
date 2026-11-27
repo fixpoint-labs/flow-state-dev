@@ -4,21 +4,21 @@
  * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
  * byte-equal to the registry, no router).
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSubscription } from "@flow-state-dev/react";
-import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import type { DataItem, OutputItem } from "@flow-state-dev/core/items";
 import { ERROR_REPORTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
 import { TaskPlan } from "./flow-state/task-plan";
-import { extractTaskPlanState, TASK_CHANGE_COMPONENT } from "./flow-state/task-plan-state";
-import { isOpen, TASKS_POLL_MS } from "./TasksPanel";
+import { extractTaskPlanState, TASK_CHANGE_DATA_TYPE } from "./flow-state/task-plan-state";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
-import { conversationBoardTopics, readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
-import { workerLabel } from "../lib/derive";
+import { useConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
+import { workerLabel } from "../lib/shift";
 import { useLab } from "../lib/lab-data";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/reads";
+import type { SessionSummary } from "@flow-state-dev/client";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/boards";
+import { useSessions, useWorkers } from "../lib/directory";
 import { RouteLink } from "./RouteLink";
 
 /** The board the surrounding feed's session keeps, and its tasks as last read; `{}` outside a {@link SessionScope}. */
@@ -57,61 +57,29 @@ export function SessionScope({
 
 function isConversationTaskChange(item: OutputItem): boolean {
   return (
-    item.type === "component" &&
-    item.component === TASK_CHANGE_COMPONENT &&
-    (item.data as { collectionId?: string } | undefined)?.collectionId === CONVERSATION_BOARD_COLLECTION
+    item.type === "data" &&
+    item.dataType === TASK_CHANGE_DATA_TYPE &&
+    item.value.collectionId === CONVERSATION_BOARD_COLLECTION
   );
 }
 
 /**
- * Reads on mount, when the Lab is read again, and on each board notice.
- * Wherever push can miss a change it reads on a timer, only while a
- * task could be moving. A failed read leaves the last one, or the feed's
- * record, and keeps the timer. The snapshot hears the same moves on its own
- * (`lab-data.tsx`), so what it counts agrees with the card.
+ * Watches the conversation's task-list view (`useConversationTasks`): current
+ * on each board change, with the view's own timer where push can miss one. A
+ * failed read leaves the last answer, or the feed's record. The Inbox view
+ * hears the same moves on its own (`inbox.ts`), so what it counts agrees with
+ * the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
-  const { client, snapshot } = useLab();
-  const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
-  const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
-  // Whether the last read left a task that can still move; before any read lands, assume one can.
-  const [moving, setMoving] = useState(true);
-  // Only the latest read started may land.
-  const latest = useRef(0);
-  useEffect(() => {
-    setMoving(true);
-  }, [flow, sessionId]);
-
-  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
-  // board unmounted sets nothing.
-  const readBoard = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
-    const mine = ++latest.current;
-    try {
-      const tasks = await readConversationTasks(client, flow, sessionId);
-      if (mine !== latest.current || signal?.aborted === true) return;
-      setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
-      setMoving(tasks.some(isOpen));
-    } catch {
-      // The last read stands; the timer, if any, stays on.
-    }
-  }, [client, flow, sessionId]);
-
-  useEffect(() => {
-    const ended = new AbortController();
-    void readBoard(null, ended.signal);
-    return () => ended.abort();
-  }, [readBoard, readAt]);
-
-  const topics = useMemo(() => conversationBoardTopics(sessionId), [sessionId]);
-  useSubscription(topics, readBoard, { client, ...(moving ? { pollIntervalMs: TASKS_POLL_MS } : {}) });
-
-  const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
+  const { tasks } = useConversationTasks(flow, sessionId);
+  const read = useMemo(() => (tasks === undefined ? undefined : new Map(tasks.map((task) => [task.id, task]))), [tasks]);
+  const board = useMemo(() => ({ boardRef, read }), [boardRef, read]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;
 }
 
-export function TaskBoardMeta({ item }: { item: ComponentItem }) {
+export function TaskBoardMeta({ item }: { item: DataItem }) {
   const { boardRef, read } = useContext(BoardContext);
-  const collectionId = (item.data as { collectionId?: string } | undefined)?.collectionId;
+  const collectionId = (item.value as { collectionId?: string }).collectionId;
   if (collectionId === undefined) return null;
   // Only the conversation's own ledger is a board this route opens; another collection's task ids name nothing there.
   if (boardRef === undefined || collectionId !== CONVERSATION_BOARD_COLLECTION) {
@@ -162,16 +130,19 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
   );
 }
 
+/** No sessions, while the list is read. */
+const NO_SESSIONS: readonly SessionSummary[] = [];
+
 /**
  * Under a cancelled task: a cancel isn't reported, so a user who cancelled
  * because something went wrong tells the Error Reporter, naming the task.
  * Drawn only when the Lab's inventory has an Error Reporter.
  */
 function CancelledNote({ taskId }: { taskId: string }) {
-  const { snapshot } = useLab();
-  const loaded = snapshot !== undefined && "inventory" in snapshot ? snapshot : undefined;
-  const reporter = loaded?.inventory?.ok ? loaded.inventory.value.workers.find((worker) => worker.kind === ERROR_REPORTER_FLOW) : undefined;
-  const sessionId = useConversationSession(reporter, loaded?.sessions ?? []);
+  const { workers } = useWorkers();
+  const sessions = useSessions().list;
+  const reporter = workers.find((worker) => worker.kind === ERROR_REPORTER_FLOW);
+  const sessionId = useConversationSession(reporter, sessions ?? NO_SESSIONS);
   if (reporter === undefined) return null;
   const name = reporter.name || "the Error Reporter";
   return (

@@ -9,6 +9,7 @@ import {
   testBlock
 } from "@flow-state-dev/testing";
 import { backgroundWorkSettled, backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
+import { biasCheck } from "../flows/chat-agent/run/bias-check";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import { userStateSchema } from "../flows/chat-agent/shared/schemas";
 
@@ -90,6 +91,12 @@ const observeFixture = mockGenerator({
 });
 
 describe("chat-agent flow", () => {
+  it("skips the bias auditor when a session has no feature settings", async () => {
+    const result = await testBlock(biasCheck, { input: "A response", unmockedGeneratorPolicy: "error" });
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({ userInput: "", response: "A response" });
+  });
+
   it("routes to default-pipeline for default style", async () => {
     assistantFixture.reset();
     observeFixture.reset();
@@ -191,7 +198,7 @@ describe("chat-agent flow", () => {
           "artifacts/doc-1": {
             title: "Test Document",
             summary: "Test content summary",
-            updatedAt: 1000
+            updatedAt: "1970-01-01T00:00:00.000Z"
           },
           workingMemory: emptyWorkingMemory,
           memorySystem: emptyMemorySystem,

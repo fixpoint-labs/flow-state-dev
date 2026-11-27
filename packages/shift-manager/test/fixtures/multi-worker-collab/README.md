@@ -13,7 +13,7 @@ To look at it by hand:
 pnpm --filter @flow-state-dev/devtool build        # once per checkout
 pnpm --filter @flow-state-dev/devtool build:assets
 # from a scratch directory, with the intent overrides unset (see below):
-pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts
+pnpm tsx <repo>/packages/fsdev/bin/fsdev.ts dev --config <repo>/packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts
 ```
 
 ## How it is wired
@@ -44,7 +44,7 @@ row starting from `eng.builder`'s lane) and wants a redraw.
 | `workforce/` | The scenario, whole: four `WORKER.md`. `eng.queue` is the team's coordinator, on Workforce's `coordinator` flow, delegating to the other three. The planner names the `planner` flow and `delegates: [eng.builder, eng.reviewer]`. The two worker files name the `worker` flow and the desk each answers for (`build`, `review`) — spelled unlike any worker id, so a check that confused a desk with a worker could not pass. **No file declares a board.** |
 | `host.mts` | Reads the tree, refuses it whole if anything did not load or it is not exactly one coordinator, one planner and two workers, and hires. Holds the app's desk → delegate map (`ROUTES`, and `routesFor` for the controls), which nothing reads off the tree. `openLab` is the boot: it opens the organization's inventory, in-process, as the inventory docs show any app doing it, on the lab's own `inventory-writer` flow, and throws when the inventory reports a problem. |
 | `workforce/flows/workers/` | The two flows, one file each, basename = the flow a `WORKER.md` names in its `flow:` line. `planner.mts` carries Workforce's filing factory (`defineSessionBoard`): the task actions on its conversation's own board, and the entries the board runs on. `worker.mts` takes tasks through `workerTaskEntry`; its turn parks on the row's question while the row has not been answered, and otherwise finishes. The loader does not walk `flows/`. |
-| `workforce/flows/piece.mts` | The row's input contract (the desk, the question, the row it follows), the one piece both flows share. Beside the flows rather than among them, since a file under `flows/workers/` reads as a flow. |
+| `piece.mts` | The row's input contract (the desk, the question, the row it follows), the one piece both flows share. Outside `workforce/`, since workforce reads only its own files there and a file under `flows/workers/` reads as a flow. |
 | `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs the worker flow here (`ignore-the-answer`, `silent-park`); `no-inventory` skips the boot. |
 | `goals/multi-worker-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), opens each worker's own session over the HTTP session route, files and answers through the planner's conversation's actions, and reads the board off the server's SQLite file. Reports; grades nothing. |
 
@@ -70,7 +70,7 @@ row starting from `eng.builder`'s lane) and wants a redraw.
   the task session the row ran in. The planner's Tasks tab therefore shows the row as filed, the
   task session's shows why it waited and what it was told, and the ledger collection in the
   Resources panel shows both rows as they stand.
-- **No run link on the planner's Tasks tab.** The DevTool links a task row to its run by decoding
+- **No run link on the planner's Tasks tab.** The DevTool links a task to its run by decoding
   the run's session key, and it decodes a dispatched board's key, not a conversation board's. The row
   still names its run session (`run`), and the navigator lists that session under the worker's flow,
   which is how the check opens it.

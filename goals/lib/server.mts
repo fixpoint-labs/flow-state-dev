@@ -21,22 +21,31 @@
  * module owns the first: ANY answer means stop. Readiness stays in the goal,
  * and wants a real 200 from the process it spawned — a shared "is it up?"
  * helper would reopen whichever half it did not serve.
+ *
+ * `freePort` is an unused TCP port on 127.0.0.1, for a goal that binds its own.
  */
 import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 
-/** Ask the OS for an unused loopback port and release it for the server the goal will start. */
+/**
+ * An unused TCP port on 127.0.0.1.
+ *
+ * Listens on port 0 and returns the port the kernel assigned, then closes.
+ * Rejects when listen reports no address, so a caller never treats `0` as a port.
+ */
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const address = probe.address();
-      probe.close((error) => {
-        if (error !== undefined) reject(error);
-        else if (address === null || typeof address === "string") reject(new Error("no TCP port assigned"));
-        else resolve(address.port);
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => {
+        if (typeof address !== "object" || address === null) {
+          reject(new Error("freePort: listen reported no address"));
+          return;
+        }
+        resolve(address.port);
       });
     });
   });

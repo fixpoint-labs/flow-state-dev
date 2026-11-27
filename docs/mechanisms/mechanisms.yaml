@@ -86,6 +86,39 @@ mechanisms:
     status: canonical
     doc: docs/architecture/flows-and-actions.md
 
+  - id: kit-folder
+    job: Read a folder an app hands a kit without following a symlink, and refuse every entry no reader claimed. The walk primitives (classify, openRoot, openStructuralDirectory and the refusal wordings) on the Node-only engine/folder subpath, and the claim pass createFlowState runs over each kit's folder.
+    package: "@flow-state-dev/engine"
+    anchor: openRoot
+    file: packages/engine/src/folder/walk.ts
+    builtOn: []
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/kits.md
+
+  - id: kit
+    job: Install a feature into an app with one config object. A kit declares the kits it requires, the slots other kits fill, an optional folder it owns, and an install that returns flows; createFlowState({ kits }) orders them, merges slots and reads each folder through the claim pass.
+    package: "@flow-state-dev/core"
+    anchor: defineKit
+    file: packages/core/src/kit/define-kit.ts
+    builtOn: [flow, kit-folder]
+    overlaps:
+      - { id: capability, relation: distinct-jobs, note: "A capability installs into one block; a kit installs flows into an app and can declare slots." }
+      - { id: workforce, relation: distinct-jobs, note: "Workforce is installed as a kit (`workforce`, FIX-2627); hireWorkforce is what its install runs, so an app installs it through this row, not that one." }
+    status: canonical
+    doc: docs/architecture/kits.md
+
+  - id: view
+    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to and, under each, which notices may change it (`hears`); a task board read through its task collection is recorded there as its board's notices (`recordBoardRead`). A session or user view also reads the caller's own sessions through the request host (`sessions.list`, `sessions.turns`, `sessions.read`), admitted as the HTTP session list admits them and heard on the notices that change each, never `items`. It replaced flow reads and a scope's client.derived.
+    package: "@flow-state-dev/core"
+    anchor: defineView
+    file: packages/core/src/flow/defineView.ts
+    builtOn: [flow, scope, resource]
+    overlaps:
+      - { id: resource, relation: distinct-jobs, note: "A resource is stored state a block reads; a view computes an answer from it on demand and stores nothing." }
+    status: canonical
+    doc: docs/architecture/flows-and-actions.md
+
   - id: scope
     job: The four places state and resources live (request, session, user, org). A block reads them; it does not invent another scope.
     package: "@flow-state-dev/core"
@@ -145,6 +178,18 @@ mechanisms:
     overlaps: []
     status: canonical
     doc: docs/architecture/items.md
+
+  - id: attachment
+    job: A file a user attaches rides a turn as one reference (`fsd-blob:<id>` in `FileContent.data`), never as bytes. The bytes live in the blob store, and one resolver (engine's `resolveAttachment`) reads them. Contracts owns the reference and the limits; core's `recordAttachments` (the session list) and `readAttachment` (the tool) are this job's too, though they sit in `packages/core/src/helpers/` beside harness-steering, so the classifier's directory rule names that row for them.
+    package: "@flow-state-dev/contracts"
+    anchor: toBlobRef
+    file: packages/contracts/src/attachments.ts
+    builtOn: [contracts, item, store]
+    overlaps:
+      - { id: store, relation: distinct-jobs, note: "The blob store is the store profile's `blobs` slot and keeps bytes; this row is the reference a turn carries and the one resolver that reads it." }
+      - { id: coding-harness, relation: distinct-jobs, note: "A harness reads a turn's files through readHarnessTurnFiles, which calls the one resolver; it adds no second way to carry or read a file." }
+    status: canonical
+    doc: docs/architecture/server-and-client.md
 
   - id: model
     job: Turn a model id into a provider client, with fallback. Engine re-exports it; there is no second resolver.
@@ -238,7 +283,7 @@ mechanisms:
     file: packages/core/src/blocks/dispatcher.ts
     builtOn: [block, dispatch]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "fifo and priority claim orders pick a pending task row; dispatcher() sends work to a session." }
+      - { id: task, relation: distinct-jobs, note: "fifo and priority claim orders pick a pending task; dispatcher() sends work to a session." }
     status: canonical
     doc: docs/architecture/dispatched-work.md
 
@@ -295,7 +340,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: change-bus
-    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never its rows, naming the ids of what changed when the publisher holds them (a task, an entry's key, a session, a request), folded per turn up to one cap. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
     package: "@flow-state-dev/engine"
     anchor: createInMemoryBus
     file: packages/engine/src/bus/in-memory-bus.ts
@@ -308,7 +353,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: push-delivery
-    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. The socket is where a notice's ids reach a browser, so the app's per-scope `noticeIds` switch is applied there. With it off, a scope's notices carry no ids and no collection entry's path to a scope-wide subscription. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them (the ids of two notices of one change on one topic are unioned), keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
     package: "@flow-state-dev/engine"
     anchor: enablePushDelivery
     file: packages/engine/src/push/push-delivery.ts
@@ -317,7 +362,7 @@ mechanisms:
     overlaps:
       - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
     status: canonical
-    doc: apps/docs/guides/realtime.md
+    doc: apps/docs/docs/build/live-updates.md
 
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
@@ -341,7 +386,7 @@ mechanisms:
     doc: docs/architecture/authentication.md
 
   - id: webhook
-    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding.
+    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding, or, on a provider's service route (`service`), normalizes the delivery and routes each event to the sessions that follow it through `routeServiceEvent`.
     package: "@flow-state-dev/core"
     anchor: defineWebhookBinding
     file: packages/core/src/types/webhooks.ts
@@ -351,11 +396,12 @@ mechanisms:
     doc: docs/architecture/webhook-transport.md
 
   - id: schedule
-    job: Fire an event-addressed action on a cron. ScheduleIndex is the contract; SQLite, Postgres, Vercel and BullMQ are adapters, and BullMQ fires the job itself.
-    package: "@flow-state-dev/scheduled"
-    anchor: ScheduleIndex
-    file: packages/scheduled/src/scheduleIndex.ts
-    builtOn: [flow, inbound-transport]
+    job: Fire an event-addressed action on a cron. One engine tick fires every static and dynamic schedule of every flow through the scheduled endpoint, which the router mounts on every app with no line; ScheduleIndex (`@flow-state-dev/scheduled`) is the dynamic schedules' contract (SQLite and Postgres are adapters). A scheduler only decides when the tick runs (the engine's local cron by default, one process elected by a lease in the store, or Vercel's one cron route).
+    package: "@flow-state-dev/engine"
+    anchor: SCHEDULED_TRANSPORT_SOURCE
+    file: packages/engine/src/execution/transport-sources.ts
+    adapters: ["@flow-state-dev/store-sqlite", "@flow-state-dev/store-postgres", "@flow-state-dev/vercel"]
+    builtOn: [flow, inbound-transport, store]
     overlaps: []
     status: canonical
     doc: docs/architecture/scheduled-actions.md
@@ -383,11 +429,11 @@ mechanisms:
     doc: docs/architecture/server-and-client.md
 
   - id: bullmq
-    job: A queue-backed host. Flows run as jobs; schedules are the schedule row's BullMQ adapter.
+    job: A queue-backed host. Flows run as jobs. Schedules need nothing from it (the engine's local cron ticks in its processes, elected by the shared store's lease, and a fire is enqueued like any action).
     package: "@flow-state-dev/bullmq"
     anchor: createBullmqRuntime
     file: packages/bullmq/src/runtime.ts
-    builtOn: [host, schedule, lease]
+    builtOn: [host, lease]
     overlaps:
       - { id: dispatcher, relation: distinct-jobs, note: "The queue's worker dispatch, dispatcher() and task claim orders are three uses of one word." }
     status: canonical
@@ -519,7 +565,7 @@ mechanisms:
     doc: packages/orchestration/README.md
 
   - id: inbox
-    job: One read of what holds work for the user (a task row's open holds, or a suspension with no row) and the one call that answers it.
+    job: One read of what holds work for the user (a task's open holds, or a suspension with no row) and the one call that answers it.
     package: "@flow-state-dev/orchestration"
     anchor: createInboxClient
     file: packages/orchestration/src/inbox/client.ts
@@ -596,21 +642,21 @@ mechanisms:
 
   # ── Workforce ─────────────────────────────────────────────────────────────
   - id: workforce
-    job: Register worker flows from an installation (hireWorkforce). The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
+    job: "Workers from an app's files, each running on one registered copy of the flow it names. An app installs it as a kit, `workforce` from `@flow-state-dev/workforce/kit`, whose install builds the installation and hires it (FIX-2627); its slots take worker flows, capabilities for the flows it builds, and flows built on the installation. The define* factories beside it are the records and flows a workforce app composes, not separate frameworks."
     package: "@flow-state-dev/workforce"
-    anchor: hireWorkforce
-    file: packages/workforce/src/workers/register.ts
-    builtOn: [flow, task-board]
+    anchor: workforce
+    file: packages/workforce/src/kit/workforce-kit.ts
+    builtOn: [flow, task-board, kit]
     overlaps: []
     status: canonical
     doc: docs/architecture/workforce-default-worker-flow.md
 
   - id: worker-loader
-    job: Read a workforce from files (WORKER.md, teams, references, resources) into records hireWorkforce takes. Node-only.
+    job: Read a workforce folder (WORKER.md, teams, references, resources) through a kit's folder, every path it reads claimed and every reader problem a refusal, into the records the workforce kit hires. Node-only.
     package: "@flow-state-dev/workforce"
-    anchor: readWorkforce
-    file: packages/workforce/src/loader/read-workforce.ts
-    builtOn: [workforce]
+    anchor: readWorkforceFolder
+    file: packages/workforce/src/loader/read-workforce-folder.ts
+    builtOn: [workforce, kit-folder]
     overlaps: []
     status: canonical
     doc: packages/workforce/README.md
@@ -635,6 +681,18 @@ mechanisms:
     status: canonical
     doc: packages/workforce/README.md
 
+  - id: task-input-schema
+    job: What a worker flow's tasks take, declared on its `work` entry (`taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project })`). Every write that files a task for one of its workers, or moves one onto it, is checked against it before anything is written, server-owned fields dropped and filled by the flow; the claim parses the stored task again; `listDelegates` shows it as `inputSchema`, JSON Schema. A flow that declares none takes any object.
+    package: "@flow-state-dev/workforce"
+    anchor: taskInputSchema
+    file: packages/workforce/src/task-input/declaration.ts
+    builtOn: [session-board, task]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "task is the row and its lifecycle; task-input-schema is the contract a row's input is checked against, per assignee's flow" }
+      - { id: session-board, relation: distinct-jobs, note: "session-board runs the checks on its writes; the declaration lives on the worker flow, and the raw ledger handles run the same check" }
+    status: canonical
+    doc: specs/issues/FIX-2894/SPEC.md
+
   - id: coordinator
     job: A coordinator flow that routes a request to the worker who should take it, and keeps the routed history.
     package: "@flow-state-dev/workforce"
@@ -647,25 +705,46 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: worker-messages
-    job: Let one worker message another on its user's roster. Talk, not delegation; no task row. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
     package: "@flow-state-dev/workforce"
     anchor: sendMessage
     file: packages/workforce/src/messages/send-message.ts
     builtOn: [workforce, dispatch, wait-gate]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+      - { id: task, relation: distinct-jobs, note: "Delegation files a task; a message files nothing. A second way to reach a worker would be a third." }
       - { id: wait-gate, relation: distinct-jobs, note: "sendMessage({ wait }) parks on the one wait gate, as getTask({ wait }) does; the gate is the park, this row is the reply. There is no second reply path (the call's was removed by FIX-2318)." }
     status: canonical
     doc: packages/workforce/README.md
 
   - id: projects
-    job: Shared and private project rows, their files, and the workstream entries a project's progress is worked out from.
+    job: Shared and private project entries, their files, and the workstream entries a project's progress is worked out from.
     package: "@flow-state-dev/workforce"
     anchor: defineProjectsCollection
     file: packages/workforce/src/projects/collections.ts
     builtOn: [collection, workforce]
     overlaps: []
     status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: source-read
+    job: "Three reads of a workspace host's source (glob, read, grep) as a capability, naming no project and installing no resources. projectSourceCapability is this body plus the project resources."
+    package: "@flow-state-dev/workforce"
+    anchor: sourceReadCapability
+    file: packages/workforce/src/source-read.ts
+    builtOn: [capability, workspace]
+    overlaps:
+      - { id: projects, relation: distinct-jobs, note: "projectSourceCapability, under projects, is the same reads over a project's checkout, with the project resources; this row is the reads alone." }
+    status: canonical
+    doc: docs/architecture/workforce-default-worker-flow.md
+
+  - id: workforce-panels
+    job: "React components for a workforce screen: the roster, one worker's detail, and a board as columns or a list. They read workforce's views through the react package's hooks; React is an optional peer, and only the /react entry imports it."
+    package: "@flow-state-dev/workforce"
+    anchor: Roster
+    file: packages/workforce/src/react/components/Roster.ts
+    builtOn: [react, workforce, view]
+    overlaps: []
+    status: canonical
     doc: packages/workforce/README.md
 
   - id: error-reporter
@@ -710,21 +789,31 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config screens and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. GitHub is the first provider (`githubServiceFlow`, on the webhook transport's service route), and a coding task follows the PR it opened from the moment its record is written (`followPullRequest`). Inside the app, a session publishes on a declared topic with `publishEvent` (a worker's tool, or a function a block calls), and the dispatch seam routes it through the internal service flow (`internalServiceFlow`) as `service:internal`, to the publisher's own routines on `internal:<topic>`, never its own session; the publish pays one place in its message chain, and each delivery lands in that chain one hop on, so the message budget bounds the whole exchange. `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one. A coordinator can follow one `unmatched`, hearing only events no other subscription heard, of the event types the app forwards (`forwards`), each marked addressed or inferred by the delivery, and its `inferredWork` (`off`, `observe`, `auto`) decides whether inferred work runs, waits on a confirm the board's write adds, or lands as a line with no turn. Internal events are one provider of it; the workforce kit serves them from its `internalEvents` config, and a worker flow reaches their publish with `internalEventsOf(installation)`.
     package: "@flow-state-dev/workforce"
-    anchor: subscriptionTools
+    anchor: subscribe
     file: packages/workforce/src/subscriptions/subscribe.ts
-    builtOn: [collection, worker-messages, durability, flow, sequencer-dsl]
+    builtOn: [collection, worker-messages, durability, flow, sequencer-dsl, model]
     overlaps:
-      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. FIX-2535 wires a GitHub webhook into routeServiceEvent." }
-      - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription row, never by the roster." }
+      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. A provider's service route on the webhook transport is how a verified delivery reaches routeServiceEvent: one verify-and-ack pipeline for both." }
+      - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription entry, never by the roster." }
       - { id: schedule, relation: distinct-jobs, note: "A dynamic schedule and an owner run both start a run as the user whose row the host found (one cell rule, resolveSharedUserCellKey); a schedule fires on a clock, a delivery on an event." }
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: routines
+    job: See and stop everything that fires on its own as a user, in one list. A routine has one trigger, a clock (a schedule that files a task) or an event (a subscription); four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, reach both, as roster actions for the user and, for a worker flow that names it in `uses`, as the routines capability's tools. The app's declared routines are seeded per user under cfg_ keys and can only be paused.
+    package: "@flow-state-dev/workforce"
+    anchor: createRoutinesCapability
+    file: packages/workforce/src/routines/routines.ts
+    builtOn: [schedule, subscriptions, flow]
+    overlaps: []
     status: canonical
     doc: packages/workforce/README.md
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper. Each also ships itself as one value for the harness kit's slot (core's `Harness`, from `@flow-state-dev/core/harness`), as `claudeCodeHarness()`, `codexHarness()` and `cursorHarness()` (FIX-2627, FIX-2928).
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -735,7 +824,7 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-readiness
-    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a view, a coordinator context entry and a pre-start refusal. The harness kit builds them from its `harnesses` slot, so no host builds a readiness map (FIX-2627).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessReadiness
     file: packages/harness-manager/src/readiness.ts
@@ -757,13 +846,14 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness). Installed as a kit, `harnesses` from `@flow-state-dev/harness-manager/kit` (FIX-2627), which contributes `coder`, the one coding worker flow, to workforce, its policy as config. A run is keyed by its mode (`ModeSpec`); `readModeRunRecord` is the run record read that also finds a run stored under the mode's former name.
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, harness-steering, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace, kit, task-input-schema]
     overlaps:
-      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
+      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. A fixed repository is a localRepoWorkspaceHost from the workspace package. It is not a second workspace implementation." }
+      - { id: task-input-schema, relation: distinct-jobs, note: "The coder flow's task input (codingTaskInputSchema: mode, issue, the server-written run settings) is a declaration on task-input-schema, and isCheckedCodingTask is a reader of that declaration's stamp, for a reader of stored coding tasks outside the flow. Neither is a second input contract or a second stamp." }
     status: canonical
     doc: packages/harness-manager/README.md
 
@@ -814,8 +904,8 @@ mechanisms:
     job: The terminal interface. fsdev run executes a flow, fsdev dev serves it with the DevTool, fsdev gen calls a package's generator hook.
     package: "@flow-state-dev/fsdev"
     anchor: program
-    file: packages/cli/src/cli.ts
+    file: packages/fsdev/src/cli.ts
     builtOn: [execution, host]
     overlaps: []
     status: canonical
-    doc: packages/cli/README.md
+    doc: packages/fsdev/README.md

@@ -26,7 +26,7 @@ const note = z.object({ note: z.string() });
 const work = handler({ name: "contract-work", inputSchema: note, outputSchema: note, execute: (i) => i });
 
 /** One door: a public action declaring `userMessage` that takes `{ message }`. */
-const door = { inputSchema: message, block: reply, userMessage: (i: { message: string }) => i.message };
+const door = { block: reply, userMessage: (i: { message: string }) => i.message };
 
 function flowWith(flow: string, over: Record<string, unknown> = {}) {
   return defineFlow({
@@ -53,6 +53,7 @@ describe("a flow that meets the contract", () => {
         workerPackages: z.array(z.any()).optional(),
         workerId: z.string().optional(),
         delegates: z.array(z.string()).default([]),
+        defaults: z.any().optional(),
         desk: z.string().default("front")
       })
     });
@@ -211,9 +212,9 @@ describe("the door (BR-3, BR-4)", () => {
   it("refuses a flow with no door, naming it", () => {
     const doorless = flowWith("doorless", {
       actions: {
-        run: { inputSchema: note, block: work },
+        run: work,
         // Takes `{ message }` but writes no user item: not a door.
-        log: { inputSchema: message, block: reply }
+        log: reply
       }
     });
     const problems = workerFlowProblems("doorless", doorless);
@@ -314,7 +315,7 @@ describe("the name it is registered under (BR-8)", () => {
   });
 
   it("names the flow's other problems along with the name, in one pass", () => {
-    const doorless = flowWith("triage", { actions: { run: { inputSchema: note, block: work } } });
+    const doorless = flowWith("triage", { actions: { run: work } });
     const problems = workerFlowProblems("coordinator", doorless);
     expect(problems).toHaveLength(2);
     expect(problems[0]).toContain('its kind is "triage"');
@@ -334,7 +335,7 @@ describe("every problem at once (BR-7)", () => {
           stateSchema: z.object({ text: z.string(), writtenBy: z.any() })
         })
       },
-      actions: { run: { inputSchema: note, block: work } }
+      actions: { run: work }
     });
     expect(workerFlowProblems("broken", broken as never)).toHaveLength(3);
   });

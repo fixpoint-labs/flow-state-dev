@@ -13,7 +13,7 @@
  *
  * Callers reach one narrow interface. The create check, `resolveWorker` for a
  * turn, and the session declaration a worker flow spreads in. None of them
- * touches the worker row, the name resolution or the refusal rules, which
+ * touches the worker entry, the name resolution or the refusal rules, which
  * live here.
  *
  * Every refusal names why and changes nothing: a refused create writes no
@@ -26,6 +26,7 @@ import type {
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult,
+  SessionLabel,
   InitialSkill
 } from "@flow-state-dev/core/types";
 import type {
@@ -33,7 +34,7 @@ import type {
 } from "@flow-state-dev/core/internal";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { routedFromStateSchema } from "./routed-from";
+import { workerSessionStateSchema } from "./session-state";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
@@ -46,7 +47,6 @@ import {
 } from "../hire";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
-import { taskChainSchema } from "../conversation-board/chain";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -56,13 +56,14 @@ import {
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
-  ROUTED_FROM_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
+  TASK_TITLE_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
+  WORKER_NAME_STATE_KEY,
   WORKSTREAM_STATE_KEY,
   WORK_PROJECT_STATE_KEY
 } from "./keys";
@@ -81,6 +82,12 @@ import { defineWorkerCollection, parseWorkerResourceState, type WorkerResourceSt
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
 import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from "./worker-usage";
+import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
+import { routineSeedOf } from "../routines/routines-options";
+import { withSessionFields, type SessionFields } from "./session-fields";
+import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf, taskEntryNameOf } from "../worker-task-entry";
+import { declarationOfFlow } from "../task-input/declaration";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -121,6 +128,12 @@ export interface WorkerInstallationOptions {
    * Omitted, no session links to a project.
    */
   projectCoordinator?: string;
+  /**
+   * The app's session fields, a schema each, by name ({@link SessionFields}):
+   * declared on every worker flow's session through {@link WorkerInstallation.session},
+   * written by the server only, at open and at each hand-over. Omitted, none.
+   */
+  sessionFields?: SessionFields;
 }
 
 /**
@@ -192,7 +205,7 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
-  /** Its display name, its file's `name:`, or `null` when it has none (a user's own worker never does). */
+  /** Its display name: its row's `name`, or its file's `name:`; `null` when it has none. */
   name: string | null;
   /** Its team's display name, its `TEAM.md` `name:`, or `null` when it has none or no team. */
   teamName: string | null;
@@ -226,21 +239,7 @@ export class WorkerTurnRefusedError extends Error {
 }
 
 /** The session-state fields every worker flow declares: readonly birth fields, and the server-owned routed-from. */
-export type WorkerSessionStateShape = {
-  readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
-  readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [ROUTED_FROM_STATE_KEY]: z.ZodOptional<z.ZodString>;
-  readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_WORKER_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
-  readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
-  readonly [WORK_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodString>;
-};
+export type WorkerSessionStateShape = typeof workerSessionStateSchema.shape;
 
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation extends WorkerGrants {
@@ -248,11 +247,12 @@ export interface WorkerInstallation extends WorkerGrants {
    * The two worker collections, the user's own workers and the standard ones
    * projected from the files, and the workstream entries the create check
    * reads a workstream session's link from, and the `worker-usage` records
-   * every request's spend is added to. A worker flow spreads them into
-   * its `resources`, and so does every block that calls {@link resolveWorker}
-   * or writes a worker.
+   * every request's spend is added to, and the user's routine collections,
+   * which a worker's request seeds the app's declared routines into. A worker
+   * flow spreads them into its `resources`, and so does every block that calls
+   * {@link resolveWorker} or writes a worker.
    */
-  readonly resources: {
+  readonly resources: RoutineResources & {
     readonly [WORKERS_RESOURCE]: ReturnType<typeof defineWorkerCollection>;
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
     readonly [WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof WORKSTREAMS_RESOURCE];
@@ -273,6 +273,12 @@ export interface WorkerInstallation extends WorkerGrants {
    * (not readonly: the work-project action writes and replaces it).
    */
   readonly sessionStateShape: WorkerSessionStateShape;
+  /**
+   * The app's session fields ({@link WorkerInstallationOptions.sessionFields}):
+   * {@link session} declares them on every worker flow, and each hand-over
+   * carries the filer's values down. Empty when the app declares none.
+   */
+  readonly sessionFields: SessionFields;
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
@@ -282,7 +288,9 @@ export interface WorkerInstallation extends WorkerGrants {
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
-   * session read too, so a screen shows the project a conversation works in. It also carries,
+   * session read too, so a screen shows the project a conversation works in. The app's
+   * {@link sessionFields} join the schema, `serverOwned` and the session read. Its `label` names a
+   * session by its worker, and its task when it has one. It also carries,
    * under a framework-only symbol, the request-end hook that adds every
    * request's spend to the worker's usage record (`worker-usage`).
    */
@@ -293,6 +301,7 @@ export interface WorkerInstallation extends WorkerGrants {
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
     client: { expose: readonly string[] };
+    label: SessionLabel;
     [SESSION_REQUEST_END_HOOK]: SessionRequestEndHook;
   };
   /**
@@ -365,11 +374,27 @@ function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[
   return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
-/** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
-function declaredOf(row: WorkerResourceState): Record<string, unknown> {
+// BP-030.
+/**
+ * The settings a row hands its flow: its own settings, keyed as a `WORKER.md`
+ * frontmatter. A setting its flow retired is left out, so a worker stored
+ * before it was retired still runs.
+ */
+function declaredOf(row: WorkerResourceState, retired: readonly string[]): Record<string, unknown> {
   const declared: Record<string, unknown> = { ...row.settings, flow: row.flow };
+  for (const key of retired) delete declared[key];
   delete declared.description;
   return declared;
+}
+
+/**
+ * A worker's problems as one clause for a sentence the caller ends: each
+ * problem's own closing full stop dropped (a flow's refusal is a whole
+ * sentence), joined with "; ". Every sentence that names a worker's problems
+ * goes through here, so none ends on a doubled stop.
+ */
+export function problemsClause(problems: readonly string[]): string {
+  return problems.map((problem) => problem.replace(/\.$/, "")).join("; ");
 }
 
 /**
@@ -408,6 +433,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   }
 
   const projectCoordinator = options.projectCoordinator;
+  const sessionFields: SessionFields = Object.freeze({ ...(options.sessionFields ?? {}) });
   if (projectCoordinator !== undefined) {
     const manifest = standard.get(projectCoordinator);
     if (manifest === undefined) {
@@ -439,7 +465,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standardOnly: entry.standardOnly,
         ...(entry.roles === undefined ? {} : { roles: entry.roles }),
         showSettings: entry.showSettings,
-        needsProject: entry.needsProject
+        retiredSettings: entry.retiredSettings
       };
       built.set(entry, flow);
     }
@@ -453,9 +479,53 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     boundAgent ??= defineAgentWorkerFlow({ installation });
     return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
+  // FIX-2894.
+  /**
+   * What a task's input is checked against, for this installation: each
+   * flow's declaration, and a worker's flow and declared configuration (its
+   * row's settings, or its file's front matter), read now. Registered, so a
+   * raw ledger handle in one of its sessions checks what it files.
+   */
+  const taskInputSource: TaskInputSource = {
+    declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
+    workerOf: async (ctx, id) => {
+      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInputSchema").getOptional(id))?.state);
+      if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row, retiredOf(found.flow)) };
+      if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
+      return undefined;
+    }
+  };
+  // BP-030.
+  /** The settings `flow` retired, which a stored row is read without. */
+  const retiredOf = (flow: string): readonly string[] => (Object.hasOwn(workerFlows(), flow) ? workerFlows()[flow]!.retiredSettings : []);
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
-  const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
-    (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
+  const workerFlows = (): Record<string, ResolvedWorkerFlow> => {
+    if (resolvedFlows === undefined) {
+      resolvedFlows = resolveWorkerFlows(workerFlowsOption());
+      // Each flow's `work` door names this installation and the flow, so a claim behind it knows the flow it
+      // runs on (FIX-2894). A hire that is refused gives them up (`hireWorkforce`).
+      // A door names exactly one flow, which the claim's authority check reads: one `workerTaskEntry(...)`
+      // reused by two flows is refused, by name.
+      const flowOfDoor = new Map<object, string>();
+      for (const [name, { flow }] of Object.entries(resolvedFlows)) {
+        const door = conversationTaskDoorOf(flow);
+        if (door === undefined) continue;
+        const first = flowOfDoor.get(door);
+        if (first !== undefined) {
+          resolvedFlows = undefined;
+          const entry = taskEntryNameOf(door);
+          throw new Error(
+            `workerTaskEntry${entry === undefined ? "" : ` "${entry}"`} is used by two flows ("${first}", "${name}"): give each flow its own entry.`
+          );
+        }
+        flowOfDoor.set(door, name);
+      }
+      for (const [door, name] of flowOfDoor) registerTaskDoor(door, taskInputSource, name);
+      // Frozen, so no flow joins the record after the scan above: a door is checked once, and names one flow.
+      Object.freeze(resolvedFlows);
+    }
+    return resolvedFlows;
+  };
 
   // The settings a user sees on a worker's roster row: the ones its flow's
   // registration names, read when a row is, since the flows are read lazily.
@@ -473,30 +543,15 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   }
 
+  // The routine collections join once the installation exists: their indexes are read through it.
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(shownSettings),
     [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW, shownSettings),
     ...WORKSTREAM_RESOURCES,
     [WORKER_USAGE_RESOURCE]: workerUsageCollection
-  } as const;
+  } as WorkerInstallation["resources"];
 
-  const sessionStateShape = {
-    [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
-    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
-    // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
-    [ROUTED_FROM_STATE_KEY]: routedFromStateSchema,
-    [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
-    [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    // Written only by the work-project action (FIX-2161): server-owned, and changeable.
-    [WORK_PROJECT_STATE_KEY]: z.string().min(1).optional()
-  } as const;
+  const sessionStateShape = { ...workerSessionStateSchema.shape };
 
   /** Every resource a worker may be granted: the documents and the references. */
   const documents: DeclaredResources = Object.freeze({ ...(options.documents ?? {}), ...(options.references ?? {}) });
@@ -536,7 +591,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     id: string,
     row: WorkerResourceState
   ): { ok: true; manifest: WorkerManifest } | { ok: false; problems: string[] } => {
-    const missing = row.skills.filter((name) => !skillCatalog.has(name));
+    // The user's copy of a standard worker keeps its file's reach: its own
+    // skills by name, where two workers' skills share one, and its packages.
+    const file = row.forkedFrom === id ? standard.get(id) : undefined;
+    const ownSkills = new Map((file?.skills ?? []).map((skill) => [skill.name, skill]));
+    const skillOf = (name: string) => ownSkills.get(name) ?? skillCatalog.get(name);
+    const missing = row.skills.filter((name) => skillOf(name) === undefined);
     if (missing.length > 0) {
       const registered = [...skillCatalog.keys()].sort().map((name) => `"${name}"`);
       const known = registered.length === 0 ? "It registers no skills" : `Skills it registers: ${registered.join(", ")}`;
@@ -553,11 +613,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       ok: true,
       manifest: {
         id,
-        declared: declaredOf(row),
+        declared: declaredOf(row, retiredOf(row.flow)),
         body: row.instructions ?? "",
-        skills: row.skills.map((name) => skillCatalog.get(name)!),
+        skills: row.skills.map((name) => skillOf(name)!),
         ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),
-        packages: [...(options.packages ?? [])]
+        packages: [...(file?.packages ?? options.packages ?? [])]
       }
     };
   };
@@ -627,6 +687,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // another project's files (BP-031).
     for (const key of [
       TASK_ID_STATE_KEY,
+      TASK_TITLE_STATE_KEY,
       FILING_FLOW_STATE_KEY,
       FILING_WORKER_STATE_KEY,
       TASK_CHAIN_STATE_KEY,
@@ -641,6 +702,22 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           message: `"${key}" is set only when a session's board hands a task over; a caller cannot set it.`
         };
       }
+    }
+    // The app's session fields: written by the server at open, or born with a hand-over. Refused
+    // here too, not only by `serverOwned`, which a flow that declares its own list replaces.
+    for (const key of Object.keys(sessionFields)) {
+      if (input.state[key] !== undefined && input.via !== "dispatch") {
+        return {
+          ok: false,
+          status: 400,
+          message: `"${key}" is written only by the server, when the session opens or a task is handed over; a caller cannot set it.`
+        };
+      }
+    }
+    // The worker's name is this check's to write, from the worker it reads below (FIX-2881), so it is
+    // refused on every path, a dispatch's included. `taskTitle` is the hand-over's, refused above off it.
+    if (input.state[WORKER_NAME_STATE_KEY] !== undefined) {
+      return { ok: false, status: 400, message: `"${WORKER_NAME_STATE_KEY}" is written from the worker when the session is created; no create can set it.` };
     }
     // A conversation's delegate session is opened only by the coordinator's
     // delivery, a dispatch into a child of the conversation. A caller naming
@@ -689,9 +766,17 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(found.flow, false)}.` };
     }
     const project = input.state[PROJECT_STATE_KEY];
-    if (typeof project === "string") return projectLinkCheck(input, workerId, project);
     const workstream = input.state[WORKSTREAM_STATE_KEY];
-    return typeof workstream === "string" ? workstreamLinkCheck(input, workerId, workstream) : { ok: true };
+    const linked =
+      typeof project === "string"
+        ? await projectLinkCheck(input, workerId, project)
+        : typeof workstream === "string"
+          ? await workstreamLinkCheck(input, workerId, workstream)
+          : ({ ok: true } as const);
+    if (!linked.ok) return linked;
+    // The name a reader calls the session by, from the worker just read: a label reads only the session (FIX-2881).
+    const name = found.found === "own" ? found.row.name : workerDisplayName(found.manifest);
+    return name === null || name.length === 0 ? { ok: true } : { ok: true, state: { [WORKER_NAME_STATE_KEY]: name } };
   };
 
   /**
@@ -819,12 +904,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const collection = workerCollection(ctx, "resolveWorker");
-    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
-    if (found.found === "none") {
-      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+    const worker = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (worker.found === "none") {
+      return refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
     }
-    if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
-    const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
+    if (worker.found === "unreadable") return refuse(`Worker "${workerId}" can't run: ${worker.problem}.`);
     const flow = worker.flow;
     if (flow !== flowKind) {
       refuse(
@@ -838,8 +922,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (worker.found === "own") {
       if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
       const built = manifestOfRow(workerId, worker.row);
-      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${built.problems.join("; ")}.`);
-      manifest = (built as { manifest: WorkerManifest }).manifest;
+      if (!built.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
+      manifest = built.manifest;
       description = worker.row.description;
     } else {
       manifest = worker.manifest;
@@ -848,8 +932,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const minted = mint(manifest);
-    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
-    const instance = (minted as { worker: FlowInstance }).worker;
+    if (!minted.ok) return refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
+    const instance = minted.worker;
     const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
@@ -860,7 +944,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    markVerifiedWorker(ctx.session, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    noteTaskInputSource(ctx.session, taskInputSource);
     return {
       id: workerId,
       standard: worker.found === "standard",
@@ -878,13 +963,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return { id: workerId, standard: false, flow: "", description: null, name: null, teamName: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
+      // A row under a standard worker's id is the user's copy of it (FIX-2526):
+      // still that standard worker, on its team, as the user edited it.
+      const file = standard.get(workerId);
       return {
         id: workerId,
-        standard: false,
+        standard: file !== undefined,
         flow: found.flow,
         description: found.row.description,
-        name: null,
-        teamName: null,
+        name: found.row.name,
+        teamName: file?.teamName ?? null,
         delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };
@@ -920,6 +1008,46 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   };
 
+  // FIX-2624.
+  /**
+   * What every worker request does as it ends: record its spend, then seed the
+   * app's declared routines for its user, so a user who only talks to a worker
+   * gets them. The seed writes a routine only when it is missing or changed,
+   * so a later request writes nothing. A seed that fails never fails the request.
+   */
+  const workerRequestEnd: SessionRequestEndHook = (ctx) => {
+    const spend = workerSpendHook(ctx);
+    return async (ending) => {
+      const verdict = await spend?.(ending);
+      const seed = routineSeedOf(installation);
+      if (seed !== undefined) {
+        try {
+          await seed(ctx);
+        } catch (error) {
+          console.warn(`[workforce] could not seed the app's routines: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return verdict;
+    };
+  };
+
+  /**
+   * What a reader calls a worker session: its worker's name, and the title of
+   * the task it was opened for when it was. Both are written when the session
+   * is born (the name by the create check, the title by the hand-over), so the
+   * label reads only the session. A session born before they were falls back
+   * to a standard worker's file `name:`, then to the ids.
+   */
+  const workerSessionLabel: SessionLabel = ({ state }) => {
+    const workerId = state[WORKER_ID_STATE_KEY];
+    if (typeof workerId !== "string") return undefined;
+    const named = state[WORKER_NAME_STATE_KEY];
+    const file = standard.get(workerId);
+    const worker = typeof named === "string" ? named : ((file === undefined ? null : workerDisplayName(file)) ?? workerId);
+    const task = state[TASK_TITLE_STATE_KEY] ?? state[TASK_ID_STATE_KEY];
+    return typeof task === "string" ? `${worker} · ${task}` : worker;
+  };
+
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -929,14 +1057,19 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     createCheck,
     rosterWorker,
     roster,
+    sessionFields,
     session(extraShape) {
-      return {
-        stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
-        createCheck,
-        serverOwned: SESSION_BOARD_SERVER_OWNED,
-        client: { expose: [WORK_PROJECT_STATE_KEY] },
-        [SESSION_REQUEST_END_HOOK]: workerSpendHook
-      };
+      const session = withSessionFields(
+        {
+          stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
+          createCheck,
+          serverOwned: SESSION_BOARD_SERVER_OWNED,
+          client: { expose: [WORK_PROJECT_STATE_KEY, TASK_TITLE_STATE_KEY] },
+          label: workerSessionLabel
+        },
+        sessionFields
+      );
+      return { ...session, [SESSION_REQUEST_END_HOOK]: workerRequestEnd } as never;
     },
     resolveWorker,
     standardWorker: (id) => standard.get(id),
@@ -949,5 +1082,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     configurationProblems,
     standardWorkerProblems
   };
+  Object.assign(resources, routineResourcesOf(installation));
+  registerTaskInputSource(taskInputSource, installation);
   return installation;
 }

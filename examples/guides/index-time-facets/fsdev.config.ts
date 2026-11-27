@@ -21,7 +21,7 @@ const triage = evaluator({
 });
 
 export default createFlowState({
-  flows: { "index-time-facets": ticketsFlow(triage) },
+  flows: [ticketsFlow(triage)],
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

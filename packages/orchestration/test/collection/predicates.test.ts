@@ -1,20 +1,20 @@
 /**
  * Tests for `onTaskChangeFor` — wake filter helper paired with
  * `.waitForCondition`'s `wakeOn` option (FIX-660). The filter must
- * match `task-change` component items for its collection only, and
+ * match `task-change` data items for its collection only, and
  * reject every other item type or sibling collection.
  */
 import { describe, expect, it } from "vitest";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { onTaskChangeFor } from "../../src/tasks/collection/predicates";
-import { TASK_CHANGE_COMPONENT_TYPE } from "../../src/tasks/collection/get-or-create";
+import { TASK_CHANGE_DATA_TYPE } from "../../src/tasks/collection/get-or-create";
 
 function makeTaskChange(collectionId: string): OutputItem {
   return {
     id: `i_${Math.random().toString(36).slice(2)}`,
-    type: "component",
-    component: TASK_CHANGE_COMPONENT_TYPE,
-    data: { collectionId, taskId: "t_0", kind: "added", task: {} },
+    type: "data",
+    dataType: TASK_CHANGE_DATA_TYPE,
+    value: { collectionId, taskId: "t_0", kind: "added", task: {} },
     status: "completed",
     requestId: "req_test",
     itemIndex: 0,
@@ -23,12 +23,12 @@ function makeTaskChange(collectionId: string): OutputItem {
   } as OutputItem;
 }
 
-function makeComponent(component: string): OutputItem {
+function makeData(dataType: string): OutputItem {
   return {
     id: "i_other",
-    type: "component",
-    component,
-    data: {},
+    type: "data",
+    dataType,
+    value: {},
     status: "completed",
     requestId: "req_test",
     itemIndex: 0,
@@ -62,13 +62,13 @@ describe("onTaskChangeFor", () => {
     expect(filter(makeTaskChange("c2"))).toBe(false);
   });
 
-  it("rejects component items of other component types", () => {
+  it("rejects data items of other data types", () => {
     const filter = onTaskChangeFor("c1");
-    expect(filter(makeComponent("resource-change"))).toBe(false);
-    expect(filter(makeComponent("plan"))).toBe(false);
+    expect(filter(makeData("resource-change"))).toBe(false);
+    expect(filter(makeData("plan"))).toBe(false);
   });
 
-  it("rejects non-component items (the wake-storm sources)", () => {
+  it("rejects non-data items (the wake-storm sources)", () => {
     const filter = onTaskChangeFor("c1");
     expect(filter(makeMessage())).toBe(false);
     expect(

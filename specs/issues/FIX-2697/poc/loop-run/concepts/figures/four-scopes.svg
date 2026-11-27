@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 412">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="dash" x="28" y="24" width="204" height="232"/>
+<text class="lb" x="42" y="56">SCOPE 01</text>
+<text class="nm" x="42" y="78">Request</text>
+<text class="sub" x="42" y="96">one action run</text>
+<line class="hi" x1="28" y1="108" x2="232" y2="108"/>
+<text class="c" x="42" y="130">ctx.request</text>
+<line class="hi" x1="28" y1="146" x2="232" y2="146"/>
+<text class="lb" x="42" y="166">EXAMPLE FIELD</text>
+<text class="c" x="42" y="186">lookups</text>
+<line class="hi" x1="28" y1="202" x2="232" y2="202"/>
+<text class="lb" x="42" y="222">KEY</text>
+<text class="t" x="42" y="240">the request</text>
+<rect fill="url(#hatch)" x="248" y="24" width="204" height="10"/><line class="thin" x1="248" y1="34.5" x2="452" y2="34.5"/>
+<rect class="solid" x="248" y="24" width="204" height="232"/>
+<text class="lb" x="262" y="56">SCOPE 02</text>
+<text class="nm" x="262" y="78">Session</text>
+<text class="sub" x="262" y="96">one conversation</text>
+<line class="hi" x1="248" y1="108" x2="452" y2="108"/>
+<text class="c" x="262" y="130">ctx.session</text>
+<line class="hi" x1="248" y1="146" x2="452" y2="146"/>
+<text class="lb" x="262" y="166">EXAMPLE FIELD</text>
+<text class="c" x="262" y="186">topic</text>
+<line class="hi" x1="248" y1="202" x2="452" y2="202"/>
+<text class="lb" x="262" y="222">KEY</text>
+<text class="t" x="262" y="240">the session id</text>
+<rect fill="url(#hatch)" x="468" y="24" width="204" height="10"/><line class="thin" x1="468" y1="34.5" x2="672" y2="34.5"/>
+<rect class="solid" x="468" y="24" width="204" height="232"/>
+<text class="lb" x="482" y="56">SCOPE 03</text>
+<text class="nm" x="482" y="78">User</text>
+<text class="sub" x="482" y="96">one user in one org</text>
+<line class="hi" x1="468" y1="108" x2="672" y2="108"/>
+<text class="c" x="482" y="130">ctx.user</text>
+<line class="hi" x1="468" y1="146" x2="672" y2="146"/>
+<text class="lb" x="482" y="166">EXAMPLE FIELD</text>
+<text class="c" x="482" y="186">plan</text>
+<line class="hi" x1="468" y1="202" x2="672" y2="202"/>
+<text class="lb" x="482" y="222">KEY</text>
+<text class="t" x="482" y="240">the user and the org</text>
+<rect fill="url(#hatch)" x="688" y="24" width="204" height="10"/><line class="thin" x1="688" y1="34.5" x2="892" y2="34.5"/>
+<rect class="solid" x="688" y="24" width="204" height="232"/>
+<text class="lb" x="702" y="56">SCOPE 04</text>
+<text class="nm" x="702" y="78">Org</text>
+<text class="sub" x="702" y="96">everyone in the org</text>
+<line class="hi" x1="688" y1="108" x2="892" y2="108"/>
+<text class="c" x="702" y="130">ctx.org?</text>
+<line class="hi" x1="688" y1="146" x2="892" y2="146"/>
+<text class="lb" x="702" y="166">EXAMPLE FIELD</text>
+<text class="c" x="702" y="186">refundLimit</text>
+<line class="hi" x1="688" y1="202" x2="892" y2="202"/>
+<text class="lb" x="702" y="222">KEY</text>
+<text class="t" x="702" y="240">the org</text>
+<circle cx="350" cy="256" r="2.6" class="ink"/><path class="ln" d="M350 256 V282 H790"/><path class="ln" d="M570 282 V259" marker-end="url(#ah)"/><path class="ln" d="M790 282 V259" marker-end="url(#ah)"/><rect class="ground" x="440.5" y="275" width="39" height="15"/><text class="plate" x="460" y="286" text-anchor="middle">NAMES</text>
+<line class="hi" x1="0" y1="308" x2="920" y2="308"/>
+<text class="n" x="28" y="334">01</text>
+<text class="t" x="60" y="334">A session is bound to one org when it is created. It names its user and org but holds no copy of their state.</text>
+<text class="n" x="28" y="359">02</text>
+<text class="t" x="60" y="359">None of the four sits inside another. Each is its own record, and a block reads and writes any of them.</text>
+<g id="key">
+<line class="ln" x1="28" y1="386" x2="54" y2="386" marker-end="url(#ah)"/>
+<text class="lb" x="62" y="390">A SESSION NAMES ITS USER AND ORG</text>
+<line class="dash" x1="334" y1="386" x2="360" y2="386"/>
+<text class="lb" x="368" y="390">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="550" y="380" width="26" height="11"/><rect class="thin" x="550" y="380" width="26" height="11"/>
+<text class="lb" x="584" y="390">OUTLIVES THE REQUEST</text>
+</g>
+</svg>

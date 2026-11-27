@@ -44,7 +44,7 @@ describe("defineFlow", () => {
     // the supported shape and must survive instantiation untouched.
     const instance = flow({ id: "definition-transport-instance" });
 
-    expect(instance.webhooks?.stripe.on["invoice.paid"]).toBeDefined();
+    expect(instance.webhooks?.stripe.on?.["invoice.paid"]).toBeDefined();
   });
 
   it("returns callable flow type with defaults and merge-based overrides", () => {
@@ -57,10 +57,7 @@ describe("defineFlow", () => {
     const flow = defineFlow({
       kind: "demo",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: baseAction
-        }
+        run: baseAction
       },
       session: {
         stateSchema: z.object({ mode: z.enum(["plan", "edit"]) })
@@ -71,14 +68,11 @@ describe("defineFlow", () => {
       id: "demo-custom",
       kind: "demo-custom-kind",
       actions: {
-        extra: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        extra: handler({
             name: "extra-action",
             inputSchema: z.object({ message: z.string() }),
             execute: (input) => input.message
           })
-        }
       },
       session: {
         // @ts-expect-error — source gap FIX-2025: `session` is typed as the definition's config, so a `metadata` schema the runtime accepts is refused.
@@ -100,10 +94,7 @@ describe("defineFlow", () => {
 
   describe("instance cardinality", () => {
     const actions = {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({ name: "noop", inputSchema: z.object({}), execute: () => "ok" })
-      }
+      run: handler({ name: "noop", inputSchema: z.object({}), execute: () => "ok" })
     };
 
     it("defaults a singleton's id to its effective kind and mirrors the policy", () => {
@@ -239,11 +230,7 @@ describe("defineFlow", () => {
         kind: "user-clientdata-with-no-user",
         requireUser: false,
         user: {
-          client: {
-            derived: {
-              displayName: () => "anon"
-            }
-          }
+          client: { expose: ["displayName"] }
         },
         actions: {
           run: {
@@ -379,7 +366,7 @@ describe("defineFlow", () => {
       })
     });
 
-    const webhookBlock = instance.webhooks!.stripe.on["invoice.paid"]!.block;
+    const webhookBlock = instance.webhooks!.stripe.on!["invoice.paid"]!.block;
     await runForTest(webhookBlock, {}, ctx);
     expect(onToolStarted).toHaveBeenCalledTimes(1);
   });
@@ -971,6 +958,33 @@ describe("defineFlow", () => {
       ).toThrow(/sharedToLineage/);
     });
 
+    // `ctx.resources.at` is the registry's own verb: a resource under that
+    // accessor would be shadowed by it and silently unreachable by property.
+    it("reserves the `at` accessor", () => {
+      const notes = defineResourceCollection({ pattern: "notes/*", scope: "session", stateSchema: z.object({}) });
+      expect(() => defineFlow({ kind: "reserved-at", actions: {}, resources: { at: notes } })({ id: "reserved-at" })).toThrow(
+        /Resource accessor "at" in flow "reserved-at" is reserved/
+      );
+    });
+
+    // A key two wakeEntry collections both match would wake one of the two
+    // entries, picked by declaration order.
+    it("rejects two collections whose patterns overlap and name different wake entries", () => {
+      const entrySchema = z.object({});
+      const inbox = defineResourceCollection({ pattern: "inbox/*", scope: "session", stateSchema: entrySchema, wakeEntry: "inboxChanged" });
+      const deep = defineResourceCollection({ pattern: "inbox/**", scope: "session", stateSchema: entrySchema, wakeEntry: "deepChanged" });
+      const byTopic = defineResourceCollection({ pattern: "[topic]/x", scope: "session", stateSchema: entrySchema, wakeEntry: "topicChanged" });
+      const outbox = defineResourceCollection({ pattern: "outbox/*", scope: "session", stateSchema: entrySchema, wakeEntry: "outboxChanged" });
+      const sameEntry = defineResourceCollection({ pattern: "inbox/**", scope: "session", stateSchema: entrySchema, wakeEntry: "inboxChanged" });
+      const build = (resources: Record<string, unknown>) => () =>
+        defineFlow({ kind: "wake-overlap", actions: {}, resources: resources as never })({ id: "wake-overlap" });
+      expect(build({ inbox, deep })).toThrow(/"inbox" \(inbox\/\*\) and "deep" \(inbox\/\*\*\).*"inboxChanged".*"deepChanged"/);
+      // `inbox/x` matches both.
+      expect(build({ inbox, byTopic })).toThrow(/overlap/);
+      expect(build({ inbox, outbox })).not.toThrow();
+      expect(build({ inbox, sameEntry })).not.toThrow();
+    });
+
     // FIX-1068: `defineResource` guards this too, but a resource can reach a
     // flow without passing through it, so the flow-build check has to stand on
     // its own — otherwise a user-scoped resource carrying the flag would build
@@ -994,39 +1008,32 @@ describe("defineFlow", () => {
   });
 
   describe("scope client config normalization (FIX-505)", () => {
-    it("accepts client.expose + client.derived and exposes a normalized client", () => {
+    it("accepts client.expose and exposes it on the instance", () => {
       const flow = defineFlow({
         kind: "ccnorm-1",
         actions: {},
         session: {
-          stateSchema: z.object({
-            count: z.number().default(0),
-            name: z.string().default("")
-          }),
-          client: {
-            expose: ["count"],
-            derived: { greeting: (ctx) => `hi ${(ctx.state as { name?: string }).name ?? ""}` }
-          }
+          stateSchema: z.object({ count: z.number().default(0) }),
+          client: { expose: ["count"] }
         }
       });
       expect(flow.session?.client?.expose).toEqual(["count"]);
-      expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
     });
 
-    it("throws when expose and derived share a name", () => {
-      expect(() =>
-        defineFlow({
-          kind: "ccnorm-4",
-          actions: {},
-          session: {
-            stateSchema: z.object({ count: z.number().default(0) }),
-            client: {
-              expose: ["count"],
-              derived: { count: () => 99 }
-            }
-          }
-        })
-      ).toThrow(/overlapping names in expose and derived/);
+    // FIX-2623: `derived` is removed. A flow written for it is refused by
+    // name at definition, at every scope, rather than its values silently
+    // never reaching the client (BP-030).
+    it.each(["session", "user", "org"] as const)("refuses a %s.client.derived, naming views", (scope) => { // retired-name-refusal: the removed key, refused
+      const legacy = { client: { derived: { greeting: () => "hi" } } } as never; // retired-name-refusal: the removed key, refused
+      expect(() => defineFlow({ kind: `derived-${scope}`, actions: {}, [scope]: legacy })).toThrow(
+        new RegExp(`${scope}\\.client declares "derived", which was removed\\. Declare a view`)
+      );
+    });
+
+    it("refuses an empty derived too: the key itself is the removed shape", () => {
+      expect(() => defineFlow({ kind: "derived-empty", actions: {}, session: { client: { derived: {} } } as never })).toThrow( // retired-name-refusal: the removed key, refused
+        /session\.client declares "derived"/
+      );
     });
 
     it("throws when expose names a key not on stateSchema (introspectable)", () => {

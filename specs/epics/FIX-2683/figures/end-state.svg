@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 474" role="img" aria-label="What's in the box for FIX-2683. In the box: kit views and direct reads from FIX-2618; package session hooks from FIX-2757; a user's pending asks read at the source, with one workforce Inbox view on it; one inventory module with an allowlist per app that only shrinks; Teammates held to the whole inventory and Shift Manager to its content rules. Fence: no new kit or shared package, no old path beside a new one, and an answer across sessions is one view, never stitched in the client. Composed in by each app: its screens and renderer, thin hooks in src/app one file per job, and its list of screen types. Replaced: Teammates' adapter and fake by hooks over views, Shift Manager's snapshot by a view per screen, readEveryScopeEntry by listAll. Not built: shared packages and a kit, one route per answer, a server needs-you view, new features."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip   { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .none   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="474"/>
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="356" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT BOTH APPS READ THROUGH</text>
+    <rect class="chip" x="32" y="52" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="71">Kit views and direct reads</text>
+    <text class="t-s" x="44" y="87">built by FIX-2618, used as they are</text>
+    <rect class="chip" x="328" y="52" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="71">Package session hooks</text>
+    <text class="t-s" x="340" y="87">FIX-2757; a missing one goes in the package</text>
+    <rect class="chip" x="32" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="123">Pending asks, read at the source</text>
+    <text class="t-s" x="44" y="139">one Inbox view on it, tenant-scoped · D2</text>
+    <rect class="chip" x="328" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="123">One inventory, an allowlist per app</text>
+    <text class="t-s" x="340" y="139">it only shrinks; the closure needs it empty · D3</text>
+    <rect class="chip" x="32" y="156" width="580" height="44" rx="4"/>
+    <text class="t-b" x="44" y="175">Teammates on the whole inventory; Shift Manager on its content rules</text>
+    <text class="t-s" x="44" y="191">L1 to L4, H, own sessions · L3, L4, own sessions, no snapshot type</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="222" x2="628" y2="222"/>
+    <text class="t-tag c-gone" x="32" y="248">FENCE · ER-3 · ER-5 · ER-7</text>
+    <text class="t-b" x="32" y="272">No new kit or shared package: what the starters share</text>
+    <text class="t-b" x="32" y="290">waits for FIX-2756. No old path beside a new one:</text>
+    <text class="t-b" x="32" y="308">no alias, no dual read, no flag.</text>
+    <text class="t-s" x="32" y="334">an answer across sessions is one view, never stitched in the client</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="160" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY EACH APP</text>
+    <text class="t-b" x="660" y="64">Its screens and renderer</text>
+    <text class="t-s" x="660" y="80">attention, unread, looks, its words</text>
+    <text class="t-b" x="660" y="106">Thin hooks in src/app/</text>
+    <text class="t-s" x="660" y="122">one file per job, after FIX-2755</text>
+    <text class="t-b" x="660" y="148">Its list of screen types</text>
+    <text class="t-s" x="660" y="164">a new one by reviewed PR</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="192" width="280" height="180" rx="8"/>
+    <text class="t-lbl" x="660" y="214">REPLACED</text>
+    <text class="t-b" x="660" y="240">Teammates' adapter and fake</text>
+    <text class="t-s" x="660" y="256">→ hooks over views</text>
+    <text class="t-b" x="660" y="282">Shift Manager's snapshot</text>
+    <text class="t-s" x="660" y="298">→ a view per screen</text>
+    <text class="t-b" x="660" y="324">readEveryScopeEntry</text>
+    <text class="t-s" x="660" y="340">→ listAll()</text>
+    <text class="t-s" x="660" y="360">hand-written row types → ViewOutput</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="388" width="908" height="70" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="410">NOT BUILT</text>
+    <text class="t-b" x="32" y="434">Shared packages and a kit</text>
+    <text class="t-s" x="32" y="450">FIX-2756, after this epic</text>
+    <text class="t-b" x="262" y="434">One route per answer</text>
+    <text class="t-s" x="262" y="450">FIX-2618's other follow-up</text>
+    <text class="t-b" x="492" y="434">A server "needs you" view</text>
+    <text class="t-s" x="492" y="450">FIX-2756's kit candidate</text>
+    <text class="t-b" x="722" y="434">New features</text>
+    <text class="t-s" x="722" y="450">in either app</text>
+  </g>
+</svg>

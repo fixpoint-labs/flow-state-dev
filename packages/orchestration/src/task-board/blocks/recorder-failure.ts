@@ -30,29 +30,28 @@
  * ## Why the report is a persisted item, and an awaited one
  *
  * The bug this closes hid on transient block traces that nothing saved. So the
- * report is an ordinary persisted component item — something a caller still has
- * after the run — and it is emitted through `ctx._emitComponentAwaited`, which
- * rejects rather than discarding its promise. `ctx.emit.component` returns
- * `void` and voids both emitter calls, so a report emitted that way could fail
- * in exactly the silence this issue is about.
+ * report is an ordinary persisted data item — something a caller still has
+ * after the run — and it is emitted through `ctx._emitDataAwaited`, which
+ * rejects rather than discarding its promise. `ctx.emit.data` returns `void`
+ * and voids both emitter calls, so a report emitted that way could fail in
+ * exactly the silence this issue is about.
  *
  * It is stamped with the task it was recording, which would otherwise make it
  * read as that worker's output; `task-attribution.ts` excludes this type for
  * that reason. That exclusion is about *attribution* — whose output this is —
- * and is a separate axis from whether a client renders it, which the renderer
- * registry decides. See the note on `itemVisibility` in
- * {@link reportRecorderFailure}.
+ * and is a separate axis from whether a client sees it: the report is stamped
+ * `{ client: false, history: false }`, so it reaches no client and no model.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 
 /**
- * Component type for a recorder-failure report.
+ * Data type for a recorder-failure report.
  *
  * Mirrored as a literal in `@flow-state-dev/contracts`'
  * `items/task-attribution.ts`, which cannot import this package. Changing it
  * here means changing it there.
  */
-export const TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE =
+export const TASK_BOARD_RECORDER_FAILURE_DATA_TYPE =
   "task-board-recorder-failure";
 
 /**
@@ -70,10 +69,13 @@ export const TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE =
  */
 export type RecorderWriteVerdict = "committed" | "undetermined";
 
-/** Which of the two recorders hit this. */
-export type RecorderKind = "complete" | "fail";
+/**
+ * Which recorder hit this: a completion, a failure, or the cancel the claim
+ * gate writes when a person stopped the request working the task.
+ */
+export type RecorderKind = "complete" | "fail" | "cancel";
 
-/** The report's payload, as it appears on the emitted item's `data`. */
+/** The report's payload, as it appears on the emitted item's `value`. */
 export interface RecorderFailureReport {
   collectionId: string;
   taskId: string;
@@ -100,14 +102,14 @@ export interface RecorderFailureReport {
  *   deliberately as its own class: this is the one failure that is fatal
  *   *immediately* rather than at the drain's tail, so every recorder recognises
  *   it and refuses to let `onError` or a rescue swallow it. Falling back to
- *   `ctx.emit.component` when the seam is missing would give up the one
+ *   `ctx.emit.data` when the seam is missing would give up the one
  *   property this call exists for, without saying so.
  */
 export async function reportRecorderFailure(
   ctx: BlockContext,
   report: RecorderFailureReport
 ): Promise<void> {
-  const emit = ctx._emitComponentAwaited;
+  const emit = ctx._emitDataAwaited;
   if (emit === undefined) {
     throw new TaskBoardReportFailureError(
       report,
@@ -120,20 +122,13 @@ export async function reportRecorderFailure(
   try {
     await emit.call(
       ctx,
-      TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE,
+      TASK_BOARD_RECORDER_FAILURE_DATA_TYPE,
       { ...report },
       {
         // Persisted: the entry has to survive the run. The original defect hid
-        // on items that did not.
+        // on items that did not. The report is for the drain's tail and for
+        // tooling, never a client's thread or a model.
         transient: false,
-        // **Metadata, not a control.** A component item is a structural type,
-        // and `resolveItemVisibility` ignores `itemVisibility` for those —
-        // they resolve to `{ client: true, history: false }` whatever they
-        // declare (`docs/architecture/items.md` → Visibility). So this records
-        // intent for `selectForContext` and per-agent queries and suppresses
-        // nothing. What actually keeps the entry out of a chat thread is the
-        // renderer registry naming it `false`; an app with its own registry
-        // owes itself the same line, exactly as it does for `task-change`.
         itemVisibility: { client: false, history: false },
       }
     );
@@ -148,7 +143,7 @@ export async function reportRecorderFailure(
  * Package-internal: the only thing that can supply a usable `runId` is the
  * board's own run state, which is not exported. Anything else silently reads
  * nothing, so exporting this would offer a caller a function that can only be
- * wrong. Consumers get the component type, the payload shape and the two error
+ * wrong. Consumers get the data type, the payload shape and the two error
  * classes instead, which are enough to read the stream themselves.
  *
  * Scoped by `runId` alone, deliberately. The stamp is minted per drain and read
@@ -169,12 +164,12 @@ export function recorderFailuresForRun(
   for (const raw of items) {
     const item = raw as {
       type?: string;
-      component?: string;
-      data?: Partial<RecorderFailureReport>;
+      dataType?: string;
+      value?: Partial<RecorderFailureReport>;
     };
-    if (item.type !== "component") continue;
-    if (item.component !== TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE) continue;
-    const data = item.data;
+    if (item.type !== "data") continue;
+    if (item.dataType !== TASK_BOARD_RECORDER_FAILURE_DATA_TYPE) continue;
+    const data = item.value;
     if (data?.runId !== runId) continue;
     found.push(data as RecorderFailureReport);
   }

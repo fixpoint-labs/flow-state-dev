@@ -91,7 +91,7 @@ import {
 } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { requestHostOf, dispatchThroughSeam, logicalBlockIdOf } from "@flow-state-dev/core/internal";
-import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, EvaluationModel, LLMMessage } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { defineFitCheck, failedFitSchema } from "../fit-check";
 import {
@@ -102,10 +102,11 @@ import {
   type BestFitPlacement
 } from "../best-fit";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
+import { foldedRequestIds } from "../worker-default-layer";
 import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
-import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
+import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import {
   resolveWorkstreamTarget,
   WORKSTREAM_DELEGATE_ACTION,
@@ -113,12 +114,11 @@ import {
   workstreamDelegateSeed
 } from "../projects/project-coordinator";
 import { isTerminalStatus, type Task, type TaskInit } from "@flow-state-dev/orchestration/tasks";
-import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
-import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
+import { defineSessionBoard, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
-  CONVERSATION_BOARD_SERVER_OWNED,
   REPLY_CONCURRENCY,
   conversationBoardStateShape,
   routedEndingSchema,
@@ -130,7 +130,9 @@ import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
-import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { workerRoutineVerbs } from "../routines/routines";
+import { SET_SESSION_FIELDS_ACTION, SET_WORK_PROJECT_ACTION, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { setSessionFieldsAction } from "../workers/session-fields";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
@@ -157,8 +159,8 @@ import {
   coordinatorSessionStateSchema,
   coordinatorStateShape,
   roundAnswerSchema,
-  roundRobinCursorSchema,
   turnOrder,
+  type CoordinatorSessionState,
   type OpenRound
 } from "./coordinator-state";
 import {
@@ -231,6 +233,16 @@ export interface CoordinatorFlowOptions {
    * five minutes ({@link ROUND_DEADLINE_MS}).
    */
   roundDeadlineMs?: number;
+  // FIX-2538 D1; FIX-2614.
+  /**
+   * `true`: the flow takes the four routine verbs as actions (`listRoutines`,
+   * `saveRoutine`, `pauseRoutine`, `deleteRoutine`), so its user keeps the
+   * routines that act through this conversation, among them an event routine
+   * with `unmatched: true` that hears what no other subscription heard, under
+   * its `inferredWork:`. Its providers are the ones `hireWorkforce`'s
+   * `routines.providers` names. Omitted, a coordinator keeps no routines.
+   */
+  routines?: boolean;
 }
 
 /** What best fit's one call is asked. */
@@ -276,6 +288,8 @@ const postStateSchema = z.object({
 type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
+
+type RoutingContext = BlockContext<z.infer<typeof requestStateSchema>, CoordinatorSessionState>;
 
 /** One routed task to file. */
 const deliveryRequestSchema = z.object({
@@ -371,7 +385,7 @@ const roundTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** The worker this conversation runs as: the one its turn loaded, else the one its session names. */
 function verifiedCoordinatorId(ctx: BlockContext): string | undefined {
-  const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+  const named = ctx.session.state?.[WORKER_ID_STATE_KEY];
   return verifiedWorkerOf(ctx.session) ?? (typeof named === "string" ? named : undefined);
 }
 
@@ -396,11 +410,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     installation,
     flowKind: COORDINATOR_FLOW,
     // A project's coordinator starts with its user's open workstreams there.
-    seed: (ctx) => workstreamDelegateSeed(ctx),
+    seed: workstreamDelegateSeed,
+    // Read at the turn, so a change applies to the next forward.
+    inferredWork: (ctx) => (workerConfigOf(ctx) as unknown as Partial<CoordinatorConfig>).inferredWork ?? "observe",
     // The judgment turn hands a message on with `createTask` and the routing
     // settings, on a turn routing one: the message comes from request state.
     routes: {
-      routing: (ctx) => (ctx.request?.state as Record<string, unknown> | undefined)?.[POST_STATE] !== undefined,
+      routing: (ctx) => ctx.request?.state?.[POST_STATE] !== undefined,
       description:
         "On this turn you are routing a message: to hand it to one of this conversation's delegates, call " +
         'createTask with assignee (the delegate\'s worker id), session: "ongoing", resultTo: "conversation" and a goal ' +
@@ -411,7 +427,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   });
   const check = sessionBoard.delegates.check;
-  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES };
+  const resources = { ...installation.resources, ...PROJECT_ENTRY_RESOURCES };
 
   /**
    * The worker this conversation runs as, and its defaults, with the
@@ -421,7 +437,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const coordinatorOf = async (ctx: BlockContext) => {
     const worker = await installation.resolveWorker(ctx, COORDINATOR_FLOW);
     const config = worker.config as unknown as CoordinatorConfig;
-    const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
+    const records = ctx.session.state[DELEGATES_STATE] == null
       ? await workstreamDelegateSeed(ctx)
       : undefined;
     // `delegates: all` is the roster as it stands, read now (FIX-2081 D2).
@@ -452,8 +468,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * can't close on it. An answer is a reply only when it says something, as
    * `routedEnded` reads it: an empty one is no answer, and holds no round.
    */
-  const roundTasksOf = async (ctx: BlockContext): Promise<RoundTasks> => {
-    const open = roundsIn(ctx.session.state);
+  const roundTasksOf = async (ctx: RoutingContext): Promise<RoundTasks> => {
+    const open = ctx.session.state[ROUNDS_STATE];
     const ref = open.length === 0 ? undefined : await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     const byRound = new Map<string, Task[]>();
     for (const row of ref?.list() ?? []) {
@@ -545,9 +561,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const planned = roundDeadline(roundsIn(ctx.session.state), request.messageRequestId, request.round, now, deadlineMs).deadlineAt;
     if (planned !== undefined) await oweRoundDeadline(ctx, planned);
     const timed = await withOutcome(
-      (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-        ctx.session.atomicState(mutator as never),
-      (state: Readonly<Record<string, unknown>>) => {
+      ctx.session.atomicState,
+      (state) => {
         const rounds = roundsIn(state);
         const deadline = roundDeadline(rounds, request.messageRequestId, request.round, now, deadlineMs);
         return {
@@ -627,8 +642,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // -------------------------------------------------------------------------
 
   /** The message being routed, from request state. Set by the door before anything routes. */
-  const postOf = (ctx: BlockContext): PostState => {
-    const post = (ctx.request.state as Record<string, unknown>)[POST_STATE] as PostState | undefined;
+  const postOf = (ctx: Pick<RoutingContext, "request">): PostState => {
+    const post = ctx.request.state[POST_STATE];
     if (post === undefined) throw new Error("No message is being routed in this request.");
     // A request opened before posts carried their lines, and resumed since, reads as having none (BP-030).
     return post.recent === undefined ? { ...post, recent: [] } : post;
@@ -677,7 +692,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /** The post state every routing of this conversation starts from. */
   const postStateOf = async (
-    ctx: BlockContext,
+    ctx: RoutingContext,
     opening: Pick<PostState, "messageRequestId" | "body" | "from" | "round"> & Partial<Pick<PostState, "answers" | "exclude">>
   ) => {
     const { worker, config, defaults } = await coordinatorOf(ctx);
@@ -704,9 +719,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // added their deliveries.
     if (post.round < config.rounds) {
       const begun = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
+        ctx.session.atomicState,
+        (state) => {
           const result = beginRound(roundsIn(state), post.messageRequestId, post.round);
           return { state: result.opened ? { [ROUNDS_STATE]: result.rounds } : {}, result: result.opened };
         }
@@ -717,7 +731,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           `so answers in round ${post.round} go no further`;
       }
     }
-    await ctx.request.patchState({ [POST_STATE]: post } as never);
+    await ctx.request.patchState({ [POST_STATE]: post });
     return post;
   };
 
@@ -863,6 +877,25 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * adds a second set; they are on a turn while one of its delegates takes a
    * task.
    */
+  /**
+   * `history` as the coordinator's turn reads it: each delegate's answer by its
+   * writer, each routed post as handled. Matched against the items of the turns
+   * the summary does not yet stand for, as `history` holds only those while
+   * the summary is on (the turn's own reader); a fold also keeps the pending
+   * turns it still folds.
+   */
+  const readAsCoordinator = async (history: LLMMessage[], ctx: BlockContext, keepPending = false) => {
+    const folded = turn.historySummarized(ctx) ? await foldedRequestIds(ctx, { keepPending }) : new Set<string>();
+    const items = [
+      ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
+      ...ctx.session.items.all({ itemTypes: ["data"] })
+    ];
+    return coordinatorHistory(
+      history,
+      folded.size === 0 ? items : items.filter((item) => !folded.has(item.requestId)),
+      turn.answerNames
+    );
+  };
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
@@ -872,15 +905,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // The turn's model reads a delegate's answer as a line from that
       // delegate, never as its own reply, and a message the routing handed on
       // as handled (`coordinatorHistory`).
-      history: async (input, ctx) =>
-        coordinatorHistory(
-          await routedTaskHistory(input, ctx),
-          [
-            ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
-            ...ctx.session.items.all({ itemTypes: ["component"] })
-          ],
-          turn.answerNames
-        )
+      history: async (input, ctx) => readAsCoordinator(await routedTaskHistory(input, ctx), ctx),
+      // A fold reads the turns it summarizes the same way, or the summary would
+      // keep a delegate's answer as the coordinator's own and a routed post as
+      // waiting, with the originals gone from the turn's history.
+      readFoldedTurns: (turns, ctx) => readAsCoordinator(turns, ctx, true)
     }
   );
 
@@ -999,10 +1028,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         const pickBy = record.note ?? worker.description ?? undefined;
         if (pickBy !== undefined) options[label] = pickBy;
       });
-      const hold =
-        post.round === 0
-          ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE])
-          : null;
+      const hold = post.round === 0 ? ctx.session.state[HOLD_STATE] : null;
       const held = hold === null ? undefined : delegateLabel(hold.delegate);
       const fallback = listed.fallback === null ? undefined : delegateLabel(listed.fallback);
       const { worker, config } = await coordinatorOf(ctx);
@@ -1095,7 +1121,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // Only a user's post moves the hold.
       const holds = post.round === 0;
       if (placed.by === "none" || placed.by === "coordinator") {
-        if (holds) await ctx.session.patchState({ [HOLD_STATE]: null } as never);
+        if (holds) await ctx.session.patchState({ [HOLD_STATE]: null });
         const fit = fitOf(placed, bestFit.ladder.minConfidence);
         await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({ ...state, fit })) as never);
         const reason =
@@ -1106,7 +1132,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       }
       const target = bestFit.byLabel[placed.worker]!;
       if (holds) {
-        await ctx.session.patchState({ [HOLD_STATE]: { messageRequestId: post.messageRequestId, delegate: target.delegate } } as never);
+        await ctx.session.patchState({ [HOLD_STATE]: { messageRequestId: post.messageRequestId, delegate: target.delegate } });
       }
       return {
         place: "deliver",
@@ -1236,15 +1262,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * delegate already tried is passed over; the turns end once each has been
    * tried.
    */
-  async function* claimTurns(ctx: BlockContext, list: readonly DelegateRecord[]): AsyncGenerator<DelegateRecord> {
+  async function* claimTurns(ctx: RoutingContext, list: readonly DelegateRecord[]): AsyncGenerator<DelegateRecord> {
     const tried = new Set<string>();
     for (;;) {
       const claimed = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
-          const cursor = roundRobinCursorSchema.nullable().parse(state[ROUND_ROBIN_STATE]);
-          const next = turnOrder(list, cursor).find((record) => !tried.has(delegateKey(record)));
+        ctx.session.atomicState,
+        (state) => {
+          const next = turnOrder(list, state[ROUND_ROBIN_STATE]).find((record) => !tried.has(delegateKey(record)));
           if (next === undefined) return { state: {}, result: null };
           return { state: { [ROUND_ROBIN_STATE]: { delegate: bare(next), index: indexIn(list, next) } }, result: next };
         }
@@ -1403,13 +1427,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
 
   /** Close each open round past its deadline, in one versioned write: the rounds closed, and the earliest deadline still open. */
-  const closeOverdueRounds = async (ctx: BlockContext): Promise<{ closed: ClosedRound[]; nextDue?: number }> => {
+  const closeOverdueRounds = async (ctx: RoutingContext): Promise<{ closed: ClosedRound[]; nextDue?: number }> => {
     const now = Date.now();
     const rows = await roundTasksOf(ctx);
     const swept = await withOutcome(
-      (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-        ctx.session.atomicState(mutator as never),
-      (state: Readonly<Record<string, unknown>>) => {
+      ctx.session.atomicState,
+      (state) => {
         const result = closeOverdue(roundsIn(state), rows, now);
         const due = result.rounds.flatMap((open) => (open.deadlineAt === undefined ? [] : [open.deadlineAt]));
         return {
@@ -1431,7 +1454,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: routeOnsOutputSchema,
     ...blockBase,
     execute: async (_value: unknown, ctx) => {
-      if (!anyOverdue(ctx.session.state[ROUNDS_STATE] as OpenRound[], Date.now())) return {};
+      if (!anyOverdue(ctx.session.state[ROUNDS_STATE], Date.now())) return {};
       const { closed } = await closeOverdueRounds(ctx);
       return routeOnsOutput(await routeOnsFor(ctx, { closed }));
     }
@@ -1481,13 +1504,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const isThisRound = (open: OpenRound) => open.messageRequestId === post.messageRequestId && open.round === post.round;
       // A round at the limit was never opened, one closed at its deadline is
       // gone, and nothing is overdue: nothing to write.
-      const open = ctx.session.state[ROUNDS_STATE] as OpenRound[];
+      const open = ctx.session.state[ROUNDS_STATE];
       if (!open.some(isThisRound) && !anyOverdue(open, now)) return {};
       const rows = await roundTasksOf(ctx);
       const closed = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
+        ctx.session.atomicState,
+        (state) => {
           const rounds = roundsIn(state);
           const ended = rounds.some(isThisRound)
             ? closeRound(endRound(rounds, post.messageRequestId, post.round), rows, post.messageRequestId, post.round, now, true)
@@ -1600,13 +1622,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const rows = await roundTasksOf(ctx);
       type Ended = { kept: boolean; again?: true; closed: ClosedRound[] };
       const outcome = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Ended } => {
+        ctx.session.atomicState,
+        (state): { state: Partial<CoordinatorSessionState>; result: Ended } => {
           const rounds = roundsIn(state);
-          const hold = state[HOLD_STATE] as { messageRequestId: string; delegate: DelegateRef } | null | undefined;
+          const hold = state[HOLD_STATE];
           const held =
-            hold !== null && hold !== undefined && hold.messageRequestId === post.messageRequestId && sameDelegate(hold.delegate, post.delegate);
+            hold !== null && hold.messageRequestId === post.messageRequestId && sameDelegate(hold.delegate, post.delegate);
           if (body === undefined) {
             const closing = closeRound(rounds, rows, post.messageRequestId, post.round, now);
             const swept = closeOverdue(closing.rounds, rows, now);
@@ -1681,6 +1702,18 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * wakes the turn, after that. The failure or cancel of one with no routed brief (a routed task's
    * follow-up) is in no round, and is heard as a filed task's is.
    */
+  // The routine verbs, as actions: the ones that act through this conversation.
+  const routineVerbs = options.routines === true ? workerRoutineVerbs(installation) : undefined;
+  const routineActions =
+    routineVerbs === undefined
+      ? undefined
+      : Object.fromEntries(
+          [routineVerbs.listRoutines, routineVerbs.saveRoutine, routineVerbs.pauseRoutine, routineVerbs.deleteRoutine].map((block) => [
+            block.name,
+            { inputSchema: block.inputSchema, block, description: block.description }
+          ])
+        );
+
   const boardEntries = sessionBoard.entries(
     turn.run,
     (ctx) => {
@@ -1690,6 +1723,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     onRoutedEnded
   );
 
+  const session = installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape });
   const flow = defineFlow({
     kind: COORDINATOR_FLOW,
     configSchema: coordinatorConfigSchema(turn.settings),
@@ -1698,21 +1732,20 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
     session: {
-      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
-      // The board's `routedFrom` too: no caller names the conversation a routed task came from (BP-031).
-      // And `workProjectId`: only the work-project action sets the project a conversation works in (FIX-2161).
-      serverOwned: [
-        ...COORDINATOR_SERVER_OWNED,
-        ...CONVERSATION_BOARD_SERVER_OWNED,
-        ...WORKER_MESSAGE_SERVER_OWNED,
-        ROUTED_FROM_STATE_KEY,
-        WORK_PROJECT_STATE_KEY
-      ],
+      ...session,
+      // Every worker flow's server-owned fields (the board's, `routedFrom`, `workProjectId`, the
+      // app's session fields), and the coordinator's own: no caller seeds any of them (BP-031).
+      serverOwned: [...new Set([...session.serverOwned, ...COORDINATOR_SERVER_OWNED])],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
     },
-    resources: { ...resources, ...(turn.bound.resources ?? {}), ...sessionBoard.resources },
+    resources: {
+      ...resources,
+      ...(turn.bound.resources ?? {}),
+      ...sessionBoard.resources,
+      ...(routineVerbs === undefined ? {} : routineVerbs.resources)
+    },
     isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
       // The task tools, as actions on this conversation's board
@@ -1727,10 +1760,15 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         concurrency: REPLY_CONCURRENCY
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
-      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
+      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
+      // The app's session fields, written once at open, when it declares any.
+      ...(Object.keys(installation.sessionFields).length === 0
+        ? {}
+        : { [SET_SESSION_FIELDS_ACTION]: setSessionFieldsAction(installation.sessionFields) }),
+      ...(routineActions ?? {})
     },
-    // The task list, read with nothing stored (FIX-2286).
-    reads: sessionBoard.reads,
+    // The task list as a session view, watched with `useView` (FIX-2623).
+    views: sessionBoard.views,
     internal: {
       actions: {
         // The round-deadline wake (D2), or a host's in-process timer, with

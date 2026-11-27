@@ -1,53 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { defineFlow } from "@flow-state-dev/core";
-import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
 
 import {
   copyeditGenerator,
   improveGenerator,
   changeToneGenerator,
   translateGenerator,
-  summarizeGenerator,
   expandGenerator,
-  fixCodeGenerator,
   personalizeGenerator,
 } from "../flows/rich-text-component/generators";
 import {
-  copyeditInputSchema,
-  improveInputSchema,
+  textInputSchema,
   changeToneInputSchema,
   translateInputSchema,
   summarizeInputSchema,
-  expandInputSchema,
-  fixCodeInputSchema,
-  personalizeInputSchema,
 } from "../flows/rich-text-component/schemas";
-import { mem } from "../flows/rich-text-component/memory";
-
-const emptyWorkingMemory = { entries: [], currentTurn: 0 };
-const emptyMemorySystem = {
-  lastProcessedIndex: -1,
-  episodicWritesSinceLastConsolidation: 0,
-  evictedPersistentSinceLastConsolidation: 0,
-  lastConsolidationTurn: 0,
-};
-const emptyEpisodicMemory = { episodes: [], totalEncoded: 0 };
-const emptySemanticMemory = { facts: [] };
-
-const testFlow = defineFlow({
-  kind: "rich-text-component-test",
-  actions: {
-    copyedit:    { inputSchema: copyeditInputSchema,    block: copyeditGenerator    },
-    improve:     { inputSchema: improveInputSchema,     block: improveGenerator     },
-    changeTone:  { inputSchema: changeToneInputSchema,  block: changeToneGenerator  },
-    translate:   { inputSchema: translateInputSchema,   block: translateGenerator   },
-    summarize:   { inputSchema: summarizeInputSchema,   block: summarizeGenerator   },
-    expand:      { inputSchema: expandInputSchema,      block: expandGenerator      },
-    fixCode:     { inputSchema: fixCodeInputSchema,     block: fixCodeGenerator     },
-    personalize: { inputSchema: personalizeInputSchema, block: personalizeGenerator },
-  },
-  resources: { ...(mem.userResources ?? {}) },
-})({ id: "test" });
+import flow from "../flows/rich-text-component/flow";
 
 describe("rich-text-component flow", () => {
   it("copyedit streams corrected text", async () => {
@@ -57,7 +25,7 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(copyeditGenerator, {
       input: { text: "the cat sat on teh mat" },
-      flow: testFlow,
+      flow,
       generators: { "copyedit-generator": fixture },
     });
     expect(result.error).toBeNull();
@@ -73,7 +41,7 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(improveGenerator, {
       input: { text: "rough draft" },
-      flow: testFlow,
+      flow,
       generators: { "improve-generator": fixture },
     });
     expect(result.error).toBeNull();
@@ -89,7 +57,7 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(changeToneGenerator, {
       input: { text: "heres the update", tone: "professional" },
-      flow: testFlow,
+      flow,
       generators: { "change-tone-generator": fixture },
     });
     expect(result.error).toBeNull();
@@ -103,39 +71,31 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(translateGenerator, {
       input: { text: "the cat sat on the mat", language: "Spanish" },
-      flow: testFlow,
+      flow,
       generators: { "translate-generator": fixture },
     });
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();
   });
 
-  it("summarize streams a medium-length summary", async () => {
+  it.each([
+    { input: { text: "Long passage" }, guidance: "1 paragraph (~80 words)" },
+    { input: { text: "Long passage", length: "short" }, guidance: "1-2 sentences (~30 words)" },
+    { input: { text: "Long passage", length: "long" }, guidance: "3-4 paragraphs (~200 words)" },
+  ])("summarizes with the guidance $guidance", async ({ input, guidance }) => {
     const fixture = mockGenerator({
       name: "summarize-generator",
       script: [{ text: "Concise summary." }],
     });
-    const result = await testBlock(summarizeGenerator, {
-      input: { text: "Some long passage of text that needs summarizing.", length: "medium" },
-      flow: testFlow,
+    const result = await testFlow({
+      flow,
+      action: "summarize",
+      userId: "reader",
+      input,
       generators: { "summarize-generator": fixture },
     });
-    expect(result.error).toBeNull();
-    expect(result.output).toBeDefined();
-  });
-
-  it("summarize accepts an explicit length", async () => {
-    const fixture = mockGenerator({
-      name: "summarize-generator",
-      script: [{ text: "Very short." }],
-    });
-    const result = await testBlock(summarizeGenerator, {
-      input: { text: "Some long passage of text.", length: "short" },
-      flow: testFlow,
-      generators: { "summarize-generator": fixture },
-    });
-    expect(result.error).toBeNull();
-    expect(result.output).toBeDefined();
+    expect(result.status).toBe("completed");
+    expect(fixture.calls[0]?.input).toContainEqual({ role: "system", content: expect.stringContaining(guidance) });
   });
 
   it("expand handles optional context", async () => {
@@ -145,7 +105,7 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(expandGenerator, {
       input: { text: "Brief idea.", context: "Audience: engineers." },
-      flow: testFlow,
+      flow,
       generators: { "expand-generator": fixture },
     });
     expect(result.error).toBeNull();
@@ -159,39 +119,30 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(expandGenerator, {
       input: { text: "Brief idea." },
-      flow: testFlow,
+      flow,
       generators: { "expand-generator": fixture },
     });
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();
   });
 
-  it("fixCode streams corrected code", async () => {
+  it.each([
+    { input: { text: "const x = 1" }, guidance: "Infer the language from the code." },
+    { input: { text: "const x = 1", language: "typescript" }, guidance: "The code is typescript." },
+  ])("fixes code with the guidance $guidance", async ({ input, guidance }) => {
     const fixture = mockGenerator({
       name: "fix-code-generator",
       script: [{ text: "const x = 1;" }],
     });
-    const result = await testBlock(fixCodeGenerator, {
-      input: { text: "const x = 1", language: "typescript" },
-      flow: testFlow,
+    const result = await testFlow({
+      flow,
+      action: "fixCode",
+      userId: "reader",
+      input,
       generators: { "fix-code-generator": fixture },
     });
-    expect(result.error).toBeNull();
-    expect(result.output).toBeDefined();
-  });
-
-  it("fixCode works without a language hint", async () => {
-    const fixture = mockGenerator({
-      name: "fix-code-generator",
-      script: [{ text: "const x = 1;" }],
-    });
-    const result = await testBlock(fixCodeGenerator, {
-      input: { text: "const x = 1" },
-      flow: testFlow,
-      generators: { "fix-code-generator": fixture },
-    });
-    expect(result.error).toBeNull();
-    expect(result.output).toBeDefined();
+    expect(result.status).toBe("completed");
+    expect(fixture.calls[0]?.input).toContainEqual({ role: "system", content: expect.stringContaining(guidance) });
   });
 
   it("personalize streams text without errors when memories are empty", async () => {
@@ -201,19 +152,7 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(personalizeGenerator, {
       input: { text: "Welcome." },
-      flow: testFlow,
-      session: {
-        resources: {
-          workingMemory: emptyWorkingMemory,
-          memorySystem: emptyMemorySystem,
-        },
-      },
-      user: {
-        resources: {
-          episodicMemory: emptyEpisodicMemory,
-          semanticMemory: emptySemanticMemory,
-        },
-      },
+      flow,
       generators: { "personalize-generator": fixture },
     });
     expect(result.error).toBeNull();
@@ -227,16 +166,9 @@ describe("rich-text-component flow", () => {
     });
     const result = await testBlock(personalizeGenerator, {
       input: { text: "Welcome." },
-      flow: testFlow,
-      session: {
-        resources: {
-          workingMemory: emptyWorkingMemory,
-          memorySystem: emptyMemorySystem,
-        },
-      },
+      flow,
       user: {
         resources: {
-          episodicMemory: emptyEpisodicMemory,
           semanticMemory: {
             facts: [
               {
@@ -272,7 +204,7 @@ describe("rich-text-component flow", () => {
   });
 
   it("rejects empty text via Zod", () => {
-    const result = copyeditInputSchema.safeParse({ text: "" });
+    const result = textInputSchema.safeParse({ text: "" });
     expect(result.success).toBe(false);
   });
 

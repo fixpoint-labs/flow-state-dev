@@ -9,7 +9,9 @@
  *
  *  - `sheet` draws in the `SessionOverlayArea` under a `SessionOverlayProvider`,
  *    over that area alone, so a side pane beside it stays usable (pick another
- *    task there and the same sheet shows it). Tab may leave it.
+ *    task there and the same sheet shows it). Tab may leave it. A `docked`
+ *    sheet sits against the area's far edge, next to that pane, full height,
+ *    and blurs what it covers.
  *  - `modal` draws over the page and holds Tab inside it.
  *
  * Both close the same way, with the close button, Esc, or a click on the
@@ -52,11 +54,25 @@ export function SessionOverlayArea({ children }: { children: ReactNode }) {
 export interface SessionOverlayProps {
   /** `sheet`: over the `SessionOverlayArea`, the page beside it live. `modal`: over the page, Tab held inside. */
   variant: "sheet" | "modal";
+  /**
+   * A sheet only: against the area's end edge, full height, beside the pane that opened it, and what it
+   * covers blurred. Absent, the sheet floats in the area's middle over a light veil.
+   */
+  docked?: boolean;
   /** The overlay's accessible name. */
   label: string;
   title: ReactNode;
-  /** How the work stands, at the header's end: working, replied, done, failed. */
+  /**
+   * How the work stands: working, replied, done, failed. With a `statusTone`, a pill beside the title;
+   * without one, quiet upper-case words at the header's end.
+   */
   status?: ReactNode;
+  /** A small tile before the title, such as what kind of session it is. */
+  icon?: ReactNode;
+  /** Draws the status as a pill: `neutral`; `info`, such as when it waits on you; `success`, such as when its work is out. */
+  statusTone?: "neutral" | "info" | "success";
+  /** A small mark before a pill's words, in place of a tinted pill's dot. */
+  statusIcon?: ReactNode;
   /** What goes under the title, such as what it ran on and what it spent. */
   meta?: ReactNode;
   /** Actions that stay put under the header while the feed scrolls. */
@@ -73,8 +89,11 @@ export interface SessionOverlayProps {
   footer?: ReactNode;
 }
 
+/** The status pill's colours, by its tone. */
+const STATUS_TONE = { neutral: "border border-border text-muted-foreground", info: "bg-info/15 text-info", success: "bg-success/15 text-success" } as const;
+
 /** One session over the thread, as a sheet or a modal. */
-export function SessionOverlay({ variant, label, title, status, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
+export function SessionOverlay({ variant, docked = false, label, title, status, statusTone, statusIcon, icon, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
   const { host } = useContext(OverlayHost);
   const own = useJumpToLatest();
   const feed = shared ?? own;
@@ -86,6 +105,7 @@ export function SessionOverlay({ variant, label, title, status, meta, toolbar, o
     close.current = onClose;
   });
   const modal = variant === "modal";
+  const edge = !modal && docked;
   const target = modal ? (typeof document === "undefined" ? null : document.body) : host;
 
   useEffect(() => {
@@ -129,7 +149,7 @@ export function SessionOverlay({ variant, label, title, status, meta, toolbar, o
   return createPortal(
     <div
       data-overlay-backdrop
-      className={`${modal ? "fixed z-20" : "absolute"} inset-0 flex justify-center bg-background/60 p-6 backdrop-blur-[1px]`}
+      className={`${modal ? "fixed z-20" : "absolute"} inset-0 flex ${edge ? "justify-end bg-background/40 backdrop-blur-sm" : "justify-center bg-background/60 p-6 backdrop-blur-[1px]"}`}
       onClick={onClose}
     >
       <section
@@ -137,16 +157,32 @@ export function SessionOverlay({ variant, label, title, status, meta, toolbar, o
         role="dialog"
         aria-modal={modal ? "true" : undefined}
         aria-label={label}
-        className={`flex h-full w-full ${modal ? "max-w-[var(--thread-width,46rem)]" : "max-w-3xl"} min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg`}
+        className={`flex h-full w-full ${modal ? "max-w-[var(--thread-width,46rem)]" : "max-w-3xl"} min-h-0 flex-col overflow-hidden ${edge ? "border-l" : "rounded-xl border"} border-border bg-card shadow-lg`}
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-3">
+        <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-4">
+          {icon ? (
+            <div aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-accent text-muted-foreground">
+              {icon}
+            </div>
+          ) : null}
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] leading-6 font-semibold">{title}</div>
-            {meta ? <div className="mt-0.5 min-w-0">{meta}</div> : null}
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <div className="min-w-0 text-base leading-6 font-semibold">{title}</div>
+              {status && statusTone !== undefined ? (
+                <span
+                  data-overlay-status
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium [&_svg]:size-3.5 ${STATUS_TONE[statusTone]} ${statusTone !== "neutral" && statusIcon === undefined ? "before:size-1.5 before:rounded-full before:bg-current before:content-['']" : ""}`}
+                >
+                  {statusIcon}
+                  {status}
+                </span>
+              ) : null}
+            </div>
+            {meta ? <div className="mt-1 min-w-0">{meta}</div> : null}
           </div>
-          {status ? (
-            <span data-overlay-status className="shrink-0 pt-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+          {status && statusTone === undefined ? (
+            <span data-overlay-status className="shrink-0 pt-1 font-mono text-xs tracking-widest text-muted-foreground uppercase">
               {status}
             </span>
           ) : null}

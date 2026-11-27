@@ -26,17 +26,19 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeUserSegment, type GeneratorModel, type ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { readEntryReport, readProject, type ProjectAddress } from "../src/lib/projects";
-import { createLabReader, readerSessionId } from "../src/lib/reads";
+import { readProject, type ProjectAddress } from "../src/lib/projects";
+import { workstreamReportView } from "@flow-state-dev/workforce/browser";
+import { createLabReader } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const STOREFRONT: ProjectAddress = { visibility: "shared", id: "storefront" };
 const ALICE = LAB_USERS.owner;
@@ -93,7 +95,7 @@ function emModel(turns: string[], prompts: string[]): GeneratorModel {
           turns.length === 1
             ? ISSUES.map((issue) => ({
                 toolName: "createTask",
-                args: { goal: `Build ${issue}.`, assignee: CODER, input: { harnessFeature: { issue, phase: "implement" } } },
+                args: { goal: `Build ${issue}.`, assignee: CODER, input: { mode: "implement", issue } },
               }))
             : [{ toolName: "updateWorkstream", args: { report: REPORT } }];
       }
@@ -166,7 +168,7 @@ describe("the EM files from the workstream it leads", () => {
     lab = await openLab({
       modelResolver: scripted(emTurns, emPrompts),
       stores: inMemoryStores(),
-      harness: stub.slot,
+      harnesses: [readyHarness(stub.slot)],
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
       coderWorkerId: CODER,
@@ -193,11 +195,12 @@ describe("the EM files from the workstream it leads", () => {
     served = await serveLab(lab.state);
     const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
     await createLabReader(client).read();
-    const reader = readerSessionId(ALICE.userId, "projects");
+    // The session on the projects flow the workstream is opened through, made on its first send.
+    const opener = `projects-${ALICE.userId}`;
 
     // Alice opens `feature` herself, with the EM as its lead, through the route the app opens one with.
-    await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
-    const hers = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    await runAction(client, "projects", opener, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
+    const hers = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
     expect(hers).toMatchObject({ lead: EM });
     const workstream = hers.sessionId!;
     expect(workstream).toBeTruthy();
@@ -212,8 +215,8 @@ describe("the EM files from the workstream it leads", () => {
       const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.messageRequestId === undefined);
       return rows.length === ISSUES.length && rows.every((r) => r.status === "completed") ? rows : undefined;
     }, "both tasks completed", 60_000);
-    expect(settled.map((r) => r.input.harnessFeature).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
-      ISSUES.map((issue) => ({ issue, phase: "implement" })),
+    expect(settled.map((r) => ({ mode: r.input.mode, issue: r.input.issue })).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
+      ISSUES.map((issue) => ({ mode: "implement", issue })),
     );
     expect(settled.every((r) => r.assignee === CODER)).toBe(true);
     // The EM was told its workstream's project before it filed, so it never has to guess one.
@@ -230,8 +233,9 @@ describe("the EM files from the workstream it leads", () => {
     }
 
     // The EM updated her entry, and her project screen reads the report.
-    const entry = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
-    expect(await readEntryReport(client, reader, STOREFRONT, entry)).toBe(REPORT);
+    const entry = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    // The read an entry's view makes (`useEntryReport`): the roster flow's report view, with no session.
+    expect((await client.view(workstreamReportView, { project: STOREFRONT, owner: entry.owner, id: entry.id })).value.report).toBe(REPORT);
 
     // Every session the job made is Alice's: her workstream session, and each task's session under it.
     const sessions = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all" });

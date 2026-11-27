@@ -51,10 +51,13 @@
  *
  * The closure row's upgrade journey (`closure.j5:moved-name-named`) installs
  * those same pinned tarballs beside the project and walks every name a package
- * root dropped since. Under `--control=adopter-goal` it walks none, which is a
+ * root dropped since. Each package that lost one must carry the changelog line
+ * counting the removed exports; the count must be the real one only on the
+ * Version Packages PR (`isReleaseGrade`), and elsewhere a stale count is a
+ * note. Under `--control=adopter-goal` it walks none, which is a
  * fail. `--control=moved-name` is its planted control: this checkout's
- * tarballs, with every changelog line naming one dropped name removed. It
- * exits 0 only when the journey then fails on that name.
+ * tarballs, with the changelog line that counts the removed exports taken out.
+ * It exits 0 only when the journey then fails for every package that lost a name.
  *
  * **Adding a check.** Append to {@link CHECKS}: `{ name, run(project) }`, where
  * `run` returns a list of failure strings (empty on pass). `project` carries the
@@ -93,10 +96,11 @@ import {
   changelogLines,
   formatVerdict,
   gradeMovedNames,
+  isReleaseGrade,
   judge,
   judgeControl,
   outcomeOf,
-  plantLineRemoval,
+  plantSummaryRemoval,
   probeNeverPublished,
   ratchetFailures,
   readManifest,
@@ -207,6 +211,25 @@ function packageFiles(dir, prefix = "") {
   return out;
 }
 
+/**
+ * A test file in any shape it compiles to: `x.test.js`, `x.spec.d.mts`,
+ * `x.test.tsx`, a type test (`x.type-test.d.ts`) or a vitest one (`x.test-d.js`).
+ * The goal's `goal-core-dts.mjs` fixture gets it as `FSD_TEST_FILE`.
+ */
+const TEST_FILE = /\.(test|spec|type-test)(-d)?(\.d)?\.[mc]?[jt]sx?$/;
+
+/**
+ * Package-relative paths, sorted, of every test file under `dir` (an installed
+ * package). Tests live in each package's `test/`, outside what it publishes, so
+ * any hit is a test file that ended up in the tarball. It matches names only: a
+ * helper under a `tests/` directory that isn't named as a test is not caught.
+ */
+export function shippedTestFiles(dir) {
+  return packageFiles(dir)
+    .filter((file) => TEST_FILE.test(file))
+    .sort();
+}
+
 /** The file Node's ESM resolver would load for one `exports` entry. */
 function resolveTarget(entry) {
   if (typeof entry === "string") return entry;
@@ -277,6 +300,18 @@ export const CHECKS = [
       }
       for (const nested of nestedScopedCopies(join(project.dir, "node_modules")))
         failures.push(`nested registry copy at ${nested}`);
+      return failures;
+    },
+  },
+  {
+    // A test file under a package's `src` compiles into `dist` and ships, with
+    // its `vitest` import, to every consumer. Read the installed copies.
+    name: "no published package ships a test file",
+    run(project) {
+      const failures = [];
+      for (const pkg of project.packages)
+        for (const file of shippedTestFiles(join(project.dir, "node_modules", pkg.name)))
+          failures.push(`${pkg.name}: ships ${file}`);
       return failures;
     },
   },
@@ -527,6 +562,7 @@ export const GOAL_CHECKS = [
         FSD_MOVED_TSV: MOVED_TSV,
         FSD_MOVED_RENAMES: JSON.stringify(MOVED_RENAMES),
         FSD_CORE_SPECS: JSON.stringify(specs),
+        FSD_TEST_FILE: TEST_FILE.source,
       });
     },
   },
@@ -597,10 +633,13 @@ export const GOAL_CHECKS = [
   },
   {
     id: "closure.j5:moved-name-named",
-    name: "an app importing every name a root dropped since the pinned published tarballs compiles there, fails on these name by name, and its package's changelog names each with its new home",
+    name: "an app importing every name a root dropped since the pinned published tarballs compiles there, fails on these name by name, and each such package's changelog says how many exports the roots lost",
     run(project) {
       const { names, lines } = movedNameJourney(project);
-      return gradeMovedNames(names, lines);
+      const notes = [];
+      const failures = gradeMovedNames(names, lines, { release: isReleaseGrade(), notes });
+      if (notes.length > 0) report([`note: the summary line's count is checked at release; on this run it differs:`, ...notes.map((n) => `  ${n}`)]);
+      return failures;
     },
   },
 ];
@@ -612,7 +651,7 @@ export const GOAL_CHECKS = [
  * install and `project.dir`, from `goal-moved-names.mjs`; and each such
  * package's changelog lines, read from `project.tree` as the quick start is.
  *
- * @returns {{ names: { pkg: string, name: string, homes: string[], failsOnNew: boolean }[], lines: Map<string, string[]> }}
+ * @returns {{ names: { pkg: string, name: string, failsOnNew: boolean }[], lines: Map<string, string[]> }}
  */
 function movedNameJourney(project) {
   if (project.movedNames) return project.movedNames;
@@ -624,21 +663,10 @@ function movedNameJourney(project) {
   log(`    installing the ${pins.length} pinned published tarball(s) to upgrade from…`);
   npmInstall(old, fetchPinned(work, pins));
   npmInstall(project.dir, [TYPESCRIPT_SPEC]);
-  const specsIn = (dir, names) =>
-    Object.fromEntries(
-      names.map((name) => {
-        const installed = join(dir, "node_modules", name);
-        const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
-        return [name, importSpecifiers(manifest, packageFiles(installed)).specs];
-      }),
-    );
-  const specs = {
-    old: specsIn(old, pins.map((p) => p.name)),
-    new: specsIn(project.dir, project.packages.map((p) => p.name)),
-  };
+  const packages = { old: pins.map((p) => p.name), new: project.packages.map((p) => p.name) };
   const { names } = goalFixtureData(project, "goal-moved-names.mjs", "moved-names", {
     FSD_J5_OLD: old,
-    FSD_J5_SPECS: JSON.stringify(specs),
+    FSD_J5_PACKAGES: JSON.stringify(packages),
   });
   log(`    ${names.length} name(s) dropped from ${new Set(names.map((n) => n.pkg)).size} root(s)`);
   const dirs = packageDirs(project.tree);
@@ -1144,9 +1172,10 @@ function runGoalControl(work, dir) {
  * The upgrade journey's planted control. The pinned published tarballs have
  * dropped no root name against themselves, so the goal control cannot show
  * this journey failing on a missing line; this does. Pack and install this
- * checkout as `--goal` does, gather the journey's input, and remove every
- * changelog line naming one dropped name that passes. Returns 0 only when the
- * journey then fails on that name, for its missing line.
+ * checkout as `--goal` does, gather the journey's input, check it passes, and
+ * remove every changelog line that counts the removed exports. Returns 0 only
+ * when the journey then fails for every package that lost a name, for its
+ * missing line.
  */
 function runMovedNameControl(work, dir) {
   const manifest = readManifest();
@@ -1158,20 +1187,22 @@ function runMovedNameControl(work, dir) {
   const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
   try {
     const { names, lines } = movedNameJourney(project);
-    const target = names.find((n) => n.homes.length > 0 && gradeMovedNames([n], lines).length === 0);
-    if (!target) {
-      report(["✗ control: no dropped name with a home passes on this checkout, so there is no line to remove"]);
+    const before = gradeMovedNames(names, lines, { release: isReleaseGrade() });
+    if (before.length > 0) {
+      report(["✗ control: the journey does not pass on this checkout, so removing its line shows nothing", ...before.slice(0, 20)]);
       return 1;
     }
-    const failures = gradeMovedNames(names, plantLineRemoval(lines, target));
-    const named = failures.find((f) => f === `${target.pkg} ${target.name}: no changelog line names it`);
+    const failures = gradeMovedNames(names, plantSummaryRemoval(lines), { release: isReleaseGrade() });
+    const unflagged = [...new Set(names.map((n) => n.pkg))].filter(
+      (pkg) => !failures.includes(`${pkg}: no changelog line says the ${names.length} exports removed from the package roots`),
+    );
     log("");
     report(
-      named
-        ? [`✓ control failed as it must: with ${target.pkg}'s lines naming ${target.name} removed, the journey reports "${named}"`]
-        : [`✗ control: with ${target.pkg}'s lines naming ${target.name} removed, the journey did not name it`, ...failures.slice(0, 20)],
+      unflagged.length === 0
+        ? [`✓ control failed as it must: with the summary line removed, the journey reports ${failures.length} package(s) without it`, ...failures.slice(0, 3)]
+        : [`✗ control: with the summary line removed, the journey did not flag ${unflagged.join(", ")}`, ...failures.slice(0, 20)],
     );
-    return named ? 0 : 1;
+    return unflagged.length === 0 ? 0 : 1;
   } finally {
     for (const done of project.cleanup) done();
   }

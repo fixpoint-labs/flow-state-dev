@@ -21,7 +21,7 @@
  * its output while it runs, and `holdTaskForUser` (`createHoldTaskForUser`) asks the
  * user a question the task holds on. `suspendForUser`
  * (`createSuspendForUserTool`) stops a turn for the user's approval, review or,
- * on a turn with no task row, input.
+ * on a turn with no task, input.
  *
  * ## Dispatching
  *
@@ -51,9 +51,11 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
+import { defineCapability, FlowError, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import type { ActionConfig, BlockContext, BlockDefinition, ViewRunContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import {
   ticketForClaim,
@@ -61,20 +63,19 @@ import {
   lockedFields,
   taskSchema,
   taskSpendView,
-  taskSpendViewSchema,
   TaskCapExceededError,
   TaskFilingRefusedError,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
+  type TaskFilter,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
   type TaskWriteDeclineReason,
   openHolds,
-  taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
   type OwnHold,
@@ -106,6 +107,7 @@ import {
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
 import { taskToolSuffix } from "./task-tool-suffix";
+import { listedTaskSchema, listTasksOutputSchema, waitingShape } from "./task-listing";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -116,9 +118,8 @@ function askOf(question: string | { kind: "question" | "confirm"; prompt: string
 // FIX-2133 D1; BP-031.
 /**
  * Whether the running request's caller reaches `row`: the
- * user, tenant and org its filing ran under, compared as the engine compares
- * a request's (`principalOwnsRequest`): the same user, the same tenant (none
- * matching none), and the same org when the row recorded one. Read from the
+ * user, tenant and org its filing ran under: the same user, the same tenant
+ * (none matching none), and the same org when the row recorded one. Read from the
  * request's verified identity, never input. A row filed with no user
  * recorded is decided by tenant and org alone.
  */
@@ -187,7 +188,7 @@ function withCurrentId(current: Task | undefined): { current?: { id: string } } 
 }
 
 /** A value as `getTask` returns it: whole, or its JSON cut to {@link READ_OUTPUT_LIMIT}. */
-function readable(value: unknown): { value: unknown; cut: boolean } {
+export function readable(value: unknown): { value: unknown; cut: boolean } {
   const text = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
   if (text.length <= READ_OUTPUT_LIMIT) return { value, cut: false };
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
@@ -320,6 +321,14 @@ export interface AssigneeRoster {
    * no default.
    */
   soleAssignee?(): string | undefined;
+  // FIX-2735.
+  /**
+   * True when the board's default worker claims a task with no assignee, so
+   * `createTask` may file one unassigned. Absent or `false`: nothing on the
+   * board takes a task naming nobody, so `createTask` gives it to
+   * {@link soleAssignee}, or refuses it ({@link ownerForUnassigned}).
+   */
+  readonly claimsUnassigned?: boolean;
 }
 
 // FIX-1794 T1.
@@ -349,9 +358,44 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
   ok: false as const,
   error:
     `unknown_assignee: "${assignee}" is not on this board's team. ` +
-    `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
-    `assignee unset to run the task on the default worker.`,
+    `Available: ${roster.describe()}. ` +
+    (roster.claimsUnassigned === true
+      ? `Name one of these exactly, or leave assignee unset to run the task on the default worker.`
+      : `Name one of these exactly.`),
 });
+
+// FIX-2735.
+/**
+ * Who a model's new task with no assignee goes to: an unassigned task is
+ * filed only when something will take it. The task tools' actions
+ * ({@link taskToolActions}) don't ask: a person or an app filing one names
+ * its owner later, beside the board. In order:
+ *
+ * - **No roster**, or a board whose default worker claims a task naming
+ *   nobody ({@link AssigneeRoster.claimsUnassigned}): `undefined`, and the task
+ *   is filed unassigned, as before.
+ * - **The roster names one worker** ({@link AssigneeRoster.soleAssignee}): the
+ *   task is filed for it.
+ * - **A held task**: `undefined`. A hold waits for a person, who names its
+ *   owner when they release it.
+ * - **Otherwise**: refused, listing who can take it. Filed, the task would
+ *   wait pending with nothing to run it while its filer believes it started.
+ */
+function ownerForUnassigned(
+  roster: AssigneeRoster | undefined,
+  held: boolean,
+): { assignee: string } | { ok: false; error: string } | undefined {
+  if (roster === undefined || roster.claimsUnassigned === true) return undefined;
+  const sole = roster.soleAssignee?.();
+  if (sole !== undefined) return { assignee: sole };
+  if (held) return undefined;
+  return {
+    ok: false,
+    error:
+      `assignee_required: nothing on this board starts a task with no assignee, so it would wait and never run. ` +
+      `Name one of these as assignee: ${roster.describe()}. Nothing was filed.`,
+  };
+}
 
 // FIX-940; BP-030; FIX-923 / FIX-641.
 /**
@@ -361,9 +405,11 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  *
  * Two shapes pass unchecked, both deliberate:
  *
- * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
- *   default worker (its floor). Reaching the floor by *intent* stays
- *   open; only reaching it by *accident* (a typo) is closed.
+ * - **No assignee.** Nothing to check here: `updateTask` sends none to leave
+ *   the owner as it is, and a new task with none is decided by
+ *   {@link ownerForUnassigned}, which files it unassigned only where
+ *   something will take it. Only reaching a worker by *accident* (a typo) is
+ *   closed here.
  * - **No roster.** A caller that passes none supplies none — there is nothing to validate against, so
  *   validation is inert and every assignee is accepted as before (the old,
  *   roster-less shape is tolerated).
@@ -837,7 +883,7 @@ export function createHoldTaskForUser(options: TaskTurnToolOptions) {
   };
 }
 
-/** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task row, input. */
+/** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task, input. */
 const WAIT_KINDS = ["approval", "review", "input"] as const;
 
 // FIX-2131, on FIX-2129's.
@@ -971,6 +1017,120 @@ interface BuildTaskToolsOptions {
    * so `createTask` files each row once per call, since filing starts it.
    */
   readonly dispatches?: boolean;
+}
+
+// FIX-2077; FIX-2133.
+/**
+ * What a running task waits on while no worker holds it (its
+ * `keptOpenBy`), and what holds it for a person: its open holds,
+ * a question or a confirm on the row, or a task run's stop, each with what
+ * it asks and when it falls due. One shape for every stop.
+ */
+// FIX-2625: `listTasks` and the board's task-list view list rows through one
+// code path, so a view's partial answer equals its whole one row for row.
+export const LIST_TASKS_DESCRIPTION =
+  "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
+  "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
+  "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
+  "your turn, and its ending wakes you.";
+
+/** What `listTasks` and the board's task-list view take: optional filters. */
+export const listTasksInputSchema = z.object({
+  status: z
+    .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
+    .optional(),
+  assignee: z.string().optional(),
+  filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
+});
+
+/** The board's filter for a list input, or `undefined` for every row. */
+function taskListFilter(input: z.infer<typeof listTasksInputSchema>): TaskFilter | undefined {
+  const filter = {
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+    ...(input.filedByTask !== undefined ? { filedByTask: input.filedByTask } : {}),
+  };
+  return Object.keys(filter).length > 0 ? filter : undefined;
+}
+
+/**
+ * `tasks` as `listTasks` lists them: each one's status note, never its
+ * output, and the latest completed follow-up of its chain, read from `board`
+ * (every row) in one pass. `claimless` (the board's own read, not a model's
+ * tool) adds what only a client reads: spend, times and the lease.
+ */
+function listedTaskEntries(tasks: readonly Task[], board: readonly Task[], claimless: boolean) {
+  const latest = latestCompletedByRoot(board);
+  return tasks.map((t) => ({
+    id: t.id,
+    goal: t.goal,
+    ...(t.title !== undefined ? { title: t.title } : {}),
+    status: t.status,
+    ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+    attempts: t.attempts,
+    ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
+    ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
+    ...(t.run != null ? { run: t.run } : {}),
+    // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
+    ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
+    ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
+    ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
+    ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
+    ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
+    // FIX-2776: what a task's screen draws from the board's view alone; a model reads them with getTask.
+    ...(claimless && t.error !== undefined ? { error: t.error } : {}),
+    ...(claimless && t.deps !== undefined && t.deps.length > 0 ? { deps: t.deps } : {}),
+    ...(claimless && t.attachments !== undefined && t.attachments.length > 0 ? { attachments: t.attachments } : {}),
+    ...waitingOf(t),
+    ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
+  }));
+}
+
+/**
+ * The rows that show any of the tasks `ids` names: each one's own, and every
+ * row of its follow-up chain, since each shows the chain's latest completed
+ * follow-up (`current`). `undefined` when some id names no row on `board` (a
+ * deleted task, whose chain the board no longer knows): read everything.
+ */
+function tasksShowing(board: readonly Task[], ids: readonly string[]): Task[] | undefined {
+  const byId = new Map(board.map((t) => [t.id, t]));
+  const chains = new Set<string>();
+  for (const id of ids) {
+    const named = byId.get(id);
+    if (named === undefined) return undefined;
+    chains.add(named.followUpOf ?? named.id);
+  }
+  return board.filter((t) => chains.has(t.followUpOf ?? t.id));
+}
+
+/** What the board's task-list view (`views/task-list-view.ts`) answers: the rows `listTasks_<suffix>` lists. */
+export const taskListOutputSchema = z.array(listedTaskSchema);
+
+/**
+ * One board's rows as its task-list view answers them: the rows
+ * `listTasks_<suffix>` lists, from the same code, keyed by task id. A board
+ * notice for this board, on an unfiltered list, answers just the rows its
+ * tasks touch (`view.partial`); anything else answers whole. The view's block
+ * lives with the view, off the task surface: it is never a model's tool.
+ */
+export function taskListEntriesFor(
+  collectionId: string,
+  collection: TaskCollectionRef | undefined,
+  input: z.infer<typeof listTasksInputSchema>,
+  view: ViewRunContext | undefined
+): z.infer<typeof taskListOutputSchema> {
+  // The list's refusal (no board this session can file on) is the view's, by its own name.
+  if (!collection) {
+    throw new FlowError(`The task list can't be read here: ${noBoardError.error}`, { code: noBoardError.error, retryable: false });
+  }
+  const board = collection.list();
+  const filter = taskListFilter(input);
+  const changed = view?.changed;
+  if (changed?.kind === "board" && changed.topic.resource === collectionId && filter === undefined) {
+    const touched = tasksShowing(board, changed.ids);
+    if (touched !== undefined) return view!.partial(listedTaskEntries(touched, board, true));
+  }
+  return listedTaskEntries(collection.list(filter), board, true);
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
@@ -1187,7 +1347,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if ("error" in resolved) return resolved;
       followUp = resolved;
     }
-    const assignee = followUp !== undefined ? followUp.assignee : input.assignee;
+    let assignee = followUp !== undefined ? followUp.assignee : input.assignee;
     // Failure order is deliberate and uniform across the tools that touch an
     // assignee: no board (the caller's) -> unknown assignee -> creation cap.
     //
@@ -1204,6 +1364,21 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
+    // A model's task with no assignee is filed only where something will take
+    // it (FIX-2735): decided once per call, since the roster can change
+    // between a call and its replay. An action is a person's or an app's
+    // move, made beside the board it fills, which names the owner later.
+    if (assignee === undefined && !claimless) {
+      const owner = await decideOnce(ctx, memoize, "unassigned", async () =>
+        ownerForUnassigned(await rosterFor(roster, ctx), input.held === true) ?? null,
+      );
+      // A replay of a call an older build filed carries no such decision
+      // (BP-030): its row is on the board, so `fileReady` answers it rather
+      // than this refusal telling the model nothing was filed.
+      const filed = owner !== null && "error" in owner && memoize ? await recordedFiling(ctx) : undefined;
+      if (owner !== null && "error" in owner && (filed === undefined || collection.get(filed) === undefined)) return owner;
+      if (owner !== null && !("error" in owner)) assignee = owner.assignee;
+    }
     // One piece of work, one task (FIX-2350): the same goal for the same
     // worker while a task for it is open is a second start, from a call sent
     // twice or retried. Decided once per call, so a replay finds its own row.
@@ -1319,18 +1494,62 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // Recorded with the call on a board that starts work, so a replay decides as the first call did.
         const checked = await checkNewTask(ctx, collection, input, dispatches);
         if ("error" in checked) return checked;
-        return fileNewTask(checked.followUp, async () => {
-          // On a board that starts a ready row at once, a filing starts work:
-          // once per call, so a replay finds its own row (BR-15).
-          const filed = dispatches
-            ? await fileReady(ctx, collection, checked.init)
-            : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
-          return input.held === true ? { ...filed, status: "held" as const } : filed;
-        });
+        // The turn's files join the task's brief, as copies the board's scope keeps (FIX-2522).
+        const kept = await keepTurnFiles(ctx);
+        if ("error" in kept) return kept;
+        const init = kept.files.length === 0 ? checked.init : { ...checked.init, attachments: kept.files };
+        const write = () =>
+          fileNewTask(checked.followUp, async () => {
+            // On a board that starts a ready row at once, a filing starts work:
+            // once per call, so a replay finds its own row (BR-15).
+            const filed = dispatches
+              ? await fileReady(ctx, collection, init)
+              : { ok: true as const, taskId: (await collection.createTask(init)).id };
+            return input.held === true ? { ...filed, status: "held" as const } : filed;
+          });
+        // A call that kept files records its outcome, a refusal included: the refusal below drops the
+        // copies, and the keep is recorded too, so a replay that filed this time would name deleted
+        // files. It answers as the first call did instead.
+        const call = toolCallOf(ctx);
+        const result =
+          kept.files.length > 0 && call !== undefined && ctx.runOnce !== undefined
+            ? await ctx.runOnce(`fsd.briefFiles.filing:${call.logicalId}`, write)
+            : await write();
+        // A refusal the write answered filed no task, so its copies have no row to name them, and an
+        // owned copy is never swept: drop them. A throw leaves them, as it may have filed the task.
+        if (!result.ok) await discardAttachmentsForUser(ctx, kept.files);
+        return result;
       };
       return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
+
+  // FIX-2522; epic FIX-2516 ER-7.
+  /**
+   * The files the turn that files a task carried, kept for its brief: every
+   * one of them (a model sees no reference to pick among), each copied into
+   * the filer's own scope, which a conversation's board is kept in, so the
+   * turn's file and the task's go their own ways. Once per call, so a replay
+   * keeps no second copy. A turn with no files keeps none. Files that can't be
+   * kept refuse the filing by name: a task is never filed without the files
+   * the user sent for it.
+   */
+  async function keepTurnFiles(ctx: BlockContext): Promise<{ files: FileContent[] } | { ok: false; error: string }> {
+    const turn = ctx.request?.attachments ?? [];
+    if (turn.length === 0) return { files: [] };
+    const keep = () => keepAttachmentsForUser(ctx, turn);
+    const call = toolCallOf(ctx);
+    try {
+      const files = call !== undefined && ctx.runOnce !== undefined ? await ctx.runOnce(`fsd.briefFiles:${call.logicalId}`, keep) : await keep();
+      return { files };
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false as const,
+        error: `task_files_not_kept: the files sent with this message couldn't be kept with the task: ${why} Nothing was filed.`,
+      };
+    }
+  }
 
   // BR-15.
   /**
@@ -1464,8 +1683,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       })
       .passthrough(),
     outputSchema: z.union([
-      // A cancel names the dependents it took along (FIX-2078 D2).
-      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
+      // A cancel names the dependents it took along (FIX-2078 D2); a kept message says what didn't follow it (`note`).
+      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional(), note: z.string().optional() }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
     execute: async (input, ctx) => {
@@ -1564,8 +1783,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // conversation-result task's attempts (`conversation_result_one_attempt`).
       const ownRule =
         input.status !== undefined || (input.maxAttempts !== undefined && current.resultTo === "conversation");
-      // A hold or release is decided by the write, which also knows the one
-      // release a started held row may take (a legacy blocked row, BP-030).
+      // A hold or release is decided by the write. A status the board does not
+      // know is declined there (`unknown-status`), not treated as a started row.
       const locked = ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       // A message's own checks run before any write too (FIX-2086), so a call
@@ -1632,6 +1851,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (steered.reason === "terminal") return lockedError(now, ["message"]);
           return declinedWriteToolError(input.id, steered, "The message was not kept.");
         }
+        if (steered?.outcome === "recorded" && steered.note !== undefined) return { ok: true as const, note: steered.note };
       }
       return { ok: true as const };
     },
@@ -1763,125 +1983,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
-  // FIX-2077; FIX-2133.
-  /**
-   * What a running task waits on while no worker holds it (its
-   * `keptOpenBy`), and what holds it for a person: its open holds,
-   * a question or a confirm on the row, or a task run's stop, each with what
-   * it asks and when it falls due. One shape for every stop.
-   */
-  const waitingShape = {
-    keptOpenBy: z.enum(["suspended", "filed", "steer"]).optional(),
-    /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
-    holds: z.array(taskHoldSchema).optional(),
-  };
-
   const listTasks = defineTool({
     name: named("listTasks"),
-    description:
-      "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
-      "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
-      "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
-      "your turn, and its ending wakes you.",
-    inputSchema: z.object({
-      status: z
-        .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
-        .optional(),
-      assignee: z.string().optional(),
-      filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
-    }),
-    outputSchema: z.union([
-      z.object({
-        ok: z.literal(true),
-        tasks: z.array(
-          z.object({
-            id: z.string(),
-            goal: z.string(),
-            /** The short label the task was filed under, when it has one. */
-            title: z.string().optional(),
-            status: z.string(),
-            assignee: z.string().optional(),
-            attempts: z.number(),
-            /** Its worker's last one-line progress note, when it reported one. */
-            statusNote: z.string().optional(),
-            /** The task whose request filed it, when a task did. */
-            filedByTask: z.string().optional(),
-            // The run working the task, or the one that last worked it: a
-            // reader opens it from here (FIX-1668). Absent until a run starts.
-            run: taskSchema.shape.run,
-            // FIX-2288.
-            /**
-             * What the task's runs spent: the harness and model
-             * running it and its tokens, `null` when it never ran in a request
-             * of its own. On the board's action only: a model's tool reads none.
-             */
-            spend: taskSpendViewSchema.nullable().optional(),
-            /**
-             * When the row was last written (epoch ms), so a client holding the
-             * row from another source too keeps the newer copy. Board action only.
-             */
-            updatedAt: z.number().optional(),
-            /**
-             * When the task was filed, when its run first started, and when it
-             * ended (epoch ms), as the row records them, so a reader can show
-             * how long a task has run and order tasks by when they ended. On
-             * the board's action only, like `spend`; the last two are absent
-             * until they happen.
-             */
-            createdAt: z.number().optional(),
-            startedAt: z.number().optional(),
-            completedAt: z.number().optional(),
-            /** A request is waiting on this task's ending (`getTask` with `wait`). */
-            waitedOn: z.literal(true).optional(),
-            /**
-             * A running row's lease deadline (epoch ms), as the board holds it,
-             * so a reader tells a run that stopped answering by the board's own
-             * rule, `leaseLapsed`. Absent while no claim holds the row. On the
-             * board's action only, like `spend`.
-             */
-            leaseUntil: z.number().optional(),
-            ...waitingShape,
-            // FIX-2086.
-            /** The latest completed follow-up in its chain, by id; read its output with getTask. */
-            current: z.object({ id: z.string() }).optional(),
-          }),
-        ),
-      }),
-      z.object({ ok: z.literal(false), error: z.string() }),
-    ]),
+    description: LIST_TASKS_DESCRIPTION,
+    inputSchema: listTasksInputSchema,
+    outputSchema: listTasksOutputSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      const filter = {
-        ...(input.status !== undefined ? { status: input.status } : {}),
-        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-        ...(input.filedByTask !== undefined ? { filedByTask: input.filedByTask } : {}),
-      };
-      const tasks = collection.list(Object.keys(filter).length > 0 ? filter : undefined);
-      // Every chain's current in one pass over the board, never a walk per row.
-      const latest = latestCompletedByRoot(collection.list());
-      return {
-        ok: true as const,
-        tasks: tasks.map((t) => ({
-          id: t.id,
-          goal: t.goal,
-          ...(t.title !== undefined ? { title: t.title } : {}),
-          status: t.status,
-          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
-          attempts: t.attempts,
-          ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
-          ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
-          ...(t.run != null ? { run: t.run } : {}),
-          // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
-          ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
-          ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
-          ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
-          ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
-          ...waitingOf(t),
-          ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
-        })),
-      };
+      return { ok: true as const, tasks: listedTaskEntries(collection.list(taskListFilter(input)), collection.list(), claimless) };
     },
   });
 
@@ -2412,28 +2522,3 @@ export function taskToolActions(
   );
 }
 
-// FIX-2286.
-/**
- * A durable ledger's task list as a flow `reads` map:
- * `listTasks_<suffix>`, answering exactly what the `listTasks_<suffix>` action
- * answers for the same board, from the same list code, and storing nothing.
- * Spread it into `defineFlow`'s `reads` so an app can watch a session's board
- * without a request per look.
- *
- * `resolve` is the read's own resolver: it must reach the board the action's
- * does and write nothing on the way, since a read's context refuses every
- * write. A resolver that repairs or starts rows as it goes (a board's touch)
- * is the action's, not this one's. Only the list is a read: `getTask` can
- * wait, which holds a wait slot on the row.
- */
-export function taskToolReads(
-  collectionId: string,
-  resolve: TaskCollectionResolver,
-): Record<string, ReadConfig> {
-  const listTasks = buildTaskTools(resolve, {
-    nameSuffix: taskToolSuffix(collectionId),
-    claimless: true,
-  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
-  if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
-  return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
-}

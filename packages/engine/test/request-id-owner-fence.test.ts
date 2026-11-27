@@ -32,7 +32,6 @@ const ORG = "org_shared";
 
 const input = z.object({ text: z.string() });
 const run = {
-  inputSchema: input,
   userMessage: (value: { text: string }) => value.text,
   block: handler({ name: "owner-fence-run", inputSchema: input, execute: () => ({}) })
 };
@@ -257,7 +256,7 @@ describe("a request id another principal holds, dispatched at the host", () => {
       const response = await router.POST(
         new Request(`http://localhost/api/flows/${FLOW}/s_bob/actions/${action}`, {
           method: "POST",
-          headers: { "x-tenant-id": TENANT },
+          headers: { "content-type": "application/json", "x-tenant-id": TENANT },
           body: JSON.stringify({ userId: "bob", requestId: REQUEST_ID, input: { text: "bob's note" } })
         }),
         { params: { path: [FLOW, "s_bob", "actions", action] } }

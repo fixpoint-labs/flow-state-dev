@@ -62,7 +62,7 @@ const flow = defineFlow({
 })();
 
 const flowState = createFlowState({
-  flows: { [KIND]: flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
 });
 const handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false });

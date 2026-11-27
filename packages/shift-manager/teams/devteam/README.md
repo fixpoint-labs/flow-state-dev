@@ -44,7 +44,7 @@ describes, and growing this into it is out of scope on purpose.
 workforce/
   flows/
     workers/em.mts                                 flow `em`    — basename is the flow name
-    workers/coder.mts                              flow `coder`
+                                                   flow `coder` — the harness kit's, not a file here
   org/
     resources/engineering-handbook.md              the coordinator's document
     resources/projects.ts                          the projects collection
@@ -63,8 +63,8 @@ Eight Markdown files, and **none of them is named anywhere in this directory's
 code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is
-one expression inside the `coder` worker flow, exactly as it is one expression in
-`harnessManager({ harness })`.
+one list the Lab hands the harness kit (`openLab({ harnesses, defaultHarness })`),
+and a worker picks from it with its `harness:` setting.
 
 ## What this directory owns, and why each piece is here
 
@@ -72,8 +72,8 @@ The profile's seed opens two workstreams in
 Storefront, `feature` and `release`, as the lab's second user, each led by the
 EM. A line said in a workstream, or a project coordinator's hand-off to it,
 reaches the EM in that workstream's session, and the EM files the coder's tasks
-on that session's board, each naming its issue and its phase under
-`harnessFeature`. The hand-off from
+on that session's board, each in mode `implement` with its issue.
+The hand-off from
 the board to the coder underneath is unchanged.
 
 These are the lab's rather than the framework's, each because the framework has
@@ -82,9 +82,7 @@ no opinion at that spot — not because a convention is missing.
 | File | Why it is the lab's |
 |---|---|
 | `workforce/flows/workers/em.mts` | The coordinator worker flow. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the worker flow, not about one run. |
-| `workforce/flows/workers/coder.mts` | The working worker flow. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a user's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
-| `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the Shift Coordinator's best fit runs on. |
-| `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
+| `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The working worker flow, `coder`, is the harness kit's (`@flow-state-dev/harness-manager/kit`), configured here with two modes: `implement`, for a task filed in that mode with its issue, which needs a commit, and `answer`, for any other, which needs an answer and works in the `answers` host. The kit's judge (`goalJudge`, on Jev) reads both, and the Lab adds its `document:` setting, its documents and its `inspect` read. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 
@@ -124,7 +122,7 @@ itself and calls the same step, `raiseAsk` in `ask.mts`, after it registers the 
 ```ts
 const lab = await openLab({
   stores,
-  harness: stub.slot,
+  harnesses: [readyHarness(stub.slot)],
   workspace,
   coderWorkerId,
   ask: { issue: "search-bar", goal: "Add a search bar to the header" },
@@ -155,22 +153,22 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
 | `claude-code` | Claude Code through its Agent SDK. At start the Lab checks whether an account is set up (a sign-in or an Anthropic key) and whether the SDK itself loaded; if either is missing, it logs why and what to set, but still starts the Lab. Nothing falls back to the scripted coder (`stub`). |
-| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
-| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
+| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`. |
+| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`. |
 
 Codex and Cursor don't take the project's MCP servers the Lab relays, and report no usage
-windows, so Usage shows Claude Code only. One coder serves the whole process.
+windows, so Usage shows Claude Code only.
 
 A `Coder:` line at start names the coder it started with and, on a real one, how long each run
-may take. That is 20 minutes unless `DEVFORCE_LAB_RUN_MINUTES` names another whole number of
-minutes; it also sets the scripted coder's budget, which is otherwise one minute. A value that
-isn't a positive whole number is refused at start.
+may take. That is 20 minutes for every run unless `DEVFORCE_LAB_RUN_MINUTES` names another whole
+number of minutes. A value that isn't a positive whole number is refused at start.
 
-That is the coder a worker naming no harness runs on. A `coder` worker hired with
-`settings: { harness: "cursor" }` (or `codex`, or `claude-code`) runs its tasks on that harness
-instead (`workerHarnesses` in `harness.mts`), and never falls back to the starting coder. Only the
-starting coder's account is checked at start. A name the Lab doesn't run is refused at hire, with
-the names it does.
+That is the coder a worker naming no harness runs on. All four are one list, the harness kit's
+`harnesses` slot: the coder runs on it, and the readiness view checks and lists the same four
+(the scripted coder is always ready). A `coder` worker hired with `settings: { harness: "cursor" }`
+(or `codex`, or `claude-code`) runs its tasks on that harness instead, and never falls back to the
+starting coder. A task on a harness this machine isn't set up for is refused at once, saying why.
+A name the Lab doesn't run is refused at hire, with the names it does.
 
 The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
@@ -181,6 +179,24 @@ DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager sta
 
 A row the run leaves unfinished goes back to `pending` with its reason, and waits for the next
 drain of the EM's board. Nothing in the served lab drains it again on its own.
+
+### Routines
+
+Every conversation worker (the Shift Coordinator, a project coordinator, a lead, the Researcher,
+Triage) can follow a GitHub pull request or run something on a clock. Ask in words, in any
+session with one: *"Follow initech/tps-reports#9 and tell me about every review on it."* The worker
+saves a routine, and each new review on that pull request reaches the same session as a message,
+once. *"What are you following?"* lists your routines, and you can ask it to pause or delete one; a
+clock routine files a task at its time. Shift Manager's Routines lists them too. The coders and the
+EM hold none.
+
+Both profiles poll GitHub, so the Lab needs no public address. They read GitHub with the token of
+whoever runs the Lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. That token serves
+the Lab's owner alone; anyone else's GitHub routine is refused, and with no token every GitHub
+routine is refused, each naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and
+polls tick from two SQLite files beside the store (`devteam-clock.sqlite` and
+`devteam-poll.sqlite`, or `fsd-clock.sqlite` and `fsd-poll.sqlite`). `serve()`'s tick reaches the
+Lab with `CRON_SECRET` as its bearer; the Lab makes one for its process when none is set.
 
 ## What the gate found
 

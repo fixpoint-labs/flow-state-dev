@@ -2,7 +2,8 @@
 /**
  * The one publish point: every write to the request and session
  * stores publishes a notice on its session's topic, once the write can be
- * read.
+ * read, and every write to the suspension store one on its owner's user
+ * topic.
  *
  * `withChangeBus` is applied wherever a registry enters the engine:
  * `resolveStores` (so `createFlowState` and the router), `runAction`, BullMQ's
@@ -26,13 +27,38 @@
  * |---|---|
  * | a request's items land (`persistItems`, after its batch) | `items` on the request's session |
  * | a request's state field delta (`patchField`, `incField`, `pushToArray`, `deleteField`) | `request` on its session, and `run` on that session's parent |
- * | any other request write | the same, and `run` on its owner's user topic |
+ * | any other request write | the same, and `run` on its owner's user topic (not in a write session) |
  * | a session's state field delta | `run` on the session and on its parent |
- * | any other session write | the same, and `run` on its owner's user topic |
+ * | any other session write | the same, and `run` on its owner's user topic (not for a write session) |
+ * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
+ * | a session deleted, a write session's too | also `suspension` on its owner's user topic |
+ * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
+ * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
+ *
+ * Only a change a read of pending suspensions could see publishes. A wait
+ * gate or an outside event's stop is never listed, so writing one publishes
+ * nothing: hearing it would re-run every Inbox on every internal gate move. A
+ * durable request's completion deletes its suspensions, all of them answered
+ * by then, so it publishes nothing: hearing it would wake every Inbox on
+ * every turn's finish. Pruning resolved suspensions (`pruneTerminalBefore`)
+ * publishes nothing either. Nor does a suspension whose request is not
+ * stored: the pending read joins to the request, so it never listed one.
+ *
+ * A session delete leaves its requests and suspensions stored, but the
+ * pending read answers a suspension in a session only while the session
+ * exists, so the delete publishes `suspension` too. It does so on every
+ * session delete, a write session's included, without reading whether the
+ * session held one: a delete is never per turn, notices for one topic in
+ * one microtask turn fold into one,
+ * and a user with no Inbox open hears nothing, so the cost is one Inbox read
+ * per delete a watcher sees, where the check would cost a suspension-store
+ * read on every delete.
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
- * state writes a busy turn makes many of.
+ * state writes a busy turn makes many of. Nor a write session's writes (a
+ * client's resource write runs in one): no listing shows a write session, so
+ * hearing them would read every open list again on every write.
  *
  * A task board's change (`board`, narrowed to the board) is not a store write
  * here: orchestration names it through the board-notice seam (`board-notice.ts`).
@@ -47,9 +73,12 @@ import { createInMemoryBus } from "./in-memory-bus";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
-import type { ChangeKind } from "@flow-state-dev/core/internal";
-import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
+import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
+import { isUserSuspension, type PendingUserSuspensionCursor, type SuspensionRecord } from "@flow-state-dev/core/types";
+import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
+import { legacyComponentItemReads } from "../stores/legacy-component-items";
+import { isWriteSessionId } from "../resources/write-session-id";
 
 type Wrapping = {
   /** Raw store → its one wrapper. */
@@ -98,18 +127,25 @@ function busOf(store: object): ChangeBus | undefined {
  *
  * @throws FlowStateConfigError when the registry's `bus` differs from the one
  *   its stores already publish to.
- * @returns The registry with `bus` set and its `request` and `session` stores
- *   wrapped: `stores` itself when nothing changed, otherwise a copy.
+ * @returns The registry with `bus` set and its `request`, `session` and
+ *   `suspensions` stores wrapped: `stores` itself when nothing changed,
+ *   otherwise a copy.
  */
 export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: ChangeBus } {
   const bus = stores.bus ?? busOf(stores.request) ?? busOf(stores.session) ?? createInMemoryBus();
   const identities = new Identities(stores.session, stores.request);
   const session = wrap(stores.session, bus, () => sessionWrites(stores.session, bus, identities));
-  const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities));
-  if (stores.bus === bus && session === stores.session && request === stores.request) {
+  // Not a write: the one read migration rides on this wrapper because every
+  // entry applies it, once per store, so stored `component` items read back
+  // as data items on every path (legacy-component-items.ts).
+  const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities), legacyComponentItemReads);
+  // Optional only on a hand-built registry that leaves it out.
+  const raw = stores.suspensions as SuspensionStore | undefined;
+  const suspensions = raw === undefined ? undefined : wrap(raw, bus, () => suspensionWrites(raw, bus, identities));
+  if (stores.bus === bus && session === stores.session && request === stores.request && suspensions === raw) {
     return stores as T & { bus: ChangeBus };
   }
-  return { ...stores, session, request, bus };
+  return { ...stores, session, request, ...(suspensions !== undefined ? { suspensions } : {}), bus };
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +166,23 @@ function noticeKey(notice: ChangeNotice): string {
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}\u0000${notice.origin?.requestId ?? ""}`;
 }
 
+// FIX-2625; FIX-2750 (the partition).
+/**
+ * `next` folded onto the notice `held` for the same topic, kind and origin:
+ * the ids of both, unioned up to the cap, or none when either names none; and
+ * their partition when both name the same one, else none.
+ */
+function fold(held: ChangeNotice | undefined, next: ChangeNotice): ChangeNotice {
+  const ids = next.ids === undefined ? undefined : unionNoticeIds(held === undefined ? [] : held.ids, next.ids);
+  const partition = held === undefined || held.partition === next.partition ? next.partition : undefined;
+  const { ids: _named, partition: _in, ...notice } = next;
+  return { ...notice, ...(ids !== undefined ? { ids } : {}), ...(partition !== undefined ? { partition } : {}) };
+}
+
 // FIX-1506.
 /**
  * Queue `notices` for `bus`, to go out at the end of this microtask turn,
- * folded by topic, kind and origin. Never throws, and a failed publish never
+ * folded by topic, kind and origin, their ids unioned (`fold`). Never throws, and a failed publish never
  * fails the write that raised it. Every publisher goes through this one:
  * the request and session store wrappers here, and the run's resource and
  * scope-state seams and the client's resource routes, and the
@@ -143,7 +192,10 @@ export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[])
   let queued = pending.get(bus);
   const first = queued === undefined;
   if (queued === undefined) pending.set(bus, (queued = new Map()));
-  for (const notice of notices) queued.set(noticeKey(notice), notice);
+  for (const notice of notices) {
+    const key = noticeKey(notice);
+    queued.set(key, fold(queued.get(key), notice));
+  }
   if (!first) return;
   queueMicrotask(() => {
     const batch = pending.get(bus);
@@ -192,8 +244,51 @@ function userTopic(userId: string, tenantId: string | undefined): BusTopic {
   return { scope: "user", id: userId, tenantId: tenantId ?? "" };
 }
 
-function notice(topic: BusTopic, kind: ChangeKind): ChangeNotice {
-  return { topic, kind };
+function notice(topic: BusTopic, kind: ChangeKind, id?: string): ChangeNotice {
+  return id === undefined ? { topic, kind } : { topic, kind, ids: [id] };
+}
+
+// FIX-2770 D1.
+/**
+ * The `suspension` a request's owner's user topic hears of a write to one of
+ * its suspensions, under the request's tenant. It names nothing: the topic
+ * spans the user's organizations.
+ */
+function suspensionNotice(owner: RequestIdentity): ChangeNotice | undefined {
+  return owner.userId === undefined ? undefined : notice(userTopic(owner.userId, owner.tenantId), "suspension");
+}
+
+/** The `run` a session's owner's user topic hears of a write to one of their sessions. */
+function ownerRunNotice(owner: { userId: string; tenantId: string | undefined }): ChangeNotice {
+  return notice(userTopic(owner.userId, owner.tenantId), "run");
+}
+
+// FIX-2864. A write session is never listed (FIX-2624).
+/**
+ * Whether a write to session `sessionId` publishes `run` on its owner's user
+ * topic: an owner, and a session a list of theirs can show, which a write
+ * session never is.
+ */
+function ownerHears(sessionId: string, userId: string | undefined): userId is string {
+  return userId !== undefined && !isWriteSessionId(sessionId);
+}
+
+// FIX-2754.
+/**
+ * Publishes on a session's owner's user topic the `run` a whole-record write
+ * to the session publishes (`sessionNotices`), for a field delta the engine
+ * knows a list of the owner's sessions shows. The store wrapper publishes a
+ * delta without it, since it can't tell which fields a flow shows; the
+ * execution context, which holds the flow, calls this beside the delta.
+ * `session` is the stored record, whose owner and tenant name the topic as
+ * the wrapper names them.
+ */
+export function publishSessionOwnerRun(
+  bus: ChangeBus,
+  session: { id: string; userId?: string | null; tenantId?: string | null }
+): void {
+  if (session.userId == null || !ownerHears(session.id, session.userId)) return;
+  publishNotices(bus, [ownerRunNotice({ userId: session.userId, tenantId: session.tenantId ?? undefined })]);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,11 +300,16 @@ type SessionIdentity = {
   id: string;
   tenantId: string | undefined;
   parentSessionId: string | undefined;
-  /** The owner, whose user topic hears every change to the session. */
+  /** The owner, whose user topic hears every change to the session but a write session's (see `ownerHears`). */
   userId: string | undefined;
 };
 /** What a request write needs to name its topics. */
-type RequestIdentity = { sessionId: string | undefined; tenantId: string | undefined; userId: string | undefined };
+type RequestIdentity = {
+  requestId: string;
+  sessionId: string | undefined;
+  tenantId: string | undefined;
+  userId: string | undefined;
+};
 
 /** Most identities a store keeps before it forgets the oldest. */
 const IDENTITY_CACHE_LIMIT = 10_000;
@@ -268,12 +368,22 @@ class Identities {
 
   rememberRequest(id: string, record: RequestRecord): RequestIdentity {
     const identity: RequestIdentity = {
+      requestId: id,
       sessionId: record.sessionId ?? undefined,
       tenantId: record.tenantId ?? undefined,
       userId: record.userId ?? undefined
     };
     remember(cacheOf(requestIdentities, this.requests), id, identity);
     return identity;
+  }
+
+  // FIX-2770.
+  /** The request as stored now, read past the cache: a write that depends on its status. */
+  async currentRequest(id: string): Promise<RequestRecord | undefined> {
+    return this.requests.get(id).catch((error: unknown) => {
+      debugUnassembled(error, { store: "request", id });
+      return undefined;
+    });
   }
 
   forgetRequest(id: string): void {
@@ -297,11 +407,15 @@ class Identities {
    * sessions shows, and a busy turn writes many.
    */
   sessionNotices(identity: SessionIdentity, kind: ChangeKind, toOwner = true): ChangeNotice[] {
+    // The session's own topic is that one session: it names nothing. Its
+    // parent's names it (FIX-2625). Its owner's user topic names nothing: that
+    // topic is the user's in every org, so an id there would reach their
+    // screens in another org.
     const notices = [notice(sessionTopic(identity.id, identity.tenantId), kind)];
     if (identity.parentSessionId !== undefined) {
-      notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run"));
+      notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run", identity.id));
     }
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    if (toOwner && ownerHears(identity.id, identity.userId)) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     return notices;
   }
 
@@ -319,12 +433,15 @@ class Identities {
     toOwner = true
   ): Promise<ChangeNotice[]> {
     if (identity?.sessionId === undefined) return [];
-    const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
-    if (kind === "items") return notices;
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    // `items` name nothing: the session stream reads from its sequence number.
+    if (kind === "items") return [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
+    // The request on its session's notice, the session on its parent's
+    // (FIX-2625); nothing on its owner's user topic, which spans their orgs.
+    const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind, identity.requestId)];
+    if (toOwner && ownerHears(identity.sessionId, identity.userId)) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
-      notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run"));
+      notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run", identity.sessionId));
     }
     return notices;
   }
@@ -336,13 +453,15 @@ class Identities {
 
 type AnyMethod = (...args: any[]) => any;
 type Writes = Record<string, AnyMethod>;
+/** A store read, built over the store's method, whose result it passes through. */
+type Reads = Record<string, (original: AnyMethod) => AnyMethod>;
 
 /**
  * `store`'s one wrapper, publishing to `bus`: made on the first call from
  * `writes`, the methods it replaces; every other property reads through to
  * the store.
  */
-function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes): S {
+function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes, reads: Reads = {}): S {
   const known = WRAPPING.buses.has(store) ? store : (WRAPPING.wrappers.get(store) as S | undefined);
   if (known !== undefined) {
     if (WRAPPING.buses.get(known) !== bus) {
@@ -361,11 +480,21 @@ function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes):
   // it would be what the wrapper's own calls, and calling that back would
   // never end.
   const assigned: Record<string, unknown> = {};
+  // A read is the store's method as it is now, its result passed through:
+  // left on the store, so a spy or a method assigned there still runs, and one
+  // that calls the read it replaced, taken earlier, does not call itself.
+  const readsOf = new WeakMap<AnyMethod, AnyMethod>();
+  const isRead = (key: string | symbol): key is string =>
+    typeof key === "string" && Object.prototype.hasOwnProperty.call(reads, key);
   const wrapper = new Proxy(store, {
     get(target, key) {
       if (isReplaced(key)) return Object.prototype.hasOwnProperty.call(assigned, key) ? assigned[key] : replaced[key];
       const value = Reflect.get(target, key, target) as unknown;
-      return typeof value === "function" ? (value as AnyMethod).bind(target) : value;
+      if (typeof value !== "function") return value;
+      if (!isRead(key)) return (value as AnyMethod).bind(target);
+      let read = readsOf.get(value as AnyMethod);
+      if (read === undefined) readsOf.set(value as AnyMethod, (read = reads[key]!((value as AnyMethod).bind(target))));
+      return read;
     },
     set(target, key, value) {
       if (!isReplaced(key)) return Reflect.set(target, key, value, target);
@@ -410,14 +539,28 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
   return present(store, {
     set: (original) => async (id: string, value: SessionRecord, expected: unknown) => {
       const result = await original(id, value, expected);
-      if (result?.ok === true) publishNotices(bus, identities.sessionNotices(identities.rememberSession(id, value), "run"));
+      if (result?.ok === true) {
+        const identity = identities.rememberSession(id, value);
+        publishNotices(bus, identities.sessionNotices(identity, "run"));
+        // A birth (`"absent"`) brings state into being, so a view that read
+        // only the session's state hears it. Any other rewrite (a request's
+        // stamp, a title) changes no state: in-run state publishes `state` on
+        // commit, and an out-of-run state write publishes its own.
+        if (expected === "absent") publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+      }
       return result;
     },
     delete: (original) => async (id: string) => {
       const identity = await identities.session(id);
       await original(id);
       identities.forgetSession(id);
-      if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run"));
+      if (identity !== undefined) {
+        publishNotices(bus, identities.sessionNotices(identity, "run"));
+        // Deleting takes the state away: a view that read only it must hear.
+        publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+        // And the session's pending suspensions out of its owner's pending read (FIX-2770).
+        if (identity.userId !== undefined) publishNotices(bus, [notice(userTopic(identity.userId, identity.tenantId), "suspension")]);
+      }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
   });
@@ -514,6 +657,60 @@ function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identiti
         failed ??= { error: held };
       }
       if (failed !== undefined) throw failed.error;
+    }
+  });
+}
+
+/** Pending-read pages a delete looks through for its request's suspensions. */
+const LISTED_PAGE = 200;
+
+// FIX-2770 D1.
+/**
+ * Whether the owner's pending read lists a suspension of `request` now: the
+ * one delete a watching Inbox can see. Read with the store's own query, under
+ * the request's scope; a store that can't answer it publishes nothing.
+ */
+async function listsOneOf(store: SuspensionStore, request: RequestRecord): Promise<boolean> {
+  const scope = {
+    userId: request.userId,
+    tenantId: request.tenantId ?? undefined,
+    orgId: request.orgId ?? undefined,
+    flowKinds: [request.flowKind],
+    now: Date.now(),
+    limit: LISTED_PAGE
+  };
+  try {
+    for (let after: PendingUserSuspensionCursor | undefined; ; ) {
+      const page = await store.listPendingForUser({ ...scope, ...(after !== undefined ? { after } : {}) });
+      if (page.some((entry) => entry.requestId === request.id)) return true;
+      const last = page.at(-1);
+      if (page.length < LISTED_PAGE || last === undefined) return false;
+      after = { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId };
+    }
+  } catch (error) {
+    debugUnassembled(error, { store: "request", id: request.id });
+    return false;
+  }
+}
+
+// FIX-2770 D1.
+function suspensionWrites(store: SuspensionStore, bus: ChangeBus, identities: Identities): Writes {
+  const publishFor = (identity: RequestIdentity | undefined): void => {
+    const held = identity === undefined ? undefined : suspensionNotice(identity);
+    if (held !== undefined) publishNotices(bus, [held]);
+  };
+  return present(store, {
+    set: (original) => async (record: SuspensionRecord) => {
+      await original(record);
+      if (isUserSuspension(record)) publishFor(await identities.request(record.requestId));
+    },
+    deleteForRequest: (original) => async (requestId: string) => {
+      // Read before the delete: the request and its suspensions go with it.
+      const request = await identities.currentRequest(requestId);
+      // A completed request waits on no one: its suspensions were all answered.
+      const listed = request !== undefined && request.status !== "completed" && (await listsOneOf(store, request));
+      await original(requestId);
+      if (listed) publishFor(identities.rememberRequest(requestId, request));
     }
   });
 }

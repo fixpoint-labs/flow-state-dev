@@ -15,7 +15,7 @@
  * has ended its attempt.
  *
  * **The failure it prevents is a successful write.** `setAssignee` returns, the
- * task row shows the new assignee, and the task simply never runs — no throw, no
+ * task shows the new assignee, and the task simply never runs — no throw, no
  * log, nothing to correlate. So the refusal has to be a *reported* decline
  * rather than a silent no-op: a caller that ignores the outcome behaves as it
  * always did, and a caller that reads it is told exactly which rule fired.

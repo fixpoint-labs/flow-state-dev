@@ -21,6 +21,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Node versions. 22 is the default, and the published packages' floor. Only the
+# jobs that exist to run an app or lab on its own runtime use 24: e2e (the
+# kitchen-sink and lab browser tests) and docs (the docs site build). Their
+# Turborepo caches are keyed by Node major (`node24`) so a cache written on 22
+# can't replay passing results in place of a run on 24.
 jobs:
   typecheck:
     name: Typecheck
@@ -91,8 +96,22 @@ jobs:
       - name: The tracker-id rule reports its plants
         run: node --test scripts/eslint-rules/no-tracker-ids.test.mjs scripts/check-tracker-ids.test.mjs scripts/scan-tracker-ids-in-tarballs.test.mjs
 
+      # The same for the one-coalescer rule: a copy planted outside the client's
+      # live read must be reported through the repo's own config.
+      - name: The one-coalescer rule reports its plants
+        run: node --test scripts/eslint-rules/one-coalescer.test.mjs
+
+      # The same for the type-scale rule: a hard-coded size planted in each lab,
+      # Shift Manager and the registry must be reported through the repo's config.
+      - name: The text-size rule reports its plants
+        run: node --test scripts/eslint-rules/no-hardcoded-text-size.test.mjs
+
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
+
+      # wt:prune deletes directories; each keep rule and the pre-push preview guard has a case.
+      - name: Worktree prune and the preview push guard
+        run: node --test scripts/worktree.test.mjs
 
       # One task surface (FIX-2087). Here rather than beside "One word per thing"
       # in Process guards: the endings rule reads callers by type, so it needs the
@@ -196,6 +215,34 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test scripts/root-exports.test.mjs
 
+      # One fragment that changeset version can't parse, or that names a private or
+      # unknown package, fails it for the whole release. Here because it reads the
+      # fragments with Changesets' own parser, which needs the install.
+      - name: Pending changesets parse and name published packages only
+        if: ${{ !cancelled() }}
+        run: node scripts/validate-publish-set.mjs --changesets
+
+      # The retired-term guard lives here because it reads names with the
+      # TypeScript parser (FIX-2631 D2), so it needs the install, and its
+      # added-names reach is the same per-file ratchet against the same base.
+      # Unconditional: a retired Workforce word is as wrong on main as on a PR.
+      # docs/contributing/glossary.mjs owns the terms, the areas and the exceptions.
+      - name: No retired Workforce term
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs
+
+      # A change may not add a row local, parameter or property outside the
+      # store adapters and UI list modules. A base that does not resolve fails.
+      - name: No new row name for a resource
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs --added-since HEAD^1
+
+      # The plants must still be refused on the real tree, or the checks above
+      # could pass because they stopped seeing a term or a kind of name.
+      - name: The retired-term guard refuses its plants
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs --control
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -245,7 +292,31 @@ jobs:
       FSD_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/fsd_test
 
     steps:
+      # Depth 2, as the export check: the inventory ratchet reads the base commit.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # The base the apps' inventory ratchet (`labs/test-support/inventory.mts`)
+      # compares with, picked per event and passed in, so the test never guesses
+      # it: a merge group's base sha; on a push, main as it was before the push
+      # (`before`, fetched when the push is deeper than the checkout), so an
+      # earlier commit of the same push can't become the base; else `HEAD^1` (on
+      # `pull_request` the merge commit's first parent, the branch the PR merges
+      # into; on a push that created the branch, the commit before). Resolved to
+      # a sha so turbo's cache key carries it.
+      - name: Inventory base
+        run: |
+          base=$MERGE_GROUP_BASE
+          if [ -z "$base" ] && [ "$EVENT" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            git cat-file -e "$BEFORE^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BEFORE"
+            base=$BEFORE
+          fi
+          echo "INVENTORY_BASE=${base:-$(git rev-parse HEAD^1)}" >> "$GITHUB_ENV"
+        env:
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
 
       - uses: pnpm/action-setup@v4
 
@@ -335,9 +406,10 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       # The suite runner's judgement rules (lockfile pins, case count, what
-      # counts as a pass), pinned against fixtures before the slow steps.
+      # counts as a pass) and what counts as a shipped test file, pinned
+      # against fixtures before the slow steps.
       - name: Suite runner rules
-        run: node --test scripts/packed-install/suite.test.mjs
+        run: node --test scripts/packed-install/suite.test.mjs scripts/packed-install/run.test.mjs
 
       - name: Release build
         run: pnpm release:build
@@ -390,7 +462,8 @@ jobs:
 
       # `private` is the only field `changeset publish` filters on, and an npm
       # name is given away permanently, so the packages we hold back are checked
-      # on every PR and push rather than at release time.
+      # on every PR and push rather than at release time. Its --changesets half
+      # needs the install, so it runs in the Export check job.
       - name: Packages held out of the publish set
         run: node scripts/validate-publish-set.mjs
 
@@ -420,17 +493,6 @@ jobs:
       - name: No doc teaches per-kind flowIsolation
         run: node scripts/check-isolation-coordinate.mjs
 
-      # Unconditional for the same reason: a retired Workforce word is as
-      # wrong on main as on a PR. docs/contributing/glossary.mjs owns the terms, the
-      # areas and the exceptions.
-      - name: No retired Workforce term
-        run: node scripts/check-retired-terms.mjs
-
-      # The plants must still be refused on the real tree, or the check above
-      # could pass because it stopped seeing a term.
-      - name: The retired-term guard refuses its plants
-        run: node scripts/check-retired-terms.mjs --control
-
       # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
       # name one mechanism. docs/contributing/glossary.mjs owns the words, the exemptions and
       # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
@@ -442,6 +504,19 @@ jobs:
       # because it stopped reading a file.
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
+
+      # A docs-revamp page must keep to its type's budget and the page rules, and its
+      # record must show every pass of the writing loop. PRs check the pages they
+      # touch (a record's edit names its page); main checks every page. The script
+      # header owns the rules and the record format.
+      - name: The docs page checker refuses its plants
+        run: node --test scripts/check-docs-page.test.mjs
+      - name: Docs pages this PR touches
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-docs-page.mjs --changed-since HEAD^1
+      - name: Every docs page
+        if: github.event_name == 'push'
+        run: node scripts/check-docs-page.mjs
 
       # A goal that guards a check with `xs.length > 0 &&` skips it on an empty
       # list and prints PASS having read nothing (FIX-1183). Goals floor the
@@ -516,7 +591,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -525,9 +600,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-
+            turbo-${{ runner.os }}-node24-${{ github.job }}-
 
       - name: Build packages
         run: pnpm packages:build
@@ -579,6 +654,11 @@ jobs:
       - name: Run Playwright tests
         timeout-minutes: 6
         run: pnpm --filter @flow-state-dev/kitchen-sink test:e2e
+
+      # The labs' layout tests need the same browser, so they run here.
+      - name: Claude Code-style lab layout tests
+        timeout-minutes: 3
+        run: pnpm --filter @flow-state-dev/claude-code-style test:layout
 
       - name: Upload Playwright report
         if: always()
@@ -635,7 +715,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -645,10 +725,28 @@ jobs:
       - name: Lint docs brand rules
         run: pnpm --filter @flow-state-dev/docs lint:brand
 
-      # No `packages:build` and no Turborepo cache, unlike the jobs above:
-      # `apps/docs` declares no workspace dependency, and `docs:build` runs
-      # `docusaurus build` directly rather than through turbo, so neither would
-      # do anything but add minutes.
+      # The generator's own behaviour over scratch workspaces: derived sections, a cache key
+      # that follows a comment any number of workspace hops away, fail-fast, warnings listed.
+      - name: API reference generator tests
+        run: node --test apps/docs/scripts/api-reference/api-reference.test.mjs
+
+      # The site build runs `packages:build` for the generated API reference, and renders
+      # each package's section only when its declarations changed since the cached render
+      # (the generator checks each entry's key, so a stale restore re-renders rather than
+      # serving old pages).
+      - name: Restore Turborepo and API reference caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            apps/docs/node_modules/.cache/fsd-api-reference
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node24-${{ github.job }}-
+
+      # The site as it deploys, the generated API reference included: it builds every
+      # published package's types, renders one section per package from the doc comments in
+      # their `.d.ts`, and fails naming any package it cannot read.
       #
       # Unfiltered by path, like every other job here. Docusaurus resolves links
       # across the whole site, so a page this PR never touched can break when
@@ -656,3 +754,8 @@ jobs:
       # `apps/docs/**` would skip exactly the run that catches it.
       - name: Build docs site
         run: pnpm docs:build
+
+      # The docs-as-text step the build above runs: each MDX component's one text form, the
+      # refusal of a component without one, the Markdown URL rule, llms.txt's layout.
+      - name: Docs as Markdown tests
+        run: node --test apps/docs/scripts/agent-docs/agent-docs.test.mjs

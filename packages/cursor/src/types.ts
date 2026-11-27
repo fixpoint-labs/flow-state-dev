@@ -285,10 +285,21 @@ export interface CursorRunLike {
   steer?(text: string): Promise<string>;
 }
 
+// FIX-2519.
+/**
+ * A turn sent with images, as the SDK's `SDKUserMessage` takes it: the prompt
+ * and each image's bytes as base64.
+ */
+export interface CursorUserMessage {
+  text: string;
+  images?: Array<{ data: string; mimeType: string }>;
+}
+
 /** The subset of the SDK's `SDKAgent` this package drives. */
 export interface CursorAgentLike {
   readonly agentId: string;
-  send(prompt: string, options?: CursorSendOptions): Promise<CursorRunLike>;
+  /** The prompt alone, or with the turn's images. */
+  send(message: string | CursorUserMessage, options?: CursorSendOptions): Promise<CursorRunLike>;
   /** Releases the local runtime. Called in a `finally`, so a run never leaks one. */
   close?(): void;
 }

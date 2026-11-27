@@ -8,14 +8,19 @@
 import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { FlowRegistry } from "../registry/flow-registry";
+import { registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
+import { createInMemorySuspensionStore } from "../stores/memory/suspension-store";
 import type { StoreRegistry } from "../stores/types";
 import { withChangeBus } from "../bus/publish-writes";
+import { createMemoryBlobStore } from "../blobs/memory-blob-store";
+import { createHostDiskState, type HostDiskState } from "../blobs/host-disk";
+import { handleGetBlob, handleUploadBlob } from "./blob-routes";
 import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -29,8 +34,11 @@ import { handleAbortRequest } from "./abort-routes";
 import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
-import { handleRunRead } from "./read-routes";
+import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
+import { handleFlowIdentity, handleReadScopeEntries, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
+import { DEFAULT_WRITE_FLOW } from "../resources/default-write-flow";
+import { reservedAddressRefusal } from "./reserved-addresses";
 import {
   handleCheckInterruptedRequests,
   handleListInterruptedRequests,
@@ -74,6 +82,7 @@ import {
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { createDispatchOperation } from "../context/dispatch-operation";
+import { createServiceRouteOperation } from "../durability/owner-runs";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
@@ -211,12 +220,13 @@ export type FlowRouteContext = {
 
 export function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry & { bus: ChangeBus } {
   const fallback = createInMemoryStores();
+  const request = partial?.request ?? fallback.request;
   // Every request and session write publishes on its session's topic
   // (FIX-2426), on the given bus or an in-memory one.
   return withChangeBus({
     ...(partial?.bus !== undefined ? { bus: partial.bus } : {}),
     session: partial?.session ?? fallback.session,
-    request: partial?.request ?? fallback.request,
+    request,
     user: partial?.user ?? fallback.user,
     org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
@@ -224,13 +234,17 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     resourceState: partial?.resourceState ?? fallback.resourceState,
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces,
-    suspensions: partial?.suspensions ?? fallback.suspensions,
+    // A fallback suspension store joins to the request store in use, given or not (FIX-2770).
+    suspensions: partial?.suspensions ?? (partial?.request !== undefined ? createInMemorySuspensionStore({ requests: request }) : fallback.suspensions),
     leases: partial?.leases ?? fallback.leases,
     // Optional (FIX-2078 D1), and never filled in for stores that were given:
     // an in-memory stand-in beside a durable store would claim debts survive
     // a crash when they don't. Only a host given no stores at all keeps them
     // in memory, with everything else.
-    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {})
+    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {}),
+    // Attachment bytes (FIX-824), on the same rule: kept when given, in memory
+    // only for a host given no stores at all.
+    ...(partial === undefined ? { blobs: createMemoryBlobStore() } : partial.blobs !== undefined ? { blobs: partial.blobs } : {})
   });
 }
 
@@ -247,6 +261,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // FIX-2428.
   /** Push delivery's state: empty until a host turns push on. */
   push: PushState;
+  // FIX-824.
+  /** Whether the host keeps its disk: lasts until a host adapter declares it doesn't. */
+  hostDisk: HostDiskState;
 } {
   refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
   // A router built straight over its stores keeps declared indexes in step
@@ -269,13 +286,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     options.runtimeConfig.defaultSseHeartbeatMs !== undefined
       ? options.runtimeConfig.defaultSseHeartbeatMs
       : DEFAULT_SSE_HEARTBEAT_MS;
+  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const runtimeConfig: RuntimeConfig = {
     ...options.runtimeConfig,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    // FIX-2624: the framework's own flows read this host's resolver off their context.
+    hostResolver
   };
 
-  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
-  const push = createPushState(stores.bus);
+  const push = createPushState(stores.bus, runtimeConfig.noticeIds);
+  const hostDisk = createHostDiskState();
 
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
@@ -295,7 +315,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // whose `requestHost` it has already rebuilt as a fresh literal
   // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
   // that spread is a fork — so anything stamped here lands on a copy nobody
-  // else holds. The object `createFlowState` gives `worker.startWorker` never
+  // else holds. The object `createFlowState` gives `jobQueue.startProcessing` never
   // saw it, so a colocated queue worker running a board that dispatches met
   // `no-dispatch-operation`; and because this operation carries no child tracking,
   // an HTTP-started child session was invisible to the shutdown drain.
@@ -327,6 +347,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   ) {
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
+  // FIX-2630: the seam's service route, on the same terms and over the same host.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.requestHost.serviceRoute === undefined) {
+    runtimeConfig.requestHost.serviceRoute = createServiceRouteOperation(host);
+  }
 
   // Same last-resort terms for the wait resume, and only with durable execution:
   // a router mounted without a `FlowState` can still serve waits.
@@ -338,7 +362,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
-      continueRequest: (opts) => host.continueRequest(opts)
+      continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
     });
   }
   // And whether a sweeper bounds a wait here, so the turn is offered one.
@@ -364,7 +388,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       ? createParkedStopDeps({
           provider: runtimeConfig.durabilityProvider,
           stores,
-          continueRequest: (opts) => host.continueRequest(opts)
+          continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
         })
       : undefined;
   if (
@@ -385,6 +409,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.resolveFlow === undefined
   ) {
     runtimeConfig.requestHost.resolveFlow = (address: string) => options.registry.get(address);
+  }
+  // Same terms for the view publish rule (FIX-2623 D1): a router mounted
+  // without a `FlowState` reads its own registry.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.requestHost.hostHasViews === undefined) {
+    runtimeConfig.requestHost.hostHasViews = () => registryHasViews(options.registry);
   }
 
   // Detect interrupted requests from previous runs on startup
@@ -445,6 +474,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       // requests; rejected (400) inside the try if it contains ":".
       const tenantId = extractTenantId(request, options.tenantIdHeader);
 
+      // FIX-2624: no route names a write session or the default write flow,
+      // before anything else looks at either (`reserved-addresses.ts`).
+      const reserved = reservedAddressRefusal(route);
+      if (reserved !== undefined) return reserved;
+
       // Authenticate and authorize the management surface (sessions, state,
       // resources, request control, debug) before dispatching. Action routes
       // resolve their own principal inside `handleExecuteAction` and are
@@ -476,7 +510,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         host,
         request,
         hostResolver,
-        action: route.kind
+        action: route.kind,
+        ...(tenantId !== undefined ? { tenantId } : {})
       });
 
       if (route.kind === "not_found") {
@@ -489,6 +524,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           flows: visible.map((flow) => ({
             id: flow.id,
             kind: flow.kind,
+            ...(flow.description === undefined ? {} : { description: flow.description }),
             cardinality: flow.cardinality,
             requireUser: flow.requireUser,
             actions: Object.keys(flow.actions),
@@ -518,13 +554,69 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
-      if (route.kind === "run_read") {
-        return await handleRunRead(request, route, {
+      // FIX-2624: user and org resources with no session.
+      if (route.kind === "read_scope_resource") {
+        return await handleReadScopeResource(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "list_scope_entries" || route.kind === "read_scope_entry") {
+        return await handleReadScopeEntries(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
+        });
+      }
+
+      if (route.kind === "flow_identity") {
+        return await handleFlowIdentity(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "send_resource") {
+        const send = await resolveResourceSend(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
+        });
+        if (send instanceof Response) return send;
+        return await handleExecuteAction(
+          request,
+          { kind: "execute_action", flowKind: send.flowKind, actionName: route.actionName, sessionId: send.sessionId },
+          {
+            host,
+            registry: options.registry,
+            stores,
+            seams,
+            bootstrapMetadata,
+            requestContext,
+            tenantIdHeader: options.tenantIdHeader
+          },
+          send
+        );
+      }
+
+      if (route.kind === "run_view") {
+        return await handleRunView(request, route, {
           host,
           registry: options.registry,
           stores,
           runtimeConfig,
-          tenantIdHeader: options.tenantIdHeader
+          tenantIdHeader: options.tenantIdHeader,
+          callerFor,
+          pushSecret: () => push.secret?.()
         });
       }
 
@@ -564,7 +656,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           tenantId,
-          checkedSession: auth.session
+          checkedSession: auth.session,
+          publicReentrySources: runtimeConfig.publicReentrySources
         });
       }
 
@@ -640,6 +733,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           ...(principal !== undefined ? { principal } : {}),
           anonymous: anonymousFlowIds !== undefined
         });
+      }
+
+      if (route.kind === "upload_blob") {
+        if (route.flowKind !== undefined && options.registry.get(route.flowKind) === undefined) {
+          return jsonResponse(404, { error: `Unknown flow "${route.flowKind}"` });
+        }
+        return await handleUploadBlob(request, { stores, principal, hostDisk });
+      }
+
+      if (route.kind === "get_blob") {
+        return await handleGetBlob(request, route, { stores, tenantId, checkedSession: auth.session });
       }
 
       if (route.kind === "transcribe") {
@@ -888,7 +992,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   return {
     handle,
     host,
-    push
+    push,
+    hostDisk
   };
 }
 
@@ -907,7 +1012,9 @@ async function flowsForCaller(
   registry: FlowRegistry,
   callerFor: InstanceCallerResolver
 ): Promise<FlowInstance[]> {
-  const flows = registry.list();
+  // FIX-2624: the default write flow runs only on a send addressed to a
+  // resource, so it is no flow a client lists.
+  const flows = registry.list().filter((flow) => flow.id !== DEFAULT_WRITE_FLOW);
   if (!flows.some((flow) => flow.ownerPin !== undefined)) return flows;
 
   const visible: FlowInstance[] = [];

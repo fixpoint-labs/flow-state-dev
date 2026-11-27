@@ -28,15 +28,12 @@ function twoAxisFlow(kind = "secure") {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     },
     authentication: {
       resolvePrincipal: (context) => {
@@ -55,15 +52,12 @@ function openFlow(kind = "open") {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     }
   })();
 }
@@ -474,6 +468,38 @@ describe("C4 · the organization boundary on the management surface", () => {
 
       expect(response.status).toBe(200);
       expect(body.sessions.map((s) => s.id)).toEqual(["ok"]);
+    });
+
+    // FIX-2942; BP-030. A request record written before organizations were
+    // stamped, in a session that carries one, is its owner's on the request
+    // routes: it takes its session's organization at read, then meets the one
+    // exact owner comparison. Nobody else gains it, since the user still
+    // compares exactly, and another user hears what an unused id gets.
+    it("keeps an owner's pre-org request, in a session that has an org, visible and controllable by them only", async () => {
+      const { router, stores } = buildRouterWithHostResolver([twoAxisFlow()]);
+      await seedSession(stores, { id: "s-old", flowKind: "secure", userId: "dana", orgId: "acme" });
+      await seedRequest(stores, { id: "r-old", flowKind: "secure", userId: "dana", sessionId: "s-old", status: "interrupted" });
+      const dana = { user: "dana", org: "acme" };
+      const erin = { user: "erin", org: "acme" };
+
+      const status = await call(router, "GET", ["secure", "requests", "r-old", "status"], dana);
+      expect(status.status).toBe(200);
+      expect(((await status.json()) as { id?: string }).id).toBe("r-old");
+
+      const listed = await call(router, "GET", ["users", "dana", "interrupted-requests"], dana);
+      expect(((await listed.json()) as { interrupted: { requestId: string }[] }).interrupted.map((r) => r.requestId)).toEqual(["r-old"]);
+
+      const otherStatus = await call(router, "GET", ["secure", "requests", "r-old", "status"], erin);
+      const unusedStatus = await call(router, "GET", ["secure", "requests", "unused", "status"], erin);
+      expect(otherStatus.status).toBe(unusedStatus.status);
+      expect(await otherStatus.json()).toEqual({ error: 'Request "r-old" not found' });
+      const otherAbort = await call(router, "POST", ["secure", "requests", "r-old", "abort"], erin);
+      expect(otherAbort.status).toBe(404);
+      expect((await stores.request.get("r-old"))?.status).toBe("interrupted");
+
+      const abort = await call(router, "POST", ["secure", "requests", "r-old", "abort"], dana);
+      expect(abort.status).toBe(204);
+      expect((await stores.request.get("r-old"))?.status).toBe("aborted");
     });
   });
 

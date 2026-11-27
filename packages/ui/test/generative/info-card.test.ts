@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { emitInfoCardTool, InfoCardSchema } from "../../src/generative/tools";
 import { runForTest } from "../helpers";
 function makeCtx() {
-  const emitComponent = vi.fn();
+  const emitData = vi.fn();
   return {
-    ctx: { emit: { component: emitComponent } } as any,
-    emitComponent,
+    ctx: { emit: { data: emitData } } as any,
+    emitData,
   };
 }
 
@@ -20,9 +20,9 @@ describe("emitInfoCardTool", () => {
     expect(block.description).toMatch(/DO NOT USE FOR/);
   });
 
-  it("emits an info-card component item keyed by id and returns rendered metadata", async () => {
+  it("emits an info-card data item keyed by id and returns rendered metadata", async () => {
     const block = emitInfoCardTool();
-    const { ctx, emitComponent } = makeCtx();
+    const { ctx, emitData } = makeCtx();
 
     const input = {
       id: "tokyo-001",
@@ -36,8 +36,8 @@ describe("emitInfoCardTool", () => {
 
     const output = await runForTest(block, input as any, ctx);
 
-    expect(emitComponent).toHaveBeenCalledTimes(1);
-    expect(emitComponent).toHaveBeenCalledWith(
+    expect(emitData).toHaveBeenCalledTimes(1);
+    expect(emitData).toHaveBeenCalledWith(
       "info-card",
       input,
       { key: "tokyo-001" }
@@ -47,14 +47,14 @@ describe("emitInfoCardTool", () => {
 
   it("honors a custom keyFrom for cross-card identity", async () => {
     const block = emitInfoCardTool({ keyFrom: (i) => `card:${i.title}` });
-    const { ctx, emitComponent } = makeCtx();
+    const { ctx, emitData } = makeCtx();
 
     await runForTest(block, 
       { id: "x", title: "Shibuya", facts: [] } as any,
       ctx
     );
 
-    expect(emitComponent).toHaveBeenCalledWith(
+    expect(emitData).toHaveBeenCalledWith(
       "info-card",
       expect.objectContaining({ id: "x", title: "Shibuya" }),
       { key: "card:Shibuya" }

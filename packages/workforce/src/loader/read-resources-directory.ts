@@ -71,7 +71,7 @@ import {
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
 
 /**
  * Why one thing that should have produced a document did not — the discriminant

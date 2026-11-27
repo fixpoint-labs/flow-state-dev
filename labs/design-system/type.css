@@ -1,0 +1,33 @@
+/*
+ * The Labs' type scale: one value per text step, read by every lab.
+ *
+ * Components keep writing Tailwind's steps (`text-xs` … `text-2xl`); Tailwind
+ * compiles each to `var(--text-*)`, so a value here resizes every use with no
+ * class edit. Unlayered, like the theme's radius and font overrides, so it
+ * wins over Tailwind's defaults in `@layer theme`.
+ *
+ * In the Labs a step is a role:
+ *   xs    meta, labels, timestamps, counts, mono ids (the 12px floor)
+ *   sm    controls, lists, tables, code
+ *   base  the feed's body and the composer, the text a user reads and types
+ *   lg, xl, 2xl  headings
+ *
+ * A step's line height comes with it; a `leading-*` class still overrides.
+ * Each lab imports this file itself. `shift-manager.css` does not, so an app
+ * that loads only the look (Kitchen Sink, the docs) keeps Tailwind's sizes.
+ */
+
+:root {
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2.125rem;
+}

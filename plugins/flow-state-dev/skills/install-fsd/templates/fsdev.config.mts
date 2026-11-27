@@ -11,7 +11,7 @@ const modelResolver = createModelResolver({
 });
 
 export default createFlowState({
-  flows: { hello },
+  flows: [hello],
   modelResolver,
   stores: {
     default: {

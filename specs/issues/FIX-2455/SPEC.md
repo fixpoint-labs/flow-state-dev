@@ -98,18 +98,18 @@ engine READMEs. No new page: on FIX-2448's *What each package root is for*
 ```mermaid
 flowchart LR
   A["app or useAction"] -->|"result"| H["request handle"]
-  H -->|"the one wait · status polls"| W["status route"]
-  H -->|"once settled · include_result_output"| W
+  H -->|"the one wait · each status poll with include_result_output"| W["status route"]
   W -->|"get by id · caller reach · flow owns it"| S["request store"]
   S -->|"record.result · written with the final status"| W
 ```
 
-`result()` is `wait()` plus one more read of the same route. The route already loads the one
-record and checks the caller reaches it; the flag only stops it dropping the stored result.
+`result()` is the one wait with the flag on every poll, and it returns the read that settled
+it ([amended Nov 10](DECISIONS.md#d1)). The route already loads the one record and checks the
+caller reaches it; the flag only stops it dropping the stored result.
 
 ## What stays as it is
 
-- `wait()` and `status()`: the same snapshot, byte for byte, without the flag.
+- `wait()` and `status()`: the same snapshot, byte for byte, without the flag, so their polls stay small.
 - The session request list and its `include_result_output`, which list views keep using (the
   DevTool's request rows).
 - Where results are written: the engine's one result builder, in the final status write.
@@ -122,7 +122,7 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 
 | Already here | What this does with it |
 |---|---|
-| **Reading an action's output from outside the process.** `client` · `sessions.requests({ includeResultOutput })`, the only HTTP read of it: a session list, searched by six copies. `client` · `request.status()` / `wait()`: one request by id, no output (**the closest entry**). `streaming` · `request.stream()`: items, not the stored result. The engine's in-process `runAction`: server only. `flow.read`: a different job, it stores nothing | **Extends the closest entry.** Not a new way: the by-id read gains the output behind a flag, and `result()` composes `wait()`. Searched `result`, `output`, `includeResultOutput`, `wait(`, `.status()` across `packages/`, `labs/`, `apps/` |
+| **Reading an action's output from outside the process.** `client` · `sessions.requests({ includeResultOutput })`, the only HTTP read of it: a session list, searched by six copies. `client` · `request.status()` / `wait()`: one request by id, no output (**the closest entry**). `streaming` · `request.stream()`: items, not the stored result. The engine's in-process `runAction`: server only. `flow.read`: a different job, it stores nothing | **Extends the closest entry.** Not a new way: the by-id read gains the output behind a flag, and `result()` is the one wait with that flag on. Searched `result`, `output`, `includeResultOutput`, `wait(`, `.status()` across `packages/`, `labs/`, `apps/` |
 | Six list-and-find output reads: orchestration's `sendBoardAction`, the client's `steerRunningTurn`, Shift Manager's `runAction`, Workforce's `runIn`, and the claude-code-style and teammates labs | **Removes.** Each calls `result()` and keeps its own wording. Counted by the [census](poc/output-read-census/census.mjs) |
 | Five hand-rolled status loops: Shift Manager's `runAction`, `sendTurn`, `interruptRun` and `settled`, and `runIn` | **Moved onto `wait()`.** `sendTurn` keeps its read of whether the session holds the line |
 | `useReadFence` on the react root; the DevTool its one outside caller | **Moves** to `@flow-state-dev/react/internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2)'s kind; the root export goes with no alias ([ER-3; Q1 answered break](../../epics/FIX-2447/DECISIONS.md#q1)) |
@@ -136,7 +136,7 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `result()` on the request handle | `client` · `RequestHandle.wait()` | Composed: the one wait, then one read. A flag on `wait()` would change its return type ([dropped](DECISIONS.md#considered-and-dropped)) |
+| `result()` on the request handle | `client` · `RequestHandle.wait()` | Composed: the one wait, each poll carrying `include_result_output`, returning the read that settled it ([amended Nov 10](DECISIONS.md#d1)). A flag on `wait()` would change its return type ([dropped](DECISIONS.md#considered-and-dropped)) |
 | `include_result_output` on the status route; an optional `result` on its snapshot | The status route's by-id read; the session list's flag and its result projection | Extends: the list's flag name and wire shape, on the read that already loads the one record |
 | `signal` on `wait()` and `result()` | Each copy's own stop | One option on the one wait |
 | An option on `useAction` | `react` · `useAction`; `useSubscription` | Extends the hook that already sends one action |

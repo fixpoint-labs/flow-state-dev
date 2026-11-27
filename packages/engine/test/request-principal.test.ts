@@ -9,17 +9,16 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
-import {
-  principalOwnsRequest,
-  resolveCallerRequestId,
-  type RequestPrincipal
-} from "../src/context/request-principal";
+import { resolveCallerRequestId } from "../src/context/request-principal";
+import { principalOwns, type Principal } from "../src/context/principal";
+
+type Caller = Pick<Principal, "userId" | "orgId" | "tenantId">;
 
 const ID = "req_client_chosen";
-const alice: RequestPrincipal = { userId: "alice", orgId: "org_1", tenantId: "t_1" };
-const bob: RequestPrincipal = { userId: "bob", orgId: "org_1", tenantId: "t_1" };
+const alice: Caller = { userId: "alice", orgId: "org_1", tenantId: "t_1" };
+const bob: Caller = { userId: "bob", orgId: "org_1", tenantId: "t_1" };
 
-function recordFor(principal: RequestPrincipal) {
+function recordFor(principal: Caller) {
   return createInitialRequestRecord(
     { requestId: ID, flowKind: "f", flowId: "f", actionName: "run", ...principal },
     Date.now()
@@ -66,18 +65,20 @@ describe("resolveCallerRequestId", () => {
   });
 });
 
-describe("principalOwnsRequest", () => {
+describe("principalOwns", () => {
   it("needs the same user, tenant and organization", () => {
     const record = recordFor(alice);
-    expect(principalOwnsRequest(record, alice)).toBe(true);
-    expect(principalOwnsRequest(record, bob)).toBe(false);
-    expect(principalOwnsRequest(record, { ...alice, tenantId: "t_2" })).toBe(false);
-    expect(principalOwnsRequest(record, { ...alice, orgId: "org_2" })).toBe(false);
+    expect(principalOwns(record, alice)).toBe(true);
+    expect(principalOwns(record, bob)).toBe(false);
+    expect(principalOwns(record, { ...alice, tenantId: "t_2" })).toBe(false);
+    expect(principalOwns(record, { ...alice, orgId: "org_2" })).toBe(false);
   });
 
-  it("decides a record written before organizations by user and tenant", () => {
+  it("owns no record written before organizations: the claim normalises one before asking", () => {
+    // One exact comparison for every door. A legacy record's tolerance lives
+    // in the request-id claim (`withRequestOrg`), never in the comparison.
     const legacy = { ...recordFor(alice), orgId: undefined };
-    expect(principalOwnsRequest(legacy, alice)).toBe(true);
-    expect(principalOwnsRequest(legacy, bob)).toBe(false);
+    expect(principalOwns(legacy, alice)).toBe(false);
+    expect(principalOwns(legacy, bob)).toBe(false);
   });
 });

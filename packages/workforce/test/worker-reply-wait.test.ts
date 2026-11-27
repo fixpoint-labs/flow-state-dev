@@ -28,7 +28,7 @@ import { boardWorkers, bootBoardHost, ORG, type BoardHost, type BoardHostOptions
 import { workerConfigSchema } from "../src/worker-config";
 import { conversationLedgerResources } from "../src/conversation-board/ledger";
 import { REPLY_CONCURRENCY } from "../src/conversation-board/task-settled";
-import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
+import { MESSAGE_RECEIVED_ENTRY, SENT_MESSAGE_DATA_TYPE } from "../src/messages/keys";
 import { WORKER_MESSAGES_PATTERN, workerMessagesResources } from "../src/messages/message-log";
 import { messageReceivedEntry, messageReceivedSchema } from "../src/messages/message-received-entry";
 import { RECEIVED_MARK } from "../src/messages/received-mark";
@@ -124,7 +124,7 @@ function stopperFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
-    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "stopper", turn: answer }) } }
   } as never);
 }
@@ -146,7 +146,7 @@ function quietFlow(installation: WorkerInstallation, unmarked = false) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
-    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: entry } }
   } as never);
 }
@@ -234,8 +234,8 @@ async function landedIn(h: BoardHost, sessionId: string) {
 async function heardIn(h: BoardHost, sessionId: string): Promise<string[]> {
   return (await h.requestsOf(sessionId))
     .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
-    .filter((item) => item.type === "component" && item.component === "workforce:received")
-    .map((item) => item.data?.id as string);
+    .filter((item) => item.type === "data" && item.dataType === "workforce:received")
+    .map((item) => item.value?.id as string);
 }
 
 /** The asks in the log (the messages that answer nothing), and the answers to `id`. */
@@ -268,6 +268,17 @@ describe("a send that waits for its reply", { timeout: 40_000 }, () => {
     expect(answers[0]!.at).toBeLessThanOrEqual(asks[0]!.deadlineAt);
     expect(await heardIn(h, otto)).toEqual([]);
     expect((await h.messages(otto)).some((m) => m.text.includes("From lead"))).toBe(false);
+    // FIX-2848 D1: the send's line, written waiting under its call's key, now says the answer.
+    const lines = (await h.requestsOf(otto))
+      .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+      .filter((item) => item.type === "data" && item.dataType === SENT_MESSAGE_DATA_TYPE);
+    expect(new Set(lines.map((line) => line.key)).size).toBe(1);
+    expect(lines.at(-1)?.value).toEqual({
+      to: "lead",
+      text: "What is the codename?",
+      messageId: output!.sent,
+      wait: { status: "answered", reply: "The codename is Bluebird." }
+    });
   });
 
   it("is refused before anything is written where the host can't hold a wait, and a send still lands there", async () => {

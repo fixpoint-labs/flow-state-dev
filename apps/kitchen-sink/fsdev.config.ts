@@ -25,9 +25,9 @@ import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
+import { vercelScheduler } from "@flow-state-dev/vercel";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
@@ -35,14 +35,13 @@ import { createKitchenSinkTestModelResolver } from "@/lib/test-model-resolver";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
-import { buildKitchenSinkWorkforce } from "@/workforce/hire";
+import { kitchenSinkWorkforce } from "@/lib/workforce-kit";
 import { availableHarnessFlows } from "@/lib/harness-gate";
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
 import { cursorSessionFlow } from "@/lib/cursor-mode";
 import { afterStoredWorkUpgrade } from "@/lib/stored-work-upgrade";
-import { mergeWorkerFlows } from "@flow-state-dev/workforce";
-import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { bullmqJobQueue } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 /**
@@ -93,11 +92,11 @@ const devStore =
 
 // BullMQ execution backend for local dev (docker compose Redis). Created
 // whenever REDIS_URL is set so Bull Board can mount the queue; only installed
-// as the FlowState `worker` when FSD_BULLMQ_DISPATCH=1 routes actions through
-// the queue. Colocated mode: the runner and the worker run in this
+// as the FlowState `jobQueue` when FSD_BULLMQ_DISPATCH=1 routes actions through
+// the queue. Colocated mode: the runner and the job processor run in this
 // process, both against the runtime's resolved stores.
 export const bullmq = redisUrl
-  ? bullmqWorker({ connection: redisUrl })
+  ? bullmqJobQueue({ connection: redisUrl })
   : undefined;
 
 // Vercel/Neon-tuned Postgres adapter. Backs the prod profile's `primary` slot
@@ -111,29 +110,21 @@ const pgStores = vercelPostgresStores();
 // the pool, leaving the proxy a no-op, so nothing is scheduled outside prod).
 setScheduleIndexImpl(pgStores.scheduleIndex);
 
-// The team under `workforce/`, built before the runtime is assembled.
-//
-// Async because a worker's configuration lives in its own `WORKER.md`: the
-// roster is read from files rather than written here, which is the whole point
-// of the demonstration. `createFlowState({ flows })` takes a resolved map, so
-// the two are reconciled by awaiting at module scope: what this app serves is
-// still the single `flows` map below, and the registry's duplicate-id and
-// cross-flow schema checks still run at construction.
-//
-// The workers are data. Their copies are one per worker flow, the same
-// however many workers there are, so a worker a user hires or forks through
-// the roster flow runs at once, on every process, with nothing registered and
-// nothing to reload at the next boot.
-//
-// Both the Next.js route handlers and the `fsdev` CLI import this module, so
-// both serve the same workers from the same files.
-const workforce = await buildKitchenSinkWorkforce();
+// When this app's schedules fire. On Vercel no process stays up for the local
+// cron, so one Vercel Cron entry (`vercel.json`) calls this scheduler's route
+// (`app/api/cron/schedules`). Everywhere else (`next dev`, `fsdev dev`) the
+// default local cron fires them each minute.
+export const scheduler = vercelScheduler();
 
-// A folder the loader could not read is a worker this app does not have.
-// Report it once at boot rather than letting the roster come up quietly short.
-for (const failedPath of workforce.errors) {
-  console.error(`[workforce] could not read ${failedPath}`);
-}
+// The team under `workforce/`.
+//
+// The workforce is a kit: it reads `workforce/` (every file used, or the app
+// refuses to start, naming it), builds the workers in its `teams/` folders and
+// serves one copy per worker flow and the roster flow. The workers are data:
+// a worker a user hires or forks through the roster flow runs at once, on
+// every process, with nothing registered and nothing to reload at the next
+// boot. Both the Next.js route handlers and the `fsdev` CLI import this
+// module, so both serve the same workers from the same files.
 
 // Each coding harness mode's session flow, registered only while that mode is
 // available on this host (`lib/harness-gate.ts`): on a host that can't run a
@@ -146,22 +137,14 @@ const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
   cursor: cursorSessionFlow,
 });
 
-// The workforce's copies are addressed by their flow's name (`agent`,
+// The workforce kit's flows are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
 // worker is a session on its flow's copy, created naming the worker: a
 // user's conversation with `support.help` is a session on `coordinator`.
-// `mergeWorkerFlows` refuses a copy at an id a flow of this app already holds
-// rather than letting it replace that flow.
+// A kit's flow at an id one of this app's flows holds is refused at start.
 const flowstate = createFlowState({
-  flows: mergeWorkerFlows(
-    {
-      chatAgent: chatAgentFlow,
-      richTextComponent: richTextComponentFlow,
-      weeklyDigest: weeklyDigestFlow,
-      ...harnessFlows,
-    },
-    workforce.copies
-  ),
+  kits: [kitchenSinkWorkforce()],
+  flows: [chatAgentFlow, richTextComponentFlow, weeklyDigestFlow, ...Object.values(harnessFlows)],
   models: {
     default: DEFAULT_KITCHEN_SINK_MODEL,
     intents: {
@@ -247,10 +230,10 @@ const flowstate = createFlowState({
   debugAllowAnonymousLocal: databaseUrl ? undefined : true,
   // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
   // queue instead of running in-process. Requires REDIS_URL. The adapter
-  // wires the runner and the co-located worker against the same resolved
+  // wires the runner and the colocated job processor against the same resolved
   // runtime the router uses.
-  worker: bullmqDispatch ? bullmq : undefined,
-  adapters: [createScheduledTransportAdapter()],
+  jobQueue: bullmqDispatch ? bullmq : undefined,
+  scheduler: process.env.VERCEL ? scheduler : undefined,
   // Who every caller is, for every flow that brings no resolver of its own:
   // the assistant's flow and the workforce's copies. One
   // organization and one user, both constants, read from nothing on the

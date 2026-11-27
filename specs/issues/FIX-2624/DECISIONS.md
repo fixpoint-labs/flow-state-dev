@@ -1,0 +1,302 @@
+# FIX-2624 · Decisions
+
+[Spec](SPEC.md) · **Decisions**
+
+Three decisions were the sign-off surface: when the helpers go, the shape of `useResource`, and
+who may write an org resource that sets no write rule (the owner decided that one on 2026-11-11). The epic decided the rest ([O3](../../epics/FIX-2618/DECISIONS.md#o3), [ER-3, ER-4](../../epics/FIX-2618/DECISIONS.md#who-owns-what)).
+What follows them is recorded so the implementer doesn't decide it again.
+
+## The tree
+
+```mermaid
+flowchart TD
+  I["FIX-2624"] --> D1["D1 · all four helpers go here<br/>last PR after FIX-2623's views"]
+  D1 -.->|"rejected"| X1["close on the rest<br/>two owners for one not-done-if line"]
+  D1 -.->|"rejected"| X2["a framework lookup of my session on a flow<br/>the helper, moved into the framework"]
+  I --> D2["D2 · useResource takes a resource<br/>a session only at session scope"]
+  D2 -.->|"rejected"| X3["a second hook beside it<br/>two ways to read one resource"]
+  I --> O1["D3 · an org resource with no write rule<br/>refuses to start until it sets canWrite"]
+  O1 -.->|"rejected"| X4["every member of the org may write it<br/>org-wide write access nobody chose"]
+```
+
+Solid edges are what was signed. Dashed edges lost, and the label says why.
+
+<a name="open-org-canwrite"></a>
+<a name="d3"></a>
+## D3 · An org resource with no write rule refuses to start until it sets one
+
+**Decided by the owner, 2026-11-11: refuse.** An org resource marked `runBy: "default"` with no
+`canWrite` is a definition error: `defineResource` throws at start, naming the resource and the
+fix (`canWrite: () => true` for everyone). User resources are unaffected. It shipped in this
+issue's first PR, with its test (`packages/core/test/resource-run-by.test.ts`). The concept doc's
+"every member may write it" changes to match. What follows is the fork as it was put.
+
+**Plain terms.** A shared org resource, say a project's settings, can be marked "plain data" so
+any screen writes it in one line. The design doc says that, with no extra rule, every member of
+the org may then write it. An app author who adds the marker and forgets a rule has given the
+whole org write access without choosing to. The alternative: the app refuses to start until the
+author writes the rule, even if the rule is "everyone".
+
+**The trade-off.** Refusing costs one line on every org resource marked this way, and it changes
+what the design doc says. Allowing costs nothing to write, and it means the safe setting is the
+one you have to remember. Personal (user) resources aren't affected either way: they belong to
+their owner.
+
+**My recommendation: refuse to start until the rule is written.** Relaxing it later is not
+breaking; tightening it once apps rely on open access breaks them. One line is the cheapest this
+will ever be.
+
+**What would change my mind:** org resources are mostly shared scratchpads where everyone writing
+is the point, and you'd rather the plain case stay one line.
+
+**What being wrong costs:** low if we refuse (an extra line, removable later); higher if we allow
+and an app ships org-wide write access nobody chose.
+
+![D3, decided by the owner on 2026-11-11: an org resource with no write rule. Chosen: nobody may write it until it sets canWrite, a definition error at startup. Rejected: every member of the org may write it. Decides it: what an author gets when they forget. Price: one more line per org resource. Tie: a user resource is its owner's either way. Relaxing later is free, tightening is not](figures/open-org-canwrite.svg)
+
+It came down to the author who forgets: a startup error, or org-wide write access found later.
+The owner chose the startup error.
+
+<a name="d1"></a>
+## D1 · All four helpers go in this issue, in its last PR, after FIX-2623's views land
+
+| | |
+|---|---|
+| **Instead of** | Closing this issue on direct reads, writes and identity, and leaving the helpers' read-by-action uses to FIX-2623 · or a framework lookup ("my session on flow X") so the helpers can go now |
+| **Because** | Seven of the helpers' uses run an action to compute an answer (harness readiness twice, the lab context, a repository check, the project setup, the routines list, usage), so they are views, not resource reads ([inventory](poc/helper-inventory/)). One owner keeps the epic's "no helper survives" line from falling between two issues. A framework lookup is the helper itself, moved into the framework: a session made only to read, which the epic removes |
+| **Locks in** | This issue's last PR is blocked by FIX-2623; the PRs before it are not. That PR changes three apps (claude-code-style, teammates, Shift Manager) and takes two of [FIX-2556](https://linear.app/fixpoint-labs/issue/FIX-2556)'s three views (usage, schedules); FIX-2556 keeps delegates. If this issue's first PR lands before FIX-2623, the lab's pins and dismissals reads are gone before `reads` is removed, so FIX-2623 has none of them to move |
+
+![D1: all four helpers go in this issue after FIX-2623's views, chosen, beside closing on the rest and leaving them to FIX-2623. Decides it: one owner for the epic's no-helper-survives line. Price: this issue closes after FIX-2623. Tie: what a user sees once both land. Locks in a blocked-by on the last PR. Flips if FIX-2623 slips by weeks](figures/d1-helpers-after-views.svg)
+
+It comes down to ownership: split, the line counts as done only when the second issue lands.
+
+**What would change my mind:** FIX-2623 slipping weeks past this issue's mechanism. Then the
+seven uses move to FIX-2623 by name, and this issue closes on the other twenty-six.
+
+<a name="d2"></a>
+## D2 · `useResource` takes a resource or a collection and needs a session only at session scope; the old form goes with no alias
+
+| | |
+|---|---|
+| **Instead of** | A second hook beside today's `useResource(session, ref)` (`useScopedResource`, or a two-form overload) |
+| **Because** | One job, one hook: read one resource and write it, and `fsd.resource(ref)` is the same handle outside React. A second hook is a second way to read a resource. No app in the repository calls `useResource` (only `useResourceContent` wraps it), we're before 1.0, and FIX-2447 removes old forms with no alias. The epic's examples already name `useResource(pins)`. A collection is accepted too, so an org collection has a session-free hook |
+| **Locks in** | A breaking change to a published, documented hook, in a minor changeset with a one-line migration: `useResource(session, "soul")` becomes `useResource(soul, { session })`, and its result becomes `{ value, stale }` with its setters instead of `{ clientData, fetchContent }`: the same names as `useView`. The three collection hooks beside it stay session-addressed until the epic's follow-up on serving each answer once |
+
+![D2: one useResource that takes a resource, chosen, beside a second hook beside it. Decides it: how many hooks read one resource. Price: adopters of the old form rewrite each call. Tie: session-scope resources still come from the snapshot. Locks in a breaking change to a published hook. Flips if an adopter builds against the old form today](figures/d2-use-resource.svg)
+
+It comes down to the count: a second hook is a second way to read one resource, for good.
+
+**What would change my mind:** an adopter building against `useResource(session, ref)` today. Then
+the new hook takes another name, and the old one leaves with the epic's follow-up on serving each
+answer once.
+
+## Decided, not asked
+
+- **One principal per resource** (the convergence point for [ER-3](../../epics/FIX-2618/DECISIONS.md#who-owns-what)).
+  A direct read, a send and the default write flow's admission all resolve the caller through
+  the effective resolver of the flow instance that declares the resource, by the path FIX-2522
+  added to route-auth for user-kept files; never the body, query or headers (BP-031). Otherwise a
+  resource declared by an authenticated flow could be written through the default write flow
+  under the host's development resolver with a claimed user id. When two declarations of one
+  shared key disagree on their client config, their resolver, or its `requireUser` and
+  `defaultUserId`, a direct read or send of it is refused, naming both flows
+  ([refined in implementation](#decided-during-implementation)); registration still succeeds, so no host that runs today stops
+  starting (kitchen-sink's `weekly-digest` has its own resolver).
+- **What a direct read covers.** A resource reaches the registry the way every resource does,
+  through a flow that declares it (a kit, once FIX-2626 lands); the default write flow declares
+  none. Only shared cells: a resource with `flowIsolation: true` lives per flow instance, so a
+  scope and key don't name it, and it is refused with that reason and read through its session as
+  today. Only a single resource whose client config projects state: one with none is not served.
+- **One client handle:** `fsd.resource(ref)` reads and writes one resource or collection at any
+  scope (a session option at session scope), as `useResource` does in React (D2).
+- **The identity read is addressed by flow,** `fsd.flow(kind).identity()`: the user and org the
+  server acts as under that flow's sign-in, never the host's fallback. In open mode, the claimed
+  user and the default org, as on every route today.
+- **The write fence's convergence point is the action route.** A send is that route with the
+  resource named where a session id goes; it checks the resource names that flow, then finds or
+  makes the session. No route is added. The content routes keep their 501 at user and org until
+  FIX-2633; the goal check lists the client routes and fails on a new writer.
+- **The write session.** Found or made on the server from tenant, org, user, the flow instance
+  and the resource's cell (a collection's, shared by its entries), as a fixed id: create-if-absent,
+  and a losing creator adopts the winner (FIX-1068). Never named by a client. Marked as a write
+  session; session listings leave it out unless asked, as they do dispatch runs. Deleting it is
+  allowed; the next write makes it again, without its history.
+- **Versions.** `update`, `set` and `delete` carry the version the client read; the default
+  write flow writes at it (`resource-cas`, the `mutate` intent). A stale write is refused with a
+  code and the current version. The request records no state (BP-042); the helper re-reads
+  through the direct read, under the same client check, and re-runs the updater, three times at
+  most, then rejects with the conflict. A lost response is not retried.
+- **The default write flow writes only what the client can read.** With `expose` or `exclude`,
+  hidden fields are kept as stored; a resource with a computed `client.data` can't take
+  `runBy: "default"` (a definition error). Content bodies are not in its first cut;
+  [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) extends it if the skills collection needs them.
+- **Its checks, in order:** schema, owner (`ownerWriteRefusal` for owner-keyed collections; the
+  cell is the caller's own user cell or org), then `canWrite({ prev, next, userId, orgId })`.
+  Its actions keep concurrency `allow`: two quick pin clicks are two writes, ordered by version.
+- **Direct reads run no block.** They are the resource handlers' store reads and client
+  projection, with `ownerKeyAdmits` for the caller; a projected collection builds its context
+  from the principal instead of the session. The no-session execution context is FIX-2623's.
+- **Tenant** comes from the existing tenant header, as on every route (FIX-682), and is part of
+  the write session's id.
+- **Notices:** a write through either flow publishes the resource's change like any action
+  write (FIX-2367). The write's context loads the target resource's config, since the default
+  write flow declares none, and it publishes under FIX-2623's rule: once any registered flow
+  declares a view, every user or org resource write publishes (FIX-1506: an extra notice is
+  allowed, a missed one is the failure). `useResource` stays current on [FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551)'s live read ([ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what)), with no poll of its own.
+- **The lab's pins and dismissals move here,** onto user resources with `runBy: "default"`: they
+  are O3's worked example and the goal check's plain write. The old user-state lists are not
+  copied over: by owner direction, the lab's old pins and dismissals are not migrated, since it
+  is a lab with no users' marks to preserve (amended 2026-11-11, below). FIX-2628 moves the
+  declarations into the app's kit. This lands in the first PR, and FIX-2623's PR that removes `reads` waits
+  on it, so FIX-2623 has no pins or dismissals reads to turn into views. The ordering is between
+  PRs, not an issue relation: FIX-2623 blocking this issue would also hold back the first PR.
+- **Harness readiness is one view, in `harness-manager`.** FIX-2627 installs it through the
+  harness kit; D1's PR imports it for claude-code-style and teammates, and writes it there if
+  FIX-2627 hasn't yet.
+- **Workforce's roster reads go to FIX-2623's roster view;** this issue takes the roster session
+  off the five roster writes (`runBy: { flow }` on the workers collection) and the org lookup
+  for worker session ids (the identity read).
+- **Glossary** ([ER-9](../../epics/FIX-2618/DECISIONS.md#who-owns-what)): *Direct read* and *Default
+  write flow* land in the PR that ships them. The retire for `ownSession`, `labSession` and
+  `readerSessionId` lands with D1's PR, scoped to apps and labs: the engine's and orchestration's
+  `ownSession` options mean a run's own session.
+
+## Decided during implementation
+
+Settled on the implementation PRs, [#5111](https://github.com/fixpoint-labs/flow-state-dev/pull/5111)
+and [#5122](https://github.com/fixpoint-labs/flow-state-dev/pull/5122), in review. Each narrows a
+decision above; none reverses one.
+
+- **One caller per scope address per request.** Every declaring flow must resolve the request to
+  the same user and org, or it is refused with `resolver_disagreement`; `requireUser` and
+  `defaultUserId` count in `declarationsAgree`. Otherwise a read and a write of one resource could
+  land in two users' cells.
+- **A signed-out caller gets the unused key's 404, never a 401.** Which resolvers sign a caller in
+  depends on which flows declare the key, so a 401 that only a real key earns would tell a
+  stranger the key exists.
+- **A single resource with `runBy` must project state** (`expose`, `exclude` or `data`), a
+  definition error otherwise: a client writes back what it read. One with no projection and no
+  `runBy` is not served by the direct read, since the snapshot gives a client none of its state either.
+- **The default write records the instance that admitted it** (`admittedBy`, in the write
+  session's id), so its session and requests answer to that instance, not one recomputed later
+  when two instances are pinned to different users. A write session made before falls back to
+  the first declaring instance whose pin admits its owner (BP-030).
+- **The built-in write flow reads its stores and the host resolver from its execution context,
+  not at install.** It is installed once per registry, so two routers sharing one registry over
+  two stores would otherwise both write into the first one's.
+- **A user-scope collection entry's change notice carries no entry path.** The user topic spans
+  the user's orgs while a user cell is per org, so a key written in one org would reach their
+  pages in another. The bare notice still wakes every view of the scope.
+- **`maxInstances` counts every entry in the cell** (`countInstances`, as a run's create does),
+  so the default write flow and a run enforce one cap. **An `ownerPrivate` collection can't take
+  `runBy`:** `runBy` needs entries a client can read, and `ownerPrivate` refuses a browser read.
+- **An app's declared routines are seeded on the user's first request to any of the
+  installation's flows:** a worker's turn, or a roster write such as hire, pause or delete
+  ([#5153](https://github.com/fixpoint-labs/flow-state-dev/pull/5153), the owner's decision).
+  Opening Routines used to seed them, because it ran a roster request. Once the list is a view,
+  it runs no request, a view can't write, and nothing seeds at sign-in, so a user who only
+  talks to a worker would never get the app's routines. Every worker flow now declares the
+  routine collections through `installation.resources`, and each worker request seeds when it
+  ends; the roster seeds as each request starts, as before. The seed is idempotent: each
+  declared routine is written once per user, keyed `cfg_…`; a later request writes nothing,
+  and two first requests at once still leave one row each. Until a user's first request, the
+  `routines` view lists the declared routines joined to what is stored, so they show before
+  they are seeded.
+
+- **A workstream entry's report is read through the roster flow's `workstreamReport` view.** A
+  report is the entry's content, and a direct read serves state only; the content routes at user
+  and org stay FIX-2633's. The roster flow already declares the entries, so the view adds no
+  declaration, and it reaches what the entries' browser read did: any owner's report in a shared
+  project, only the reader's own in a private one.
+- **The repository check is a view of the project blocks (`views.checkRepository`), and its action
+  goes with no alias.** It computes and stores nothing, so it is one of D1's views; one way to ask
+  it, as D2 keeps one hook.
+- **A client's project write runs on the projects flow the host registers, `PROJECTS_FLOW`
+  (`"projects"`)**, which both project collections name as their `runBy` (decided by the coordinator
+  on the projects slice). It follows `HARNESS_USAGE_FLOW`: a kind the package owns and the host
+  registers, with the package's blocks on it. Not the roster flow: it has no project writes, and
+  putting them there would need a new `hireWorkforce` option for the host's repository check and MCP
+  servers, and would give `createProject` a second home beside the projects flow that every app,
+  goal and docs example already registers. The kind is now a contract. No project field is
+  `secret`: every field is one a member of the project already reads.
+- **`its-summary-changes-on-its-own` keeps no failing control for its idle leg.** The control
+  made the snapshot hear the reading sessions Routines and Usage ran actions on, and those sessions
+  are gone. A view writes nothing and a Re-check writes at most once a minute under a path the
+  snapshot doesn't hear, so no defect in Shift Manager now turns the screens' reads into a
+  snapshot read. The leg stays as the check that it doesn't.
+
+## Considered and dropped
+
+| Alternative | Why not |
+|---|---|
+| A direct write route with a declared rule, beside `runBy` | The owner rejected it in [O3](../../epics/FIX-2618/DECISIONS.md#o3): the validators would live in two paths |
+| Address direct reads through the declaring flow (`fsd.flow(kind).resource(...)`) | A shared user or org resource belongs to no one flow; the registry already resolves declarations by key for the index writer |
+| Client-derived write session ids, as workforce's worker sessions are | The client would need its org first and every flow a create check; the server already has both |
+| Return the new state from each write | Recorded on every request, unbounded for a large resource (BP-042) |
+| Run direct reads on FIX-2620's no-session context | Nothing to run: resource routes build no execution context |
+| The identity read as a host route (`fsd.identity()`) | In an app where only a flow signs callers in, a host route falls back to the development check: FIX-2522's bug class |
+| Merge field patches and `set` on the server (Replicache's and Convex's shape) | Only an updater run on the client fits every write; a server merge would be a second conflict rule beside the version. Recorded for the implementer |
+
+## Settled
+
+- **The four helpers have 33 functional uses: 14 direct reads, 9 writes through a flow, 3 org
+  lookups and 7 reads by action** (2026-11-11, `main` at `f0b34c52`, [`poc/helper-inventory/`](poc/helper-inventory/README.md)),
+  plus 31 lines of the helpers themselves and 22 that pass their ids along. The checker
+  classifies every line the search finds and fails on one it can't; its planted control
+  (`POC_PLANT=1`) fails as it must. Before D1's PR, run it with `POC_EXPECT=gone`, which passes only when every hit is *unrelated* (today it fails, listing the 86 helper lines that remain).
+
+## Analysis
+
+2026-11-11 · watermark 2026-11-08 (the epic's analysis) · **Right approach, with changes.** A
+forked `analysis` pass, its reuse review its own (no sub-agent tool); it read `packages/`, the
+mechanism list, `main` since the watermark and FIX-2623's draft.
+
+1. **Reuse** — the [*Adds*](SPEC.md#whats-already-here-and-the-debt) verdicts hold. Missed:
+   FIX-2522's governing-flow check (now built on), and four hand-built fixed-id sessions around
+   `ensureSessionRecord`, which the write session would make five.
+2. **Prior art** — Firestore runs the update on the client and retries on a version conflict, this
+   shape; Replicache and Convex re-run a named change on the server.
+3. **Other shapes** — FIX-824's flow address wins for the identity read, loses for reads.
+4. **New factors** — FIX-2522 and FIX-824 merged; FIX-2623's draft and the epic's FIX-2620 entry
+   claim the no-session context for direct reads; "row" retired for a resource entry.
+5. **Necessity** — earns its place; each smaller goal leaves the helpers.
+6. **Ergonomics** — two entry points, four concepts for a pin; five surprises, folded below.
+7. **Concerns** — the identity read as a host route; org write access by default.
+
+| Finding | Disposition |
+|---|---|
+| Identity read as a host route (FIX-2522's bug class) | **Folded:** addressed by flow |
+| `fsd.resource` beside `fsd.resources`; `client.userId` beside the identity read | **Folded:** one handle; the others in *Leaves* |
+| The hidden declaration; no session-free collection hook | **Folded:** a line and the diff; D2 takes collections |
+| Org resource writable by any member by default | **Decided** by the owner, 2026-11-11: [refuse to start](#d3) |
+| Registration refusal could stop a host; `flowIsolation: true`; "row"; pins as stopgap views | **Folded:** refused per request; isolated resources refused; reworded; pins land first |
+| A fifth fixed-id session; server-side merge of patches | **Recorded** for the implementer (a shared helper; FIX-2471 is the next user) |
+| The no-session context claimed three ways | **Recorded:** flagged to the coordinator |
+
+## How it got here
+
+- **Draft** — framed as the session half of FIX-2618: direct reads by scope, every write through
+  `runBy` on the action route, an identity read, then the helpers deleted; built on the resource
+  handlers, `resource-cas`, the create race and FIX-1788's run-by pattern, with the helper uses
+  counted by a checker before any of it was argued.
+- **Analysis** — the identity read moved from a host route to a flow address, `useResource` took
+  collections, and the org write default became an open fork, because the analysis found
+  FIX-2522's bug class in a host route and a security default nobody had chosen.
+- **Amended 2026-11-11, after merge (owner review on the implementation PR,
+  [#5111](https://github.com/fixpoint-labs/flow-state-dev/pull/5111))** — "No need for legacy
+  support": the lab's old pins and dismissals are not carried from the user-state record into
+  the new resources. The one-time read (BP-030) is dropped from *Adds* and the decision above,
+  and FIX-2628 no longer has a fallback to remove. A lab has no users whose marks need keeping.
+- **Amended 2026-11-11, from the implementation PRs** (#5111, #5122, review-clean) — seven
+  calls the build settled are recorded [above](#decided-during-implementation): one caller per
+  address per request, the signed-out 404, projection with `runBy`, `admittedBy`, the write
+  flow's context, the bare user-entry notice, and the cap and `ownerPrivate` rules.
+- **Amended 2026-11-12, from the implementation PR [#5153](https://github.com/fixpoint-labs/flow-state-dev/pull/5153)**:
+  the seed point for an app's declared routines is the user's first request to any of the
+  installation's flows, by the owner's decision on #5153 ([above](#decided-during-implementation)).
+- **Amended 2026-11-12, from the projects slice** — four calls recorded
+  [above](#decided-during-implementation): a report through the roster flow's view, the repository
+  check as a view with its action removed, the projects writer, and the summary goal's idle leg
+  without a control.
+
+**Open: none.** [The org write rule](#d3) was decided by the owner on 2026-11-11: refuse to start.

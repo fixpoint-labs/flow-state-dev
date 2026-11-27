@@ -103,7 +103,7 @@ afterEach(async () => {
 
 function host(stores: StoreAdapter, script: Script): FlowState {
   return createFlowState({
-    flows: { "owed-park": waitingFlow(script) },
+    flows: [waitingFlow(script)],
     stores: { default: { primary: stores } },
     durable: true,
     staleSweepIntervalMs: 100,

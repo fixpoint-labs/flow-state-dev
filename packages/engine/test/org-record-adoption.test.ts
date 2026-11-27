@@ -28,15 +28,12 @@ function racingFlow() {
     kind: "org-race",
     org: { stateSchema: z.object({ tier: z.string().default("free") }) },
     actions: {
-      run: {
-        inputSchema: z.number(),
-        block: handler({
+      run: handler({
           name: "noop",
           inputSchema: z.number(),
           outputSchema: z.number(),
           execute: (input) => input
         })
-      }
     }
   })();
 }

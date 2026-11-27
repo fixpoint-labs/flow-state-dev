@@ -1,18 +1,18 @@
 /**
  * `@flow-state-dev/scheduled/collection` — what a flow definition needs to keep
- * and resolve dynamic schedules, without loading the engine: the schedule
- * collection, its resolver, the dispatch id's format, and next-run math.
+ * and resolve dynamic schedules: the schedule collection, its resolver, the
+ * dispatch id's parser and next-run math. The tick that claims due entries and
+ * the endpoint it dispatches to are the engine's (`createFlowState({ scheduler })`,
+ * the router's built-in scheduled endpoint); the id format and the fired-record
+ * key are core's (`formatScheduleId`, `firedRecordCollectionKey`).
  *
- * The package's root entry also mounts the dispatch endpoint, which runs on
- * the engine. A package that defines flows but must not load the engine
- * (Workforce) imports from here instead. Keep this graph engine-free: the
- * resolver takes the engine's user-key derivation from its context
- * (`ScheduleResolutionContext.userStorageKey`), which the endpoint supplies.
+ * Keep this graph engine-free: the resolver takes the engine's user-key
+ * derivation from its context (`ScheduleResolutionContext.userStorageKey`),
+ * which the endpoint supplies.
  */
 export {
   createResourceCollectionScheduleResolver,
   defaultParseScheduleId,
-  formatScheduleId,
   type CreateResourceCollectionScheduleResolverOptions,
   type ParsedScheduleId,
   type ScheduleResourceState
@@ -28,4 +28,3 @@ export { type ScheduleIndex, type ScheduleIndexEntry } from "./scheduleIndex";
 
 export { parseNextFireAt } from "./parseNextFireAt";
 
-export { FIRED_RECORDS_PATTERN, firedRecordCollectionKey } from "./firedRecords";

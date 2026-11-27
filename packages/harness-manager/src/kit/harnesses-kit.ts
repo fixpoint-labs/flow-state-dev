@@ -1,0 +1,164 @@
+/**
+ * The harness kit: coding harnesses for workforce's workers.
+ *
+ * An app lists `harnesses({ workspace })` beside `workforce(…)` and fills the
+ * kit's `harnesses` slot with harness values (`codexHarness()`,
+ * `cursorHarness()`; Claude Code's kit fills it itself). It contributes to
+ * workforce:
+ *
+ * - `coder`, the one coding worker flow, to `workerFlows`: every coding
+ *   worker names it in its `flow:` line and picks its harness in `harness:`.
+ *   An app with a coding flow of its own switches it off
+ *   (`harnesses(…).without(workforce.slots.workerFlows, "coder")`).
+ * - which harnesses can run here, to `uses`, so a worker files coding work
+ *   only on a ready one.
+ *
+ * It serves one flow of its own, `harnesses`, through workforce's `flows` slot,
+ * whose `readiness` view has one entry per harness filled, read with no
+ * session; `{ refresh: true }` checks them again. Its `codingBoard` view is a
+ * conversation's coding board, at user scope (`codingBoardViewRef`). With `logReadiness`, it checks them at start and logs a table.
+ *
+ * Only this subpath imports workforce: the package root never does.
+ */
+import { defineFlow, defineKit, slot } from "@flow-state-dev/core";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import type { WorkerInstallation } from "@flow-state-dev/workforce";
+import { codingBoardView } from "./coding-board";
+import { CODING_BOARD_VIEW, HARNESSES_FLOW } from "../coding-board-ref";
+import type { WorkspaceHost } from "@flow-state-dev/workspace";
+import { z } from "zod";
+import { harnessSchema, type Harness } from "@flow-state-dev/core/harness";
+import {
+  formatHarnessReadiness,
+  harnessReadiness,
+  harnessReadinessCapability,
+  harnessReadinessView,
+  type HarnessReadinessRead,
+} from "../readiness";
+import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions, type CoderWorkerExtension } from "./coder-flow";
+import { assertBranchPrefix } from "../workspace";
+
+export { HARNESSES_FLOW };
+
+/** The harness kit's config: where runs work, and the coding worker flow's policy. */
+export type HarnessesConfig = CoderFlowOptions & {
+  /** Check every harness at start and log the rows as a table, never awaited: a missing sign-in never stops the app. Default false. */
+  logReadiness?: boolean;
+};
+
+const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = z
+  .object({
+    workspace: z.custom<WorkspaceHost>((value) => typeof value === "object" && value !== null, {
+      message: "`workspace` is the host a run works in (`localWorkspaceHost(…)`)",
+    }),
+    defaultHarness: z.string().min(1).optional(),
+    review: z.boolean().optional(),
+    pullRequests: z.boolean().optional(),
+    judge: z.boolean().optional(),
+    checks: z
+      .object({ commands: z.array(z.string()).readonly(), timeoutMs: z.number().int().positive().optional() })
+      .optional(),
+    project: z.boolean().optional(),
+    idleTimeoutMs: z.number().int().positive().optional(),
+    // `0` turns the cap off.
+    runTimeoutMs: z.number().int().nonnegative().optional(),
+    branchPrefix: z
+      .string()
+      .superRefine((prefix, refuse) => {
+        try {
+          assertBranchPrefix(prefix);
+        } catch (refused) {
+          refuse.addIssue({ code: z.ZodIssueCode.custom, message: (refused as Error).message });
+        }
+      })
+      .optional(),
+    onPullRequestRecorded: z
+      .custom<HarnessesConfig["onPullRequestRecorded"]>((value) => typeof value === "function", {
+        message: "`onPullRequestRecorded` builds a follower on the installation: `(installation) => followPullRequest({ providers, installation })`",
+      })
+      .optional(),
+    // Checked in full when the coding flow is built (`codingModes`), naming the mode.
+    modes: z.record(z.string(), z.object({}).passthrough()).optional(),
+    defaultMode: z.string().min(1).optional(),
+    approveTools: z.boolean().optional(),
+    worker: z
+      .object({
+        settings: z.record(z.string(), z.custom<z.ZodTypeAny>((value) => value instanceof z.ZodType, { message: "a `worker.settings` entry is a zod schema" })).optional(),
+        resources: z.record(z.string(), z.unknown()).optional(),
+        actions: z
+          .custom<NonNullable<CoderWorkerExtension["actions"]>>((value) => typeof value === "function", {
+            message: "`worker.actions` builds the app's actions on the installation: `(installation) => ({ … })`",
+          })
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    logReadiness: z.boolean().optional(),
+  })
+  .strict() as unknown as z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig>;
+
+/**
+ * One readiness read per filled slot: the capability `contributes` adds and
+ * the view `install` serves read the same kept rows.
+ */
+const readinessOf = (() => {
+  const reads = new WeakMap<object, HarnessReadinessRead>();
+  return (filled: Readonly<Record<string, Harness>>): HarnessReadinessRead => {
+    let read = reads.get(filled);
+    if (read === undefined) {
+      read = harnessReadiness(
+        Object.fromEntries(
+          Object.values(filled).map((harness) => [
+            harness.id,
+{ label: harness.label ?? harness.id, check: harness.readiness },
+          ]),
+        ),
+      );
+      reads.set(filled, read);
+    }
+    return read;
+  };
+})();
+
+/**
+ * Coding harnesses, as a kit. Requires workforce.
+ *
+ * @example
+ *   createFlowState({
+ *     kits: [workforce({ agent: { model } }), harnesses({ workspace, defaultHarness: "cursor" })],
+ *     fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness()] },
+ *   });
+ */
+export const harnesses = defineKit({
+  name: "harnesses",
+  requires: [workforce],
+  config: configSchema,
+  slots: { harnesses: slot.keyed(harnessSchema) },
+  contributes: ({ config, slots }) => {
+    const filled = slots.harnesses;
+    const readiness = readinessOf(filled);
+    return {
+      [workforce.slots.workerFlows]: { [CODER_FLOW]: coderWorkerFlow(config, filled, (id) => readiness.refusal(id)) },
+      [workforce.slots.uses]: [harnessReadinessCapability(readiness, config.defaultHarness)],
+      // FIX-2725 D2: built on workforce's installation, so the coding board
+      // reads the roster for a task's `harness:`.
+      [workforce.slots.flows]: {
+        [HARNESSES_FLOW]: (installation: WorkerInstallation) => [
+          defineFlow({
+            kind: HARNESSES_FLOW,
+            actions: {},
+            description: "The coding harnesses' readiness and the coding board, read as views. Nobody talks to it, so it has no sessions.",
+            views: {
+              readiness: harnessReadinessView(readiness),
+              [CODING_BOARD_VIEW]: codingBoardView(installation, config.defaultHarness),
+            },
+          })({ id: HARNESSES_FLOW }),
+        ],
+      },
+    };
+  },
+  install: ({ config, slots }) => {
+    if (config.logReadiness === true) void readinessOf(slots.harnesses).read().then((entries) => console.log(formatHarnessReadiness(entries)));
+    return { flows: [] };
+  },
+});

@@ -12,25 +12,56 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   acquireCheckout,
   branchFor,
   checkoutPathFor,
+  freeRunLocation,
+  runIdentityKey,
   harnessTaskId,
   locationFor,
+  placeFor,
   provisionCheckout,
+  runBoardSegment,
   type RunLocation,
   type RunPrincipal,
-  type WorkspaceConfig,
+  assertBranchPrefix,
   encodeSegment,
   isStrictlyInside,
   releaseCheckout,
   taskIssueSegment,
 } from "../src/workspace";
-import { WorkspaceRefusedError } from "@flow-state-dev/workspace";
+import { localRepoWorkspaceHost, WorkspaceRefusedError } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
+
+/** The one repository a test's runs are cut from, and where their checkouts go. */
+interface FixedRepo {
+  root: string;
+  sourceRepo: string;
+  baseRef: string;
+  provisionTimeoutMs?: number;
+}
+
+/** The workspace host over a test's repository. */
+function hostOf(repo: FixedRepo, now?: () => number) {
+  return localRepoWorkspaceHost({
+    root: repo.root,
+    repo: repo.sourceRepo,
+    baseRef: repo.baseRef,
+    ...(repo.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: repo.provisionTimeoutMs } : {}),
+    ...(now !== undefined ? { now } : {}),
+  });
+}
+
+/** Provision one run's checkout of a test's repository. */
+function provision(repo: FixedRepo, location: RunLocation, now?: () => number) {
+  return provisionCheckout(hostOf(repo, now), { kind: "repo", repo: resolve(repo.sourceRepo), baseRef: repo.baseRef }, location);
+}
+
+/** Where one run's checkout of a test's repository goes. */
+const pathOf = (repo: FixedRepo, location: RunLocation): string => checkoutPathFor(repo.root, location);
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -51,7 +82,7 @@ const at = (issue: string, phase: string, over: Partial<RunLocation> = {}): RunL
   ...over,
 });
 
-function workspace(): WorkspaceConfig {
+function workspace(): FixedRepo {
   const dir = mkdtempSync(join(tmpdir(), "conductor-ws-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -68,14 +99,14 @@ describe("where the checkout is — derived, never read back", () => {
     // retry from nothing — which is exactly the carry-forward the retry budget
     // is priced on. A pure function of the durable task has nothing to lose.
     const config = workspace();
-    expect(checkoutPathFor(config, at("FIX-1219", "implement"))).toBe(
-      checkoutPathFor(config, at("FIX-1219", "implement")),
+    expect(pathOf(config, at("FIX-1219", "implement"))).toBe(
+      pathOf(config, at("FIX-1219", "implement")),
     );
-    expect(checkoutPathFor(config, at("FIX-1219", "implement"))).not.toBe(
-      checkoutPathFor(config, at("FIX-1220", "implement")),
+    expect(pathOf(config, at("FIX-1219", "implement"))).not.toBe(
+      pathOf(config, at("FIX-1220", "implement")),
     );
-    expect(checkoutPathFor(config, at("FIX-1219", "implement"))).not.toBe(
-      checkoutPathFor(config, at("FIX-1219", "review")),
+    expect(pathOf(config, at("FIX-1219", "implement"))).not.toBe(
+      pathOf(config, at("FIX-1219", "review")),
     );
   });
 
@@ -88,7 +119,7 @@ describe("where the checkout is — derived, never read back", () => {
     const config = workspace();
     for (const bad of ["../escape", "a/b", "..", ".", "", "with space", "/abs"]) {
       // Issue and phase are OURS, so the grammar is legitimate there.
-      expect(() => checkoutPathFor(config, at(bad, "implement"))).toThrow(/not a usable identity segment/);
+      expect(() => pathOf(config, at(bad, "implement"))).toThrow(/not a usable identity segment/);
       expect(() => branchFor(at("FIX-1", bad))).toThrow(/not a usable identity segment/);
     }
   });
@@ -97,11 +128,11 @@ describe("where the checkout is — derived, never read back", () => {
 describe("provisioning", () => {
   it("is idempotent, and the second call leaves uncommitted work untouched", async () => {
     const config = workspace();
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const first = await provision(config, at("FIX-1219", "implement"));
     expect(first.created).toBe(true);
 
     writeFileSync(join(first.path, "wip.txt"), "half done");
-    const second = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const second = await provision(config, at("FIX-1219", "implement"));
 
     expect(second.path).toBe(first.path);
     expect(second.created).toBe(false);
@@ -128,7 +159,7 @@ describe("provisioning", () => {
     const merged = git(teammate, "rev-parse", "HEAD");
     const localMain = git(config.sourceRepo, "rev-parse", "main");
 
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
 
     expect(git(checkout.path, "rev-parse", "HEAD")).toBe(merged);
     expect(git(config.sourceRepo, "rev-parse", "main")).toBe(localMain);
@@ -136,18 +167,14 @@ describe("provisioning", () => {
 
   it("puts the checkout on its own branch", async () => {
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: checkout.path,
       encoding: "utf8",
     }).trim();
-    expect(head).toBe(
-      // The principal segment is DERIVED, not spelled: it is a digest, and a
-      // literal here would only pin how the digest happens to be computed
-      // today. What this asserts is the SHAPE — untenanted tag, organization, user,
-      // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("org_a")}/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
-    );
+    // A run's own short name, the same one its folder carries.
+    expect(head).toBe(branchFor(at("FIX-1219", "implement")));
+    expect(head).toBe(`fsd/${basename(checkout.path)}`);
   });
 
   it("fails loudly when the branch was deleted underneath", async () => {
@@ -155,7 +182,7 @@ describe("provisioning", () => {
     // work, and a fresh branch off the base ref would diverge from whatever the
     // deleted one pointed at.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     writeFileSync(join(checkout.path, "wip.txt"), "half done");
     // `git branch -D` refuses a branch that is checked out in a worktree, which
     // is exactly the state this test needs — so the ref is deleted directly,
@@ -165,7 +192,7 @@ describe("provisioning", () => {
       stdio: "pipe",
     });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /no longer exists/,
     );
     expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
@@ -187,14 +214,14 @@ describe("provisioning", () => {
     // is pointed at a directory git cannot read as a repository, which is one of
     // the real shapes (exit 128, unkilled) rather than a hand-made error object.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     writeFileSync(join(checkout.path, "wip.txt"), "half done");
 
     const notARepo = mkdtempSync(join(tmpdir(), "conductor-not-a-repo-"));
     dirs.push(notARepo);
     const broken = { ...config, sourceRepo: notARepo };
 
-    const failure = await provisionCheckout(broken, at("FIX-1219", "implement")).then(
+    const failure = await provision(broken, at("FIX-1219", "implement")).then(
       () => undefined,
       (err: unknown) => err as Error,
     );
@@ -414,13 +441,13 @@ describe("a relative workspace root still lands in one place", () => {
       const config = { root: "checkouts", sourceRepo, baseRef: "main" };
       const location = at("FIX-1219", "implement");
 
-      const checkout = await provisionCheckout(config, location);
+      const checkout = await provision(config, location);
 
       // The one property that matters: the path the rest of the system will use
       // is the path git actually created. Asserted through `checkoutPathFor`
       // rather than against a literal, since that is what the lock, the run
       // record and the agent `cwd` all derive from.
-      expect(checkout.path).toBe(checkoutPathFor(config, location));
+      expect(checkout.path).toBe(pathOf(config, location));
       expect(existsSync(join(checkout.path, ".git"))).toBe(true);
       // And NOT under the source repository, which is where it used to go.
       expect(existsSync(join(sourceRepo, "checkouts"))).toBe(false);
@@ -446,9 +473,9 @@ describe("a relative source repository is still the repository on this machine",
       const config = { root: join(dir, "checkouts"), sourceRepo: "./repo", baseRef: "main" };
       const location = at("FIX-1219", "implement");
 
-      const checkout = await provisionCheckout(config, location);
+      const checkout = await provision(config, location);
 
-      expect(checkout.path).toBe(checkoutPathFor(config, location));
+      expect(checkout.path).toBe(pathOf(config, location));
       expect(existsSync(join(checkout.path, ".git"))).toBe(true);
     } finally {
       process.chdir(previous);
@@ -468,7 +495,7 @@ describe("a half-created checkout does not brick every retry", () => {
   it("recreates a checkout whose creation was interrupted", async () => {
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const path = checkoutPathFor(config, location);
+    const path = pathOf(config, location);
 
     // The exact leftover shape: the directory, some content, no `.git`, and the
     // marker the provision wrote before calling `worktree add`. The marker is
@@ -479,7 +506,7 @@ describe("a half-created checkout does not brick every retry", () => {
     writeFileSync(`${path}.provisioning`, "");
     expect(existsSync(join(path, ".git"))).toBe(false);
 
-    const checkout = await provisionCheckout(config, location);
+    const checkout = await provision(config, location);
 
     expect(checkout.created).toBe(true);
     expect(existsSync(join(checkout.path, ".git"))).toBe(true);
@@ -493,7 +520,7 @@ describe("a half-created checkout does not brick every retry", () => {
     // which failed on the leftover directory in exactly the same way.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const path = checkoutPathFor(config, location);
+    const path = pathOf(config, location);
     const branch = branchFor(location);
 
     execFileSync("git", ["branch", branch, "main"], { cwd: config.sourceRepo, stdio: "pipe" });
@@ -501,7 +528,7 @@ describe("a half-created checkout does not brick every retry", () => {
     writeFileSync(join(path, "leftover"), "x");
     writeFileSync(`${path}.provisioning`, "");
 
-    return expect(provisionCheckout(config, location)).resolves.toMatchObject({
+    return expect(provision(config, location)).resolves.toMatchObject({
       created: true,
       branch,
     });
@@ -529,7 +556,7 @@ describe("a half-created checkout does not brick every retry", () => {
     // below.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
 
     // The half-finished add, staged as it actually looks: `.git` and the branch
     // are real and a TRACKED FILE IS MISSING from the working tree, which is
@@ -546,7 +573,7 @@ describe("a half-created checkout does not brick every retry", () => {
     rmSync(join(first.path, "tracked.txt"));
     writeFileSync(`${first.path}.provisioning`, "");
 
-    const second = await provisionCheckout(config, location);
+    const second = await provision(config, location);
     expect(second.created).toBe(true);
     expect(existsSync(`${first.path}.provisioning`)).toBe(false);
     // The tree was rebuilt rather than handed on with a file missing.
@@ -559,7 +586,7 @@ describe("a half-created checkout does not brick every retry", () => {
     // acted on it. A subsequent `.git` removal is refused, not cleared.
     writeFileSync(join(second.path, "uncommitted.txt"), "the last attempt's work");
     rmSync(join(second.path, ".git"), { recursive: true, force: true });
-    await expect(provisionCheckout(config, location)).rejects.toThrow(
+    await expect(provision(config, location)).rejects.toThrow(
       /no record of an interrupted provision/,
     );
     expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
@@ -580,13 +607,13 @@ describe("a half-created checkout does not brick every retry", () => {
     // is a shape a killed `worktree add` cannot produce.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
 
     rmSync(join(first.path, "tracked.txt"));
     writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
     writeFileSync(`${first.path}.provisioning`, "");
 
-    await expect(provisionCheckout(config, location)).rejects.toThrow(
+    await expect(provision(config, location)).rejects.toThrow(
       /says a provision was interrupted, but the checkout/,
     );
     // The load-bearing assertion: the work is still there.
@@ -609,12 +636,12 @@ describe("a half-created checkout does not brick every retry", () => {
     // and the tree is left exactly as it was found.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
     writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
 
     writeFileSync(`${first.path}.provisioning`, "");
 
-    await expect(provisionCheckout(config, location)).rejects.toThrow(
+    await expect(provision(config, location)).rejects.toThrow(
       /says a provision was interrupted, but the checkout/,
     );
     // The load-bearing assertions: nothing was deleted, and the marker was not
@@ -641,7 +668,7 @@ describe("a half-created checkout does not brick every retry", () => {
     // point is that a genuine tree can reach this state.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
     writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
 
     // The agent removes its own `.git`. Provisioning is long finished, so there
@@ -649,7 +676,7 @@ describe("a half-created checkout does not brick every retry", () => {
     rmSync(join(first.path, ".git"), { recursive: true, force: true });
     expect(existsSync(`${first.path}.provisioning`)).toBe(false);
 
-    await expect(provisionCheckout(config, location)).rejects.toThrow(
+    await expect(provision(config, location)).rejects.toThrow(
       /no record of an interrupted provision/,
     );
     // The load-bearing assertion: the work is still there.
@@ -665,10 +692,10 @@ describe("a half-created checkout does not brick every retry", () => {
     // must return it untouched.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
     writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
 
-    const second = await provisionCheckout(config, location);
+    const second = await provision(config, location);
 
     expect(second.created).toBe(false);
     expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
@@ -685,7 +712,7 @@ describe("a half-created checkout does not brick every retry", () => {
     mkdirSync(join(outside, "t0"), { recursive: true });
 
     await expect(
-      provisionCheckout({ ...config, root: join(config.root, "..", "elsewhere") }, {
+      provision({ ...config, root: join(config.root, "..", "elsewhere") }, {
         ...at("FIX-1219", "implement"),
       }),
     ).resolves.toBeDefined();
@@ -722,7 +749,7 @@ describe("provisioning is bounded as ONE operation", () => {
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock()),
+      provision(config, at("FIX-1219", "implement"), steppingClock()),
     ).rejects.toThrow(/provisioning exceeded its budget/);
   });
 
@@ -731,10 +758,10 @@ describe("provisioning is bounded as ONE operation", () => {
     // and it must still be bounded, or the cheaper path silently escapes the
     // rule. Provision once with room to spare, then re-enter it.
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };
-    await provisionCheckout(config, at("FIX-1219", "implement"));
+    await provision(config, at("FIX-1219", "implement"));
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock(50_000)),
+      provision(config, at("FIX-1219", "implement"), steppingClock(50_000)),
     ).rejects.toThrow(/provisioning exceeded its budget/);
   });
 
@@ -752,12 +779,12 @@ describe("provisioning is bounded as ONE operation", () => {
     // snapshot would have funded in full.
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };
     const location = at("FIX-1219", "implement");
-    const first = await provisionCheckout(config, location);
+    const first = await provision(config, location);
     rmSync(join(first.path, "tracked.txt"));
     writeFileSync(`${first.path}.provisioning`, "");
 
     await expect(
-      provisionCheckout(config, location, steppingClock(35_000)),
+      provision(config, location, steppingClock(35_000)),
     ).rejects.toThrow(/provisioning exceeded its budget/);
 
     // And the tree is still there: a probe that ran out of budget answered
@@ -768,7 +795,7 @@ describe("provisioning is bounded as ONE operation", () => {
   it("still provisions when the budget covers the whole operation", async () => {
     // The bound has to leave the product working. Real clock, real git.
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     expect(checkout.created).toBe(true);
     expect(existsSync(join(checkout.path, ".git"))).toBe(true);
   });
@@ -780,13 +807,13 @@ describe("provisioning is bounded as ONE operation", () => {
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock(120_000)),
+      provision(config, at("FIX-1219", "implement"), steppingClock(120_000)),
     ).rejects.toThrow(/provisioning exceeded its budget/);
 
     // And the degenerate config, which is the value that would actually reach
     // `execFile` as "no timeout" if the guard compared with `<` instead of `<=`.
     await expect(
-      provisionCheckout({ ...config, provisionTimeoutMs: 0 }, at("FIX-1", "implement")),
+      provision({ ...config, provisionTimeoutMs: 0 }, at("FIX-1", "implement")),
     ).rejects.toThrow(/provisioning exceeded its budget/);
   });
 });
@@ -795,7 +822,7 @@ describe("obligation B — one live attempt per tree", () => {
 
   it("makes a second attempt WAIT rather than proceed or fail", async () => {
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     const held = await acquireCheckout(path, "attempt#1", bounds);
 
     let secondProceeded = false;
@@ -817,7 +844,7 @@ describe("obligation B — one live attempt per tree", () => {
 
   it("throws only once the bound is exceeded — a wedged process, not a race", async () => {
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     await acquireCheckout(path, "attempt#1", bounds);
 
     await expect(
@@ -839,7 +866,7 @@ describe("obligation B — one live attempt per tree", () => {
     // cannot succeed on any pass; `EACCES` from a lock owned by another uid is
     // the same shape and the likelier one in production.
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     mkdirSync(`${path}.lock`, { recursive: true });
 
     // Rejects with the filesystem's own error, NOT the "still held" bound
@@ -854,7 +881,7 @@ describe("obligation B — one live attempt per tree", () => {
     // staleness threshold sits past the run's own deadline, so this can only
     // fire for a process that is gone — which is why no heartbeat is needed.
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     await acquireCheckout(path, "the dead host", bounds);
 
     const lease = await acquireCheckout(path, "attempt#2", {
@@ -867,7 +894,7 @@ describe("obligation B — one live attempt per tree", () => {
 
   it("a late release from a displaced holder does not free the live attempt's tree", async () => {
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     const stale = await acquireCheckout(path, "attempt#1", bounds);
     // Attempt 2 steals the stale lock…
     const live = await acquireCheckout(path, "attempt#2", {
@@ -906,7 +933,7 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     // release fires. Unguarded, it removes THE REPLACEMENT'S lock, and a third
     // attempt acquires the path while the replacement is mid-edit.
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
 
     const overrun = await acquireCheckout(path, "attempt#1", bounds);
     // Attempt 2 steals it — the overrunning attempt is still alive.
@@ -938,7 +965,7 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     // The other direction: the guard must not be so tight that nothing is ever
     // released, which would wedge every checkout after one run.
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
 
     const first = await acquireCheckout(path, "attempt#1", bounds);
     releaseCheckout(first);
@@ -962,8 +989,8 @@ describe("one job's state is isolated per principal", () => {
   it("gives two users different checkouts for the same issue-phase", () => {
     // Without this, user B's agent opens a tree holding user A's commits and
     // uncommitted work — the lock serializes them rather than separating them.
-    expect(checkoutPathFor(config, at("FIX-1219", "implement", { principal: alice }))).not.toBe(
-      checkoutPathFor(config, at("FIX-1219", "implement", { principal: bob })),
+    expect(pathOf(config, at("FIX-1219", "implement", { principal: alice }))).not.toBe(
+      pathOf(config, at("FIX-1219", "implement", { principal: bob })),
     );
   });
 
@@ -979,8 +1006,8 @@ describe("one job's state is isolated per principal", () => {
   it("gives two tenants different checkouts and branches", () => {
     const a: RunPrincipal = { orgId: "org_a", userId: "u", tenantId: "acme" };
     const b: RunPrincipal = { orgId: "org_a", userId: "u", tenantId: "globex" };
-    expect(checkoutPathFor(config, at("FIX-1", "implement", { principal: a }))).not.toBe(
-      checkoutPathFor(config, at("FIX-1", "implement", { principal: b })),
+    expect(pathOf(config, at("FIX-1", "implement", { principal: a }))).not.toBe(
+      pathOf(config, at("FIX-1", "implement", { principal: b })),
     );
     expect(branchFor(at("FIX-1", "implement", { principal: a }))).not.toBe(branchFor(at("FIX-1", "implement", { principal: b })));
   });
@@ -992,8 +1019,8 @@ describe("one job's state is isolated per principal", () => {
     // them, or one organization's run opens a tree holding the other's work.
     const inA: RunPrincipal = { orgId: "org_a", userId: "u" };
     const inB: RunPrincipal = { orgId: "org_b", userId: "u" };
-    expect(checkoutPathFor(config, at("FIX-1", "implement", { principal: inA }))).not.toBe(
-      checkoutPathFor(config, at("FIX-1", "implement", { principal: inB })),
+    expect(pathOf(config, at("FIX-1", "implement", { principal: inA }))).not.toBe(
+      pathOf(config, at("FIX-1", "implement", { principal: inB })),
     );
     expect(branchFor(at("FIX-1", "implement", { principal: inA }))).not.toBe(
       branchFor(at("FIX-1", "implement", { principal: inB })),
@@ -1004,15 +1031,15 @@ describe("one job's state is isolated per principal", () => {
     // Each is its own encoded segment, so swapping the two ids is a different
     // path rather than the same characters regrouped.
     expect(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "x", userId: "y" } })),
-    ).not.toBe(checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "y", userId: "x" } })));
+      pathOf(config, at("FIX-1", "i", { principal: { orgId: "x", userId: "y" } })),
+    ).not.toBe(pathOf(config, at("FIX-1", "i", { principal: { orgId: "y", userId: "x" } })));
   });
 
   it("keeps one principal's own derivation stable across calls", () => {
     // Isolation must not cost idempotency: the same principal and issue-phase
     // still resolve the same tree, which is what a retry's carry-forward needs.
-    expect(checkoutPathFor(config, at("FIX-1219", "implement", { principal: alice }))).toBe(
-      checkoutPathFor(config, at("FIX-1219", "implement", { principal: alice })),
+    expect(pathOf(config, at("FIX-1219", "implement", { principal: alice }))).toBe(
+      pathOf(config, at("FIX-1219", "implement", { principal: alice })),
     );
     expect(branchFor(at("FIX-1219", "implement", { principal: alice }))).toBe(
       branchFor(at("FIX-1219", "implement", { principal: alice })),
@@ -1023,9 +1050,9 @@ describe("one job's state is isolated per principal", () => {
     // Encoding is injective, so `a` + `b/c` and `a/b` + `c` cannot collapse —
     // impossible rather than merely forbidden.
     expect(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "b/c", tenantId: "a" } })),
+      pathOf(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "b/c", tenantId: "a" } })),
     ).not.toBe(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "c", tenantId: "a/b" } })),
+      pathOf(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "c", tenantId: "a/b" } })),
     );
   });
 
@@ -1035,7 +1062,7 @@ describe("one job's state is isolated per principal", () => {
     // cannot fix.
     for (const id of ["auth0|abc", "alice@example.com", "CON", "acme.", "a/b", "ünïcode"]) {
       expect(() =>
-        checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: id } })),
+        pathOf(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: id } })),
       ).not.toThrow();
     }
   });
@@ -1051,7 +1078,7 @@ describe("one job's state is isolated per principal", () => {
     // segments. Fixing only the half that was reported would have left a long
     // epic or phase name failing in exactly the same place.
     const huge = "a".repeat(4_000);
-    for (const segment of checkoutPathFor(
+    for (const segment of pathOf(
       { root: "/w", sourceRepo: "/r", baseRef: "main" },
       at("FIX-1219", "implement", { principal: { orgId: "org_a", userId: huge, tenantId: huge } }),
     ).split("/")) {
@@ -1070,9 +1097,9 @@ describe("one job's state is isolated per principal", () => {
     // Presence is tagged separately from value, so these can never collide —
     // the alias a `?? "single-tenant"` fallback would have created.
     expect(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "u" } })),
+      pathOf(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "u" } })),
     ).not.toBe(
-      checkoutPathFor(
+      pathOf(
         config,
         at("FIX-1", "i", { principal: { orgId: "org_a", userId: "u", tenantId: "single-tenant" } }),
       ),
@@ -1083,7 +1110,7 @@ describe("one job's state is isolated per principal", () => {
     // Encoding, not rejecting: these are all legal identifiers somewhere, and
     // none of them can express a separator or a traversal once encoded.
     for (const bad of ["../escape", "..", "", "with space", "/abs", "CON", "a."]) {
-      const dir = checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: bad } }));
+      const dir = pathOf(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: bad } }));
       expect(dir.startsWith(`${config.root}/`)).toBe(true);
       expect(dir.split("/")).not.toContain("..");
     }
@@ -1106,7 +1133,7 @@ describe("a run opened before the organization was part of its place", () => {
   it("derives with the organization for a run with no record, or one on the new branch", () => {
     expect(locationFor(base, null)).toEqual(base);
     expect(locationFor(base, undefined)).toEqual(base);
-    expect(locationFor(base, branchFor(base))).toEqual(base);
+    expect(branchFor(locationFor(base, branchFor(base)))).toBe(branchFor(base));
   });
 });
 
@@ -1119,7 +1146,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // run can never continue without a person repairing git. Moved back, the
     // run's branch holds every commit and the attempt commits where it is told.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     execFileSync("git", ["checkout", "-b", "somewhere-else"], { cwd: checkout.path, stdio: "pipe" });
     execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "on the side"], {
       cwd: checkout.path,
@@ -1128,7 +1155,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     const committed = execFileSync("git", ["rev-parse", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
     writeFileSync(join(checkout.path, "wip.txt"), "half done");
 
-    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const again = await provision(config, at("FIX-1219", "implement"));
 
     const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
     expect(head).toBe(again.branch);
@@ -1141,7 +1168,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // runs on the branch its prompt names, with the run's commits, and the side
     // branch is left as the run made it.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "the run's own"], {
       cwd: checkout.path,
       stdio: "pipe",
@@ -1149,7 +1176,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     const tip = execFileSync("git", ["rev-parse", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
     execFileSync("git", ["checkout", "-b", "somewhere-else", "HEAD~1"], { cwd: checkout.path, stdio: "pipe" });
 
-    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const again = await provision(config, at("FIX-1219", "implement"));
 
     const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
     expect(head).toBe(again.branch);
@@ -1161,7 +1188,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // Mid-merge, HEAD is git's scratch state; the row settles as refused with
     // the command that clears it.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     const g = (...args: string[]) =>
       execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: checkout.path, stdio: "pipe" });
     g("checkout", "-b", "side");
@@ -1174,7 +1201,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     g("commit", "-m", "elsewhere");
     expect(() => g("merge", "side")).toThrow();
 
-    const attempt = provisionCheckout(config, at("FIX-1219", "implement"));
+    const attempt = provision(config, at("FIX-1219", "implement"));
     await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
     await expect(attempt).rejects.toThrow(/git merge --abort/);
   });
@@ -1184,14 +1211,14 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // reads; moving back would move the changes, and what to do with them is
     // the run's call. The row settles as refused, saying what clears it.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     const g = (...args: string[]) =>
       execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: checkout.path, stdio: "pipe" });
     g("commit", "--allow-empty", "-m", "the run's own");
     g("checkout", "-b", "somewhere-else", "HEAD~1");
     writeFileSync(join(checkout.path, "half-done.txt"), "not committed");
 
-    const attempt = provisionCheckout(config, at("FIX-1219", "implement"));
+    const attempt = provision(config, at("FIX-1219", "implement"));
     await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
     await expect(attempt).rejects.toThrow(/uncommitted changes, so it was left as it is/);
     const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
@@ -1203,10 +1230,10 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // A run on a detached HEAD commits to no branch at all. At the branch's
     // own commit, re-pointing HEAD moves nothing.
     const config = workspace();
-    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const checkout = await provision(config, at("FIX-1219", "implement"));
     execFileSync("git", ["checkout", "--detach"], { cwd: checkout.path, stdio: "pipe" });
 
-    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const again = await provision(config, at("FIX-1219", "implement"));
 
     const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
     expect(head).toBe(again.branch);
@@ -1216,10 +1243,10 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     // The guard must not be so tight that an ordinary retry cannot reuse its own
     // tree — which is the carry-forward the retry budget is priced on.
     const config = workspace();
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const first = await provision(config, at("FIX-1219", "implement"));
     writeFileSync(join(first.path, "wip.txt"), "half done");
 
-    const second = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const second = await provision(config, at("FIX-1219", "implement"));
 
     expect(second.path).toBe(first.path);
     expect(second.created).toBe(false);
@@ -1247,7 +1274,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /does not ignore the directory "\.fsdev/,
     );
   });
@@ -1259,7 +1286,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
 
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+    const failure = await provision(config, at("FIX-1219", "implement")).then(
       () => undefined,
       (error: Error) => error.message,
     );
@@ -1281,10 +1308,10 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // than no advice.
     const config = workspace();
     const branch = branchFor(at("FIX-1219", "implement"));
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const first = await provision(config, at("FIX-1219", "implement"));
     dropIgnoreRule(first.path);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       new RegExp(`This checkout is on branch "${branch}"`),
     );
   });
@@ -1299,10 +1326,10 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // Separate from the test above because they fail for different reasons: one
     // that the branch goes unnamed, this one that naming it is not enough.
     const config = workspace();
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const first = await provision(config, at("FIX-1219", "implement"));
     dropIgnoreRule(first.path);
 
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+    const failure = await provision(config, at("FIX-1219", "implement")).then(
       () => undefined,
       (error: Error) => error.message,
     );
@@ -1317,11 +1344,11 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // next attempt a tree that provisioned legally and is no longer safe to
     // write a question into — the same defect, one attempt later.
     const config = workspace();
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const first = await provision(config, at("FIX-1219", "implement"));
     expect(first.created).toBe(true);
     dropIgnoreRule(first.path);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /does not ignore the directory "\.fsdev/,
     );
     // Refused, not cleared: the tree may hold the run's real work.
@@ -1350,7 +1377,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
       stdio: "pipe",
     });
 
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+    const failure = await provision(config, at("FIX-1219", "implement")).then(
       () => undefined,
       (error: Error) => error.message,
     );
@@ -1380,7 +1407,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     });
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement")),
+      provision(config, at("FIX-1219", "implement")),
     ).resolves.toMatchObject({ created: true });
   });
 
@@ -1392,10 +1419,10 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // forever. The operator fixes the repository and the task stays wedged.
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
-    const checkout = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const checkout = pathOf(config, at("FIX-1219", "implement"));
     const branch = branchFor(at("FIX-1219", "implement"));
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /does not ignore/,
     );
 
@@ -1423,7 +1450,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     });
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement")),
+      provision(config, at("FIX-1219", "implement")),
     ).resolves.toMatchObject({ created: true });
   });
 
@@ -1439,7 +1466,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(config.sourceRepo);
     execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /does not ignore/,
     );
 
@@ -1462,7 +1489,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(config.sourceRepo);
     execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
 
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+    const failure = await provision(config, at("FIX-1219", "implement")).then(
       () => undefined,
       (error: Error) => error.message,
     );
@@ -1489,7 +1516,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
       stdio: "pipe",
     });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+    await expect(provision(config, at("FIX-1219", "implement"))).rejects.toThrow(
       /does not ignore the directory/,
     );
   });
@@ -1505,13 +1532,13 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // then jumps past the deadline. Everything after that point runs with the
     // budget genuinely exhausted, which is the condition under test.
     const config = workspace();
-    const checkout = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const checkout = pathOf(config, at("FIX-1219", "implement"));
     const branch = branchFor(at("FIX-1219", "implement"));
     const start = Date.now();
     const now = () => (existsSync(checkout) ? start + 60 * 60 * 1000 : Date.now());
 
     await expect(
-      provisionCheckout(config, at("FIX-1219", "implement"), now),
+      provision(config, at("FIX-1219", "implement"), now),
     ).rejects.toThrow(/exceeded its budget/);
 
     // Both halves gone, so the operator's next attempt starts clean.
@@ -1536,7 +1563,7 @@ describe("two epics on one issue-phase are isolated too", () => {
   const two = at("FIX-1219", "implement", { epic: "conductor-tasks-beta" });
 
   it("gives two epics different checkouts", () => {
-    expect(checkoutPathFor(config, one)).not.toBe(checkoutPathFor(config, two));
+    expect(pathOf(config, one)).not.toBe(pathOf(config, two));
   });
 
   it("gives two epics different branches", () => {
@@ -1546,7 +1573,7 @@ describe("two epics on one issue-phase are isolated too", () => {
   it("keeps one epic's own derivation stable", () => {
     // Isolation must not cost idempotency — the retry's carry-forward needs the
     // same epic to resolve the same tree.
-    expect(checkoutPathFor(config, one)).toBe(checkoutPathFor(config, one));
+    expect(pathOf(config, one)).toBe(pathOf(config, one));
     expect(branchFor(one)).toBe(branchFor(one));
   });
 
@@ -1602,7 +1629,7 @@ describe("the identity rule — the digest cannot be made to collide on purpose"
     // do not land on one tree, one branch, or one lock.
     const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
     const paths = HOSTILE.map((userId) =>
-      checkoutPathFor(config, at("FIX-1", "implement", { principal: { orgId: "org_a", userId } })),
+      pathOf(config, at("FIX-1", "implement", { principal: { orgId: "org_a", userId } })),
     );
     const branches = HOSTILE.map((userId) =>
       branchFor(at("FIX-1", "implement", { principal: { orgId: "org_a", userId } })),
@@ -1630,8 +1657,8 @@ describe("the identity rule — case cannot split one tree in two", () => {
     // single canonical case could be required instead: real issue keys are
     // upper (`FIX-1219`) and phases are lower (`implement`).
     expect(harnessTaskId("FIX-1", "implement")).toBe(harnessTaskId("fix-1", "IMPLEMENT"));
-    expect(checkoutPathFor(config, at("FIX-1", "implement"))).toBe(
-      checkoutPathFor(config, at("fix-1", "IMPLEMENT")),
+    expect(pathOf(config, at("FIX-1", "implement"))).toBe(
+      pathOf(config, at("fix-1", "IMPLEMENT")),
     );
     expect(branchFor(at("FIX-1", "implement"))).toBe(branchFor(at("fix-1", "IMPLEMENT")));
   });
@@ -1643,7 +1670,7 @@ describe("the identity rule — case cannot split one tree in two", () => {
     const location = at("FIX-1219", "Implement", { epic: "Conductor-Tasks-Alpha" });
     for (const derived of [
       harnessTaskId("FIX-1219", "Implement"),
-      checkoutPathFor(config, location),
+      pathOf(config, location),
       branchFor(location),
     ]) {
       expect(derived).toBe(derived.toLowerCase());
@@ -1656,8 +1683,8 @@ describe("the identity rule — case cannot split one tree in two", () => {
     expect(harnessTaskId("FIX-1", "implement")).not.toBe(
       harnessTaskId("FIX-2", "implement"),
     );
-    expect(checkoutPathFor(config, at("FIX-1", "implement"))).not.toBe(
-      checkoutPathFor(config, at("FIX-11", "implement")),
+    expect(pathOf(config, at("FIX-1", "implement"))).not.toBe(
+      pathOf(config, at("FIX-11", "implement")),
     );
   });
 });
@@ -1683,6 +1710,8 @@ describe("the identity rule — injective, and safe for every consumer", () => {
       ["FIX", "1219-implement"],
     ];
     const seen = new Map<string, string>();
+    const paths = new Set<string>();
+    const branches = new Set<string>();
     for (const [issue, phase] of tuples) {
       const id = harnessTaskId(issue, phase);
       const previous = seen.get(id);
@@ -1690,10 +1719,13 @@ describe("the identity rule — injective, and safe for every consumer", () => {
       seen.set(id, `${issue} + ${phase}`);
       // The path and the branch must agree with it, or the isolation the id
       // buys is undone by the two derivations that actually touch disk.
-      expect(checkoutPathFor(config, at(issue, phase))).toContain(id);
-      expect(branchFor(at(issue, phase))).toContain(id);
+      // The slug of a name may spell two tuples alike; its hash never does.
+      paths.add(pathOf(config, at(issue, phase)));
+      branches.add(branchFor(at(issue, phase)));
     }
     expect(seen.size).toBe(tuples.length);
+    expect(paths.size).toBe(tuples.length);
+    expect(branches.size).toBe(tuples.length);
   });
 
   it("refuses a component that could forge the frame", () => {
@@ -1778,7 +1810,7 @@ describe("a board-minted task id standing in for the issue", () => {
     const segment = taskIssueSegment(routed);
     expect(segment).not.toBe(routed);
     expect(() => harnessTaskId(segment, "answer")).not.toThrow();
-    expect(branchFor(at(segment, "answer"))).toContain(harnessTaskId(segment, "answer"));
+    expect(branchFor(at(segment, "answer"))).toMatch(new RegExp(`^fsd/${segment}-answer-[0-9a-f]{6}$`));
   });
 
   it("gives distinct ids distinct segments, an id shaped like an encoding included", () => {
@@ -1801,16 +1833,16 @@ describe("a reused checkout has to belong to the repository the config names", (
     // request there.
     const first = workspace();
     const location = at("FIX-1219", "implement");
-    const made = await provisionCheckout(first, location);
+    const made = await provision(first, location);
     expect(made.created).toBe(true);
 
     // Same root, same task, different source repository — and the branch name is
     // deterministic, so it exists in both.
     const second = workspace();
-    const moved: WorkspaceConfig = { ...second, root: first.root };
+    const moved: FixedRepo = { ...second, root: first.root };
     execFileSync("git", ["branch", branchFor(location)], { cwd: moved.sourceRepo, stdio: "pipe" });
 
-    await expect(provisionCheckout(moved, location)).rejects.toThrow(/does not belong to/);
+    await expect(provision(moved, location)).rejects.toThrow(/does not belong to/);
 
     // And it is REFUSED, not cleared: the tree may hold the previous
     // configuration's uncommitted work, and nothing in this module resets.
@@ -1823,8 +1855,8 @@ describe("a reused checkout has to belong to the repository the config names", (
     // provisioned checkout has, since `worktree add` makes exactly that.
     const config = workspace();
     const location = at("FIX-1219", "implement");
-    const made = await provisionCheckout(config, location);
-    const again = await provisionCheckout(config, location);
+    const made = await provision(config, location);
+    const again = await provision(config, location);
     expect(again.created).toBe(false);
     expect(again.path).toBe(made.path);
   });
@@ -1840,7 +1872,7 @@ describe("the poll sleep observes a signal that already aborted", () => {
     // Staged through `acquireCheckout`, not on the helper: the window is between
     // the loop's own cancellation check and the sleep it then arms.
     const config = workspace();
-    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const path = pathOf(config, at("FIX-1219", "implement"));
     const held = await acquireCheckout(path, "the holder", bounds);
     const control = new AbortController();
 
@@ -1865,4 +1897,150 @@ describe("the poll sleep observes a signal that already aborted", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
     releaseCheckout(held);
   }, 20_000);
+});
+
+describe("a run's name — short, readable, and its own", () => {
+  // A deeply nested run: a tenant, an organization, a user, a board kept per
+  // conversation, a tracker issue, and a long title. Its branch was built from
+  // three full digests plus the board's, and GitHub refused the push: a ref may
+  // be at most 255 bytes.
+  const title =
+    "Cap Failed at five with Show all and Show fewer, and let failed tasks be cleared from the panel in one go";
+  const deep: RunLocation = {
+    principal: { tenantId: "tenant_acme", orgId: "org_2abcdefghijklmnopqrstuvwx", userId: "user_2zyxwvutsrqponmlkjihgfed" },
+    epic: runBoardSegment("tasks", "conv_01NczDiGjFZajtRSbPY8697x"),
+    issue: taskIssueSegment("task_62b5f71c45ac40a8b049"),
+    phase: "change",
+    trackerIssue: "FIX-2657",
+    title: `${title} ${"x".repeat(120 - title.length - 1)}`,
+  };
+
+  it("keeps the full ref well under GitHub's limit, names the task, and matches its folder", () => {
+    const config = workspace();
+    const branch = branchFor(deep);
+    expect(Buffer.byteLength(`refs/heads/${branch}`, "utf8")).toBeLessThan(100);
+    // The tracker issue leads, so a pull request from it links to the issue.
+    expect(branch).toMatch(/^fsd\/fix-2657-cap-failed-at-five-with-[0-9a-f]{6}$/);
+    // The branch and the folder end in one name, so either finds the other.
+    const folder = pathOf(config, deep);
+    expect(basename(folder)).toBe(branch.slice("fsd/".length));
+    expect(dirname(folder)).toBe(resolve(config.root));
+  });
+
+  it("gives two tasks with one title different names across users and organizations", () => {
+    const config = workspace();
+    const names = [
+      deep,
+      { ...deep, principal: { ...deep.principal, userId: "someone_else" } },
+      { ...deep, principal: { ...deep.principal, orgId: "another_org" } },
+      { ...deep, principal: { orgId: deep.principal.orgId, userId: deep.principal.userId } },
+      { ...deep, epic: runBoardSegment("tasks", "conv_other") },
+    ];
+    expect(new Set(names.map((location) => branchFor(location))).size).toBe(names.length);
+    expect(new Set(names.map((location) => pathOf(config, location))).size).toBe(names.length);
+  });
+
+  it("falls back to the issue for a task with no usable title", () => {
+    const { trackerIssue: _issue, ...untracked } = deep;
+    expect(branchFor({ ...untracked, title: "!!!" })).toMatch(/^fsd\/task-62b5f71c45ac40a8b049-change-[0-9a-f]{6}$/);
+    expect(branchFor({ ...deep, title: undefined })).toBe(branchFor({ ...deep, title: "!!!" }));
+  });
+
+  it("bumps the name, the same way every time, when another worktree or branch already has it", async () => {
+    const config = workspace();
+    const host = hostOf(config);
+    const answer = { kind: "repo" as const, repo: resolve(config.sourceRepo), baseRef: config.baseRef };
+    const location = at("FIX-1219", "implement", { title: "Fix the thing" });
+    // The reservation a new run asks the host for, as the run named `holder`.
+    const reserveAs = (holder: string) => (candidate: RunLocation) =>
+      host.reserve!(answer, { place: placeFor(candidate), branch: branchFor(candidate), holder });
+
+    // Free: the name derived from the task.
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-a")))).toBe(branchFor(location));
+
+    // Someone else's branch holds that name: a new run takes the next one, and
+    // the same one when it asks again.
+    execFileSync("git", ["branch", `${branchFor(location)}-2`], { cwd: config.sourceRepo, stdio: "pipe" });
+    const bumped = await freeRunLocation(location, reserveAs("run-b"));
+    expect(branchFor(bumped)).toBe(`${branchFor(location)}-3`);
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-b")))).toBe(branchFor(bumped));
+
+    // The bumped run is found again from its record, and provisions there.
+    const again = locationFor(location, branchFor(bumped));
+    expect(pathOf(config, again)).toBe(pathOf(config, bumped));
+    const checkout = await provision(config, again);
+    expect(checkout.branch).toBe(branchFor(bumped));
+    expect(checkout.path).toBe(pathOf(config, bumped));
+
+    // A bare folder counts too: it may hold someone's work.
+    mkdirSync(pathOf(config, { ...location, bump: 3 }), { recursive: true });
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-c")))).toBe(`${branchFor(location)}-5`);
+  });
+
+  it("gives two runs whose names collide different names, even before either has a checkout", async () => {
+    const config = workspace();
+    const host = hostOf(config);
+    const answer = { kind: "repo" as const, repo: resolve(config.sourceRepo), baseRef: config.baseRef };
+    // Two tasks whose 6 hex collide: same title, same board, same user.
+    const base = { principal: { orgId: "org_a", userId: "alice" }, epic: "tasks", phase: "change", title: "Fix the thing" };
+    const first: RunLocation = { ...base, issue: "task_2890" };
+    const second: RunLocation = { ...base, issue: "task_3408" };
+    expect(branchFor(first)).toBe(branchFor(second));
+    expect(runIdentityKey(first)).not.toBe(runIdentityKey(second));
+    const reserveFor = (run: RunLocation) => (candidate: RunLocation) =>
+      host.reserve!(answer, { place: placeFor(candidate), branch: branchFor(candidate), holder: runIdentityKey(run) });
+
+    // Both open at once, before either provisions: one gets the name, the other the next.
+    const [a, b] = await Promise.all([freeRunLocation(first, reserveFor(first)), freeRunLocation(second, reserveFor(second))]);
+    expect(new Set([branchFor(a), branchFor(b)])).toEqual(new Set([branchFor(first), `${branchFor(first)}-2`]));
+    // A run asking again (its attempt crashed before it recorded a branch) gets its own name back.
+    expect(branchFor(await freeRunLocation(first, reserveFor(first)))).toBe(branchFor(a));
+    expect(branchFor(await freeRunLocation(second, reserveFor(second)))).toBe(branchFor(b));
+  });
+
+  it("keeps the branch and folder of a run already under way on the long name", () => {
+    const { title: _title, ...untitled } = deep;
+    const long = branchFor({ ...untitled, nested: true });
+    expect(long.length).toBeGreaterThan(200);
+    const kept = locationFor(deep, long);
+    expect(branchFor(kept)).toBe(long);
+    // And a record that names the short name keeps it after a retitle.
+    expect(branchFor(locationFor({ ...deep, title: "Something else" }, branchFor(deep)))).toBe(branchFor(deep));
+  });
+});
+
+// FIX-2857: the app names its runs' branches; `conductor/` was a retired concept's.
+describe("a run's branch prefix", () => {
+  const base = { principal: { orgId: "org_a", userId: "u" }, epic: EPIC, issue: "FIX-1", phase: "implement", title: "Fix the thing" };
+
+  it("leads the branch with the app's prefix, or fsd/ when it names none, and leaves the name and folder alone", () => {
+    const config = workspace();
+    const own = { ...base, branchPrefix: "teammates/" };
+    expect(branchFor(own)).toBe(`teammates/${basename(pathOf(config, own))}`);
+    expect(branchFor(base)).toBe(`fsd/${basename(pathOf(config, base))}`);
+    expect(pathOf(config, own)).toBe(pathOf(config, base));
+  });
+
+  it("keeps the branch a run's record names when the app's prefix has changed since, conductor/ included", () => {
+    const now = { ...base, branchPrefix: "teammates/" };
+    for (const recorded of [branchFor({ ...base, branchPrefix: "conductor/" }), branchFor(base), branchFor({ ...base, branchPrefix: "shift-manager/" })]) {
+      expect(branchFor(locationFor(now, recorded)), recorded).toBe(recorded);
+    }
+    // Another run's name under any prefix is not this run's: the hex still has to agree.
+    const other = branchFor({ ...base, issue: "FIX-2", branchPrefix: "conductor/" });
+    expect(branchFor(locationFor(now, other))).toBe(branchFor(now));
+  });
+
+  it("keeps the long shape under conductor/, whatever the app's prefix", () => {
+    const nested = { ...base, branchPrefix: "teammates/", nested: true as const };
+    expect(branchFor(nested).startsWith("conductor/")).toBe(true);
+    expect(branchFor(locationFor({ ...base, branchPrefix: "teammates/" }, branchFor(nested)))).toBe(branchFor(nested));
+  });
+
+  it("takes only a prefix a ref can carry", () => {
+    for (const good of ["teammates/", "shift-manager/", "claude_code/", "apps/teammates/"]) expect(assertBranchPrefix(good)).toBe(good);
+    for (const bad of ["", "teammates", "Teammates/", "/x/", "a b/", "a..b/", "a--b/", "x.lock/", `${"x".repeat(32)}/`]) {
+      expect(() => assertBranchPrefix(bad), bad).toThrow(/branchPrefix/);
+    }
+  });
 });

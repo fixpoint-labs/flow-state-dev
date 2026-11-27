@@ -9,9 +9,13 @@
  * input. The manager trusts neither: every read and write goes through the
  * attempt fence against the row at that ledger and partition.
  */
+import { execFileSync } from "node:child_process";
+import { basename, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { HARNESS_FEATURE_KEY, runTopic } from "../src";
+import { runTopic } from "../src";
+// The legacy key a manager given no `trackerIssueOf` reads (BP-030): internal, no longer published.
+import { HARNESS_FEATURE_KEY } from "../src/manager";
 import { runBoardSegment, taskIssueSegment } from "../src/workspace";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -55,6 +59,83 @@ describe("a manager reading its board from the claim", () => {
     expect(a!.branch).not.toBe(b!.branch);
     // Nothing was written under the bare ledger id, the key a fixed board of that name would use.
     expect(await lab.record(runTopic(CONVERSATIONS, "t1", PHASE))).toBeNull();
+  }, 60_000);
+
+  // FIX-2657: the branch was built from three full digests and the board's, so
+  // a task filed from a conversation pushed a 262-byte ref and GitHub refused it.
+  it("names a conversation's run after its task: a short branch, and a folder of the same name", async () => {
+    const lab = claimHost({ mode: "claim" });
+    await lab.seed({
+      ledgerId: CONVERSATIONS,
+      partition: "conv-a",
+      id: "task_62b5f71c45ac40a8b049",
+      title: "Cap Failed at five, and let failed tasks be cleared",
+      goal: "the change",
+      input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-2657", phase: PHASE } },
+    });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "task_62b5f71c45ac40a8b049", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "task_62b5f71c45ac40a8b049", PHASE));
+    expect(record!.branch).toMatch(/^fsd\/fix-2657-cap-failed-at-five-and-[0-9a-f]{6}$/);
+    expect(Buffer.byteLength(`refs/heads/${record!.branch}`)).toBeLessThan(100);
+    expect(basename(lab.seen[0]!.cwd)).toBe(record!.branch!.slice("fsd/".length));
+    // Its entry in the worktrees resource reads the same.
+    const entries = await lab.worktrees();
+    expect(entries.map((entry) => entry.name)).toEqual([basename(lab.seen[0]!.cwd)]);
+    expect(entries[0]!.branch).toBe(record!.branch);
+  }, 60_000);
+
+  // FIX-2857: a branch says which app cut it, never the retired `conductor/`.
+  it("cuts the run's branch under the app's own prefix, with the same name and folder", async () => {
+    const seed = { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", title: "Fix the thing", goal: "the change", input: {} };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE);
+    const plain = claimHost({ mode: "claim" });
+    await plain.seed(seed);
+    await plain.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const derived = (await plain.record(topic))!.branch!;
+
+    const lab = claimHost({ mode: "claim", manager: { branchPrefix: "teammates/" } });
+    await lab.seed(seed);
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const branch = (await lab.record(topic))!.branch!;
+    expect(branch).toBe(`teammates/${derived.slice("fsd/".length)}`);
+    expect(basename(lab.seen[0]!.cwd)).toBe(branch.slice("teammates/".length));
+    expect(execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: lab.seen[0]!.cwd, encoding: "utf8" }).trim()).toBe(branch);
+  }, 60_000);
+
+  it("refuses at construction a prefix that can't lead a branch", () => {
+    for (const bad of ["teammates", "Teammates/", "a b/", "../x/", "a//", `${"x".repeat(40)}/`]) {
+      expect(() => claimHost({ mode: "claim", manager: { branchPrefix: bad } }), bad).toThrow(/branchPrefix/);
+    }
+  });
+
+  it("takes the next spelling of its name when a branch here already has it", async () => {
+    const seed = {
+      ledgerId: CONVERSATIONS,
+      partition: "conv-a",
+      id: "t1",
+      title: "Fix the thing",
+      goal: "the change",
+      input: {},
+    };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE);
+    // The name this run derives, from a host of its own: it depends on the
+    // task and its principal, never on the folder the host keeps.
+    const elsewhere = claimHost({ mode: "claim" });
+    await elsewhere.seed(seed);
+    await elsewhere.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const derived = (await elsewhere.record(topic))!.branch!;
+
+    // Here, another run's branch already has that name.
+    const lab = claimHost({ mode: "claim" });
+    execFileSync("git", ["branch", derived], { cwd: join(lab.dir, "repo"), stdio: "pipe" });
+    await lab.seed(seed);
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const record = (await lab.record(topic))!;
+    expect(record.branch).toBe(`${derived}-2`);
+    expect(basename(lab.seen[0]!.cwd)).toBe(`${derived.slice("fsd/".length)}-2`);
   }, 60_000);
 
   // A conversation's board mints its task ids (`createTask` takes none), so a

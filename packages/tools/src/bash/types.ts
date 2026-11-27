@@ -8,6 +8,7 @@
  */
 
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import type { ProjectedEntryState } from "@flow-state-dev/workspace";
 
 // ---------------------------------------------------------------------------
 // Sandbox interface
@@ -43,29 +44,6 @@ export interface Sandbox {
    */
   hostMountSource?: string;
 }
-
-// ---------------------------------------------------------------------------
-// File entry (resource state)
-// ---------------------------------------------------------------------------
-
-/**
- * Metadata stored on each file resource instance.
- *
- * File content lives in the resource content field (`readContent`/`writeContent`),
- * not in state. State tracks path, content hash, and last-sync timestamp.
- *
- * Uses a type alias (not interface) so it satisfies the `JsonObject` index
- * signature constraint required by `ResourceCollectionRef`.
- */
-export type FileEntryState = {
-  /** Path relative to workspace root (e.g. "src/index.ts"). */
-  path: string;
-  /** Content hash for diffing during flush. */
-  hash: string;
-  /** ISO timestamp of last sync. */
-  updatedAt: string;
-  [key: string]: string;
-};
 
 // ---------------------------------------------------------------------------
 // Sandbox provider
@@ -298,8 +276,11 @@ export type SandboxProvider =
        * request runs `moat exec` against the running container.
        *
        * Pair with a stable `runName` (otherwise each request generates a
-       * fresh UUID and never finds the existing run). Operators reclaim
-       * resources via `moat stop <runName>` or `moat clean`.
+       * fresh UUID and never finds the existing run). Under the bash
+       * blocks, a container no command has used for 30 minutes is stopped
+       * and destroyed; the next command starts a fresh one. A container
+       * left by a server that has since exited is reclaimed via
+       * `moat stop <runName>` or `moat clean`.
        */
       persist?: boolean;
     }
@@ -348,7 +329,7 @@ export interface CreateBashToolOptions {
    * Keys are collection names; values are runtime refs from the block context.
    * Only collections explicitly passed here are materialized as files.
    */
-  collections?: Record<string, ResourceCollectionRef<FileEntryState>>;
+  collections?: Record<string, ResourceCollectionRef<ProjectedEntryState>>;
 
   /**
    * Optional singleton resource ref for persisting sandbox state across sessions.

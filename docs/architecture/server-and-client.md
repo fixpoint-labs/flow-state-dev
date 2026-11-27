@@ -49,6 +49,13 @@ const router = createFlowApiRouter({ registry });
 
 The registry indexes by exact instance id: a singleton by its kind, a collection member by its own id, and a collection's bare kind by nothing. See [flows-and-actions](./flows-and-actions.md#flowtype-and-flowinstance) for the declaration contract.
 
+The canonical router refuses POST, PUT, PATCH and DELETE requests carrying
+`Sec-Fetch-Site: cross-site` with 403. A JSON route answers 415 to a non-empty
+body whose `Content-Type` isn't `application/json` (parameters such as
+`; charset=utf-8` are fine); an empty body still reads as `{}`. Inbound transport routes remain governed
+by their adapters. The Node host's `serve()` rejects non-loopback Host headers
+with 403 when bound to loopback; network binds retain their configured hosting.
+
 ### Next.js Catch-All Route
 
 ```ts
@@ -81,6 +88,8 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/users/:userId/stream` | The push socket, taken as an upgrade by the host; a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
+| POST | `/api/flows/:flowId/views/:viewName` | Run a user or org view with no session: `200 { output, topics }`, stored nowhere. The caller comes from the flow's own resolver ([Views](./flows-and-actions.md#views)) |
+| POST | `/api/flows/:flowId/:sessionId/views/:viewName` | Run a session view on an existing session: `200 { output, topics }`. Fenced as the action route; it never creates a session ([Views](./flows-and-actions.md#views)) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions (`flowKind` and exact `flowId` filters) |
 | GET | `/api/flows/sessions/:sessionId` | Session detail (projected: `state` holds only `session.client.expose` and readonly fields; no journal or stored resources) |
@@ -89,8 +98,13 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream (every request's finished items, unfinished runs) |
 | POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
+| POST | `/api/flows/blobs` | Upload one attachment as the raw body (`content-type` is its type, `filename` query optional); `201 { attachment }` with `data: "fsd-blob:<id>"`. Checked by the host's resolver |
+| POST | `/api/flows/:flowId/blobs` | The same upload, checked by that flow's own resolver, so the file is held for the user its sends resolve |
+| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it, or, for a file a person's own scope keeps (a task's brief), to that person; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
 
 Every route that answers with a session record (detail, listing, create, metadata edit) sends it projected the same way. Scope state is private by default, so a client receives only the fields the flow exposes, plus its readonly fields: those are the session's identity, set at create and already a listing filter. Server-side code that needs the whole record reads the session store.
+
+Two display-only fields say what a flow and its sessions are, so a reader such as the DevTool flow tree does not show hashed ids (FIX-2875). `defineFlow({ description })` goes out on `GET /api/flows` as each entry's `description`. `session.label: ({ id, state }) => string | undefined` goes out as the session's `label`. The same projection (`toClientSession`, `client-session.ts`) calls it, once per session per read, on the detail and listing routes and every other route that answers with a session record. It gets only the projected state (exposed and readonly fields, with the schema defaults), so it cannot publish a private field. A label that throws, or names nothing, leaves that session with no `label`. The read does not fail, and the engine warns once per flow kind (`warnOnce`). A label is never an address or an authority: nothing routes or authorizes on it.
 
 `:flowId` is the instance id (a singleton's kind, a collection member's own id). Every session and request records its owner as `flowId` beside the definition's `flowKind`, and every response that projects a session or request (`GET /api/flows` entries also carry `cardinality`) includes `flowId`. Routes that name a flow and a record check the two agree before the resolver runs (`409 wrong-instance-session` / `wrong-instance-request`, or `409 migration-required` for an ownerless record under a collection kind); routes that name only a record resolve the governing flow — whose resolver authorizes the read, and which decides the anonymous-listing filter (`anonymousFlowIds`) — from the record's owner. Retry, continue, resume, and interrupted-request recovery re-enter the recorded owner. Clients bind an instance id in `flowKind` and re-enter through the `flowId` on the records they hold.
 
@@ -186,6 +200,113 @@ const { status, output, error } = await sent.result({ timeoutMs: 30_000 });
 for (const lost of await fsd.requests.interrupted()) await lost.continue();
 ```
 
+### Attachments
+
+A file is uploaded once and sent by reference. `upload` resolves to a
+`FileContent` whose `data` is `fsd-blob:<id>`; put that in a message, never the
+bytes. An action request names its files in a top-level `attachments` array
+beside `input`, and the action route claims them into the turn's session before
+any block runs: all or nothing, refused by name when a file is not the caller's
+or was already sent with another conversation, and handed back if the send is
+then refused. Until a send claims it, a file is held for its uploader, and an
+unclaimed upload is swept after 24 hours. Use the flow's own `upload` when the
+flow authenticates its callers, so the uploader is the user its sends resolve.
+
+```ts
+const file = await fsd.flow("hello-chat").upload({ data: blob, filename: "plan.pdf" });
+// file.data === "fsd-blob:<id>"
+await fsd.flow("hello-chat").send("chat", { message: text }, { sessionId, attachments: [file] });
+// React: sendAction("chat", { message: text }, { userMessage: text, attachments: [file] })
+```
+
+The action route's parse step checks the files once, for every flow, before it
+claims them: the action must have a `userMessage`, since files go on the
+person's line (`attachments_not_accepted` otherwise), each file must name the
+type it was uploaded as, and the message must be within
+`ATTACHMENT_LIMITS` (`attachmentLimitRefusal` in
+`@flow-state-dev/contracts/attachments`: `attachment_limit`,
+`attachment_type_refused`). The run then writes a `file` part per file after
+the text on the user line, in reference form, records them on the request, and
+shows them to blocks as `ctx.request.attachments`; a flow's input schema never
+sees them.
+
+The session's history keeps the files as references
+(`engine/src/context/history-files.ts`): the turns are chosen on references,
+then, counting back from the newest line, files up to one message's limits are
+kept and older ones named. Only two places read bytes, and both read them at
+the moment they hand them on. The first is the model call: the run's
+`ModelResolver.prepareMessages`, which a generator applies to every call
+(`core/src/models/prepared-model.ts`), reads each file through
+`resolveAttachment` and sends it inline as an image or file part. The second
+is a coding harness's turn. `HarnessRunInput.attachments` carries the turn's
+files as references only, and its schema refuses bytes. The engine fills
+`ATTACHMENT_SEAM` on the block's context
+(`engine/src/context/createExecutionContext.ts`) with the same read-once
+resolver, bound to the request's session and person. A harness reads
+through `readHarnessAttachments`, so it can read only that session's files.
+Before it starts anything, a harness refuses a turn whose file is a type its
+`accepts` doesn't list and that has no text to send in its place, or whose
+file can't be read. A server with no blob
+store has no reader, so every turn with files is refused there. Everything a
+run records of its conversation (a generator's trace of its history, a tool
+loop's prelude, a harness turn's input) therefore holds references, never
+bytes. An older file is
+named on its turn as `[image: shot.png, not re-sent]`, and one
+that can no longer be read as `no longer available`; a reference never reaches
+a provider. Re-sent files are billed as input on every call; prompt caching is
+what keeps that cheap.
+
+A generator that installs `attachmentsCapability` (`@flow-state-dev/core/attachments`,
+beside `recordAttachments`) reads its history with `ItemQuery.earlierDocuments:
+"named"`: an earlier turn's document is not re-sent but named with its id
+(`[document: q3.pdf, id b_…, not re-sent; read it with readAttachment]`), and
+images keep the window. The capability's context lists the session's newest
+documents from the `attachments` list; its `readAttachment` tool takes an id or
+a name (matched against the whole list) and reads through `ATTACHMENT_SEAM`, so
+a file not this session's answers "not in this conversation". The tool's output,
+recorded on its `tool_output` item, is the file's reference only. The model call
+resolves a tool result whose output is a document's reference to its text
+(`resolveHistoryFiles`), on every step of that turn's tool loop; a later turn's
+history replays the reference, not the text.
+
+A document reaches each target as that target reads it
+(`attachmentSentAs` in `@flow-state-dev/contracts/attachments`). A text-like
+file (text, Markdown, CSV, JSON, YAML, HTML, XML, source) always goes as text
+headed `### <filename>`. A PDF goes as a file part where the target's
+`accepts` lists `application/pdf` (a generator's comes from its model's
+provider, `core/src/models/attachment-accepts.ts`; Claude Code's lists it),
+and as its extracted text everywhere else (Codex, Cursor, a provider not in the
+table). The provider is `ModelResolver.providerOf`'s answer for the model
+string, else `extractProviderName`'s guess, so an app resolver that maps its
+own aliases sends PDFs as text unless it also maps `providerOf`; a
+`GeneratorModel` instance names no target and gets PDFs as files, as before.
+The upload route checks a document before it stores it: a text-like
+file is UTF-8 with no NUL bytes and at most `maxTextBytes` (`attachment_text_too_large`,
+`attachment_not_text`); a PDF opens and has at most `maxPdfPages` pages,
+counted from its page tree (`pdf_too_many_pages`, `pdf_unreadable`). The same
+pass extracts the PDF's text page by page, a page with no text layer saying
+so, and stores it beside the PDF under `pdfTextBlobId`
+(`engine/src/blobs/pdf-text.ts`); a claim takes it with the PDF into the same
+owner, so it is read where the PDF is and deleted with it. Both readers get a
+document's text through `readAttachmentText` (`engine/src/blobs/attachment-text.ts`),
+which refuses a PDF's text over `maxTextBytes` with `pdf_text_too_large`
+before the target is called; a harness splits its turn with
+`readHarnessTurnFiles`. Text is never cut.
+
+A file can also outlive the turn it came with. A record kept at the user scope,
+such as a task's brief on a conversation's board, keeps copies of the turn's
+files through `keepAttachmentsForUser` (`core/internal`), which the engine
+answers under `USER_ATTACHMENT_SEAM`: each file is read through the same
+resolver, stored again under a new id, and claimed into the user's own scope
+(`userBlobOwner`, whose key also names the flow instance that kept it). The
+copy and the turn's file have separate owners, so deleting the conversation
+leaves the copy. A run reads its session's files and its user's own scope's,
+whichever flow kept them, so every run of a task, in whatever session or flow,
+reads the brief's files, and nobody else's run does. The read route checks the
+caller under the keeping flow's sign-in, since its address names no flow. An action hands such files
+to the line it writes through `userMessage`'s `attachments`, read off
+server-held state; they follow the person's own files on that line.
+
 ### Sessions
 
 A listing with no `userId` is the client's own user's sessions.
@@ -257,6 +378,69 @@ const stream = fsd.flow("hello-chat").request(requestId).stream({
   },
 });
 ```
+
+### Change notices
+
+A change notice (`WireNotice`) says that something under a topic changed: its
+topic, its kind, the request that made it, and, when the publisher held them,
+the `ids` of what changed (FIX-2625). Never a row. Publishers add the ids they
+already hold: a task on a `board` notice, a collection entry's storage key on
+its `resource` notice (beside the path that names it, and only when the path
+may be named, so an owner-private row and a user-scope entry name neither), a
+child session on the `run` notice its parent session hears, and a request on
+its session's `request` notice. The `run` notice on a user's own topic names
+nothing: that topic is the user's in every org, and the mint grants it by user
+and tenant alone, so a session id there would reach their screens in another
+org. `items`, `state` and `resync` name nothing. Ids are hints: a reader that
+can't use them reads everything, and a client from before them ignores the
+field.
+
+A `board` notice for a row added to a partitioned ledger (a conversation's
+board, kept per conversation on the user's scope) also names its `partition`
+(FIX-2750), and a view's answer lists the partitions it read in its hearing
+(`ViewHearing.partitions`), empty ones included. The client's hearing rule
+(`hearsNotice`) skips a `board` notice whose partition the answer didn't read,
+so one conversation's filing, which goes out on the user topic every board of
+that user hears, wakes no other conversation's board. A notice with no
+partition (an unpartitioned ledger's, an older server's, or a fold of two
+partitions) wakes every board, and so does an answer that lists none. Inside
+the server the partition is raw; it reaches a browser only as an opaque key
+(`push/partition-key.ts`): an HMAC-SHA256 under the router's push secret over
+the tenant and the partition, made where it leaves the server, by the socket
+for a notice and by the view route for an answer. A partition is often a
+session id, so the key is keyed rather than a plain hash, which could be
+matched by hashing guessed ids. The push secret is the one every process
+behind an address already shares for tickets; a host with no push names no
+partition in its answers.
+
+Three points every notice passes, so each rule lives once:
+
+- **The publish queue** (`publishNotices`, `bus/publish-writes.ts`) folds one
+  turn's notices by topic, kind and origin and unions their ids; the client's
+  one merge (`live/coalesce.ts`) does the same for notices waiting on a read.
+  Both call `unionNoticeIds`: no ids beats ids, and past `NOTICE_MAX_IDS`
+  (100) a notice names none and means read everything. Notices of different
+  topics or kinds still merge to `null`. Ids read off a wire (a socket frame,
+  a Postgres payload) go through `noticeIdsOf`: anything but a list of strings
+  is dropped, never the notice. The publish queue keeps a fold's `partition`
+  only when every notice in it names the same one; a partition read off a
+  wire that isn't a string is dropped the same way.
+- **The bus.** The in-memory bus hands the notice over whole. The Postgres
+  bus carries ids and a board's partition in its `NOTIFY` payload and, past
+  8000 bytes, drops them before it widens the topic. It decides nothing about
+  what a browser sees.
+- **The push edge** (`push/socket-session.ts` `hear`). `noticeIds` on
+  `createFlowState` or `createFlowApiRouter` turns ids off per topic scope
+  (`{ org: false }`); every push edge of the app reads it. With ids off, the
+  scope's notices go out with no `ids`, and every `resource` notice reaches a
+  scope-wide subscription on the bare scope topic, so no entry key reaches a
+  browser there. Every one, not only those whose ids mark an entry: a process
+  from before ids, mid-deploy on a shared bus, sends an entry's path with no
+  ids, and the edge can't tell that path from a single resource's name. A
+  subscription narrowed to the resource keeps its path, since its client named
+  it. A board notice's partition goes out as its key, never raw. Every full
+  read stays: connect, reconnect, `resync`, a poll tick and a bus that doesn't
+  cross processes all reach a reader as `null`.
 
 ## React Setup
 

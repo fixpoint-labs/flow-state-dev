@@ -56,7 +56,7 @@ type Turn = {
 async function ask(worker: FlowInstance, sessionId: string): Promise<Turn> {
   const answer = mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] });
   const state = createFlowState({
-    flows: { [worker.id]: worker },
+    flows: [worker],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

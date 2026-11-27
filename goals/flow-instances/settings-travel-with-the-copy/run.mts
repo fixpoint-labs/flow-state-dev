@@ -46,6 +46,7 @@ async function act(router: Router, address: string, sessionId: string): Promise<
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: fixture.userId, input: { note: fixture.note } })
     }),
     { params: { path } }
@@ -62,8 +63,7 @@ async function get(router: Router, path: string[]): Promise<{ status: number; bo
 /** What the copy actually ran on, through the public `/state` route. */
 async function ranOn(router: Router, sessionId: string) {
   const { status, body } = await get(router, ["sessions", sessionId, "state"]);
-  const seen = (body as { clientData?: { session?: { ran?: Record<string, unknown> } } }).clientData
-    ?.session?.ran;
+  const seen = (body as { clientData?: { session?: Record<string, unknown> } }).clientData?.session;
   return { status, ranOn: seen?.ranOn, routedTo: seen?.routedTo, runs: seen?.runs };
 }
 

@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Cross-pattern benchmark suite — proves FSD coordination patterns measurably differ on a fixed task suite + model (FIX-614).",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",

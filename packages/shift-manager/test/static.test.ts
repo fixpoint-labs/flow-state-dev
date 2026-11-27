@@ -14,7 +14,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 
 const pkg = fileURLToPath(new URL("../", import.meta.url));
 const repo = join(pkg, "../..");
@@ -40,7 +40,7 @@ const sources = walk(src).filter((f) => /\.(tsx?|css)$/.test(f));
 async function treeNames(): Promise<Set<string>> {
   const names = new Set<string>();
   for (const tree of ["packages/shift-manager/teams/devteam/workforce", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"]) {
-    const roster = await readDeclaredRoster(join(repo, tree));
+    const roster = await readWorkforceFolder({ path: join(repo, tree), claim: () => undefined });
     for (const worker of roster.workers) {
       const [team, ...rest] = worker.id.split(".");
       names.add(worker.id).add(team!).add(rest.join("."));
@@ -101,18 +101,17 @@ describe("V8", () => {
     expect(namedIn(`const worker = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reads the worker inventory and the projects on workforce's roster flow, and opens no reader on any other flow", async () => {
-    const { ROSTER_FLOW } = await import("@flow-state-dev/workforce");
+  // FIX-2624.
+  it("opens a reader session on no flow: the worker inventory and the projects are read by scope", async () => {
     const reads = await import("../src/lib/reads");
-    expect(reads.PROJECT_READER_FLOW).toBe(ROSTER_FLOW);
-    expect(Object.keys(reads).filter((name) => name.endsWith("_READER_FLOW"))).toEqual(["PROJECT_READER_FLOW"]);
+    expect(Object.keys(reads).filter((name) => /_READER_FLOW$/.test(name))).toEqual([]);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {
     // Workforce's conversation ledger id isn't exported; the boards' own
     // action name is, by the task tools' rule (`<tool>_<ledger id>`), and the
     // Lab tests that read a board end to end fail if either drifts.
-    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/reads");
+    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/boards");
     const { LIST_TASKS_ACTION } = await import("../src/lib/conversation-tasks");
     expect(LIST_TASKS_ACTION).toBe(`listTasks_${CONVERSATION_BOARD_COLLECTION}`);
   });
@@ -134,16 +133,16 @@ describe("V8", () => {
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
-    // An action whose answer a view reads goes through `action.ts`, and a line
-    // to a worker goes through `send.ts`.
-    expect(sites(code, read)).toEqual(["lib/action.ts", "lib/send.ts"]);
-    // The door is the one the inventory names, never an action name of Shift Manager's own.
-    const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
+    // A line to a worker goes through `deliver.ts`, through workforce's `send` (FIX-2776), which
+    // sends it to the worker flow's door; Shift Manager names no action of its own.
+    expect(sites(code, read)).toEqual(["lib/deliver.ts"]);
+    const sendLines = read(join(src, "lib/deliver.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);
-    expect(sendLines[0]).toContain("send(target.door,");
+    expect(sendLines[0]).toContain("workforce.send(to.sessionId,");
     // Every composer that talks to a worker sends through it.
     for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
-      expect(read(join(src, file)), file).toContain("sendTurn(client,");
+      expect(read(join(src, file)), file).toContain("useDeliverLine()");
+      expect(read(join(src, file)), file).toContain("await deliver(");
     }
     // Planted: a composer that sends to a named action is caught.
     const planted = join(src, "surfaces/Planted.tsx");
@@ -170,18 +169,31 @@ describe("V8", () => {
   });
 
   it("makes no write from the task screen but the abort, the one send path and the board's own task actions (ER-15, D2)", () => {
-    const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
+    const taskFiles = ["lib/task.tsx", "lib/task-items.ts", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionResource|updateCollectionResource|deleteCollectionResource|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
-    const writes = (text: string) =>
-      text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
-    for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
-    expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.request(run.requestId).abort()");
-    // The header's action row changes the task only through the board's own
-    // actions, the reader's `taskActions`, handed to the registry's row whole.
-    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
+    // A failed task's Retry is the board's own retry, made once, in the task provider (pinned below).
+    const RETRY = "await board.retry(taskId);";
+    const writes = (text: string, file?: string) =>
+      text
+        .split("\n")
+        .filter((line) => !(file === "lib/task.tsx" && line.trim() === RETRY))
+        .filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
+    for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8"), file), file).toEqual([]);
+    // The abort is one run's stop, through workforce (FIX-2776 D3).
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
+    // The task changes only through the board's own actions, orchestration's
+    // `inbox.board(...)` (`useBoardActions`), built once for the task: the
+    // header hands them to the registry's row whole, and a failed run's line
+    // retries through the provider's `retryTask`.
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("useBoardActions(");
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain(RETRY);
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("const board = task.board;");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);
+    expect(writes(`await client.retry(taskId);`, "lib/task.tsx")).toHaveLength(1);
+    expect(writes(`  ${RETRY}`, "surfaces/TaskSession.tsx")).toHaveLength(1);
+    expect(writes(`  ${RETRY} // again`, "lib/task.tsx")).toHaveLength(1);
   });
 
   it("goes to an address through a real link, so it opens in a new tab and can be copied (FIX-2414)", () => {

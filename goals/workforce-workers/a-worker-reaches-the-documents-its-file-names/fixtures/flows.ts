@@ -79,7 +79,7 @@ export function buildDesk(installation: WorkerInstallation, options: { withoutRu
       glob: { inputSchema: z.object({}).passthrough(), block: globResources },
       grep: { inputSchema: z.object({ pattern: z.string() }).passthrough(), block: grepResourceContent },
       discover: { inputSchema: z.object({}).passthrough(), block: discover },
-      peek: { inputSchema: z.object({ uri: z.string() }), block: peek },
+      peek,
     },
     internal: { actions: hearsMessages(installation, DESK_FLOW) },
   });

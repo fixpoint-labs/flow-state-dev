@@ -17,12 +17,13 @@
  * `createBashBlocks` and `createBashCapability`.
  */
 import path from "node:path";
-import { createProjection, PlaceUnreadableError } from "@flow-state-dev/workspace";
+import { projectionSession } from "@flow-state-dev/workspace";
 import type {
   FlushOutcome,
   Mount as ProjectionMount,
   Place,
-  Projection,
+  ProjectedEntryExtra,
+  ProjectionSession,
 } from "@flow-state-dev/workspace";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
@@ -81,8 +82,8 @@ export function createBashProjection(
   sandbox: Sandbox,
   destination: string,
   mounts: readonly BashMount[],
-  createState?: (relativePath: string) => Partial<JsonObject>,
-): Projection {
+  createState?: (relativePath: string) => ProjectedEntryExtra,
+): ProjectionSession {
   return createMountedProjection(createSandboxPlace(sandbox, destination), mounts, createState);
 }
 
@@ -96,9 +97,9 @@ export function createBashProjection(
 export function createMountedProjection(
   place: Place,
   mounts: readonly BashMount[],
-  createState?: (relativePath: string) => Partial<JsonObject>,
-): Projection {
-  return createProjection({
+  createState?: (relativePath: string) => ProjectedEntryExtra,
+): ProjectionSession {
+  return projectionSession({
     place,
     mounts: mounts.map((m) => ({
       prefix: m.prefix,
@@ -115,33 +116,21 @@ export function createMountedProjection(
 /**
  * Flush, and turn what it decided into diagnostics a developer can act on.
  *
- * Swallows exactly one failure: the walk. A walk that fails means the
- * projection refused to decide anything rather than reading an unreadable
- * workspace as an empty one — which is the whole point of it throwing — and a
- * flush that no-ops is recoverable where one that deletes is not.
- *
- * Everything else propagates. A collection read or write that fails is the
- * opposite case: the run's edits did not reach the store, and a command that
- * returned success while its files stayed only in the sandbox is a silent
- * loss. The old `createBashTool` sync path let those through; catching them
- * here alongside the walk would be a regression wearing a recovery's clothes.
- *
- * The projection is what tells them apart — it wraps a failed listing, and
- * only that, as `PlaceUnreadableError`.
+ * A walk that failed is warned about and the command goes on; every other
+ * failure propagates. Which is which is `projectionSession`'s call, shared
+ * with the Claude Code workspace.
  */
 export async function flushWithDiagnostics(
-  projection: Projection,
+  session: ProjectionSession,
   mounts: readonly BashMount[],
   hostMountSource?: string,
 ): Promise<void> {
-  let outcomes: readonly FlushOutcome[];
-  try {
-    outcomes = (await projection.flush()).outcomes;
-  } catch (err) {
-    if (!(err instanceof PlaceUnreadableError)) throw err;
-    console.warn(`[bash] flush skipped — workspace walk failed: ${err.message}`);
+  const settled = await session.flush();
+  if (!settled.readable) {
+    console.warn(`[bash] flush skipped — workspace walk failed: ${settled.error.message}`);
     return;
   }
+  const { outcomes } = settled;
   warnUnsettled(outcomes);
   warnEmptyWalk(outcomes, mounts, hostMountSource);
 }

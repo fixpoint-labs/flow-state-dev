@@ -19,16 +19,17 @@ import { handler } from "@flow-state-dev/core";
 import {
   harnessRunHandleSchema,
   harnessRunInputSchema,
+  reportHarnessEvent,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
+  HarnessFeeds,
   HarnessRunOutcome,
   HarnessRunStatus,
 } from "@flow-state-dev/core/harness";
-import type { HarnessFeeds } from "./manager";
 import { TOOL_NOT_ALLOWED } from "./tool-approval";
 
 /** One run the stub was asked to perform, exactly as it arrived. */
@@ -92,7 +93,7 @@ export interface HarnessStubOptions {
    * The handle's `outcome` word.
    *
    * Note what this does **not** do on its own: the manager reads `status` for
-   * success and then asks the phase's done-condition, so the outcome word is
+   * success and then asks the mode's done check, so the outcome word is
    * recorded rather than decisive.
    */
   outcome?: HarnessRunOutcome | null;
@@ -190,21 +191,20 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
   return {
     runs,
     toolCalls,
-    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval }) => {
+    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval, onEvent }) => {
       const block = handler({
         name: "harness-stub",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
         // What `named` reads through, only when the host relays MCP servers.
         ...(mcpTools === undefined || options.mcpUses === undefined ? {} : { uses: [...options.mcpUses] }),
-        execute: async (input: { prompt: string }, ctx) => {
-          const context = ctx as unknown as HarnessCallbackContext;
+        execute: async (input, ctx) => {
           sessions += 1;
           const session = `sess_stub_${sessions}`;
           const run: StubRun = {
             prompt: input.prompt,
-            cwd: await cwd(context),
-            resume: await resume(context),
+            cwd: await cwd(ctx),
+            resume: await resume(ctx),
             session,
           };
           runs.push(run);
@@ -215,11 +215,11 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             // rather than skipping it: `onSession` is the write side of the
             // resume feed, and a stub that never called it would leave that half
             // of the contract unexercised in the one check that runs model-free.
-            await onSession(session, context);
+            await onSession(session, ctx);
 
             // The scripted run takes no relayed tools: a project that names MCP
             // servers runs without them here, and its session says so.
-            const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(context);
+            const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(ctx);
             if (unrelayed.length > 0) {
               ctx.emit.status(
                 `This run goes without MCP servers ${unrelayed.join(", ")}: the scripted coder takes no relayed tools.`,
@@ -230,6 +230,8 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             for (const step of options.steps ?? []) {
               if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
               ctx.emit.message(step);
+              // Each step is an event the run sent, as a real harness's output is.
+              reportHarnessEvent(onEvent, ctx);
             }
             // A cold run is a new coding session (another task, or a fresh attempt): it makes every scripted call from the top.
             const progress = (run.resume === null ? undefined : progressBy.get(run.resume)) ?? { nextCall: 0, heldLast: false };
@@ -246,7 +248,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
                 await call.run?.(run);
                 continue;
               }
-              const decision = await onToolApproval({ toolName: call.toolName, input: call.input, signal: ctx.signal }, context);
+              const decision = await onToolApproval({ toolName: call.toolName, input: call.input, signal: ctx.signal }, ctx);
               record(decision.decision);
               if (decision.decision === "allow") await call.run?.(run);
               if (decision.decision === "held") {
@@ -281,9 +283,9 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             }
           }
         },
-      }) as unknown as HarnessBlock;
+      });
       // A held call waits for the stop, and the run ends with it: the stop waits for nothing more.
-      return options.toolCalls === undefined ? block : (Object.assign(block, { stopsOnAbort: true as const }) as HarnessBlock);
+      return options.toolCalls === undefined ? block : Object.assign(block, { stopsOnAbort: true });
     },
   };
 }

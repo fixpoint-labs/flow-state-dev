@@ -25,17 +25,16 @@ import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  createWorkerInstallation,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
-  hireWorkforce,
   messageReceivedEntry,
   workerConfigSchema,
   workerMessagesResources,
+  workerFlow,
   type WorkerInstallation,
-  type WorkerManifest
+  type WorkerRole,
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 
 /**
  * `{ message: string }`, built off the contract's own `instructions` string so
@@ -76,23 +75,23 @@ export const REPLY_MARKER = "[reply:fresh-host]";
 const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** A worker flow with a direct action and no task entry. */
-const defineNonDelegate = (installation: WorkerInstallation, kind: "agent" | "note") =>
+const defineNote = (installation: WorkerInstallation) =>
   defineFlow({
-    kind,
+    kind: "note",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: kind }) } }
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "note" }) } }
   } as never);
 
 /** The goal check's seams. An app passes none. */
 export interface HostSeams {
-  /** The worker files as the host reads them, before anything is built. */
-  adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
-  /** Register the agent kind without a task entry. */
-  omitAgentTask?: boolean;
+  /** The `agent` flow the app registers, given the one it builds. */
+  adaptAgentFlow?: <T extends object>(agent: T) => T;
+  /** The roles the `agent` flow is registered with, in place of its own. */
+  agentRoles?: readonly WorkerRole[];
   /** Leave the app's `resolvePrincipal` out, so nothing names its org. */
   omitPrincipal?: boolean;
 }
@@ -105,31 +104,29 @@ export interface FreshHost {
 }
 
 /**
- * Read the team's files, register one copy of each worker flow, the
- * coordinator's among them, and serve them.
+ * Install the workforce kit over the team's files, with one copy of each
+ * worker flow, the coordinator's among them, and serve them.
  *
  * @param tree The workforce root to read.
  * @param seams The goal check's seams. An app passes nothing.
  */
 export async function startFreshHost(tree: string, seams: HostSeams = {}, sqliteFile?: string): Promise<FreshHost> {
-  const read = await readWorkforce(tree);
-  if (read.errors.length > 0) {
-    throw new Error(`the tree did not load: ${read.errors.map((e) => `${e.path}: ${String(e.error)}`).join(", ")}`);
-  }
-  const workers = seams.adaptWorkers?.(read.workers) ?? read.workers;
-
-  // The flows are handed to the installation lazily, so each can be built on it.
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  flows = {
-    agent: seams.omitAgentTask ? defineNonDelegate(installation, "agent") : defineAgentWorkerFlow({ installation }),
-    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-    note: defineNonDelegate(installation, "note")
+  // Each flow is built on the installation the workforce kit hires.
+  const workerFlows = {
+    agent: workerFlow(
+      (installation) => {
+        const built = defineAgentWorkerFlow({ installation });
+        return seams.adaptAgentFlow?.(built) ?? built;
+      },
+      seams.agentRoles === undefined ? {} : { roles: seams.agentRoles }
+    ),
+    coordinator: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })),
+    note: workerFlow(defineNote)
   };
-  const copies = hireWorkforce(installation);
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    kits: [workforce({ directory: tree })],
+    fill: { [workforce.slots.workerFlows]: workerFlows },
     stores: { default: { primary: sqliteFile === undefined ? inMemoryStores() : sqliteStores({ filename: sqliteFile }) } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.
@@ -145,5 +142,6 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}, sqlite
     })
   } as never);
   const router = await state.getRouter();
+  const copies = (await state.getRuntime()).registry.list();
   return { state, router, copies };
 }

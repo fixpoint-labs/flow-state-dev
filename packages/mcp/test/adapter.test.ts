@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { isOneOffSessionId } from "@flow-state-dev/core/helpers";
 import {
   createMockTransportHost,
   createInboundTransportConformanceTests
@@ -43,7 +44,6 @@ function buildFlow() {
         description: "Record a payment for an invoice."
       },
       privateInternal: {
-        inputSchema: z.object({}),
         block: noopBlock,
         mcp: { enabled: false }
       }
@@ -142,7 +142,6 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Record a payment.",
           mcp: { name: "log-payment" }
@@ -160,12 +159,10 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "A."
         },
         record_payment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "B."
         }
@@ -182,12 +179,10 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "A."
         },
         otherAction: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "B.",
           mcp: { name: "record_payment" }
@@ -509,7 +504,7 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     const flow = defineFlow({
       kind: "no-mcp",
       actions: {
-        run: { inputSchema: z.object({}), block: noopBlock }
+        run: noopBlock
       }
     });
     const adapter = createMcpTransportAdapter();
@@ -694,18 +689,15 @@ describe("MCP adapter — mcp.session directive → dispatch sessionId", () => {
       mcp: { enabled: true },
       actions: {
         stateless: {
-          inputSchema: z.object({}),
           block: noopBlock,
-          description: "No session directive — a fresh ephemeral session per call."
+          description: "No session directive — a fresh one-off session per call."
         },
         openContext: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Mints a fresh conv_ id.",
           mcp: { session: "conv_*" }
         },
         constantPrefix: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Template with no * — token is appended.",
           mcp: { session: "ctx" }
@@ -734,10 +726,17 @@ describe("MCP adapter — mcp.session directive → dispatch sessionId", () => {
     });
   }
 
-  it("dispatches sessionId: undefined when the action has no session directive", async () => {
+  // A call with no session to name runs as a one-off, as before; the adapter
+  // makes that session's id before it dispatches, so the request record names
+  // it from the first write. A fresh one per call.
+  it("dispatches a fresh one-off session per call when the action has no session directive", async () => {
     const host = withFlow(createMockTransportHost(), buildSessionFlow());
     await callTool(host, "stateless", {});
-    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
+    await callTool(host, "stateless", {});
+    const [first, second] = host.dispatchCalls.map((call) => call.envelope.sessionId);
+    expect(isOneOffSessionId(first!)).toBe(true);
+    expect(isOneOffSessionId(second!)).toBe(true);
+    expect(first).not.toBe(second);
   });
 
   it("mints a fresh conv_-prefixed id from a `*` template, and two calls differ", async () => {
@@ -773,18 +772,18 @@ describe("MCP adapter — mcp.session directive → dispatch sessionId", () => {
     expect(host.dispatchCalls[1]!.envelope.sessionId).toBe("conv_shared");
   });
 
-  it("falls back to undefined when the `fromInput` field is missing or blank", async () => {
+  it("falls back to a one-off session when the `fromInput` field is missing or blank", async () => {
     const host = withFlow(createMockTransportHost(), buildSessionFlow());
     await callTool(host, "routed", {});
     await callTool(host, "routed", { conversationId: "" });
-    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
-    expect(host.dispatchCalls[1]!.envelope.sessionId).toBeUndefined();
+    expect(isOneOffSessionId(host.dispatchCalls[0]!.envelope.sessionId!)).toBe(true);
+    expect(isOneOffSessionId(host.dispatchCalls[1]!.envelope.sessionId!)).toBe(true);
   });
 
-  it("falls back to undefined when the `fromInput` value is not a string", async () => {
+  it("falls back to a one-off session when the `fromInput` value is not a string", async () => {
     const host = withFlow(createMockTransportHost(), buildSessionFlow());
     await callTool(host, "routed", { conversationId: 42 });
-    expect(host.dispatchCalls[0]!.envelope.sessionId).toBeUndefined();
+    expect(isOneOffSessionId(host.dispatchCalls[0]!.envelope.sessionId!)).toBe(true);
   });
 });
 

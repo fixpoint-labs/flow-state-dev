@@ -33,14 +33,14 @@ import type { Task, TaskStreamItem } from "../src/react/lib/task-collection-stat
 function taskItem(task: Task, index = 0): TaskStreamItem {
   return {
     id: `item_${index}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: "req_1",
     itemIndex: index,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: 1_000 + index,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: "issues",
       taskId: task.id,
       kind: "updated",
@@ -89,7 +89,7 @@ const heldOnQuestion: Task = {
   holds: [{ id: "q1", source: { kind: "task" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
 };
 
-describe("the reason on a task row", () => {
+describe("the reason on a task", () => {
   it("BR-1 · puts a row's reason on the row, with no expander opened", () => {
     renderBoard(notedRow);
 

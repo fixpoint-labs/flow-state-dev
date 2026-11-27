@@ -14,8 +14,11 @@ import { afterEach, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab, type Lab } from "../teams/devteam/host.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const LOOKUPS = ["search", "fetch", "globProjectSource", "readProjectSource", "grepProjectSource"];
+// Every conversation worker also keeps its routines (FIX-2539).
+const ROUTINES = ["listRoutines", "saveRoutine", "pauseRoutine", "deleteRoutine"];
 
 let lab: Lab | undefined;
 afterEach(async () => {
@@ -33,11 +36,11 @@ function researcherTools(opened: Lab): unknown {
 it("the Researcher holds web search, fetch and the project reads, on a lab with a projects workspace", async () => {
   lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
+    harnesses: [readyHarness(harnessStub({}).slot)],
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-researcher-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
   });
-  expect(researcherTools(lab)).toEqual(LOOKUPS);
+  expect(researcherTools(lab)).toEqual([...LOOKUPS, ...ROUTINES]);
 });
 
 it("the Researcher holds the same tools on a lab over one fixed repository, where the coder has no projects host", async () => {
@@ -45,9 +48,9 @@ it("the Researcher holds the same tools on a lab over one fixed repository, wher
   // would be refused for names the catalog does not carry.
   lab = await openLab({
     stores: inMemoryStores(),
-    harness: harnessStub({}).slot,
-    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-researcher-fixed-")), sourceRepo: process.cwd(), baseRef: "HEAD" },
+    harnesses: [readyHarness(harnessStub({}).slot)],
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-researcher-fixed-")), repo: process.cwd(), baseRef: "HEAD" },
     coderWorkerId: "eng.coder",
   });
-  expect(researcherTools(lab)).toEqual(LOOKUPS);
+  expect(researcherTools(lab)).toEqual([...LOOKUPS, ...ROUTINES]);
 });

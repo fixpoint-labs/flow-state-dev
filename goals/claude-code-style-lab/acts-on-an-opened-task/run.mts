@@ -37,7 +37,7 @@ const STEP_MS = 6_000;
 
 /** What a control changes for its run. */
 const PLANTS: Record<string, Plant[]> = {
-  "wrong-board": [{ file: join(LAB, "src", "adapter.ts"), from: "sessionId, board: TASKS_BOARD })", to: 'sessionId, board: "plan" })' }],
+  "wrong-board": [{ file: join(LAB, "src", "app", "calls.ts"), from: "sessionId, board: TASKS_BOARD })", to: 'sessionId, board: "plan" })' }],
   "no-error": [{ file: join(LAB, "src", "components", "TasksPane.tsx"), from: "<ErrorBody message={task.error} />", to: "<span />" }],
 };
 

@@ -10,7 +10,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
   planAndExecute,
@@ -61,15 +61,15 @@ function lastTaskState(items: unknown[]): Map<string, string> {
   const finalStatus = new Map<string, string>();
   for (const item of items as Array<{
     type?: string;
-    component?: string;
-    data?: { task?: { id: string; status: string } };
+    dataType?: string;
+    value?: { task?: { id: string; status: string } };
   }>) {
     if (
-      item.type === "component" &&
-      item.component === "task-change" &&
-      item.data?.task !== undefined
+      item.type === "data" &&
+      item.dataType === "task-change" &&
+      item.value?.task !== undefined
     ) {
-      finalStatus.set(item.data.task.id, item.data.task.status);
+      finalStatus.set(item.value.task.id, item.value.task.status);
     }
   }
   return finalStatus;
@@ -781,16 +781,16 @@ describe("plan-and-execute pattern", () => {
       expect(result.error).toBeNull();
       const items = result.items as Array<{
         type?: string;
-        component?: string;
-        data?: { task?: { id?: string; title?: string } };
+        dataType?: string;
+        value?: { task?: { id?: string; title?: string } };
       }>;
       const addedChange = items.find(
         (i) =>
-          i.type === "component" &&
-          i.component === "task-change" &&
-          i.data?.task?.id === "added",
+          i.type === "data" &&
+          i.dataType === "task-change" &&
+          i.value?.task?.id === "added",
       );
-      expect(addedChange?.data?.task?.title).toBe("Added label");
+      expect(addedChange?.value?.task?.title).toBe("Added label");
     });
 
     it("auto-suffixes replanner-emitted ids that collide with existing tasks", async () => {
@@ -1391,15 +1391,15 @@ describe("plan-and-execute pattern", () => {
 
       expect(result.error).toBeNull();
       const metaItems = result.items.filter(
-        (it): it is ComponentItem =>
-          it.type === "component" && it.component === "task-board-meta",
+        (it): it is DataItem =>
+          it.type === "data" && it.dataType === "task-board-meta",
       );
-      // FIX-491: keyed component emissions upsert in place. The pattern
+      // FIX-491: keyed data emissions upsert in place. The pattern
       // emits "planning" → "active" → "completed" against the same key, so
       // the persisted record collapses to the latest snapshot. Live SSE
       // consumers see every transition via the event log.
       expect(metaItems.length).toBe(1);
-      expect(metaItems[0]?.data?.status).toBe("completed");
+      expect(metaItems[0]?.value?.status).toBe("completed");
     });
 
     it("does not emit legacy plan-meta or plan-task items", async () => {
@@ -1419,10 +1419,8 @@ describe("plan-and-execute pattern", () => {
       });
 
       expect(result.error).toBeNull();
-      const components = result.items.filter(
-        (it: any) => it.type === "component",
-      ) as Array<{ component: string }>;
-      const types = components.map((it) => it.component);
+      const records = result.items.filter((it: any) => it.type === "data") as Array<{ dataType: string }>;
+      const types = records.map((it) => it.dataType);
       expect(types).not.toContain("plan-meta");
       expect(types).not.toContain("plan-task");
     });

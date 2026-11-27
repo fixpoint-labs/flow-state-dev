@@ -1,38 +1,54 @@
-// FIX-2534, epic ER-5.
+// FIX-2534, epic ER-5; FIX-2614; FIX-2538 D1.
 /**
  * Subscribing and ending a subscription: the one
  * `subscribe` and the one `unsubscribe` everything that writes a subscription
- * goes through. The two tools call them; so does a task's ending, and a
- * thread's closing.
+ * goes through. The routine verbs call them (an event routine is a
+ * subscription); so does a task's ending, and a thread's closing.
  *
- * `subscribe` runs in the session that will hear. It selects by provider, one
- * thread key and optional kinds (epic D6), and refuses a thread its user can't
- * read, checked as that user on the provider's `canRead` (ER-4). The session,
- * the worker, the task and the user come from the turn's own session, never
- * from the input. It writes the row, then the thread index entry that mirrors
- * the row's screen settings for the service.
+ * `subscribe` writes for the session that will hear: the running one, or a
+ * `target` its caller derived on the server (the user's own event routine, the
+ * conversation's derived address; a resume, the saved subscription's). It selects by
+ * provider, one thread key and optional kinds (epic D6), and refuses a thread
+ * its user can't read, checked as that user on the provider's `canRead`
+ * (ER-4). The session, the worker, the task and the user come from the turn's
+ * own session or that target, never from the input. It writes the subscription,
+ * then the thread index entry that mirrors its screen settings for the
+ * service; a paused subscription is off and has no index entry.
+ *
+ * `unmatched: true` (a coordinator's session only, `not_a_coordinator`
+ * elsewhere) makes a subscription that hears only what no ordinary
+ * subscription heard; see `defineSubscriptionServiceFlow`'s `forwards`.
  *
  * `unsubscribe` turns the row off (`enabled: false`) and takes it out of the
- * index. A task's failure or cancel ends the subscriptions its session made,
- * and a thread's closing ends the ones on it (ER-7 as amended by #4675).
+ * index. A pause is an end with reason `paused`, the one a resume undoes. A
+ * task's failure or cancel ends the subscriptions its session made, and a
+ * thread's closing ends the ones on it (ER-7 as amended by #4675).
  */
-import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
+import { ROUTINE_CADENCES } from "../routines/keys";
+import { ensurePollSchedule, type SubscriptionPolling } from "./poll";
+import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
+import type { RoutineMaker } from "../routines/listed-routine";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { SUBSCRIPTION_TOOLS } from "./keys";
+import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import {
+  botsHandedOn,
   indexKeyOf,
+  indexSlotOf,
   listedScreenSchema,
   subscriptionCursorsOf,
+  subscriptionTaskEndingsOf,
+  taskEndingKeyOf,
   subscriptionIndexOf,
-  subscriptionResources,
   subscriptionsOf,
   type IndexEntry,
   type SubscriptionResourceState
 } from "./rows";
 import { requestHostOf } from "@flow-state-dev/core/internal";
+import type { SubscriptionScreens } from "./screens";
 
 /**
  * A provider a session can subscribe on: its key, who may read a thread, and
@@ -44,9 +60,49 @@ export interface SubscriptionProvider {
   readonly provider: string;
   /** Whether the running request's user can read `thread`. Asked at subscribe, and again before a private event is delivered. */
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
-  /** The running user's own id at the provider, so their own actions are dropped (`own`). */
-  self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  /**
+   * The running user's own id at the provider, so their own actions are dropped (`own`).
+   * `hearer` is the session the subscription is written for: a provider whose senders are sessions (internal events) answers it.
+   */
+  self?(ctx: BlockContext, hearer: { readonly sessionId: string }): string | undefined | Promise<string | undefined>;
+  // FIX-2630.
+  /**
+   * Why a subscription to `thread` hearing `kinds` can't be taken, naming what can (an undeclared topic or kind),
+   * or `undefined` when it can. Asked at subscribe, before `canRead`. Absent, nothing is refused here.
+   */
+  refuses?(thread: string, kinds: readonly string[] | undefined): string | undefined;
+  /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks. */
+  readonly screens?: SubscriptionScreens;
+  // FIX-2536.
+  /**
+   * Fetch what happened on `thread` since the cursor, as the running request's
+   * own user, on that user's credentials (ER-4): normalized events, each named
+   * by the same object and version a webhook delivery of it names. With
+   * `etags`, a provider may answer `unchanged` when nothing moved. Absent, the
+   * provider's subscriptions are never polled.
+   */
+  poll?(thread: string, cursor: SubscriptionPollCursor, ctx: BlockContext): Promise<SubscriptionPollResult>;
 }
+
+/** Where a poll fetches from: the poll's mark, and its validators while no delivery is owed. */
+export interface SubscriptionPollCursor {
+  /** Fetch events whose time is at or after this one, in ms. Absent, from the provider's own start. */
+  readonly since?: number;
+  /** The validators the last poll returned, by endpoint: a provider sends them as conditional requests. */
+  readonly etags?: Readonly<Record<string, string>>;
+}
+
+/** What a poll fetched: nothing new, or the events and how far it read. */
+export type SubscriptionPollResult =
+  | { readonly unchanged: true }
+  | {
+      readonly events: readonly SubscriptionEvent[];
+      /** The time it read up to, in ms: the next poll's mark when nothing is owed. */
+      readonly through: number;
+      readonly etags?: Readonly<Record<string, string>>;
+      /** The provider read less than everything since the mark (a list busier than it reads in one poll): the fire says so in each session. */
+      readonly incomplete?: true;
+    };
 
 /** What `subscribe` takes: the tool's input. */
 export const subscribeInputSchema = z
@@ -59,10 +115,25 @@ export const subscribeInputSchema = z
       .optional()
       .describe(
         'Narrow what passes: { screen: "labels", any: [...] }, { screen: "words", any: [...] } (title or text, any case), ' +
-          '{ screen: "allow", ids: [...] } (only these senders). Every listed screen must pass.'
+          '{ screen: "allow", ids: [...], bots?: [...] } (only these senders; with bots, a bot must be in bots and anyone else in ids), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
+          '{ screen: "interest" } (a model reads what the other screens passed against your interest sentence). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
-    interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription.")
+    interest: z
+      .string()
+      .min(1)
+      .max(500)
+      .describe('In one sentence, what you want to hear about, kept with the subscription. Only the "interest" screen reads it.'),
+    unmatched: z
+      .literal(true)
+      .optional()
+      .describe("Hear only the events on this thread that no other subscription heard, of the kinds the app forwards. A coordinator's only."),
+    // FIX-2536: checked in code against the one list (`invalid_cadence`), not left to the description.
+    everyMinutes: z
+      .number()
+      .int()
+      .optional()
+      .describe(`How often a polled provider looks, in minutes: one of ${ROUTINE_CADENCES.join(", ")}. A pushed provider ignores it.`)
   })
   .strict();
 
@@ -72,7 +143,130 @@ export type SubscribeInput = z.infer<typeof subscribeInputSchema>;
 export type SubscribeOutcome = { readonly id: string } | { readonly refused: string };
 
 /** Why a subscription ended. */
-export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" | "task_cancelled";
+export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" | "task_cancelled" | "paused" | "config_removed";
+
+/**
+ * The session a subscription is written for when it isn't the running one:
+ * derived on the server by the caller, never from a tool's input.
+ */
+export interface SubscribeTarget {
+  /** The session that hears. */
+  readonly sessionId: string;
+  /** The flow that session runs on: a delivery opens it there when absent. */
+  readonly flow: string;
+  /** The worker that session runs. */
+  readonly worker: string;
+  /** The task that session works: its failure or cancel ends the subscription. */
+  readonly taskId?: string;
+  /**
+   * The tenant that session runs under; omitted, none. A target's tenant wins over the running
+   * session's: a resume from another tenant's roster keeps the saved subscription's.
+   */
+  readonly tenantId?: string;
+}
+
+/** How a server-side caller writes the subscription. Never a model's input. */
+export interface SubscribeWrite {
+  /** The subscription's id: a resume's saved one, or a declared routine's `cfg_` key. Omitted, derived from session and thread. */
+  readonly id?: string;
+  /** Who made it, kept with the subscription. */
+  readonly madeBy?: RoutineMaker;
+  // FIX-2784; FIX-2535 D3.
+  /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
+  readonly hearsClose?: true;
+  // FIX-2873.
+  /**
+   * The custom screen any bot sender is handed on to, past the sender screen, which then decides:
+   * a host's follow whose own screen admits bots (`githubTrustedReviewers().follow`). The input must
+   * list that custom screen, or the write is refused. Never a model's input: `SubscribeInput` has no
+   * such field, and a later write that doesn't list the screen drops it.
+   */
+  readonly botsScreenedBy?: string;
+  /**
+   * The task it is made for, when the session's own state names none (a coding run in a session
+   * that works many tasks): that task's failure or cancel ends it. Wins over the session's.
+   */
+  readonly taskId?: string;
+  // FIX-2536.
+  /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
+  readonly polling?: SubscriptionPolling;
+}
+
+/**
+ * Which life a write gives a subscription, decided against the saved subscription at the write
+ * ({@link nextEntry}):
+ *
+ * - `fresh`: a subscribe, a new act: the subscription is on.
+ * - `keep`: a seed's write of the config's fields over the saved subscription, by the seed rules below;
+ *   a new one is on.
+ * - `resume`: only `enabled`, over a paused subscription on the thread the resume checked; every other
+ *   field stays as committed.
+ */
+type Life = "fresh" | "keep" | "resume";
+
+/**
+ * The transition rules every write and end of a subscription goes through, against the saved
+ * subscription, so no interleaving of them leaves one its writers didn't agree on:
+ *
+ * - a terminal end (any reason but `paused`) is sticky: only a fresh subscribe starts a new life,
+ *   and a resume or a pause leaves an ended subscription ended;
+ * - a seed keeps the user's pause always; it keeps an end only while the thread is unchanged,
+ *   since an end belongs to the thread it ended on (a closed PR says nothing of a new one); and a
+ *   subscription ended `config_removed` comes back on when its entry returns. These are the only ways
+ *   an ended subscription comes back short of a fresh subscribe;
+ * - a pause applies only to an enabled subscription;
+ * - a resume applies only to a paused subscription, and only while its thread is the one whose read
+ *   access it checked; it turns it on and changes nothing else;
+ * - an end applies to an enabled or a paused subscription.
+ *
+ * `undefined` leaves the subscription as it is.
+ */
+function nextEntry(current: SubscriptionResourceState | undefined, asked: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+  // A follow stays a follow when its own session writes again on the same thread (a routine on the pull
+  // request it follows lands on the same subscription): its close stays heard and, when the write names no
+  // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
+  const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
+  // FIX-2873: a rewrite of a follow keeps the screens the host installed (`hostScreens`, such as the
+  // trusted reviewers' list screen) and takes the new write's; an earlier rewrite's own screens drop. It
+  // never takes outsiders the follow didn't. So a session can narrow what its follow hears, never widen
+  // it past the host's screens.
+  const hostScreens = keepsFollow ? (current.hostScreens ?? current.screens) : [];
+  const keptScreens = keepsFollow ? [...hostScreens, ...asked.screens.filter((listed) => !hostScreens.some((had) => JSON.stringify(had) === JSON.stringify(listed)))] : asked.screens;
+  // Its bots stay handed on to its screen only while the write still lists that screen.
+  // Pinned by test/subscriptions-bot-admission.test.ts (a rewrite without the screen, a stale index entry, a restored row).
+  const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: keptScreens }) : undefined;
+  const { outsiders: _asked, ...narrowed } = asked;
+  const wanted = keepsFollow
+    ? {
+        ...narrowed,
+        screens: keptScreens,
+        ...(asked.outsiders === true && current.outsiders === true ? { outsiders: true as const } : {}),
+        hearsClose: true as const,
+        ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}),
+        ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots }),
+        // A follow stays as current or as legacy as it was: only the server's follow write marks one.
+        ...(current.followRev === 2 ? { followRev: 2 as const } : {}),
+        hostScreens
+      }
+    : asked;
+  if (life === "fresh") return wanted;
+  if (life === "resume") {
+    if (current === undefined || !isPaused(current) || current.provider !== wanted.provider || current.thread !== wanted.thread) return undefined;
+    const { endedReason: _why, endedAt: _when, ...kept } = current;
+    return { ...kept, enabled: true };
+  }
+  if (current === undefined || current.enabled) return wanted;
+  // A seed keeps a pause always; an end only on the thread it ended on, and not config's own.
+  if (!isPaused(current) && (current.endedReason === "config_removed" || current.thread !== wanted.thread)) return wanted;
+  const { enabled: _on, endedReason: _why, endedAt: _when, ...fields } = wanted;
+  return { ...fields, enabled: false, ...(current.endedReason === undefined ? {} : { endedReason: current.endedReason }), ...(current.endedAt === undefined ? {} : { endedAt: current.endedAt }) };
+}
+
+/** {@link nextEntry}'s rule for an end: a pause only of an enabled subscription; any other end of an enabled or paused one. */
+function endedEntry(current: SubscriptionResourceState, reason: SubscriptionEnd, at: number): SubscriptionResourceState | undefined {
+  const ends = reason === "paused" ? current.enabled : current.enabled || isPaused(current);
+  return ends ? { ...current, enabled: false, endedReason: reason, endedAt: at } : undefined;
+}
 
 /**
  * A stable id for one session's subscription to one thread: subscribing again
@@ -89,160 +283,350 @@ async function subscriptionIdOf(sessionId: string, provider: string, thread: str
 
 /** The tenant the running session is under, or none. */
 const tenantOf = (ctx: BlockContext): string | undefined => {
-  const tenantId = (ctx.session.identity as { tenantId?: string }).tenantId;
+  const tenantId = ctx.session.identity.tenantId;
   return tenantId === undefined || tenantId.length === 0 ? undefined : tenantId;
 };
 
-/** Whether `row` was made by the running session: its id, in its tenant. */
-const madeHere = (ctx: BlockContext, row: SubscriptionResourceState): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
-
-const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
+export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
   screens: row.screens,
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
+  ...(row.botsScreenedBy === undefined ? {} : { botsScreenedBy: row.botsScreenedBy }),
+  ...(row.followRev === undefined ? {} : { followRev: row.followRev }),
   ...(row.self === undefined ? {} : { self: row.self }),
+  ...(row.unmatched === true ? { unmatched: true as const } : {}),
+  ...(row.hearsClose === true ? { hearsClose: true as const } : {}),
   userId: row.userId,
   orgId: row.orgId,
-  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
+  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId }),
+  // The sentence leaves the user's cell only when the `interest` screen will read it.
+  ...(row.screens.some((listed) => listed.screen === "interest") ? { interest: row.interest } : {})
 });
 
+/** Why `provider` can't run a screen `screens` lists, or `undefined` when it can run them all. */
+function unrunnableScreen(provider: SubscriptionProvider, screens: SubscribeInput["screens"]): string | undefined {
+  const custom = Object.keys(provider.screens?.custom ?? {});
+  for (const listed of screens ?? []) {
+    if (listed.screen === "custom" && !custom.includes(listed.name)) {
+      return `no_screen: "${listed.name}" isn't a screen on ${provider.provider}. Its screens: ${custom.join(", ") || "none"}.`;
+    }
+    if (listed.screen === "interest" && provider.screens?.interestModel === undefined) {
+      return `no_interest_model: ${provider.provider} has no model to judge an interest; list code screens only.`;
+    }
+  }
+  return undefined;
+}
+
+/** The custom screens each provider declares, as `saveRoutine`'s description lists them, so a model knows it may list one. */
+export function customScreensLine(providers: readonly SubscriptionProvider[]): string {
+  const lines = providers.flatMap((p) =>
+    Object.entries(p.screens?.custom ?? {}).map(([name, custom]) => `${p.provider} "${name}": ${custom.describe}`)
+  );
+  return lines.length === 0 ? "" : ` Custom screens: ${lines.join("; ")}.`;
+}
+
+/** A refusal, or the session `subscribe` writes for. */
+// FIX-2624.
 /**
- * Subscribe the running session to one thread.
- *
- * @param providers The providers a session may subscribe on.
+ * Why a subscription's settings are refused before anything is read: no
+ * thread, a provider that isn't offered or that the thread doesn't name, kinds
+ * the provider refuses, a screen it can't run, or a cadence that isn't one.
+ * `undefined` when they pass. The write runs it first; the routines view runs
+ * it too, to leave out a declared routine its seed would refuse.
  */
-export async function subscribe(ctx: BlockContext, providers: readonly SubscriptionProvider[], input: SubscribeInput): Promise<SubscribeOutcome> {
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-  const worker = state[WORKER_ID_STATE_KEY];
-  if (typeof worker !== "string" || worker.length === 0) return { refused: "not_a_worker: this session runs no worker, so it can't subscribe." };
+export function subscriptionInputRefusal(
+  providers: readonly SubscriptionProvider[],
+  input: Pick<SubscribeInput, "provider" | "thread" | "kinds" | "screens" | "everyMinutes">
+): string | undefined {
   const thread = input.thread.trim();
-  if (thread.length === 0) return { refused: "no_thread: name one thread key to follow; a sentence alone selects nothing." };
+  if (thread.length === 0) return "no_thread: name one thread key to follow; a sentence alone selects nothing.";
   const provider = providers.find((p) => p.provider === input.provider);
   if (provider === undefined) {
-    return { refused: `no_provider: "${input.provider}" isn't one you can subscribe on. You can: ${providers.map((p) => p.provider).join(", ") || "none"}.` };
+    return `no_provider: "${input.provider}" isn't one you can subscribe on. You can: ${providers.map((p) => p.provider).join(", ") || "none"}.`;
   }
-  if (!thread.startsWith(`${provider.provider}:`)) {
-    return { refused: `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".` };
+  if (!thread.startsWith(`${provider.provider}:`)) return `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".`;
+  const undeclared = provider.refuses?.(thread, input.kinds);
+  if (undeclared !== undefined) return undeclared;
+  const unrunnable = unrunnableScreen(provider, input.screens);
+  if (unrunnable !== undefined) return unrunnable;
+  if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
+    return `invalid_cadence: every ${input.everyMinutes} minutes isn't a cadence. Use one of ${ROUTINE_CADENCES.join(", ")}.`;
   }
+  return undefined;
+}
+
+/** Why an `unmatched` subscription is refused on `flowKind`: only a coordinator reads `inferredWork`, so only its session hears what nobody else heard. */
+export function unmatchedRefusal(input: Pick<SubscribeInput, "unmatched">, flowKind: string | undefined): string | undefined {
+  return input.unmatched === true && flowKind !== COORDINATOR_FLOW
+    ? "not_a_coordinator: only a coordinator's conversation can hear what no other subscription heard (unmatched)."
+    : undefined;
+}
+
+function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refused: string } | { sessionId: string; worker: string; taskId?: string } {
+  if (target !== undefined) return { sessionId: target.sessionId, worker: target.worker, ...(target.taskId === undefined ? {} : { taskId: target.taskId }) };
+  const { state } = ctx.session;
+  const worker = state[WORKER_ID_STATE_KEY];
+  if (typeof worker !== "string" || worker.length === 0) return { refused: "not_a_worker: this session runs no worker, so it can't subscribe." };
+  const taskId = state[TASK_ID_STATE_KEY];
+  return { sessionId: ctx.session.identity.id, worker, ...(typeof taskId === "string" && taskId.length > 0 ? { taskId } : {}) };
+}
+
+/**
+ * Subscribe a session to one thread: the running one, or `target`.
+ *
+ * @param providers The providers a session may subscribe on.
+ * @param target The session that hears, when it isn't the running one.
+ * @param write The subscription's id and maker, from server code.
+ */
+export async function subscribe(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target?: SubscribeTarget,
+  write: SubscribeWrite = {}
+): Promise<SubscribeOutcome> {
+  return writeSubscription(ctx, providers, input, target, write, "fresh");
+}
+
+/**
+ * Resume a paused subscription from its saved state: `subscribe`'s write, taken only while it
+ * is still paused. Not on the package's surface: the routine verbs call it.
+ */
+export async function resumeSubscription(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target: SubscribeTarget,
+  write: SubscribeWrite
+): Promise<SubscribeOutcome> {
+  return writeSubscription(ctx, providers, input, target, write, "resume");
+}
+
+/**
+ * A seed's write of a declared routine: the config's fields, over the saved subscription's on,
+ * paused or ended state (a new one is on). Not on the package's surface: the routine seed calls it.
+ */
+export async function seedSubscription(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target: SubscribeTarget,
+  write: SubscribeWrite
+): Promise<SubscribeOutcome> {
+  return writeSubscription(ctx, providers, input, target, write, "keep");
+}
+
+/** The one write behind `subscribe` and `resumeSubscription`. */
+async function writeSubscription(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target: SubscribeTarget | undefined,
+  write: SubscribeWrite,
+  life: Life
+): Promise<SubscribeOutcome> {
+  const hears = hearer(ctx, target);
+  if ("refused" in hears) return hears;
+  const settings = subscriptionInputRefusal(providers, input);
+  if (settings !== undefined) return { refused: settings };
+  const screens = input.screens ?? [];
+  if (write.botsScreenedBy !== undefined && botsHandedOn({ botsScreenedBy: write.botsScreenedBy, screens }) === undefined) {
+    return { refused: `no_screen: bots are handed on to "${write.botsScreenedBy}", which this subscription doesn't list.` };
+  }
+  const thread = input.thread.trim();
+  const provider = providers.find((p) => p.provider === input.provider)!;
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
-  const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
+  const { identity } = ctx.session;
   if (identity.userId === undefined || identity.orgId === undefined) {
     return { refused: "no_identity: a subscription needs a session that names its user and organization." };
   }
-  // The flow a delivery lands on: the session's own record, as the engine reads it for this user.
-  const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
-  const flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
-  const tenantId = tenantOf(ctx);
-  const id = await subscriptionIdOf(identity.id, provider.provider, thread, tenantId);
-  const self = await provider.self?.(ctx);
-  const taskId = state[TASK_ID_STATE_KEY];
+  // The flow a delivery lands on: the target's, or the session's own record, as the engine reads it for this user.
+  let flowKind = target?.flow;
+  if (flowKind === undefined) {
+    const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
+    flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
+  }
+  const unmatched = unmatchedRefusal(input, flowKind);
+  if (unmatched !== undefined) return { refused: unmatched };
+  const tenantId = target === undefined ? tenantOf(ctx) : target.tenantId;
+  const id = write.id ?? (await subscriptionIdOf(hears.sessionId, provider.provider, thread, tenantId));
+  const self = await provider.self?.(ctx, { sessionId: hears.sessionId });
+  const at = Date.now();
   const row: SubscriptionResourceState = {
     id,
     provider: provider.provider,
     thread,
     ...(input.kinds === undefined ? {} : { kinds: input.kinds }),
-    screens: input.screens ?? [],
+    screens,
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
+    ...(write.botsScreenedBy === undefined ? {} : { botsScreenedBy: write.botsScreenedBy }),
     ...(self === undefined ? {} : { self }),
+    ...(input.unmatched === true ? { unmatched: true as const } : {}),
+    ...(input.everyMinutes === undefined ? {} : { everyMinutes: input.everyMinutes }),
     interest: input.interest,
-    sessionId: identity.id,
+    sessionId: hears.sessionId,
     flow: flowKind ?? "",
-    worker,
-    ...(typeof taskId === "string" && taskId.length > 0 ? { taskId } : {}),
+    worker: hears.worker,
+    ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
+    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const, hostScreens: screens } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.
     ...(tenantId === undefined ? {} : { tenantId }),
     enabled: true,
-    at: Date.now()
+    at,
+    ...(write.madeBy === undefined ? {} : { madeBy: write.madeBy })
   };
   if (row.flow.length === 0) return { refused: "no_session: this host can't read this session's record, so nothing could be delivered to it." };
-  const ref = await subscriptionsOf(ctx).getOrCreate(id, row);
-  await ref.setState(row);
-  await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
-  // Other users' subscribes to this thread may write at once: `updateState`
-  // runs again against the row that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(thread), { subscriptions: {} });
-  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } })));
+  const saved = subscriptionsOf(ctx);
+  const ref = life === "resume" ? await saved.getOptional(id) : await saved.getOrCreate(id, row);
+  if (ref === undefined) return { refused: "ended: it no longer exists." };
+  // One committed transition: what it replaced, and what it left.
+  const moved = await retryOnConflict(() =>
+    updateStateWith<SubscriptionResourceState, { prior: SubscriptionResourceState; now: SubscriptionResourceState }>(ref, (current) => {
+      const next = nextEntry(current, row, life);
+      return { state: next ?? current, result: { prior: current, now: next ?? current } };
+    })
+  );
+  if (moved === undefined) return { refused: "ended: it no longer exists." };
+  if (life === "resume" && !moved.now.enabled) {
+    return isPaused(moved.now)
+      ? { refused: "changed: its settings changed while it was resuming, so it stays paused. Resume it again." }
+      : { refused: "ended: it ended while it was resuming, so it stays ended." };
+  }
+  // FIX-2788: a task that ended (failed or cancelled) while this write was in flight swept before
+  // the subscription existed. Its mark is written before its sweep, and read here after the commit,
+  // so one of the two always sees the other: this one ends it as the sweep would have.
+  if (moved.now.enabled && moved.now.taskId !== undefined) {
+    const ended = (await subscriptionTaskEndingsOf(ctx).getOptional(taskEndingKeyOf(moved.now.taskId)))?.state;
+    // A retry runs the same task again: an ending marked by an earlier attempt than the one
+    // subscribing is not this attempt's. Without a claim (a subscribe made for the task from
+    // outside its run) any mark counts.
+    const running = currentWorkerClaim(ctx);
+    const current = running?.taskId === moved.now.taskId ? running.attempt : undefined;
+    if (ended !== undefined && (ended.attempt == null || current === undefined || ended.attempt >= current)) {
+      await endSubscription(ctx, id, ended.ending === "errored" ? "task_errored" : "task_cancelled");
+      return { refused: `ended: its task was already ${ended.ending === "errored" ? "failed" : "cancelled"}, so it ended with it.` };
+    }
+  }
+  await subscriptionCursorsOf(ctx).getOrCreate(id);
+  // The same id on a new thread (a declared routine's entry changed): the thread the write replaced
+  // loses its entry, or its stale screen settings keep nominating it there.
+  if (moved.prior.thread !== moved.now.thread) await dropFromIndex(ctx, moved.prior.thread, id);
+  await syncIndex(ctx, moved.now);
+  // FIX-2536: the user's poll for the thread, when the app polls and the committed subscription is on. Tenants aren't polled in v1.
+  if (write.polling !== undefined && moved.now.enabled && moved.now.tenantId === undefined) {
+    await ensurePollSchedule(ctx, moved.now.provider, moved.now.thread, moved.now.everyMinutes ?? write.polling.everyMinutes);
+  }
   return { id };
 }
 
 /**
- * End one of the running user's subscriptions: off on its row, out of the
- * index. Ending one that already ended changes nothing.
+ * The thread index entry for `subscription`, as saved: there if and only if it is on. An end that
+ * lands between this write and the index's is read back committed, and takes the entry out.
+ */
+export async function syncIndex(ctx: BlockContext, subscription: SubscriptionResourceState): Promise<void> {
+  if (!subscription.enabled) {
+    await dropFromIndex(ctx, subscription.thread, subscription.id);
+    return;
+  }
+  // Other users' subscribes to this thread may write at once: `updateState`
+  // runs again against the subscription that won, so every entry lands.
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread));
+  const slot = indexSlotOf(subscription.userId, subscription.id);
+  await retryOnConflict(() =>
+    index.updateState((current) => {
+      // A bare-id entry of this owner's, from before slots named one, gives way to the slot.
+      const { [subscription.id]: legacy, ...rest } = current.subscriptions;
+      const others = legacy !== undefined && legacy.userId !== subscription.userId ? { [subscription.id]: legacy } : {};
+      return { subscriptions: { ...rest, ...others, [slot]: indexEntryOf(subscription) } };
+    })
+  );
+  const ref = await subscriptionsOf(ctx).getOptional(subscription.id);
+  const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
+  if (now === undefined || !now.enabled || now.thread !== subscription.thread) await dropFromIndex(ctx, subscription.thread, subscription.id);
+}
+
+/**
+ * Take the running user's subscription `id` out of `thread`'s index entry: its slot, and a bare-id
+ * entry of theirs written before slots named an owner. Another user's entry under the same id
+ * (a declared routine's `cfg_` id) stays.
+ */
+export async function dropFromIndex(ctx: BlockContext, thread: string, id: string): Promise<void> {
+  const userId = ctx.session.identity.userId;
+  if (userId === undefined) return;
+  const slot = indexSlotOf(userId, id);
+  const mine = (subscriptions: Record<string, IndexEntry>) => subscriptions[slot] !== undefined || subscriptions[id]?.userId === userId;
+  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(thread));
+  if (index === undefined || !mine(index.state.subscriptions)) return;
+  await retryOnConflict(() =>
+    index.updateState((current) => {
+      const { [slot]: _gone, ...rest } = current.subscriptions;
+      if (rest[id]?.userId === userId) delete rest[id];
+      return { subscriptions: rest };
+    })
+  );
+}
+
+/** Whether `subscription` is paused: off, with the one end a resume undoes. */
+export const isPaused = (subscription: SubscriptionResourceState): boolean => !subscription.enabled && subscription.endedReason === "paused";
+
+/**
+ * End one of the running user's subscriptions, as saved: off,
+ * out of the index. A pause ends only an enabled one; any other end ends an
+ * enabled or a paused one; an ended one stays as it ended.
  *
  * @returns Whether it was live.
  */
 export async function unsubscribe(ctx: BlockContext, id: string, reason: SubscriptionEnd): Promise<boolean> {
+  return (await endSubscription(ctx, id, reason)) === "enabled";
+}
+
+/** {@link unsubscribe}, answering what the subscription was when the end applied, or `undefined` when it didn't. */
+async function endSubscription(ctx: BlockContext, id: string, reason: SubscriptionEnd): Promise<"enabled" | "paused" | undefined> {
   const ref = await subscriptionsOf(ctx).getOptional(id);
-  if (ref === undefined) return false;
-  const row = ref.state;
-  if (row.enabled) await ref.setState({ ...row, enabled: false, endedReason: reason, endedAt: Date.now() });
+  if (ref === undefined) return undefined;
+  const at = Date.now();
+  const outcome = await retryOnConflict(() =>
+    updateStateWith<SubscriptionResourceState, { was: "enabled" | "paused" | undefined; thread: string }>(ref, (current) => {
+      const next = endedEntry(current, reason, at);
+      return { state: next ?? current, result: { was: next === undefined ? undefined : current.enabled ? "enabled" : "paused", thread: current.thread } };
+    })
+  );
   // Out of the index even when the row was already off: a stop between the two writes leaves it there.
-  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(row.thread));
-  if (index?.state.subscriptions[id] !== undefined) {
-    await retryOnConflict(() =>
-      index.updateState((current) => {
-        const { [id]: _gone, ...rest } = current.subscriptions;
-        return { subscriptions: rest };
-      })
-    );
-  }
-  return row.enabled;
+  await dropFromIndex(ctx, outcome?.thread ?? ref.state.thread, id);
+  return outcome?.was;
 }
 
 /**
- * End the live subscriptions a task's session made, when the task failed or
- * was cancelled (ER-7 as amended). A completed task's stay: its session keeps
- * hearing its thread until the thread closes.
+ * End the live and paused subscriptions a task's session made, when the task
+ * failed or was cancelled (ER-7 as amended): a paused one ends too, so no
+ * resume brings back a failed task's. A completed task's stay: its session
+ * keeps hearing its thread until the thread closes. It marks the task's
+ * ending before it sweeps, so a subscribe for the task that commits after the
+ * sweep ends too.
  */
-export async function endTaskSubscriptions(ctx: BlockContext, taskId: string, ending: "errored" | "cancelled"): Promise<number> {
+export async function endTaskSubscriptions(
+  ctx: BlockContext,
+  taskId: string,
+  ending: "errored" | "cancelled",
+  attempt?: number
+): Promise<number> {
   const reason: SubscriptionEnd = ending === "errored" ? "task_errored" : "task_cancelled";
+  // The mark first, then the sweep: a subscribe still in flight reads the mark once it commits (FIX-2788).
+  // The latest ending wins: a retried task that ends again marks how it ended this time.
+  // The latest ending wins, with its attempt: a retry's own subscribe isn't ended by an earlier attempt's.
+  await subscriptionTaskEndingsOf(ctx).upsert(taskEndingKeyOf(taskId), { ending, at: Date.now(), ...(attempt === undefined ? {} : { attempt }) });
   let ended = 0;
   // Every subscription in the cell: the collection filters by key prefix only,
   // and a subscription's key names its session and thread, not its task.
   for (const ref of await subscriptionsOf(ctx).list()) {
-    if (ref.state.taskId === taskId && ref.state.enabled && (await unsubscribe(ctx, ref.state.id, reason))) ended += 1;
+    if (ref.state.taskId !== taskId) continue;
+    // Decided on the saved subscription, whatever this request's snapshot says.
+    if ((await endSubscription(ctx, ref.state.id, reason)) !== undefined) ended += 1;
   }
   return ended;
-}
-
-const subscribeOutputSchema = z.union([z.object({ id: z.string() }), z.object({ refused: z.string() })]);
-const unsubscribeOutputSchema = z.union([z.object({ ended: z.string() }), z.object({ refused: z.string() })]);
-
-/**
- * The two subscription tools, for a worker's turn (or an action that calls
- * them as a model would). `unsubscribe` ends only a subscription this session
- * made.
- */
-export function subscriptionTools(options: { readonly providers: readonly SubscriptionProvider[] }) {
-  const subscribeTool = handler({
-    name: SUBSCRIPTION_TOOLS.subscribe,
-    description:
-      "Follow one thread (a PR, an issue, a repo) so its events reach this conversation as messages from the service, " +
-      "each once. Name the thread key; list kinds and screens to hear less. Refused for a thread you can't read.",
-    inputSchema: subscribeInputSchema,
-    outputSchema: subscribeOutputSchema,
-    resources: subscriptionResources,
-    execute: async (input, ctx) => subscribe(ctx, options.providers, input)
-  });
-  const unsubscribeTool = handler({
-    name: SUBSCRIPTION_TOOLS.unsubscribe,
-    description: "Stop following a thread this conversation subscribed to, by the id subscribe gave you.",
-    inputSchema: z.object({ id: z.string().min(1) }).strict(),
-    outputSchema: unsubscribeOutputSchema,
-    resources: subscriptionResources,
-    execute: async (input, ctx) => {
-      const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
-      if (row === undefined || !madeHere(ctx, row)) {
-        return { refused: `not_yours: this conversation has no subscription "${input.id}".` };
-      }
-      await unsubscribe(ctx, input.id, "unsubscribed");
-      return { ended: input.id };
-    }
-  });
-  return { subscribe: subscribeTool, unsubscribe: unsubscribeTool };
 }

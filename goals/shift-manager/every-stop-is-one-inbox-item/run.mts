@@ -4,9 +4,9 @@
  *
  * Run:      pnpm tsx goals/shift-manager/every-stop-is-one-inbox-item/run.mts
  * The sweep, the children's checks and the gap sweep run beside this, as goal.md says.
- * Legs:     GOAL_LEGS=a,b,c,d,j1,j2,j3 (default all; b answers a's stops)
+ * Legs:     GOAL_LEGS=a,b,c,d,j1,j2,j3,nc (default all; b answers a's stops; nc is model-free)
  * Harness:  GOAL_HARNESS=claude-code (default) | stub, the coding run's
- * Controls: GOAL_CONTROL=public-resume | new-attempt | cancel-keeps-item | steer-ignores-mark | default-deadline | no-question-message | wrapper-kill
+ * Controls: GOAL_CONTROL=public-resume | new-attempt | cancel-keeps-item | steer-ignores-mark | default-deadline | no-question-message | wrapper-kill | session-only
  */
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -22,6 +22,7 @@ import { CONTROLS, type Control } from "./controls.mts";
 import { legA, legB, legC, legD, type Context } from "./legs.mts";
 import { journeyFiles, journeyDeadlines, journeyRestart } from "./journeys.mts";
 import { aliceIn, labFiles, serveLab, show, type Serving } from "./world.mts";
+import { legNoConversation } from "./no-conversation.mts";
 
 const SCRATCH = goalTmpDir("every-stop");
 const say = (s: string) => console.error(`[every-stop ${new Date().toISOString().slice(11, 19)}] ${s}`);
@@ -49,7 +50,7 @@ if (controlName !== "" && CONTROLS[controlName] === undefined) {
   process.exit(2);
 }
 const control: Control | undefined = controlName === "" ? undefined : CONTROLS[controlName];
-const ALL_LEGS = ["a", "b", "c", "d", "j1", "j2", "j3"];
+const ALL_LEGS = ["a", "b", "c", "d", "j1", "j2", "j3", "nc"];
 const legs = new Set((process.env.GOAL_LEGS ?? (control?.legs ?? ALL_LEGS).join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 for (const leg of legs) if (!ALL_LEGS.includes(leg)) throw new Error(`unknown leg "${leg}"`);
 const harness: "claude-code" | "stub" = (process.env.GOAL_HARNESS ?? "claude-code") === "stub" ? "stub" : "claude-code";
@@ -84,6 +85,20 @@ await runGoal(async (failures, tell) => {
     failures.push(`${tag} — ${what}`);
     say(`FAIL ${tag} — ${what.slice(0, 300)}`);
   };
+
+  // ---- nc: a run with no conversation, model-free, on a host of its own (FIX-2774) ----
+  if (legs.has("nc")) {
+    say("leg nc: a worker's run with no conversation asks");
+    mkdirSync(SCRATCH, { recursive: true });
+    await legNoConversation(SCRATCH, fail, (line) => {
+      notes.push(line);
+      say(line);
+    });
+    if ([...legs].every((leg) => leg === "nc")) {
+      if (notes.length > 0) evidence.push(`notes: ${notes.join(" · ")}`);
+      return { failures, evidence: evidence.join(" · ") };
+    }
+  }
 
   if (!keysServing(REAL_MODEL).some((key) => (process.env[key] ?? "") !== "")) {
     return { failures: [`blocked: no key here serves ${REAL_MODEL}; set one of ${keysServing(REAL_MODEL).join(", ")}`], evidence: "" };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializeError, errorDetailsWithCause } from "../src/errors/serialize-error";
+import { containsSecret, redactSecrets, serializeError, errorDetailsWithCause } from "../src/errors/serialize-error";
 
 describe("serializeError", () => {
   it("copies the non-enumerable name and message", () => {
@@ -14,6 +14,21 @@ describe("serializeError", () => {
       message: "reset",
       code: "ECONNRESET",
     });
+  });
+
+  it("keeps a provider's HTTP status, so an error item says how the provider refused", () => {
+    const err = Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+    expect(serializeError(err)).toEqual({ name: "Error", message: "Unauthorized", statusCode: 401 });
+  });
+
+  it("redacts keys and bearer tokens a provider echoes back, at every level of the chain", () => {
+    // Error details travel to the browser; a refused credential must not.
+    const root = new Error("rejected header Authorization: Bearer abcdefgh12345678");
+    const top = new Error("Incorrect API key provided: sk-ant-api03-SECRETSECRET", { cause: root });
+    const json = JSON.stringify(serializeError(top));
+    expect(json).not.toContain("SECRETSECRET");
+    expect(json).not.toContain("abcdefgh12345678");
+    expect(json).toContain("Incorrect API key provided: [redacted]");
   });
 
   it("walks the cause chain recursively", () => {
@@ -92,5 +107,19 @@ describe("errorDetailsWithCause", () => {
     expect(errorDetailsWithCause({ details: existing, cause: new Error("ignored") })).toBe(
       existing
     );
+  });
+});
+
+describe("containsSecret", () => {
+  // A write that refuses credentials and the redactor that strips them must agree on what one looks like.
+  it("finds exactly what redactSecrets would remove, NVIDIA keys included", () => {
+    const nvidia = "use nvapi-abcdefghijklmnopqrstuvwxyz0123 please";
+    expect(redactSecrets(nvidia)).toBe("use [redacted] please");
+    expect(containsSecret(nvidia)).toBe(true);
+    expect(containsSecret("sk-proj-AbCdEf1234567890abcdef")).toBe(true);
+  });
+
+  it("passes ordinary text, env var names included", () => {
+    expect(containsSecret("The key lives in NVIDIA_API_KEY; ask the operator.")).toBe(false);
   });
 });

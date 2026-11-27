@@ -75,7 +75,7 @@ import { retryOnConflict } from "./cas-retry";
 import { projectAddressSchema, type ProjectAddress } from "./collections";
 import { defineLeadFitCheck, LEAD_FIT_STATE, leadFitCaseSchema, leadFitRecordSchema, leadFitStateSchema, type LeadFitCase } from "./lead-fit";
 import { isMember } from "./membership-gate";
-import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
 import { isAlreadyExists } from "./store-errors";
 import {
@@ -354,9 +354,13 @@ const openStepSchema = z.object({
 
 type OpenStep = z.infer<typeof openStepSchema>;
 
+const prepareOpenSchema = openWorkstreamInputSchema.extend({
+  objectives: openWorkstreamInputSchema.shape.objectives.default([])
+});
+
 /** What the check hands on: the open, its lead's flow, and the lead fit check's case, or none to judge. */
 const checkedOpenSchema = z.object({
-  open: openWorkstreamInputSchema,
+  open: prepareOpenSchema,
   flow: z.string(),
   fitCase: leadFitCaseSchema.nullable()
 });
@@ -374,7 +378,7 @@ function leadDiffers(id: string, lead: string): ProjectRefusedError {
  * @throws When a lead flow declares no `onWorkstreamOpened` entry.
  * @example
  *   const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentFlow] });
- *   defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions, ...workstreams.actions } });
  */
 export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): WorkstreamBlocks {
   const { installation } = options;
@@ -402,7 +406,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
     return undefined;
   };
-  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES };
+  const resources = { ...installation.resources, ...PROJECT_ENTRY_RESOURCES, ...WORKSTREAM_RESOURCES };
 
   /**
    * Check the open: everything that can refuse, short of the lead's fit, runs
@@ -413,11 +417,11 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    */
   const checkOpen = handler({
     name: "workstream-open-check",
-    inputSchema: openWorkstreamInputSchema,
+    inputSchema: prepareOpenSchema,
     outputSchema: checkedOpenSchema,
     resources,
     requestStateSchema: leadFitStateSchema,
-    execute: async (input: OpenWorkstreamInput, ctx): Promise<CheckedOpen> => {
+    execute: async (input, ctx): Promise<CheckedOpen> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
       const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
@@ -458,7 +462,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       if (unchecked !== undefined) await ctx.request.patchState({ [LEAD_FIT_STATE]: { checked: false, why: unchecked } });
       const fitCase: LeadFitCase | null =
         unchecked === undefined
-          ? { lead: input.lead, description: lead.description!, title: input.title, objectives: input.objectives ?? [] }
+          ? { lead: input.lead, description: lead.description!, title: input.title, objectives: input.objectives }
           : null;
       return { open: input, flow: lead.flow, fitCase };
     }
@@ -484,7 +488,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
         sessionId: null,
         status: "on-track",
         due: input.due ?? null,
-        objectives: (input.objectives ?? []).map((text) => ({ text, met: false, metAt: null, metBy: null })),
+        objectives: input.objectives.map((text) => ({ text, met: false, metAt: null, metBy: null })),
         openedAt: now,
         updatedAt: now
       };

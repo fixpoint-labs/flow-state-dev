@@ -12,16 +12,21 @@ import type {
   InternalBlockContext,
   WaitDeadlines
 } from "@flow-state-dev/core/internal";
-import type { TracingLevel } from "@flow-state-dev/core";
+import type { TracingLevel, ViewRunContext } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
+import type { ServiceRouteOperation } from "../durability/owner-runs";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
+import type { RecordedRead } from "./view-reads";
+import type { SessionAdmission, SuspensionAdmission } from "./request-sessions";
+import type { PrincipalKind } from "./principal";
+import type { FlowRegistry } from "../registry/flow-registry";
 
 export type RequestRuntime = {
   requestId: string;
@@ -74,7 +79,20 @@ export type CreateExecutionContextOptions<
   actionName: string;
   requestId: string;
   userId?: string;
-  sessionId?: string;
+  // FIX-2725 D1.
+  /**
+   * The scope of the view this run is, which decides the session reads it may
+   * make: a session or user view reads the caller's sessions, an org view
+   * none. Set by the view runner. Absent → a user view when `noSession`.
+   */
+  viewScope?: "session" | "user" | "org";
+  /** Called with each scope state and resource a block of this run reaches. Set by the view runner. */
+  recordRead?: (read: RecordedRead) => void;
+  /** Refuse every model call with `ViewModelCallError`. Set by the view runner (D2). */
+  refuseModelCalls?: boolean;
+  // FIX-2625 D1.
+  /** `ctx.view` on every block of the run. Set by the view runner. */
+  view?: ViewRunContext;
   // FIX-1442.
   /**
    * The organization this execution runs under. **Required** —
@@ -91,6 +109,14 @@ export type CreateExecutionContextOptions<
    * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`context/principal.ts`). Absent → the request record's, then the
+   * session's; a run that creates its session with none is a machine's.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → the request record's, or none. */
+  resolvedBy?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
@@ -135,6 +161,13 @@ export type CreateExecutionContextOptions<
   tracingLevel?: TracingLevel;
   /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
   durabilityEnabled?: boolean;
+  // FIX-2895.
+  /**
+   * Whether the run's handler was carried on its dispatch rather than found
+   * on the flow (a dynamic schedule's fire). Such a run never parks: whatever
+   * continued it would re-run it from its record, which holds no handler.
+   */
+  runsCarriedCore?: boolean;
   // FIX-724.
   /**
    * Opt-in error-capture sink. When set, runtime block failures are
@@ -169,7 +202,29 @@ export type CreateExecutionContextOptions<
    * which is the correct answer when no caller derived one.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
-};
+} & CreateExecutionContextSession;
+
+/**
+ * The session a context is built for. A run names its session (required: the
+ * request record names it from the first write, and nothing here makes one
+ * up); only a view runs with none.
+ */
+export type CreateExecutionContextSession =
+  | {
+      /** The session the run lands in, born on the run's first write when it has no row. */
+      sessionId: string;
+      noSession?: false;
+    }
+  | {
+      sessionId?: undefined;
+      // FIX-2623.
+      /**
+       * Build the context with no session at all, for a user or org view: no
+       * session is loaded, made or stored, no session resource is installed, and
+       * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
+       */
+      noSession: true;
+    };
 
 // FIX-999.
 /**
@@ -186,11 +241,19 @@ export type RequestHostConstructionInputs = {
   /**
    * Starts the request a dispatch becomes, through the same host-level arbiter
    * and enqueue-time materialization. Absent → the dispatch seam refuses
-   * `no-dispatch-operation` — the `worker-only` case: that mode constructs no
+   * `no-dispatch-operation` — the `process-only` case: that mode constructs no
    * dispatcher, so a deployment whose capabilities dispatch must supply this
    * there explicitly.
    */
   dispatchOperation?: DispatchOperation;
+  // FIX-2630 D1.
+  /**
+   * Routes a dispatch to an internal entry marked `service` (a publish) as
+   * the service, firing only the sender's own user's runs. Installed beside
+   * `dispatchOperation`, over the same host. Absent → such a dispatch is
+   * refused `no-dispatch-operation`.
+   */
+  serviceRoute?: ServiceRouteOperation;
   /**
    * Whether `dispatchOperation` runs what it starts in this process, read as
    * each request starts (`RequestHost.dispatchRunsHere`). Absent → no request
@@ -204,6 +267,42 @@ export type RequestHostConstructionInputs = {
    * same fail-closed shape `dispatchOperation` has.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  /**
+   * The host's flow registry, as a named reach's admission reads it
+   * (`admitNamedSession`): which flow owns a session, and which resolver
+   * that flow answers with. Wired beside `resolveFlow`. Absent → every
+   * session a block names reads as missing.
+   */
+  flows?: Pick<FlowRegistry, "get" | "list">;
+  // FIX-2725 D1.
+  /**
+   * A view run's per-session admission, on top of the owner rule every
+   * session read applies: the HTTP session list's (`view-routes.ts`). Set by
+   * the view route only. Absent → the owner rule alone.
+   */
+  sessionAdmission?: SessionAdmission;
+  // FIX-2770.
+  /**
+   * A view run's credential check on each pending suspension
+   * `sessions.userSuspensions` reads: the instance's own resolver, judged on
+   * the row's request (`view-routes.ts`). Set by the view route only.
+   */
+  suspensionAdmission?: SuspensionAdmission;
+  // FIX-2848 D3.
+  /**
+   * The host's `publicReentrySources`, for a run with no
+   * `effectiveRuntimeConfig` (a view's): what `sessions.turns` reads each
+   * turn's `retryable` with. Absent → the effective config's, else none.
+   */
+  publicReentrySources?: readonly string[];
+  // FIX-2623 D1.
+  /**
+   * Whether any flow the host registers declares a view, read as each request
+   * starts. When it does, every resource write publishes a change notice,
+   * whichever flow writes it: a view may read any of them. Wired from the
+   * host's flow registry beside `resolveFlow`. Absent → no.
+   */
+  hostHasViews?: () => boolean;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /**

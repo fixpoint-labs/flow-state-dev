@@ -54,8 +54,9 @@ describe("readRecordedWork", () => {
       [OBSERVED_PLAN_LIST]: [],
       "observed-file-ops": [
         { topic: "observed-file-ops/req_1/inv_1/old.md", clientData: { lastKind: "edited" } },
-        { topic: "observed-file-ops/req_2/inv_1/notes/audit.md", clientData: { lastKind: "created" } },
+        { topic: "observed-file-ops/req_2/inv_1/notes/audit.md", clientData: { lastKind: "created", appliedCount: 1 } },
         { topic: "observed-file-ops/req_2/inv_1/odd.md", clientData: { lastKind: "renamed" } },
+        { topic: "observed-file-ops/req_2/inv_1/tried.md", clientData: { lastKind: "edited", outcome: "failed", appliedCount: 0 } },
       ],
       [OBSERVED_PULL_REQUESTS]: [
         { topic: `${OBSERVED_PULL_REQUESTS}/acme/audit/6`, clientData: { requestId: "req_1", url: "https://github.com/acme/audit/pull/6", firstSeenAt: 1 } },
@@ -70,8 +71,9 @@ describe("readRecordedWork", () => {
       files: {
         truncated: false,
         rows: [
-          { path: "notes/audit.md", kind: "created" },
-          { path: "odd.md", kind: null },
+          { path: "notes/audit.md", kind: "created", applied: 1 },
+          { path: "odd.md", kind: null, applied: null },
+          { path: "tried.md", kind: "edited", applied: 0 },
         ],
       },
       pullRequests: {

@@ -12,25 +12,26 @@
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { taskItemId } from "./holds";
+import { suspensionHoldId, taskItemId } from "./holds";
 import type { InboxItem, InboxTaskInput } from "./types";
 
-export { taskItemId };
+export { suspensionHoldId, taskItemId };
 
 /** A suspension for the user, as a session's request listing records it. */
 export type SuspensionTruth = {
   readonly suspensionId: string;
-  readonly sessionId: string;
+  /** The session its run is parked in; `null` for a run with no conversation. */
+  readonly sessionId: string | null;
   readonly requestId: string;
-  /** Whether its request is a task's run (source `task`): its stop lists from that task's row. */
+  /** Whether its request is a task's run (source `task`): its stop lists from that task. */
   readonly taskRun: boolean;
 };
 
-/** A task row's open user holds, as the board's own task listing records them. */
+/** A task's open user holds, as the board's own task listing records them. */
 export type TaskTruth = {
   readonly board: string;
   readonly taskId: string;
-  /** The suspension ids of its open suspension holds. */
+  /** The hold ids (`suspensionHoldId`) of its open suspension holds. */
   readonly suspensionHolds: readonly string[];
   /** The ids of its open questions and confirms. */
   readonly ownHolds: readonly string[];
@@ -41,7 +42,7 @@ export type InboxTruth = {
   readonly suspensions: readonly SuspensionTruth[];
   readonly rows: readonly TaskTruth[];
   /**
-   * The holds (their suspension or hold ids) answered or cancelled before this
+   * The holds (their hold ids) answered or cancelled before this
    * read: each must be in no later list, and no later truth. A hold, not an
    * item: a task's item id stays the same when the task waits on the user again.
    */
@@ -108,7 +109,7 @@ export function taskTruthOf(rows: readonly InboxTaskInput[]): TaskTruth[] {
     // truth stays independent of the predicate it checks.
     for (const hold of row.holds ?? []) {
       if (hold.actor !== "user") continue;
-      if (hold.source.kind === "suspension") suspensionHolds.push(hold.source.suspensionId);
+      if (hold.source.kind === "suspension") suspensionHolds.push(suspensionHoldId(hold.source.requestId, hold.source.suspensionId));
       else if (!answered.has(hold.id)) ownHolds.push(hold.id);
     }
     if (suspensionHolds.length === 0 && ownHolds.length === 0) return [];
@@ -118,9 +119,10 @@ export function taskTruthOf(rows: readonly InboxTaskInput[]): TaskTruth[] {
 
 /** Check `items` against `truth`. Pure: reads nothing. */
 export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: InboxTruth): InboxReconciliation {
+  const holdOf = (s: SuspensionTruth) => suspensionHoldId(s.requestId, s.suspensionId);
   const want = new Set([
     ...truth.rows.map((r) => taskItemId(r.board, r.taskId)),
-    ...truth.suspensions.filter((s) => !s.taskRun).map((s) => s.suspensionId),
+    ...truth.suspensions.filter((s) => !s.taskRun).map(holdOf),
   ]);
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1);
@@ -136,10 +138,11 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const orphan = [...listed].filter((id) => !want.has(id));
 
   const drift: string[] = [];
-  const live = new Set(truth.suspensions.map((s) => s.suspensionId));
+  const live = new Set(truth.suspensions.map(holdOf));
   for (const stop of truth.suspensions.filter((s) => s.taskRun)) {
-    const holders = truth.rows.filter((r) => r.suspensionHolds.includes(stop.suspensionId));
-    if (holders.length !== 1) drift.push(`stop ${stop.suspensionId}: ${holders.length} open questions`);
+    const id = holdOf(stop);
+    const holders = truth.rows.filter((r) => r.suspensionHolds.includes(id));
+    if (holders.length !== 1) drift.push(`stop ${id}: ${holders.length} open questions`);
   }
   for (const row of truth.rows) {
     for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`question ${id} on ${row.board}:${row.taskId}: no live stop`);
@@ -159,7 +162,7 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const holdsSeen = new Set([
     ...items.flatMap((item) => item.holds.map((h) => h.id)),
     ...truth.rows.flatMap((r) => [...r.suspensionHolds, ...r.ownHolds]),
-    ...truth.suspensions.map((s) => s.suspensionId),
+    ...truth.suspensions.map(holdOf),
   ]);
   const reopened = [...holdsSeen].filter((id) => closed.has(id));
 

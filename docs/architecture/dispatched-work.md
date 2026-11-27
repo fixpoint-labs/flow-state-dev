@@ -83,7 +83,7 @@ the same string share one child. A shared child serialises its tasks:
 `defineFlow` defaults the entry a `per-worker` or `key` dispatcher dispatches to
 `queue` concurrency, and an explicit policy on the entry wins. The in-process
 runner always enforces it. An external runner enforces it only when its
-adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`): the host
+adapter supplies a shared lease backend (`JobQueueAdapter.leaseBackend`): the host
 takes the run's place before enqueueing and the job carries it
 (`DispatchEnvelope.leasePlace`). Without one the host skips arbitration
 (`createInboundTransportHost.ts`), so tasks sharing a child can overlap there.
@@ -205,6 +205,25 @@ decides must run as each subscriber. So the host starts those runs, not a
 block: `fireOwnerRunThrough` (`engine/src/durability/owner-runs.ts`), the
 sibling of `fireWakeThrough`. It is not a `RequestHost` verb, so nothing a
 running request holds can call it.
+
+A request reaches it in one way only: the seam's service route. An internal
+entry marked `service: { provider }` (`InternalEntry.service`) is not started
+as the caller in a child session. The seam hands the envelope to the host's
+`serviceRoute` operation (`createServiceRouteOperation`), which stamps the
+event's sender as the calling session (a member, named by the marker's
+`senderName` from that session's stored state, else the calling flow's kind,
+whatever the payload said) and its `owner` as the caller's user and tenant,
+runs `routeServiceEvent` as `service:<provider>` in the caller's org, and
+fires only that user's runs in that tenant. The routing entry reads `owner`
+and nominates no one else, so another user's subscription is never screened
+or counted against the cap; the host's check is the backstop: a run the
+routing names for another user is refused `other_user`, for another tenant
+`other_tenant`, and never fired. The caller learns only that the
+routing was accepted, not who it fired: the operation answers on acceptance,
+because the caller may hold a queue's only worker slot and the routing may need
+it. The routing and the runs it fires go on detached, held by the host's
+shutdown drain like any dispatched child. Workforce's `publishEvent` is the one
+caller.
 
 The nomination (a user, an org, an optional tenant, a resource key) only picks a
 cell. The run starts only when that user's cell for collections shared across
@@ -354,10 +373,10 @@ a runner offering it is necessarily running the work here.
 
 The two genuinely disagree, which is why the mode is the wrong thing to read:
 
-- `options.runner` is mutually exclusive with `worker`, so `mode` reads as
+- `options.runner` is mutually exclusive with `jobQueue`, so `mode` reads as
   its `colocated` default while the runner may be external.
 - A custom runner exposing `dispatchLocal` is local whatever the mode says.
-- `worker-only` constructs **no** runner at all (`createFlowState` skips
+- `process-only` constructs **no** runner at all (`createFlowState` skips
   `createRunner` for that mode), so the effective runner is `undefined`
   — which is *in-process*.
 
@@ -367,43 +386,43 @@ Everything below follows from that one test.
 
 | Topology | Effective runner | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
 |---|---|---|---|---|---|
-| No `worker`, no `runner` | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| No `jobQueue`, no `runner` | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
 | Custom `runner` exposing `dispatchLocal` | that runner, **in-process** | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
 | Custom `runner` without `dispatchLocal` | that runner, **external** | wherever it routes the job | whatever that runner confirms on accept | its runner's answer, not ours | **no** — the child is never tracked, so nothing drains it |
-| `colocated` | queue runner | a worker (may be this process) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
-| `dispatch-only` | queue runner | another container | the job is on the queue | yes | no |
-| `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | dispatched children **yes**, bounded; a claimed job yes, *unbounded* |
+| `colocated` | queue runner | a processing process (may be this one) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
+| `enqueue-only` | queue runner | another container | the job is on the queue | yes | no |
+| `process-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | dispatched children **yes**, bounded; a claimed job yes, *unbounded* |
 | No dispatch seam (a hand-built context) | — | nowhere | `NoDispatchSeamError` is thrown | — | — |
 
 There is no "started" milestone to report — the column is acceptance, and
 [What acceptance means](#what-acceptance-means) is the long form of these cells.
 
 **Read the rows by what the runtime resolved, not by which option you typed.**
-`worker` and `runner` are mutually exclusive — `createFlowState` throws when
+`jobQueue` and `runner` are mutually exclusive — `createFlowState` throws when
 given both — and the low-level `runner` option is the one that most easily
-gets misread here: it produces no `worker` and no `mode`, so it looks like the
+gets misread here: it produces no `jobQueue` and no `mode`, so it looks like the
 first row and behaves like the third if the runner it installs is external.
-The effective runner is `options.runner ?? worker.createRunner(...)`,
+The effective runner is `options.runner ?? jobQueue.createRunner(...)`,
 and `isInProcessRunner` decides everything downstream of it.
 
 **Two different waits hide in that last column, and only one of them is
 bounded.** The drain below waits for *in-process dispatched children* and races
-`dispatchDrainTimeoutMs`. Separately, `dispose()` awaits the worker handle, and
+`dispatchDrainTimeoutMs`. Separately, `dispose()` awaits the processing handle, and
 for the BullMQ adapter that is a non-forced `Worker.close()`, which waits for
 whatever jobs that process has already claimed. Any topology that consumes the
-queue — `colocated` and `worker-only` both, since `startWorker` runs for every
-mode except `dispatch-only` — therefore holds shutdown open for a claimed job
+queue — `colocated` and `process-only` both, since `startProcessing` runs for every
+mode except `enqueue-only` — therefore holds shutdown open for a claimed job
 for as long as that job takes, with no framework budget over it. Size the
 platform's kill timeout for the longest job, not for `dispatchDrainTimeoutMs`.
 
-**`worker-only` is the trap.** It is the natural place to start durable jobs and
+**`process-only` is the trap.** It is the natural place to start durable jobs and
 the one place they silently are not durable. The mode consumes the queue and
-dispatches nothing, so a dispatch there runs the child in the worker process
+dispatches nothing, so a dispatch there runs the child in the processing process
 itself and enqueues nothing. A crash or a redeploy loses the run outright
 rather than costing a retry. For the queue to own the work, dispatch it from a
-process that has a runner — `colocated` or `dispatch-only`.
+process that has a runner — `colocated` or `enqueue-only`.
 
-That the feature works at all in `worker-only` is deliberate: a topology that
+That the feature works at all in `process-only` is deliberate: a topology that
 claims support while refusing dispatched work is not supporting it. Running it
 in-process is the honest interim answer, not a durability guarantee.
 

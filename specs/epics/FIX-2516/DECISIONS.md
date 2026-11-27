@@ -25,11 +25,11 @@ flowchart TD
 
 | | |
 |---|---|
-| **Instead of** | Documents folded into FIX-2517 and FIX-2519 · one issue for both labs |
-| **Because** | Codex and Cursor take no documents, so documents need a per-target answer that should not hold images back. Each app has its own composer and send path, so an app issue is what a reviewer checks in a browser. FIX-824 comes first because every child that touches bytes goes through it |
-| **Locks in** | Ten rows. A collapse trigger on the labs: if both lab specs have no decision of their own, the spec set merges them |
+| **Instead of** | Documents folded into FIX-2517 and FIX-2519 |
+| **Because** | Codex and Cursor take no documents, so documents need a per-target answer that should not hold images back. Each app has its own composer and send path, so an app issue is what a reviewer checks in a browser; the two labs share one send path, the worker door, which is why they merged. FIX-824 comes first because every child that touches bytes goes through it |
+| **Locks in** | Ten rows at the gate. A collapse trigger on the labs: if both lab specs have no decision of their own, the spec set merges them. **It fired in the spec set (Nov 8):** FIX-2524 folds into FIX-2523: nine rows, eight children and a closure. **Amended Nov 9:** the owner added [FIX-2634](../../issues/FIX-2634/SPEC.md), the attachments block, after the set merged: ten rows, nine children and a closure |
 
-**What would change my mind:** the two lab specs being identical. Then they are one issue.
+**What would change my mind:** the two lab specs being identical. Then they are one issue, which is what the spec set found.
 
 ![D1: nine children and a closure, chosen, beside folding documents into the framework and harness issues. Decides it: Codex and Cursor take no documents. Price: one more issue and an extra hop for documents. Flips if every target took documents natively](figures/d1-division.svg)
 
@@ -42,7 +42,7 @@ It comes down to Codex and Cursor: with no document input, documents need their 
 |---|---|
 | **Instead of** | Inline bytes in the stored message, under a 3 MB cap (#4766 Q1) |
 | **Because** | Inline breaks the reload on a hosted server: two near-cap turns make a 100-item session read about 8 MB, over Vercel's 4.5 MB response limit (Codex, #4766). A reference makes that read a few hundred bytes a file, whatever the host. The default writes to local disk, so a single-server install needs no new dependency |
-| **Locks in** | The `blobs` slot is real, in the same shape as the store adapters. A host whose disk doesn't persist marks the slot unavailable in its own adapter (`@flow-state-dev/vercel`), and the engine then refuses attachments by name; the engine names no host. A serverless deploy must configure a hosted adapter; none is built here, and the closure runs on a local server |
+| **Locks in** | The `blobs` slot is real, in the same shape as the store adapters. A host whose disk doesn't persist marks the slot unavailable in its host adapter's runtime config (`@flow-state-dev/vercel`), not in its store adapter, so the kill line's "no change to the existing store adapters" holds; the engine then refuses attachments by name; the engine names no host. A serverless deploy must configure a hosted adapter; none is built here, and the closure runs on a local server |
 
 **Settled by the owner, 2026-11-05.** It changes the merged direction, so it needs approval on
 this amendment.
@@ -85,14 +85,14 @@ It comes down to the published type: only `data` leaves it unchanged.
 
 ## Who owns what
 
-![Who owns what: seven rules across FIX-824, FIX-2517 to 2524 and the closure FIX-2565; each rule has one owner](figures/ownership.svg)
+![Who owns what: seven rules across FIX-824, FIX-2517 to 2523, FIX-2634 and the closure FIX-2565, FIX-2524 merged into FIX-2523; each rule has one owner](figures/ownership.svg)
 
 Each rule has one owner. A *uses* cell is a place where a child must not decide again.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | One attachment shape: contracts' `FileContent` in reference form ([D4](#d4)), in the request, on the user item, on `HarnessRunInput` and on the task brief. No second shape, no `attachment` item type. One helper in `contracts/attachments` builds and parses `fsd-blob:`; one engine resolver turns a reference into bytes, for the model-message build and the harness hand-off alike. Nothing else string-matches the scheme or decodes `data`, and a test proves it | FIX-824 defines · FIX-2517 writes it | Cross-spec review; FIX-824's test |
-| ER-2 | Bytes live only in the blob store and are reached only through its interface. Nothing writes them into a session, a request, a resource or `localStorage`, and nothing reads the local adapter's files directly | FIX-824 | Spec set; leg a's session read |
+| ER-2 | Bytes live only in the blob store and are reached only through its interface. Nothing writes them into a session, a request, a resource or `localStorage`, and nothing reads the local adapter's files directly. A resource may hold a file's reference and its metadata (FIX-2634's session list), never its bytes or base64; text taken from a file is [FIX-2636](https://linear.app/fixpoint-labs/issue/FIX-2636)'s call | FIX-824 | Spec set; leg a's session read |
 | ER-3 | A file is served only to a caller who can read the scope that owns it. Its id is not a key (BP-031). No direct read URL in v1: every read passes that check | FIX-824 | FIX-824's goal check |
 | ER-4 | One limits set, in `@flow-state-dev/contracts/attachments` with a README entry, read by the composer and the server. Over a limit, the composer refuses before send and the server with a named error; nothing is dropped silently | FIX-824 defines · FIX-2517, 2518 enforce | Leg c |
 | ER-5 | A target that can't take a type says so in the conversation; never a text-only fallback | FIX-2519 | FIX-2519's and FIX-2520's checks |
@@ -103,13 +103,16 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 
 | Seam | Between | Rule |
 |---|---|---|
-| A reference's owner | FIX-824, 2517, 2522 | Each file has one owner. FIX-824 claims an upload into the turn's session; FIX-2522 claims a task's files into the board's scope. Nothing shares a reference across owners, so a later session copy re-claims its files |
+| A reference's owner | FIX-824, 2517, 2522 | Each file has one owner. FIX-824 claims an upload into the turn's session; FIX-2522 claims a task's files into the board's scope. Nothing shares a reference across owners |
 | The `blobs` slot | FIX-824, FIX-2452 | FIX-2452 keeps `blobs` (reserved until FIX-824 lands) and refuses only `queue` and `scheduler`. FIX-824 makes `blobs` real and names its factory in FIX-2452's store-factory family. |
 | `sendAction` and `useSession` | FIX-2517, FIX-2450, FIX-2455 | FIX-2517 adds `attachments` to the send options on whichever handle FIX-2455 leaves |
 | `prompt-input.tsx` and the registry `Conversation` | FIX-2518, 2520, FIX-2456 | FIX-2518 lands the pieces; FIX-2520 only widens `accept`; FIX-2456 owns the scroll chrome |
 | Core's root | FIX-2517, 2519, FIX-2448 | `HarnessRunInput` moves with FIX-2448 to `core/harness`; nothing new lands on core's root |
 | Kitchen Sink's harness pages, the lab's harness path | FIX-2521, 2523 | Both consume FIX-2519; neither adapts per app |
+| `useHarnessLines.send` | FIX-2519, 2521 | FIX-2519 adds `attachments`; a line with files never steers and goes as the next turn |
+| The user line's file parts | FIX-2518, 2521, 2522, 2523 | FIX-2518 draws them in the registry `message`; each app refreshes its copy, none draws its own |
 | The board run | FIX-2519, 2522 | FIX-2519 builds the hand-off; FIX-2522 only writes the brief |
+| A session's list of its files | FIX-824, 2517, 2634 | FIX-824 claims and FIX-2517 puts the turn's claimed files on the block context; FIX-2634 only records them. A flow without its block loses nothing |
 
 ## Decided in review, recorded so no child reopens them
 
@@ -119,21 +122,29 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 - **The kill line is FIX-824's own check.** It sends the files through FIX-824's upload route
   and shows them through its read route, so it needs nothing from FIX-2517.
 - **Limits.** 10 images and 5 documents a message; a file up to 20 MB as picked; images
-  downscaled in the browser to 1,568 px on the longest side; PDFs to 100 pages; PNG, JPEG, WebP
-  and GIF; HEIC refused. What one model call carries stays under its provider's request limit;
+  downscaled in the browser to 1,568 px on the longest side; PDFs to 100 pages; text-like files whole, to 200 KB of text, else refused
+  ([FIX-2520 D2](../../issues/FIX-2520/DECISIONS.md#d2)); PNG, JPEG, WebP and GIF; HEIC refused. What one model call carries stays under its provider's request limit;
   FIX-2517's history rule owns that.
 - **The store.** A blob store beside the store adapters, filled from the profile's `blobs` slot,
-  with a local-disk default under the stores' rootDir, used whenever a profile names none. Its
+  with a local-disk default used whenever a profile with durable sessions names none; a profile
+  in memory keeps its files in memory ([FIX-824 D1](../../issues/FIX-824/DECISIONS.md#d1)). Its
   interface and layout are FIX-824's.
 - **Lifetime.** Unclaimed uploads expire after a day; a session's files go with the session, a
   task's with the task. The store sweeps itself; nothing adds a scheduler for it.
 - **Per-target detail is the children's.** FIX-2517 owns the history rule, FIX-2519 each
   harness's hand-off, FIX-2518 drafts. The epic fixes only the outcomes.
 - **Documents.** Text-like files go as text headed by the filename; a PDF as a file part where
-  the provider takes PDFs, else ER-5's message. No extraction library in v1. FIX-2520's in-app
-  PDF checks are the closure's leg b.
+  the provider takes PDFs. Codex, Cursor and any other target that can't read a PDF get its
+  text, extracted on our side and stored beside the file; a scanned page is a stated limit, not a
+  refusal ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1), the owner's call of Nov 8,
+  replacing "no extraction library in v1"). The extractor is FIX-2520's one new dependency.
+  FIX-2520's in-app PDF checks are the closure's leg b.
 - **FIX-367 and FIX-891 stay related.** FIX-367 can build on the `blobs` slot later; FIX-2517
   delivers FIX-891's file-part half, and upload-once is not this epic's.
+- **The attachments block (owner, Nov 9).** A flow includes FIX-2634's block to decide what to
+  do with a turn's files; v1 keeps a session list of them, references and metadata only. The
+  epic's *not doing* now reads *a file library across sessions*. Text, summaries and what history
+  carries per file are FIX-2636, outside the epic. No app includes the block in this epic.
 
 ## What the end-state POC showed
 
@@ -160,5 +171,15 @@ per resource. Major concern: a hosted deploy has no adapter; named as debt.
   the reserved `blobs` slot, matching FIX-2452's spec (#4772). Folded from the Architect: no
   direct read URL, the host declares a non-persistent disk, a task's files' lifetime, one
   resolver. From Cursor: store mechanics left to FIX-824, the predecessor rows split.
+- **Spec set (Nov 8).** Writing the children's specs together amended six points: the labs
+  merged (D1's trigger); blob durability follows the sessions (FIX-824 D1); the Vercel mark sits
+  in the host's runtime config; Codex and Cursor get a PDF's extracted text (FIX-2520 D1, the
+  owner's call, which reversed the draft's refusal); PDF joined FIX-824's v1 type list, so the
+  kill line's own upload passes; a 200 KB text cap joined the limits (FIX-2520 D2); two unowned
+  seams got owners. One fact corrected: no flow in the repo hand-rolled base64 input.
+- **Amended (Nov 9, the FIX-2634 spec PR).** The owner added FIX-2634, the attachments block,
+  after the set merged: a tenth row, a seam, ER-2 says a resource may hold a reference and
+  metadata, and *not doing* narrows to a file library across sessions. FIX-2517 D1's
+  *what would change my mind* corrected: upload-once still bills a file's tokens each call.
 
 **Open:** none.

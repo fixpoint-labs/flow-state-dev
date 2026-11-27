@@ -19,7 +19,9 @@ export {
 
 export {
   useHarnessLines,
+  type HarnessLineSendOptions,
   type HarnessLinesView,
+  type HarnessWaitingLine,
   type UseHarnessLinesOptions
 } from "./hooks/useHarnessLines";
 
@@ -33,7 +35,9 @@ export {
 
 export {
   useResource,
-  type UseResourceResult
+  type UseResourceResult,
+  type UseScopeCollectionResult,
+  type UseScopeResourceResult
 } from "./hooks/useResource";
 
 export {
@@ -76,7 +80,6 @@ export {
 
 export {
   useSuspensions,
-  deriveSuspensions,
   resolveSuspension,
   type ResolveSuspensionArgs,
   type SuspensionView,
@@ -99,14 +102,16 @@ export {
 } from "./hooks/useApproval";
 export {
   useSuspensionForm,
-  analyzeResumeSchema,
-  suspensionShape,
   type UseSuspensionFormOptions,
-  type UseSuspensionFormResult,
+  type UseSuspensionFormResult
+} from "./hooks/useSuspensionForm";
+// Moved beside the user-suspension predicate (FIX-2770); still public here.
+export {
+  suspensionShape,
   type SchemaField,
   type SuspensionValueKind,
   type SuspensionShape
-} from "./hooks/useSuspensionForm";
+} from "@flow-state-dev/contracts/types/suspension";
 export { QuestionRenderer } from "./components/QuestionRenderer";
 export { SelectionRenderer } from "./components/SelectionRenderer";
 export { SchemaFormRenderer } from "./components/SchemaFormRenderer";
@@ -127,12 +132,16 @@ export {
 
 export {
   ItemsRenderer,
-  buildItemRenderStream,
-  type BuildItemRenderStreamOptions,
-  type ActivityItem,
-  type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
+
+export {
+  conversationLines,
+  type ActivityItem,
+  type ConversationLinesOptions,
+  type ItemLine,
+  type LineTurn
+} from "./components/conversation-lines";
 
 export {
   FlowNavigator,
@@ -157,8 +166,16 @@ export {
 } from "./hooks/useJumpToLatest";
 
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
+export {
+  useDraftSend,
+  type DraftSend,
+  type DraftSendAttachments,
+  type DraftSendFn
+} from "./hooks/useDraftSend";
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+export { useView, type UseViewOptions, type UseViewResult } from "./hooks/useView";
+export { useSessionFeed, type UseSessionFeedOptions, type UseSessionFeedResult } from "./hooks/useSessionFeed";
 export {
   useSessionList,
   type SessionList,
@@ -182,7 +199,6 @@ export {
   createInterruptKeys,
   interruptChordLabel,
   useInterruptKeys,
-  INTERRUPT_WINDOW_MS,
   type InterruptKeyEvent,
   type InterruptKeyResult,
   type InterruptKeysOptions,
@@ -210,18 +226,6 @@ export {
 
 export {
   useVoice,
-  createAudioRecorder,
-  createAudioPlayer,
-  createSpeechRecognition,
-  isSpeechRecognitionAvailable,
-  type AudioPlayer,
-  type AudioPlayerCallbacks,
-  type AudioPlayerStatus,
-  type AudioRecorder,
-  type AudioRecorderOptions,
-  type AudioRecorderStatus,
-  type SpeechRecognitionCallbacks,
-  type SpeechRecognitionHandle,
   type UseVoiceOptions,
   type VoiceState
-} from "./voice";
+} from "./voice/useVoice";

@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **has a coding task with a PR open** | A webhook reaches whichever session `sessionId(event)` names | The task follows its PR; a screened review lands in its session |
-| **runs Shift Manager on a laptop** | No public URL, no webhook | The same flow polls, at most every 5 minutes |
+| **runs Shift Manager on a laptop** | No public URL, no webhook | The same flow polls, 5 minutes or slower; one list shows its routines |
 | **cares about something fuzzy** ("crash reports on repo X") | A generator reads every issue | Subscribes with that sentence; Jev reads only what config screens pass |
 | **wants the coordinator to notice unasked work** | Only asked-for work happens | `observe` files it held ([Q3](DECISIONS.md#q3)); `auto` runs it |
 | **maintains the framework** | A binding returns a session id; nothing dedupes | A flow per provider routes; `sendMessage` stays the one messaging API |
@@ -43,6 +43,9 @@ flowchart LR
 
 Leg c is the one a single dedupe key fails: the second session on a PR hears nothing.
 
+**Routine list (child 6):** a config subscription seeded twice shows once in its user's list,
+beside a clock routine; deleting it ends its deliveries.
+
 | How we verify | |
 |---|---|
 | **Goal check** | The closure child, model-free (`mockEvaluationModel`), on one `main` commit after the rest merge |
@@ -62,34 +65,35 @@ filtered coordinator is cheaper, and we stop. Child 1 reports that share before 
 
 ## What's in the box
 
-![In the box: the GitHub flow, subscriptions, the screen chain, delivery, work modes. Composed in: the app's screens and settings. Replaced: GitHub's sessionId. Below a fence: the Not doing list](figures/end-state.svg)
+![In the box: the GitHub flow, subscriptions, the screen chain, delivery, work modes, routines. Composed in: the app's screens and settings. Replaced: GitHub's sessionId; two lists. Below a fence: the Not doing list](figures/end-state.svg)
 
 ```mermaid
 flowchart LR
-  A["composed in · custom screens · unmatched kinds · work mode · outsider opt-in"] --> B["in the box · service flow · subscriptions · screen chain · delivery · work modes"]
-  R["replaced · GitHub's sessionId and routing code become a subscription"] --> B
+  A["composed in · custom screens · unmatched kinds · work mode · outsider opt-in · config routines"] --> B["in the box · service flow · subscriptions · screen chain · delivery · work modes · routines"]
+  R["replaced · GitHub's sessionId and routing code become a subscription · two lists become one of routines"] --> B
   B -.->|"the fence"| N["not built · the Not doing list"]
 ```
 
 An app gets the box by mounting one flow per provider.
 
 **Docs:** the GitHub webhook guide teaches subscribe and `webhook-transport.md` drops `sessionId`,
-both published by child 2.
+both published by child 2; child 6 publishes the routines page.
 
-## The set · as of 2026-11-04
+## The set · as of 2026-11-08
 
 Filed at this gate; live state is in Linear.
 
 | Child | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-2534](https://linear.app/fixpoint-labs/issue/FIX-2534) · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings ([ER-7](DECISIONS.md#er7), pending), both dedupes | The seam | Ready to Spec |
-| [FIX-2535](https://linear.app/fixpoint-labs/issue/FIX-2535) · GitHub flow, retire `sessionId` | Binding, normalization, thread keys, versions, PR-open subscribe ([Q5](DECISIONS.md#q5)) | The first provider | Ready to Spec |
-| [FIX-2536](https://linear.app/fixpoint-labs/issue/FIX-2536) · polling | Per-user schedule rows, the 5-minute floor | Localhost | Ready to Spec |
-| [FIX-2537](https://linear.app/fixpoint-labs/issue/FIX-2537) · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | Ready to Spec |
-| [FIX-2538](https://linear.app/fixpoint-labs/issue/FIX-2538) · explicit vs inferred work | `off`, `observe`, `auto` on forwarded unmatched kinds | Not routing; the owner kept it | Ready to Spec |
-| [FIX-2539](https://linear.app/fixpoint-labs/issue/FIX-2539) · closure · **required** | The four legs, each team's journey | Runs the whole set | Ready to Spec |
+| [FIX-2534](https://linear.app/fixpoint-labs/issue/FIX-2534) · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings ([ER-7](DECISIONS.md#er7), pending), both dedupes | The seam | Done ([#4687](https://github.com/fixpoint-labs/flow-state-dev/pull/4687)) |
+| [FIX-2535](https://linear.app/fixpoint-labs/issue/FIX-2535) · GitHub flow, retire `sessionId` | Binding, normalization, thread keys, versions, PR-open subscribe ([Q5](DECISIONS.md#q5)) | The first provider | In Spec Review ([#4810](https://github.com/fixpoint-labs/flow-state-dev/pull/4810)) |
+| [FIX-2536](https://linear.app/fixpoint-labs/issue/FIX-2536) · polling | A row per user and thread, ≥ 5 minutes; config seeds ([D10](DECISIONS.md#d10)) | Localhost | In Spec Review ([#4811](https://github.com/fixpoint-labs/flow-state-dev/pull/4811)) |
+| [FIX-2537](https://linear.app/fixpoint-labs/issue/FIX-2537) · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | In Spec Review ([#4809](https://github.com/fixpoint-labs/flow-state-dev/pull/4809)) |
+| [FIX-2538](https://linear.app/fixpoint-labs/issue/FIX-2538) · explicit vs inferred work | `off`, `observe`, `auto` on forwarded unmatched kinds | Not routing; the owner kept it | In Spec Review ([#4808](https://github.com/fixpoint-labs/flow-state-dev/pull/4808)) |
+| [FIX-2614](https://linear.app/fixpoint-labs/issue/FIX-2614) · routines | One name, list and tools over both rows ([D12](DECISIONS.md#d12)) | One place to stop what runs as you | In Spec Dev |
+| [FIX-2539](https://linear.app/fixpoint-labs/issue/FIX-2539) · closure · **required** | The four legs, the routine list, each team's journey | Runs the whole set | Ready to Spec |
 
-Down from [seven](DECISIONS.md#how-it-got-here). If five is four, cut child 5.
+Down from [seven](DECISIONS.md#how-it-got-here); routines added (owner, 2026-11-08). If six is five, cut child 5.
 
 ## How the issues flow into each other
 
@@ -104,9 +108,14 @@ flowchart LR
   C --> P
   D --> P
   E --> P
+  A -->|"the subscription rows and tools"| R["FIX-2614 · routines"]
+  C -->|"config-seeded rows, per-subscription cadence"| R
+  R --> P
+  classDef done stroke-width:2px
+  class A done
 ```
 
-Child 1 goes first, then 2 to 5 in parallel; FIX-2070 is another epic's input.
+Child 1 went first, then 2 to 5 in parallel, child 6 after 3; FIX-2070 is another epic's input.
 
 ## What stays as it is
 
@@ -131,13 +140,14 @@ Child 1 goes first, then 2 to 5 in parallel; FIX-2070 is another epic's input.
 | The screen chain | The router kind (`docs/architecture/blocks.md` ~392) | **Reuses** a sequencer ([D7](DECISIONS.md#d7)) |
 | Delivery | `sendMessage`'s `exempt` path (`send-message.ts` ~249) | **Extends** ([D9](DECISIONS.md#d9)) |
 | Polling | Static schedules, a system principal (`core/src/types/schedules.ts`) | **Reuses** per-user schedule rows (`workforce/src/schedules/scheduled-work.ts`, [D10](DECISIONS.md#d10)) |
+| Routines | Recurring work ([FIX-2085 D3](../../issues/FIX-2085/DECISIONS.md#d3)); subscription rows | **Extends** both: one name, list and tools ([D12](DECISIONS.md#d12)) |
 | The work mode | `routing` (`workforce/src/coordinator/coordinator-config.ts`) | **Extends:** one key beside it |
 | The GitHub service flow | A per-app binding | **New** |
 
 | The debt | |
 |---|---|
-| **Adds** | The eight rows above |
-| **Removes** | GitHub's `sessionId` and its guide's routing code; the "dedupe later" gap |
+| **Adds** | The nine rows above |
+| **Removes** | GitHub's `sessionId` and its guide's routing code; the "dedupe later" gap; two lists of standing work |
 | **Leaves** | `sessionId` where no flow routes ([Q5](DECISIONS.md#q5)) |
 
 **Net: up one routing layer.** No new store, sender kind or event type.
@@ -152,9 +162,11 @@ creeps back.
 2. **[D5](DECISIONS.md#d5) · A user hears only what they can read.** If wrong: a private repo leaks.
 3. **[D9](DECISIONS.md#d9) · Delivery is `sendMessage`'s exempt path.** If wrong: two sets of
    recipient rules.
+4. **[D12](DECISIONS.md#d12) · Routines: one name over the rows we have** (owner, 2026-11-08). If
+   wrong: a rename nobody needed.
 
 **Open:** [ER-7](DECISIONS.md#er7).
 Decided at merge: [Q1](DECISIONS.md#q1) · [Q3](DECISIONS.md#q3) ·
 [Q4](DECISIONS.md#q4) · [Q5](DECISIONS.md#q5).
 
-Epic · 5 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce
+Epic · 6 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce

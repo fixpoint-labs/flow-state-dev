@@ -7,7 +7,7 @@
  * a run as steers on its task (`Task.steers`), so nothing writes `turns/**`
  * and nothing reads it but this step. Run once at host start (or as a
  * migration step), it reads every user's kept turns and writes each one no
- * attempt took (neither delivered nor withdrawn) onto its task's row as an
+ * attempt took (neither delivered nor withdrawn) onto its task as an
  * untaken steer from the person, keyed by the turn's own key so a second run
  * adds nothing. A turn whose task has finished is left: a finished task takes
  * no steer. A row waiting on its filed work keeps waiting on it: nothing here

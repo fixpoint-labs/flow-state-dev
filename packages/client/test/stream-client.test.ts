@@ -280,8 +280,10 @@ describe("request.stream", () => {
       })
     ].join("");
 
-    const fetcher = vi.fn<ClientFetch>(async () =>
-      new Response(streamBody, {
+    // The body ends with no terminal status, so the stream resumes after its
+    // last event: answer that as a server would, with nothing older.
+    const fetcher = vi.fn<ClientFetch>(async (url) =>
+      new Response(String(url).includes("starting_after") ? "" : streamBody, {
         status: 200,
         headers: {
           "content-type": "text/event-stream"
@@ -562,8 +564,10 @@ describe("request.stream — heartbeat parsing", () => {
       ": ping\n\n"
     ].join("");
 
-    const fetcher = vi.fn<ClientFetch>(async () =>
-      new Response(streamBody, {
+    // The body ends with no terminal status, so the stream resumes after its
+    // last event: answer that as a server would, with nothing older.
+    const fetcher = vi.fn<ClientFetch>(async (url) =>
+      new Response(String(url).includes("starting_after") ? "" : streamBody, {
         status: 200,
         headers: { "content-type": "text/event-stream" }
       })
@@ -582,5 +586,252 @@ describe("request.stream — heartbeat parsing", () => {
     expect(onItemAdded).toHaveBeenCalledTimes(1);
 
     handle.close();
+  });
+});
+
+describe("request.stream — a stream that ends before the request does", () => {
+  // The server ends a request's stream with no terminal event when its reader
+  // falls too far behind, and expects the reader to resume from its last
+  // event. A request stream does that itself.
+  function frame(seq: number, type: string, extra: Record<string, unknown> = {}): string {
+    return requestEventFrame({
+      id: `req_1:${seq}`,
+      event: type,
+      data: { stream: "request", type, requestId: "req_1", sequence_number: seq, ts: seq, ...extra }
+    });
+  }
+  function item(id: string, seq: number) {
+    return {
+      id,
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      requestId: "req_1",
+      itemIndex: seq,
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+      ts: seq,
+      content: [{ type: "output_text", text: id }]
+    };
+  }
+  function sse(body: string, status = 200): Response {
+    return new Response(body, { status, headers: { "content-type": "text/event-stream" } });
+  }
+
+  it("resumes after the last event it delivered, and stops at the terminal status with every event once", async () => {
+    const bodies = [
+      frame(1, "request.created", { status: "in_progress" }) + frame(2, "item.done", { item: item("m1", 2) }),
+      frame(3, "item.done", { item: item("m2", 3) }) + frame(4, "request.completed", { status: "completed" })
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () => sse(bodies.shift() ?? ""));
+    const onItemDone = vi.fn();
+    const onRequestStatus = vi.fn();
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher, onItemDone, onRequestStatus, onError });
+    await vi.waitFor(() => expect(onRequestStatus).toHaveBeenCalled());
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/demo/requests/req_1/stream?starting_after=2");
+    expect(onItemDone.mock.calls.map(([e]) => (e as { item: { id: string } }).item.id)).toEqual(["m1", "m2"]);
+    expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" }));
+    expect(onError).not.toHaveBeenCalled();
+    expect(handle.lastEventId).toBe("req_1:4");
+    handle.close();
+  });
+
+  it("stops on an answer that means the request is not there to follow", async () => {
+    const fetcher = vi
+      .fn<ClientFetch>()
+      .mockResolvedValueOnce(sse(frame(1, "request.created", { status: "in_progress" })))
+      .mockResolvedValue(new Response("gone", { status: 404 }));
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher, onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect((onError.mock.calls[0]![0] as { status?: number }).status).toBe(404);
+    handle.close();
+  });
+
+  it("gives up with an error after five connections in a row that deliver nothing, backing off between them", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn<ClientFetch>(async () => sse(""));
+      const onError = vi.fn();
+      const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", startingAfter: 7, fetcher, onError });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      // The client's backoff: 1 s, then doubling.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/demo/requests/req_1/stream?starting_after=7");
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(fetcher).toHaveBeenCalledTimes(5);
+      expect(onError).toHaveBeenCalledOnce();
+      handle.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps following a quiet live request whose connections carry only heartbeats", async () => {
+    // A long tool step emits no events; the server pings, and a host that caps
+    // response length ends each connection. That is a live request, not an
+    // empty answer, so it must not use up the give-up budget.
+    const bodies = [
+      ...Array.from({ length: 7 }, () => ": ping\n\n"),
+      frame(8, "request.completed", { status: "completed" })
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () => sse(bodies.shift() ?? ""));
+    const onRequestStatus = vi.fn();
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", startingAfter: 7, fetcher, onRequestStatus, onError });
+    await vi.waitFor(() => expect(onRequestStatus).toHaveBeenCalled());
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" }));
+    expect(onError).not.toHaveBeenCalled();
+    handle.close();
+  });
+
+  it("resumes a continuation cut off after a replayed suspension, once the request is running again", async () => {
+    // Following a continuation, the stream replays the earlier suspension,
+    // then the request runs again. A cut-off after that must still reconnect.
+    const bodies = [
+      frame(1, "request.created", { status: "in_progress" }) +
+        frame(2, "request.suspended", { status: "suspended" }) +
+        frame(3, "request.created", { status: "in_progress" }) +
+        frame(4, "item.done", { item: item("m1", 4) }),
+      frame(5, "request.completed", { status: "completed" })
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () => sse(bodies.shift() ?? ""));
+    const onRequestStatus = vi.fn();
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher, onRequestStatus, onError });
+    await vi.waitFor(() => expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" })));
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/demo/requests/req_1/stream?starting_after=4");
+    expect(onError).not.toHaveBeenCalled();
+    handle.close();
+  });
+
+  describe("with reconnect", () => {
+    it("opens a failed connection again after the backoff, resuming after the last event it heard, and reports nothing", async () => {
+      vi.useFakeTimers();
+      try {
+        const answers = [
+          () => sse(frame(1, "request.created", { status: "in_progress" }) + frame(2, "item.done", { item: item("m1", 2) })),
+          () => new Response("busy", { status: 503 }),
+          () => sse(frame(3, "request.completed", { status: "completed" }))
+        ];
+        const fetcher = vi.fn<ClientFetch>(async () => answers.shift()!());
+        const onError = vi.fn();
+        const onRequestStatus = vi.fn();
+        const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", reconnect: true, fetcher, onError, onRequestStatus });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(fetcher.mock.calls[2]?.[0]).toBe("/api/flows/demo/requests/req_1/stream?starting_after=2");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" }));
+        expect(onError).not.toHaveBeenCalled();
+        handle.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("opens nothing more once closed while it waits to reconnect", async () => {
+      vi.useFakeTimers();
+      try {
+        const fetcher = vi.fn<ClientFetch>(async () => new Response("busy", { status: 503 }));
+        const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", reconnect: true, fetcher });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        handle.close();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still gives up after five empty answers in a row, as a settled request resumed past its end answers", async () => {
+      vi.useFakeTimers();
+      try {
+        const fetcher = vi.fn<ClientFetch>(async () => sse(""));
+        const onError = vi.fn();
+        const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", startingAfter: 9, reconnect: true, fetcher, onError });
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(fetcher).toHaveBeenCalledTimes(5);
+        expect(onError).toHaveBeenCalledOnce();
+        handle.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("counts only the empty answers toward giving up: a failure between them backs off but uses none, and an event starts the count over", async () => {
+      vi.useFakeTimers();
+      try {
+        const frame3 = frame(3, "item.done", { item: item("m3", 3) });
+        // Two empty, a failure, two empty (four empty, five quiet), an event, then empty from there on.
+        const answers: Array<string | 503> = ["", "", 503, "", "", frame3];
+        const fetcher = vi.fn<ClientFetch>(async () => {
+          const next = answers.shift();
+          return next === 503 ? new Response("busy", { status: 503 }) : sse(next ?? "");
+        });
+        const onError = vi.fn();
+        const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", startingAfter: 2, reconnect: true, fetcher, onError });
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        // It gives up on the fifth empty answer after the event: connection 11. Counting the failure would
+        // end it at connection 5; not starting over at the event would end it at connection 7.
+        expect(onError).toHaveBeenCalledOnce();
+        expect(fetcher).toHaveBeenCalledTimes(11);
+        handle.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still ends, reporting it, on an answer that says the request is not there for this caller", async () => {
+      vi.useFakeTimers();
+      try {
+        const fetcher = vi.fn<ClientFetch>(async () => new Response("gone", { status: 404 }));
+        const onError = vi.fn();
+        const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", reconnect: true, fetcher, onError });
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect((onError.mock.calls[0]![0] as { status?: number }).status).toBe(404);
+        handle.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("does not reconnect once closed locally", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => sse(frame(1, "request.created", { status: "in_progress" })));
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher });
+    handle.close();
+    await flushSSE();
+    await flushSSE();
+    expect(fetcher.mock.calls.length).toBeLessThanOrEqual(1);
   });
 });

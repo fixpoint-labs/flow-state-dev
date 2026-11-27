@@ -8,15 +8,18 @@
  * | a session, user or org state write in a run | `emitWrap`'s `onCommitted` (`createExecutionContext.ts`) | the run's request |
  * | a resource write, create, delete or content write in a run | `makeResourceChangeHandler` (same file) | the run's request |
  * | a collection create, content update or delete from a browser | the resource routes (`resource-routes.ts`) | none |
+ * | a session's state seeded outside a run | `fsdev run --seed-session` on an existing session | none |
  *
  * Each runs after its write lands, beside the `state_change` or
  * `resource_change` item the writer's own stream gets, and whether or not a
- * stream follows the write. A notice says only that the scope changed, and
- * which request changed it; the view that sent that request skips it, since
+ * stream follows the write. A notice says only that the scope changed, which
+ * request changed it, and, for a collection entry it may name, the entry's
+ * storage key (`entryNotice`); the view that sent that request skips it, since
  * its own stream already carried the change. Request and block-instance
  * state publish nothing: no screen watches them.
  */
 import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";
@@ -30,6 +33,9 @@ export type ScopeChange = {
   kind: Extract<ChangeKind, "state" | "resource">;
   /** The resource's storage path, for a `resource` change. */
   resource?: string;
+  // FIX-2625.
+  /** A collection entry's storage key, beside the path that names it (`entryNotice`). Never without `resource`. */
+  ids?: string[];
   /** The request that made the change, when one did. */
   requestId?: string;
 };
@@ -45,10 +51,86 @@ export type ScopeChange = {
  * its notice names no path. Every view of the scope wakes and reads again
  * through its own checks: the owner sees the change, and nobody else learns
  * the key. A single resource (`collection` undefined) is the same for every
- * caller, so its key is named.
+ * caller, so its key is named. A user-scope entry names its collection's
+ * root instead (the static prefix of its pattern, `""` naming nothing): the
+ * user topic spans the user's orgs, and their user cells don't, so the key
+ * stays off it, while the root is the same in every org and lets a screen of
+ * another resource skip the notice.
  */
-export function noticePathFor(collection: object | undefined, storageKey: string): string | undefined {
-  return collection === undefined || ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
+export function noticePathFor(
+  collection: object | undefined,
+  storageKey: string,
+  scope?: TopicScope
+): string | undefined {
+  if (collection === undefined) return storageKey;
+  // A user's topic is theirs in every org, while their user cell is per org:
+  // an entry's key written in one org would reach their pages in the others.
+  // Its collection's root is the same in every org (FIX-2625).
+  if (scope === "user") {
+    const root = getPatternPrefix((collection as { pattern: string }).pattern);
+    return root === "" ? undefined : root;
+  }
+  return ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
+}
+
+// FIX-2625.
+/**
+ * A collection entry's notice: narrowed to its path and naming its storage key
+ * when the path may be named (`noticePathFor`); narrowed to its collection's
+ * root and naming nothing on the user topic; else bare, naming nothing. A
+ * notice that names no entry's path names no id (epic ER-10).
+ */
+export function entryNotice(collection: object, storageKey: string, scope?: TopicScope): { resource?: string; ids?: string[] } {
+  const resource = noticePathFor(collection, storageKey, scope);
+  if (resource === undefined) return {};
+  return resource === storageKey ? { resource, ids: [resource] } : { resource };
+}
+
+// FIX-2623 D1.
+/**
+ * A session resource write, as every writer publishes it: a run, the
+ * resource routes, any other. The one place the lineage rule for publication
+ * lives, matching the read side's (`createViewDependencies`).
+ *
+ * - `notice`: the session topic notice, narrowed to `resource` when the row
+ *   may be named (`noticePathFor`), or `undefined` for none (a run whose
+ *   resource no view of the session reads, on a host with no view).
+ * - `lineageShared`: whether the row's storage key is lineage-shared, by the
+ *   ownership rule write routing uses (`sessionKeySharesLineage` or the
+ *   session buckets). When it is and the host has a view, the write also
+ *   publishes on the session owner's user topic, bare: every lineage member
+ *   belongs to that one user (enforced where a lineage is inherited, by the
+ *   dispatch seed and `evaluateAdoption`).
+ * - `ownerUserId`: the owner of the session record the writer holds, never a
+ *   caller-supplied or cached value.
+ */
+export function publishSessionResourceChange(
+  bus: ChangeBus | undefined,
+  change: {
+    sessionId: string;
+    ownerUserId: string;
+    tenantId: string | undefined;
+    notice: { resource?: string; ids?: string[] } | undefined;
+    lineageShared: boolean;
+    hostHasViews: boolean;
+    requestId?: string;
+  }
+): void {
+  const origin = change.requestId !== undefined ? { requestId: change.requestId } : {};
+  if (change.lineageShared && change.hostHasViews) {
+    publishScopeChange(bus, { scope: "user", id: change.ownerUserId, tenantId: change.tenantId, kind: "resource", ...origin });
+  }
+  if (change.notice !== undefined) {
+    publishScopeChange(bus, {
+      scope: "session",
+      id: change.sessionId,
+      tenantId: change.tenantId,
+      kind: "resource",
+      ...(change.notice.resource !== undefined ? { resource: change.notice.resource } : {}),
+      ...(change.notice.resource !== undefined && change.notice.ids !== undefined ? { ids: change.notice.ids } : {}),
+      ...origin
+    });
+  }
 }
 
 /**
@@ -66,7 +148,9 @@ export function publishScopeChange(bus: ChangeBus | undefined, change: ScopeChan
         ...(change.resource !== undefined ? { resource: change.resource } : {})
       },
       kind: change.kind,
-      ...(change.requestId !== undefined ? { origin: { requestId: change.requestId } } : {})
+      ...(change.requestId !== undefined ? { origin: { requestId: change.requestId } } : {}),
+      // A notice with no path names no id (epic ER-10).
+      ...(change.resource !== undefined && change.ids !== undefined ? { ids: change.ids } : {})
     }
   ]);
 }

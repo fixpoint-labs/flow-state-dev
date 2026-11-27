@@ -24,9 +24,19 @@ import { z } from "zod";
 import { defineCapability } from "../capability";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
-import { defineResource } from "../types/resource";
-import type { BlockContext, BlockDefinition } from "../types/block";
+import type { DefinedResource, ResourceRef } from "../types/resource";
+import type { BlockDefinition } from "../types/block";
 import type { HistoryTurn, LLMMessage } from "../types/scope";
+import { MAX_READING_CHARS } from "./consult-session-history";
+import {
+  HISTORY_SUMMARY_DEFAULT,
+  HISTORY_SUMMARY_NAME,
+  historySummaryResource,
+  historySummaryResourceNamed,
+  type HistorySummaryState,
+} from "./history-summary-resource";
+
+export { historySummaryStateSchema, type HistorySummaryState } from "./history-summary-resource";
 
 /** What `summarize` is handed on each fold. */
 export type HistorySummaryInput = {
@@ -36,36 +46,64 @@ export type HistorySummaryInput = {
   turns: LLMMessage[];
 };
 
-/** The session resource a history summary keeps. */
-export const historySummaryStateSchema = z.object({
-  /** The running summary. */
-  summary: z.string().nullable().default(null),
-  /** The high-water mark: the newest turn folded, or moved past and kept pending. */
-  throughRequestId: z.string().nullable().default(null),
-  throughStartedAtMs: z.number().nullable().default(null),
-  /** The oldest turn after the mark at the last fold. Gone unfolded later means turns were lost. */
-  nextRequestId: z.string().nullable().default(null),
-  /**
-   * The oldest settled turn after the mark at the last fold. Tracked apart
-   * from `nextRequestId`, which an older waiting turn can hold for as long as
-   * it waits while settled turns behind it leave the window.
-   */
-  nextSettledRequestId: z.string().nullable().default(null),
-  /** Turns behind the mark that had not settled, by request id; folded once they do. */
-  pending: z.array(z.string()).default([]),
-  /** A turn left the window unsummarized. Stays set: the summary has a hole. */
-  gap: z.boolean().default(false),
-  /** Every turn before the mark is in the summary: no gap and nothing pending. */
-  complete: z.boolean().default(true),
-  /** Folds written. */
-  folds: z.number().int().default(0),
-  /** Folds tried, written or failed. A turn out of view with none tried: the fold step is missing. */
-  attempts: z.number().int().default(0),
-});
+/** Ends a summary cut to the cap, so the model and the next fold know text is missing. */
+const TRUNCATED_MARKER = "\n[earlier summary truncated]";
 
-export type HistorySummaryState = z.infer<typeof historySummaryStateSchema>;
+/** Opens the key points kept under a summary. */
+const KEY_POINTS_HEADER = "\n\nKey points:\n";
 
-const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.parse({});
+/** Ends key points cut to the cap. */
+const KEY_POINTS_CUT = "- [later key points truncated]";
+
+/** Text no longer than `limit`; a longer one keeps its start and ends with the marker. */
+function capSummary(summary: string, limit = MAX_READING_CHARS): string {
+  return summary.length <= limit ? summary : `${summary.slice(0, limit - TRUNCATED_MARKER.length)}${TRUNCATED_MARKER}`;
+}
+
+/**
+ * The summary to store: the summarizer's prose, then its key points, within
+ * {@link MAX_READING_CHARS}. The next fold reads only what is stored, and a
+ * fact can live in a key point alone, so the key points take their space first
+ * and the prose is cut to what is left. Key points that alone pass the cap
+ * keep the earliest whole ones that fit, then a line that marks the cut; the
+ * prose is then cut to its marker.
+ */
+function storedSummary(summary: string, keyPoints: string[] | undefined): string {
+  if (keyPoints === undefined || keyPoints.length === 0) return capSummary(summary);
+  const lines = keyPoints.map((point) => `- ${point}`);
+  let block = lines.join("\n");
+  // Whole when it fits: space for a marker is held back only once something is cut.
+  const whole = `${summary}${KEY_POINTS_HEADER}${block}`;
+  if (whole.length <= MAX_READING_CHARS) return whole;
+  const budget = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
+  if (block.length > budget) {
+    const kept: string[] = [];
+    let used = KEY_POINTS_CUT.length;
+    for (const line of lines) {
+      if (used + line.length + 1 > budget) break;
+      kept.push(line);
+      used += line.length + 1;
+    }
+    block = [...kept, KEY_POINTS_CUT].join("\n");
+  }
+  const keyPointsBlock = `${KEY_POINTS_HEADER}${block}`;
+  return `${capSummary(summary, MAX_READING_CHARS - keyPointsBlock.length)}${keyPointsBlock}`;
+}
+
+/** Any spelling of the wrapper's tag, opening or closing, that a model could read as the tag itself. */
+const WRAPPER_TAG = /<(\s*\/?\s*earlier-conversation)/gi;
+
+/**
+ * The summary as the model reads it. The summary is model-written from text
+ * that includes the user's, so a wrapper tag inside it is escaped (`&lt;`):
+ * nothing in it can close the wrapper early and read as outside it. Capped
+ * again, before escaping, for a summary stored before writes were capped; one
+ * stored since is within the cap and reads whole, key points included.
+ */
+function wrapSummary(summary: string): string {
+  // A no-op for a summary capped when stored; it caps one stored before writes were capped.
+  return `<earlier-conversation>\n${capSummary(summary).replace(WRAPPER_TAG, "&lt;$1")}\n</earlier-conversation>`;
+}
 
 /** What the fold's first step decided: the turns to fold and where the mark lands. */
 type FoldPlan = {
@@ -109,25 +147,9 @@ export interface HistorySummaryOptions {
  * ```
  */
 export function historySummary(options: HistorySummaryOptions) {
-  const name = options.name ?? "historySummary";
-
-  // One per conversation, however many generators install the capability.
-  // Public, so a screen can label its divider "earlier turns summarized".
-  const resource = defineResource({
-    ref: name,
-    scope: "session",
-    stateSchema: historySummaryStateSchema,
-    default: HISTORY_SUMMARY_DEFAULT,
-    writable: true,
-    client: { expose: ["throughRequestId", "complete", "folds"] },
-  });
-  const resources = { [name]: resource };
-  const stateOf = (ctx: BlockContext): HistorySummaryState =>
-    ({ ...HISTORY_SUMMARY_DEFAULT, ...((ctx.resources as any)[name]?.state ?? {}) }) as HistorySummaryState;
-  const update = (ctx: BlockContext, updater: (state: HistorySummaryState) => HistorySummaryState) =>
-    (ctx.resources as any)[name].updateState((state: HistorySummaryState) =>
-      updater({ ...HISTORY_SUMMARY_DEFAULT, ...state })
-    ) as Promise<void>;
+  const name = options.name ?? HISTORY_SUMMARY_NAME;
+  const resource = name === HISTORY_SUMMARY_NAME ? historySummaryResource : historySummaryResourceNamed(name);
+  const resources: Record<string, DefinedResource<HistorySummaryState>> = { [name]: resource };
 
   const capability = defineCapability({
     name,
@@ -135,25 +157,23 @@ export function historySummary(options: HistorySummaryOptions) {
     presets: {
       default: ["context", "history"],
       context: {
-        context: (_input: unknown, ctx: any) => {
-          const state = stateOf(ctx);
-          const window = ctx.session?.window;
+        context: (_input, ctx) => {
+          const { state } = ctx.resources[name] as ResourceRef<HistorySummaryState>;
+          const window = ctx.session.window;
           if (window?.startRequestId !== undefined && state.attempts === 0) {
             throw new Error(
               `historySummary "${name}": turns have left the history window and no fold has run. ` +
                 `Run its fold step before this generator (\`.tap(${name}.fold)\`, or workforce's \`beforeAnswer\`).`
             );
           }
-          return state.summary === null
-            ? null
-            : `<earlier-conversation>\n${state.summary}\n</earlier-conversation>`;
+          return state.summary === null ? null : wrapSummary(state.summary);
         },
       },
       // The summary stands for every turn up to its mark.
       history: {
-        history: (ctx: BlockContext) => {
-          const through = stateOf(ctx).throughRequestId;
-          return through === null ? {} : { afterRequestId: through };
+        history: (ctx) => {
+          const { throughRequestId } = (ctx.resources[name] as ResourceRef<HistorySummaryState>).state;
+          return throughRequestId === null ? {} : { afterRequestId: throughRequestId };
         },
       },
     },
@@ -166,7 +186,7 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (_input, ctx): Promise<FoldPlan | null> => {
       const window = ctx.session.window;
       if (window === undefined) return null;
-      const state = stateOf(ctx);
+      const { state } = ctx.resources[name];
       const quarter = Math.max(1, Math.floor(window.turns / 4));
 
       // Turns that left open earlier: fold the ones that have settled since.
@@ -263,15 +283,14 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (output, ctx) => {
       // Core's `summarizer` can put a fact in `keyPoints` alone: keep them
       // with the summary, so the next fold and the model both read them.
-      const summary =
-        output.keyPoints !== undefined && output.keyPoints.length > 0
-          ? `${output.summary}\n\nKey points:\n${output.keyPoints.map((point) => `- ${point}`).join("\n")}`
-          : output.summary;
+      const summary = storedSummary(output.summary, output.keyPoints);
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
-      await update(ctx, (state) =>
+      await ctx.resources[name].updateState((stored) => {
+        // A retry can load a record written before all these fields had defaults.
+        const state = { ...HISTORY_SUMMARY_DEFAULT, ...stored };
         // Another turn of this conversation folded first: keep its write.
-        state.folds !== decided.expectedFolds
+        return state.folds !== decided.expectedFolds
           ? state
           : {
               ...state,
@@ -279,8 +298,8 @@ export function historySummary(options: HistorySummaryOptions) {
               summary,
               folds: state.folds + 1,
               attempts: state.attempts + 1,
-            }
-      );
+            };
+      });
     },
   });
 
@@ -299,8 +318,9 @@ export function historySummary(options: HistorySummaryOptions) {
       // that may never succeed: the oldest unfolded turn, so its leaving is
       // seen, and any turns already lost.
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
-      await update(ctx, (state) =>
-        decided == null || state.folds !== decided.expectedFolds
+      await ctx.resources[name].updateState((stored) => {
+        const state = { ...HISTORY_SUMMARY_DEFAULT, ...stored };
+        return decided == null || state.folds !== decided.expectedFolds
           ? { ...state, attempts: state.attempts + 1 }
           : {
               ...state,
@@ -309,8 +329,8 @@ export function historySummary(options: HistorySummaryOptions) {
               nextSettledRequestId: decided.oldestUnfoldedSettled,
               gap: decided.next.gap,
               complete: !decided.next.gap && state.pending.length === 0,
-            }
-      );
+            };
+      });
     },
   });
 

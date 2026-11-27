@@ -1,11 +1,12 @@
 # claude-code-style-lab › it reads project files
 
-**Issue:** FIX-2285 (epic FIX-2152); the tool-line signals FIX-2393 (epic FIX-2369)
+**Issue:** FIX-2285 (epic FIX-2152); the tool-line signals FIX-2393 (epic FIX-2369); rewritten
+for repositories by FIX-2628 (epic FIX-2618)
 
-**Outcome:** In the Claude Code-style lab, a member asks the main session a question about the
-project's code, and gets the answer from the project's files in the same turn. No task is filed
-and no coding run starts. A session that may not see the project gets the refusal a coding run
-there would get, and no value.
+**Outcome:** In the Claude Code-style lab, a person asks the main session a question about the
+code of the repository the session works in, and gets the answer from the repository's files in
+the same turn. No task is filed and no coding run starts. A session with no repository gets the
+refusal a coding run there would get, and no value.
 
 **Input:** `fixtures/input.json`: a project name, the path of the one file that holds the value,
 that file's line with a `{value}` slot, some decoy files, the question, and a follow-up. The value
@@ -14,44 +15,38 @@ file sits below what a 2-level tree shows. The question names no path. It is **h
 repository, path and value pass a correct lab.
 
 **Signal:** `fsdev dev --config labs/claude-code-style/fsdev.config.mts`, driven over the lab's
-HTTP API with a fresh data folder and a fresh `file://` repository, created as a shared project
-with a second user in its members.
+HTTP API with a fresh data folder and a fresh `file://` repository.
 
-- **Leg 1**, as the project's member, in a `desk.main` session set to the project with
-  `setWorkProject`, asking the question and then the follow-up:
+- **Leg 1**, in a `desk.main` session opened on the repository (the server writes its
+  `repository` with workforce's `setSessionFields`, as the lab's open does), asking the question
+  and then the follow-up:
   - *value named*: the first reply contains the value.
   - *0 tasks*: `listTasks` shows no task on the session's board, nor on any other `agent` session
     of the user.
-  - *no harness*: no `harness-thread` session exists.
+  - *no harness*: no `coder` session exists.
   - *one clone, no place*: `<data>/runs/.clones/` holds one clone, and `<data>/runs/` holds no
     place directory.
-- **Leg 2**, a `desk.main` session with no project, asking the question:
+- **Leg 2**, a `desk.main` session with no repository, asking the question:
   - *no value*: the reply doesn't contain the value.
-  - *read refused*: the turn holds a read tool call whose result is refused `no-project`.
-- **Leg 3**, the second user, who set the project as a member and was then taken off its members
-  (the stored row's `members` edited in the lab's SQLite file, with the server stopped, then
-  restarted), asking the question in that session:
-  - *no value*: the reply doesn't contain the value.
-  - *read refused*: the turn holds a read tool call whose result is refused `not-a-member`.
+  - *read refused*: the turn holds a read tool call whose result is refused `no-repository`.
 
-- **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
+- **Tool lines**, graded on the lab's own entries (its thread's `entriesOf` over the turn's
   items, the lines the thread draws):
   - *lines name what was read* (leg 1): every project read's line names what it read: a read its
     file (the path, or the tail a long path is shortened to, `…/billing/ledger/codes.ts`), a
     search its pattern, a listing its pattern. A turn may find the value by a search alone, so
     the value's own file is noted when a line names it, not required.
-  - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
+  - *refusal reads failed* (leg 2): a tool line of the turn says `(failed)` and is a failed
     step. A turn with no read call fails it, as it fails *read refused*.
 
 Each leg passes in every one of `GOAL_RUNS` (3) fresh runs.
 
 **Anti-game:** Leg 1 asserts nothing on the tool calls or their results: only the reply, the boards
 through `listTasks`, the sessions and the server's disk. The value is new each run and lives only in
-one file's body, so only a read can produce it. Legs 2 and 3 read the tool result too, because a
-refusal the model never asked for proves nothing: a leg 2 or 3 with no read call FAILs. It doesn't
-pass on the model declining. Leg 3 is a smoke check. The package test that drives `runProjectOf` with
-a row the user has left is the proof (`packages/workforce/test/project-source.test.ts`), and
-`no-gate` shows the read goes through the gate.
+one file's body, so only a read can produce it. Leg 2 reads the tool result too, because a
+refusal the model never asked for proves nothing: a leg 2 with no read call FAILs. It doesn't
+pass on the model declining. `first-repository` shows the read goes through the lab's run source.
+A non-member leg is gone: a repository has no members (FIX-2628 D1).
 
 **Model:** real: `openai/gpt-5.4` (the lab's default), through the AI Gateway. No coding harness
 runs, so no `ANTHROPIC_API_KEY` is needed.
@@ -64,9 +59,8 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 - `GOAL_CONTROL=old-lines`: the tool lines are graded as the lab's old `lib/tool-line.ts` drew
   them (read from the last commit that had it): one fixed phrase per tool, never failed. *lines
   name what was read* and *refusal reads failed* must FAIL.
-- `GOAL_CONTROL=no-gate`: the run source's membership check on the project path
-  (`mayWorkOn` in `packages/workforce/src/projects/run-project.ts`) is patched out as the server
-  loads it, and the run fails if the patch never reached the code. Leg 3 must FAIL on *no value*.
+- `GOAL_CONTROL=first-repository`: the lab's run source answers the first repository it lists
+  (the one the lab is started in), whatever the session's. Leg 2 must FAIL on *read refused*.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -79,3 +73,5 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `no-gate`) | Leg 3 *no value* and *read refused*, all 3 runs |
 | 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | PASS | FIX-2393 tool-line signals. 3 of 3; leg 1 2-3 read calls, every line named what it read (runs 1-2 read the value's file, run 3 found it by search alone); legs 2-3 each refused and read "(failed)" |
 | 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | FAIL (control `old-lines`) | leg 1 *lines name what was read* ("Searched the project", "Listed the project's files"); legs 2-3 *refusal reads failed* (no line said failed) |
+| 2026-11-15 | FIX-2628 PR 2 | openai/gpt-5.4 | PASS | Rewritten for repositories, `GOAL_RUNS=1`. Leg 1 2 read calls, 0 tasks, 1 clone, 0 places; leg 2 refused `no-repository`, read "(failed)" |
+| 2026-11-15 | FIX-2628 PR 2 | openai/gpt-5.4 | FAIL (control `first-repository`) | `GOAL_RUNS=1`. Leg 2 *read refused* and *refusal reads failed*: its reads searched the repository the lab started in; leg 1 failed too (value not named, no clone) |

@@ -25,6 +25,7 @@ import {
 } from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import type { StoreRegistry } from "../src";
+import { sweepAsStale } from "./sweep-as-stale";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const FLOW_ID = "request-end-stream";
@@ -199,8 +200,6 @@ describe.each([
       kind: "request-end-stream",
       actions: {
         run: {
-          inputSchema: z.any(),
-          // The first run hangs, as a run whose process died; a continuation finishes.
           block: handler({
             name: "hang-once",
             inputSchema: z.any(),
@@ -224,7 +223,7 @@ describe.each([
         [record] = await stores.request.list({ sessionId: "s1" });
       }
       // Its process died: the sweep stamps it interrupted, and nothing writes its event.
-      await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+      await sweepAsStale(stores);
       expect((await stores.request.get(record!.id))?.status).toBe("interrupted");
       const lastReal = Math.max(...(await stores.request.getEvents(record!.id)).map((event) => event.sequence_number ?? 0));
 
@@ -257,7 +256,7 @@ describe.each([
       persist(requestId, events.filter((event) => event.type !== "request.completed"));
     const flow = defineFlow({
       kind: "request-end-stream",
-      actions: { run: { inputSchema: z.any(), block: handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }) } }
+      actions: { run: handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }) }
     })({ id: FLOW_ID });
     const router = hostFor(stores, flow as never);
 

@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 414" role="img" aria-label="Q3, open: does the working line leave the epic and ship as a quick fix, with no spec. Recommended: a quick fix, which needs only a ticket and a pull request. Instead of: it stays a child with a spec. It comes down to the first row: the fix is about five lines beside a sticky pattern the lab already has, so a spec and its review cost more than the change. The price is the second row: the pull request review is then the only gate, and the rule that the line reads the thread's own state is checked there and at the closure. Both options still have the closure's leg b look for the line in view. Locks in a two-issue set: FIX-2595 leaves its parent and keeps blocking the closure. Flips if the fix needs a new read of turn state."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="414"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q3 · OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does the working line leave this epic and ship as a quick fix?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">A quick fix, no spec</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Stays a child, with a spec</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT FIVE LINES</text>
+    <text class="t-lbl" x="32" y="169">NEED</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">A ticket and a pull request</text>
+    <text class="t-s" x="248" y="180">no spec, no spec review</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">A spec and a review for five lines</text>
+    <text class="t-s" x="612" y="180">the fix sits beside a sticky pattern</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="220">THE GATE ON</text>
+    <text class="t-lbl" x="32" y="233">THE CHANGE</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">The pull request is the only gate</text>
+    <text class="t-s" x="248" y="242">ER-8 is checked there and at the closure</text>
+    <text class="mark plus" x="592" y="225">+</text>
+    <text class="t-b" x="612" y="224">A spec merge before any code</text>
+    <text class="t-s" x="612" y="242">ER-8 is checked at the spec review</text>
+    <line class="row" x1="16" y1="250" x2="924" y2="250"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="278">THE CLOSURE</text>
+    <text class="mark tie" x="228" y="283">=</text>
+    <text class="t-b" x="248" y="282">Leg b still looks for the line</text>
+    <text class="t-s" x="248" y="300">FIX-2595 keeps blocking it</text>
+    <text class="mark tie" x="592" y="283">=</text>
+    <text class="t-b" x="612" y="282">Leg b still looks for the line</text>
+    <text class="t-s" x="612" y="300">the same</text>
+    <line class="row" x1="16" y1="308" x2="924" y2="308"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="324" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="345">LOCKS IN</text>
+    <text class="t-b" x="32" y="365">The set is two issues and a closure</text>
+    <text class="t-s" x="32" y="383">FIX-2595 leaves its parent; a short amendment says so</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="324" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="345">FLIPS IF</text>
+    <text class="t-b" x="494" y="365">The fix needs a new read of turn state</text>
+    <text class="t-s" x="494" y="383">then it is a child with a spec again</text>
+  </g>
+</svg>

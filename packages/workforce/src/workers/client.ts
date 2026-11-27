@@ -1,46 +1,53 @@
 /**
- * `createWorkforceClient`: find or start a session with a worker, or list a
- * user's conversations with one, from an app.
+ * `createWorkforceClient`: find or start a session with a worker from an app.
+ * A user's conversations with a worker are the roster flow's worker sessions
+ * view (`workerSessionsViewRef`), which the server assembles and keeps live.
  *
  * Built on the one client (`createClient`), with no endpoint of its own. The
- * user's roster is read through a session of the roster flow (one per user),
- * which declares the two worker collections; a worker's sessions are listed by
- * their readonly `workerId` and created with it as initial state, which the
- * worker flow's create check confirms.
- *
- * `watchRoster` follows the roster through the one client's `subscribe`: a
- * notice under either worker collection's path on the user's topic reads it
- * again, and the client's fallback timer reads it where push can miss one.
+ * user's roster is the roster flow's roster view, read at user scope with no
+ * session. `watchRoster` follows it through the client's shared view watch
+ * (`watchView`, on `client.live`): the view's answer names the topics it read.
+ * A hire, fork, edit, reset or fire is a send addressed to the user's workers
+ * collection, which the roster flow writes (`runBy`), and the organization a
+ * worker's conversation is derived under is the roster flow's identity read. A
+ * workstream's entry is read by scope with no session. No roster session is
+ * found or made. A worker's sessions are listed by their readonly `workerId`
+ * and created with it as initial state, which the worker flow's create check
+ * confirms.
  *
  * Isomorphic: no Node built-ins, so the browser entry exports it too.
  */
 import {
   ClientHttpError,
-  readEveryCollectionPage,
-  topic,
+  ResourceWriteError,
   type Client,
   type SessionSummary,
-  type WireNotice
+  type UploadRequest
 } from "@flow-state-dev/client";
 import {
-  CRITERIA_STATE_KEYS,
+  byRecent,
+  carriesOnly,
   criteriaState,
   deriveWorkerSessionId,
   type WorkerSessionCriteria
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
-import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { WORKSTREAMS_PATTERN, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import {
   FILING_SESSION_STATE_KEY,
   ROSTER_FLOW,
+  SET_SESSION_FIELDS_ACTION,
   SET_WORK_PROJECT_ACTION,
-  STANDARD_WORKERS_PATTERN,
-  STANDARD_WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
-  WORKERS_PREFIX,
-  WORKERS_RESOURCE
+  WORKERS_PATTERN
 } from "./keys";
+import { RESPOND_ACTION } from "../worker-door";
+import { TURN_ACTIONS } from "./turn-actions";
+import { watchView } from "@flow-state-dev/client/internal";
+import { rosterView } from "./roster-view-ref";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
+import { ADD_DELEGATE, REMOVE_DELEGATE } from "../delegates/delegate-keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
 
@@ -49,7 +56,7 @@ import type { SetWorkProjectOutput } from "../projects/work-project";
  * Its user is the one whose roster and sessions are read: with
  * authentication, the signed-in user.
  */
-export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "subscribe">;
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resource" | "view" | "subscribe">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -61,25 +68,27 @@ export type RosterEntry = {
   standard: boolean;
   /** What it is for, or `null`. */
   description: string | null;
-  /** Its display name, or `null` when it has none (a view shows its id). Only a standard worker has one. */
+  /**
+   * Its display name, or `null` when it has none (a view shows its id): the
+   * user's own row's `name`, else a standard worker's file's `name:`. Display
+   * only; the id stays its address.
+   */
   name: string | null;
   /** Its team's display name, or `null` when the team has none or the worker has no team. */
   teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
   /**
+   * A standard worker the user has edited: the row read is their own copy of
+   * it, under its id, until {@link WorkforceClient.reset}. `false` otherwise.
+   */
+  edited: boolean;
+  /**
    * The settings its flow shows (`showSettings` where the app registers the
    * flow), with the worker's values: a coding worker's `harness`, say. Only
    * the keys the worker sets; `{}` when its flow shows none.
    */
   settings: Readonly<Record<string, unknown>>;
-};
-
-/** One of a user's conversations with a worker, as {@link WorkforceClient.listWorkerSessions} returns it. */
-export type WorkerSessionEntry = {
-  session: SessionSummary;
-  /** True for the conversation `findWorkerSession({ worker })` returns. */
-  isDefault: boolean;
 };
 
 /**
@@ -89,6 +98,8 @@ export type WorkerSessionEntry = {
 export type HireWorkerInput = {
   /** The new worker's id: one path segment, not a standard worker's. */
   id: string;
+  /** The name a user reads it by. Omitted, none: a view shows its id. */
+  name?: string;
   /** The worker flow it runs on. Omitted, `agent`. */
   flow?: string;
   description?: string;
@@ -102,16 +113,32 @@ export type HireWorkerInput = {
 /** A change to one of the user's own workers, as {@link WorkforceClient.edit} takes it: each field given replaces the stored one. */
 export type EditWorkerInput = {
   id: string;
+  /** A new display name; `null` clears it. The id never changes. */
+  name?: string | null;
   flow?: string;
   description?: string | null;
   instructions?: string | null;
   skills?: string[];
   /** Replaces the stored settings whole. */
   settings?: Record<string, unknown>;
+  /**
+   * Sets the settings it names over the stored ones and keeps the rest: what an
+   * app that sees only its `showSettings` sends to change one. Not with `settings`.
+   */
+  settingsPatch?: Record<string, unknown>;
 };
 
 /** A user's roster, and their sessions with each worker. */
 export interface WorkforceClient {
+  // FIX-2775.
+  /**
+   * The organization the server acts in for this user under the roster
+   * flow's sign-in: the verified principal's, never one the caller names, and
+   * the one a worker's conversation is derived under. Read once per client,
+   * with no session; a failed read is not kept, so the next call asks again.
+   * Rejects with the server's `ClientHttpError`: a 401 or 403 is a refusal.
+   */
+  organization(): Promise<string>;
   /**
    * The user's roster: their own workers and every standard worker, by id,
    * each naming its flow. Read again after any turn: a turn that hires, forks
@@ -121,14 +148,14 @@ export interface WorkforceClient {
   /**
    * Follow the user's roster: `onRoster` gets it once read, and again each
    * time a hire, fork, edit or fire, from any tab or any worker's turn,
-   * changes it. Only a change is reported. Reads ride the client's
-   * `subscribe` on the user's topic: a notice under either worker
-   * collection, or one naming no path, reads again, as do a connect, a
-   * reconnect and a `resync`; where push can miss a change the client's
-   * timer reads every three seconds. One read runs at a time. A failed read
-   * goes to `onError`, and the next read that lands is reported even if
-   * the roster didn't change. Returns the stop function; nothing is
-   * reported after it.
+   * changes it. Only a change is reported. It watches the roster view: each
+   * answer names the topics its run read, and a notice on one reads again,
+   * as do a connect, a reconnect and a `resync`; where push can miss a change
+   * the client's timer reads every three seconds. Every watcher of the roster
+   * in one client shares one read. A failed read goes to `onError`
+   * and is tried again on its own (1 s, doubling to 30 s); the next read that
+   * lands is reported even if the roster didn't change. Returns the stop
+   * function; nothing is reported after it.
    */
   watchRoster(onRoster: (entries: RosterEntry[]) => void, options?: { onError?: (error: unknown) => void }): () => void;
   /**
@@ -158,15 +185,6 @@ export interface WorkforceClient {
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
   /**
-   * The user's top-level sessions with `worker` on its current flow, opened
-   * at any id. The default (`findWorkerSession({ worker })`) comes first and
-   * is marked; the rest follow by latest activity. A task's session, a
-   * delegate session, a workstream lead's session and the project
-   * coordinator's session for one project are left out. Never creates the
-   * default. Throws when the worker isn't on the user's roster.
-   */
-  listWorkerSessions(worker: string): Promise<WorkerSessionEntry[]>;
-  /**
    * Read or edit the user's standing rules with `worker`, in that user's
    * session with the worker. The worker's flow must declare the rules action
    * (its inventory row says `rules: true`). A refused write rejects with the
@@ -190,6 +208,83 @@ export interface WorkforceClient {
     options?: { sessionId?: string }
   ): Promise<SetWorkProjectOutput>;
   /**
+   * Open a new session with `worker` on its flow, at a fresh id: another
+   * conversation beside the user's others, where {@link ensureWorkerSession}
+   * finds or makes the one at the derived address. With `fields`, the server
+   * writes the app's session fields (the installation's `sessionFields`) once,
+   * through the worker flow's `setSessionFields`, before this resolves; a
+   * refused field rejects, naming it, and the session stays without it.
+   * Throws when the worker isn't on the user's roster.
+   */
+  startSession(worker: string, options?: { fields?: Record<string, unknown> }): Promise<SessionSummary>;
+  /**
+   * Send `message` to the user's session `sessionId` through the worker
+   * flow's door (`respond`), with any uploaded `attachments`. The client sets
+   * the send's request id before anything is awaited, so it is known before
+   * the server answers and {@link stopTurns} can tell a line sent after a stop
+   * began. Resolves once the server took the send, to `{ requestId }`: what a
+   * screen matches the line and its turn by, or stops it by ({@link stopRun}). With
+   * `{ stream: true }` it resolves to the send's streamed `Response` instead,
+   * for a screen showing the answer as it is written (a session feed's
+   * `followResponse`), and rejects, naming the status, when the server
+   * refused it.
+   *
+   * `taskId`: the task the line is sent from. It goes only to a door that
+   * takes one (the worker inventory's `doorTakesTask` for the session's flow),
+   * which stamps it on the line and its reply; a strict door that takes none
+   * would refuse the key, so it is left out there, and where the inventory
+   * can't be read.
+   */
+  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[]; taskId?: string }): Promise<{ requestId: string }>;
+  send(
+    sessionId: string,
+    message: string,
+    options: { attachments?: readonly FileContent[]; taskId?: string; stream: true }
+  ): Promise<Response>;
+  // FIX-2776 D3.
+  /**
+   * Stop the one run `requestId` of session `sessionId`, through the flow the
+   * session runs on: the abort {@link stopTurns} makes for each turn, by id.
+   * A run that already ended is no failure. Resolves once the server took the
+   * abort; the run's own status says when it stopped. Rejects when an answer
+   * resumed the run before the stop reached it, so it still runs: stop it again.
+   */
+  stopRun(sessionId: string, requestId: string): Promise<void>;
+  // FIX-2776 D3.
+  /**
+   * Upload one file for a line to `worker`, through the worker's flow, whose
+   * sign-in a send to it runs: the reference a send's `attachments` take. A
+   * first line, with no session yet, uploads this way too. Throws when the
+   * worker isn't on the user's roster.
+   */
+  upload(worker: string, request: UploadRequest): Promise<FileContent>;
+  // FIX-2776 D3.
+  /**
+   * Add `worker` to the delegates of the user's conversation `sessionId`,
+   * with an optional `note` on what it's good at, through the conversation's
+   * `addDelegate` action. Rejects with the coordinator's reason, changing
+   * nothing, for a worker that isn't on the roster, takes no task, or is
+   * already there.
+   */
+  addDelegate(sessionId: string, worker: string, note?: string): Promise<void>;
+  // FIX-2776 D3.
+  /** Take `worker` off the conversation's delegates, through its `removeDelegate` action. */
+  removeDelegate(sessionId: string, worker: string): Promise<void>;
+  /**
+   * Stop every turn of session `sessionId` running when it reads them (its
+   * in-progress requests of `TURN_ACTIONS`, oldest first), each turn this
+   * client sent before the call among them. It leaves each turn this client
+   * sent after the call began: a follow-up sent straight after Stop runs on.
+   * It reads the running turns once, so another client's turn which starts
+   * after the read may run. A turn that ended meanwhile is no failure; one
+   * that went on past the stop (an answer resumed it first) rejects, asking
+   * for another stop. Resolves to the ids of the turns it stopped, for a
+   * screen that shows the stop until each has ended.
+   */
+  stopTurns(sessionId: string): Promise<string[]>;
+  /** Run the turn `requestId` of session `sessionId` again, through its retry route. */
+  retryTurn(sessionId: string, requestId: string): Promise<void>;
+  /**
    * Hire a worker of the user's own, through the roster flow's `hire`. It is
    * on {@link roster} at once, and its first turn runs on its row: nothing is
    * registered and nothing restarts. Rejects, writing nothing, for a standard
@@ -205,9 +300,18 @@ export interface WorkforceClient {
   /**
    * Change one of the user's own workers, through the roster flow's `edit`.
    * The worker's next turn reads the change; a turn already running keeps
-   * what it started with. Rejects for a standard worker: fork it first.
+   * what it started with. On a standard worker, the first edit copies it to
+   * the user's own roster under the same id, and the change lands on that
+   * copy: its conversations, tasks and messages stay where they are. It
+   * keeps its file's flow, since board tasks reach it there.
    */
   edit(input: EditWorkerInput): Promise<{ id: string; flow: string }>;
+  /**
+   * Delete the user's copy of a standard worker, through the roster flow's
+   * `reset`, so its next turn reads the file again. Rejects for a worker that
+   * isn't standard, or one the user hasn't edited.
+   */
+  reset(id: string): Promise<{ id: string }>;
   /**
    * Fire one of the user's own workers, through the roster flow's `fire`. It
    * leaves the roster; its conversations stay readable, and a new turn there
@@ -221,83 +325,31 @@ function stateOf(session: SessionSummary): Record<string, unknown> {
   return state !== null && typeof state === "object" ? (state as Record<string, unknown>) : {};
 }
 
-type Timed = { updatedAt: number; createdAt: number };
-
-/** Latest activity first. */
-const byRecent = (a: Timed, b: Timed): number => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt;
-
-function mostRecent<T extends Timed>(rows: readonly T[]): T | undefined {
+function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: readonly T[]): T | undefined {
   return [...rows].sort(byRecent)[0];
 }
 
-/**
- * Whether `row` carries no criteria key but the ones `named` holds. A session
- * carrying another is a task's, a conversation's delegate, a workstream's
- * lead, or the project coordinator's for one project, which only its
- * coordinator's sessions carry.
- */
-function carriesOnly(row: SessionSummary, named: ReadonlySet<string>): boolean {
-  const state = stateOf(row);
-  return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
-}
+/** How many of a session's requests a stop reads: its running turns, and a turn's record after a 409. */
+const RUNNING_TURNS = 50;
 
-/** The criteria keys a lookup by worker alone names. */
-const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
+/** The worker inventory's collection, read by org scope: which flows' doors take a task. */
+const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
+
+/**
+ * A request id for a turn this client sends, in the engine's own form (`req_<ms>_<hex>`): a store
+ * breaks a same-millisecond tie between turns by id, so this one orders as an id the engine made
+ * would. `getRandomValues`, not `randomUUID`: a page served over plain HTTP from another host has
+ * no `randomUUID`.
+ */
+function newRequestId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(7));
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 13);
+  return `req_${Date.now()}_${hex}`;
+}
 
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
 const ACTION_TIMEOUT_MS = 30_000;
-
-/** How often {@link WorkforceClient.watchRoster} reads where push can miss a change, as React's live panels do. */
-const ROSTER_POLL_MS = 3_000;
-
-/** The storage prefixes of the two collections a roster is read from. */
-const ROSTER_PREFIXES = [WORKERS_PREFIX, STANDARD_WORKERS_PATTERN.slice(0, -1)] as const;
-
-/**
- * Whether a notice on the user's topic may mean the roster changed: a
- * connect, reconnect or tick (`null`), a `resync`, or a `resource` notice
- * under either collection or naming no path (a row only its owner may read
- * publishes bare). A false yes costs one read; a false no leaves a view stale.
- */
-function rosterMayHaveChanged(notice: WireNotice | null): boolean {
-  if (notice === null || notice.kind === "resync") return true;
-  if (notice.kind !== "resource") return false;
-  const path = notice.topic.resource;
-  return path === undefined || ROSTER_PREFIXES.some((prefix) => path.startsWith(prefix));
-}
-
-// FIX-2551.
-/**
- * Run `read` on request, one at a time: a request made while a read runs
- * queues exactly one more. A copy of react's internal `coalescedReads`,
- * until one moves into the client.
- */
-function coalesced(read: () => Promise<void>): { request: () => void; close: () => void } {
-  let running = false;
-  let queued = false;
-  let closed = false;
-  const run = (): void => {
-    running = true;
-    void read().finally(() => {
-      running = false;
-      if (closed || !queued) return;
-      queued = false;
-      run();
-    });
-  };
-  return {
-    request: () => {
-      if (closed) return;
-      if (running) queued = true;
-      else run();
-    },
-    close: () => {
-      closed = true;
-      queued = false;
-    }
-  };
-}
 
 /**
  * Build a workforce client over the one client, as that client's user.
@@ -305,58 +357,42 @@ function coalesced(read: () => Promise<void>): { request: () => void; close: () 
  * @param fsd The app's client (`createClient`): its user, transport and credential.
  */
 export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClient {
-  const { sessions, resources, userId } = fsd;
+  const { sessions, userId } = fsd;
 
+  // FIX-2624.
   /**
-   * The user's roster session, and the organization it was created in. Found
-   * by listing, and created without an id when there is none: the client
-   * can't derive an id that includes the organization before it knows which
-   * one the server binds it to. Two first calls at once may create two; either
-   * reads the same roster.
+   * The organization the server acts in for this user under the roster flow's
+   * sign-in: the one a worker's conversation is derived under. Asked once, with
+   * no session.
    */
-  let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
-  const roster = (): Promise<{ id: string; orgId: string }> =>
-    (rosterSession ??= (async () => {
-      const listed = mostRecent(await sessions.list({ flowKind: ROSTER_FLOW, userId }));
-      const detail =
-        listed !== undefined ? await sessions.get(listed.id) : await fsd.flow(ROSTER_FLOW).createSession();
-      return { id: detail.id, orgId: detail.orgId };
-    })().catch((error: unknown) => {
-      rosterSession = undefined;
+  let signedInOrg: Promise<string> | undefined;
+  const orgOf = (): Promise<string> =>
+    (signedInOrg ??= fsd
+      .flow(ROSTER_FLOW)
+      .identity()
+      .then((identity) => identity.orgId)
+      .catch((error: unknown) => {
+        signedInOrg = undefined;
+        throw error;
+      }));
+
+  // FIX-2624.
+  /**
+   * The user's workers collection, written through the flow its `runBy` names
+   * (the roster flow): each write runs in the writer's own write session,
+   * which the server keeps; no roster session is found or made to write.
+   */
+  const rosterWrite = async <TOutput>(action: string, input: unknown): Promise<TOutput> => {
+    try {
+      return await fsd.resource({ scope: "user", pattern: WORKERS_PATTERN }).send<TOutput>(action, input);
+    } catch (error) {
+      if (error instanceof ResourceWriteError) throw new Error(error.message);
       throw error;
-    }));
-
-  const listAll = (sessionId: string, ref: string) => readEveryCollectionPage(resources, sessionId, ref);
-
-  /** The roster as it is now: read on every call, since a hire changes it. */
-  const readRoster = async (id: string): Promise<RosterEntry[]> => {
-    const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
-    const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
-      const data = (item.clientData ?? {}) as {
-        flow?: unknown;
-        description?: unknown;
-        forkedFrom?: unknown;
-        name?: unknown;
-        teamName?: unknown;
-        settings?: unknown;
-      };
-      const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
-      return {
-        id: topic,
-        flow: String(data.flow),
-        standard: isStandard,
-        description: typeof data.description === "string" ? data.description : null,
-        name: isStandard && typeof data.name === "string" ? data.name : null,
-        teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
-        forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null,
-        settings:
-          typeof data.settings === "object" && data.settings !== null && !Array.isArray(data.settings)
-            ? (data.settings as Record<string, unknown>)
-            : {}
-      };
-    };
-    return [...own.map((item) => entry(item, false)), ...standard.map((item) => entry(item, true))];
+    }
   };
+
+  /** The roster as it is now, through the roster view: read on every call, since a hire changes it. */
+  const readRoster = async (): Promise<RosterEntry[]> => (await fsd.view(rosterView)).value;
 
   /** The worker's flow on the roster: the user's own worker first, since a hire can't take a standard id. */
   const flowOf = (entries: readonly RosterEntry[], worker: string): string => {
@@ -366,18 +402,18 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return found.flow;
   };
 
+  // FIX-2624.
   /**
    * The session the user's own entry for `workstream` names, or `null` when it
-   * names none or there is no entry. Read through the roster session, whose
-   * flow declares the entries with a browser read.
+   * names none or there is no entry. Read by scope with no session: a shared
+   * project's entries are the organization's, a private one's the user's.
    */
-  const namedLeadSession = async (rosterId: string, workstream: WorkstreamAddress): Promise<string | null> => {
-    const item = await resources.getCollectionResourceState(
-      rosterId,
-      workstreamsAccessor(workstream.project.visibility),
-      workstreamStorageKey(workstream, ownerSegment(userId))
-    );
-    const sessionId = (item?.clientData as { sessionId?: unknown } | undefined)?.sessionId;
+  const namedLeadSession = async (workstream: WorkstreamAddress): Promise<string | null> => {
+    const { value } = await fsd
+      .resource({ scope: workstream.project.visibility === "private" ? "user" : "org", pattern: WORKSTREAMS_PATTERN })
+      .entry(workstreamStorageKey(workstream, ownerSegment(userId)))
+      .read();
+    const sessionId = (value as { sessionId?: unknown } | null)?.sessionId;
     return typeof sessionId === "string" ? sessionId : null;
   };
 
@@ -404,7 +440,6 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   const find = async (
     criteria: WorkerSessionCriteria,
     flow: string,
-    rosterId: string,
     orgId: string
   ): Promise<SessionSummary | undefined> => {
     // A conversation opened at another id (a random one, from before the
@@ -426,14 +461,55 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       // A session naming a conversation is only ever a dispatch run of it; a
       // top-level one is a caller's, from before a create naming one was refused.
       if (Object.hasOwn(state, FILING_SESSION_STATE_KEY) && row.parentSessionId == null) return false;
-      return carriesOnly(row, named);
+      return carriesOnly(state, named);
     });
     if (criteria.workstreamId === undefined) return mostRecent(matching);
     // A workstream's entry names its lead's session, and is the one source of
     // it: an open that stalled can leave another session linked to the same
     // workstream, which is never handed out.
-    const leadSession = await namedLeadSession(rosterId, criteria.workstreamId);
+    const leadSession = await namedLeadSession(criteria.workstreamId);
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
+  };
+
+  /** The turns this client sent, by session, newest last: a stop leaves the ones sent after it began. */
+  const sentTurns = new Map<string, string[]>();
+
+  /**
+   * The flow session `sessionId` runs on, as the server records it: the instance that owns it, or its
+   * base flow for a session written before instance ownership.
+   */
+  const flowOfSession = async (sessionId: string): Promise<string> => {
+    const session = await sessions.get(sessionId);
+    return session.flowId ?? session.flowKind;
+  };
+
+  /** Whether a flow's door takes a task, by flow, once read: the inventory changes only when a Lab boots. */
+  const takesTask = new Map<string, Promise<boolean>>();
+  /**
+   * Whether the door of flow `flowKind` takes a `taskId`, by the worker
+   * inventory's row for it. `false` with no row, or when the inventory can't
+   * be read: the line then goes without the task, which a strict door would
+   * refuse. A failed read is not kept, so the next send reads again.
+   */
+  const doorTakesTask = (flowKind: string): Promise<boolean> => {
+    let pending = takesTask.get(flowKind);
+    if (pending === undefined) {
+      pending = fsd
+        .resource({ scope: "org", pattern: WORKER_INVENTORY_PATTERN })
+        .listAll()
+        .then((entries) =>
+          entries.some((entry) => {
+            const value = entry.value as { kind?: unknown; doorTakesTask?: unknown } | null;
+            return value?.kind === flowKind && value.doorTakesTask === true;
+          })
+        )
+        .catch(() => {
+          takesTask.delete(flowKind);
+          return false;
+        });
+      takesTask.set(flowKind, pending);
+    }
+    return pending;
   };
 
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
@@ -449,47 +525,22 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   };
 
   const client: WorkforceClient = {
-    roster: async () => readRoster((await roster()).id),
-    watchRoster: (onRoster, watchOptions) => {
-      let live = true;
-      // What was last reported; cleared by a failure, so the next read that lands is reported.
-      let last: string | undefined;
-      const reads = coalesced(async () => {
-        try {
-          const entries = await client.roster();
-          const seen = JSON.stringify(entries);
-          if (!live || seen === last) return;
-          last = seen;
-          onRoster(entries);
-        } catch (error) {
-          if (!live) return;
-          last = undefined;
-          watchOptions?.onError?.(error);
-        }
-      });
-      const subscription = fsd.subscribe([topic.user()], {
-        onChange: (notice) => {
-          if (rosterMayHaveChanged(notice)) reads.request();
-        },
-        pollIntervalMs: ROSTER_POLL_MS
-      });
-      reads.request();
-      return () => {
-        live = false;
-        reads.close();
-        subscription.close();
-      };
-    },
+    organization: orgOf,
+    roster: readRoster,
+    // The roster view names the topics it read; the shared watch listens to them.
+    watchRoster: (onRoster, watchOptions) =>
+      watchView<RosterEntry[]>(fsd, rosterView, undefined, {
+        onValue: onRoster,
+        ...(watchOptions?.onError !== undefined ? { onError: watchOptions.onError } : {})
+      }),
     findWorkerSession: async (criteria) => {
-      const { id, orgId } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);
+      return find(criteria, flowOf(await readRoster(), criteria.worker), await orgOf());
     },
     ensureWorkerSession: async (criteria) => {
-      // One roster read per call, and the roster session's organization from
-      // the same lookup.
-      const { id, orgId } = await roster();
-      const flow = flowOf(await readRoster(id), criteria.worker);
-      const existing = await find(criteria, flow, id, orgId);
+      // One roster read per call; the organization is the sign-in's.
+      const orgId = await orgOf();
+      const flow = flowOf(await readRoster(), criteria.worker);
+      const existing = await find(criteria, flow, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
         // Only the hand-over opens a task's session: it is a child of the
@@ -532,35 +583,96 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         throw error;
       }
     },
-    listWorkerSessions: async (worker) => {
-      const { id, orgId } = await roster();
-      const flow = flowOf(await readRoster(id), worker);
-      const criteria = { worker };
-      const [defaultId, rows] = await Promise.all([
-        deriveWorkerSessionId({ userId, orgId, flow, criteria }),
-        // Top-level only, the listing's default: a task's or a delegate's
-        // session is a dispatch run. No limit, so this one answer is every row.
-        sessions.list({ flowKind: flow, userId, state: criteriaState(criteria) })
-      ]);
-      return rows
-        .filter((row) => carriesOnly(row, WORKER_ONLY))
-        .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId) || byRecent(a, b))
-        .map((session) => ({ session, isDefault: session.id === defaultId }));
-    },
     standingRules: async (worker, input) => {
       const session = await client.ensureWorkerSession({ worker });
-      const flow = flowOf(await readRoster((await roster()).id), worker);
+      const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, session.id, STANDING_RULES_ACTION, input)) as StandingRulesActionOutput;
     },
     setWorkProject: async (worker, project, setOptions) => {
       const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
-      const flow = flowOf(await readRoster((await roster()).id), worker);
+      const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
     },
-    hire: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "hire", input)) as { id: string; flow: string },
-    fork: async (from, id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fork", { from, id })) as { id: string; flow: string },
-    edit: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "edit", input)) as { id: string; flow: string },
-    fire: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fire", { id })) as { id: string }
+    startSession: async (worker, startOptions) => {
+      const flow = flowOf(await readRoster(), worker);
+      const created = await fsd.flow(flow).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
+      const fields = startOptions?.fields;
+      if (fields !== undefined && Object.keys(fields).length > 0) await runIn(flow, created.id, SET_SESSION_FIELDS_ACTION, { worker, fields });
+      return created;
+    },
+    send: (async (
+      sessionId: string,
+      message: string,
+      sendOptions: { attachments?: readonly FileContent[]; taskId?: string; stream?: true } = {}
+    ) => {
+      // Named before anything is awaited: a stop that begins after this call leaves the turn.
+      const requestId = newRequestId();
+      sentTurns.set(sessionId, [...(sentTurns.get(sessionId) ?? []), requestId].slice(-RUNNING_TURNS));
+      const session = await sessions.get(sessionId);
+      const flow = fsd.flow(session.flowId ?? session.flowKind);
+      const attachments = [...(sendOptions.attachments ?? [])];
+      const taskId = sendOptions.taskId;
+      const input = taskId !== undefined && (await doorTakesTask(session.flowKind)) ? { message, taskId } : { message };
+      if (sendOptions.stream !== true) {
+        // The server may answer another id for one another principal already holds: its answer names the request.
+        const sent = await flow.send(RESPOND_ACTION, input, { sessionId, attachments, requestId });
+        return { requestId: sent.id };
+      }
+      const response = await flow.send(RESPOND_ACTION, input, { sessionId, stream: true, attachments, requestId });
+      if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
+      return response;
+    }) as WorkforceClient["send"],
+    stopRun: async (sessionId, requestId) => {
+      await fsd
+        .flow(await flowOfSession(sessionId))
+        .request(requestId)
+        .abort()
+        .catch(async (error: unknown) => {
+          // A 409 is a run that ended meanwhile, or one an answer resumed first: the record decides.
+          if ((error as { status?: number }).status !== 409) throw error;
+          const now = (await sessions.requests(sessionId, { limit: RUNNING_TURNS })).find((request) => request.id === requestId);
+          if (now?.status === "in_progress") throw new Error("The run went on before the stop reached it. Stop it again.");
+        });
+    },
+    upload: async (worker, request) => fsd.flow(flowOf(await readRoster(), worker)).upload(request),
+    addDelegate: async (sessionId, worker, note) => {
+      await runIn(await flowOfSession(sessionId), sessionId, ADD_DELEGATE, note === undefined ? { worker } : { worker, note });
+    },
+    removeDelegate: async (sessionId, worker) => {
+      await runIn(await flowOfSession(sessionId), sessionId, REMOVE_DELEGATE, { worker });
+    },
+    stopTurns: async (sessionId) => {
+      // The running requests, not a turns view: a view lists a session's newest turns only, and a turn
+      // still running behind them is stopped all the same.
+      // What this client had sent when the stop began: a line it sends while the read is out runs on.
+      const sentBefore = new Set(sentTurns.get(sessionId));
+      const read = await sessions.requests(sessionId, { status: "in_progress", limit: RUNNING_TURNS });
+      const sentAfter = new Set((sentTurns.get(sessionId) ?? []).filter((id) => !sentBefore.has(id)));
+      const turns = read
+        .filter((request) => TURN_ACTIONS.includes(request.actionName) && !sentAfter.has(request.id))
+        .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+      const flow = fsd.flow(await flowOfSession(sessionId));
+      for (const turn of turns) {
+        await flow
+          .request(turn.id)
+          .abort()
+          .catch(async (error: unknown) => {
+            // A 409 is a turn that ended meanwhile, or one an answer resumed first: the record decides.
+            if ((error as { status?: number }).status !== 409) throw error;
+            const now = (await sessions.requests(sessionId, { limit: RUNNING_TURNS })).find((request) => request.id === turn.id);
+            if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Stop it again.");
+          });
+      }
+      return turns.map((turn) => turn.id);
+    },
+    retryTurn: async (sessionId, requestId) => {
+      await fsd.flow(await flowOfSession(sessionId)).request(requestId).retry();
+    },
+    hire: (input) => rosterWrite<{ id: string; flow: string }>("hire", input),
+    fork: (from, id) => rosterWrite<{ id: string; flow: string }>("fork", { from, id }),
+    edit: (input) => rosterWrite<{ id: string; flow: string }>("edit", input),
+    fire: (id) => rosterWrite<{ id: string }>("fire", { id }),
+    reset: (id) => rosterWrite<{ id: string }>("reset", { id })
   };
   return client;
 }

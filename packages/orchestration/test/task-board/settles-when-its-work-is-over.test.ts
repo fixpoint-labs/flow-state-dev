@@ -19,6 +19,7 @@ import {
   runAction
 } from "@flow-state-dev/engine";
 import {
+  abortRequest,
   createInMemoryStores
 } from "@flow-state-dev/engine/host";
 import { z } from "zod";
@@ -61,6 +62,8 @@ async function harness(
     workWriteFails?: () => string | undefined;
     /** What the background step of a later request throws, if anything (FIX-2088). */
     laterWriteFails?: () => string | undefined;
+    /** Give requests the host's waits, as a durable host's do: a later request reads its own request's status through them (FIX-2898). */
+    hostWaits?: boolean;
   } = {}
 ) {
   const store = createFakeResourceCollection();
@@ -228,7 +231,7 @@ async function harness(
       implement: entry,
       notice: { inputSchema: z.object({}), block: later(true) },
       check: { inputSchema: z.object({}), block: later(false) },
-      steerTurn: { inputSchema: z.object({}), block: steerEntry },
+      steerTurn: steerEntry,
     },
     request: {
       // Background work the flow's own end hook starts: the settle waits for it too.
@@ -251,7 +254,21 @@ async function harness(
     suspensions: stores.suspensions,
     leases: stores.leases,
   });
-  const runtimeConfig = { durabilityProvider: provider };
+  const runtimeConfig = {
+    durabilityProvider: provider,
+    ...(options.hostWaits === true
+      ? {
+          requestHost: {
+            wakes: { maxDebtAgeMs: 60_000 },
+            waits: { provider, deadlines: { defaultMs: 60_000, minMs: 1_000, maxMs: 3_600_000 } },
+            // Present because the host's waits stand beside it; no test here resumes a wait gate.
+            waitResume: async () => {
+              throw new Error("no wait gate resumes in this harness");
+            },
+          },
+        }
+      : {}),
+  };
   /** Run the task's entry on `claim`: the harness's first claim, or a reclaim's. */
   const run = (claim: Task = claimed) =>
     runAction({
@@ -314,9 +331,19 @@ async function harness(
     return result;
   };
 
+  /** Continue a request as a host's restart does for one it finds `interrupted`. */
+  const continueInterrupted = async (requestId: string) => {
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId, stores, flowRegistry: registry, runtimeConfig } as never);
+    return finished;
+  };
+
   return {
     log,
     stop,
+    continueInterrupted,
+    requests: stores.request,
     waits,
     /** A steer written onto the stored row alone, as a host's upgrade step writes one: the row's wait is left as it was. */
     rawSteer: async (message: string) => {
@@ -1008,5 +1035,427 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
     const done = (await h.row())!;
     expect(done).toMatchObject({ status: "completed", attempts: 1 });
     expect(done.output).toEqual({ ok: true, kind: "review", answered: true, answer: "looks right" });
+  });
+});
+
+// FIX-2795.
+describe("a stopped request settles its task when it ends, never at its lease's lapse", () => {
+  /** Stop the running request from inside its own turn, as the abort route does: the durable intent, then the controller. */
+  const stopSelf = async (ctx: BlockContext) => {
+    await ctx.session.stopRequest(ctx.request.identity.id);
+    await sleep(5);
+    return "an answer the stop overtook";
+  };
+
+  it("a person's stop of the task's own request cancels the task, and its dependents with it", async () => {
+    const h = await harness();
+    await (await h.ledger()).createTask({ id: "t2", goal: "after it", assignee: "coder", input: {}, deps: ["t1"] });
+    h.setBehaviour(stopSelf);
+    const { requestId } = await h.run();
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    const task = await h.row();
+    // Not failed: another attempt would redo the work the person stopped. Its lease is gone with it.
+    expect(task).toMatchObject({ status: "cancelled", attempts: 1 });
+    expect(task?.leaseUntil).toBeUndefined();
+    // The answer the stop overtook settles nothing.
+    expect(task?.output).toBeUndefined();
+    // The cancel is an ending like any other: its filer hears it, and a row that waits on it is cancelled too.
+    expect(h.events.filter((e) => e.kind === "cancelled").map((e) => e.taskId)).toContain("t1");
+    expect((await h.ledger()).get("t2")).toMatchObject({ status: "cancelled", labels: expect.arrayContaining(["skipped"]) });
+  });
+
+  it("a stop from inside the process fails the attempt: free for its next claim at once, holding no lease", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx) => {
+      abortRequest(ctx.request.identity.id);
+      await sleep(5);
+      return "an answer the stop overtook";
+    });
+    const { requestId } = await h.run();
+    expect((await h.requests.get(requestId!))?.status).toBe("interrupted");
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "pending", attempts: 1 });
+    expect(task?.leaseUntil).toBeUndefined();
+    // No clock moved: the next claim takes it now, not when a lease would have lapsed.
+    expect(await h.reclaim()).toMatchObject({ status: "in_progress", attempts: 2 });
+  });
+
+  it("an interrupted request's continuation finds its claim gone, and writes nothing on the next attempt's row", async () => {
+    // Before, the row stayed running under the interrupted request's lease, and its continuation settled it on attempt 1.
+    const h = await harness();
+    let stopped = false;
+    h.setBehaviour(async (ctx) => {
+      if (!stopped) {
+        stopped = true;
+        abortRequest(ctx.request.identity.id);
+        await sleep(5);
+      }
+      return "the continuation's answer";
+    });
+    const { requestId } = await h.run();
+    const next = (await h.reclaim())!;
+    expect(next).toMatchObject({ attempts: 2 });
+    await h.continueInterrupted(requestId!);
+    // The second attempt's row, as its claim left it.
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: next.leaseUntil });
+    expect((await h.row())?.output).toBeUndefined();
+  });
+
+  it("a person's stop of a later request for the task (its steer's turn) settles nothing: the task waits as before", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the North America numbers", from: "filer" });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1, turn: 1 });
+    h.setSteerTurn(async (_steers, ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("steerTurn");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // Not cancelled, not failed: the stop was of that turn, not of the task. Its answer is not taken.
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1, output: "first answer" });
+    expect(task?.leaseUntil).toBeUndefined();
+    // The turn the stopped request's admission took is owed again: with no wake to start it, the
+    // board's claim takes it on the same attempt, as it takes any owed turn.
+    expect(task?.turnOwed).toBe(true);
+    const claimed = await h.reclaim();
+    expect(claimed).toMatchObject({ id: "t1", attempts: 1, turn: 3 });
+  });
+
+  it("a person's stop of a steer's turn gives back the steers it took, and the turn that takes its place reads them", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the North America numbers", from: "filer" });
+      return "first answer";
+    });
+    await h.run();
+    // The steer's turn reads the steer, then is stopped before it answers.
+    h.setSteerTurn(async (_steers, ctx) => stopSelf(ctx));
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the North America numbers"]]);
+    const task = (await h.row())!;
+    expect(task.steers?.map((steer) => steer.takenBy)).toEqual([undefined]);
+    // The owed turn again: it reads the steer the stopped turn never answered, and settles the task on it.
+    h.setSteerTurn(async (steers) => `answered: ${steers.map((s) => s.message).join(", ")}`);
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the North America numbers"], ["Use the North America numbers"]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the North America numbers", attempts: 1 });
+  });
+
+  it("a person's stop of a later request admitted from a filed wait gives back a steer it took, which the next turn reads", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed" });
+    expect((await h.row())?.turnOwed).toBeUndefined();
+    // A notice turn, admitted from the filed wait (no turn owed): a steer lands while it runs, it
+    // takes the steer, and a person stops it before it answers.
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the v2 API.", from: "filer" });
+      const running = await runningTaskOf(async () => ledger, ctx);
+      expect((await takeRunningSteers(running!, `turn:${ctx.request.identity.id}`)).map((s) => s.message)).toEqual(["Use the v2 API."]);
+      return stopSelf(ctx);
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // The steer is untaken again, and, as at any check, a steer left untaken owes its turn first.
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1 });
+    expect(task.steers?.map((steer) => [steer.message, steer.takenBy])).toEqual([["Use the v2 API.", undefined]]);
+    // That turn reads it; the work it filed still holds the task, until the piece ends.
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed", output: "answered: Use the v2 API." });
+    expect((await h.reclaim())?.id).toBe("piece");
+    await (await h.ledger()).complete("piece", "piece done");
+    h.setLaterTurn(async () => "a later answer");
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
+  });
+
+  it("a person's stop of a later request after the task's filed work ended settles the task on its own answer, never back on that work", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed", output: "first answer" });
+    expect((await h.reclaim())?.id).toBe("piece");
+    // The notice turn the piece's ending wakes: the piece ends while it runs, and a person stops it.
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.complete("piece", "piece done");
+      return stopSelf(ctx);
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // Nothing holds it now, so it is not parked on work that is over: it settles on the answer its
+    // own request kept, not the stopped turn's.
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "completed", output: "first answer", attempts: 1 });
+    expect(task.keptOpenBy).toBeUndefined();
+  });
+
+  it("a steer that lands while a stopped later request's check looks at held work owes a turn: the task doesn't complete over it", async () => {
+    // Armed for the stopped notice's check only: after its read of the row, before its complete.
+    let armed = false;
+    const h = await harness({
+      steerTurn: true,
+      whileHoldsAreChecked: async (ledger) => {
+        if (!armed) return;
+        armed = false;
+        await ledger.steer!("t1", { message: "Use the v2 API.", from: "filer" });
+      },
+    });
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect((await h.reclaim())?.id).toBe("piece");
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.complete("piece", "piece done");
+      armed = true;
+      return stopSelf(ctx);
+    });
+    await h.runLater("notice");
+    // Nothing holds it but the late steer: it owes that steer its turn instead of completing.
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1 });
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the v2 API." });
+  });
+
+  it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return "a partial answer";
+    });
+    await h.run();
+    const held = (await h.row())!;
+    await (await h.ledger()).answer!("t1", { questionId: openHolds(held)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+    // The answer owes one more turn, with no wait beside it.
+    const owed = (await h.row())!;
+    expect(owed).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1, turn: 1 });
+    expect(owed.keptOpenBy).toBeUndefined();
+    // A later request admitted from that row takes the turn, and is stopped.
+    h.setLaterTurn(async (ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // The row owes the turn again, with no lease: not left running until a lease lapses.
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1 });
+    expect(task.leaseUntil).toBeUndefined();
+    expect(task.keptOpenBy).toBeUndefined();
+    // No clock moved: the board's claim takes that turn now, on the same attempt.
+    expect(await h.reclaim()).toMatchObject({ id: "t1", attempts: 1, turn: (task.turn ?? 0) + 1 });
+  });
+
+  it("a person's stop of a later request while the task's own request is parked keeps none of its answer", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    const before = (await h.row())?.output;
+    // A notice turn whose answer counts as the task's result, stopped after it answered.
+    h.setLaterTurn(async (ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+    expect(task?.output).toEqual(before);
+    expect(task?.leaseUntil).toBeUndefined();
+  });
+
+  // FIX-2897: a side chain that ignores the abort can hold the request's end past its lease, whose renewal the stop ended.
+  describe("a stopped request whose lease lapsed before its end write takes the row back first", () => {
+    it("the task's own request: the cancel lands on the same attempt", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        // Nothing reclaimed the row: only its lease ran out.
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      const { requestId } = await h.run();
+      expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+      // Not left running for the next claim to take as an abandonment: cancelled, as the person asked.
+      expect(await h.row()).toMatchObject({ status: "cancelled", attempts: 1 });
+    });
+
+    it("a later request that took an owed turn gives the turn back", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx, ledger) => {
+        await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+        return "a partial answer";
+      });
+      await h.run();
+      await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+      const owed = (await h.row())!;
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      // Owed again on the same attempt, with no lease: the board's claim takes it as a turn, not a new attempt.
+      expect(task).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      expect(await h.reclaim()).toMatchObject({ id: "t1", attempts: 1, turn: (owed.turn ?? 0) + 2 });
+    });
+
+    // Parked on an external event: a stop for a person mirrors a hold on the row, and a held row renews no lease.
+    it("a later request while the task's own request is parked parks the task on it again", async () => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "external_event", message: "waiting" }));
+      await h.run();
+      h.setLaterTurn(async (ctx) => {
+        await ctx.session.stopRequest(ctx.request.identity.id);
+        h.advance(60_000);
+        await sleep(5);
+        return "an answer the stop overtook";
+      });
+      await h.runLater("notice");
+      const task = (await h.row())!;
+      expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+      expect(task.leaseUntil).toBeUndefined();
+      // Still parked: no claim takes it as abandoned.
+      expect(await h.reclaim()).toBeNull();
+    });
+  });
+
+  it("a stop that lands after a later attempt took the row writes nothing on it: the cancel is fenced", async () => {
+    const h = await harness();
+    let next: Task | undefined;
+    h.setBehaviour(async (ctx) => {
+      // The lease lapses and the next claim takes the row, while this stale request still runs.
+      h.advance(60_000);
+      next = (await h.reclaim())!;
+      return stopSelf(ctx);
+    });
+    await h.run();
+    expect(next).toMatchObject({ attempts: 2 });
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: next!.leaseUntil });
+  });
+});
+
+// FIX-2898.
+describe("a later request parks the task on its own request only while that request is still parked", () => {
+  /** The task's own request parks, then waits on `release` once resumed. */
+  const parkedOwnRequest = async (reason: "external_event" | "user_input") => {
+    const h = await harness({ hostWaits: true });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.setBehaviour(async (ctx) => {
+      const answer = await ctx.suspend!({ reason, message: "waiting" });
+      await released;
+      return { resumedWith: answer };
+    });
+    const { requestId } = await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    let finished: Promise<unknown> | undefined;
+    /** Resume the own request from inside a later turn, and return once it runs again. */
+    const resumeOwn = async () => {
+      finished = h.resume(requestId!, "go");
+      for (let i = 0; i < 200 && (await h.requests.get(requestId!))?.status !== "in_progress"; i += 1) await sleep(10);
+      expect((await h.requests.get(requestId!))?.status).toBe("in_progress");
+    };
+    return {
+      h,
+      resumeOwn,
+      finishOwn: async () => {
+        release();
+        await finished;
+      },
+    };
+  };
+
+  it.each(["external_event", "user_input"] as const)(
+    "a later request that ends while the resumed own request (%s) runs writes no wait over it, and the own request settles the task",
+    async (reason) => {
+      const { h, resumeOwn, finishOwn } = await parkedOwnRequest(reason);
+      h.setLaterTurn(async () => {
+        await resumeOwn();
+        return "a later answer";
+      });
+      await h.runLater("notice");
+      // Not parked on a stop nobody is waiting on any more.
+      expect((await h.row())?.keptOpenBy).toBeUndefined();
+      await finishOwn();
+      expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
+    }
+  );
+
+  it("a later request that ends while the own request is still parked parks the task on it again", async () => {
+    const { h, resumeOwn, finishOwn } = await parkedOwnRequest("user_input");
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+    expect((await h.row())?.leaseUntil).toBeUndefined();
+    await resumeOwn();
+    await finishOwn();
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
+  });
+
+  it("a steer's turn stopped for a person is the request the task waits on: a notice re-parks on it, and its resume during a notice settles the task", async () => {
+    const h = await harness({ hostWaits: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return "a partial answer";
+    });
+    await h.run();
+    await (await h.ledger()).answer!("t1", { questionId: openHolds((await h.row())!)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+    // The owed turn stops for a person's review; the row's run link still names the first request.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.setSteerTurn(async (_steers, ctx) => {
+      const answer = await ctx.suspend!({ reason: "user_input", message: "look?" });
+      await released;
+      return { reviewed: answer };
+    });
+    const steer = await h.runLater("steerTurn");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice while the steer's turn is parked parks the task on it again.
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    // A notice during which the person answers: the steer's turn resumes on a row showing no wait.
+    let finished: Promise<unknown> | undefined;
+    h.setLaterTurn(async () => {
+      finished = h.resume(steer.requestId!, "fine");
+      for (let i = 0; i < 200 && (await h.requests.get(steer.requestId!))?.status !== "in_progress"; i += 1) await sleep(10);
+      expect((await h.requests.get(steer.requestId!))?.status).toBe("in_progress");
+      return "a later answer";
+    });
+    await h.runLater("notice");
+    expect((await h.row())?.keptOpenBy).toBeUndefined();
+    release();
+    await finished;
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { reviewed: "fine" } });
+  });
+
+  it("a stopped later request that ends while the resumed own request runs writes no wait over it either", async () => {
+    const { h, resumeOwn, finishOwn } = await parkedOwnRequest("external_event");
+    h.setLaterTurn(async (ctx) => {
+      await resumeOwn();
+      await ctx.session.stopRequest(ctx.request.identity.id);
+      await sleep(5);
+      return "an answer the stop overtook";
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    expect((await h.row())?.keptOpenBy).toBeUndefined();
+    await finishOwn();
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: "go" } });
   });
 });

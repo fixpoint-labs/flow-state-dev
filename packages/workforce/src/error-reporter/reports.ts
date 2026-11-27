@@ -7,7 +7,8 @@
  * - `storm-<window start>`: the window's storm report, listing what got no report of its own;
  * - `cap`: the fingerprints that got a report in the current window;
  * - `held-<task id>`: failed requests of a task, held until the task ends;
- * - `task-<task id>`: the report a task's ending went to, where its failed requests are joined.
+ * - `task-<task id>`: the report a task's ending went to, where its failed requests are joined;
+ * - `log-<YYYY-MM-DD>-<HH>`: that UTC hour's history (`history.ts`), written by the intake and `updateReport` only.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
@@ -15,6 +16,7 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { fingerprintOf, type FingerprintParts } from "./fingerprint";
+import { appendHistory, HISTORY_MESSAGE_CHARS, historyHourSchema, historyKeysOfDay, statusEntryKey, type HistoryEntry, type HistoryHour } from "./history";
 import { redact } from "./redact";
 
 /** The accessor a flow declares the report rows under. */
@@ -25,6 +27,9 @@ const KEPT_OCCURRENCES = 5;
 
 /** The newest occurrence keys a row remembers, so a redelivered occurrence counts once. */
 const KEPT_SEEN = 50;
+
+/** The users whose failures a report names, newest last: who the error history shows it to. */
+const KEPT_USERS = 50;
 
 /** The ids one occurrence is known by: what a report links and a repeat's comment names. */
 const occurrenceIdsSchema = z.object({
@@ -160,6 +165,8 @@ const reportResourceStateSchema = z.object({
     .optional(),
   /** Failed requests of the task, joined from its held occurrences. */
   heldRequests: z.array(occurrenceIdsSchema).optional(),
+  /** Every user whose failure it took, newest last, at most 50: kept when their occurrences roll out. Absent on older reports. */
+  userIds: z.array(z.string()).optional(),
   issue: issueSchema.optional(),
   /** The issue an earlier report of this fingerprint filed, closed since. */
   previousIssue: issueSchema.optional(),
@@ -228,11 +235,11 @@ export type IntakeDecision =
 
 /** The running flow's report rows, or a refusal naming the accessor. */
 export function reportsOf(ctx: BlockContext): ResourceCollectionRef {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[ERROR_REPORTS_RESOURCE];
+  const ref = ctx.resources?.[ERROR_REPORTS_RESOURCE];
   if (typeof ref !== "object" || ref === null || !("getOrCreate" in ref)) {
     throw new Error(`This flow doesn't declare "${ERROR_REPORTS_RESOURCE}", so it can't keep error reports.`);
   }
-  return ref as ResourceCollectionRef;
+  return ref;
 }
 
 /** The key of a fingerprint's report. */
@@ -254,9 +261,102 @@ export async function readReport(reports: ResourceCollectionRef, reportId: strin
   return ref === undefined ? undefined : parseRow(ref.state);
 }
 
-/** Every report row (storms included), newest seen first. */
+/** What the history read returns for some days: their hour records, the reports they name, and the reports their held tasks went to. */
+export interface HistoryRead {
+  readonly hours: HistoryHour[];
+  readonly reports: ReportResourceState[];
+  /** A task's report, by task id, for the held entries that name a task and no report. */
+  readonly tasks: Record<string, string>;
+}
+
+/**
+ * The history of whole UTC days: each day's hour records by computed key,
+ * with the reports they name. Never lists the collection.
+ *
+ * @param days `YYYY-MM-DD` days, UTC.
+ */
+export async function readHistory(reports: ResourceCollectionRef, days: readonly string[]): Promise<HistoryRead> {
+  const hours: HistoryHour[] = [];
+  for (const day of days) {
+    for (const ref of await Promise.all(historyKeysOfDay(day).map((key) => reports.getOptional(key)))) {
+      const parsed = ref === undefined ? undefined : historyHourSchema.safeParse(ref.state);
+      if (parsed?.success === true) hours.push(parsed.data);
+    }
+  }
+  const entries = hours.flatMap((hour) => hour.entries);
+  const tasks: Record<string, string> = {};
+  for (const taskId of new Set(entries.filter((e) => e.reportId === undefined && e.taskId !== undefined).map((e) => e.taskId!))) {
+    const mapped = (await reports.getOptional(taskKey(taskId)))?.state as { reportId?: unknown } | undefined;
+    if (typeof mapped?.reportId === "string") tasks[taskId] = mapped.reportId;
+  }
+  const ids = new Set([...entries.flatMap((e) => (e.reportId === undefined ? [] : [e.reportId])), ...Object.values(tasks)]);
+  const found: ReportResourceState[] = [];
+  for (const id of ids) {
+    const report = await readReport(reports, id);
+    if (report !== undefined) found.push(report);
+  }
+  return { hours, reports: found, tasks };
+}
+
+/**
+ * A report's status in the words a user reads: `drafting`, `waiting in
+ * Inbox`, `approved, filing`, `filed`, `kept, no tracker`, `dismissed` or
+ * `issue closed`.
+ */
+export function statusInWords(row: Pick<ReportResourceState, "status" | "issue">): string {
+  switch (row.status) {
+    case "owed":
+    case "drafting":
+      return "drafting";
+    case "previewing":
+      return "waiting in Inbox";
+    case "filing":
+      return "approved, filing";
+    case "filed":
+      return row.issue === undefined ? "kept, no tracker" : "filed";
+    case "dismissed":
+      return "dismissed";
+    case "closed":
+      return "issue closed";
+  }
+}
+
+/**
+ * Text others wrote (a drafted title, a task's goal), made literal for a line
+ * of Markdown: every ASCII punctuation mark backslash-escaped and each run of
+ * whitespace one space, so it shows as typed: no image is fetched and no
+ * link hides its address behind words. A bare address in it stays the address
+ * (a renderer may still make it clickable). Escapes rather than a code span,
+ * which a backtick in it would close.
+ */
+export function markdownLiteral(text: string): string {
+  return text.replace(/\s+/g, " ").replace(/[!-/:-@[-`{-~]/g, "\\$&");
+}
+
+/**
+ * Where a report came from, in plain words, as Markdown: a failed task and its
+ * title, a failed request and its flow and action, a user's words, or a burst.
+ * The names in it are {@link markdownLiteral}.
+ */
+export function sourceInWords(report: Pick<ReportResourceState, "source" | "parts" | "task" | "storm">): string {
+  switch (report.source) {
+    case "task":
+      return `a failed task (${markdownLiteral((report.task?.title ?? report.task?.goal ?? report.parts.actionName).split("\n")[0]!.slice(0, 80))})`;
+    case "request":
+      return `a failed request (${markdownLiteral(report.parts.flowKind)} / ${markdownLiteral(report.parts.actionName)})`;
+    case "manual":
+      return "a problem a user described";
+    case "storm":
+      return `a burst of ${report.storm?.entries.length ?? 0} failures`;
+  }
+}
+
+/** The key families that hold reports; every other key in the collection is bookkeeping or history. */
+const REPORT_KEY_PREFIXES = ["fp-", "storm-"] as const;
+
+/** Every report row (storms included), newest seen first. Lists the report keys only, so the history is never loaded. */
 export async function listReports(reports: ResourceCollectionRef): Promise<ReportResourceState[]> {
-  const refs = await reports.list();
+  const refs = (await Promise.all(REPORT_KEY_PREFIXES.map((prefix) => reports.list(prefix)))).flat();
   return refs
     .map((ref) => parseRow(ref.state))
     .filter((row): row is ReportResourceState => row !== undefined)
@@ -267,19 +367,48 @@ export async function listReports(reports: ResourceCollectionRef): Promise<Repor
  * Change one row through a compare-and-set, re-running `change` against the
  * fresher row on a conflict. `change` returns the row to write, or `undefined`
  * to write nothing.
+ *
+ * The one writer of a report's status after its first: once the write
+ * settles, a change of status or issue is appended to the history, from the
+ * row read and the row written by the attempt that landed. A writer that
+ * moves a status some other way writes no history entry.
+ *
+ * @param options Where a history write that failed is said.
  */
 export async function updateReport(
   reports: ResourceCollectionRef,
   reportId: string,
-  change: (row: ReportResourceState) => ReportResourceState | undefined
+  change: (row: ReportResourceState) => ReportResourceState | undefined,
+  options: { readonly log?: (message: string) => void } = {}
 ): Promise<ReportResourceState | undefined> {
   const ref = await reports.getOptional(reportId);
   if (ref === undefined) return undefined;
-  return updateStateWith(ref as never, (current: unknown) => {
-    const row = parseRow(current);
-    const next = row === undefined ? undefined : change(row);
-    return { state: (next ?? current) as never, result: next ?? row };
+  // Returned by the attempt that landed: `change` re-runs on a conflict, so only the last attempt's pair counts.
+  const landed = await updateStateWith(ref, (current) => {
+    const stored = parseRow(current);
+    const next = stored === undefined ? undefined : change(stored);
+    return { state: next ?? current, result: { before: stored, after: next } };
   });
+  if (landed?.before !== undefined && landed.after !== undefined) {
+    const { before, after } = landed;
+    if (before.status !== after.status || before.issue?.url !== after.issue?.url || before.issue?.identifier !== after.issue?.identifier) {
+      await appendHistory(
+        reports,
+        {
+          at: Date.now(),
+          kind: "status",
+          key: statusEntryKey(after.id, after.firstSeenAt, after.status, after.issue?.identifier),
+          reportId: after.id,
+          source: after.source,
+          fingerprint: after.fingerprint,
+          status: after.status,
+          ...(after.issue === undefined ? {} : { issue: after.issue })
+        },
+        options.log
+      );
+    }
+  }
+  return landed?.after ?? landed?.before;
 }
 
 /** Whether a row still takes repeats, or a repeat now starts a new report. */
@@ -322,8 +451,33 @@ function occurrenceKey(occurrence: Occurrence): string | undefined {
   }
 }
 
+/** An occurrence's history entry: its time, ids, source and the start of its message, with the report it went to. */
+function occurrenceEntry(occurrence: Occurrence, to: { readonly reportId?: string; readonly fingerprint?: string }): HistoryEntry {
+  const { at: _at, orgId: _orgId, partition: _partition, ...ids } = idsOf(occurrence);
+  const message = occurrence.kind === "task" ? occurrence.error : occurrence.kind === "manual" ? occurrence.description : occurrence.message;
+  const key = occurrenceKey(occurrence);
+  return {
+    at: occurrence.at,
+    kind: "occurrence",
+    ...(key === undefined ? {} : { key }),
+    ...(to.reportId === undefined ? {} : { reportId: to.reportId }),
+    source: occurrence.kind,
+    ...(to.fingerprint === undefined ? {} : { fingerprint: to.fingerprint }),
+    ...ids,
+    message: message.slice(0, HISTORY_MESSAGE_CHARS)
+  };
+}
+
 const withSeen = (seen: readonly string[] | undefined, key: string | undefined): string[] | undefined =>
   key === undefined ? seen?.slice() : [...(seen ?? []), key].slice(-KEPT_SEEN);
+
+/** `userIds` with the users of `ids`, each once, newest last. */
+function withUsers(userIds: readonly string[] | undefined, ids: readonly OccurrenceIds[]): string[] | undefined {
+  const named = ids.flatMap((o) => (o.userId === undefined ? [] : [o.userId]));
+  if (named.length === 0) return userIds?.slice();
+  const kept = (userIds ?? []).filter((id) => !named.includes(id));
+  return [...kept, ...new Set(named)].slice(-KEPT_USERS);
+}
 
 /**
  * Take one occurrence: hold it, count it, or make a report for it, under the
@@ -336,7 +490,13 @@ const withSeen = (seen: readonly string[] | undefined, key: string | undefined):
 export async function intakeOccurrence(
   reports: ResourceCollectionRef,
   raw: Occurrence,
-  options: { readonly reporterFlow: string; readonly limits?: Partial<ReportLimits>; readonly secrets?: readonly string[] }
+  options: {
+    readonly reporterFlow: string;
+    readonly limits?: Partial<ReportLimits>;
+    readonly secrets?: readonly string[];
+    /** Where a history write that failed is said; the intake still returns its decision. */
+    readonly log?: (message: string) => void;
+  }
 ): Promise<IntakeDecision> {
   const limits = { ...DEFAULT_LIMITS, ...(options.limits ?? {}) };
   const occurrence = redact(raw, options.secrets ?? []);
@@ -361,6 +521,7 @@ export async function intakeOccurrence(
     const taskRef = await reports.getOptional(taskKey(occurrence.taskId));
     const reportId = (taskRef?.state as { reportId?: unknown } | undefined)?.reportId;
     if (typeof reportId === "string") await joinHeld(reports, reportId, await heldOf(reports, occurrence.taskId));
+    await appendHistory(reports, occurrenceEntry(occurrence, {}), options.log);
     return { decision: "held", taskId: occurrence.taskId };
   }
 
@@ -398,6 +559,9 @@ export async function intakeOccurrence(
     await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId } as never);
     if (decided.decision !== "storm") await joinHeld(reports, decided.reportId, await heldOf(reports, occurrence.taskId));
   }
+  if (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm") {
+    await appendHistory(reports, occurrenceEntry(occurrence, { reportId: decided.reportId, fingerprint }), options.log);
+  }
   return decided;
 
   async function decide(): Promise<IntakeDecision> {
@@ -424,6 +588,7 @@ export async function intakeOccurrence(
           firstSeenAt: now,
           lastSeenAt: now,
           occurrences: [ids],
+          ...(ids.userId === undefined ? {} : { userIds: [ids.userId] }),
           runs: 0,
           ...(seenKey === undefined ? {} : { seen: [seenKey] }),
           ...(description === undefined ? {} : { description }),
@@ -457,16 +622,17 @@ async function claimCapSlot(
 ): Promise<{ claimed: boolean; windowStart: number }> {
   const own = Math.floor(now / limits.windowMs) * limits.windowMs;
   const capRef = await reports.getOrCreate(CAP_KEY, { windowStart: own, fingerprints: [] });
-  type Slot = { claimed: boolean; windowStart: number };
-  return updateStateWith(capRef as never, (current: unknown): { state: never; result: Slot } => {
+  const slot = await updateStateWith(capRef, (current) => {
     const parsed = capSchema.safeParse(current);
     const stored = parsed.success ? parsed.data : undefined;
     const cap = stored !== undefined && stored.windowStart >= own ? stored : { windowStart: own, fingerprints: [] };
     const windowStart = cap.windowStart;
-    if (cap.fingerprints.includes(fingerprint)) return { state: cap as never, result: { claimed: true, windowStart } };
-    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap as never, result: { claimed: false, windowStart } };
-    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] } as never, result: { claimed: true, windowStart } };
-  }) as Promise<Slot>;
+    if (cap.fingerprints.includes(fingerprint)) return { state: cap, result: { claimed: true, windowStart } };
+    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap, result: { claimed: false, windowStart } };
+    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] }, result: { claimed: true, windowStart } };
+  });
+  if (slot === undefined) throw new Error("The report cap update never ran.");
+  return slot;
 }
 
 /**
@@ -486,11 +652,11 @@ async function listOnStorm(
   }
 ): Promise<IntakeDecision> {
   const sKey = stormKey(windowStart);
-  const stormRef = await reports.getOrCreate(sKey, {});
-  const result = await updateStateWith(stormRef as never, (current: unknown) => {
+  const stormRef = await reports.getOrCreate(sKey);
+  const result = await updateStateWith(stormRef, (current) => {
     const existing = parseRow(current);
     if (existing !== undefined && o.seenKey !== undefined && existing.seen?.includes(o.seenKey)) {
-      return { state: current as never, result: { isNew: false, commentOwed: false } };
+      return { state: current, result: { isNew: false, commentOwed: false } };
     }
     const entries = existing?.storm?.entries ?? [];
     const at = entries.findIndex((entry) => entry.fingerprint === o.fingerprint);
@@ -519,14 +685,15 @@ async function listOnStorm(
       count: row.count + 1,
       lastSeenAt: o.now,
       occurrences: keepNewest(row.occurrences, o.ids),
+      userIds: withUsers(row.userIds, [o.ids]),
       storm: { windowStart, entries: nextEntries },
       ...(o.seenKey === undefined ? {} : { seen: withSeen(row.seen, o.seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
-    return { state: next as never, result: { isNew: existing === undefined, commentOwed } };
+    return { state: next, result: { isNew: existing === undefined, commentOwed } };
   });
-  const { isNew, commentOwed } = result as { isNew: boolean; commentOwed: boolean };
-  return { decision: "storm", reportId: sKey, isNew, commentOwed };
+  if (result === undefined) throw new Error("The storm report update never ran.");
+  return { decision: "storm", reportId: sKey, ...result };
 }
 
 /** Whether a repeat now owes a filed report's issue a counted comment. */
@@ -545,10 +712,12 @@ async function heldOf(reports: ResourceCollectionRef, taskId: string): Promise<O
 /** Add `requests` to a report's joined requests, each once. */
 async function joinHeld(reports: ResourceCollectionRef, reportId: string, requests: readonly OccurrenceIds[]): Promise<void> {
   if (requests.length === 0) return;
-  await updateReport(reports, reportId, (row) => {
-    const known = row.heldRequests ?? [];
+  await updateReport(reports, reportId, (report) => {
+    const known = report.heldRequests ?? [];
     const fresh = requests.filter((r) => !known.some((k) => k.requestId === r.requestId));
-    return fresh.length === 0 ? undefined : { ...row, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES) };
+    return fresh.length === 0
+      ? undefined
+      : { ...report, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES), userIds: withUsers(report.userIds, fresh) };
   });
 }
 
@@ -567,16 +736,17 @@ async function countOn(
   const ref = await reports.getOptional(key);
   if (ref === undefined) return undefined;
   const result = await updateStateWith(ref as never, (current: unknown) => {
-    const row = parseRow(current);
-    if (row === undefined || !isLive(row, now)) return { state: current as never, result: undefined };
-    if (seenKey !== undefined && row.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
-    const commentOwed = commentOwedOn(row, now, limits);
+    const report = parseRow(current);
+    if (report === undefined || !isLive(report, now)) return { state: current as never, result: undefined };
+    if (seenKey !== undefined && report.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
+    const commentOwed = commentOwedOn(report, now, limits);
     const next: ReportResourceState = {
-      ...row,
-      count: row.count + 1,
+      ...report,
+      count: report.count + 1,
       lastSeenAt: now,
-      occurrences: keepNewest(row.occurrences, ids),
-      ...(seenKey === undefined ? {} : { seen: withSeen(row.seen, seenKey) }),
+      occurrences: keepNewest(report.occurrences, ids),
+      userIds: withUsers(report.userIds, [ids]),
+      ...(seenKey === undefined ? {} : { seen: withSeen(report.seen, seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
     return { state: next as never, result: { commentOwed } };

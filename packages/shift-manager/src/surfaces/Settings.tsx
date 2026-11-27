@@ -7,24 +7,20 @@
  * Lab has taken it. A key is the user's alone. A coding run on a project that
  * names the server reaches it with the key of the user the run works for.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import type { ConnectorKeyStatus } from "@flow-state-dev/workforce/browser";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { useLab } from "../lib/lab-data";
-import { readMcpKeys, writeMcpKey, type McpKeysRead, type McpServerKey } from "../lib/mcp-credentials";
-import type { Failure } from "../lib/reads";
+import { useMcpKeys, writeMcpKey } from "../lib/mcp-credentials";
+import type { Failure } from "../lib/failure";
 
 export function SettingsView() {
-  const { connection } = useLab();
-  const [read, setRead] = useState<McpKeysRead | undefined>(undefined);
-  const reread = useCallback(() => {
-    void readMcpKeys(connection).then(setRead);
-  }, [connection]);
-  useEffect(reread, [reread]);
+  const { read, reread } = useMcpKeys();
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto" data-testid="settings">
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SETTINGS</p>
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">SETTINGS</p>
         <h1 className="text-base font-semibold">MCP server keys</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           A coding run on a project that names one of these servers reaches it with the key of the user the run works
@@ -53,7 +49,7 @@ export function SettingsView() {
 }
 
 /** One server: whether the key is set, a field to set or replace it, and Clear. */
-function ServerKey({ server, onChanged }: { server: McpServerKey; onChanged: () => void }) {
+function ServerKey({ server, onChanged }: { server: ConnectorKeyStatus; onChanged: () => void }) {
   const { connection } = useLab();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);

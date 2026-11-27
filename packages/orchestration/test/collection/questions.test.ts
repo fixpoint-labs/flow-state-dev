@@ -364,6 +364,16 @@ describe.each([
       expect(holdIds(none.board.get("t6"))).toEqual([t6.holds![0]!.id]);
       expect(await none.board.claim("w")).toBeNull();
     });
+
+    it("never closes an untimed confirm, whatever the host's deadline: with no yes, the task never starts", async () => {
+      const due = await make({ holdDueMs: 5_000 });
+      const t7 = await due.board.createTask({ id: "t7", goal: "g", questions: [{ kind: "confirm", prompt: "Run it?", untimed: true }] });
+      expect(t7.holds![0]!.due).toBeUndefined();
+      due.clock.at += 30 * 86_400_000;
+      expect(await due.board.payHoldDeadlines!()).toEqual([]);
+      expect(holdIds(due.board.get("t7"))).toEqual([t7.holds![0]!.id]);
+      expect(await due.board.claim("w")).toBeNull();
+    });
   });
 
   describe("a line typed in the task's session (steerFromLine)", () => {
@@ -386,34 +396,5 @@ describe.each([
       expect(board.get("t10")!.steers).toMatchObject([{ message: "sounds good" }]);
       expect(board.get("t10")!.steers![0]!.answers).toBeUndefined();
     });
-  });
-});
-
-// FIX-2479 D1. A store holds questions written before the marker was renamed: `source.kind: "row"`.
-// Both backings read the stored task as it is (no parse), so the row read maps the marker forward,
-// or the board would see a question no answer closes and never start the task.
-describe.each([
-  ["sequencer-backed", async (stored: Task) => createStateBackedTaskCollection({ collectionId: "tasks", state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: { [stored.id]: stored } }), now: () => 1_000 })],
-  [
-    "resource-backed",
-    async (stored: Task) => {
-      const collection = createFakeResourceCollection();
-      await collection.create({ id: stored.id }, stored as never);
-      return createResourceBackedTaskCollection({ collectionId: "tasks", collection, now: () => 1_000 });
-    },
-  ],
-] as const)("a question stored under the retired row marker (%s)", (_name, storedOn) => {
-  it("reads as the task's own, holds the task, and its answer closes it and lets the task start", async () => {
-    const { board: scratch } = await sequencerBacking();
-    const filed = await scratch.createTask({ id: "t1", goal: "g", questions: [ask(CSV)] });
-    const legacy = { ...filed, holds: filed.holds!.map((hold) => ({ ...hold, source: { ...hold.source, kind: "row" } })) } as unknown as Task;
-    const board = await storedOn(legacy);
-    const row = board.get("t1")!;
-    expect(row.holds!.map((hold) => hold.source.kind)).toEqual(["task"]);
-    expect(holdIds(row)).toEqual([filed.holds![0]!.id]);
-    expect(await board.claim("w")).toBeNull();
-    expect(await board.answer!("t1", user(filed.holds![0]!.id, "The March export"))).toEqual({ outcome: "recorded" });
-    expect(holdIds(board.get("t1"))).toEqual([]);
-    expect(await board.claim("w")).toMatchObject({ id: "t1", status: "in_progress" });
   });
 });

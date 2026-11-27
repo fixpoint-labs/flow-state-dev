@@ -14,7 +14,9 @@ request → session → user → org
 - **User**: Persisted, spans sessions, holds user preferences/resources
 - **Org**: Persisted, shared across users
 
-**Phase 1 policy:** User context is required for all flow execution. Sessions are always available — ephemeral sessions auto-create when no `sessionId` is provided.
+**Phase 1 policy:** User context is required for all flow execution, and every request names its session from the first write of its record. A caller that knows its conversation passes its id; one that names none is refused before anything is written (`400 session-required` over HTTP, `SessionRequiredError` from `runAction` and `host.dispatch`). A one-shot send passes `oneOffSessionId()` (`@flow-state-dev/core/helpers`), the only place a one-off `ephemeral_` id is made; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it themselves for a run with no session. The prefix is for display only (the navigator folds one-off sessions by it).
+
+**Requests recorded with no session.** Records written before this rule may have no `sessionId`. They stay readable and stoppable: a stop finds their gates and settles a parked one `aborted` without running it. Running one again is refused by name with `LegacySessionlessRequestError` (`legacy-sessionless-request`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake and the retry route. A queued BullMQ job with no session is settled failed under that name and not retried. Read types keep `sessionId` optional for these rows (`context/record-session.ts`).
 
 ## State Operations
 
@@ -546,7 +548,7 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
 ### Cross-flow schema registry (default)
 
-`FlowRegistry.register` collects each flow's merged user and org state schemas (its own `stateSchema` plus what its blocks and capabilities declare, see the scope-state defaults paragraph above), and user/org resource schemas, from every registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
+`FlowRegistry.register` collects each flow's merged user and org state schemas (its own `stateSchema` plus what its blocks and capabilities declare, see the scope-state defaults paragraph above), and its user, org and session resource schemas, from every registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
 
 | Scenario | Outcome |
 |----------|---------|
@@ -555,18 +557,20 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 | Shared required field whose types disagree | Throw `CrossFlowSchemaConflictError`. |
 | Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
 | A state field the two flows default differently, or one declares `.nullable()` | Throw `CrossFlowSchemaConflictError` (`incompatible-default` / `incompatible-types`), naming the field path (`stateSchema.<field>`). |
-| Two shared user/org resources at the same `ref` with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared resources in one scope whose names meet (the same `ref`, or a key or pattern that reaches the other's) with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared user/org resources at one address (the same `ref`, or the same collection `pattern`) whose client projection, owner rules, `secret`, `runBy` or `canWrite` differ | Throw `CrossFlowSchemaConflictError` (`client-config-mismatch`). `sameClientConfig`, the comparison the address path answers 409 with, so start-up and the address path hold one definition. `canWrite` and `client.data` compare by identity: share the one definition. |
 
-The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
+The error names both flow kinds, the scope (`user`, `org` or `session`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is reconciling the schemas, opting into isolation, or (at session scope, where there is no isolation) giving one declaration a distinct name.
+
+**One definition per name, in every scope.** A flow reaches a definition by declaring it, which it does by including a block that uses it; reach into another session's copy (`ctx.resources.at({ session })`) works the same way. So two flows that declare one name read and write the same rows, at session scope too, and the check holds every scope to one shape per name. Session state records are not compared: a session's record belongs to its own flow. There is no way to reach a definition a flow does not declare.
 
 **What each half compares.** The two halves of the check follow the two storage-key rules below, so they drop out of the shared view at different granularities:
 
 - The **scope record's `stateSchema`** is one blob per scope, so it follows the flow-level `isolateUserState` / `isolateOrgState` flag. A flow that isolates a scope contributes no `stateSchema` to it.
-- **Resources** are compared when two flows declare a shared resource at the same `(scope, ref)` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
+- **Resources** are compared when two flows declare shared resources whose names meet in one scope: the same `ref`, or a collection `pattern` that reaches the other's key or pattern (`patternsReach`), so a collection at `files/*` meets a resource at `files/a` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
 
-The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). Two overlaps are the exception, and are **not** detected today:
+The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). One overlap is the exception, and is **not** detected today:
 
-- **A collection pattern overlapping a concrete ref.** Refs are compared exactly, so a collection at `files/*` and a resource at `files/a` index separately even though the collection's `"a"` instance resolves to that same cell. Two collections declaring the *same* pattern are compared normally — a collection indexes on its `pattern`, which is what its instance keys derive from.
 - **Two instances of one flow kind whose `resources` overrides disagree.** Participants are retained per `flowKind` and same-kind pairs are skipped, so per-instance overrides are never compared against each other.
 
 ### Per-flow isolation (opt-in)
@@ -662,7 +666,7 @@ Four channels, and none of them is shared session state:
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
 4. **`parentTask()` / `settleParentTask()`** — one board task, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task. Its one read of another session, `sessions.read`, answers a session of the same principal with its flow and the state fields its flow declares readonly, never the rest of its state.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task. Its reads of another session answer only a session of the same principal: `sessions.read` its flow, its lineage id (server only, the key a partition is derived from) and the state fields its flow declares readonly, never the rest of its state; `sessions.history` its settled turns; `sessions.list` its top-level sessions, at most 100; `sessions.turns` its requests' statuses, never their words (FIX-2725 D1). `sessions.userSuspensions({ flowKinds })` reads the principal's pending suspensions that wait on them, across every session and none, on 0 to 50 flow kinds the caller names (more throws): one store query joins each suspension to its request with every scope predicate inside it (`SuspensionStore.listPendingForUser`), and each row is a projection, never the run's payload. Pages are 200 rows oldest first, with a `(createdAt, requestId, suspensionId)` cursor (a suspension id is unique only within its request). A view that reads it hears only `suspension` on the user topic, which the suspension store's wrapper publishes when a suspension that waits on a person is written, or a request's suspensions are deleted while the read lists one of them, or a session is deleted (the read answers a suspension in a session only while the session exists); never on a wait gate or outside event's stop, nor a turn starting or finishing (FIX-2770). A user view may make them too, admitted as the HTTP session list admits each row (a pending suspension passes the same rule judged on its request, with or without a session: its instance's own resolver, else an owner that resolves, an organization and, when the view's flow signs callers in itself, the host's resolver naming the same owner); an org view may not.
 
 ### Resources shared to the lineage (FIX-1068)
 
@@ -709,7 +713,9 @@ flow's session `stateSchema` (on a flow that binds its sessions, with a
 `.readonly()` field or a `createCheck`, a state the schema refuses is refused;
 any other flow keeps it as sent, so a flow can create sessions half-filled
 on purpose), runs the `serverOwned` refusal for caller-seeded state and the
-flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
+flow's `session.createCheck` on the parsed state (writing over it any fields
+the check derived and returned as `state`, such as a display name from the
+record it read), reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:
 
@@ -796,6 +802,27 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 **Filtering a scan changes what it covers.** `loadedCollectionPrefixes` records coverage per `(scopeId, prefix)`, not per prefix, because a filtered scan read one bucket and may legitimately have returned nothing for keys another bucket owns. Recording the bare prefix would claim coverage the scan never had, and `isMissAuthoritative` would then answer "absent" for a row that exists — the read suppressed by its own correctness.
 
 **Sharing does not imply serialization.** Two child sessions writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
+
+## Another session's copy
+
+A scope is how many copies of a resource exist: one per session, per user or per org. The owner decides who may look at a copy. A block reaches another session's copy by naming that session:
+
+```ts
+ctx.resources.notes                                // this session's copy
+ctx.resources.at({ session: launchChatId }).notes  // the launch chat's copy, read and write
+```
+
+`at({ session })` returns the session-scoped, stored collections this flow declares, read through **this flow's definitions** at the named session's address. List, count, `get`, `findBy` and every write act on that one copy and nothing else: no verb sweeps every session. A `sharedToLineage` collection addresses the named session's lineage root, as it would in that session's own run. Single resources and projected collections are not reachable this way yet; naming one throws, and `at()`'s type leaves them out, with user- and org-scoped collections. `at` is a reserved accessor name.
+
+**Admission is the routes'.** Every verb waits on one admission per named session per run, `admitNamedSession` (`context/named-session.ts`): the routes' own admission (`admitSession`), fed the run's principal instead of HTTP credentials. A machine's run, or a run in a machine's session, reaches none. A session another user, org or tenant holds, a session with no org, one an own-resolver flow refuses (its resolver is not the principal's `resolvedBy`), and an id no one holds all answer every verb the same way: rejected with `SessionNotFoundError`, whose message names neither the id nor why. The run's own session, named, is its own. Each later verb re-reads the session record, and one deleted and taken again (another incarnation or owner) is admitted again from scratch. An incarnation is told apart by the random `incarnationToken` each birth mints (`birthSession`), which every session store keeps write-once like `principalKind`; a record from before the token is compared by its birth time and lineage.
+
+**Writes are versioned, not locked.** The named copy has its own cache, filled lazily, and its writes go through the same per-key CAS as the run's own (`CopyCell` in `createExecutionContext.ts`). Two sessions writing one copy conflict as two local writers do, and the definition's checks arbitrate. Nothing serializes them across sessions.
+
+**The session written hears it.** A write publishes on the named session's change-bus topics (and its owner's user topic for a lineage-shared key), exactly as a write in that session would, and never on the caller's stream or topics. Whether it starts a turn there is the definition's call: a collection that declares `wakeEntry` owes a wake on that session and entry **before** the write, fenced by the writing request's lease (`landBy`), so no crash or store error between the two loses the turn. An owe that fails stops the write, which rejects; a write that fails after its owe leaves a turn that finds nothing new. Deleting an entry that has content owes once, before either half, and that one debt covers both, so a failed owe deletes neither. A turn that runs before the lease and finds nothing new holds its wake to the lease, in case the write is still landing, so a burst costs one more, empty turn there. The write is refused, naming the entry, when the named session's flow declares no internal entry by that name, and `defineFlow` refuses two session collections whose patterns overlap with different entries. Wakes coalesce per tenant, session, entry and resolver identity (`resolvedBy`, with none a key value of its own), and the wake waits two seconds, so a burst of writes under one resolver starts one turn, which reads what changed rather than one event, and settles its wake as every wake's entry does (`requestHost.wakes.read` / `settle`). Writers under different resolvers never share a wake, so a burst from principals of two resolvers starts two turns, each carrying its own row's `resolvedBy`. The named session's `reactTo` blocks never run inside the writer's turn; `reactTo` answers a session's own writes. Because `resolvedBy` is part of the key, a wake's resolver never changes while it is kept: the fire dispatches the row's `resolvedBy`, and the turn reads and settles that row (the request's own resolver identity keys every wake verb in `durability/request-wakes.ts`). Only that resolver's writers can owe it, so nothing that happens to the session's wakes while the turn runs changes what the turn may reach. A wake stored before the field carries none and reaches no own-resolver session. Recovery of an interrupted request brings forward its session's wakes under the request's own resolver and under none. On a host that keeps no wakes, a write is heard on the bus and starts no turn.
+
+**A webhook turn reaches nothing but its own session.** A turn a webhook delivery started, or a run that delivery fired (its routing and owner runs, which carry the delivery's origin, `readDeliveryOrigin`), is refused on every verb with `UntrustedReachError` (exported from `@flow-state-dev/engine` beside `SessionNotFoundError`), which names the rule and not the target, before anything is looked up. The fence lives in one function, `fenceNamedReach`, so widening it to every untrusted turn changes one place. A board's settle on its claimed task's session and a subscription delivery don't name a session; they take it from a server-held record and keep their own checks.
+
+**When to use `ctx.sessions` instead.** `ctx.resources.at` is for another session's *resources*. For what isn't a resource (another session's flow, its readable state fields, its history and turns, the owner's session list) use `ctx.sessions`, which reaches no resources. A view reads its own copies: `at` throws in a view.
 
 ## Streaming Integration
 

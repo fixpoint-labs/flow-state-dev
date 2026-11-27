@@ -20,6 +20,7 @@ import {
   type ReviewerInput,
   type ReviewerVerdict,
 } from "../src/supervisor";
+import { buildReviewedWorker } from "../src/supervisor/blocks/reviewer-check";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -401,6 +402,23 @@ describe("supervisor pattern", () => {
 // ---------------------------------------------------------------------------
 
 describe("supervisor per-task review", () => {
+  it.each([
+    { taskId: "t1" },
+    { taskId: "t1", goal: null, attempts: "unknown" },
+  ])("fills missing reviewer fields on partial worker input %#", async (input) => {
+    const reviewer = makeApprovingReviewer("partial-reviewer");
+    const block = buildReviewedWorker({
+      name: "partial-input",
+      workerKey: "worker",
+      workerBlock: echoWorker,
+      reviewerGenerator: reviewer,
+    });
+
+    const result = await testBlock(block, { input });
+    expect(result.error).toBeNull();
+    expect(reviewer.calls).toMatchObject([{ taskId: "t1", goal: "", attempts: 1 }]);
+  });
+
   it("approves on first attempt — task completes", async () => {
     const planner = makeDeterministicPlanner("a1-planner", [
       { id: "t1", goal: "Task" },
@@ -507,19 +525,19 @@ describe("supervisor per-task review", () => {
     // with the failed-review label.
     const taskChangeItems = result.items.filter(
       (item: any) =>
-        item.type === "component" && item.component === "task-change",
+        item.type === "data" && item.dataType === "task-change",
     );
     const t1Changes = taskChangeItems.filter(
-      (it: any) => it.data?.task?.id === "t1",
+      (it: any) => it.value?.task?.id === "t1",
     );
     const lastT1 = t1Changes[t1Changes.length - 1] as any;
-    expect(lastT1?.data?.task?.status).toBe("errored");
+    expect(lastT1?.value?.task?.status).toBe("errored");
     // Labels include 'failed-review' once labelFailedReviews fires.
     const t1Labeled = taskChangeItems.find(
       (it: any) =>
-        it.data?.task?.id === "t1" &&
-        Array.isArray(it.data.task?.labels) &&
-        it.data.task.labels.includes("failed-review"),
+        it.value?.task?.id === "t1" &&
+        Array.isArray(it.value.task?.labels) &&
+        it.value.task.labels.includes("failed-review"),
     );
     expect(t1Labeled).toBeDefined();
   });
@@ -616,13 +634,13 @@ describe("supervisor per-task review", () => {
 
     const taskChangeItems = result.items.filter(
       (item: any) =>
-        item.type === "component" && item.component === "task-change",
+        item.type === "data" && item.dataType === "task-change",
     );
     const labelled = taskChangeItems.find(
       (it: any) =>
-        it.data?.task?.id === "t1" &&
-        Array.isArray(it.data.task?.labels) &&
-        it.data.task.labels.includes("reviewer-error"),
+        it.value?.task?.id === "t1" &&
+        Array.isArray(it.value.task?.labels) &&
+        it.value.task.labels.includes("reviewer-error"),
     );
     expect(labelled).toBeDefined();
   });

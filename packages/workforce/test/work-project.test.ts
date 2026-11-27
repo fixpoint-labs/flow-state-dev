@@ -15,7 +15,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { createWorkforceClient } from "../src/browser";
+import { createWorkforceClient, workerSessionsViewRef } from "../src/browser";
 import {
   COORDINATOR_FLOW,
   defineCoordinatorFlow,
@@ -155,6 +155,9 @@ async function boot() {
     }
   };
   const client = (user: string) => createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, ORG) }));
+  /** `user`'s conversations with `worker`: the worker sessions view (FIX-2725). */
+  const workerSessions = async (user: string, worker: string) =>
+    (await createClient({ userId: user, fetcher: h.fetcherFor(user, ORG) }).view(workerSessionsViewRef(), { worker })).value;
   const createProject = async (user: string, input: Record<string, unknown>) =>
     h.ok(user, "lab", await h.openSession(user, "lab"), "createProject", input);
   /** File `goal` from `session` (on the coordinator flow) and wait for every run it starts. */
@@ -170,7 +173,7 @@ async function boot() {
     expect(found, `runs of "${goal}"`).toHaveLength(1);
     return found[0]!.answer;
   };
-  return { ...h, runs, client, createProject, file, settled, answerOf };
+  return { ...h, runs, client, workerSessions, createProject, file, settled, answerOf };
 }
 
 const apollo: Address = { visibility: "shared", id: "apollo" };
@@ -200,7 +203,7 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.runs[0]!.state).toMatchObject({ filingProjectId: "shared/apollo" });
   });
 
-  it("read elsewhere: on the agent flow, a project another client set shows on this client's read and listing, and can't be seeded", async () => {
+  it("read elsewhere: on the agent flow, a project another client set shows on this client's read, and can't be seeded", async () => {
     const h = await withProjects();
     const reader = createClient({ userId: "alice", fetcher: h.fetcherFor("alice", ORG) });
     const writer = await createWorkforceClient(reader).ensureWorkerSession({ worker: "writer" });
@@ -208,10 +211,14 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Set from a second client: the reader sent no setWorkProject of its own.
     await h.client("alice").setWorkProject("writer", apollo);
     expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/apollo" });
-    const [row] = await createWorkforceClient(reader).listWorkerSessions("writer");
-    expect(row!.session.state).toMatchObject({ workProjectId: "shared/apollo" });
+    // FIX-2754: the worker sessions view lists it with the state the session
+    // read shows, so a sidebar names its project from the one live read.
+    const [row] = await h.workerSessions("alice", "writer");
+    expect(row!.id).toBe(writer.id);
+    expect(row!.state).toMatchObject({ workProjectId: "shared/apollo" });
     await h.client("alice").setWorkProject("writer", beta);
     expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/beta" });
+    expect((await h.workerSessions("alice", "writer"))[0]!.state).toMatchObject({ workProjectId: "shared/beta" });
     // Reading it gives no way to write it.
     const forged = await h.tryOpenSession("alice", AGENT_FLOW, { workerId: "writer", workProjectId: "shared/apollo" });
     expect(forged.status).toBe(400);
@@ -237,20 +244,20 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("look at the repo")).toEqual(inApollo);
   });
 
-  it("listWorkerSessions lists a session with workProjectId: both conversations set to a project, not the coordinator's own", async () => {
+  it("the worker sessions view lists a session with workProjectId: both conversations set to a project, not the coordinator's own", async () => {
     const h = await withProjects();
     const alice = h.client("alice");
     const main = await alice.ensureWorkerSession({ worker: "main" });
     const other = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "main" });
     expect(await alice.setWorkProject("main", apollo)).toEqual({ project: apollo });
     expect(await alice.setWorkProject("main", beta, { sessionId: other })).toEqual({ project: beta });
-    const listed = (await alice.listWorkerSessions("main")).map((entry) => [entry.session.id, entry.isDefault]);
+    const listed = (await h.workerSessions("alice", "main")).map((entry) => [entry.id, entry.isDefault]);
     expect(listed).toHaveLength(2);
     expect(listed).toContainEqual([main.id, true]);
     expect(listed).toContainEqual([other, false]);
     // The project coordinator's session for a project is still left out.
     const coordinator = await alice.ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: apollo });
-    expect((await alice.listWorkerSessions(PROJECT_COORDINATOR)).map((entry) => entry.session.id)).not.toContain(coordinator.id);
+    expect((await h.workerSessions("alice", PROJECT_COORDINATOR)).map((entry) => entry.id)).not.toContain(coordinator.id);
   });
 
   it("change: a task filed before the change keeps its project, and one filed after takes the new one", async () => {

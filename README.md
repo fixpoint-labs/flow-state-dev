@@ -29,7 +29,7 @@ The starters run from a clone of this repository. They are workspace packages th
 
 ## Run a starter
 
-You need Node.js 22.18 or newer and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
+You need Node.js 24 or newer and pnpm 12.18.0 (`corepack enable && corepack prepare pnpm@12.18.0`). The published packages still support Node 22 and newer; the starters, being apps, need 24.
 
 ```bash
 git clone https://github.com/fixpoint-labs/flow-state-dev
@@ -121,7 +121,7 @@ Everything is published under `@flow-state-dev/`. Install only what you use.
 | **Hosting** | [`next`](packages/next), [`vercel`](packages/vercel), [`node`](packages/node), [`bullmq`](packages/bullmq) (durable background jobs and cron) |
 | **Persistence** | [`store-sqlite`](packages/store-sqlite), [`store-postgres`](packages/store-postgres) |
 | **Transports** | [`mcp`](packages/mcp), [`scheduled`](packages/scheduled), [`voice-openai`](packages/voice-openai) |
-| **Tooling** | [`fsdev`](packages/cli) (the CLI), [`devtool`](packages/devtool), [`testing`](packages/testing) (harnesses and mock models) |
+| **Tooling** | [`fsdev`](packages/fsdev) (the CLI), [`devtool`](packages/devtool), [`testing`](packages/testing) (harnesses and mock models) |
 
 Concepts, guides and API reference are in the [docs](https://flow-state.dev/docs/intro). For small, copy-able code, see [`examples/hello-chat`](examples/hello-chat).
 

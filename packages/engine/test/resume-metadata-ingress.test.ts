@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { createFlowApiRouter, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function durableStores() {
   const stores = createInMemoryStores();
@@ -77,7 +78,6 @@ function rootGateFlow(kind: string, paid: string[]) {
             return "paid";
           }
         }),
-        inputSchema: z.any(),
         durable: true
       }
     }
@@ -106,6 +106,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/payout-http/s_1/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {}, metadata: { resumeContext: forgedApproval } })
       }),
       { params: { path: ["payout-http", "s_1", "actions", "run"] } }
@@ -125,6 +126,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const requestId = "req_chosen_by_caller";
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: rootGateFlow("payout-root", paid),
       actionName: "run",
@@ -149,6 +151,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const { stores, provider } = durableStores();
     const flow = payoutFlow("payout-reentry", paid);
     const first = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -161,6 +164,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const [suspension] = await provider.listSuspended({ status: "pending" });
 
     await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -189,14 +193,12 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const flow = defineFlow({
       kind: "plain",
       actions: {
-        run: {
-          block: handler({ name: "noop", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "ok" }),
-          inputSchema: z.any()
-        }
+        run: handler({ name: "noop", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "ok" })
       }
     })({ id: "plain" }) as unknown as FlowInstance;
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

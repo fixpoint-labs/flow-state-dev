@@ -9,8 +9,17 @@
  * and stream goes through the one transport built here.
  */
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
-import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
-import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
+import type { FileContent } from "@flow-state-dev/contracts/items";
+import type { ActionConfig, FlowActionInput, RequestStatusSnapshot, ViewHearing } from "@flow-state-dev/core/types";
+import {
+  type AnswerLimit,
+  clientError,
+  createTransport,
+  requireValue,
+  seg,
+  topicPath,
+  type Transport
+} from "./internal/http";
 import { pause } from "./internal/pause";
 import {
   openRequestStream,
@@ -19,6 +28,9 @@ import {
   type StreamResumeOptions
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
+import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
+import { scopeResourceHandle, type ScopeHandleOf, type ScopeResourceDef } from "./resource-client/scope-resource";
+import { viewInputOnWire, type ViewCallOptions, type ViewInputOf, type ViewRef, type ViewResult, type ViewValueOf } from "./view/view";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -73,6 +85,16 @@ export type CreateClientOptions = {
    * `fetch`.
    */
   fetcher?: ClientFetch;
+  /**
+   * How long `flow().send` waits for the server to answer, in milliseconds.
+   * The server answers a send as soon as it takes it, so a send with no
+   * answer by then is lost on the way (a dropped connection, a proxy gone
+   * down): it rejects with a `ClientHttpError` of status 0, and a message box
+   * keeps its text for a Retry. Only the wait for the answer to start is
+   * timed; a stream that has started runs as long as it runs. Default
+   * `30_000`; `0` waits for ever.
+   */
+  sendTimeoutMs?: number;
 };
 
 /** What a session listing can add to its rows ({@link ListSessionsOptions.include}). */
@@ -198,11 +220,32 @@ export type TranscribeResponse = {
   language?: string;
 };
 
+/** One file to attach: its bytes, its type (a `Blob`'s own type when omitted), and the name a person sees. */
+export type UploadRequest = {
+  data: Uint8Array | Blob;
+  mediaType?: string;
+  filename?: string;
+};
+
 /** How a send is addressed and labelled. */
 export type SendOptions = {
-  sessionId?: string;
+  /**
+   * The session the action runs in. **Required**: every send names its
+   * session. One from `createSession()`, or, for a one-shot send that belongs
+   * to no conversation, `oneOffSessionId()` from `@flow-state-dev/core/helpers`.
+   */
+  sessionId: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The message's files, each as `upload` returned it (`data` is its
+   * `fsd-blob:` reference, never the bytes), in the order attached. They ride
+   * beside the input: the model gets them on the person's turn, and the
+   * conversation shows them on that line. The action must write a user
+   * message (`userMessage`) and the session must be named. Over the limits
+   * (10 images, 5 documents) the server refuses the send by name.
+   */
+  attachments?: FileContent[];
 };
 
 /**
@@ -256,6 +299,14 @@ export type RequestStreamOptions = RequestSSECallbacks &
   StreamResumeOptions & {
     /** Also deliver trace items (`block_trace`, `router_decision`, `state_snapshot`). */
     includeTrace?: boolean;
+    /**
+     * Keep following until the request ends: a failed connection opens again
+     * after the client's backoff (1 s, doubling, at most 30 s), resuming after
+     * the last event, and is not reported. Five empty answers in a row (a
+     * request that already ended) or a 401, 403 or 404 still end the stream
+     * with `onError`; `close()` ends it, a pending reconnect included.
+     */
+    reconnect?: boolean;
   };
 
 /** A flow whose actions type-check `send`, as `typeof myFlow` gives it. Types only. */
@@ -376,7 +427,12 @@ export interface RequestHandle {
    */
   answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
   answer(body: AnswerSuspensionBody, options: StreamOption): Promise<Response>;
-  /** Follow the request's events. */
+  /**
+   * Follow the request's events. When the server ends the stream before the
+   * request ends (it cuts off a reader that falls too far behind), the stream
+   * resumes after the last event it delivered; after five connections in a
+   * row that deliver nothing it gives up with `onError`.
+   */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
 
@@ -403,7 +459,7 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
   send<TAction extends ActionNameOf<TFlow>>(
     action: TAction,
     input: ActionInputOf<TFlow, TAction>,
-    options?: SendOptions
+    options: SendOptions
   ): Promise<SentRequest>;
   send<TAction extends ActionNameOf<TFlow>>(
     action: TAction,
@@ -411,17 +467,20 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
     options: SendOptions & StreamOption
   ): Promise<Response>;
   /**
-   * Run one of the flow's reads (`defineFlow({ reads })`) on a session, as the
-   * client's user, and resolve to its answer. Nothing is stored: no request,
-   * no items, no write. For watching a view the flow computes, polled or
-   * called when a push says something changed. Rejects with a
-   * `ClientHttpError`: 404 for an unknown read or a session the user can't
-   * run in, 400 for input its schema refuses, 409 `read_only` for a read
-   * that tried to write.
+   * The user and org the server acts as for this client under this flow's
+   * sign-in, with no session. On a host with no sign-in, the client's user and
+   * the default org.
    */
-  read<TOutput = unknown>(name: string, input: unknown, options: { sessionId: string }): Promise<TOutput>;
+  identity(): Promise<{ userId: string; orgId: string }>;
   /** Start a session on this flow, as the client's user. */
   createSession(options?: CreateSessionOptions): Promise<SessionDetail>;
+  /**
+   * Upload one file to attach to this flow's messages, checked by this flow's
+   * own sign-in, so the file is held for the user its sends resolve. Use this
+   * when the flow authenticates its own callers; otherwise `client.upload` is
+   * the same.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
   /** A request of this flow, by id. Reads nothing until a method is called. */
   request(id: string): RequestHandle;
 }
@@ -502,6 +561,14 @@ export interface Client {
   flow<TFlow extends TypedFlow = UntypedFlow>(address: string): FlowHandle<TFlow>;
   sessions: SessionsApi;
   resources: ResourcesApi;
+  /**
+   * One user or org resource or collection, by its definition: read by scope
+   * and key with no session, and written through the flow its `runBy` names. A
+   * collection's handle reads and writes its entries one at a time. Its key is
+   * the definition's `ref` (a collection's `pattern`), or `options.key`. Reads
+   * nothing until a method is called.
+   */
+  resource<TDef extends ScopeResourceDef>(def: TDef, options?: { key?: string }): ScopeHandleOf<TDef>;
   requests: {
     /**
      * The user's interrupted requests: a request a host lost in a crash or a
@@ -522,8 +589,36 @@ export interface Client {
    * `topic.user()` and `topic.org()`.
    */
   subscribe(topics: readonly WireTopic[], options: SubscribeOptions): Subscription;
+  /**
+   * A live read: keep a screen current on what `subscribe` hears. Reads now,
+   * and again on each notice under `topics` that `hear` and `paths` let
+   * through, with one read in flight and at most one waiting; reports a value
+   * only when it changed. A failed read tries again on its own (1 s doubling
+   * to 30 s) and `onStale` says the screen is stale until one lands. Reads on
+   * a timer (3 s by default) wherever push can miss a change. With
+   * `topicsFromResult`, each read also returns the topics to hear next.
+   */
+  live<T>(topics: readonly WireTopic[], options: LiveReadOptions<T>): LiveRead;
+  live<T>(topics: readonly WireTopic[], options: LiveReadWithTopicsOptions<T>): LiveRead;
+  /**
+   * Run a view once, as the client's user, and resolve to its value, the
+   * change topics of what its run read, and a keyed view's row keys. A user
+   * or org view needs no session; a session view takes `sessionId`. Nothing
+   * is stored. To keep a screen current, watch it (`useView` in React).
+   * Rejects with a `ClientHttpError`: 404 for an unknown view or a session
+   * the user can't run in, 400 for input its schema refuses or a view called
+   * at the wrong scope, 422 for a view that called a model or reached for a
+   * session it doesn't have.
+   */
+  view<TRef extends ViewRef>(ref: TRef, input?: ViewInputOf<TRef>, options?: ViewCallOptions): Promise<ViewResult<ViewValueOf<TRef>>>;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
+  /**
+   * Upload one file to attach, once. Resolves to the file in reference form
+   * (`data` is `fsd-blob:<id>`), held for this user until a message that
+   * names it is sent. Send that, never the bytes.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
 }
 
 // ---------------------------------------------------------------------------
@@ -533,11 +628,18 @@ export interface Client {
 const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 const JSON_HEADERS = { "content-type": "application/json" };
 const SSE_HEADERS = { accept: "text/event-stream" };
+/** How long a send waits for its answer by default: {@link CreateClientOptions.sendTimeoutMs}. */
+const DEFAULT_SEND_TIMEOUT_MS = 30_000;
 
 /** Build the one client. Another user or another server is another client. */
 export function createClient(options: CreateClientOptions): Client {
   const userId = requireValue(options.userId, "userId");
   const t = createTransport(options);
+  const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+  const sendLimit: AnswerLimit | undefined =
+    sendTimeoutMs > 0
+      ? { ms: sendTimeoutMs, message: `The server didn't answer the send within ${formatSeconds(sendTimeoutMs)}.` }
+      : undefined;
 
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
@@ -670,9 +772,25 @@ export function createClient(options: CreateClientOptions): Client {
     userId,
     flows: async () => (await t.json<{ flows: FlowListEntry[] }>("/api/flows")).flows,
     capabilities,
-    flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address),
+    flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address, sendLimit),
     sessions,
     resources,
+    resource: (def, resourceOptions) =>
+      scopeResourceHandle(
+        t,
+        userId,
+        async (path, body) => {
+          const response = await t.json<ExecuteActionResponse>(path, {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify(body)
+          });
+          const flow = response.request.flowId ?? response.request.flowKind;
+          return requestHandle(t, flow, response.request.id, response.session?.id ?? null).result();
+        },
+        def,
+        resourceOptions
+      ),
     requests: {
       interrupted: async (interruptedOptions) => {
         const userPath = `/api/flows/users/${seg(userId)}`;
@@ -705,6 +823,42 @@ export function createClient(options: CreateClientOptions): Client {
       }
     },
     subscribe: (topics, subscribeOptions) => push.subscribe(topics, subscribeOptions),
+    live: <T>(topics: readonly WireTopic[], liveOptions: LiveReadOptions<T> | LiveReadWithTopicsOptions<T>) =>
+      liveRead<T>(push.subscribe, topics, liveOptions as LiveReadOptions<T>),
+    view: async <TRef extends ViewRef>(ref: TRef, input?: ViewInputOf<TRef>, viewOptions?: ViewCallOptions) => {
+      const flow = requireValue(ref?.flow, "view flow");
+      const name = requireValue(ref?.view, "view name");
+      const path =
+        viewOptions?.sessionId !== undefined
+          ? `/api/flows/${seg(flow)}/${seg(requireValue(viewOptions.sessionId, "sessionId"))}/views/${seg(name)}`
+          : `/api/flows/${seg(flow)}/views/${seg(name)}`;
+      // The change it may answer for (FIX-2625 D1): a notice with ids, as a hint; never one with none.
+      const changed = viewOptions?.changed;
+      const answer = await t.json<{
+        output: ViewValueOf<TRef>;
+        topics: WireTopic[];
+        keys?: string[];
+        partial?: { removed: string[] };
+        hears?: ViewHearing[];
+      }>(path, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          input: viewInputOnWire(input),
+          userId,
+          ...(changed?.ids !== undefined && changed.ids.length > 0
+            ? { changed: { topic: changed.topic, kind: changed.kind, ids: changed.ids } }
+            : {})
+        })
+      });
+      return {
+        value: answer.output,
+        topics: answer.topics ?? [],
+        ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
+        ...(answer.partial !== undefined ? { partial: { removed: answer.partial.removed ?? [] } } : {}),
+        ...(Array.isArray(answer.hears) ? { hears: answer.hears } : {})
+      };
+    },
     transcribe: (request) => {
       const mediaType = request.mediaType ?? "audio/webm";
       const body =
@@ -716,45 +870,74 @@ export function createClient(options: CreateClientOptions): Client {
         { method: "POST", headers: { "content-type": mediaType }, body },
         { userId, language: request.language }
       );
-    }
+    },
+    upload: (request) => uploadTo(t, "/api/flows/blobs", userId, request)
   };
   return client;
+}
+
+/** `30_000` as "30 seconds", `1_500` as "1.5 seconds". */
+function formatSeconds(ms: number): string {
+  const seconds = ms / 1000;
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+}
+
+/** POST one file's raw bytes to an upload route and resolve to its reference. */
+async function uploadTo(t: Transport, path: string, userId: string, request: UploadRequest): Promise<FileContent> {
+  const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
+  const body =
+    request.data instanceof Blob ? request.data : new Blob([request.data as Uint8Array<ArrayBuffer>], { type: mediaType });
+  const answer = await t.json<{ attachment: FileContent }>(
+    path,
+    { method: "POST", headers: { "content-type": mediaType }, body },
+    { userId, filename: request.filename }
+  );
+  return answer.attachment;
 }
 
 // ---------------------------------------------------------------------------
 // Flow and request handles
 // ---------------------------------------------------------------------------
 
-function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, address: string): FlowHandle<TFlow> {
+function flowHandle<TFlow extends TypedFlow>(
+  t: Transport,
+  userId: string,
+  address: string,
+  sendLimit: AnswerLimit | undefined
+): FlowHandle<TFlow> {
   const flow = requireValue(address, "flow address");
 
   async function send(
     action: string,
     input: unknown,
-    sendOptions?: SendOptions & Partial<StreamOption>
+    sendOptions: SendOptions & Partial<StreamOption>
   ): Promise<SentRequest | Response> {
     const actionName = requireValue(action, "action");
+    // Refused before anything is sent, as the server would refuse it. The id
+    // itself is sent as given.
+    requireValue(sendOptions?.sessionId, "sessionId");
+    const sessionId = sendOptions.sessionId;
     const body: ExecuteActionRequestBody = {
       input,
       userId,
-      sessionId: sendOptions?.sessionId,
-      requestId: sendOptions?.requestId,
-      metadata: sendOptions?.metadata
+      sessionId,
+      requestId: sendOptions.requestId,
+      metadata: sendOptions.metadata,
+      ...(sendOptions.attachments !== undefined && sendOptions.attachments.length > 0
+        ? { attachments: sendOptions.attachments }
+        : {})
     };
-    const path =
-      sendOptions?.sessionId === undefined
-        ? `/api/flows/${seg(flow)}/actions/${seg(actionName)}`
-        : `/api/flows/${seg(flow)}/${seg(sendOptions.sessionId)}/actions/${seg(actionName)}`;
+    const path = `/api/flows/${seg(flow)}/${seg(sessionId)}/actions/${seg(actionName)}`;
     const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
-    if (sendOptions?.stream === true) {
-      return t.raw(path, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } });
+    if (sendOptions.stream === true) {
+      return t.raw(path, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } }, undefined, sendLimit);
     }
-    const response = await t.json<ExecuteActionResponse>(path, { ...init, headers: JSON_HEADERS });
+    const response = await t.json<ExecuteActionResponse>(path, { ...init, headers: JSON_HEADERS }, undefined, sendLimit);
     const handle = requestHandle(
       t,
       response.request.flowId ?? flow,
       response.request.id,
-      response.session?.id ?? sendOptions?.sessionId ?? null
+      response.session?.id ?? sessionId
     );
     return Object.assign(handle, { response });
   }
@@ -762,15 +945,7 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
   return {
     address: flow,
     send: send as FlowHandle<TFlow>["send"],
-    read: async <TOutput>(name: string, input: unknown, readOptions: { sessionId: string }) => {
-      const readName = requireValue(name, "read");
-      const sessionId = requireValue(readOptions?.sessionId, "sessionId");
-      const response = await t.json<{ output: TOutput }>(
-        `/api/flows/${seg(flow)}/${seg(sessionId)}/reads/${seg(readName)}`,
-        { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ input, userId }) }
-      );
-      return response.output;
-    },
+    identity: () => t.json<{ userId: string; orgId: string }>(`/api/flows/${seg(flow)}/identity`, undefined, { userId }),
     createSession: async (create = {}) =>
       (
         await t.json<{ session: SessionDetail }>(`/api/flows/${seg(flow)}/sessions`, {
@@ -779,6 +954,7 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
           body: JSON.stringify({ userId, ...create })
         })
       ).session,
+    upload: (request) => uploadTo(t, `/api/flows/${seg(flow)}/blobs`, userId, request),
     request: (id) => requestHandle(t, flow, requireValue(id, "requestId"), undefined)
   };
 }
@@ -916,16 +1092,17 @@ function requestHandle(
     },
     resume: resume as RequestHandle["resume"],
     answer: answer as RequestHandle["answer"],
-    stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
+    stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, reconnect, ...callbacks }) =>
       openRequestStream(
         {
           fetcher: t.fetcher,
-          url: t.url(`${base}/stream`, {
-            starting_after: startingAfter,
-            include: includeTrace === true ? "trace" : undefined
-          })
+          url: (after) =>
+            t.url(`${base}/stream`, {
+              starting_after: after,
+              include: includeTrace === true ? "trace" : undefined
+            })
         },
-        { ...callbacks, startingAfter, lastEventId, dedupWindowSize }
+        { ...callbacks, startingAfter, lastEventId, dedupWindowSize, reconnect }
       )
   };
   return handle;

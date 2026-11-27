@@ -29,6 +29,7 @@ import type {
   BlockContext,
   BlockDefinition,
   DefinedResource,
+  ResourceRef,
 } from "@flow-state-dev/core/types";
 import type {
   ItemVisibility,
@@ -46,7 +47,6 @@ import {
   getOrCreateTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
-  type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
@@ -199,12 +199,7 @@ function buildDefaultController(config: {
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
 
-      const collection = await getOrCreateTaskCollection({
-        ctx,
-        backing: "state",
-        collectionId: config.collectionId,
-        state: ctx.sequencer!,
-      });
+      const collection = await getCollection(ctx, config.collectionId);
       const completed = collection.list({ status: "completed" });
       const ordered = [...completed].sort(
         (a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0)
@@ -227,7 +222,7 @@ function buildDefaultController(config: {
               .join("\n")}`
           : "";
 
-      const iteration = ctx.sequencer?.state?.iteration ?? 0;
+      const iteration = ctx.sequencer!.state.iteration;
 
       return [
         "You are a controller coordinating specialist agents over a shared workspace.",
@@ -301,7 +296,7 @@ function buildDefaultSynthesizer(config: {
 // Internal: per-iteration helpers (closures over the collection factory)
 // ---------------------------------------------------------------------------
 
-async function getCollection(
+function getCollection(
   ctx: BlockContext,
   collectionId: string
 ): Promise<TaskCollectionRef> {
@@ -551,7 +546,7 @@ export function routedSpecialists<
     },
   });
 
-  // 6. EmitSnapshot: stable-key component snapshot for live rendering.
+  // 6. EmitSnapshot: stable-key data snapshot for live rendering.
   const emitSnapshot = handler({
     name: `${name}-snapshot`,
     inputSchema: z.any(),
@@ -560,15 +555,15 @@ export function routedSpecialists<
     execute: async (_input, ctx) => {
       const workspaceState = ctx.resources.workspace.state;
       const controlState = ctx.sequencer!.state;
-      ctx.emit.component(
+      ctx.emit.data(
         "routedSpecialists",
         {
           state: workspaceState,
           iteration: controlState.iteration,
           specialist: controlState.currentSpecialist ?? null,
           done: controlState.done,
-        } as unknown as Record<string, unknown>,
-        { key: name }
+        },
+        { key: name, itemVisibility: { client: true, history: false } }
       );
     },
   });
@@ -627,15 +622,15 @@ export function routedSpecialists<
       when: (v: { continue: boolean }) => v.continue,
       maxIterations,
     })
-    .map(async (_value: unknown, ctx: any) => {
-      const workspaceState = ctx.resources.workspace.state;
+    .map(async (_value, ctx) => {
+      const workspaceState = (ctx.resources.workspace as ResourceRef).state;
       const controlState = ctx.sequencer!.state;
       const collection = await getCollection(ctx, collectionId);
       const completed = collection.list({ status: "completed" });
       const history = completed
         .slice()
-        .sort((a: Task, b: Task) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
-        .map((t: Task) => ({
+        .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
+        .map((t) => ({
           iteration:
             (t.metadata as { iteration?: number } | undefined)?.iteration ?? 0,
           specialist: t.assignee ?? "(none)",

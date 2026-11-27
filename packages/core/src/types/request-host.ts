@@ -14,7 +14,7 @@
  * untouched.
  *
  * **What crosses is behaviour, not handles.** No type in this file names a store,
- * a flow instance, a session record, or a task row. A value read from another
+ * a flow instance, a session record, or a task. A value read from another
  * session crosses as `unknown` and the consumer parses it with its own schema —
  * `core` cannot name `orchestration`'s types either. The one read of another
  * session's record, `sessions.read`, answers only what that session's flow
@@ -46,6 +46,8 @@
 
 import type { WaitGateBinding, WaitOutcome, TaskAddress } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
+import type { RequestStatus } from "./request";
+import type { PendingUserSuspension, PendingUserSuspensionCursor } from "./suspension";
 import type { InternalBlockContext } from "./block";
 
 /** How a parent-board row is being settled. */
@@ -102,7 +104,7 @@ export type ResumeWaitInput =
     }
   | {
       /**
-       * A suspension that waits for a user, as a task row's record of its
+       * A suspension that waits for a user, as a task's record of its
        * stop names it (server-written, never input). It must be this
        * principal's: the same user, tenant and organization as the running
        * request. Any other answers `gate-not-found`.
@@ -302,6 +304,117 @@ export type PeerSessionView = {
    * process. Untyped: parse it with your own schema.
    */
   readonly state: Readonly<Record<string, unknown>>;
+  // FIX-2725 D1.
+  /**
+   * Which session this is, among every session that has held its id: a new
+   * one is minted when the session is recreated under the same id. Server
+   * only: key a partition by it, never answer it to a client.
+   */
+  readonly lineageId: string;
+};
+
+// FIX-2725 D1.
+/** Which of the running principal's sessions {@link RequestSessions.list} reads. */
+export type SessionListQuery = {
+  /** Only sessions of flows of this kind. */
+  readonly flowKind?: string;
+  /** Only sessions owned by this flow instance. */
+  readonly flowId?: string;
+  /**
+   * Exact match on readonly state fields the flow `flowId` (else the
+   * registered flow of kind `flowKind`) declares. Any other field throws,
+   * an exposed one included: a filter is trusted to pick sessions by what the
+   * server set at birth and nothing changes, unlike the display data
+   * {@link ListedSession.state} carries.
+   */
+  readonly fields?: Readonly<Record<string, string>>;
+  // FIX-2754.
+  /**
+   * Only these sessions, by id, at most the first 100. The other filters
+   * still apply, and each session passes the same rule as the rest of the
+   * list: another principal's, a refused and a missing session are left out
+   * alike, and the read is heard as the list is, never on an asked-for
+   * session's own topic.
+   */
+  readonly ids?: readonly string[];
+  /** How many rows, newest first. Defaults to and at most 100. */
+  readonly limit?: number;
+  /**
+   * How many of the newest matching sessions to pass over first, to read on
+   * where `more` said a page stopped. Counted before the list leaves out a
+   * session it doesn't answer, so a page can hold fewer than `limit`.
+   */
+  readonly offset?: number;
+};
+
+/** One session as {@link RequestSessions.list} answers it: no items, no state but what the HTTP session list shows. */
+export type ListedSession = {
+  readonly id: string;
+  readonly flowKind: string;
+  /** The flow instance that owns it; absent on a record written before instances had ids. */
+  readonly flowId?: string;
+  /** As {@link PeerSessionView.lineageId}: server only. */
+  readonly lineageId: string;
+  /** Its title, once one is set. */
+  readonly title?: string;
+  readonly createdAt: number;
+  /** When the session last changed: a request starting in it, a title. */
+  readonly updatedAt: number;
+  // FIX-2754.
+  /**
+   * Its state as the HTTP session list shows the same caller: the fields its
+   * flow exposes to the client (`session.client.expose`) and the ones it
+   * declares readonly. Display data, for a screen to label the session by: an
+   * exposed field may change after the session is made, so a block that
+   * decides on a session reads {@link RequestSessions.read}, whose state is
+   * readonly fields only, and filters by {@link SessionListQuery.fields}.
+   */
+  readonly state: Readonly<Record<string, unknown>>;
+};
+
+/** The running principal's top-level sessions, newest first. */
+export type SessionList = {
+  readonly sessions: readonly ListedSession[];
+  /** Whether more sessions matched than the limit let through. */
+  readonly more: boolean;
+};
+
+/** Which requests {@link RequestSessions.turns} reads. */
+export type SessionTurnsQuery = {
+  /** Only requests in one of these statuses, filtered at the store. */
+  readonly status?: readonly RequestStatus[];
+  /** Only requests of one of these actions. */
+  readonly actions?: readonly string[];
+  /** How many of each session's newest requests. Defaults to and at most 50. */
+  readonly limit?: number;
+};
+
+/** One request of a session, as {@link RequestSessions.turns} answers it: its status, never its words. */
+export type SessionTurn = {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly action: string;
+  readonly status: RequestStatus;
+  /** What started it: `http`, `mcp`, `scheduled`, `notification`, and so on. */
+  readonly source: string;
+  readonly startedAtMs: number;
+  readonly completedAtMs?: number;
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted: a failed turn has no `completedAtMs`. Absent while it runs or waits. */
+  readonly endedAtMs?: number;
+  readonly updatedAt: number;
+  /** Why it failed, when it did. */
+  readonly error?: { readonly code: string; readonly message: string };
+  /** The first turn its history window held, when earlier turns had left it: the request record's mark. */
+  readonly historyStart?: { readonly requestId: string } | null;
+  // FIX-2848 D3.
+  /**
+   * Whether the engine's retry route runs this turn again for its caller: the
+   * route's own rule on `source`, with the host's `publicReentrySources`. A
+   * screen offers Retry on a failed turn from this, never from a copy of the
+   * source list. Absent from an engine older than this field: read it as `false`.
+   */
+  readonly retryable?: boolean;
 };
 
 /** Which of another session's settled turns {@link RequestSessions.history} reads. */
@@ -341,6 +454,32 @@ export type SessionHistory = {
   readonly running: boolean;
 };
 
+// FIX-2770.
+/** Which of the running principal's pending suspensions {@link RequestSessions.userSuspensions} reads. */
+export type UserSuspensionsQuery = {
+  /**
+   * Only suspensions of requests of these flow kinds: 0 to 50, never every
+   * flow. Pass the flows your screen covers, from server code, never from a
+   * caller's input. An empty list reads nothing; more than 50 throws.
+   */
+  readonly flowKinds: readonly string[];
+  /** Read on from a page's `next`. */
+  readonly after?: PendingUserSuspensionCursor;
+};
+
+/** One page of the running principal's pending suspensions, oldest first. */
+export type UserSuspensionPage = {
+  readonly suspensions: readonly PendingUserSuspension[];
+  /**
+   * Whether more matched than this page read. A page can hold fewer rows than
+   * the page size, even none, while `more` is set: rows the instance's own
+   * sign-in refuses are left out after the store read them.
+   */
+  readonly more: boolean;
+  /** When `more`: pass it back as `after` to read on. */
+  readonly next?: PendingUserSuspensionCursor;
+};
+
 // FIX-2160 D2; FIX-2173.
 /**
  * Sessions of the running principal: a check on a target session
@@ -362,8 +501,45 @@ export interface RequestSessions {
    * and for one that doesn't exist. Reads only: nothing is written to the
    * session and nothing runs in it. A turn the session runs now, a suspended
    * turn and a parked one are left out, and `running` says one is open.
+   * It returns the transcript, so a view that reads it hears `items` and runs
+   * again per streamed chunk; a view meant to stay quiet during a reply reads
+   * {@link turns}, not `history`.
    */
   history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined>;
+
+  // FIX-2725 D1.
+  /**
+   * The running principal's top-level sessions, by the rule of {@link read},
+   * filtered at the store, newest first: at most 100, with `more` set when
+   * more matched.
+   */
+  list(query?: SessionListQuery): Promise<SessionList>;
+
+  /**
+   * The requests of the session `sessionId`, newest first, at most 50, when
+   * it is the running principal's by the rule of {@link read}; `undefined`
+   * otherwise. Status, times, source and error only, never the words.
+   */
+  turns(sessionId: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;
+  /**
+   * The requests of each of `sessionIds` (at most 100) the running principal
+   * may read, newest first, at most 50 a session. A session it may not read
+   * adds nothing.
+   */
+  turns(sessionIds: readonly string[], query?: SessionTurnsQuery): Promise<SessionTurn[]>;
+
+  // FIX-2770.
+  /**
+   * The running principal's pending suspensions that wait on them, across
+   * every session and none, on the flow kinds named: the same user, tenant
+   * and organization as the running request, read at the store in one query
+   * that joins each to its request. Oldest first, at most 200 a page. Each row
+   * is a projection, never the run's payload. A view that reads it hears only
+   * a suspension written or deleted, never a streamed reply or a turn.
+   *
+   * @throws FlowStateConfigError for more than 50 flow kinds.
+   */
+  userSuspensions(query: UserSuspensionsQuery): Promise<UserSuspensionPage>;
 }
 
 /**

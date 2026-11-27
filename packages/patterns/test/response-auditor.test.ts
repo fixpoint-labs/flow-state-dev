@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { testBlock, testItems } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
   responseAuditor,
@@ -345,7 +345,7 @@ describe("response auditor pattern", () => {
     }
   });
 
-  it("emits an audit-annotation component item when results surface", async () => {
+  it("emits an audit-annotation data item when results surface", async () => {
     const auditor = responseAuditor({
       analyzers: [echoAnalyzer],
       threshold: 0.3,
@@ -356,12 +356,12 @@ describe("response auditor pattern", () => {
     });
 
     const cards = result.items.filter(
-      (item): item is ComponentItem =>
-        item.type === "component" && item.component === "audit-annotation",
+      (item): item is DataItem =>
+        item.type === "data" && item.dataType === "audit-annotation",
     );
     expect(cards).toHaveLength(1);
 
-    const data = cards[0]!.data as { surfacedResults: unknown[] };
+    const data = cards[0]!.value as { surfacedResults: unknown[] };
     expect(data.surfacedResults).toHaveLength(1);
   });
 
@@ -376,8 +376,8 @@ describe("response auditor pattern", () => {
     });
 
     const cards = result.items.filter(
-      (item): item is ComponentItem =>
-        item.type === "component" && item.component === "audit-annotation",
+      (item): item is DataItem =>
+        item.type === "data" && item.dataType === "audit-annotation",
     );
     expect(cards).toHaveLength(0);
   });

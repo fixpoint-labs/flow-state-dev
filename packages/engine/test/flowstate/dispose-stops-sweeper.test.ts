@@ -18,14 +18,11 @@ const SWEEP_INTERVAL_MS = 10;
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined
       })
-    }
   }
 })();
 
@@ -76,7 +73,7 @@ describe("FlowState.dispose() — sweeper shutdown ordering", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const adapter = closingAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: adapter } },
       detectInterruptedOnStartup: false,
       staleSweepIntervalMs: SWEEP_INTERVAL_MS,

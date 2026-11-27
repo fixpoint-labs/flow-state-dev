@@ -19,14 +19,14 @@ import type { Task, TaskStreamItem } from "../src/react/lib/task-collection-stat
 function taskItem(task: Task, index = 0, kind = "review_requested", collectionId = "issues"): TaskStreamItem {
   return {
     id: `item_${collectionId}_${index}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: "req_1",
     itemIndex: index,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: 1_000 + index,
-    component: "task-change",
-    data: { collectionId, taskId: task.id, kind, task },
+    dataType: "task-change",
+    value: { collectionId, taskId: task.id, kind, task },
   } as never as TaskStreamItem;
 }
 

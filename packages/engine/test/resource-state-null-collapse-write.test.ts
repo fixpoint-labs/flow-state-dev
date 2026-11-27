@@ -140,6 +140,7 @@ describe("a write the state schema parses to null", () => {
     const response = await handleCreateCollectionResource(
       new Request("http://x/sessions/sess_1/resources/items", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ topic: "a" })
       }),
       { kind: "create_collection_item", sessionId: "sess_1", ref: "items" },

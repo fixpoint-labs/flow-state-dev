@@ -24,7 +24,7 @@ import {
 import {
   createInMemoryStores
 } from "../src/host";
-import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { sweepAsStale } from "./sweep-as-stale";
 import { abortRequest, hasActiveAbortController } from "../src/execution/abort-registry";
 
 type Worker = 0 | 1;
@@ -53,9 +53,7 @@ function parkedFlow(kind: string) {
   const flow = defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.any(),
-        block: handler({
+      run: handler({
           name: "parked",
           inputSchema: z.any(),
           outputSchema: z.object({ ok: z.boolean() }),
@@ -73,7 +71,6 @@ function parkedFlow(kind: string) {
             return { ok: true };
           }
         })
-      }
     },
     request: {
       heartbeatIntervalMs: 50,
@@ -111,7 +108,7 @@ async function parkOriginal(ids: OverlapIds) {
     runtimeConfig: {}
   });
   await park.parked[0];
-  await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+  await sweepAsStale(stores);
   return { stores, park, original, requestId: ids.requestId };
 }
 
@@ -243,9 +240,7 @@ describe("the last overlapping run ending by throwing", () => {
     const flow = defineFlow({
       kind: "overlap-throw-flow",
       actions: {
-        run: {
-          inputSchema: z.any(),
-          block: handler({
+        run: handler({
             name: "parked",
             inputSchema: z.any(),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -255,7 +250,6 @@ describe("the last overlapping run ending by throwing", () => {
               return { ok: true };
             }
           })
-        }
       },
       request: {
         heartbeatIntervalMs: 50,
@@ -290,7 +284,7 @@ describe("the last overlapping run ending by throwing", () => {
       runtimeConfig: {}
     });
     await originalEntered;
-    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    await sweepAsStale(stores);
     const { finished } = await continueRequest({
       requestId,
       stores,
@@ -330,15 +324,12 @@ describe("a single run that fails during setup", () => {
       const flow = defineFlow({
         kind: "setup-failure-flow",
         actions: {
-          run: {
-            inputSchema: z.any(),
-            block: handler({
+          run: handler({
               name: "never",
               inputSchema: z.any(),
               outputSchema: z.any(),
               execute: () => null
             })
-          }
         }
       })({ id: "setup-failure-flow" });
 

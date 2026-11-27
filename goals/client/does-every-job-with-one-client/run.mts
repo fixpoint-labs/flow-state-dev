@@ -33,13 +33,14 @@ import {
   type Tell,
 } from "../../lib/index.mts";
 import type { PhaseOne, PhaseTwo } from "./client.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const CLIENT = join(HERE, "client.mts");
 const CONFIG = join(HERE, "fixtures", "fsdev.config.mts");
 const CHECK = join(HERE, "check.mjs");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const FSDEV = join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts");
+const FSDEV = join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts");
 const INPUTS = ["support", "notes"].map((name) => join(HERE, "fixtures", `${name}.json`));
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["", "retry-instead", "two-clients", "stream-off-fetcher"];
@@ -65,7 +66,6 @@ interface Fixture {
 }
 
 type Env = Record<string, string>;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** A detached child, its output kept, and a promise for its exit. */
 function start(args: string[], env: Env): { child: ChildProcess; log: () => string; exited: Promise<number> } {

@@ -20,8 +20,8 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createWorkerInstallation, defineAgentWorkerFlow, defineSessionBoard, hireWorkforce, sessionIdOfFiling, workerConfigSchema } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { defineAgentWorkerFlow, defineSessionBoard, sessionIdOfFiling, workerConfigSchema, workerFlow, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   RUN_STAMP,
   runPatchedGoal,
@@ -36,6 +36,7 @@ import {
   silentLogger,
   type ModulePatch
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_plans_its_steps";
@@ -85,7 +86,6 @@ if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
 const legs = new Set((process.env.GOAL_LEGS ?? "a1,a2").split(",").map((s) => s.trim()).filter(Boolean));
 const say = (s: string) => console.error(`[plans-its-steps ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 600);
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const text = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value) ?? "");
 
 const { subjects } = loadFixture<{ subjects: string[] }>(import.meta.url, "briefs.json");
@@ -103,34 +103,38 @@ function brief(count: 2 | 3): { goal: string; subject: string } {
   return { subject, goal: `Write a short product announcement for ${subject}, in ${count} steps:\n${steps.join("\n")}` };
 }
 
-const tree = await readWorkforce(TREE);
-if (tree.errors.length > 0) throw new Error(`the tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
-
 function startHost(db: string) {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const deskTurn = handler({ name: "plans-its-steps-desk-turn", inputSchema: doorInput, execute: async () => "Noted." });
-  const desk = defineFlow({
-    kind: "desk",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
-    resources: { ...installation.resources, ...deskBoard.resources },
-    actions: {
-      respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
-      ...deskBoard.actions
-    },
-    internal: { actions: deskBoard.entries(deskTurn) }
-  } as never);
-  flows = { agent: defineAgentWorkerFlow({ installation }), desk: { flow: desk, roles: ["manager"] } };
+  // The kit reads the tree (a file it can't load stops the start) and hands this builder the installation it hired.
+  const deskOn = (installation: WorkerInstallation) => {
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const deskTurn = handler({ name: "plans-its-steps-desk-turn", inputSchema: doorInput, execute: async () => "Noted." });
+    const desk = defineFlow({
+      kind: "desk",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
+      resources: { ...installation.resources, ...deskBoard.resources },
+      actions: {
+        respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
+        ...deskBoard.actions
+      },
+      internal: { actions: deskBoard.entries(deskTurn) }
+    } as never);
+    return desk;
+  };
 
   const real = createModelResolver() as unknown as (id: string, block?: string) => unknown;
   const modelResolver = Object.assign((id: string, block?: string) => real(id === "goal/real" ? MODEL : id, block), {
     resolveId: (id: string) => (id === "goal/real" ? MODEL : id)
   });
   return createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        agent: workerFlow((installation) => defineAgentWorkerFlow({ installation })),
+        desk: workerFlow(deskOn, { roles: ["manager"] })
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename: db }) } },
     logger: silentLogger,
     modelResolver,

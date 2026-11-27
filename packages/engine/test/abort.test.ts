@@ -30,6 +30,7 @@ import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { claimRequestRecord } from "../src/context/request-principal";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 // ---------------------------------------------------------------------------
 // Abort registry unit tests
@@ -312,7 +313,7 @@ describe("handleAbortRequest", () => {
     it("once ended, cannot be continued: /continue answers 409", async () => {
       const flow = defineFlow({
         kind: "chat",
-        actions: { respond: { inputSchema: z.any(), block: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "x" }) } }
+        actions: { respond: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "x" }) }
       })();
       const registry = createFlowRegistry();
       registry.register(flow);
@@ -470,10 +471,7 @@ describe("handleAbortRequest", () => {
     const flow = defineFlow({
       kind: "chat",
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({ name: "noop", inputSchema: z.unknown(), execute: () => ({}) })
-        }
+        run: handler({ name: "noop", inputSchema: z.unknown(), execute: () => ({}) })
       }
     })({ id: "chat" });
     const record = (tenantId: string | undefined, at: number): RequestRecord =>
@@ -632,7 +630,6 @@ describe("runAction — abort path", () => {
       kind: "abort-test-flow",
       actions: {
         run: {
-          inputSchema: z.object({ message: z.string() }),
           block: handler({
             name: "slow-handler",
             inputSchema: z.object({ message: z.string() }),
@@ -692,9 +689,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "disconnect-test-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        run: handler({
             name: "slow-handler",
             inputSchema: z.object({ message: z.string() }),
             outputSchema: z.string(),
@@ -707,7 +702,6 @@ describe("runAction — abort path", () => {
               return "should not reach";
             }
           })
-        }
       }
     })();
 
@@ -743,9 +737,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "fail-test-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        run: handler({
             name: "failing-handler",
             inputSchema: z.object({ message: z.string() }),
             outputSchema: z.string(),
@@ -753,7 +745,6 @@ describe("runAction — abort path", () => {
               throw new Error("intentional failure");
             }
           })
-        }
       }
     })();
 
@@ -784,15 +775,12 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "complete-test-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        run: handler({
             name: "ok-handler",
             inputSchema: z.object({ message: z.string() }),
             outputSchema: z.string(),
             execute: () => "done"
           })
-        }
       }
     })();
 
@@ -819,9 +807,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "endpoint-abort-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "wait-handler",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -834,12 +820,12 @@ describe("runAction — abort path", () => {
               return "unreachable";
             }
           })
-        }
       }
     })();
 
     const requestId = "req_endpoint_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -878,9 +864,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "emit-abort-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "wait-handler",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -893,12 +877,12 @@ describe("runAction — abort path", () => {
               return "unreachable";
             }
           })
-        }
       }
     })();
 
     const requestId = "req_emit_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -945,9 +929,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "double-abort-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "wait-handler",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -960,12 +942,12 @@ describe("runAction — abort path", () => {
               return "unreachable";
             }
           })
-        }
       }
     })();
 
     const requestId = "req_double_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1006,9 +988,7 @@ describe("runAction — abort path", () => {
     const flow = defineFlow({
       kind: "sse-abort-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "wait-handler",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -1021,7 +1001,6 @@ describe("runAction — abort path", () => {
               return "unreachable";
             }
           })
-        }
       }
     })();
 
@@ -1038,7 +1017,7 @@ describe("runAction — abort path", () => {
           "content-type": "application/json",
           "accept": "text/event-stream"
         },
-        body: JSON.stringify({ userId: "user_sse", requestId, input: {} })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "user_sse", requestId, input: {} })
       }
     );
     const sseResponse = await router.POST(sseRequest, {
@@ -1152,7 +1131,6 @@ function makeBlockingFlow(options: {
         : { heartbeatIntervalMs: options.heartbeatIntervalMs },
     actions: {
       run: {
-        inputSchema: z.object({}).passthrough(),
         block: handler({
           name: "blocking-handler",
           inputSchema: z.object({}).passthrough(),
@@ -1181,9 +1159,7 @@ function makeBlockingFlow(options: {
       },
       ...(options.withStop === true
         ? {
-            stop: {
-              inputSchema: z.object({ requestId: z.string() }),
-              block: handler({
+            stop: handler({
                 name: "stops-another",
                 inputSchema: z.object({ requestId: z.string() }),
                 outputSchema: z.object({ outcome: z.string() }),
@@ -1191,7 +1167,6 @@ function makeBlockingFlow(options: {
                   outcome: await ctx.session.stopRequest(input.requestId)
                 })
               })
-            }
           }
         : {})
     }
@@ -1208,6 +1183,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1241,6 +1217,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1282,6 +1259,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1316,6 +1294,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1358,6 +1337,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1408,6 +1388,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1444,6 +1425,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-preset",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now
@@ -1453,6 +1435,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(stores, requestId);
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1519,6 +1502,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-prereg",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now
@@ -1590,6 +1574,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1622,6 +1607,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1754,9 +1740,7 @@ describe("runAction — cross-process abort delivery", () => {
         })
       },
       actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        run: handler({
             name: "never-reached",
             inputSchema: z.object({}).passthrough(),
             outputSchema: z.string(),
@@ -1765,12 +1749,12 @@ describe("runAction — cross-process abort delivery", () => {
               return "body succeeded";
             }
           })
-        }
       }
     })();
 
     let caught: unknown;
     await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1854,6 +1838,7 @@ describe("runAction — cross-process abort delivery", () => {
         flowKind: "xproc-admission-await",
         actionName: "run",
         userId: "u_xproc",
+        orgId: DEFAULT_ORG_ID,
         source: "http",
         status: "in_progress",
         startedAtMs: now
@@ -1863,6 +1848,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(base, requestId);
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2072,6 +2058,7 @@ describe("cross-process abort accepted in the teardown window", () => {
     const hookedStores = { ...stores, request };
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2173,6 +2160,7 @@ describe("a stop accepted in the window before the turn is written parked (FIX-1
     runtimeConfig.requestHost = { parkedStop };
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2280,6 +2268,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2364,6 +2353,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2474,6 +2464,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2536,6 +2527,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2601,7 +2593,6 @@ describe("cross-process abort delivered during the background drain", () => {
       },
       actions: {
         run: {
-          inputSchema: z.object({}).passthrough(),
           block: handler({
             name: "body-post-check",
             inputSchema: z.object({}).passthrough(),
@@ -2625,6 +2616,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2716,19 +2708,17 @@ describe("cross-process abort delivered during the background drain", () => {
           }))
       },
       actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        run: handler({
             name: "body-queues-nothing",
             inputSchema: z.object({}).passthrough(),
             outputSchema: z.string(),
             execute: async () => "body succeeded"
           })
-        }
       }
     })();
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2774,7 +2764,6 @@ describe("a queued request cancelled through the route", () => {
         kind: "queued-abort",
         actions: {
           hold: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "hold",
@@ -2787,7 +2776,6 @@ describe("a queued request cancelled through the route", () => {
             })
           },
           queued: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "queued",
@@ -2860,7 +2848,6 @@ describe("a queued request cancelled through the route", () => {
         request: { heartbeatIntervalMs: 0 },
         actions: {
           queued: {
-            inputSchema: z.object({}),
             concurrency: { policy: "queue", key: "session" },
             block: handler({
               name: "queued",
@@ -2941,7 +2928,6 @@ describe("a queued request cancelled through the route", () => {
         request: { heartbeatIntervalMs: 0 },
         actions: {
           hold: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "hold",
@@ -2954,7 +2940,6 @@ describe("a queued request cancelled through the route", () => {
             })
           },
           queued: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "queued",
@@ -3048,7 +3033,6 @@ describe("a queued request cancelled through the route", () => {
         request: { heartbeatIntervalMs: 0 },
         actions: {
           hold: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "hold",
@@ -3061,7 +3045,6 @@ describe("a queued request cancelled through the route", () => {
             })
           },
           queued: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "queued",
@@ -3154,7 +3137,6 @@ describe("a queued request cancelled through the route", () => {
         request: { heartbeatIntervalMs: 0 },
         actions: {
           hold: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "hold",
@@ -3167,7 +3149,6 @@ describe("a queued request cancelled through the route", () => {
             })
           },
           queued: {
-            inputSchema: z.object({}),
             concurrency,
             block: handler({
               name: "queued",
@@ -3280,7 +3261,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       request: { heartbeatIntervalMs: 0 },
       actions: {
         run: {
-          inputSchema: z.unknown(),
           block: handler({
             name: "park",
             inputSchema: z.unknown(),
@@ -3337,6 +3317,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3365,9 +3346,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       kind: "adopt-fence-reused",
       request: { heartbeatIntervalMs: 0 },
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({
+        run: handler({
             name: "observe",
             inputSchema: z.unknown(),
             outputSchema: z.string(),
@@ -3376,7 +3355,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
               return "ran";
             }
           })
-        }
       }
     })({ id: "adopt-fence-reused" });
 
@@ -3425,6 +3403,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3452,7 +3431,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       request: { heartbeatIntervalMs: 10 },
       actions: {
         run: {
-          inputSchema: z.unknown(),
           block: handler({
             name: "park",
             inputSchema: z.unknown(),
@@ -3485,6 +3463,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     })({ id: "poll-fence" });
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3509,9 +3488,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       kind: "adopt-fence-cancelled",
       request: { heartbeatIntervalMs: 0 },
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({
+        run: handler({
             name: "observe",
             inputSchema: z.unknown(),
             outputSchema: z.string(),
@@ -3520,7 +3497,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
               return "ran";
             }
           })
-        }
       }
     })({ id: "adopt-fence-cancelled" });
     const fresh = () =>
@@ -3574,6 +3550,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3606,9 +3583,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       kind: "claim-cancelled",
       request: { heartbeatIntervalMs: 0 },
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({
+        run: handler({
             name: "observe",
             inputSchema: z.unknown(),
             outputSchema: z.string(),
@@ -3617,7 +3592,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
               return "ran";
             }
           })
-        }
       }
     })({ id: "claim-cancelled" });
 
@@ -3650,6 +3624,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3681,9 +3656,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       kind: "fire-then-replace",
       request: { heartbeatIntervalMs: 0 },
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({
+        run: handler({
             name: "observe",
             inputSchema: z.unknown(),
             outputSchema: z.string(),
@@ -3692,7 +3665,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
               return "ran";
             }
           })
-        }
       }
     })({ id: "fire-then-replace" });
     const fresh = () =>
@@ -3743,6 +3715,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3775,9 +3748,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       kind: "unfenced-then-replace",
       request: { heartbeatIntervalMs: 0 },
       actions: {
-        run: {
-          inputSchema: z.unknown(),
-          block: handler({
+        run: handler({
             name: "observe",
             inputSchema: z.unknown(),
             outputSchema: z.string(),
@@ -3787,7 +3758,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
               return "ran";
             }
           })
-        }
       }
     })({ id: "unfenced-then-replace" });
     const fresh = () =>
@@ -3824,6 +3794,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3890,9 +3861,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
           kind,
           request: { heartbeatIntervalMs: 0 },
           actions: {
-            run: {
-              inputSchema: z.unknown(),
-              block: handler({
+            run: handler({
                 name: "observe",
                 inputSchema: z.unknown(),
                 outputSchema: z.string(),
@@ -3902,7 +3871,6 @@ describe("a run's abort controller carries the incarnation it executes as", () =
                   return "ran";
                 }
               })
-            }
           }
         })({ id: kind });
         const fresh = () =>
@@ -3953,6 +3921,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
 
         try {
           await runAction({
+            sessionId: oneOffSessionId(),
             flow,
             actionName: "run",
             input: {},

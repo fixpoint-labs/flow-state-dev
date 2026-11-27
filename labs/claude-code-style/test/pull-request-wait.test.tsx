@@ -9,7 +9,9 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter, LabTask, TaskWork } from "../src/adapter";
+import type { CodingBoardTask } from "../src/app";
+import { codingBoardTask } from "./coding-board-task";
+import { RUN, stubServer } from "./stub-server";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { ThreadView } from "../src/components/ThreadView";
@@ -20,32 +22,30 @@ afterEach(cleanup);
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 
-const WAITING: LabTask = {
+const WAITING: CodingBoardTask = codingBoardTask({
   id: "t-7",
   title: "Rename the session log",
   goal: "Rename it",
   status: "in_progress",
   harness: "claude-code",
   statusNote: "Bash: gh pr create",
-  pullRequests: [{ number: 7, url: URL_7, title: "Rename the session log" }],
-};
+  pullRequests: [7],
+  run: { ...RUN, attempt: 1 },
+});
 
-const adapter = {
-  watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
-    onChange({ entries: [] });
-    return () => {};
-  },
-  taskActions: () => ({}),
-  resolve: async () => {},
-} as unknown as LabAdapter;
+/** The stand-in, with the pull request the run opened in its recorded work: where its link comes from. */
+const server = () => stubServer({ recorded: { [RUN.requestId]: { pullRequests: [{ number: 7, url: URL_7, title: "Rename the session log" }] } } });
 
-function openView(task: LabTask) {
+
+function openView(task: CodingBoardTask) {
   render(
-    <SessionOverlayProvider>
-      <SessionOverlayArea>
-        <ThreadView adapter={adapter} sessionId="s-1" task={task} pinned={false} onClose={() => {}} />
-      </SessionOverlayArea>
-    </SessionOverlayProvider>,
+    server().wrap(
+      <SessionOverlayProvider>
+        <SessionOverlayArea>
+          <ThreadView sessionId="s-1" task={task} pinned={false} onClose={() => {}} />
+        </SessionOverlayArea>
+      </SessionOverlayProvider>,
+    ),
   );
   return screen.getByRole("dialog", { name: `Task: ${task.title}` });
 }
@@ -57,16 +57,16 @@ describe("a task waiting on its pull request", () => {
     expect(columnOf(WAITING, false)).not.toBe("resolved");
   });
 
-  it("shows PR open · #7 on its card, the number a link to the pull request", () => {
-    render(<ThreadCard adapter={adapter} sessionId="s-1" task={WAITING} onOpen={() => {}} />);
+  it("shows PR open · #7 on its card, the number a link to the pull request its run recorded", async () => {
+    render(server().wrap(<ThreadCard sessionId="s-1" task={WAITING} onOpen={() => {}} />));
     const card = screen.getByRole("region", { name: `Task: ${WAITING.title}` });
     expect(within(card).getByTestId("pull-request-wait").textContent).toBe("PR open · #7");
-    expect(within(card).getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7);
+    expect((await within(card).findByRole("link", { name: "#7" })).getAttribute("href")).toBe(URL_7);
   });
 
-  it("keeps the view's composer, with the link and the line that says how to wake it", () => {
+  it("keeps the view's composer, with the link and the line that says how to wake it", async () => {
     const view = openView(WAITING);
-    expect(within(view).getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7);
+    expect((await within(view).findByRole("link", { name: "#7" })).getAttribute("href")).toBe(URL_7);
     expect(within(view).getByTestId("pull-request-hint").textContent).toBe(PULL_REQUEST_HINT);
     expect(within(view).getByRole("textbox", { name: "Message this task" })).toBeTruthy();
     expect(within(view).queryByText("This task is finished.")).toBeNull();
@@ -82,7 +82,7 @@ describe("a task waiting on its pull request", () => {
   });
 
   it("says none of it for a running task that waits on no pull request", () => {
-    const { pullRequests: _none, ...running } = WAITING;
+    const running = { ...WAITING, pullRequests: [] };
     expect(statusLine(running)).not.toContain("PR open");
     const view = openView(running);
     expect(within(view).queryByTestId("pull-request-hint")).toBeNull();

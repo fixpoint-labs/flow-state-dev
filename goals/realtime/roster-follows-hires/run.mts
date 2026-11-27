@@ -9,12 +9,16 @@
  *     document, read off the rows it draws;
  *   - Shift Manager's `useRoster`, under its real `LabProvider`, read off what
  *     the hook hands back;
- *   - the Teammates lab's adapter, `watchWorkers`, read off the rows it reports.
+ *   - the Teammates lab's roster watch (workforce's `watchRoster`, through
+ *     `useWorkforce` under its `AppProvider`), read off the rows it reports.
  *
  * Each view has its own credential, so its reads are counted at its own
  * fetcher (Shift Manager's `connect` uses the global `fetch`, so its reads are
- * told apart by its token). A roster read is counted where it lists the user's
- * own workers' collection. Alice's other tab is a separate client.
+ * told apart by its token). A roster read is counted where it calls the roster
+ * flow's view, which every view watches the roster through (FIX-2623). Alice's
+ * other tab is a separate client, which writes as an app does: through the
+ * workforce client, on the roster flow the workers collection's `runBy`
+ * names, with no roster session (FIX-2624).
  *
  *   a  — alice's other tab hires, forks, edits and fires; then a worker's
  *        turn with no stream hires (`runAction`). Each of alice's views shows
@@ -47,18 +51,19 @@ import { createClient, type Client } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, createInProcessFetch, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
-import { COORDINATOR_FLOW, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { createWorkforceClient, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
+import { createWorkforceClient, ROSTER_FLOW, rosterView, type RosterEntry, type WorkforceClient } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { RUN_STAMP, runPatchedGoal, goalTmpDir, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { buildKitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/workforce/hire.ts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, installWorkers, kitFlows, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { kitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { TeamPanel } from "../../../apps/kitchen-sink/components/team-panel.tsx";
 import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
 import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
+import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
-import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
+import { AppProvider as TeammatesProvider } from "../../../labs/teammates/src/app/index.ts";
+import { useWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-roster-follows");
@@ -68,20 +73,25 @@ const IDLE_MS = 10_000;
 const ORG = "acme";
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // The watch reads once, at start: every notice and every tick is ignored.
+  // The watch reads the roster view once, at start: it hears no topic and keeps no timer.
   "read-once": [
     {
       module: "packages/workforce/src/workers/client.ts",
-      from: String.raw`if \(rosterMayHaveChanged\(notice\)\) reads\.request\(\);`,
-      to: "void notice;",
+      from: String.raw`watchView<RosterEntry\[\]>\(fsd, rosterView, undefined, \{`,
+      to: "((w: { onValue: (value: RosterEntry[]) => void }) => (void fsd.view(rosterView).then((read) => w.onValue(read.value)), () => {}))({",
     },
   ],
-  // A timer of the watch's own beside its subscription, as a view that kept a poll would.
+  // A timer of the watch's own beside its live read, as a view that kept a poll would.
   timer: [
     {
       module: "packages/workforce/src/workers/client.ts",
-      from: String.raw`const subscription = fsd\.subscribe\(\[topic\.user\(\)\], \{`,
-      to: "const ownTimer = setInterval(() => reads.request(), ROSTER_POLL_MS); void ownTimer; const subscription = fsd.subscribe([topic.user()], {",
+      from: String.raw`watchView<RosterEntry\[\]>\(fsd, rosterView, undefined, \{`,
+      to: "((stop: () => void) => { const own = setInterval(() => void fsd.view(rosterView), 3_000); return () => (clearInterval(own), stop()); })(watchView<RosterEntry[]>(fsd, rosterView, undefined, {",
+    },
+    {
+      module: "packages/workforce/src/workers/client.ts",
+      from: String.raw`\}\),\n    findWorkerSession:`,
+      to: "})),\n    findWorkerSession:",
     },
   ],
   // The rail's coordinators kept by hand, as `SHELL_COORDINATORS` was.
@@ -127,9 +137,9 @@ const TOKENS: Record<string, string> = {
 };
 
 type Read = { at: number; url: string };
-/** Roster reads by token: a read lists the user's own workers' collection once. */
+/** Roster reads by token: a read is one call of the roster flow's view. */
 const rosterReads = new Map<string, Read[]>();
-const isRosterRead = (url: string) => url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
+const isRosterRead = (url: string) => url.includes(`/api/flows/${rosterView.flow}/views/${rosterView.view}`);
 const realFetch = globalThis.fetch;
 globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
@@ -150,7 +160,7 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 type Host = { handle: ServeHandle; base: string; stores: StoreRegistry; roster: FlowInstance };
 
 async function host(push: boolean): Promise<Host> {
-  const { copies } = await buildKitchenSinkWorkforce();
+  const copies = await kitFlows([kitchenSinkWorkforce()]);
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: crossingBus() };
@@ -224,10 +234,16 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   const smRoot: Root = createRoot(smContainer as unknown as Element);
   smRoot.render(createElement(LabProvider, { connection: { userId: user, bearerToken: tokens.sm, baseUrl: on.base }, children: createElement(Probe) }));
 
-  // Teammates: the adapter's watch, read off the rows it reports.
-  const stopTm = createLabAdapter(clientOf(on, tokens.tm)).watchWorkers((rows: LabWorker[]) =>
-    record(tm, new Map(rows.map((row) => [row.id, row.role === "" ? null : row.role]))),
-  );
+  // Teammates: the list's roster watch (workforce's, over the client under its provider), read off the rows it reports.
+  function TmProbe() {
+    const workforce = useWorkforce();
+    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => record(tm, new Map(rows.map((row) => [row.id, row.description || null])))), [workforce]);
+    return null;
+  }
+  const tmClient = clientOf(on, tokens.tm);
+  const tmContainer = happy.document.createElement("div");
+  const tmRoot: Root = createRoot(tmContainer as unknown as Element);
+  tmRoot.render(createElement(TeammatesProvider, { client: tmClient, children: createElement(TmProbe) }));
 
   let closed = false;
   return {
@@ -241,7 +257,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
       clearInterval(ksTimer);
       ksRoot.unmount();
       smRoot.unmount();
-      stopTm();
+      tmRoot.unmount();
     },
   };
 }
@@ -286,21 +302,67 @@ async function requestDone(on: Host, requestId: string): Promise<number> {
   }
 }
 
-/** Alice's other tab: a roster action through the roster flow, timed at its request's completion. */
-async function rosterSessionOf(on: Host): Promise<{ tab: Client; sessionId: string }> {
-  const tab = clientOf(on, "tok-alice-tab");
-  await createWorkforceClient(tab).roster();
-  const [session] = await tab.sessions.list({ flowKind: ROSTER_FLOW, userId: "alice" });
-  if (session === undefined) throw new Error("setup: alice has no roster session");
-  return { tab, sessionId: session.id };
+/**
+ * Alice's other tab, writing as an app does: through the workforce client,
+ * whose writes go to the user's workers collection and run on the roster
+ * flow its `runBy` names, in her write session (FIX-2624). Its fetcher keeps
+ * each write's request and session ids from the send's response, so a write
+ * is timed at its request's completion, not at the client's result.
+ */
+type Tab = { workforce: WorkforceClient; sent: Array<{ requestId: string; sessionId: string }>; refused: string[]; writeSession: () => string };
+
+function tabOf(on: Host): Tab {
+  const sent: Tab["sent"] = [];
+  const refused: string[] = [];
+  const token = "tok-alice-tab";
+  const tab = createClient({
+    userId: TOKENS[token]!,
+    baseUrl: on.base,
+    fetcher: async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set("authorization", `Bearer ${token}`);
+      const response = await globalThis.fetch(input, { ...init, headers });
+      const url = String(input instanceof Request ? input.url : input);
+      if (/\/resources\/user\/[^/]+\/actions\//.test(url) && !response.ok) refused.push(`${response.status} ${await response.clone().text()}`);
+      else if (/\/resources\/user\/[^/]+\/actions\//.test(url)) {
+        const body = (await response.clone().json()) as { request?: { id?: string }; session?: { id?: string } };
+        if (body.request?.id !== undefined && body.session?.id !== undefined) sent.push({ requestId: body.request.id, sessionId: body.session.id });
+      }
+      return response;
+    },
+  });
+  return {
+    workforce: createWorkforceClient(tab),
+    sent,
+    refused,
+    writeSession: () => {
+      const last = sent.at(-1);
+      if (last === undefined) throw new Error("setup: alice's tab has written nothing, so she has no write session");
+      return last.sessionId;
+    },
+  };
 }
 
-async function act(on: Host, tab: { tab: Client; sessionId: string }, action: string, input: unknown): Promise<number> {
-  const sent = await tab.tab.flow(ROSTER_FLOW).send(action, input, { sessionId: tab.sessionId });
-  return requestDone(on, sent.id);
+/** One write from alice's tab, timed at its request's completion. */
+async function act(on: Host, tab: Tab, write: (workforce: WorkforceClient) => Promise<unknown>): Promise<number> {
+  const before = tab.sent.length;
+  const refusedBefore = tab.refused.length;
+  const settled = write(tab.workforce);
+  const deadline = Date.now() + 15_000;
+  while (tab.sent.length === before) {
+    if (tab.refused.length > refusedBefore) throw new Error(`setup: alice's write was refused: ${tab.refused[refusedBefore]}`);
+    if (Date.now() > deadline) throw new Error("setup: alice's write was never accepted");
+    await Promise.race([settled, delay(1)]);
+  }
+  const doneAt = await requestDone(on, tab.sent[before]!.requestId);
+  await settled;
+  return doneAt;
 }
 
-/** The tree with a second coordinator `WORKER.md`, built as Kitchen Sink builds its own: the installation, `agent` and `coordinator`. */
+/**
+ * The tree with a second coordinator `WORKER.md`, installed through the workforce kit as Kitchen Sink
+ * installs its own: its generated module, and `agent` and `coordinator` on its tool catalog.
+ */
 async function twoCoordinatorTree(): Promise<FlowInstance[]> {
   const root = join(SCRATCH, `two-coordinators-${RUN_STAMP}`);
   rmSync(root, { recursive: true, force: true });
@@ -310,15 +372,12 @@ async function twoCoordinatorTree(): Promise<FlowInstance[]> {
     join(root, "teams/support/workers/desk/WORKER.md"),
     "---\ndescription: The front desk.\nflow: coordinator\ndelegates: [support.general]\nrouting: best-fit\nfallback: support.general\n---\n\nAsk here.\n",
   );
-  const read = await readWorkforce(root);
-  if (read.errors.length > 0) throw new Error(`setup: ${read.errors.map((e) => e.path).join(", ")}`);
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: read.workers, workerFlows: () => flows as never });
-  flows = {
-    agent: defineAgentWorkerFlow({ installation }),
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-  };
-  return hireWorkforce(installation);
+  const { copies } = await installWorkers(root, {}, {
+    generated: { ...generated },
+    agent: { catalog: generated.blocks },
+    coordinator: { routeModel: ROUTE_MODEL, agent: { catalog: generated.blocks } },
+  });
+  return copies;
 }
 
 await runGoal(async (failures, tell) => {
@@ -329,7 +388,7 @@ await runGoal(async (failures, tell) => {
     // ------------------------------------------------------------- a, b
     const on = await host(true);
     hosts.push(on);
-    const tab = await rosterSessionOf(on);
+    const tab = tabOf(on);
     const alice = mountViews(on, "alice");
     const bob = mountViews(on, "bob");
     closers.push(alice.close, bob.close);
@@ -343,10 +402,10 @@ await runGoal(async (failures, tell) => {
     const bobFrom = new Map(bobTokens.map((token) => [token, readsOf(token).length]));
 
     const changes: Array<{ what: string; run: () => Promise<number>; shows: (value: Shown) => boolean }> = [
-      { what: "hire", run: () => act(on, tab, "hire", { id: "scribe", flow: "agent", description: "Takes notes" }), shows: (v) => v.get("scribe") === "Takes notes" },
-      { what: "fork", run: () => act(on, tab, "fork", { from: "support.general", id: "general-mine" }), shows: (v) => v.has("general-mine") },
-      { what: "edit", run: () => act(on, tab, "edit", { id: "scribe", description: "Takes better notes" }), shows: (v) => v.get("scribe") === "Takes better notes" },
-      { what: "fire", run: () => act(on, tab, "fire", { id: "scribe" }), shows: (v) => !v.has("scribe") && v.has("general-mine") },
+      { what: "hire", run: () => act(on, tab, (w) => w.hire({ id: "scribe", flow: "agent", description: "Takes notes" })), shows: (v) => v.get("scribe") === "Takes notes" },
+      { what: "fork", run: () => act(on, tab, (w) => w.fork("support.general", "general-mine")), shows: (v) => v.has("general-mine") },
+      { what: "edit", run: () => act(on, tab, (w) => w.edit({ id: "scribe", description: "Takes better notes" })), shows: (v) => v.get("scribe") === "Takes better notes" },
+      { what: "fire", run: () => act(on, tab, (w) => w.fire("scribe")), shows: (v) => !v.has("scribe") && v.has("general-mine") },
       {
         what: "hire by a worker's turn (no stream)",
         run: async () => {
@@ -356,7 +415,8 @@ await runGoal(async (failures, tell) => {
             input: { id: "drafter", flow: "agent", description: "Drafts" },
             userId: "alice",
             orgId: ORG,
-            sessionId: tab.sessionId,
+            // The roster flow's session for alice: the write session her tab's writes made.
+            sessionId: tab.writeSession(),
             stores: on.stores,
             runtimeConfig: {},
           })) as { error?: unknown };
@@ -410,12 +470,12 @@ await runGoal(async (failures, tell) => {
     {
       const plain = await host(false);
       hosts.push(plain);
-      const plainTab = await rosterSessionOf(plain);
+      const plainTab = tabOf(plain);
       const views = mountViews(plain, "alice");
       closers.push(views.close);
       await delay(1_500);
       const from = Date.now();
-      const doneAt = await act(plain, plainTab, "hire", { id: "noter", flow: "agent", description: "Notes" });
+      const doneAt = await act(plain, plainTab, (w) => w.hire({ id: "noter", flow: "agent", description: "Notes" }));
       const lat: Array<[string, number | undefined]> = [];
       for (const [name, seen] of [["Kitchen Sink panel", views.ks], ["Shift Manager roster", views.sm], ["Teammates list", views.tm]] as const) {
         const at = await firstAt(seen, (v) => v.get("noter") === "Notes", from, FALLBACK_MS + BOUND_MS + 1_000);

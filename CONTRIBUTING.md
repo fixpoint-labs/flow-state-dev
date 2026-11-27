@@ -15,7 +15,7 @@ Read these first:
 ## Setup
 
 ```bash
-# Prerequisites: Node.js >=18, pnpm@10.4.1
+# Prerequisites: Node.js >=24 for apps/* and labs/* (>=22 for packages/* alone), pnpm@12.18.0
 pnpm install
 pnpm typecheck
 pnpm test

@@ -224,7 +224,10 @@ export async function handleSessionStream(
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
 
-  const handle = createSSEStream({ signal: request.signal });
+  // Unbounded: this stream has no sequence number to resume from mid-read. An
+  // event's `at` moves only once a read is all sent, so a stream ended partway
+  // through a read larger than a bound would reconnect into the same read.
+  const handle = createSSEStream({ signal: request.signal, maxBufferedBytes: Infinity });
   void followSession({
     stores: ctx.stores,
     sessionId: route.sessionId,

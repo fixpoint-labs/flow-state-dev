@@ -1,8 +1,8 @@
 "use client";
 
 import type {
-  ComponentItem,
   ContainerItem,
+  DataItem,
   OutputItem,
 } from "@flow-state-dev/core/items";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
@@ -102,8 +102,8 @@ export function EventedActors({ item }: { item: ContainerItem }) {
   const scopedItems = useMemo(() => {
     const hasOwned = ownedItems.some(
       (i) =>
-        i.type === "component" &&
-        (i as ComponentItem).component === "rb-entry"
+        i.type === "data" &&
+        (i as DataItem).dataType === "rb-entry"
     );
     if (hasOwned) return ownedItems;
     return allItems.filter(
@@ -116,10 +116,10 @@ export function EventedActors({ item }: { item: ContainerItem }) {
   const entries = useMemo(() => {
     const result: EventedActorsEntry[] = [];
     for (const i of scopedItems) {
-      if (i.type !== "component") continue;
-      const comp = i as ComponentItem;
-      if (comp.component !== "rb-entry") continue;
-      const { type, topic, body } = comp.data as Record<string, unknown>;
+      if (i.type !== "data") continue;
+      const comp = i as DataItem;
+      if (comp.dataType !== "rb-entry") continue;
+      const { type, topic, body } = comp.value;
       if (typeof type === "string" && typeof topic === "string") {
         result.push({
           type,
@@ -448,7 +448,7 @@ function ToolCallItem({ call }: { call: ToolCall }) {
         {call.resultSummary!.map((r, j) => (
           <div
             key={j}
-            className="truncate text-[10px] text-muted-foreground/70"
+            className="truncate text-xs text-muted-foreground/70"
           >
             {r}
           </div>
@@ -498,7 +498,7 @@ function EntryMarkdown({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
         "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic"
       )}

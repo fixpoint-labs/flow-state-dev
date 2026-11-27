@@ -30,14 +30,25 @@ import {
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
+  reportHarnessEvent,
   reportHarnessSpend,
+  type HarnessAttachmentBytes,
   type HarnessBilling,
 } from "@flow-state-dev/core/harness";
+import {
+  ATTACHMENT_DOCUMENT_TYPES,
+  ATTACHMENT_IMAGE_TYPES,
+  attachmentKind,
+  type AttachmentAccepts,
+} from "@flow-state-dev/core/attachments";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
@@ -62,7 +73,7 @@ import {
   type UpsertableCollection,
   type ClaudeCodeWorkRecorder,
 } from "./work-recorder";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
+import { harnessEnv, OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import {
   CLAUDE_CODE_FILE_OPS,
   CLAUDE_CODE_GAPS,
@@ -71,6 +82,7 @@ import {
 import { defaultResolveClaudeCodeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
+import { CLAUDE_CODE_PASS } from "./env-pass";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
   createClaudeCodeSessionProvider,
@@ -109,6 +121,41 @@ const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
  * `bypassPermissions` every tool is already allowed.
  */
 const SEARCH_TOOLS = ["Grep", "Glob"] as const;
+
+// FIX-2519, FIX-2520.
+/**
+ * What Claude Code reads as a turn's files: images, as image blocks, and
+ * PDFs, as document blocks, on the turn's user message. A text-like file
+ * reaches it as text after the prompt.
+ */
+const CLAUDE_CODE_ACCEPTS: AttachmentAccepts = [...ATTACHMENT_IMAGE_TYPES, ...ATTACHMENT_DOCUMENT_TYPES];
+
+/**
+ * The query's prompt: the text alone, or, with files, one user message on
+ * the SDK's streaming input, the text then each file as a base64 block (an
+ * image block, or a document block for a PDF). The input ends after that
+ * message, so the run is one turn as with text.
+ */
+function queryPrompt(text: string, files: ReadonlyArray<HarnessAttachmentBytes>): string | AsyncIterable<unknown> {
+  if (files.length === 0) return text;
+  const message = {
+    type: "user" as const,
+    message: {
+      role: "user" as const,
+      content: [
+        { type: "text" as const, text },
+        ...files.map((file) => ({
+          type: attachmentKind(file.mediaType) === "image" ? ("image" as const) : ("document" as const),
+          source: { type: "base64" as const, media_type: file.mediaType, data: file.base64() },
+        })),
+      ],
+    },
+    parent_tool_use_id: null,
+  };
+  return (async function* () {
+    yield message;
+  })();
+}
 
 /** The live status from the moment a run starts until Claude Code says anything. */
 const STARTING_STATUS = "Starting Claude Code…";
@@ -295,15 +342,19 @@ export interface ClaudeCodeAgentOptions {
    */
   settingSources?: ClaudeCodeSettingSource[];
   /**
-   * Settings for this run, in Claude Code's `settings.json` shape, forwarded to
-   * the SDK as given. Default: unset, which hands the SDK no settings of its own.
+   * Settings for this run, in Claude Code's `settings.json` shape, handed to
+   * the SDK on top of `{ disableAllHooks: true }`. Default: unset, which hands
+   * the SDK only that: **every hook off**.
    *
    * They sit above every source `settingSources` loads, so a key here beats
-   * the same key in the repository's `.claude/settings.json`. The case it is
-   * for: a host that trusts the repository a run works in sets
-   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and
-   * `settings: { disableAllHooks: true }` so the repository's hooks, which run
-   * by themselves and show in no transcript, stay off.
+   * the same key in the repository's `.claude/settings.json`. That is why hooks
+   * are off by default: a repository's hooks run by themselves and show in no
+   * transcript, and a run that loads `"project"` settings (the default loads
+   * all three sources) would otherwise run whatever hooks the repository it
+   * works in declares. A host that trusts the repository sets
+   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and the
+   * hooks stay off. A host that wants them passes
+   * `settings: { disableAllHooks: false }`; a key given here always wins.
    *
    * With `mcpTools` set, the run's settings also carry
    * `disableClaudeAiConnectors: true`, whatever this says: `mcpTools` is the
@@ -312,14 +363,23 @@ export interface ClaudeCodeAgentOptions {
   settings?: Record<string, unknown>;
   /**
    * Environment variables for the run's own process. Default: unset, which
-   * hands the run the server's **entire** `process.env` — every key, token and
-   * connection string the server holds, readable by any shell command the
-   * model runs.
+   * hands the run only Claude Code's pass list,
+   * `harnessEnv({ pass: CLAUDE_CODE_PASS })`, read when each run starts. A
+   * server variable outside that list (a database URL, another service's key)
+   * never reaches the run, whose model has a shell.
    *
    * Setting it REPLACES the environment rather than adding to it, which is the
-   * SDK's own behaviour. To pass only named variables, use `harnessEnv` from
-   * `@flow-state-dev/core`: `env: harnessEnv({ pass: ["PATH", "HOME", ...] })`.
-   * Name `PATH` in it: the run's shell commands and git are found through it.
+   * SDK's own behaviour. To pass more, build your own list:
+   * `env: harnessEnv({ pass: [...CLAUDE_CODE_PASS, "MY_VAR"] })`. Name `PATH`
+   * in it: the run's shell commands and git are found through it. Passing
+   * `process.env` hands the run the server's whole environment.
+   *
+   * The pass list covers signing in with `ANTHROPIC_API_KEY` or
+   * `CLAUDE_CODE_OAUTH_TOKEN` only. A host that signs in any other way adds
+   * the names that way reads: `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`
+   * for a gateway, `CLAUDE_CODE_USE_BEDROCK` with its `AWS_*` variables,
+   * `CLAUDE_CODE_USE_VERTEX` with its `GOOGLE_*` / `CLOUD_ML_REGION`
+   * variables, and `CLAUDE_CONFIG_DIR` for a sign-in stored outside `HOME`.
    */
   env?: Record<string, string | undefined>;
   /**
@@ -510,7 +570,7 @@ export interface ClaudeCodeAgentOptions {
    *   derived from. It arbitrates DISPATCHES, so it does not cover two
    *   invocations in one dispatch (a model calling this tool twice in one step),
    *   nor two external workers unless their queue adapter supplies a shared
-   *   lease backend (`WorkerAdapter.leaseBackend`). Reuse a checkout for one
+   *   lease backend (`JobQueueAdapter.leaseBackend`). Reuse a checkout for one
    *   agent step per run on a single-instance host, or on workers sharing a
    *   lease backend; derive a fresh directory otherwise.
    *
@@ -611,6 +671,13 @@ export interface ClaudeCodeAgentOptions {
    * Not awaited, and a throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -676,9 +743,8 @@ export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
  * conversation, and the run's marker points there.
  */
 function openWorkRecorder(ctx: BlockContext, cwd?: string): ClaudeCodeWorkRecorder | null {
-  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
-    const ref = resources?.[accessor] as UpsertableCollection | undefined;
+    const ref = ctx.resources?.[accessor] as UpsertableCollection | undefined;
     return typeof ref?.upsert === "function" ? ref : undefined;
   };
   const files = upsertable(CLAUDE_CODE_FILE_OPS);
@@ -752,7 +818,9 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * told its conversation does not exist. Bounded so a process that never exits
  * cannot hold the block: past it, the block sends the process `SIGKILL` and
  * waits for it to exit, so the block never returns while its
- * process still runs.
+ * process still runs. Off Windows that `SIGKILL`, and the SDK's `SIGTERM`
+ * before it, go to the process's whole group, so the commands it started end
+ * with it (see `process-exit.ts`).
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
@@ -812,9 +880,11 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * bounded, for the agent's process to exit (observed through the SDK's spawn
  * hook — the SDK's own stream can end first), so the session's transcript is
  * complete before anyone can resume it. A process still running at the bound
- * is sent `SIGKILL` and waited for. A subprocess the agent's process spawned (a
- * `Bash` tool command) can still outlive the abort — the working directory's
- * sandbox is the fence for that, not this block's deadline.
+ * is sent `SIGKILL` and waited for. Off Windows both signals reach the
+ * process's whole group, so a command the agent's process started (a `Bash`
+ * tool command) ends with the abort too; one that moved itself into a group of
+ * its own is outside that reach. On Windows the signals reach the agent's
+ * process alone, and its commands can outlive the abort.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
@@ -860,6 +930,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onSession,
     onUsage,
     onActivity,
+    onEvent,
     settingSources,
     settings,
     env,
@@ -869,6 +940,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onErrored,
     name = "claude-code-agent",
   } = options;
+  const runSettings: Record<string, unknown> = { disableAllHooks: true, ...settings };
 
   // **Two owners of one decision, refused where a host can still act on it.**
   //
@@ -930,15 +1002,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       : {}),
     ...(uses !== undefined ? { uses } : {}),
     ...(onErrored !== undefined ? { onErrored } : {}),
-    // `ctx` is annotated rather than inferred. `uses` widens the context type
-    // that `handler()` infers — capability namespaces and state targets appear
-    // in it — and every helper below takes a plain `BlockContext`, so without
-    // this the widening propagates into two dozen signatures that have no
-    // interest in it. Narrowing here keeps the option's cost at the option.
-    execute: async (
-      input,
-      ctx: HarnessCallbackContext,
-    ): Promise<ClaudeCodeAgentHandle> => {
+    execute: async (input, ctx): Promise<ClaudeCodeAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
       )?.trim();
@@ -947,6 +1011,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           "claudeCodeAgent requires a non-empty prompt.",
         );
       }
+      // A file Claude Code can't take refuses the run before anything starts,
+      // and every file is read before the query is: a file that can't be read
+      // stops the turn rather than running it without the file.
+      const turnFiles = await readHarnessTurnFiles("Claude Code", ctx, CLAUDE_CODE_ACCEPTS, input.attachments);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
@@ -963,9 +1031,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // default provider's `release` is a no-op for exactly this reason.
       let session: ClaudeCodeSession = { sdkSessionId: null };
       if (!detached) {
-        const priorSessionId = (ctx.session.state as Record<string, unknown>)[
-          CLAUDE_CODE_SESSION_ID_KEY
-        ];
+        const priorSessionId = ctx.session.state[CLAUDE_CODE_SESSION_ID_KEY];
         session = await sessionProvider.resolve(
           typeof priorSessionId === "string" ? priorSessionId : "",
         );
@@ -1064,8 +1130,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // "load all of them", `[]` means "load none" — and the same care costs
         // nothing for the others.
         ...(settingSources !== undefined ? { settingSources } : {}),
-        ...(settings !== undefined ? { settings } : {}),
-        ...(env !== undefined ? { env } : {}),
+        settings: runSettings,
+        env: env ?? harnessEnv({ pass: CLAUDE_CODE_PASS }),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         // In-session, from the block's own conversation state; detached, from
         // the host's resolver. Never both — construction refused that pairing
@@ -1184,7 +1250,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         handedTools =
           typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
         if (handedTools !== undefined) {
-          Object.assign(queryOptions, mcpQueryOptions(handedTools, settings));
+          Object.assign(queryOptions, mcpQueryOptions(handedTools, runSettings));
           // With `mcpTools` set, the relayed tools are allowed without asking.
           queryOptions.allowedTools = [
             ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
@@ -1225,7 +1291,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
             }
             const running = resolved.query({
-              prompt: promptText,
+              prompt: queryPrompt(promptWithTurnText(promptText, turnFiles), turnFiles.files),
               options: queryOptions,
             });
             // One `accountInfo()` answers both how the run is billed and, for
@@ -1241,6 +1307,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               });
             let accountLookup: Promise<AccountInfo | undefined> | undefined = lookUpAccount();
             for await (const message of running) {
+              // Every message the SDK sends, partial ones included, says the run is still working.
+              reportHarnessEvent(onEvent, ctx);
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.
@@ -1571,7 +1639,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
           }
           await ctx.session.patchState(CLAUDE_CODE_AGENT_RUNS_KEY, (prev) => [
-            ...((prev as ClaudeCodeAgentHandle[] | undefined) ?? []),
+            ...(prev ?? []),
             handle,
           ]);
         }
@@ -1612,7 +1680,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  }), { stopsOnAbort: true as const });
+  }), { stopsOnAbort: true as const, accepts: CLAUDE_CODE_ACCEPTS });
 }
 
 /**

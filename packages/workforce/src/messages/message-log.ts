@@ -4,12 +4,20 @@
  * `log-row.ts` live in, and how a block reaches it. Beside it, the chain rows
  * the hop limit counts an exchange in (`hop.ts`).
  */
-import { defineResourceCollection } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "./log-row";
+import { isOpenMessage, WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "./log-row";
 
 export * from "./log-row";
+
+// FIX-2771 D1.
+/** The index a message is found by under its sender and its recipient while it is open (`isOpenMessage`). */
+export const OPEN_MESSAGES_INDEX = "open";
+
+// FIX-2771 D1.
+/** The index an answer is found by under the id of the message it answers. */
+export const IN_REPLY_TO_INDEX = "inReplyTo";
 
 /**
  * The log, at `workforce/messages/*` in the user's scope. Shared across flows:
@@ -23,8 +31,20 @@ export const workerMessagesCollection = defineResourceCollection({
   prefetchMode: "lazy",
   stateSchema: workerMessageResourceStateSchema,
   // The user's own rows, read by an app's Messages view; nobody writes them but the server.
-  client: { state: { read: true } }
+  client: { state: { read: true } },
+  // FIX-2771 D1: what the worker messages view finds rows by. Changing what an
+  // index function returns for rows already stored needs a `version` bump on
+  // its declaration (`{ version: 2, value }`): the bump is what rebuilds the
+  // index from the rows (`ResourceIndexDeclaration`).
+  indexes: {
+    [OPEN_MESSAGES_INDEX]: (_key, message) => (isOpenMessage(message) ? [message.from, message.to] : null),
+    [IN_REPLY_TO_INDEX]: (_key, message) => message.inReplyTo
+  }
 });
+
+// FIX-2775.
+/** The log's definition, for a browser read of the caller's own messages: `useResource(workerMessagesResource, { all: true })`. */
+export const workerMessagesResource = workerMessagesCollection;
 
 /** Where the chain rows live, one per user's turn whose exchange sent a message. **Pinned**: persisted. */
 export const MESSAGE_CHAINS_PATTERN = "workforce/message-chains/*";

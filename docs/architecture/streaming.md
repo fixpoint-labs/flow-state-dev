@@ -157,7 +157,7 @@ The streaming system produces two distinct data sets, stored independently:
 
 ### Items (the record)
 
-The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored.
+The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored. While a request runs, its response emitter's in-memory item view (`getItems()`) keeps every durable item and every in-progress transient one, but only the newest `maxBufferSize` (default 10,000) done transient items, so a long-polling request's transient churn stays bounded. The events log is unaffected.
 
 Items are load-bearing. Without them, sessions cannot reconstruct history.
 
@@ -219,10 +219,13 @@ GET /stream?starting_after=42
 
 - If both provided, `starting_after` takes precedence
 - Server replays persisted events with `sequence_number > cursor` then continues live
+- A resumed stream keeps to the client view. An `item.updated` or content event carries only an item id, so the filter forwards it only for an item it knows is client-visible: one whose `item.added`/`item.done` it sent, or one the request record holds, which the route passes in (with no record, the route reads the whole event log and passes the items it announces, since content can follow an item's `item.done`, as a batch TTS snapshot does). It drops the rest (fail closed); the item's `item.done` carries the whole row, so a client that misses them still converges
 - A terminal request whose run is still writing its held terminal event is followed live, and one whose log has no terminal event and can get none ends with a synthesized one (see the terminal-status note under the event table)
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 - `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume
+
+**A reader that falls behind is cut off, then resumes** (FIX-2675). A request stream holds at most `DEFAULT_MAX_BUFFERED_SSE_BYTES` (4 MiB, `createSSEStream`) that its reader has not taken. A write past that ends the stream instead: what was already written is delivered whole, then the stream closes with no terminal event, and the reader resumes from its last `id` as after any disconnect. Applies to the inline POST stream and the GET live tail. A live stream nobody will read is not filled at all: a route answering `202` closes it, and so do continuations nobody streams (the durability sweeper, a wait's resume, a parked stop; `continueWithoutReader`). The [session stream](#session-stream) is unbounded, since it has no sequence number to resume from mid-read.
 
 ## Session Stream
 

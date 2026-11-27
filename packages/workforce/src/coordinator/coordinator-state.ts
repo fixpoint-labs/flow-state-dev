@@ -27,7 +27,7 @@ export const bestFitHoldSchema = z.object({ messageRequestId: z.string(), delega
  * to, and where it stood in the list then, so the turn goes on from the same
  * place when that delegate has since been removed.
  */
-export const roundRobinCursorSchema = z.object({ delegate: delegateRefSchema, index: z.number().int().min(0) });
+const roundRobinCursorSchema = z.object({ delegate: delegateRefSchema, index: z.number().int().min(0) });
 
 export type RoundRobinCursor = z.infer<typeof roundRobinCursorSchema>;
 

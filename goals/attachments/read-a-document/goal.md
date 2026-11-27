@@ -1,0 +1,18 @@
+# attachments › it reads a document
+
+**Issue:** FIX-2520 (epic FIX-2516)
+**Outcome:** A PDF, a Markdown file and a CSV sent with a message reach every target, and its reply shows it read them: a generator whose provider reads PDFs gets the PDF itself, Claude Code gets it as a document block, Codex and Cursor get the text extracted on the server. A text-like file goes everywhere as text headed by its name. A 250 KB `.txt` is refused by the server at upload, by name and size, before anything is sent. A harness not signed in here is named in the verdict, never skipped.
+**Input:** Generated per run: a three-page PDF whose only code word is on page 3 (pages 1 and 2 hold filler), a `.md` and a `.csv`, each with its own code word, all three drawn at random from a list of twenty-four; and a 250 KB `.txt` of filler. The prompt names no code word. The PDF is drawn by `packages/engine/test/blobs/pdf-fixture.ts`. Hosts: a generator flow (`send`, with `userMessage`) and one harness session flow per harness signed in here, each in a fresh git checkout, all on the in-memory profile in this process, driven through the one client over the engine's in-process fetch as a signed-in user. Held-out: any three distinct A–Z words pass a correct implementation. Each type, the page cap, the text cap and a scanned page are unit tests (`packages/engine/test/blobs/{blob-routes,pdf-text,send-attachments,harness-attachments}.test.ts`, `packages/engine/test/context/history-files.test.ts`, `packages/{claude-code,codex,cursor}/test/**/turn-images.spec.ts`).
+**Signal:**
+- **reads-all** (the generator, and each harness signed in here): the reply contains the PDF's, the `.md`'s and the `.csv`'s code words.
+- **text-cap**: the 250 KB `.txt` upload answers 413 `attachment_text_too_large`, naming its size.
+- **blocked** (the generator with no key that serves its model; each harness not signed in): the reason is in the verdict.
+**Anti-game:** The check reads each reply, never the parts a model call held: a part can be present and unread. The code words are drawn per run and are only inside the documents, the PDF's on its last page, so a reply that carries one read that document, and a reply that read only the PDF's first page or its filename misses it. `reads-all` reads its three words through `tell.over`, so a run that drew nothing is CAN'T TELL, not PASS.
+**Model:** generator `openai/gpt-6-luna` (through the Vercel AI Gateway; `GOAL_MODEL` overrides; its provider reads PDFs, so it gets the PDF itself). Claude Code `claude-haiku-4-5` (`GOAL_CLAUDE_MODEL`), Codex `gpt-5.4-codex` (`GOAL_CODEX_MODEL`), Cursor `composer-2.5` (`GOAL_CURSOR_MODEL`).
+**Run:** `pnpm tsx goals/attachments/read-a-document/run.mts`
+**Controls:** `GOAL_CONTROL=drop-documents` patches the model call's file build to name a document instead of sending it (`packages/engine/src/context/history-files.ts`) and a harness turn's split to drop every document (`packages/core/src/types/harness-attachments.ts`). It must FAIL `reads-all` for every target that runs; `text-cap` still passes, since the upload is unchanged.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-11-10 | fix/FIX-2520-documents | none (no gateway key; no harness signed in) | BLOCKED | `text-cap` passed: the 250 KB `.txt` upload answered 413 `attachment_text_too_large` with its size. `reads-all` could not run: no `AI_GATEWAY_API_KEY`, and Claude Code, Codex and Cursor are not signed in in this container. Under `drop-documents` both patches loaded and the same legs ran. The parts each target is handed are the unit tests' (the generator, by provider; each adapter); the real-reply verdict is owed by a run with a key and each harness signed in |

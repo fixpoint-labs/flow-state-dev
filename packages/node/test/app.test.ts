@@ -9,18 +9,16 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createServerApp } from "../src/app";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 
@@ -178,7 +176,7 @@ describe("createServerApp — translation", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
       adapters: [adapter],
@@ -201,7 +199,7 @@ describe("createServerApp — translation", () => {
     // path must not execute, and a bare GET must not leak the flow list —
     // both are reachable ONLY under `/api/flows`.
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });
@@ -214,7 +212,7 @@ describe("createServerApp — translation", () => {
       new Request(url("/api/flows/noop-flow/actions/ping"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u", input: {} }),
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u", input: {} }),
       }),
     );
     expect(inPrefix.status).toBe(202);
@@ -275,7 +273,7 @@ describe("createServerApp — translation", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
       adapters: [adapter],
@@ -337,7 +335,7 @@ describe("createServerApp — translation", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: store } },
       adapters: [adapter],
@@ -385,7 +383,7 @@ describe("createServerApp — FlowState readiness", () => {
   it("reports 503 on /healthz while initializing, then 200; the API waits for init", async () => {
     const adapter = gatedAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -413,7 +411,7 @@ describe("createServerApp — FlowState readiness", () => {
 
   it("returns 500 from /healthz and the API when init fails permanently", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: failingAdapter() } },
     });
@@ -434,7 +432,7 @@ describe("createServerApp — FlowState readiness", () => {
     const adapter = gatedAdapter();
     adapter.release();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });

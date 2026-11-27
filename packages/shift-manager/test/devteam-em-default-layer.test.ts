@@ -59,7 +59,7 @@ async function open(): Promise<Lab> {
   opened = await openLab({
     modelResolver: resolver,
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-em-default-layer-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",

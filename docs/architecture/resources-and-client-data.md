@@ -1,6 +1,6 @@
 # Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing server-side data to clients. Together, they provide structured, typed data management within flows.
+Resources are **concrete persisted data** attached to a scope. Client data entries are a scope's state fields named in `expose`, carried in the session snapshot. A value computed for a screen is a view ([Views](./flows-and-actions.md#views)), which runs at the scope its data lives in, with no session at user or org scope. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Resources
 
@@ -74,14 +74,17 @@ Resources can also carry file-like text content. Use `content` for inline templa
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
 - Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/engine`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
+- Rendering is **opt-in**, one of two ways. `render` is a function you supply, `(content, state) => string`, handed the raw content and the resource's state. `contentTemplate` is a role-tagged Markdown template (`parseResourceTemplate` from `@flow-state-dev/core/resource-template`, or a path the server loads at start through `loadResourceTemplate`), rendered against the resource's state by LiquidJS with strict variables; templates longer than 512 KB are rejected. `render` and `contentTemplate` are mutually exclusive.
 - LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
 
 ```ts
 const soul = defineResource({
   stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
-  render: renderTemplate,
+  content: "## Values\n{{values}}\nTone: {{tone}}",
+  render: (content, state) =>
+    content
+      .replace("{{values}}", (state.values as string[]).map((v) => `- ${v}`).join("\n"))
+      .replace("{{tone}}", String(state.tone)),
   llmReadable: true,
   llmWritable: false,
 });
@@ -129,7 +132,7 @@ A resource (or collection) can opt into a typed-edge graph by declaring `edges: 
 - **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
 - **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
 
-The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
+The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations.md`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
 
 ### Three-Wave Loading
 
@@ -328,82 +331,18 @@ Identity-equal re-registration is always safe (diamond dependencies through capa
 
 ## Client Data
 
-Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block, which has two halves:
-
-- **`expose`** — names of top-level state fields, passed through verbatim.
-- **`derived`** — named projections computed from `{ state, resources }` within that single scope.
+Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block: **`expose`**, the names of top-level state fields, passed through verbatim under `clientData.<scope>.<name>` in the session snapshot.
 
 ```ts
 session: {
-  client: {
-    expose: ["messageCount"],
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    },
-  },
+  stateSchema: z.object({ messageCount: z.number().default(0) }),
+  client: { expose: ["messageCount"] },
 }
 ```
 
-Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
+Everything named in `expose` is client-visible; there is no per-entry `client: true/false` toggle. A name not on the scope's state schema throws at `defineFlow`.
 
-### ClientDataComputeFn
-
-```ts
-type ClientDataComputeFn<TState, TResources> =
-  (ctx: ClientDataContext<TState, TResources>) => JsonValue | Promise<JsonValue>;
-
-type ClientDataContext<TState, TResources> = {
-  state: Readonly<TState>;
-  resources: TResources;
-};
-```
-
-**Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
-- **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
-- **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
-
-### All Three Scopes
-
-```ts
-defineFlow({
-  kind: "my-app",
-  session: {
-    client: {
-      derived: {
-        artifactsList: (ctx) => {
-          const artifacts = ctx.resources.artifacts?.state;
-          return artifacts?.order.map(id => ({
-            id,
-            title: artifacts.byId[id]?.title ?? "Untitled",
-          })) ?? [];
-        },
-        modeStatus: (ctx) => ({
-          currentMode: ctx.state.mode ?? "chat",
-          requestCount: ctx.state.requestCount ?? 0,
-        }),
-      },
-    },
-  },
-  user: {
-    client: {
-      derived: {
-        preferences: (ctx) => ({
-          displayName: ctx.state.displayName ?? "User",
-          preferredModel: ctx.state.preferredModel ?? "openai/gpt-6-luna",
-        }),
-      },
-    },
-  },
-  org: {
-    client: {
-      derived: {
-        sharedConfig: (ctx) => ctx.state.config ?? {},
-      },
-    },
-  },
-});
-```
+A value computed for a screen (a projection of state, a count over a collection, a join of resources) is a **view**, not client data: `defineView({ scope, block })` in the flow's `views`, read with `useView` or `client.view` ([Views](./flows-and-actions.md#views)). A scope's `client.derived`, which computed named projections into the snapshot, is removed: `defineFlow` refuses a `derived` key at any scope, naming views, so a flow written for it fails loudly rather than defining cleanly and sending nothing (BP-030).
 
 ## Context Functions
 
@@ -463,14 +402,18 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-Client-facing data is exposed through two complementary mechanisms:
+Client-facing data reaches a client three ways: the first two through a session, a view at the scope its data lives in:
 
-1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for views computed from scope state and resources. Best for cross-resource projections and non-resource data.
-2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
+1. **Scope-level `client`** — `expose` for verbatim state fields, carried in the snapshot. Suits a small value a screen shows beside the conversation. A computed value is a view (below).
+2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Suits exposing resource data directly without manual projection.
+3. **Views** — a block run on request, answered in the response and stored nowhere, refusing every write ([Views](./flows-and-actions.md#views)). Suits an answer computed across resources, such as a task list; the answer names the topics a screen's live read listens to.
+
+A notice about a resource names its storage path, which a resource's key need not name (`roster` stores under `workforce/workers/…`); a collection entry's notice also names the entry's storage key in `ids` (FIX-2625; see [server-and-client.md](./server-and-client.md#change-notices)). Whether a path may belong to what a screen holds is the one path rule (`mayHold`, in `@flow-state-dev/contracts`, with the client's `storageRootsOf` reading a resource's roots off the flow's manifest): a path at or under one of the roots reads, and an unknown manifest or a pattern with no static prefix rules nothing out, since a false yes costs one read and a false no leaves a screen stale. `client.live` applies it to the `paths` it is given; React's resource hooks apply the same rule to the session stream's `resource_change` items.
+
 
 ### Scope-Level Client Data
 
-A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
+A scope's `client` block names the state fields it exposes (`expose`), from that single scope. The result is served grouped by scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
@@ -481,8 +424,8 @@ Returns scope-level client data grouped by scope:
 ```json
 {
   "clientData": {
-    "session": { "modeStatus": { "currentMode": "chat" } },
-    "user": { "preferences": { "displayName": "User" } }
+    "session": { "messageCount": 3 },
+    "user": { "displayName": "User" }
   }
 }
 ```
@@ -529,7 +472,7 @@ The snapshot includes a `resources` key with metadata and `clientData` only — 
 
 ```json
 {
-  "clientData": { "session": { "modeStatus": {...} } },
+  "clientData": { "session": { "messageCount": 3 } },
   "resources": {
     "session": {
       "soul": { "clientData": { "displayTone": "Direct" } },
@@ -589,6 +532,27 @@ Item state and item content live in two stores (`ResourceStateStore`, `ContentSt
 **A template-backed collection splits that row rather than escaping it.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent` and returns from the template branch without consulting it, so **readability** costs nothing — the item renders from state whether or not a content row exists, and there is nothing to repair with `PATCH`. But the create route writes content whenever the caller sends any, with **no template guard**, so the **partial commit** is exactly as real: the request still fails, the item is still live and listable, and a retry still gets a `409`. Read the first row as two claims — *the body is absent*, which a template answers, and *the create half-committed*, which it does not.
 
 These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
+
+### User and org resources with no session
+
+A user or org resource or collection can be read and written without a session (FIX-2624, epic FIX-2618 O3). Five routes, all under `/api/flows`:
+
+```
+GET  /resources/:scope/:key                      → direct read: { scope, key, value, version }
+GET  /resources/:scope/:key/entries              → one page of entries ({ items: [{ topic, storageKey, value, version }], nextCursor }), or manifest=1 for keys and versions only. order=newest pages by at.
+GET  /resources/:scope/:key/entries/:entry       → one entry, or null
+POST /resources/:scope/:key/actions/:actionName  → a send through the flow the resource's runBy names
+GET  /:flowKind/identity                         → { userId, orgId } under that flow's sign-in
+```
+
+- **Addressing.** `:scope` is `user` or `org`; `:key` is a single resource's storage key (its `ref`, else its accessor) or a collection's pattern. The registry finds every flow that declares it, shared (not flow-isolated). A collection is read by its entries (the single read answers `400`), gated by `client.state.read` as the session-addressed list is, each entry behind `ownerKeyAdmits` for the caller; `:entry` is a bare topic or a storage key. The list pages by keyset (`cursor` is the last storage key returned), or newest-first when `order=newest` (by each entry's `at`). `manifest=1` is the same list with no values and a page of up to 10,000, so a screen that already holds the entries can diff versions and read only the ones that changed. A projected collection reads through its app source with a context built from the caller; its manifest version is a hash of the projected state, because a projected entry has no stored version. `manifest` must be `1`; any other value is refused. `order=newest` is refused for a manifest and for a projected collection. Any other `order` is refused. Newest order uses the `at` the client sees, after `expose` and `exclude`. A newest page sorts the caller's entries in memory; a store index is the follow-up when a collection is larger than a few hundred entries. A projected entry's manifest version is a hash of that visible value, not of fields the client cannot read. Two declarations also disagree when one is a collection and the other isn't, or on `client.state` or the owner rule.
+- **The caller** is resolved in one place, `resolveFlowCaller` (`scope-address.ts`), at the flow whose rules apply, never the host's fallback, the body, the query or a header (epic ER-3, BP-031): every declaring flow for a read or a default write, the writer for a send to `runBy: { flow }` (its resolver, `requireUser` and `defaultUserId`, as a direct POST to its action), the path's flow for the identity read. In open mode the development resolver takes the request's `userId`, as every route does there. Until the caller passes every declaring flow's resolver and at least one declaring instance's pin, every refusal is an unused key's `404`, naming no flow (`admitAddress`). Then every declaring flow must resolve the request to one user and org; if they differ (a resolver that answers per `envelope.flowKind`), the request is refused `500 resolver_disagreement`, so a read and a write of one address always land in one cell. A caller every declaring flow answered with its own default user (signed in nowhere) gets the unused key's answer for either refusal instead. The governing instance is the first shared declarer whose pin admits the caller, so instances pinned to different users each serve their own; a default write's session id records the instance that admitted its caller (`admittedBy`), and its records answer to that instance; a named writer's records answer to the writer. A session made before `admittedBy` was recorded falls back to the first declaring instance whose pin admits the record's owner (BP-030). A send whose writer's pin refuses the caller gets the unused key's answer. After admission, two declarations that disagree on their resolver, their `requireUser`/`defaultUserId`, or their `client`, `runBy` or `canWrite` settings are refused per request (`409 declarations_disagree`, naming both flows unless one's pin hides it); registration still succeeds. A flow-isolated copy is refused (`400`): a scope and key don't name it. A write record no declaring flow governs now gets its route's ordinary unused-id answer.
+- **A direct read** runs no block and touches no session or request: a store read of the caller's own cell (their user cell in their org, or their org) and the client projection, built by the session snapshot's own builder (`buildResourceSnapshot`), so a resource the snapshot projects no state for (no `expose`, `exclude` or `data`: content-only) is not served at all and answers as an unknown key; `runBy` of either kind on such a resource is a definition error. `version` is 0 when nothing is stored, with the schema's default as the value.
+- **A write** goes only through a flow (epic ER-4). `runBy: "default"` names the default write flow (`default-write-flow.ts`); `runBy: { flow }` names one the app hosts, which must declare the resource. Either needs a `client` config: that is what exposes a resource to clients at all. With no `runBy`, a send is refused (`403 not_writable`). The route derives the writer's write session on the server from tenant, org, user, the writing flow and the resource, creates it if absent (a lost create race adopts the winner), and runs the action there as `execute_action` does, so it records a request naming its writer. A write session's id is computed from public values, so no client may name one: every parsed route passes `reservedAddressRefusal` (`reserved-addresses.ts`) before authorization, which answers a write session id as an unknown session and the default write flow as an unknown flow (its own request stream, status and abort excepted, so a writer hears its write settle); session create and the action route refuse one in the body; and the host refuses either on a dispatch from any transport unless it is the server's own resource send. A write record (its session, its requests, an in-flight entry) answers to the declaring flow's sign-in, read off the record's own session id (`writeRecordGovernor`), never to the host's fallback, and no listing shows one.
+- **The default write flow's `set`** needs the resource to project its state (`client.expose` or `client.exclude`; `client: {}` with `runBy: "default"` is a definition error, since the client reads no state and the flow writes only what the client reads). It checks, in order: the session is this caller's for this target (it recomputes the id), the schema, `canWrite({ prev, next, userId, orgId })`, then the version the client read; it writes with that version as the store's `expectedVersion`. A stale version fails the request with `stale_version`; `client.resource(def).update` reads again and re-runs its updater, three times at most. Fields the client can't read (`expose`, `exclude`, `secret`) keep their stored values. It publishes the scope's change notice, narrowed to the key. It writes the store directly, as the resource routes do, so it runs no `reactTo` binding and streams no live delta. Every runtime entry that resolves flows from a registry holds it from the start as a built-in instance (`installBuiltIns`: the inbound host and the BullMQ worker): `get` finds it, `list` never shows it. Each passes the host-level resolver its host is given (the worker takes it as `deps.resolvePrincipal`), so the flow's agreement check (`declarationsAgree`, through `resolveAddress`) reaches the route's verdict.
+- **A collection entry** is written by the same `set` with an `entry` in its input, and deleted by the default write flow's `delete` (`{ entry, version }`). Both check the entry matches the pattern, the owner rule (`ownerWriteRefusal`: an owner-writes entry is written only by its owner), then the collection's `canWrite({ key, prev, next, userId, orgId })` (no `prev` on a create, no `next` on a delete), at the version read; a create is version 0, and refused past `maxInstances`. A `stampOrgId` collection's `orgId` is the server's. One writer's entries share one write session per collection. Each publishes on the user or org topic, narrowed to the entry by `noticePathFor` (an owner-private entry's notice names no path).
+- **Definition errors** (`defineResource`, `defineResourceCollection`): `runBy` at session scope, with `flowIsolation: true`, or with no `client` config; `runBy: "default"` with a computed `client.data`, `writable: false`, or no `expose`/`exclude`; `canWrite` without `runBy: "default"`; and an org resource on the default write flow with no `canWrite`, which the owner decided (2026-11-11) refuses to start rather than let every member of the org write it. A collection's `runBy` also needs `client: { state: { read: true } }`, and `runBy: "default"` refuses `writable: false` and an eviction policy.
+- **`useResource(def, { session })`** (D2) reads a user or org resource or collection through `client.resource(def)` and the scope's live read (no poll of its own); a session one from that session's snapshot. A screen with no `useSession` view passes `{ sessionId }` (FIX-2772 D1): the session's state without its items (`client.sessions.state`), read again through the same live read on the session topic's `resource` notice for that resource. No new route, and no setters: a session resource is written by its flow's actions. `{ all: true }` reads every entry, and a later notice with no ids, a gap, or a failed entry read diffs the manifest instead of listing every value again. `{ newest: true }` reads the newest page and `loadOlder()` fetches the next older one; a notice that names entries merges those entries in.
 
 ### React Hooks
 

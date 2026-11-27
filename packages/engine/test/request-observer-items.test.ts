@@ -54,12 +54,16 @@ describe("a lifecycle observer beside the action's block", () => {
       await router.POST(
         new Request("http://localhost/api/flows/observed/sess_observed/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "user_observed", input: { value: "v1" } })
         }),
         { params: { path: ["observed", "sess_observed", "actions", "run"] } }
       );
       await new Promise((resolve) => setTimeout(resolve, 50));
 
+      // The run's traces were written under `observability`; reading them back
+      // through `item_types` needs observability on, which serves trace rows.
+      vi.stubEnv("FSDEV_TRACE_OBSERVABILITY", "true");
       const state = await router.GET(
         new Request("http://localhost/api/flows/sessions/sess_observed/state?include_items=true&item_types=message,block_trace"),
         { params: { path: ["sessions", "sess_observed", "state"] } }

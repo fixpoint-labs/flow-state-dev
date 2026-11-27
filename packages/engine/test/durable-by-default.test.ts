@@ -8,6 +8,7 @@ import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, filesystemStores, inMemoryStores, runAction } from "../src";
 import type { CreateFlowStateOptions as FlowStateOptions } from "../src/flowstate/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const dirs: string[] = [];
 function dataDir(): string {
@@ -46,7 +47,7 @@ function stoppingFlow() {
 
 async function runtimeOf(options: Partial<FlowStateOptions> & Pick<FlowStateOptions, "stores">) {
   const { flow } = stoppingFlow();
-  const state = createFlowState({ flows: { "durable-default": flow }, ...options } as FlowStateOptions);
+  const state = createFlowState({ flows: [flow], ...options } as FlowStateOptions);
   const runtime = await state.getRuntime();
   return { state, runtime };
 }
@@ -98,13 +99,14 @@ describe("a host without durable execution refuses at the stop", () => {
   it("names the rule and the setting, records the request failed, and holds nothing", async () => {
     const { flow, runsBefore } = stoppingFlow();
     const state = createFlowState({
-      flows: { "durable-default": flow },
+      flows: [flow],
       stores: { default: { primary: filesystemStores({ rootDir: dataDir(), developmentOnly: true }) } },
       durable: false
     } as FlowStateOptions);
     try {
       const runtime = await state.getRuntime();
       const result = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "go",
         input: { n: 1 },

@@ -1,0 +1,9 @@
+R1 0 said page doesn't say
+R2 0 said page doesn't say
+R3 0.5 callable actions right; missing HTTP, state, blocks
+R4 0.5 unit of work right; missing typed, flows built
+R5 0 all three parts unanswered
+P2.1 1 errored, others continue, compare cancelled, blocked-by-failures
+P2.2 1 no auto-run, needs drain, scoped resource storage
+P2.3 1 input.deps keyed by task id
+SCORE 4 / 8

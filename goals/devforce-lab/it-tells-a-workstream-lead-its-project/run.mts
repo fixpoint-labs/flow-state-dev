@@ -41,6 +41,8 @@ import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["no-project-context"] as const;
@@ -68,7 +70,6 @@ const STOREFRONT = { visibility: "shared" as const, id: "storefront" };
 const TASK_TOOLS = new Set(["createTask", "createTask"]);
 /** The line the board's task tools add naming the conversation's project; the control cuts it. */
 const PROJECT_LINE = /This conversation works in the \w+ project \\?"[^"\\]+\\?"\.[^.]*\./g;
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
 /** How many times the control cut the line from the EM's prompt. */
@@ -162,7 +163,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     modelResolver: liveResolver(),
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "tells-the-lead-")), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

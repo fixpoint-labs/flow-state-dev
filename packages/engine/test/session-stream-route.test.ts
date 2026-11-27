@@ -97,7 +97,7 @@ const REQUEST_A_ITEMS: OutputItem[] = [
   }),
   item(REQ_A, "reasoning", "reasoning", 5, OTHER, { summary: [] }),
   item(REQ_A, "tool", "tool_output", 6, OTHER, { callId: "c1", toolName: "t", output: {} }),
-  item(REQ_A, "component", "component", 7, OTHER, { name: "widget", props: {} }),
+  item(REQ_A, "data", "data", 7, OTHER, { dataType: "widget", value: {} }),
   item(REQ_A, "container", "container", 8, OTHER, { children: [] }),
   item(REQ_A, "status", "status", 9, OTHER, { message: "working" }),
   item(REQ_A, "state_change", "state_change", 10, OTHER, { scope: "session", changes: [] }),
@@ -248,11 +248,61 @@ describe("the stream shows what the snapshot shows (V2)", () => {
 
     const snapshot = await snapshotPairs(router, "&item_types=message,status");
     // The type filter stands in for the visibility rule, as it always has on
-    // the snapshot: a named type is shown even when its stamp would hide it.
+    // the snapshot: a named type is shown even when its stamp would hide it,
+    // while trace observability is on (as it is outside production).
     expect(snapshot).toEqual(
       [`${REQ_A}/m_hidden`, `${REQ_A}/m_rerun`, `${REQ_A}/status`, `${REQ_B}/m_b`].sort()
     );
     expect(await streamedPairs(router, "&item_types=message,status")).toEqual(snapshot);
+  });
+
+  // `item_types` is the caller's to write, so naming a type must not open what
+  // the client view hides unless trace observability is on (off in production
+  // unless `FSDEV_TRACE_OBSERVABILITY=true`).
+  describe("naming a client-hidden type in production", () => {
+    const savedEnv = { ...process.env };
+    let warn: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+      warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      process.env = { ...savedEnv };
+      warn.mockRestore();
+    });
+
+    const query = "&item_types=message,status,block_trace";
+
+    it("with observability off, filters by type among client-visible items only", async () => {
+      delete process.env.FSDEV_TRACE_OBSERVABILITY;
+      const built = buildRouter();
+      router = built.router;
+      await seedSession(built.stores);
+
+      const snapshot = await snapshotPairs(router, query);
+      expect(snapshot).toEqual([`${REQ_A}/m_rerun`, `${REQ_A}/status`, `${REQ_B}/m_b`].sort());
+      expect(await streamedPairs(router, query)).toEqual(snapshot);
+    });
+
+    it("with observability on, a named type is shown whatever its visibility, as before", async () => {
+      process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+      const built = buildRouter();
+      router = built.router;
+      await seedSession(built.stores);
+
+      const snapshot = await snapshotPairs(router, query);
+      expect(snapshot).toEqual(
+        [
+          `${REQ_A}/m_hidden`,
+          `${REQ_A}/m_rerun`,
+          `${REQ_A}/status`,
+          `${REQ_A}/t2`,
+          `${REQ_B}/m_b`,
+          `${REQ_B}/t_b`
+        ].sort()
+      );
+      expect(await streamedPairs(router, query)).toEqual(snapshot);
+    });
   });
 });
 
@@ -622,10 +672,10 @@ describe("a keyed item emitted again", () => {
     await seedSession(built.stores, Date.now() - 600_000);
     const owner = buildBlockInstanceId("req_k", "root", 0);
     const plan = (step: number, ts: number, itemIndex: number) =>
-      item("req_k", "item_component_keyed:plan", "component", itemIndex, owner, {
+      item("req_k", "item_data_keyed:plan", "data", itemIndex, owner, {
         ts,
-        component: "plan-view",
-        data: { step },
+        dataType: "plan-view",
+        value: { step },
         key: "plan"
       });
     const first = Date.now();
@@ -639,8 +689,8 @@ describe("a keyed item emitted again", () => {
     const events = collectEvents(res);
     const steps = (): number[] =>
       events.flatMap((event) =>
-        event.type === "session.item" && event.item.id === "item_component_keyed:plan"
-          ? [(event.item as unknown as { data: { step: number } }).data.step]
+        event.type === "session.item" && event.item.id === "item_data_keyed:plan"
+          ? [(event.item as unknown as { value: { step: number } }).value.step]
           : []
       );
     try {
@@ -804,6 +854,7 @@ describe("a run waiting to start", () => {
     await router.POST(
       new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "mallory", input: {} })
       }),
       { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -850,7 +901,7 @@ describe("a run waiting to start", () => {
     await router.POST(
       new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
-        headers: { "x-org": "org_other" },
+        headers: { "content-type": "application/json", "x-org": "org_other" },
         body: JSON.stringify({ userId: "alice", input: {} })
       }),
       { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -932,6 +983,7 @@ describe("a run waiting to start", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/chat/child1/actions/ping", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "alice", input: {} })
         }),
         { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -1258,6 +1310,7 @@ function post(router: Router, action: string, input: unknown): Promise<Response>
   return router.POST(
     new Request(`http://localhost/api/flows/chat/s1/actions/${action}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", input })
     }),
     { params: { path: ["chat", "s1", "actions", action] } }

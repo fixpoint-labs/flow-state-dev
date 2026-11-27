@@ -36,10 +36,7 @@ const reviewDefinition = defineFlow({
   kind: "review",
   cardinality: "collection",
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "review-run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "review-run", inputSchema: z.object({}), execute: () => ({}) })
   },
   session: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) }
 });
@@ -48,9 +45,7 @@ function review(options: { id: string }): FlowInstance {
   return reviewDefinition({
     id: options.id,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `review-run-${options.id}`,
           inputSchema: z.object({}),
           execute: async (_input, ctx) => {
@@ -58,7 +53,6 @@ function review(options: { id: string }): FlowInstance {
             return {};
           }
         })
-      }
     }
   }) as unknown as FlowInstance;
 }
@@ -69,10 +63,7 @@ const queuedDefinition = defineFlow({
   cardinality: "collection",
   request: { concurrency: { policy: "queue", key: "session" } },
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "queued-run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "queued-run", inputSchema: z.object({}), execute: () => ({}) })
   }
 });
 
@@ -85,10 +76,7 @@ function secureReview(kind: string) {
     kind,
     cardinality: "collection",
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({ name: `${kind}-run`, inputSchema: z.object({}), execute: () => ({}) })
-      }
+      run: handler({ name: `${kind}-run`, inputSchema: z.object({}), execute: () => ({}) })
     },
     authentication: {
       resolvePrincipal: (context) => {
@@ -114,6 +102,7 @@ async function act(
   return router.POST(
     new Request(`http://localhost/api/flows/${address}/${sessionId}/actions/run`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId, input: {} })
     }),
     { params: { path: [address, sessionId, "actions", "run"] } }
@@ -298,6 +287,7 @@ describe("a session belongs to one instance", () => {
         flowId: "review-east",
         actionName: "run",
         userId: "u_1",
+        orgId: DEFAULT_ORG_ID,
         sessionId: "s_held",
         source: "http",
         status: "in_progress",
@@ -315,6 +305,7 @@ describe("a session belongs to one instance", () => {
       flowId: "review-east",
       actionName: "run",
       userId: "u_1",
+      orgId: DEFAULT_ORG_ID,
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now
@@ -323,6 +314,7 @@ describe("a session belongs to one instance", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/review-west/s_other/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {}, requestId: "req_held" })
       }),
       { params: { path: ["review-west", "s_other", "actions", "run"] } }
@@ -382,6 +374,7 @@ describe("a refusal raised by the run itself", () => {
     const res = await raced.POST(
       new Request("http://localhost/api/flows/queued-west/s_raced/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {} })
       }),
       { params: { path: ["queued-west", "s_raced", "actions", "run"] } }

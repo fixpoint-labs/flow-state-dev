@@ -68,6 +68,7 @@ const stripeProvider: WebhookProviderDefinition = {
 function stripeRequest(body: unknown): Request {
   return new Request("http://test/api/flows/billing/webhooks/stripe", {
     method: "POST",
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
 }
@@ -444,7 +445,7 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
 
     const forged = new Request("http://test/api/flows/billing/webhooks/stripe", {
       method: "POST",
-      headers: { "stripe-signature": "t=9999999999,v1=deadbeef" },
+      headers: { "content-type": "application/json", "stripe-signature": "t=9999999999,v1=deadbeef" },
       body: JSON.stringify({ type: "invoice.paid", id: "e", data: { object: { id: "in", customer: "cus_42" } } })
     });
     const res = await handleWebhook(

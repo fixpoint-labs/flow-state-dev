@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 540">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<rect class="solid" x="28" y="56" width="396" height="236"/>
+<text class="lb" x="40" y="80">STANDARD WORKERS</text>
+<text class="nm" x="40" y="102">Files in your repo</text>
+<text class="sub" x="40" y="120">the same for every user · not editable while the app runs</text>
+<line class="hi" x1="28" y1="134" x2="424" y2="134"/>
+<rect class="thin" x="40" y="148" width="372" height="62"/>
+<text class="c" x="52" y="172">engineering.researcher</text>
+<text class="sub" x="52" y="192">WORKER.md · flow: agent</text>
+<rect class="thin" x="40" y="222" width="372" height="56"/>
+<text class="c" x="52" y="246">engineering.lead</text>
+<text class="sub" x="52" y="266">WORKER.md · flow: agent</text>
+
+<rect fill="url(#hatch)" x="496" y="56" width="396" height="236"/>
+<rect class="solid" x="496" y="56" width="396" height="236"/>
+<text class="lb" x="508" y="80">A USER'S OWN WORKERS</text>
+<text class="nm" x="508" y="102">Rows in that user's data</text>
+<text class="sub" x="508" y="120">reachable only by their owner</text>
+<line class="hi" x1="496" y1="134" x2="892" y2="134"/>
+<rect class="ground" x="508" y="148" width="372" height="62"/>
+<rect class="thin" x="508" y="148" width="372" height="62"/>
+<text class="c" x="520" y="172">my-researcher</text>
+<text class="sub" x="520" y="192">forked from researcher · flow: agent</text>
+<rect class="ground" x="508" y="222" width="372" height="56"/>
+<rect class="thin" x="508" y="222" width="372" height="56"/>
+<text class="c" x="520" y="246">scribe</text>
+<text class="sub" x="520" y="266">hired · flow: agent</text>
+
+<line class="ln" x1="413" y1="179" x2="507" y2="179" marker-end="url(#ah)"/>
+<rect class="ground" x="436" y="172" width="48" height="15"/>
+<text class="plate" x="460" y="183" text-anchor="middle">FORK</text>
+<rect class="ground" x="432" y="236" width="56" height="15"/>
+<text class="plate" x="460" y="247" text-anchor="middle">HIRE</text>
+<line class="ln" x1="488" y1="250" x2="507" y2="250" marker-end="url(#ah)"/>
+
+<line class="ln" x1="226" y1="293" x2="226" y2="338" marker-end="url(#ah)"/>
+<line class="ln" x1="694" y1="293" x2="694" y2="338" marker-end="url(#ah)"/>
+<rect class="ground" x="106" y="308" width="112" height="15"/>
+<text class="plate" x="162" y="319" text-anchor="middle">NAMES A FLOW</text>
+
+<rect class="solid" x="28" y="340" width="864" height="84"/>
+<text class="lb" x="40" y="364">THE FLOW A WORKER RUNS ON</text>
+<text class="nm" x="40" y="388">agent</text>
+<text class="sub" x="96" y="388">one shared copy · or a flow you wrote, even one with no model in it</text>
+<text class="t" x="40" y="410">Every worker on it uses the same copy.</text>
+
+<line class="ln" x1="460" y1="425" x2="460" y2="452" marker-end="url(#ah)"/>
+<rect class="solid" x="28" y="454" width="864" height="62"/>
+<text class="lb" x="40" y="478">SESSIONS</text>
+<text class="c" x="40" y="500">one per conversation · one per task · each names its worker</text>
+
+<line class="hi" x1="0" y1="534" x2="920" y2="534"/>
+<rect fill="url(#hatch)" x="28" y="544" width="26" height="11"/><rect class="thin" x="28" y="544" width="26" height="11"/>
+<text class="lb" x="62" y="554">LIVES IN A USER'S DATA</text>
+</svg>

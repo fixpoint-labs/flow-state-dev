@@ -18,11 +18,18 @@
  * - **`crossing` frames.** After the first ticket, and on each change, the
  *   socket says whether its process's bus hears other processes. A control
  *   frame about the socket, never a notice kind.
+ * - **A board partition goes out as its key**, made under the push secret.
+ *   The secret is read on each use, so it can change while the socket is
+ *   open; the browser's answers then hold keys made under the old one. Before
+ *   the first key made under a new secret, the socket sends a `resync` on
+ *   every topic it holds, so each view reads again and holds the new keys.
  */
 import { type WireTopic } from "@flow-state-dev/core";
 import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
+import { boardPartitionKey } from "./partition-key";
+import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
 export const PUSH_SOCKET_TIMINGS = {
@@ -55,10 +62,13 @@ export type OpenPushSocketOptions = {
   io: PushSocketIO;
   /** Where a refused ticket is reported. Default `console`. */
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+  // FIX-2625 D2.
+  /** Which scopes' notices may name what changed (`RuntimeConfig.noticeIds`). Default: every scope's. */
+  noticeIds?: NoticeIdScopes;
 };
 
 /** A bus topic as the wire names it: no tenant, and no user or org id. */
-function toWire(topic: BusTopic): WireTopic {
+function toWire(topic: Omit<BusTopic, "resource"> & { resource?: string | undefined }): WireTopic {
   const resource = topic.resource !== undefined ? { resource: topic.resource } : {};
   return topic.scope === "session" ? { scope: "session", id: topic.id, ...resource } : { scope: topic.scope, ...resource };
 }
@@ -73,7 +83,10 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   const { bus, io, userId } = options;
   const logger = options.logger ?? console;
   /** Bus key → the topic as the wire names it, and its unsubscribe. */
-  const subscriptions = new Map<string, { wireKey: string; off: () => void }>();
+  const subscriptions = new Map<string, { wire: WireTopic; wireKey: string; off: () => void }>();
+  // FIX-2750.
+  /** The secret this socket's partition keys were last made under, or its first ticket checked with. */
+  let keyedUnder: string | undefined;
   let crossingOff: (() => void) | undefined;
   let accepted = false;
   let ended = false;
@@ -105,17 +118,44 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   const send = (frame: PushServerFrame): void => {
     if (!ended) io.send(frame);
   };
-  const hear = (notice: ChangeNotice): void => {
+  // FIX-2625 D2: the one place a notice's ids reach a browser, so the
+  // per-scope switch lives here. With ids off for the notice's scope it goes
+  // out with none, and every `resource` notice goes to a scope-wide
+  // subscription on the bare scope topic, as an owner-private row's already
+  // does: a collection entry's path is an id too. Every one, not just those
+  // whose ids mark an entry: a publisher from before ids (a process mid-deploy
+  // on a shared bus) sends an entry's path with no ids, and the socket can't
+  // tell an entry's path from a single resource's name (BP-030). A single
+  // resource's watchers read once more for it. A subscription narrowed to the
+  // resource keeps the path its client named.
+  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope] === false;
+  const hear = (notice: ChangeNotice, subscribed: BusTopic): void => {
+    const off = idsOff(notice.topic.scope);
+    const bare = off && notice.kind === "resource" && subscribed.resource === undefined;
+    const topic = bare ? { ...notice.topic, resource: undefined } : notice.topic;
     send({
       type: "notice",
-      topic: toWire(notice.topic),
+      topic: toWire(topic),
       kind: notice.kind,
-      ...(notice.origin !== undefined ? { origin: notice.origin } : {})
+      ...(notice.origin !== undefined ? { origin: notice.origin } : {}),
+      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {}),
+      // FIX-2750: a partition leaves the server only as its opaque key.
+      ...(notice.partition !== undefined ? { partition: partitionKey(notice.topic.tenantId, notice.partition) } : {})
     });
+  };
+  /** `partition`'s key under the current secret, after a `resync` on every topic held when the secret changed. */
+  const partitionKey = (tenantId: string, partition: string): string => {
+    const secret = options.secret();
+    if (keyedUnder !== undefined && secret !== keyedUnder) {
+      for (const { wire } of subscriptions.values()) send({ type: "notice", topic: wire, kind: "resync" });
+    }
+    keyedUnder = secret;
+    return boardPartitionKey(secret, tenantId, partition);
   };
 
   const subscribe = (ticket: unknown): void => {
-    const checked = verifyPushTicket(ticket, options.secret(), userId);
+    const secret = options.secret();
+    const checked = verifyPushTicket(ticket, secret, userId);
     if (!checked.ok) {
       logger.warn(`[flow-state] push socket refused a ticket (${checked.reason}); closing it`, {
         reason: checked.reason,
@@ -127,13 +167,18 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     for (const granted of checked.claims.topics) {
       const key = busKey(granted.bus);
       if (subscriptions.has(key)) continue;
-      subscriptions.set(key, { wireKey: wireTopicKey(toWire(granted.bus)), off: bus.subscribe(granted.bus, hear) });
+      subscriptions.set(key, {
+        wire: toWire(granted.bus),
+        wireKey: wireTopicKey(toWire(granted.bus)),
+        off: bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
+      });
     }
     // Its topics are heard from here on: a read the client makes once it
     // hears this misses nothing under them.
     send({ type: "subscribed" });
     if (accepted) return;
     accepted = true;
+    keyedUnder = secret;
     clearTimeout(ticketTimer);
     send({ type: "crossing", crosses: bus.crossesProcesses });
     crossingOff = bus.onCrossingChange((crosses) => send({ type: "crossing", crosses }));

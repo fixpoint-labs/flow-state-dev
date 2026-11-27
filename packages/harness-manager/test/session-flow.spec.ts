@@ -12,11 +12,12 @@
  *   - drop the `branch` null check: the turn-end check reads a directory for a
  *     host that said its session has no branch.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { runRead } from "@flow-state-dev/engine/internal";
+import { runView } from "@flow-state-dev/engine/internal";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,6 +25,9 @@ import { join } from "node:path";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+
+/** A turn's `changes` view, run as the view route runs it: its answer's output. */
+const viewChanges = async (options: Omit<Parameters<typeof runView>[0], "viewName">) => (await runView({ ...options, viewName: "changes" })).output;
 
 import {
   HARNESS_SESSION_ATTACH_MISSING,
@@ -36,14 +40,13 @@ import {
   harnessSessionStartSchema,
   harnessSessionStateSchema,
   harnessSessionTitle,
-  type HarnessSessionFeeds,
   type HarnessSessionPlace,
   type HarnessSessionState,
   type HarnessSessionWorkspace,
 } from "../src";
 
 /** A harness that asks which conversation to continue, as every harness does, then runs nothing. */
-const stubAgent = (feeds: HarnessSessionFeeds) =>
+const stubAgent = (feeds: HarnessFeeds) =>
   handler({
     name: "stub-harness",
     inputSchema: z.object({ prompt: z.string() }),
@@ -74,7 +77,7 @@ async function turn(
   sessionId: string,
   prompt: string,
   workspace = noWorkspace(),
-  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = stubAgent,
+  agent: (feeds: HarnessFeeds) => HarnessBlock = stubAgent,
 ) {
   if ((await stores.session.get(sessionId)) === undefined) {
     const now = Date.now();
@@ -146,7 +149,7 @@ describe("the turn-end pull request check", () => {
 });
 
 /** A harness that provisions its working directory, as a real one does, and waits on `gate` when given one. */
-const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds) =>
+const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessFeeds) =>
   handler({
     name: "provisioning-harness",
     inputSchema: z.object({ prompt: z.string() }),
@@ -209,7 +212,7 @@ function act(
   actionName: string,
   input: unknown,
   gate?: Promise<void>,
-  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = provisioningAgent(gate),
+  agent: (feeds: HarnessFeeds) => HarnessBlock = provisioningAgent(gate),
 ) {
   return runAction({
     flow: harnessSessionFlow({ kind: "stub-session", workspace, agent }),
@@ -539,7 +542,7 @@ describe("attaching a session to another session's worktree", () => {
     const { workspace } = recordingWorkspace();
     ownerWorktree("s-owner-e", "fix/owners-branch");
     await seed(stores, "s-attached-e", { model: "stub-model", start: { worktreeOf: "s-owner-e" } });
-    const switching = (feeds: HarnessSessionFeeds) =>
+    const switching = (feeds: HarnessFeeds) =>
       handler({
         name: "switching-harness",
         inputSchema: z.object({ prompt: z.string() }),
@@ -586,7 +589,7 @@ describe("the user's worktree rows", () => {
 
 describe("a fresh checkout's setup, on the turn that waits for it", () => {
   /** A harness that asks for its working directory, as every harness does before it runs. */
-  const cwdAgent = (feeds: HarnessSessionFeeds) =>
+  const cwdAgent = (feeds: HarnessFeeds) =>
     handler({
       name: "stub-harness",
       inputSchema: z.object({ prompt: z.string() }),
@@ -689,7 +692,7 @@ describe("what a turn changed", () => {
     git(dir, "add", ".");
     git(dir, "commit", "-q", "-m", "start");
     const workspace: HarnessSessionWorkspace = { provision: async () => dir, locate: () => dir, branch: () => null };
-    const agent = (feeds: HarnessSessionFeeds) =>
+    const agent = (feeds: HarnessFeeds) =>
       handler({
         name: "committing-harness",
         inputSchema: z.object({ prompt: z.string() }),
@@ -727,7 +730,7 @@ describe("what a turn changed", () => {
       expect(turns).toHaveLength(2);
       expect(turns[1]!.base).toBe(turns[0]!.head);
 
-      const read = (input: unknown) => runRead({ flow, readName: "changes", input, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores });
+      const read = (input: unknown) => viewChanges({ flow, input, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores });
       expect(await read({ turn: turns[0]!.id })).toMatchObject({
         diff: { files: [{ path: "first.txt", added: 1, removed: 0 }], verified: true },
         patch: null,
@@ -760,7 +763,7 @@ describe("what a turn changed", () => {
       const [, second] = Object.entries(((await stores.session.get("s-amend"))!.state as { turns: Record<string, { at: number }> }).turns)
         .sort(([, a], [, b]) => a.at - b.at)
         .map(([id]) => id);
-      const read = await runRead({ flow, readName: "changes", input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
+      const read = await viewChanges({ flow, input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
       expect(read).toMatchObject({ diff: { files: [{ path: "amend.txt" }], fileCount: 1, verified: true } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -806,7 +809,7 @@ describe("what a turn changed", () => {
     const [id, record] = Object.entries(((await stores.session.get("s-nogit"))!.state as { turns: Record<string, { base: string | null }> }).turns)[0]!;
     expect(record.base).toBeNull();
     const flow = harnessSessionFlow({ kind: "stub-session", workspace: noWorkspace(), agent: stubAgent });
-    expect(await runRead({ flow, readName: "changes", input: { turn: id }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-nogit", stores })).toMatchObject({
+    expect(await viewChanges({ flow, input: { turn: id }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-nogit", stores })).toMatchObject({
       diff: { files: [], verified: false },
     });
   });
@@ -828,7 +831,7 @@ describe("what a turn changed", () => {
         { id: "s-legacy", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model", turns: { req_old: legacyTurn } }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
         "any" as never,
       );
-      expect(await runRead({ flow, readName: "changes", input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
+      expect(await viewChanges({ flow, input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
         diff: { files: [], verified: false },
       });
     } finally {

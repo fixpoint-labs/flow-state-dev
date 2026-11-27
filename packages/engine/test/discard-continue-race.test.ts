@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { recordRequestStop } from "../src/execution/record-request-stop";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 describe("a Discard that lands after a Continue was admitted", () => {
   it("ends the turn: the action does not run and the request stays aborted", async () => {
@@ -16,17 +17,14 @@ describe("a Discard that lands after a Continue was admitted", () => {
     const flow = defineFlow({
       kind: "race",
       actions: {
-        respond: {
-          inputSchema: z.any(),
-          block: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => { runs += 1; return "answered"; } })
-        }
+        respond: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => { runs += 1; return "answered"; } })
       }
     })({ id: "race" });
     const registry = createFlowRegistry();
     registry.register(flow as never);
     const stores = createInMemoryStores();
 
-    const first = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "respond", input: {}, userId: "u1", stores, runtimeConfig: {} });
+    const first = await runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "respond", input: {}, userId: "u1", stores, runtimeConfig: {} });
     const requestId = first.requestId!;
     const done = (await stores.request.get(requestId))!;
     await stores.request.set(requestId, { ...done, status: "interrupted", interruptedAt: Date.now(), result: undefined }, "any");

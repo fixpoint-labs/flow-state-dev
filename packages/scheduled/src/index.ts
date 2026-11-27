@@ -1,41 +1,17 @@
 /**
- * `@flow-state-dev/scheduled` — scheduled-actions transport adapter.
+ * `@flow-state-dev/scheduled` — what a flow needs to keep and resolve dynamic
+ * schedules: schedule collections, the resolver over them, the schedule-index
+ * contract a store implements, and next-run math.
  *
- * Mounts a single dispatch endpoint per flow:
- *
- *   POST /api/flows/:kind/schedules/:scheduleId/dispatch
- *
- * Hosts run their own scheduler (Vercel Cron, Cloud Scheduler,
- * EventBridge, GitHub Actions, `node-cron`) and POST to this endpoint
- * when a schedule is due. The framework owns the configuration model
- * (`schedules` on `defineFlow`), dispatch contract, two-phase auth
- * (gateway → schedule.principal), one firing per scheduled time, and provenance
- * stamping (`source: 'scheduled'`).
- *
- *   import { createFlowApiRouter } from "@flow-state-dev/engine";
- *   import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
- *
- *   const router = createFlowApiRouter({
- *     registry,
- *     stores,
- *     adapters: [createScheduledTransportAdapter()]
- *   });
- *
- * V1 ships singleton invocation per dispatch — one tick → one
- * `runAction` call. Fan-out (one tick → many invocations) is a follow-up.
+ * The dispatch endpoint a schedule fires through is the engine's own, mounted
+ * by the router on every app (`/api/flows/:kind/schedules/*id/dispatch`); a
+ * flow declares `schedules` and nothing more is wired. This package imports no
+ * engine. `./collection` is the same surface without `createBadCronWarner`,
+ * and `./testing` holds the schedule-index conformance suite.
  */
-export {
-  createScheduledTransportAdapter,
-  SCHEDULED_TRANSPORT_SOURCE,
-  type CreateScheduledTransportAdapterOptions
-} from "./createScheduledTransportAdapter";
-
-export { findScheduledRequest } from "./findScheduledRequest";
-
 export {
   createResourceCollectionScheduleResolver,
   defaultParseScheduleId,
-  formatScheduleId,
   type CreateResourceCollectionScheduleResolverOptions,
   type ParsedScheduleId,
   type ScheduleResourceState

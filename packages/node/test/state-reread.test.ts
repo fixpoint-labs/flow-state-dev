@@ -25,9 +25,7 @@ const recordsFlow = defineFlow({
     client: { expose: ["phase"] },
   },
   actions: {
-    fail: {
-      inputSchema: z.object({}),
-      block: handler({
+    fail: handler({
         name: "fail",
         inputSchema: z.object({}),
         execute: async (_input, ctx) => {
@@ -35,7 +33,6 @@ const recordsFlow = defineFlow({
           throw new Error("boom");
         },
       }),
-    },
   },
 })();
 
@@ -48,11 +45,11 @@ afterEach(async () => {
 describe("a failed request, read back without its items", () => {
   it("the state read holds what it wrote and no items; its status says when it ended", async () => {
     const flowState = createFlowState({
-      flows: { records: recordsFlow },
+      flows: [recordsFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });
-    handle = await serve(flowState, { port: 0, handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
+    handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
     await flowState.ready();
     const client = createClient({ userId: "alice", baseUrl: `http://127.0.0.1:${handle.port}` });
     await client.flow("records").createSession({ sessionId: "s1" });

@@ -39,8 +39,8 @@ import {
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
-  walkTeams,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
+import { walkTeams } from "./structural-directory";
 
 /** The folder packages sit in, at every level. */
 export const PACKAGES_SLOT = "packages";
@@ -93,7 +93,7 @@ type Owner = Pick<PackageManifest, "level" | "team" | "worker">;
  * @param root The workforce tree — the folder holding `org/` and `teams/`.
  */
 export async function readPackagesDirectory(root: string): Promise<ReadPackagesDirectoryResult> {
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   const packages: PackageManifest[] = [];
   const errors: PackageError[] = [];

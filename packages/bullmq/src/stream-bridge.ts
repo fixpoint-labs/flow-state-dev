@@ -4,7 +4,9 @@
  * via a separate channel.
  *
  * Key invariant: the bridge is best-effort live push. Late/reconnecting
- * clients recover from the store.
+ * clients recover from the store. So a subscriber keeps no event for a reader
+ * that has not asked: events that arrive before `events()` is called are
+ * dropped, not buffered.
  */
 import Redis from "ioredis";
 import type { RedisOptions } from "ioredis";
@@ -81,6 +83,10 @@ export function createRedisStreamBridge(
       const abortCh = abortChannel(requestId);
       let closed = false;
       let aborted = false;
+      // Set once a reader calls `events()`. Until then nothing is buffered:
+      // the runner reads only `completed`, and a buffer no one drains grows
+      // with every item update for as long as the dispatch lives.
+      let reading = false;
 
       const eventBuffer: StreamBridgeEvent[] = [];
       let pendingResolve:
@@ -119,7 +125,7 @@ export function createRedisStreamBridge(
           if (pendingResolve) {
             pendingResolve({ value: parsed, done: false });
             pendingResolve = null;
-          } else {
+          } else if (reading) {
             eventBuffer.push(parsed);
           }
         } catch {
@@ -134,6 +140,7 @@ export function createRedisStreamBridge(
 
       return {
         events(): AsyncIterable<StreamBridgeEvent> {
+          reading = true;
           return {
             [Symbol.asyncIterator]() {
               return {

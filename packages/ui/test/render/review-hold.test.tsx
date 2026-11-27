@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LandedOutcome, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
+import { LandedOutcome, LandFailure, orderedLands, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
 import { SuspensionCard } from "../../registry/components/suspension-card";
 import { SessionItemsProvider } from "../../registry/components/session-items-context";
 
@@ -142,6 +142,15 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" });
   });
 
+  // FIX-2920: a branch with a pull request already open was offered "Open a PR"; an accept there goes onto that one.
+  it("onto a pull request already open from the branch, the accept says it pushes there, not that it opens one", async () => {
+    const answer = vi.fn(async () => {});
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], openPullRequest: { number: 5661, url: "https://github.com/a/b/pull/5661" } }} answer={answer} />);
+    expect(screen.queryByRole("button", { name: "Accept: Open a PR" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Push to PR #5661" }));
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" }));
+  });
+
   it("a landing that failed shows its error and a Retry of the same way first, with the other way still offered", async () => {
     const answer = vi.fn(async () => {});
     const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
@@ -151,6 +160,30 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(buttons.slice(0, 2)).toEqual(["Retry: Merge locally", "Accept: Open a PR"]);
     fireEvent.click(screen.getByRole("button", { name: "Retry: Merge locally" }));
     await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "merge" }));
+  });
+
+  // FIX-2658: "Keep trying until the PR is pushed" was typed into the box and
+  // Retry sent only the verdict, so the words reached nothing.
+  it("a Retry carries what is in the text box, for the coding session if the landing fails again", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "pull-request" as const, message: "GH005: refs longer than 255 bytes." };
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], landFailed }} answer={answer} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Keep trying until the PR is pushed. " } });
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Open a PR" }));
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request", words: "Keep trying until the PR is pushed." }),
+    );
+  });
+
+  it("lists each try of a landing that failed more than once", () => {
+    const tries = [
+      { land: "pull-request" as const, message: "GH005: refs longer than 255 bytes." },
+      { land: "pull-request" as const, message: "remote: permission denied." },
+    ];
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request"], landFailed: tries[1], landAttempts: tries }} answer={vi.fn(async () => {})} />);
+    const listed = screen.getAllByRole("listitem").map((item) => item.textContent);
+    expect(listed).toContain(`Try 1: ${tries[0]!.message}`);
+    expect(listed).toContain(`Try 2: ${tries[1]!.message}`);
   });
 
   it("a retry that fails with the same words is a new ask: Retry comes back, not the receipt of the last one", async () => {
@@ -166,6 +199,26 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(screen.queryByText("Accepted")).toBeNull();
   });
 
+  // A host that offers the accepts outside the card (a thread's own accept)
+  // orders them with the same helper, so a retry is first in both places.
+  it("orders the ways to land with a failed landing's way first, each way once, and keeps the review's order otherwise", () => {
+    const lands = ["pull-request", "merge"] as const;
+    expect(orderedLands(lands, null)).toEqual(["pull-request", "merge"]);
+    expect(orderedLands(lands, { land: "merge" })).toEqual(["merge", "pull-request"]);
+    expect(orderedLands(lands, { land: "pull-request" })).toEqual(["pull-request", "merge"]);
+    // A copy, so a caller sorting the result never reorders the review's own list.
+    expect(orderedLands(lands, null)).not.toBe(lands);
+  });
+
+  it("the failure line says which landing failed in its own words, and draws nothing when none did", () => {
+    const { container } = render(<LandFailure failed={null} />);
+    expect(container.textContent).toBe("");
+    render(<LandFailure failed={{ land: "pull-request", message: "GH005: refs longer than 255 bytes." }} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Opening the PR failed: GH005: refs longer than 255 bytes.");
+    expect(alert.getAttribute("data-land-failed")).toBe("pull-request");
+  });
+
   it("the done state says where the work went and what comes next", () => {
     render(<LandedOutcome landed={{ kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" }} />);
     expect(screen.getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
@@ -175,6 +228,17 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(screen.getByText("c15d6f098abc")).toBeTruthy();
     expect(screen.getByText("/work/relay")).toBeTruthy();
     expect(screen.getByText(/Next: push main when you're ready\./)).toBeTruthy();
+  });
+
+  it("a pull request that has since merged or closed says so, and asks for no review", () => {
+    const pr = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" } as const;
+    render(<LandedOutcome landed={{ ...pr, state: "merged" }} />);
+    expect(screen.getByText(/It has merged\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
+    cleanup();
+    render(<LandedOutcome landed={{ ...pr, state: "closed" }} />);
+    expect(screen.getByText(/It was closed without merging\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
   });
 });
 

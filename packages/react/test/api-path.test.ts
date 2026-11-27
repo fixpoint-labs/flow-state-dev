@@ -43,7 +43,7 @@ async function requestedPaths(apiPath?: string): Promise<string[]> {
     { wrapper }
   );
   await act(async () => {
-    await result.current.action.execute({}).catch(() => undefined);
+    await result.current.action.execute({}, "s1").catch(() => undefined);
   });
   await waitFor(() => {
     expect(paths).toContain(apiPath === undefined ? "/api/flows" : apiPath);

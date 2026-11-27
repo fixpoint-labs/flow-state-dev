@@ -32,7 +32,7 @@
  *
  * Controls:
  *
- *   optimistic-turn  Shift Manager built with `src/lib/send.ts` swapped for
+ *   optimistic-turn  Shift Manager built with `src/lib/deliver.ts` swapped for
  *                    `controls/optimistic-turn.ts`: delivered without calling
  *                    the door. Must fail at "delivered".
  *   fresh-session    the harness drops the resume id it is offered. Must fail
@@ -50,10 +50,9 @@ import type { Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID, LAB_USER_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
-import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, runGoal } from "../../lib/index.mts";
 import { buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { ASKER_FLOW, heardLine } from "./lab/asker/asker.mts";
@@ -95,7 +94,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "optimistic-turn" ? control : "as-written"}`);
   const swap =
     control === "optimistic-turn"
-      ? { target: join(SHIFT_MANAGER, "src", "lib", "send.ts"), with: join(HERE, "controls", "optimistic-turn.ts") }
+      ? { target: join(SHIFT_MANAGER, "src", "lib", "deliver.ts"), with: join(HERE, "controls", "optimistic-turn.ts") }
       : undefined;
   return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
     swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with },
@@ -330,12 +329,12 @@ async function grade(
 // ---- the goal ----------------------------------------------------------------
 
 await runGoal(async (failures) => {
-  const devteam = await readDeclaredRoster(LABS.devteam.tree);
+  const devteam = await readTree(LABS.devteam.tree);
   const em = devteam.workers.find((w) => w.declared.flow === "em")!;
   // The rows are filed through the EM's own action, on its own session's board.
   const where: Where = { sessionId: workerSessionId(em.id) };
   // The asker lab's one worker on the asker kind; its coordinator, `desk.front`, is another worker file.
-  const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_FLOW)!;
+  const asker = (await readTree(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_FLOW)!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];

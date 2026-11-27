@@ -1,3 +1,4 @@
+import { request as httpRequest } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,14 +18,11 @@ import { createPageHtmlTransform } from "../src/index";
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 
@@ -98,7 +96,7 @@ afterEach(async () => {
 });
 
 async function start(...args: Parameters<typeof serve>): Promise<ServeHandle> {
-  const handle = await serve(...args);
+  const handle = await serve(args[0], { host: "127.0.0.1", ...args[1] });
   handles.push(handle);
   return handle;
 }
@@ -168,7 +166,7 @@ describe("serve — FlowState lifecycle", () => {
   it("reports 503 while stores initialize, then 200 once ready", async () => {
     const adapter = gatedAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -189,7 +187,7 @@ describe("serve — FlowState lifecycle", () => {
 
   it("returns 500 from /healthz when initialization fails permanently", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: failingAdapter() } },
     });
@@ -207,11 +205,11 @@ describe("serve — FlowState lifecycle", () => {
     const adapter = gatedAdapter();
     adapter.release();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
-    const handle = await serve(fs, { port: 0 });
+    const handle = await serve(fs, { host: "127.0.0.1", port: 0 });
     await fs.ready();
 
     await handle.close();
@@ -224,11 +222,11 @@ describe("serve — FlowState lifecycle", () => {
     const adapter = gatedAdapter();
     adapter.release();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
-    const handle = await serve(fs, { port: 0, disposeOnClose: false });
+    const handle = await serve(fs, { host: "127.0.0.1", port: 0, disposeOnClose: false });
     await fs.ready();
 
     await handle.close();
@@ -280,7 +278,7 @@ describe("serve — static assets", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
       adapters: [adapter],
@@ -308,7 +306,7 @@ describe("serve — static assets", () => {
     await writeFile(join(dir, "app.js"), "console.log('hi')");
     const adapter = gatedAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -347,7 +345,7 @@ describe("serve — static assets", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: store } },
       adapters: [adapter],
@@ -591,7 +589,7 @@ describe("serve() — pageHandler", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: store } },
       adapters: [adapter],
@@ -684,5 +682,42 @@ describe("serve() — pageHandler", () => {
     const served = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
     expect(own).toBe(served);
     expect(own).toContain("__FSD_DEVTOOL_CONFIG__");
+  });
+});
+
+describe("serve — loopback Host guard", () => {
+  function statusFor(port: number, host: string, path = "/healthz"): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const req = httpRequest({ hostname: "127.0.0.1", port, path, headers: { host } }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode!));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  it.each(["/healthz", "/api/flows", "/"])("refuses rebinding on %s", async (path) => {
+    const handle = await start(fakeRouter, { port: 0, host: "127.0.0.1" });
+    expect(await statusFor(handle.port, "evil.example", path)).toBe(403);
+  });
+
+  it.each(["localhost", "localhost:3000", "127.0.0.1", "127.20.30.40:99", "[::1]", "[::1]:3000"])(
+    "accepts loopback Host %s", async (host) => {
+      const handle = await start(fakeRouter, { port: 0, host: "127.0.0.1" });
+      expect(await statusFor(handle.port, host)).toBe(200);
+    }
+  );
+
+  it.each(["localhost.evil.example", "127.0.0.1.evil.example", "evil.example:3000"])(
+    "refuses non-loopback Host %s", async (host) => {
+      const handle = await start(fakeRouter, { port: 0, host: "127.0.0.1" });
+      expect(await statusFor(handle.port, host)).toBe(403);
+    }
+  );
+
+  it("allows arbitrary Host on a network bind", async () => {
+    const handle = await start(fakeRouter, { port: 0, host: "0.0.0.0" });
+    expect(await statusFor(handle.port, "app.example")).toBe(200);
   });
 });

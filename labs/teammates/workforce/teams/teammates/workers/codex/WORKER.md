@@ -1,7 +1,7 @@
 ---
 name: Codex
 description: Runs coding tasks on Codex in the background, in the team's working folder.
-flow: teammates-coder
+flow: coder
 harness: codex
 ---
 

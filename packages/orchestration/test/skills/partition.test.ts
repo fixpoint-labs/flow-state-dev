@@ -57,8 +57,8 @@ function drawerFlow(partitioned: boolean): FlowInstance {
     kind: "drawer",
     session: { stateSchema: z.object({ party: z.string().readonly().optional() }) },
     actions: {
-      keep: { inputSchema: z.object({ note: z.string() }), block: keep },
-      look: { inputSchema: z.object({ note: z.string() }), block: look }
+      keep,
+      look
     }
   })({ id: "drawer" }) as unknown as FlowInstance;
 }

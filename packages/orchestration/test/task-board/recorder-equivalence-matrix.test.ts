@@ -31,7 +31,7 @@ import {
   type RecorderFailureWiring,
 } from "../../src/task-board/blocks/record-result";
 import {
-  TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE,
+  TASK_BOARD_RECORDER_FAILURE_DATA_TYPE,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
 } from "../../src/task-board/blocks/recorder-failure";
@@ -86,7 +86,7 @@ interface Fixture {
    * the claim was still set).
    */
   seen: string[];
-  emitted: Array<{ component: string; data: Record<string, unknown> }>;
+  emitted: Array<{ dataType: string; value: Record<string, unknown> }>;
   /** Renewal ticks still scheduled; non-zero means renewal was not stopped. */
   pending: () => number;
   claimSet: () => boolean;
@@ -199,13 +199,13 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
     ...(emitMode === "absent"
       ? {}
       : {
-          _emitComponentAwaited: async (
-            component: string,
-            data: Record<string, unknown>
+          _emitDataAwaited: async (
+            dataType: string,
+            value: Record<string, unknown>
           ) => {
             seen.push(`emit:${renewal()}:${claimSet() ? "claim-set" : "claim-cleared"}`);
             if (emitMode === "rejects") throw new Error("emission rejected");
-            emitted.push({ component, data });
+            emitted.push({ dataType, value });
           },
         }),
   } as unknown as BlockContext;
@@ -323,7 +323,7 @@ describe("the success recorder", () => {
 
         // No release write; the report goes out after the stop and the clear.
         expect(fx.seen).toEqual(["complete:renewing", "emit:stopped:claim-cleared"]);
-        expect(fx.emitted[0]?.data).toMatchObject({ verdict: "committed" });
+        expect(fx.emitted[0]?.value).toMatchObject({ verdict: "committed" });
         expect(fx.status()).toBe("completed");
       }
     );
@@ -357,7 +357,7 @@ describe("the success recorder", () => {
           "release:renewing",
           "emit:stopped:claim-cleared",
         ]);
-        expect(fx.emitted[0]?.data).toMatchObject({ verdict: "undetermined" });
+        expect(fx.emitted[0]?.value).toMatchObject({ verdict: "undetermined" });
         expect(fx.status()).toBe("errored");
       }
     );
@@ -373,7 +373,7 @@ describe("the success recorder", () => {
         "release:renewing",
         "emit:stopped:claim-cleared",
       ]);
-      expect(fx.emitted[0]?.data).toMatchObject({ verdict: "undetermined" });
+      expect(fx.emitted[0]?.value).toMatchObject({ verdict: "undetermined" });
       expect(fx.status()).toBe("errored");
     });
 
@@ -388,7 +388,7 @@ describe("the success recorder", () => {
         "release:renewing",
         "emit:stopped:claim-cleared",
       ]);
-      expect(fx.emitted[0]?.data).toMatchObject({ verdict: "undetermined" });
+      expect(fx.emitted[0]?.value).toMatchObject({ verdict: "undetermined" });
       expect(fx.pending()).toBe(0);
     });
   });
@@ -577,7 +577,7 @@ describe("the error recorder", () => {
         ).rejects.toBeInstanceOf(TaskBoardRecorderFailureError);
 
         expect(fx.seen).toEqual(seen);
-        expect(fx.emitted[0]?.data).toMatchObject({ recorder: "fail", verdict });
+        expect(fx.emitted[0]?.value).toMatchObject({ recorder: "fail", verdict });
         expect(fx.status()).toBe(finalStatus);
       }
     );
@@ -593,7 +593,7 @@ describe("the error recorder", () => {
         ).resolves.toEqual({ recorded: "errored", error: "worker blew up" });
 
         expect(fx.seen).toEqual(seen);
-        expect(fx.emitted[0]?.data).toMatchObject({ recorder: "fail", verdict });
+        expect(fx.emitted[0]?.value).toMatchObject({ recorder: "fail", verdict });
         expect(fx.status()).toBe(finalStatus);
         expect(fx.pending()).toBe(0);
       }
@@ -673,8 +673,8 @@ describe("both recorders", () => {
         ).catch(() => undefined);
 
         expect(fx.emitted).toHaveLength(1);
-        expect(fx.emitted[0]?.component).toBe(TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE);
-        expect(fx.emitted[0]?.data).toEqual({
+        expect(fx.emitted[0]?.dataType).toBe(TASK_BOARD_RECORDER_FAILURE_DATA_TYPE);
+        expect(fx.emitted[0]?.value).toEqual({
           collectionId: "tasks",
           taskId: "t",
           recorder: which === "success" ? "complete" : "fail",

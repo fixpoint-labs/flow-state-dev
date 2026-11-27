@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { ComponentItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { DataItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import {
   getOrCreateTaskCollection,
   type TaskCollectionRef,
@@ -31,17 +31,17 @@ function taskChange(args: {
   taskId: string;
   kind: string;
   ts: number;
-}): ComponentItem {
+}): DataItem {
   return {
     id: nextId("c"),
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: "req",
     itemIndex: 0,
     provenance: { blockName: "tb", blockInstanceId: "tb#1", phase: "main" },
     ts: args.ts,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: args.collectionId,
       taskId: args.taskId,
       kind: args.kind,
@@ -119,7 +119,7 @@ for (const { name, build } of factories) {
       await collection.createTask({ id: "t1", goal: "g" });
 
       // Synthesize the substrate's task-change events directly into the log.
-      // Real lifecycle events are emitted via ctx.emit.component, and worker
+      // Real lifecycle events are emitted via ctx.emit.data, and worker
       // items carry the emit-time `taskId` stamp; here we mock the log to
       // assert attribution. An item with no `taskId` was emitted outside any
       // task scope and is excluded.
@@ -216,7 +216,7 @@ describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
     const sequencerState = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
     const ctx = {
       response: undefined,
-      emit: { component: () => undefined },
+      emit: { data: () => undefined },
       request: { state: { plan: {} } },
     } as unknown as BlockContext;
 

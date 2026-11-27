@@ -53,6 +53,7 @@ export {
   setRepositoryOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
+  type CheckRepositoryView,
   type ProjectBlocks,
   type ProjectBlocksOptions,
   type RepositoryCheck,
@@ -68,6 +69,8 @@ export { checkedMcpServers, isMcpServerName } from "./mcp-server-name";
 export { projectChecks, type ProjectChecksResolver } from "./project-checks";
 
 export {
+  connectorKeyStatuses,
+  type ConnectorKeyStatus,
   defineMcpCredentialsCollection,
   MCP_CREDENTIALS_PREFIX,
   MCP_CREDENTIALS_RESOURCE,
@@ -152,6 +155,7 @@ export {
 } from "./project-read";
 
 export { parseProjectRef, parseWorkstreamRef, projectRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+export { CONNECTOR_KEYS_PATH, PROJECTS_FLOW, PROJECTS_PATTERN } from "./project-keys";
 
 export { workstreamOpenedEntry } from "./workstream-lead";
 
@@ -178,6 +182,9 @@ export {
 export {
   linkedProjectOf,
   projectCoordinatorTools,
+  projectSetupOutputSchema,
+  type ProjectSetup,
+  type ProjectSetupView,
   WORKSTREAM_DELEGATE_ACTION,
   workstreamDelegateChangeSchema,
   type WorkstreamDelegateChange

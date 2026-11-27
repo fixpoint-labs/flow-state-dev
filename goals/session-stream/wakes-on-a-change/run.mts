@@ -36,18 +36,26 @@ import {
   runGoal,
   type ModulePatch
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("session-stream-wakes");
 const IDLE_WINDOW_MS = 10_000;
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // The write wrapper sends no notice: every write is unheard.
+  // The write wrapper sends no notice: every request and session write is unheard.
+  // (FIX-1506 folded the wrapper's own publish into the shared queue, `publishNotices`;
+  // the cut is at the wrapper's two calls into it.)
   "no-publish": [
     {
       module: "packages/engine/src/bus/publish-writes.ts",
-      from: String.raw`function publish\(buses(?:: readonly ChangeBus\[\])?, notices(?:: readonly ChangeNotice\[\])?\)(?:: void)? \{`,
-      to: "function publish(buses, notices) { return;"
+      from: String.raw`\.then\(\(notices\) => publishNotices\(bus, notices\)\)`,
+      to: ".then(() => undefined)"
+    },
+    {
+      module: "packages/engine/src/bus/publish-writes.ts",
+      from: String.raw`publishNotices\(bus, identities\.sessionNotices\(`,
+      to: "void (identities.sessionNotices("
     }
   ]
 };
@@ -143,6 +151,7 @@ async function act(on: Server, action: string, input: Record<string, unknown>): 
   const res = await on.router.POST(
     new Request(`http://localhost/api/flows/chat/s1/actions/${action}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", orgId: DEFAULT_ORG_ID, input })
     }),
     { params: { path: ["chat", "s1", "actions", action] } }
@@ -158,7 +167,7 @@ async function savedAt(on: Server, requestId: string): Promise<number> {
     const record = await on.stores.request.get(requestId);
     if (record !== undefined && record.status !== "in_progress") return Date.now();
     if (Date.now() > deadline) throw new Error(`setup: request ${requestId} never finished`);
-    await delay(5);
+    await sleep(5);
   }
 }
 
@@ -176,7 +185,7 @@ async function runStartedAt(on: Server): Promise<number> {
       if (running.length > 0) return Date.now();
     }
     if (Date.now() > deadline) throw new Error("setup: the background run never started");
-    await delay(5);
+    await sleep(5);
   }
 }
 
@@ -224,10 +233,6 @@ async function openView(on: Server): Promise<View> {
   };
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function textOf(event: SessionStreamEvent): string | undefined {
   if (event.type !== "session.item" || event.item.type !== "message") return undefined;
   return (event.item.content as Array<{ text?: string }>)[0]?.text;
@@ -240,7 +245,7 @@ async function receivedAt(view: View, match: (event: SessionStreamEvent) => bool
     const hit = view.events.find(({ event }) => match(event));
     if (hit !== undefined) return hit.at;
     if (Date.now() > deadline) return undefined;
-    await delay(5);
+    await sleep(5);
   }
 }
 
@@ -258,14 +263,14 @@ await runGoal(async (failures, tell) => {
     try {
       await savedAt(a, await act(a, "say", { text: "opening" }));
       view = await openView(b);
-      await delay(1_500);
+      await sleep(1_500);
 
       // b · an idle view costs the database nothing.
       counter.on = true;
       const perSecond: number[] = [];
       for (let s = 0; s < IDLE_WINDOW_MS / 1_000; s += 1) {
         const before = counter.statements;
-        await delay(1_000);
+        await sleep(1_000);
         perSecond.push(counter.statements - before);
       }
       counter.on = false;
@@ -289,7 +294,7 @@ await runGoal(async (failures, tell) => {
       // quiet interval, as the reply was: B just read the reply, and reads at
       // most once an interval, so a run started at once would be timed
       // against that cap, not against the wake.
-      await delay(1_500);
+      await sleep(1_500);
       const accepted = Date.now();
       await act(a, "spawn", { key: "bg" });
       const started = await runStartedAt(a);
@@ -313,7 +318,7 @@ await runGoal(async (failures, tell) => {
     try {
       await savedAt(a, await act(a, "say", { text: "opening" }));
       view = await openView(b);
-      await delay(1_500);
+      await sleep(1_500);
       const reply = await act(a, "say", { text: "the reply, across two buses" });
       const saved = await savedAt(a, reply);
       const got = await receivedAt(view, (e) => textOf(e) === "the reply, across two buses", 4_000);

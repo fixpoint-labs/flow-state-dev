@@ -104,15 +104,7 @@ export const seatWork = sequencer({ name: "seat-work", inputSchema })
   .tap(recordHarness)
   .step(byHarness);
 
-const clientView = {
-  derived: {
-    ran: (ctx: { state: { ranOn?: string | null; routedTo?: string | null; runs?: number } }) => ({
-      ranOn: ctx.state.ranOn ?? null,
-      routedTo: ctx.state.routedTo ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
+const clientView = { expose: ["ranOn", "routedTo", "runs"] as const };
 
 export const seatDefinition = defineFlow({
   kind: SEAT_KIND,

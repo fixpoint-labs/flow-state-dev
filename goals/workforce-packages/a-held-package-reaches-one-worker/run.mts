@@ -77,8 +77,6 @@ interface Turn {
 interface Observation {
   ok: boolean;
   model: string;
-  loadErrors: unknown[];
-  packageErrors: unknown[];
   held: Record<string, string[]>;
   generatedPackages: Record<string, string[]>;
   workerIds: string[];
@@ -87,7 +85,7 @@ interface Observation {
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const TREE = fixturePath(import.meta.url, "workforce");
-const CLI = join(REPO_ROOT, "packages", "cli", "src", "bin.ts");
+const CLI = join(REPO_ROOT, "packages", "fsdev", "src", "bin.ts");
 
 /** Case- and separator-insensitive: `MARIGOLD-4417`, `marigold 4417`. */
 function carries(reply: string, token: string): boolean {
@@ -220,9 +218,6 @@ await runGoal((failures) => {
   }
 
   if (o.ok !== true) return { failures: ["the harness did not complete"], evidence: "" };
-  if (o.loadErrors.length > 0 || o.packageErrors.length > 0) {
-    failures.push(`the loader reported errors: ${JSON.stringify({ errors: o.loadErrors, packageErrors: o.packageErrors })}`);
-  }
 
   // ---- leg (a): each seat holds what its folder holds ---------------------
   {

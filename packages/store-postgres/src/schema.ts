@@ -86,7 +86,7 @@ const REQUESTS_INDEXES = [
  * Ordering columns are declared ASC and scanned backwards, which Postgres does
  * for an `ORDER BY` that reverses every key uniformly.
  *
- * Paired with {@link DROP_INVALID_CONCURRENT_INDEXES}: an interrupted concurrent
+ * Paired with {@link dropInvalidConcurrentIndexes}: an interrupted concurrent
  * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
  * forever, so the planner would never use it and nothing would say so.
  */
@@ -145,30 +145,51 @@ const CONCURRENT_INDEXES = [
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_owner_updated ON requests(session_id, user_id, org_id, updated_at)",
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_owner_updated ON sessions(parent_session_id, user_id, org_id, updated_at)",
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_tenant_owner_updated ON requests(session_id, tenant_id, user_id, org_id, updated_at)",
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)"
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)",
+  // FIX-2944: every prefix read (`getByPrefix`) is a range on the key in byte
+  // order, `resource_key COLLATE "C" >= prefix AND < successor`
+  // (`key-prefix-range.ts`). The primary key can't answer it under a language
+  // collation, where keys under one prefix need not sort together, so these
+  // name byte order on the key. They replace the old `(scope_type, scope_id)`
+  // indexes, which only repeated the primary key's leading columns and are
+  // dropped below once these exist, so a write still updates two indexes.
+  // The column keeps its collation: changing it would rebuild the primary key
+  // under a lock that blocks writes.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_state_key ON resource_state(scope_type, scope_id, resource_key COLLATE \"C\")",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_content_key ON resource_content(scope_type, scope_id, resource_key COLLATE \"C\")",
+  "DROP INDEX CONCURRENTLY IF EXISTS idx_resource_state_scope",
+  "DROP INDEX CONCURRENTLY IF EXISTS idx_resource_content_scope"
 ];
+
+/** The names {@link CONCURRENT_INDEXES} builds: the indexes recovery may rebuild. */
+const CONCURRENT_INDEX_NAMES = CONCURRENT_INDEXES.flatMap(
+  (ddl) => /^CREATE INDEX CONCURRENTLY IF NOT EXISTS (\w+) /.exec(ddl)?.[1] ?? []
+);
 
 /**
  * Drop a concurrently built index left `indisvalid = false` by an interrupted
- * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
+ * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` after it rebuilds it
  * instead of skipping a dead one. A no-op on every healthy database.
+ *
+ * The drop is concurrent too, so it runs as its own statement outside any
+ * transaction or `DO` block, like the builds. A plain `DROP INDEX` takes an
+ * ACCESS EXCLUSIVE lock that blocks reads and writes on the table.
  */
-const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
-DECLARE
-  n TEXT;
-BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated']
-  LOOP
-    IF EXISTS (
-      SELECT 1 FROM pg_class c
-      JOIN pg_index i ON i.indexrelid = c.oid
-      JOIN pg_namespace ns ON ns.oid = c.relnamespace
-      WHERE c.relname = n AND ns.nspname = current_schema() AND NOT i.indisvalid
-    ) THEN
-      EXECUTE format('DROP INDEX %I', n);
-    END IF;
-  END LOOP;
-END $$;`;
+async function dropInvalidConcurrentIndexes(
+  query: (text: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+): Promise<void> {
+  const invalid = await query(
+    `SELECT c.relname AS name FROM pg_class c
+     JOIN pg_index i ON i.indexrelid = c.oid
+     JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE ns.nspname = current_schema() AND NOT i.indisvalid AND c.relname = ANY($1::text[])`,
+    [CONCURRENT_INDEX_NAMES]
+  );
+  for (const row of invalid.rows) {
+    const quoted = `"${String(row.name).replace(/"/g, '""')}"`;
+    await query(`DROP INDEX CONCURRENTLY IF EXISTS ${quoted}`);
+  }
+}
 
 const USERS_TABLE = `
 CREATE TABLE IF NOT EXISTS users (
@@ -320,6 +341,40 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+// BP-030.
+/**
+ * Re-key a `wakes` table created before wakes were kept per resolver
+ * identity, from (tenant, session, entry) to (tenant, session, entry,
+ * resolver identity). Every kept wake names none (`''`), so they keep
+ * coalescing with each other as before. Idempotent: a table already keyed on
+ * `resolved_by` is left alone, and a fresh database, where the table is
+ * created with the key, skips it.
+ */
+const WAKES_RESOLVER_KEY_MIGRATION = `
+DO $$
+DECLARE
+  pk TEXT;
+BEGIN
+  IF to_regclass('wakes') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+       WHERE i.indrelid = to_regclass('wakes') AND i.indisprimary AND a.attname = 'resolved_by'
+    ) THEN
+      ALTER TABLE wakes ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+      UPDATE wakes SET resolved_by = '' WHERE resolved_by IS NULL;
+      ALTER TABLE wakes ALTER COLUMN resolved_by SET DEFAULT '';
+      ALTER TABLE wakes ALTER COLUMN resolved_by SET NOT NULL;
+      SELECT conname INTO pk FROM pg_constraint WHERE conrelid = to_regclass('wakes') AND contype = 'p';
+      IF pk IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE wakes DROP CONSTRAINT %I', pk);
+      END IF;
+      ALTER TABLE wakes ADD PRIMARY KEY (tenant_key, session_id, entry, resolved_by);
+    END IF;
+  END IF;
+END $$;
+`;
+
 // FIX-1546; BP-030.
 /**
  * Re-key a `schedule_index` created before rows carried their
@@ -427,9 +482,9 @@ CREATE TABLE IF NOT EXISTS resource_content (
 );
 `;
 
-const RESOURCE_CONTENT_INDEXES = [
-  "CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id)"
-];
+// No secondary index here: the primary key leads with the scope columns, and
+// prefix reads use `idx_resource_content_key` in CONCURRENT_INDEXES.
+const RESOURCE_CONTENT_INDEXES: string[] = [];
 
 const RESOURCE_STATE_TABLE = `
 CREATE TABLE IF NOT EXISTS resource_state (
@@ -443,9 +498,9 @@ CREATE TABLE IF NOT EXISTS resource_state (
 );
 `;
 
-const RESOURCE_STATE_INDEXES = [
-  "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
-];
+// As for resource_content: prefix reads use `idx_resource_state_key` in
+// CONCURRENT_INDEXES.
+const RESOURCE_STATE_INDEXES: string[] = [];
 
 // Index entries for resource collections: one row per (row, index, value), so
 // a collection can be looked up by a declared field without reading its rows.
@@ -671,8 +726,9 @@ const LEASES_INDEXES = [
 ];
 
 // FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
-// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
-// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+// clears it. One row per (tenant, session, entry, resolver identity);
+// `tenant_key` and `resolved_by` are '' for none so the key has no NULL.
+// `due_at` is indexed for the sweeper's read.
 const WAKES_TABLE = `
 CREATE TABLE IF NOT EXISTS wakes (
   tenant_key TEXT NOT NULL,
@@ -683,10 +739,11 @@ CREATE TABLE IF NOT EXISTS wakes (
   org_id     TEXT NOT NULL,
   due_at     BIGINT NOT NULL,
   land_by    BIGINT NOT NULL,
+  resolved_by TEXT NOT NULL DEFAULT '',
   version    BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
-  PRIMARY KEY (tenant_key, session_id, entry)
+  PRIMARY KEY (tenant_key, session_id, entry, resolved_by)
 );
 `;
 
@@ -776,9 +833,8 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // every existing row as its person's own cell. See the migration's note.
   ADD_SCHEDULE_INDEX_CELL_MIGRATION,
 
-  // Clear an invalid index left by an interrupted concurrent build
-  // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
-  DROP_INVALID_CONCURRENT_INDEXES
+  // Keep a wake per resolver identity: re-key `wakes` on `resolved_by`.
+  WAKES_RESOLVER_KEY_MIGRATION
 ];
 
 /**
@@ -862,6 +918,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     // Concurrent builds last, and one statement at a time: they cannot run
     // inside a transaction, and they are the only DDL here that can land on a
     // populated table (FIX-1010).
+    await dropInvalidConcurrentIndexes((text, values) => executor.query(text, values));
     for (const ddl of concurrentIndexes) {
       await executor.query(ddl);
     }
@@ -924,6 +981,7 @@ export async function initializeSchemaWithDedicatedClient(
       }
       // See `initializeSchema` — concurrent builds run outside a transaction,
       // one statement at a time (FIX-1010).
+      await dropInvalidConcurrentIndexes((text, values) => client.query(text, values));
       for (const ddl of concurrentIndexes) {
         await client.query(ddl);
       }

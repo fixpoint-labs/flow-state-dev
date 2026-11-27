@@ -27,6 +27,7 @@
  *   - build the approval turn without the issue-spec brief: the first run's
  *     prompt is the person's words alone, and "opens with the issue's spec" fails.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,7 +42,6 @@ import {
   MAX_APPROVAL_STEPS,
   harnessSessionFlow,
   harnessStub,
-  type HarnessSessionFeeds,
   type HarnessSessionState,
   type StubToolCall,
 } from "../src";
@@ -82,7 +82,7 @@ function host(options: {
     harnessSessionFlow({
       kind: KIND,
       workspace: { provision: async () => cwd, locate: () => cwd, branch: () => null },
-      agent: (feeds: HarnessSessionFeeds) => {
+      agent: (feeds: HarnessFeeds) => {
         handed.push(...Object.keys(feeds));
         return stub.slot(feeds as never) as HarnessBlock;
       },
@@ -92,7 +92,7 @@ function host(options: {
   const stores = inMemoryStores();
   const makeState = (forFlow: ReturnType<typeof makeFlow>) =>
     createFlowState({
-      flows: { [KIND]: forFlow },
+      flows: [forFlow],
       stores: { test: { primary: stores } },
       defaultProfile: "test",
       durable: options.durable ?? true,

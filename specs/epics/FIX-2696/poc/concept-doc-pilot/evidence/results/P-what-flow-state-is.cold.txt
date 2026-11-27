@@ -1,0 +1,29 @@
+**R1. What is an app in Flow State?**
+The page does not say. It never defines "app" formally. It uses "app" informally (e.g., Desk) for what Alice builds: a server started from `fsdev.config.ts` that combines installed kits, her own flows, owned files like `workforce/`, and pages in `src/app/`.
+
+**R2. What is a kit?**
+A kit is a feature an app installs with one config object, such as `workforce`, `harnesses` or `claudeCode`. Kits can be listed in any order, and a kit that depends on another (like `claudeCode` on `harnesses`) loads after it. A kit changes another kit only through slots the other leaves open.
+
+**R3. What is a flow?**
+A flow is what the server serves: named actions, each running a tree of blocks, plus the state they keep. Alice writes her own (like `triage`) and lists it in `flows`. Kits can also install flows (e.g., `harnesses` installs `coder`), and `agent` is the built-in flow that answers with a model and tools.
+
+**R4. What is a block?**
+A block is one typed step in a flow, such as a model call, plain code, a check or a choice between paths. In `triage`, one block labels a request and the next files a ticket. The page says there are five kinds, but only names these four.
+
+**R5. Which one do you change for each?**
+(a) A worker's instructions: the body of its `WORKER.md`. (b) Adding a whole feature such as coding agents: the kit config, or the slot fill, in `fsdev.config.ts`. (c) One step inside how a request is handled: edit that block in your flow.
+
+**P1.1 Researcher should stop guessing prices and cite sources.**
+Edit the body of `researcher`'s `WORKER.md`, which holds its instructions. The page's table lists changing a worker's tone this way, and this is the same kind of change, so no TypeScript is needed. The page doesn't specifically address citations, so this is an inference from that row.
+
+**P1.2 Handing code changes to Claude Code.**
+Add the `harnesses` and `claudeCode` kits to `kits` in `fsdev.config.ts`, alongside `workforce`. `claudeCode` fills the slot that `harnesses` leaves open. Then create a worker file with `flow: coder` (the flow `harnesses` installs) and `harness: claude-code`, which picks Claude Code from the slot. The lead worker can then file coding tasks for it.
+
+**P1.3 Block kinds.**
+The page does not say. It lists "a model call, plain code, a check or a choice between paths" as examples of blocks and says there are five kinds, but it doesn't name the kinds. The kind names are probably on the Blocks page, which isn't provided.
+
+**Terms I had to guess the meaning of**
+- "App": inferred from usage, since it is never defined.
+- "Host file": I took it to mean `fsdev.config.ts`.
+- "Session" is defined only as a conversation belonging to one user, and "action" is not defined beyond "named" things a flow has. I did not rely on more than that.
+- "Harness" is not defined directly. I took it to mean a coding-agent runner that `harnesses` manages.

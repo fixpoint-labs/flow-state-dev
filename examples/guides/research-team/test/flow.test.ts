@@ -7,15 +7,15 @@ import researchTeamFlow from "../src/flow";
 
 type Item = {
   type?: string;
-  component?: string;
-  data?: { task?: { id: string; status: string } };
+  dataType?: string;
+  value?: { task?: { id: string; status: string } };
 };
 
 function completedTaskIds(items: Item[]): Set<string> {
   const done = new Set<string>();
   for (const item of items) {
-    if (item.type !== "component" || item.component !== "task-change") continue;
-    if (item.data?.task?.status === "completed") done.add(item.data.task.id);
+    if (item.type !== "data" || item.dataType !== "task-change") continue;
+    if (item.value?.task?.status === "completed") done.add(item.value.task.id);
   }
   return done;
 }

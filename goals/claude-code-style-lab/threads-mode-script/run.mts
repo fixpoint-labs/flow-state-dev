@@ -6,9 +6,9 @@
  * project repository, and drives the Projects view the way a person does: New
  * project, pick it, ask for three pieces of research, answer the thread that
  * asks, resolve the one ready for review, then ask for a code change and
- * resolve its review. Each signal is graded from the rendered page and from
+ * merge it locally from its review. Each signal is graded from the rendered page and from
  * the board's own records (`listTasks_tasks`, `getTask_tasks`, the project
- * repository's worktrees and branches), never from the adapter or the lab's React state. Answers and
+ * repository's worktrees and branches), never from the lab's hooks or its React state. Answers and
  * reviews are typed and clicked, never sent through a package call.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants a change for the
@@ -67,7 +67,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
       const thread = document.querySelector('main[aria-label="Main thread"]');
       return {
         // A line's mark (*Sent to a task*) sits beside it, so its whole entry is read.
-        user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.parentElement?.textContent ?? "").trim()),
+        user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.closest("[data-request-id]")?.textContent ?? "").trim()),
         cards: [...(thread?.querySelectorAll('[data-entry="thread"]') ?? [])].map((el) => ({
           taskId: el.getAttribute("data-task-id") ?? "",
           column: el.getAttribute("data-column") ?? "",
@@ -113,6 +113,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
   const data = join(scratch, "data");
   const repo = makeRepository(join(scratch, "repo"), { "CHANGELOG.md": "# Changelog\n\n- Started the status page project.\n" });
   const repoHead = git(repo, "rev-parse", "HEAD");
+  // The branch the project's checkout has checked out: a local merge lands on it and leaves it checked out.
+  const repoBranch = git(repo, "symbolic-ref", "--short", "HEAD");
   const labBefore = labCheckout();
   const marker = `Picked a status page vendor (${RUN_STAMP})`;
   // The lab cuts worktrees from the project's repository; `no-mapping` names none, so it clones.
@@ -156,8 +158,14 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     await page.getByRole("region", { name: "Choose a project" }).waitFor();
     const box = page.getByRole("textbox", { name: "Message the main session" });
     /** The open thread's view, in place of the board. */
-    const threadView = () => page.locator('aside[aria-label^="Task: "]');
-    const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
+    // A thread's view is a sheet over the main thread.
+    const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
+    // Back to the main thread: close the thread's sheet with its Close button, as a person does. The sheet covers the
+    // main thread, its cards included, so a step that clicks a card waits for the sheet to go.
+    const back = async () => {
+      await threadView().getByRole("button", { name: "Close", exact: true }).click();
+      await threadView().waitFor({ state: "hidden" });
+    };
     const rowFor = (taskId: string) => page.locator(`aside[aria-label="Tasks"] [data-task-id="${taskId}"]`);
     const cardFor = (taskId: string) => page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${taskId}"]`);
     /** The column a task's board row is under now, opening a collapsed group to look. */
@@ -287,7 +295,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const resolvedColumn = await until(async () => ((await columnOf(asked.id)) === "resolved" ? true : undefined), 30_000, 2_000);
     if (resolvedColumn === undefined) failures.push(`5: "${asked.title}" never showed under Resolved`);
 
-    // ── Signal 6: a code change runs through Claude Code in a worktree of the project's repository, waits for review, and resolves.
+    // ── Signal 6: a code change runs through Claude Code in a worktree of the project's repository, waits for review, and merges locally.
     await box.fill(fixture.change.replace("{marker}", marker));
     await box.press("Enter");
     const coding = await until(async () => (await rowsOf(sessionId)).find((task) => task.assignee === CODER), 5 * 60_000);
@@ -305,6 +313,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     // A run may ask first; it is answered in its thread, as a person does.
     let review: any;
     let reviewEnd: any;
+    let merged = false;
     for (let waited = 0; waited < 25 * 60_000 && review === undefined && reviewEnd === undefined; waited += 5_000) {
       await sleep(5_000);
       const read = await taskOf(sessionId, coding.id);
@@ -327,19 +336,34 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       const shown = await until(async () => ((await columnOf(coding.id)) === "review" ? true : undefined), 30_000, 2_000);
       if (shown === undefined) failures.push("6: the coding thread's row isn't under Ready for review");
       const card = (await snapshot(page)).cards.find((c) => c.taskId === coding.id);
-      if (!/judge/i.test(card?.text ?? "")) failures.push(`6: the card doesn't show the judge's verdict: ${JSON.stringify(card?.text ?? "")}`);
       // What the run spent, read off the board's row: its model and a token count, never a 0 or a lab sum.
       const spend = ((await board(sessionId, "listTasks_tasks", {}))?.tasks ?? []).find((t: any) => t.id === coding.id)?.spend;
       if (spend?.harness !== "claude-code" || !spend.model) failures.push(`6: the board's row doesn't carry the run's harness and model: ${JSON.stringify(spend ?? null)}`);
       else if (!card?.text.includes(spend.model) || !/\d(\.\d)?[kM]? tokens/.test(card.text)) failures.push(`6: the card doesn't show the run's model and tokens: ${JSON.stringify(card?.text ?? "")}`);
       else notes.push(`6: the card shows ${spend.model}, ${(spend.inputTokens ?? 0) + (spend.outputTokens ?? 0)} tokens on the row`);
-      await cardFor(coding.id).getByRole("button", { name: "Resolve" }).click();
+      // The judge's line is on the review card in the thread's view; the card's one line is the review's headline.
+      await cardFor(coding.id).getByRole("button", { name: "View task" }).click();
+      const judged = await threadView().locator("[data-review-judge]").textContent({ timeout: 30_000 }).catch(() => null);
+      if (!/^Judge: [\w-]+, \d\.\d\d/.test(judged ?? "")) failures.push(`6: the thread's review doesn't show a judge's verdict: ${JSON.stringify(judged)}`);
+      await page.keyboard.press("Escape");
+      await threadView().waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined);
+      // The fixture repository has no GitHub remote, so the review lists one landing, a local merge, and the
+      // card's accept is *Merge locally*, not a bare *Resolve*.
+      const accept = cardFor(coding.id).getByRole("button", { name: "Merge locally" });
+      if ((await accept.count()) !== 1 || (await cardFor(coding.id).getByRole("button", { name: "Resolve" }).count()) !== 0) {
+        failures.push(`6: the card's accept isn't Merge locally: ${JSON.stringify(card?.text ?? "")}`);
+      }
+      // Until the merge, the run worked away from the repository's checked-out branch and files.
+      if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: before the merge, the project's checked-out branch or files changed");
+      if ((await accept.count()) === 1) await accept.click();
       const done = await until(async () => {
         const read = await taskOf(sessionId, coding.id);
         return read !== undefined && !OPEN.has(read.status) ? read : undefined;
       }, 5 * 60_000);
-      if (done?.status !== "completed") failures.push(`6: after Resolve the coding thread reads ${done?.status ?? "still open"}`);
+      if (done?.status !== "completed") failures.push(`6: after Merge locally the coding thread reads ${done?.status ?? "still open"}`);
       else if (done.output?.review !== "accepted") failures.push(`6: the coding thread completed with review ${JSON.stringify(done.output?.review)}, not accepted`);
+      else if (done.output?.landed?.kind !== "merge") failures.push(`6: the coding thread completed without a local merge: ${JSON.stringify(done.output?.landed ?? null)}`);
+      else merged = true;
       if ((await until(async () => ((await columnOf(coding.id)) === "resolved" ? true : undefined), 30_000, 2_000)) === undefined) {
         failures.push("6: the coding thread never showed under Resolved");
       }
@@ -353,7 +377,28 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     else if (committed.length === 0) failures.push(`6: no run worktree's branch holds the CHANGELOG line (${placed.join(", ")})`);
     else if (!git(repo, "log", "--all", "-p", "--", "CHANGELOG.md").includes(marker)) failures.push("6: the run's branch isn't in the project's repository");
     if (committed.some((path) => path.startsWith(LAB) || path.startsWith(REPO_ROOT + "/labs"))) failures.push("6: the run worked inside the lab's checkout");
-    if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: the project's checked-out branch or files changed");
+    // Merge locally moves the checked-out branch on from where it was to hold the line, leaves that same
+    // branch checked out (not another, not a detached HEAD), with nothing left uncommitted; nothing else may move it.
+    if (merged) {
+      const checkedOut = (() => {
+        try {
+          return git(repo, "symbolic-ref", "--short", "HEAD");
+        } catch {
+          return undefined;
+        }
+      })();
+      if (checkedOut !== repoBranch) failures.push(`6: after the merge the project's checkout is on ${checkedOut ?? "a detached HEAD"}, not ${repoBranch}`);
+      const grew = (() => {
+        try {
+          git(repo, "merge-base", "--is-ancestor", repoHead, `refs/heads/${repoBranch}`);
+          return git(repo, "rev-parse", `refs/heads/${repoBranch}`) !== repoHead;
+        } catch {
+          return false;
+        }
+      })();
+      if (!grew || !git(repo, "show", `refs/heads/${repoBranch}:CHANGELOG.md`).includes(marker)) failures.push(`6: the merge didn't land the CHANGELOG line on ${repoBranch}`);
+      if (git(repo, "status", "--porcelain") !== "") failures.push("6: the merge left the project's files changed");
+    } else if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: the project's checked-out branch or files changed");
     if (labCheckout() !== labBefore) failures.push("6: the lab's own checkout changed");
     if (errors.length > 0) failures.push(`page errors: ${errors.join(" | ")}`);
     notes.push(`${together.length} threads side by side; answered "${asked.title}"; coding thread ${coding.id}; worktree ${committed[0] ?? "none"}`);

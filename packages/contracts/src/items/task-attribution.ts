@@ -15,14 +15,14 @@
  *
  * Collection scoping: items carry only `taskId`, not a collection id. A pass
  * scoped to `collectionId` learns which task ids belong to that collection
- * from the `task-change` events already in the log (keyed by
+ * from the `task-change` data records already in the log (keyed by
  * `${collectionId}/${taskId}`), then keeps only items whose `taskId` is in
  * that set. Task ids are unique per collection; the rare nested-board case
  * where an inner and outer collection reuse the same task id is the one place
  * this can over-include, which the previous timestamp model also could not
  * resolve.
  *
- * Substrate components are always excluded — they are the board's own
+ * Substrate records are always excluded — they are the board's own
  * emissions, not the worker's, even though they are emitted inside a worker
  * scope and so carry a `taskId`. Three types qualify:
  * `task-change` and `task-board-meta` (status grouping / mounting
@@ -36,17 +36,17 @@
  * the worker may well have succeeded. Anything a task-scoped block emits
  * ABOUT the substrate rather than as the worker's work belongs on this list.
  */
-import type { OutputItem, ComponentItem } from "./types";
+import type { OutputItem, DataItem } from "./types";
 
-const TASK_CHANGE_COMPONENT = "task-change";
-const TASK_BOARD_META_COMPONENT = "task-board-meta";
+const TASK_CHANGE_DATA_TYPE = "task-change";
+const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 /**
- * Mirrors `TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE` in
+ * Mirrors `TASK_BOARD_RECORDER_FAILURE_DATA_TYPE` in
  * `@flow-state-dev/orchestration`. Duplicated as a literal for the same reason
  * the two above are: this package is the zero-dependency layer and cannot
  * import the producer.
  */
-const TASK_BOARD_RECORDER_FAILURE_COMPONENT = "task-board-recorder-failure";
+const TASK_BOARD_RECORDER_FAILURE_DATA_TYPE = "task-board-recorder-failure";
 
 type TaskChangeData = {
   collectionId?: string;
@@ -54,21 +54,21 @@ type TaskChangeData = {
   kind?: string;
 };
 
-function isComponentItem(item: OutputItem): item is ComponentItem {
-  return item.type === "component";
+function isDataItem(item: OutputItem): item is DataItem {
+  return item.type === "data";
 }
 
 /**
- * True for items the substrate emitted about itself — `<TaskPlan />` status
+ * True for data records the substrate emitted about itself — `<TaskPlan />` status
  * grouping, the board component's mount, and a recorder that could not
  * announce a result it had saved. Never part of a task's item bucket.
  */
-function isSubstrateComponent(item: OutputItem): boolean {
+function isSubstrateRecord(item: OutputItem): boolean {
   return (
-    isComponentItem(item) &&
-    (item.component === TASK_CHANGE_COMPONENT ||
-      item.component === TASK_BOARD_META_COMPONENT ||
-      item.component === TASK_BOARD_RECORDER_FAILURE_COMPONENT)
+    isDataItem(item) &&
+    (item.dataType === TASK_CHANGE_DATA_TYPE ||
+      item.dataType === TASK_BOARD_META_DATA_TYPE ||
+      item.dataType === TASK_BOARD_RECORDER_FAILURE_DATA_TYPE)
   );
 }
 
@@ -83,9 +83,9 @@ function collectionTaskIds(
 ): Set<string> {
   const ids = new Set<string>();
   for (const item of items) {
-    if (!isComponentItem(item)) continue;
-    if (item.component !== TASK_CHANGE_COMPONENT) continue;
-    const data = item.data as TaskChangeData;
+    if (!isDataItem(item)) continue;
+    if (item.dataType !== TASK_CHANGE_DATA_TYPE) continue;
+    const data = item.value as TaskChangeData;
     if (data.collectionId !== collectionId) continue;
     if (data.taskId === undefined) continue;
     ids.add(data.taskId);
@@ -97,7 +97,7 @@ function collectionTaskIds(
  * Group the items emitted under each task of `collectionId`, in stream order.
  * Every returned item belongs to exactly one task; concurrent siblings and
  * sequential turns are disjoint by construction. Items with no `taskId`
- * (emitted outside any task scope) and substrate components are excluded.
+ * (emitted outside any task scope) and substrate records are excluded.
  */
 export function attributeItemsToTasks(
   items: readonly OutputItem[],
@@ -108,7 +108,7 @@ export function attributeItemsToTasks(
   if (ids.size === 0) return buckets;
 
   for (const item of items) {
-    if (isSubstrateComponent(item)) continue;
+    if (isSubstrateRecord(item)) continue;
     const taskId = item.taskId;
     if (taskId === undefined || !ids.has(taskId)) continue;
     let bucket = buckets.get(taskId);
@@ -138,7 +138,7 @@ export function itemsForTask(
 
   const result: OutputItem[] = [];
   for (const item of items) {
-    if (isSubstrateComponent(item)) continue;
+    if (isSubstrateRecord(item)) continue;
     if (item.taskId !== taskId) continue;
     result.push(item);
   }
@@ -149,7 +149,7 @@ export function itemsForTask(
  * The set of `item.id` for every item owned by some task, across all
  * collections. The chat-level `<RequestGroupRenderer>` uses this to skip items
  * that belong to a task so they render inside the task's `<TaskPlan />`
- * expansion only, not also inline in the thread. Substrate components are
+ * expansion only, not also inline in the thread. Substrate records are
  * excluded — they mount/group the board, or report on the board's own
  * bookkeeping, rather than belonging to a task.
  *
@@ -165,7 +165,7 @@ export function collectAttributedItemIds(
   const owned = new Set<string>();
   for (const item of items) {
     if (item.taskId === undefined) continue;
-    if (isSubstrateComponent(item)) continue;
+    if (isSubstrateRecord(item)) continue;
     owned.add(item.id);
   }
   return owned;

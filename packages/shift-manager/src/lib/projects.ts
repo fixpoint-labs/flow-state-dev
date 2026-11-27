@@ -1,246 +1,209 @@
 // BR-18; BR-38.
 /**
- * A project's own reads, beside the snapshot: its workstreams and the Lab's
- * project setup.
+ * A project's reads: the rows the user reads, a project's workstreams, an
+ * entry's report and the Lab's project setup.
  *
- * **What a project view reads**: the project's row and its workstream
- * entries by one prefix, through the user's own session on the roster flow,
- * which declares both. Never a Lab read. Progress is worked out from the
- * entries here, by Workforce's own `projectProgress`, so the view and the
- * project coordinator count the same way; nothing is stored.
+ * **The rows.** Every row of the organization's `projects` and of the user's
+ * own private one, read whole and kept current by `react`'s `useResource`
+ * (the directory holds the one read, `directory.tsx`), each parsed by
+ * {@link toProject} so a row an earlier version wrote still reads.
  *
- * **The project setup.** Which flow writes workstreams, and the standard
- * worker each user talks to a project through, their project coordinator.
- * Shift Manager doesn't name it: the Lab's projects flow answers
- * `projectSetup` with it, read once per connection.
+ * **A project's workstreams** are its entries by one prefix, read whole and
+ * kept current by `useResource` while something on screen draws them: only
+ * a notice under that project's prefix reads them again. Progress is worked
+ * out from the entries here, by Workforce's own `projectProgress`, so the
+ * view and the project coordinator count the same way; nothing is stored.
+ *
+ * **The project setup**: the standard worker each user talks to a project
+ * through, their project coordinator, from workforce's `projectSetup` view.
+ * A Lab with no projects flow serves no such view (404), and has none.
  *
  * Shift Manager opens no workstream itself. The user asks their project
  * coordinator for the work, and the coordinator opens one with a lead from
  * their roster.
  */
-import { useCallback, useEffect, useState } from "react";
-import type { SessionSummary } from "@flow-state-dev/client";
+import { useEffect, useMemo, useState } from "react";
+import type { Client } from "@flow-state-dev/client";
+import { useResource, useView } from "@flow-state-dev/react";
 import {
+  DONE_STATUS,
   parseWorkstreamEntry,
   projectProgress,
-  workstreamsAccessor,
+  projectSetupView,
+  PROJECTS_PATTERN,
+  STALE_AFTER_MS,
+  WORKSTREAMS_PATTERN,
+  workstreamReportView,
   type ParsedWorkstreamEntry,
   type ProjectProgress,
+  type ProjectSetup,
 } from "@flow-state-dev/workforce/browser";
-import { runAction } from "./action";
-import type { Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
-import { describeFailure, PROJECT_READER_FLOW, readerSessionId, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
+import { useReadAgainOnR } from "./page-reads";
+import type { Failure } from "./failure";
+import { toProject, type Project, type ProjectVisibility } from "./project";
 
 /** A project's address: where it lives, and its id. */
 export type ProjectAddress = { visibility: ProjectVisibility; id: string };
 
-/** One objective of a workstream, met or not. */
-export type WorkstreamObjective = { text: string; met: boolean };
-
 // BR-12.
-/** One workstream of a project: its entry, as everyone who reads the project reads it. */
-export type WorkstreamEntry = {
-  /** Its storage key in the project's workstreams: where its report is read. */
+/** One workstream of a project: its entry as Workforce parses it, its storage key, and whether it has gone quiet. */
+export type WorkstreamEntry = ParsedWorkstreamEntry & {
+  /** Its storage key in the project's workstreams. */
   key: string;
-  owner: string;
-  id: string;
-  title: string;
-  /** The worker that leads it, on its owner's roster. */
-  lead: string;
-  /** The lead's workstream session, its owner's. `null` until its open has made it. */
-  sessionId: string | null;
-  status: string;
-  due: string | null;
-  objectives: WorkstreamObjective[];
-  updatedAt: string;
   // BR-19.
   /** Whether it has gone quiet, as the project's progress counts it: one clock, `progress.stale`. */
   stale: boolean;
 };
 
-/** A project as its view opens: the row, its workstreams, and the progress worked out from them. */
-export type ProjectRead = {
-  project: Project;
-  entries: WorkstreamEntry[];
-  progress: ProjectProgress;
-};
-
-/** What the Lab's projects flow says about its project setup. */
-export type ProjectSetup = {
-  /** The flow `openWorkstream`, `updateWorkstream` and `projectSetup` are actions of. */
-  flow: string;
-  /** The standard worker each user's project coordinator runs as, or `null`. */
-  projectCoordinator: string | null;
-};
-
-/** The action the Lab's projects flow names its setup on. */
-export const PROJECT_SETUP_ACTION = "projectSetup";
-
-/** Rows per page: the collection route's maximum. */
-const PAGE_SIZE = 200;
-const MAX_PAGES = 50;
-
-/** The user's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
-export function projectReaderOf(sessions: readonly SessionSummary[]): string | null {
-  return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
-}
+/** A project's workstreams as its view draws them, and the progress worked out from them as of a moment. */
+export type ProjectWorkstreams = { entries: WorkstreamEntry[]; progress: ProjectProgress };
 
 /**
  * An entry, from what the entries' browser read publishes, parsed by
  * Workforce's own entry parser so this view and `readProject` read one shape.
- * A row that doesn't parse as an entry is left out of the view.
+ * A row that doesn't parse as an entry is left out.
  */
 function toEntry(storageKey: string, data: unknown): Omit<WorkstreamEntry, "stale"> | undefined {
-  let parsed: ParsedWorkstreamEntry | undefined;
   try {
-    parsed = parseWorkstreamEntry(storageKey, data);
+    const parsed = parseWorkstreamEntry(storageKey, data);
+    return parsed === undefined ? undefined : { ...parsed, key: storageKey };
   } catch {
     return undefined;
   }
-  if (parsed === undefined) return undefined;
-  return {
-    key: storageKey,
-    owner: parsed.owner,
-    id: parsed.id,
-    title: parsed.title,
-    lead: parsed.lead,
-    sessionId: parsed.sessionId,
-    status: parsed.status,
-    due: parsed.due,
-    objectives: parsed.objectives.map((objective) => ({ text: objective.text, met: objective.met })),
-    updatedAt: parsed.updatedAt,
-  };
 }
 
-/** The accessor a project's row is declared under on the roster flow, at its visibility. */
-const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "private" ? "privateProjects" : "projects");
+/** Every row of a read that parses as an entry. */
+function entriesOf(stored: readonly { storageKey: string; value: unknown }[]): Omit<WorkstreamEntry, "stale">[] {
+  return stored.map((each) => toEntry(each.storageKey, each.value)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined);
+}
 
 /**
- * Read a project as its view opens: its row, and its entries by the
- * project's one prefix, through the user's reader session. `null` when the
- * user can't read a row at that address: none there, or another user's
- * private project.
+ * Entries as of `now`: their progress, worked out by Workforce's own
+ * `projectProgress`, and each entry marked gone quiet by that same clock.
  */
-export async function readProject(client: Client, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
-  const [row, entries] = await Promise.all([
-    client.resources.getCollectionResourceState(readerSessionId, projectsAccessor(address.visibility), address.id),
-    (async () => {
-      const found: Omit<WorkstreamEntry, "stale">[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page += 1) {
-        const listed = await client.resources.listCollectionResources(readerSessionId, workstreamsAccessor(address.visibility), {
-          limit: PAGE_SIZE,
-          topicPrefix: `workstreams/${address.id}/`,
-          ...(cursor === undefined ? {} : { cursor }),
-        });
-        for (const item of listed.items) {
-          const key = (item as { storageKey?: string }).storageKey ?? `workstreams/${item.topic}`;
-          const entry = toEntry(key, item.clientData);
-          if (entry !== undefined) found.push(entry);
-        }
-        if (listed.nextCursor === undefined || listed.nextCursor === cursor) break;
-        cursor = listed.nextCursor;
-      }
-      return found;
-    })(),
-  ]);
-  if (row === null) return null;
-  const project = toProject(row.clientData, address.visibility);
-  if (project === undefined) return null;
+function withProgress(entries: readonly Omit<WorkstreamEntry, "stale">[], now: number): ProjectWorkstreams {
   const progress = projectProgress(entries, now);
   const quiet = new Set(progress.stale.map((entry) => `${entry.owner}/${entry.id}`));
-  return { project, entries: entries.map((entry) => ({ ...entry, stale: quiet.has(`${entry.owner}/${entry.id}`) })), progress };
+  return { entries: entries.map((entry) => ({ ...entry, stale: quiet.has(`${entry.owner}/${entry.id}`) })), progress };
 }
 
+/** Where a project at `visibility` lives: a shared one in the organization, a private one in the user's own scope. */
+const scopeOf = (visibility: ProjectVisibility) => (visibility === "private" ? "user" : "org");
+
+/** The workstreams' collection at each scope, as a browser reads it. */
+const WORKSTREAMS = {
+  org: { scope: "org", pattern: WORKSTREAMS_PATTERN },
+  user: { scope: "user", pattern: WORKSTREAMS_PATTERN },
+} as const;
+
+/** The prefix of one project's entries: the slash keeps `apollo` from reading `apollo2`'s. */
+const entriesPrefix = (projectId: string) => `workstreams/${projectId}/`;
+
+// FIX-2624.
 /**
- * An entry's latest report, read when its view opens: `null` when its owner
- * has written none.
+ * Read a project once, with no session: its row, and every one of its entries
+ * by the project's one prefix, with their progress as of `now`. Jump to's
+ * search reads each project so when it opens. `null` when the user can't read
+ * a row at that address: none there, or another user's private project.
  */
-export async function readEntryReport(
-  client: Client,
-  readerSessionId: string,
-  project: ProjectAddress,
-  entry: Pick<WorkstreamEntry, "key">,
-): Promise<string | null> {
-  const read = await client.resources.getCollectionResourceContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
-  return typeof read.content === "string" && read.content.length > 0 ? read.content : null;
+export async function readProject(
+  client: Pick<Client, "resource">,
+  address: ProjectAddress,
+  now = Date.now(),
+): Promise<({ project: Project } & ProjectWorkstreams) | null> {
+  const scope = scopeOf(address.visibility);
+  const [stored, listed] = await Promise.all([
+    client.resource({ scope, pattern: PROJECTS_PATTERN }).entry(`projects/${address.id}`).read(),
+    client.resource({ scope, pattern: WORKSTREAMS_PATTERN }).listAll({ topicPrefix: entriesPrefix(address.id) }),
+  ]);
+  const project = stored.value === null ? undefined : toProject(stored.value, address.visibility);
+  return project === undefined ? null : { project, ...withProgress(entriesOf(listed), now) };
 }
 
-/** Project setups read, per connection: one read per page load. */
-const setups = new WeakMap<Client, Promise<ProjectSetup | null>>();
+/** The longest delay `setTimeout` keeps; a longer one fires at once. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
+// BR-19.
 /**
- * The Lab's project setup, from its projects flow: the flow among the Lab's
- * that answers `projectSetup` and opens workstreams. `null` for a Lab with no
- * such flow. Read once per connection; a failed read is read again next time.
+ * When the next of `entries` goes quiet, by `projectProgress`'s rule (an
+ * unfinished entry unchanged for {@link STALE_AFTER_MS}), or `undefined` when
+ * none will: a quiet entry is one nobody writes, so no notice says so.
  */
-export function readProjectSetup(client: Client): Promise<ProjectSetup | null> {
-  let read = setups.get(client);
-  if (read === undefined) {
-    read = (async () => {
-      const flows = await client.flows();
-      const flow = flows.find((entry) => entry.actions.includes(PROJECT_SETUP_ACTION) && entry.actions.includes("openWorkstream"));
-      if (flow === undefined) return null;
-      const { output } = await runAction(client, flow.id, readerSessionId(client.userId, flow.id), PROJECT_SETUP_ACTION, {});
-      const answer = (output ?? {}) as { projectCoordinator?: unknown };
-      return {
-        flow: flow.id,
-        projectCoordinator: typeof answer.projectCoordinator === "string" ? answer.projectCoordinator : null,
-      };
-    })();
-    read.catch(() => setups.delete(client));
-    setups.set(client, read);
+function nextQuietAt(entries: readonly WorkstreamEntry[]): number | undefined {
+  let next: number | undefined;
+  for (const entry of entries) {
+    if (entry.stale || entry.status === DONE_STATUS) continue;
+    const updated = Date.parse(entry.updatedAt);
+    if (!Number.isFinite(updated)) continue;
+    const at = updated + STALE_AFTER_MS;
+    if (next === undefined || at < next) next = at;
   }
-  return read;
+  return next;
 }
 
-/** A read in flight, landed, or failed. */
-export type ProjectReadState = { value: ProjectRead | null } | { failure: Failure } | undefined;
-
-/** How often a project's entries are read again while they are on screen. */
-const PROJECT_POLL_MS = 5_000;
+/** A read on screen: its value once it lands, why the last read failed, and a read on demand. */
+export type ScreenRead<T> = { value: T | undefined; failure: Failure | undefined; refresh: () => void };
 
 // BR-18.
 /**
- * The project's own read, row and entries, when the view opens, each
- * time the Lab is read again (`readAt`), and every {@link PROJECT_POLL_MS}
- * while its entries are on screen, on a tab that draws them or open under
- * the project in the sidebar: a workstream is opened by
- * someone else's turn (the Shift Coordinator's, or a coordinator's in another
- * window), so the list shows it without a reload. `reread` reads it now, as
- * after an open. A read again keeps the last one on screen until it lands,
- * and keeps it if it fails.
- * No read while `readerSessionId` is `null`: the user holds no reader session
- * yet, or nothing on screen draws the entries.
+ * A project's workstreams, read whole by the project's one prefix under its
+ * scope (the org's for a shared project, its owner's for a private one) and
+ * kept current by their own notices: a workstream opened by someone else's
+ * turn shows without a reload. Mounted only while something on screen draws
+ * them. A failed read again keeps the entries already drawn, beside its
+ * `failure`; only a failed first read shows alone.
  */
-export function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
+export function useProjectWorkstreams(address: ProjectAddress): ScreenRead<ProjectWorkstreams> {
   const { client } = useLab();
-  const [read, setRead] = useState<ProjectReadState>(undefined);
-  const [reads, setReads] = useState(0);
+  const read = useResource(WORKSTREAMS[scopeOf(address.visibility)], { client, all: true, topicPrefix: entriesPrefix(address.id) });
+  useReadAgainOnR(read.refresh);
+  const listed = read.value;
+  // Going quiet is the absence of writes, so the page's own clock says when:
+  // one recompute at the next entry's threshold, with no read, then the next.
+  const [now, setNow] = useState(() => Date.now());
+  const value = useMemo(() => (listed === null ? undefined : withProgress(entriesOf(listed), now)), [listed, now]);
   useEffect(() => {
-    if (readerSessionId === null) return;
-    let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readProject(client, readerSessionId, address)
-      .then((value) => !closed && setRead({ value }))
-      // A failed read again keeps the last good one on screen: one dropped
-      // poll shouldn't blank the list. Only a failed first read shows.
-      .catch(
-        (error: unknown) =>
-          !closed && setRead((prev) => (prev !== undefined && "value" in prev ? prev : { failure: describeFailure(error) })),
-      )
-      // After a failed read too: a dropped request recovers without Retry.
-      .finally(() => {
-        if (!closed) next = setTimeout(() => setReads((n) => n + 1), PROJECT_POLL_MS);
-      });
-    return () => {
-      closed = true;
-      if (next !== undefined) clearTimeout(next);
+    if (value === undefined) return;
+    const at = nextQuietAt(value.entries);
+    if (at === undefined) return;
+    // A delay past setTimeout's cap fires early, as does one the wall clock stepped
+    // back under: such a fire changes nothing and sets the timer again, here.
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      timer = setTimeout(() => {
+        if (Date.now() < at) return arm();
+        setNow(Date.now());
+      }, Math.min(MAX_TIMER_MS, Math.max(0, at - Date.now())));
     };
-    // The address is the view's key; its parts are what the read depends on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, readerSessionId, address.visibility, address.id, readAt, reads]);
-  const reread = useCallback(() => setReads((n) => n + 1), []);
-  return { read, reread };
+    arm();
+    return () => clearTimeout(timer);
+  }, [value]);
+  return { value, failure: read.failure, refresh: read.refresh };
+}
+
+// FIX-2624.
+/**
+ * An entry's latest report, through the roster flow's `workstreamReport`
+ * view, with no session, kept current by the view: `null` when its owner has
+ * written none.
+ */
+export function useEntryReport(project: ProjectAddress, entry: Pick<WorkstreamEntry, "owner" | "id">): ScreenRead<string | null> {
+  const { client } = useLab();
+  const { value, failure, refresh } = useView(workstreamReportView, { project, owner: entry.owner, id: entry.id }, { client });
+  useReadAgainOnR(refresh);
+  return { value: value === undefined ? undefined : value.report, failure, refresh };
+}
+
+/**
+ * The Lab's project setup, from workforce's `projectSetup` view, read with no
+ * session and kept current by it. `null` for a Lab that serves none (a 404):
+ * it has no projects flow, so no project coordinator.
+ */
+export function useProjectSetup(): ScreenRead<ProjectSetup | null> {
+  const { client } = useLab();
+  const { value, failure, refresh } = useView(projectSetupView, {}, { client });
+  useReadAgainOnR(refresh);
+  const none = value === undefined && failure?.httpStatus === 404;
+  return { value: none ? null : value, failure: none ? undefined : failure, refresh };
 }

@@ -7,7 +7,8 @@
  * a copy needs a compiler of its own. Any other version, or any other member, fails.
  * An `npm:` alias counts as the package it installs (`@typescript-eslint/*` is not `@typescript/`).
  */
-const TYPESCRIPT_IMPORTERS = new Set(["packages/orchestration/package.json", "goals/package.json"]);
+// apps/docs imports it through TypeDoc, whose peer range stops at TypeScript 6.
+const TYPESCRIPT_IMPORTERS = new Set(["packages/orchestration/package.json", "goals/package.json", "apps/docs/package.json"]);
 const declaresOwnCompiler = (manifestPath) =>
   TYPESCRIPT_IMPORTERS.has(manifestPath) || manifestPath.startsWith("examples/");
 const isCompilerPackage = (name) => name === "typescript" || name.startsWith("@typescript/");

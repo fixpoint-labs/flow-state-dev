@@ -46,8 +46,8 @@ import {
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
-  walkTeams,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
+import { walkTeams } from "./structural-directory";
 
 const ORG_PLACE = `org/${RESOURCES_SLOT}`;
 const ORG_WORKER_PLACE = `org/${WORKERS_LEVEL}/*/${RESOURCES_SLOT}`;
@@ -137,7 +137,7 @@ export async function* walkResourcePlaces(
   root: string,
   options: ResourceWalkOptions,
 ): AsyncGenerator<ResourceWalkStep> {
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   // The org root. Opened structurally rather than merely classified, so a
   // symlinked or unreadable `org/` is reported the way `teams/` is. Absence is

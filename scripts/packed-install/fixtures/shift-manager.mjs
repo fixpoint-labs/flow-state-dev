@@ -50,7 +50,7 @@ writeFileSync(
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 const flow = defineFlow({ kind: "packed-install-shift-manager", actions: {} })();
 export default createFlowState({
-  flows: { "packed-install-shift-manager": flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
   devtool: { userId: "u_packed_install" },
 });

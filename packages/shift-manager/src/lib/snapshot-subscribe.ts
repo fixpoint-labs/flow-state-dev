@@ -1,6 +1,7 @@
 /**
  * What the snapshot hears: the topics its provider subscribes, and which of
- * their notices read the Lab again.
+ * their notices read the Lab again, as its live read's `hear` and `paths`
+ * (`client.live`), which test a notice before it merges with another.
  *
  * A notice says *that* something changed, never what, so the snapshot hears
  * only what its read covers:
@@ -9,22 +10,17 @@
  * |---|---|
  * | the user's | `resource` in a collection the read covers: the board ledger, private projects, the roster's own and standard workers |
  * | the org's | `resource` in a collection the read covers: the worker inventory, the org's projects |
- * | each listed session but Shift Manager's own | `request` and `run` |
+ * | each listed session | `request` and `run` |
  * | any | `resync` |
  *
  * Never `items`: a reply sends one per stored item, and the snapshot would
  * read per chunk. Never another resource under the user or the org: Usage
  * writes its readings there, and messages between workers land there.
  *
- * Shift Manager's own sessions (each flow's reading session and the usage
- * session) never enter the list: Schedules and Usage run an action on them
- * on every snapshot read, so hearing them would make each read start the
- * next. A run's request writes reach its parent's topic as `run`, so a
- * listed session whose parent is heard is left out; a root is always heard.
+ * A run's request writes reach its parent's topic as `run`, so a listed
+ * session whose parent is heard is left out; a root is always heard.
  */
 import { topic, type SessionSummary, type WireNotice, type WireTopic } from "@flow-state-dev/client";
-import { USAGE_SESSION_PREFIX } from "./ids";
-import { PROJECT_READER_FLOW, readerSessionId } from "./reads";
 
 /**
  * The pace the snapshot reads at wherever push can miss a change: no push, the
@@ -34,7 +30,7 @@ import { PROJECT_READER_FLOW, readerSessionId } from "./reads";
 export const SNAPSHOT_POLL_MS = 30_000;
 
 /**
- * The storage prefixes of the collections the snapshot reads, per scope: the
+ * The storage roots of the collections the snapshot reads, per scope: the
  * board ledger (`tasks/**`), projects (`projects/*`), the roster's own
  * (`workforce/workers/*`) and standard (`workforce/standard-workers/*`)
  * workers, and the org's worker inventory (`inventory/workers/*`).
@@ -45,30 +41,13 @@ const READ_PREFIXES = {
 } as const;
 
 /**
- * Whether `session` is one Shift Manager reads through: a flow's reading
- * session, the usage session, or the roster session the project reader picks
- * (`projectReaderOf`), which may carry a generated id. Schedules and Usage run
- * an action on these after every snapshot read, so hearing them would make
- * each read start the next.
+ * The listed sessions the snapshot subscribes, by id, sorted: every one, less
+ * a run whose parent is subscribed, since its request writes reach that
+ * parent as `run`. A run's writes reach only its direct parent, so a run
+ * whose parent is itself left out is subscribed.
  */
-function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: string, projectReader: string | null): boolean {
-  return (
-    session.id === readerSessionId(userId, session.flowKind) ||
-    session.id === projectReader ||
-    session.id.startsWith(`${USAGE_SESSION_PREFIX}-`)
-  );
-}
-
-/**
- * The listed sessions the snapshot subscribes, by id, sorted: every one but
- * Shift Manager's own, less a run whose parent is subscribed, since its
- * request writes reach that parent as `run`. A run's writes reach only its
- * direct parent, so a run whose parent is itself left out is subscribed.
- */
-export function heardSessionIds(sessions: readonly SessionSummary[], userId: string): string[] {
-  // The session `projectReaderOf` (`projects.ts`) picks, found the same way; not imported, since `projects.ts` imports the provider.
-  const projectReader = sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
-  const parentOf = new Map(sessions.filter((session) => !isOwnSession(session, userId, projectReader)).map((session) => [session.id, session.parentSessionId]));
+export function heardSessionIds(sessions: readonly SessionSummary[]): string[] {
+  const parentOf = new Map(sessions.map((session) => [session.id, session.parentSessionId]));
   const decided = new Map<string, boolean>();
   const subscribed = (id: string, path: ReadonlySet<string>): boolean => {
     const known = decided.get(id);
@@ -87,17 +66,21 @@ export function snapshotTopics(sessionIds: readonly string[]): WireTopic[] {
   return [topic.user(), topic.org(), ...sessionIds.map((id) => topic.session(id))];
 }
 
-/** Whether a change at storage path `path` is under `root`. */
-const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
-
 /**
- * Whether `notice` changes what the snapshot shows. A resource notice that
- * names no path (an owner-private row) may be one the read covers, so it is heard.
+ * Whether a notice of this kind, on this topic, may change what the snapshot
+ * shows. Which resource paths it hears is {@link snapshotPaths}.
  */
 export function heard(notice: WireNotice): boolean {
   if (notice.kind === "resync") return true;
   if (notice.topic.scope === "session") return notice.kind === "request" || notice.kind === "run";
-  if (notice.kind !== "resource") return false;
-  const path = notice.topic.resource;
-  return path === undefined || READ_PREFIXES[notice.topic.scope].some((root) => under(path, root));
+  return notice.kind === "resource";
+}
+
+/**
+ * The resource paths the snapshot hears, per scope. A resource notice that
+ * names no path (an owner-private row) may be one the read covers, so the
+ * live read hears it whatever these say.
+ */
+export function snapshotPaths(scope: WireTopic["scope"]): readonly string[] {
+  return scope === "session" ? [] : READ_PREFIXES[scope];
 }

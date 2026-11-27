@@ -76,13 +76,13 @@ import {
   createSkillActivator,
   createSkillsLibrary,
 } from "@flow-state-dev/orchestration";
-import { pushActiveSkill } from "@flow-state-dev/orchestration/internal";
+import { buildLoadCatalogContext, pushActiveSkill } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
-import { routedTaskHistory } from "./coordinator/routed-brief";
-import { withTaskEndingReads } from "./conversation-board/task-ending-read";
+import { routedLinesStateSchema, routedTaskHistory } from "./coordinator/routed-brief";
+import { taskEndingReadsStateSchema, withTaskEndingReads } from "./conversation-board/task-ending-read";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
@@ -107,9 +107,11 @@ import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import { setWorkProjectAction } from "./projects/work-project";
-import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
+import { SET_SESSION_FIELDS_ACTION, SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
+import { setSessionFieldsAction } from "./workers/session-fields";
 import { workerIdentityPrompt } from "./messages/worker-identity";
+import { bringsHistorySummary, skillLoaderOn, workerDefaultLayer, type WorkerDefaults } from "./worker-default-layer";
 import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
 
@@ -147,6 +149,9 @@ const DEFAULT_MAX_STEPS = 50;
  */
 const ACTIVE_SKILLS_STATE = { scope: "session", field: "activeSkills" } as const;
 
+/** The skills library's collection key, which the default layer reads its listing back from. */
+const SKILLS_COLLECTION = "skills";
+
 /**
  * The parts of a worker's settings bag this file reads off a running block's
  * context, where the bag's type is erased.
@@ -159,7 +164,10 @@ interface WorkerConfig {
   /** Absent when the worker's file wrote no `tools:` line — never `[]` for that. */
   tools?: string[];
   workerSkills: InitialSkill[];
-  skills: { active: string[]; activateTool: boolean; enableLlmClassifier: boolean };
+  /** `activateTool` absent means the worker set none, and its `defaults` decide. */
+  skills: { active: string[]; activateTool?: boolean; enableLlmClassifier: boolean };
+  /** Which default-layer sections the worker turned off. */
+  defaults?: WorkerDefaults;
   capabilities: WorkerCapabilitySelection;
   /**
    * The worker's own instructions — its file's body. Optional: a bodyless worker
@@ -234,16 +242,7 @@ function workerSkillsOf(ctx: BlockContext): InitialSkill[] {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).workerSkills ?? [];
 }
 
-/**
- * Whether this worker turned the mid-turn activate tool on. The other erased read
- * — it picks which of the two answering generators runs, and the default is
- * off, so anything other than an explicit `true` takes the plain arm.
- */
-function activateToolOn(ctx: BlockContext): boolean {
-  return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
-}
-
-/** `afterAnswer`, rescuing only when the task row says the result goes to the conversation. */
+/** `afterAnswer`, rescuing only when the task says the result goes to the conversation. */
 function afterAnswerStep(block: BlockDefinition<any, any>) {
   const keepTheAnswer = handler({
     name: "agent-after-answer-rescue",
@@ -395,9 +394,10 @@ export interface AgentWorkerFlowOptions {
    * failure in it fails the turn, so a block that must not (a history
    * summary's fold, say) rescues its own.
    *
-   * A history summary's fold goes here (`beforeAnswer: earlier.fold`, with
-   * `earlier.capability` in {@link uses}), so the answer reads a summary that
-   * already holds the turns about to leave the window.
+   * Every worker already folds older turns into a history summary by
+   * default. An app that wants its own summary puts its fold here
+   * (`beforeAnswer: earlier.fold`, with `earlier.capability` in {@link uses}),
+   * and it replaces the default: fold, context section and all.
    *
    * Omitted, the flow's sequence is exactly what it is today.
    */
@@ -546,16 +546,23 @@ function settingsSchema(
          */
         active: z.array(z.string()).default([]),
 
+        // FIX-2498; BP-030.
         /**
          * Let the model pull a held skill into context mid-turn, with a tool.
          *
-         * **Default off.** Turning it on installs the load tool *and* a listing
-         * of everything the worker holds, and that listing is a per-turn token
-         * cost proportional to the catalog — which is exactly what a
-         * zero-configuration worker must not be charged. Left off, a worker's
-         * skills are still reachable by slash and by the always-on list.
+         * **Unset, it follows the worker's `defaults`**: on, for a worker that
+         * holds a skill, unless `defaults` turns the `skillsIndex` section off. On installs the load
+         * tool *and* a listing of everything the worker holds, a per-turn token
+         * cost proportional to the catalog; a worker that holds no skill it can
+         * load is shown no listing and pays nothing. A value the worker sets
+         * always wins over `defaults`, so a file that set `false` keeps it.
+         * Off, a worker's skills are still reachable by slash and by
+         * the always-on list.
+         *
+         * Optional with no default on purpose: a default would erase "unset",
+         * which is what lets `defaults` decide.
          */
-        activateTool: z.boolean().default(false),
+        activateTool: z.boolean().optional(),
 
         /**
          * Turn on the up-front matcher's third tier — a model call that
@@ -894,6 +901,12 @@ export interface AgentTurnShare {
    * coordinator's says each delegate's answer as a line from that delegate.
    */
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
+  /**
+   * The turns the history summary folds, read the way {@link history} reads
+   * them, so a fold keeps what the flow's reading adds (the coordinator's says
+   * who wrote each delegate's answer). Omitted, the turns as stored.
+   */
+  readonly readFoldedTurns?: (turns: LLMMessage[], ctx: BlockContext) => Promise<LLMMessage[]> | LLMMessage[];
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_FLOW, answerName: "agent-answer" };
@@ -967,6 +980,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // working state, and org scope is shared with every member of the org. With
   // the flow's isolation below, each worker's drawer is its user's alone.
   const skills = createSkillsLibrary({
+    collection: SKILLS_COLLECTION,
     catalog,
     registerCatalogTools: false,
     scope: "user",
@@ -1071,16 +1085,53 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     ...(board !== undefined ? [board.tools, board.questions, board.progress, board.steers, board.delegateTools, board.messages] : [])
   ];
 
+  /**
+   * Whether this worker gets the mid-turn activate tool — it picks which of the
+   * two answering generators runs. A value the worker set wins; unset, it
+   * follows the worker's `defaults`, for a worker that holds a skill
+   * (`skillLoaderOn`). An O(1) read: the catalog is already resolved.
+   */
+  const activateToolOn = (ctx: BlockContext): boolean =>
+    skillLoaderOn(turnConfig(ctx), workerCatalog(ctx).length > 0);
+
+  // The default layer's sections after the worker's text (FIX-2498): the
+  // skills line, printed only beside the library's own listing, and the date;
+  // and the history summary (FIX-2500), unless the app brought its own.
+  const appSummary = bringsHistorySummary(workerCapabilityCatalog);
+  const defaultLayer = workerDefaultLayer({
+    configOf: turnConfig,
+    loaderOn: activateToolOn,
+    skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog }),
+    modelOf: (ctx) => turnConfig(ctx).model,
+    ...(share.readFoldedTurns !== undefined ? { readFoldedTurns: share.readFoldedTurns } : {}),
+    hasAppHistorySummary: appSummary
+  });
+  const summary = defaultLayer.historySummary;
+  /**
+   * Whether this turn's history starts after a summary's mark: the default
+   * summary's own reader, or always, for a summary the app brought (its
+   * capability is static). A flow that matches its history back to the
+   * session's items reads this, so it leaves folded turns out only when the
+   * history did.
+   */
+  const historySummarized = (ctx: BlockContext): boolean => (summary !== undefined ? summary.on(ctx) : appSummary);
+  // What the answer declares: the catalog's resources, and the summary's.
+  const answerResources =
+    summary === undefined ? catalogResources : { ...(catalogResources ?? {}), ...summary.resources };
+
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
       name,
       inputSchema,
       flowConfigSchema: settings,
+      requestStateSchema: taskEndingReadsStateSchema.merge(routedLinesStateSchema),
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
       // subject. A conversation is one session: a worker has one per
       // conversation, so nothing said in one reaches another. Bounded by the
-      // session's history window (the framework's default, 50 turns); older turns fall out rather than being summarized.
+      // session's history window (the framework's default, 50 turns); older
+      // turns are folded into the history summary before they leave it, unless
+      // the worker turned the summary off.
       // On a coordinator's routed task, the routing conversation's recent
       // lines join it as one user-role message before the message, for this
       // call only; on any other turn it is `history: true` unchanged. A
@@ -1091,10 +1142,11 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a flow built without one
       // is byte-for-byte the block it was before this existed.
-      ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
+      ...(answerResources !== undefined ? { resources: answerResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
-      uses: [binding, ...usesEntries],
+      // The history summary's context and mark, per turn, after the app's own.
+      uses: [binding, ...usesEntries, ...(summary !== undefined ? [summary.uses] : [])],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
       // Four layers, in this order every time: the framework's default layer
@@ -1126,10 +1178,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // owned by FIX-2334: who the worker is and who it can reach, read from
       // the roster, then the rule to work things out first (FIX-2364,
       // `messages/worker-identity`).
-      // Fixed text, on an installation only; later default text joins it as a
-      // line, not a second entry. Do not grow this into a compose helper, a
-      // registry or a type: an org-wide layer of configurable text is the
-      // point at which the seam should be re-decided rather than widened.
+      // Fixed text, on an installation only. The rest of the default layer is
+      // NOT here: its sections (`./worker-default-layer`) render as tagged
+      // context after this whole prompt, through the `context` slot below, so
+      // a section that changes daily never moves the prompt's start
+      // (FIX-2498 D1). Do not grow this into a compose helper, a registry or
+      // a type.
       //
       // A held package's instructions come third, after the worker's own: the
       // worker holds the package, so its text reads as part of what this worker is
@@ -1140,6 +1194,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         (_input, ctx) => turnConfig(ctx).instructions,
         (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[WORKER_PACKAGES_KEY])
       ],
+      // The default layer's sections, as tagged context after the prompt: the
+      // skills line joins the library's `skills` tag, and an app's capability
+      // that writes under `date` joins the date block.
+      context: defaultLayer.context,
       model: (_input, ctx) => turnConfig(ctx).model,
       // The worker's granted tools. With a written `tools:` line, both halves of
       // it: `tools` holds the names that resolved to the app's CATALOG;
@@ -1253,13 +1311,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // behind for a write that never committed. `undefined` means the mutator
       // never completed, which is the same answer as nothing added.
       const added = await withOutcome(
-        (mutator: (state: unknown) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator),
-        (current: unknown) => {
-          const held = (current as Record<string, unknown> | undefined)?.[
-            ACTIVE_SKILLS_STATE.field
-          ];
-          let entries = Array.isArray(held) ? held : [];
+        ctx.session.atomicState,
+        (current) => {
+          let entries = current[ACTIVE_SKILLS_STATE.field];
           const before = entries.length;
           for (const name of names) {
             entries = pushActiveSkill(entries, { name, mode: "inline", activatedAt });
@@ -1300,9 +1354,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendWorkerDefaults);
+  // The history summary's fold, on the same reader as its context half, so a
+  // worker that turned it off neither folds nor reads a summary.
+  const folded = summary !== undefined ? prepared.tapIf((_input, ctx) => summary.on(ctx), summary.fold) : prepared;
   // Appended only when the app passed one, like afterAnswer below, so a call
   // without it builds the sequence it built before the option existed.
-  const answered = (options.beforeAnswer ? prepared.tap(options.beforeAnswer) : prepared)
+  const answered = (options.beforeAnswer ? folded.tap(options.beforeAnswer) : folded)
     // Two arms rather than two `.stepIf`s: the answer is the sequencer's OUTPUT,
     // and a second conditional step would have to be typed against the first
     // one's result. A branch says what this is — one answer, built two ways —
@@ -1385,7 +1442,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
 
-  return { options, settings, inputSchema, run, bound, mintProblems, answerNames, board };
+  return { options, settings, inputSchema, run, bound, mintProblems, answerNames, board, historySummarized };
 }
 
 /** What a flow on an installation declares to run the agent's turn. */
@@ -1421,6 +1478,7 @@ function defineAgentFlowAround(
 
   const flow = defineFlow({
     kind: AGENT_FLOW,
+    description: "The default worker flow: every worker without a flow of its own talks here, one session per conversation.",
     // Required by contract C2. A plain singleton's workers mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this flow reaches the registry rather than stopping at the mint.
@@ -1445,13 +1503,17 @@ function defineAgentFlowAround(
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
+      // The app's session fields, written once at open, when it declares any.
+      ...(installation === undefined || Object.keys(installation.sessionFields).length === 0
+        ? {}
+        : { [SET_SESSION_FIELDS_ACTION]: setSessionFieldsAction(installation.sessionFields) }),
       // On an installation: the task actions (`updateTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
-    // On an installation: the task list, read with nothing stored (FIX-2286).
-    ...(board !== undefined ? { reads: board.reads } : {}),
+    // On an installation: the task list as a session view (FIX-2623).
+    ...(board !== undefined ? { views: board.views } : {}),
     internal: {
       actions: {
         // A workstream's open: creates the lead's workstream session, linked

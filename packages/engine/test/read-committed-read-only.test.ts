@@ -38,7 +38,7 @@ function flowWith(writable: boolean) {
   });
   const flow = defineFlow({
     kind: `read-committed-${writable ? "writable" : "read-only"}`,
-    actions: { read: { inputSchema: z.object({}), block: read } }
+    actions: { read }
   })();
   return { flow, projected: () => projected };
 }

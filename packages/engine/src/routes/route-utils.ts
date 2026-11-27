@@ -2,43 +2,31 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
-import type {
-  ProjectedResourceCollectionConfig,
-  ProjectedResourceContext,
-  JsonObject,
-  ResourceConfig,
-  ResourceCollectionConfig,
-  ResourceScope,
-  ScopeType,
-} from "@flow-state-dev/core/types";
-import { buildProjectedResourceRef } from "../resources/projected-ref";
+import { LegacySessionlessRequestError } from "../context/record-session";
+import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
   extractBareTopic,
   isProjectedResourceCollection,
   matchesPattern,
-  readProjectedRecord,
   resolveCollectionKey,
 } from "@flow-state-dev/core/types";
-import {
-  cloneValue,
-  hasClientProjection,
-  resolveClientData
-} from "@flow-state-dev/core/helpers";
+import { hasClientProjection, resolveClientData } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { isTraceObservabilityEnabled, warnOnce, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
-import { principalOwnsRequest } from "../context/request-principal";
+import { principalOwns, withRequestOrg } from "../context/principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
-import { OWNER_RESOURCE_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
+import { ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
+import { isJsonMediaType } from "@flow-state-dev/contracts/helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
@@ -133,6 +121,15 @@ export function unknownSessionResponse(sessionId: string): Response {
 }
 
 /**
+ * What the read route answers for a file the caller can't read: one gone, one
+ * no session owns yet, and one in a session someone else owns, alike. It
+ * names neither the file's session nor its owner.
+ */
+export function unknownBlobResponse(): Response {
+  return jsonResponse(404, { error: "attachment_not_found" });
+}
+
+/**
  * What a route answers for a session create the flow refused: the status the
  * refusal carries, its message, and the state field when one was the reason.
  * One copy for the create, action and webhook routes, so a caller sees the
@@ -155,6 +152,16 @@ export function sessionCreateRefusedResponse(error: SessionCreateRefusedError): 
  */
 export function unknownRequestResponse(requestId: string): Response {
   return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
+ * What a route that would run a request again answers for one recorded with
+ * no session (before every request named its session): refused by name, and
+ * the record is left as it is. See `context/record-session.ts`.
+ */
+export function legacySessionlessResponse(seam: string): Response {
+  const refused = new LegacySessionlessRequestError(seam);
+  return jsonResponse(409, { error: refused.reason, message: refused.message });
 }
 
 /**
@@ -188,11 +195,14 @@ export function unknownRequestStreamResponse(
   return new Response("", { status: 200, headers: SSE_HEADERS });
 }
 
+// BP-030.
 /**
  * Whether the caller may act on `record` through a request-control route
  * (retry, continue, resume, abort). With a principal, the record must be that
- * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
- * and organization when the record carries one). Without one, nothing in the
+ * principal's in the caller's tenant (`principalOwns`: user, organization
+ * and tenant, exact). A record written before organizations were stamped
+ * takes its session's organization first (`withRequestOrg`), so its
+ * owner keeps it and nobody else gains it. Without a principal, nothing in the
  * app authenticates, so there is no user to compare and the tenant is the only
  * boundary.
  *
@@ -207,13 +217,14 @@ export function unknownRequestStreamResponse(
  * handler runs, with the same answer. This is the handler's own check, and the
  * only one of the two that compares the tenant.
  */
-export function callerReachesRequest(
-  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
+export async function callerReachesRequest(
+  stores: Pick<StoreRegistry, "session">,
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId" | "sessionId" | "createdAt">,
   tenantId: string | undefined,
   principal: ResolvedPrincipal | undefined
-): boolean {
+): Promise<boolean> {
   if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
-  return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
+  return principalOwns(await withRequestOrg(stores, record), { userId: principal.userId, orgId: principal.orgId, tenantId });
 }
 
 /**
@@ -398,229 +409,22 @@ export function isResourceConfig(value: unknown): value is ResourceConfig {
   );
 }
 
-export function createScopeResources(options: {
-  scope: ScopeType;
-  configs: Record<string, unknown> | undefined;
-  persisted: Record<string, unknown> | undefined;
-  persistedContent?: Record<string, string> | undefined;
-  // FIX-858.
-  /**
-   * Trusted context for reading projected collections through their
-   * `read` backing when a scope-level `client.data` function references one.
-   * Omitted when the scope has no projected collections.
-   */
-  projectedContext?: ProjectedResourceContext;
-  /**
-   * The session's user. A collection lists and reads only the keys
-   * {@link ownerKeyAdmits} admits for this user; without one, no row
-   * keyed to an owner.
-   */
-  userId?: string;
-}): Record<string, Record<string, unknown>> {
-  const handles: Record<string, Record<string, unknown>> = {};
-  const contentMap = options.persistedContent ?? {};
-  const storageKeys = resourceStorageKeys(options.configs);
-
-  for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
-    if (isProjectedResourceCollection(maybeConfig)) {
-      // FIX-858: read-through handle for a scope `client.data` reading an
-      // projected collection. `get`/`getOptional` route through `read`; `list`
-      // does not enumerate the app source (discovery is via the list/search
-      // route), so it returns empty here.
-      const extConfig = maybeConfig as unknown as ProjectedResourceCollectionConfig &
-        ResourceCollectionConfig;
-      const pattern = extConfig.pattern;
-      const readThrough = async (
-        key: string | Record<string, string>
-      ): Promise<Record<string, unknown> | undefined> => {
-        if (options.projectedContext === undefined) return undefined;
-        const storageKey = resolveCollectionKey(pattern, key);
-        // Reject out-of-pattern keys before the app hook, matching the item
-        // route and the execution-context handle — a single-level `positions/*`
-        // must not resolve `positions/AAPL/history` through `read`.
-        if (!matchesPattern(pattern, storageKey)) return undefined;
-        if (!ownerKeyAdmits(extConfig, storageKey, options.userId)) return undefined;
-        const state = await readProjectedRecord<JsonObject>(
-          extConfig,
-          extractBareTopic(pattern, storageKey),
-          options.projectedContext
-        );
-        if (state === undefined) return undefined;
-        // Same read-only ref shape (and template rendering) as the execution
-        // context's handle — built by the shared helper so the two can't drift.
-        return buildProjectedResourceRef({
-          scope: options.scope as ResourceScope,
-          storageKey,
-          readState: () => (isJsonObject(state) ? state : {}),
-          contentTemplate: extConfig.contentTemplate,
-          contentTemplateRef: extConfig.contentTemplateRef,
-          resolveTemplateRef: (ref) => (typeof contentMap[ref] === "string" ? contentMap[ref]! : null),
-        }) as unknown as Record<string, unknown>;
-      };
-      // `list`/`count` DON'T enumerate the app source (discovery is the cursor-
-      // paged list/search route — a follow-up). Throw rather than return a false
-      // empty `[]`/`0` — the same "never lie about cardinality" stance as the
-      // 501 list-state route and the snapshot's absent count.
-      const unsupportedEnumeration = (method: string): never => {
-        throw new Error(
-          `${method}() is not supported for projected collection "${pattern}" in a client.data projection — read instances by key; listing/search pushdown is a follow-up`
-        );
-      };
-      handles[resourceName] = {
-        pattern,
-        config: extConfig,
-        projected: true,
-        async list() {
-          return unsupportedEnumeration("list");
-        },
-        async count() {
-          return unsupportedEnumeration("count");
-        },
-        async get(key: string | Record<string, string>) {
-          if (!ownerKeyAdmits(extConfig, resolveCollectionKey(pattern, key), options.userId)) {
-            throw new Error(OWNER_RESOURCE_REFUSAL);
-          }
-          const ref = await readThrough(key);
-          if (ref === undefined) {
-            throw new Error(
-              `Resource instance "${resolveCollectionKey(pattern, key)}" not found in projected collection "${pattern}"`
-            );
-          }
-          return ref;
-        },
-        async getOptional(key: string | Record<string, string>) {
-          return readThrough(key);
-        },
-      };
-      continue;
-    }
-    if (isCollectionConfig(maybeConfig)) {
-      // Build a lightweight read-only collection ref for clientData computation.
-      // Instances are stored as path-keyed entries in the persisted resources map.
-      const pattern = maybeConfig.pattern;
-      const collection = maybeConfig;
-      const persisted = options.persisted ?? {};
-      const visible = (key: string): boolean =>
-        matchesPattern(pattern, key) && ownerKeyAdmits(collection, key, options.userId);
-
-      function makeInstanceRef(key: string, value: unknown) {
-        return {
-          path: key,
-          scope: options.scope,
-          uri: `${options.scope}/${key}`,
-          get state() { return isJsonObject(value) ? value : {}; },
-          async readContent() { return contentMap[key] ?? null; },
-          async readContentRaw() { return contentMap[key] ?? null; }
-        };
-      }
-
-      handles[resourceName] = {
-        pattern,
-        config: maybeConfig,
-        list() {
-          return Object.entries(persisted)
-            .filter(([key]) => visible(key))
-            .map(([key, value]) => makeInstanceRef(key, value));
-        },
-        count() {
-          return Object.keys(persisted).filter(visible).length;
-        },
-        get(key: string | Record<string, string>) {
-          const storageKey = resolveCollectionKey(pattern, key);
-          if (!ownerKeyAdmits(collection, storageKey, options.userId)) {
-            throw new Error(OWNER_RESOURCE_REFUSAL);
-          }
-          const value = persisted[storageKey];
-          if (value === undefined) {
-            throw new Error(`Resource instance "${storageKey}" not found in collection "${pattern}"`);
-          }
-          return makeInstanceRef(storageKey, value);
-        },
-        getOptional(key: string | Record<string, string>) {
-          const storageKey = resolveCollectionKey(pattern, key);
-          if (!ownerKeyAdmits(collection, storageKey, options.userId)) return undefined;
-          const value = persisted[storageKey];
-          if (value === undefined) return undefined;
-          return makeInstanceRef(storageKey, value);
-        }
-      };
-      continue;
-    }
-
-    if (!isResourceConfig(maybeConfig)) {
-      continue;
-    }
-
-    const storageKey = storageKeys[resourceName] ?? resourceName;
-    const readState = (): JsonObject =>
-      cloneValue(
-        normalizeResourceState(
-          maybeConfig,
-          options.persisted?.[storageKey]
-        )
-      );
-
-    handles[resourceName] = {
-      path: storageKey,
-      scope: options.scope,
-      uri: `${options.scope}/${storageKey}`,
-      config: maybeConfig,
-      get state() {
-        return readState();
-      }
-    };
-  }
-
-  return handles;
-}
-
 /**
- * Build the client-visible state object for a single scope.
- *
- * Consumes a normalized `ScopeClientConfig` (as produced by `defineFlow`):
- *   - `expose` keys copy `state[name]` verbatim into the output.
- *   - `derived` keys call the compute fn with `{ state, resources }`.
- *
- * The query-param filter (`?clientData=session.foo,user.bar`) is applied
- * uniformly to both kinds — `expose` and `derived` share the same
- * `clientData.<scope>` namespace on the wire. Name-collision guarding
- * happens at definition time, not here.
+ * Build the client-visible state object for a single scope: each `expose`
+ * key copies `state[name]` verbatim. The query-param filter
+ * (`?clientData=session.foo,user.bar`) picks which names are sent.
  */
-export async function computeClientData(options: {
-  config: { expose?: ReadonlyArray<string>; derived?: Record<string, unknown> } | undefined;
+export function computeClientData(options: {
+  config: { expose?: ReadonlyArray<string> } | undefined;
   scope: ClientDataScope;
   filter: ClientDataFilter | undefined;
   state: JsonObject;
-  resources: Record<string, Record<string, unknown>>;
-}): Promise<Record<string, unknown>> {
+}): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const config = options.config;
-  if (config === undefined) return out;
-
-  for (const name of config.expose ?? []) {
-    if (!shouldIncludeClientData(options.filter, options.scope, name)) {
-      continue;
-    }
+  for (const name of options.config?.expose ?? []) {
+    if (!shouldIncludeClientData(options.filter, options.scope, name)) continue;
     out[name] = (options.state as Record<string, unknown>)[name];
   }
-
-  for (const [name, compute] of Object.entries(config.derived ?? {})) {
-    if (typeof compute !== "function") {
-      continue;
-    }
-
-    if (!shouldIncludeClientData(options.filter, options.scope, name)) {
-      continue;
-    }
-
-    out[name] = await (
-      compute as (ctx: { state: JsonObject; resources: Record<string, unknown> }) => unknown
-    )({
-      state: options.state,
-      resources: options.resources
-    });
-  }
-
   return out;
 }
 
@@ -744,8 +548,9 @@ export async function buildResourceSnapshot(options: {
  * The request's physical log is collapsed to its canonical view first:
  * a resumed request's suspending block re-emits its pre-suspension
  * items, and the superseded copies must not surface. Per request, because
- * logical ids are scoped by request id. Then either the caller's type filter
- * or, without one, client visibility decides what stays.
+ * logical ids are scoped by request id. Without a type filter, client
+ * visibility decides what stays; with one, the named types stay, and a
+ * client-hidden item of a named type only while trace observability is on.
  *
  * The one filter behind both the session snapshot (`GET /sessions/:id/state`)
  * and the session stream (`GET /sessions/:id/stream`), so a live view and a
@@ -760,10 +565,32 @@ export function snapshotItemsOf(
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
-  // Visibility drops trace rows unless `itemTypes` names one.
-  return collapseToCanonicalLog(items).filter((item) =>
-    itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
-  ) as OutputItem[];
+  // Visibility drops client-hidden rows unless `itemTypes` names one and
+  // trace observability is on: naming a type is the caller's request, not a grant.
+  // Asked at most once per call: `traceRequestAllowed` warns when it refuses.
+  let hiddenAllowed: boolean | undefined;
+  return collapseToCanonicalLog(items).filter((item) => {
+    if (itemTypes === undefined) return resolveItemVisibility(item).client;
+    if (!itemTypes.has(item.type)) return false;
+    return resolveItemVisibility(item).client || (hiddenAllowed ??= traceRequestAllowed());
+  }) as OutputItem[];
+}
+
+/**
+ * Whether a caller's request for client-hidden items (`?include=trace`, or an
+ * `item_types` filter naming a hidden item) may be honoured. Call it only when
+ * such a request was made. The answer is the server's trace-observability gate
+ * (`isTraceObservabilityEnabled`: on outside production, and in production
+ * only with `FSDEV_TRACE_OBSERVABILITY=true`), never the query string. A
+ * refused request is logged once per process, and the caller gets the client view.
+ */
+export function traceRequestAllowed(): boolean {
+  if (isTraceObservabilityEnabled()) return true;
+  warnOnce(
+    "engine/trace-request-ignored",
+    "a request for trace items (`?include=trace` or `item_types` naming a client-hidden item) was ignored because trace observability is off; set FSDEV_TRACE_OBSERVABILITY=true to serve them"
+  );
+  return false;
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {
@@ -864,6 +691,10 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
 }
 
 export function errorStatus(error: Error): number {
+  if (error instanceof JsonMediaTypeError) {
+    return 415;
+  }
+
   if (error instanceof ValidationError) {
     return 400;
   }
@@ -875,10 +706,33 @@ export function errorStatus(error: Error): number {
   return 500;
 }
 
+/**
+ * A JSON route got a non-empty body without an `application/json` media type.
+ * The router answers 415. Requiring the type is what forces a browser to send
+ * a CORS preflight before a cross-site write, so a `text/plain` form post or
+ * `fetch` can't start runs on a local server.
+ */
+export class JsonMediaTypeError extends Error {
+  constructor() {
+    super("Request body must be sent with content-type: application/json");
+    this.name = "JsonMediaTypeError";
+  }
+}
+
+
+/**
+ * The one JSON body reader for mutating routes. An empty body is `{}`; a
+ * non-empty body must carry `content-type: application/json` (parameters such
+ * as `; charset=utf-8` are fine) or it throws {@link JsonMediaTypeError}.
+ */
 export async function parseJsonBody(request: Request): Promise<Record<string, unknown>> {
   const text = await request.text();
   if (text.trim().length === 0) {
     return {};
+  }
+
+  if (!isJsonMediaType(request.headers.get("content-type"))) {
+    throw new JsonMediaTypeError();
   }
 
   const parsed = JSON.parse(text);

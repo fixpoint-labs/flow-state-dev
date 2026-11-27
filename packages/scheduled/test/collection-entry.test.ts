@@ -1,7 +1,10 @@
 /**
- * `@flow-state-dev/scheduled/collection` loads no engine: Workforce defines its
- * schedules from it and must not load the engine (its package rules deny it).
- * Walks the entry's relative imports and reads every package each file imports.
+ * `@flow-state-dev/scheduled` loads no engine, from any entry: Workforce
+ * defines its schedules from it and must not load the engine (its package
+ * rules deny it), and the engine's own scheduled endpoint is what a schedule
+ * fires through, so the engine never imports this package and this package
+ * never imports the engine. Walks each entry's relative imports and reads
+ * every package each file imports.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -31,17 +34,18 @@ function graph(entry: string): Map<string, string[]> {
   return seen;
 }
 
-describe("the collection entry", () => {
-  it("loads no engine, at any depth", () => {
-    const loaded = graph("collection.ts");
-    expect(loaded.size).toBeGreaterThan(1);
+describe("the package's entries", () => {
+  it.each(["index.ts", "collection.ts", "testing.ts"])("%s loads no engine, at any depth", (entry) => {
+    const loaded = graph(entry);
     const engine = [...loaded].filter(([, packages]) => packages.some((p) => p.startsWith("@flow-state-dev/engine")));
     expect(engine.map(([file]) => file)).toEqual([]);
   });
 
-  it("would see the engine the root entry loads", () => {
-    // The walk is able to fail: the root entry mounts the endpoint, which does load it.
+  it("would see a package an entry loads", () => {
+    // The walk is able to fail: it reaches past the entry file and reads the
+    // packages the files it reaches import.
     const loaded = graph("index.ts");
-    expect([...loaded.values()].flat()).toContain("@flow-state-dev/engine");
+    expect(loaded.size).toBeGreaterThan(1);
+    expect([...loaded.values()].flat()).toContain("@flow-state-dev/core");
   });
 });

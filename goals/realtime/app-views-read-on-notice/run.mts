@@ -5,59 +5,103 @@
  * covers an app that runs as one process, so no view keeps its fallback timer
  * while its socket is open: FIX-2545), and the apps' views that this change moved,
  * driven directly with real clients (Node's `fetch` and `WebSocket`): the
- * claude-code-style lab's thread (its running turn) and pins, the Teammates
- * lab's conversation (whether it is answering) and its divider, and Shift
- * Manager's worker conversation (`followSessionItems`, the hook's follow).
- * Each view has its own client, whose fetcher counts the reads it makes.
+ * claude-code-style lab's thread (its running turn) and pins (its `useThread`
+ * and `usePins`, under its own `LabProvider`), the Teammates
+ * lab's conversation (whether it is answering, from workforce's session turns
+ * view), its divider (the history summary, by `useResource` with the session's
+ * id), both read by the conversation's follower, and its Talk lines (`useTalk`,
+ * workforce's worker messages view), under its `AppProvider`, and Shift Manager's worker
+ * conversation (the client's `sessionFeed`, which its shared session feed holds), its message log
+ * (`useMessages`), a project's entries (`useProjectWorkstreams`) and a task screen
+ * waiting on its run's link (`TaskProvider`), the last three under the real
+ * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
+ * client, whose fetcher counts the reads it makes.
  *
- *   a  — another session writes: a slow turn in the watched session, a pin.
- *        Each view shows it within 1 s of the write. Then a 10 s idle window:
- *        every view makes 0 reads.
+ *   a  — another session writes: a slow turn in the watched session, a pin,
+ *        a message in the log, a project's entry. Each view shows it within
+ *        1 s of the write; a Lab read reads the log and the entries again. Then
+ *        a 10 s idle window: every view makes 0 reads. A task screen waits on
+ *        a task the board hasn't dispatched: 0 board reads over 10 s, then it
+ *        shows the run the board links within 1 s of the link's write.
  *   b  — a reply of 200 items, then one of 2, in the watched session: each
  *        request view makes as many reads during the long reply as during
  *        the short one, and the item view reads nothing (the stream brings
  *        the items).
  *   c  — the same views on a host whose bus doesn't cross (the crossing
- *        double turned off): a pin and a turn show within the view's old pace + 1 s.
+ *        double turned off): a pin, a turn, a message, a project's entry and a
+ *        task's run link show within the view's old pace + 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
- *   GOAL_CONTROL=timer       each lab view keeps a fixed timer with the socket up: a's 0-reads must FAIL.
- *   GOAL_CONTROL=every-kind  the lab views read on every notice on their topic: b must FAIL.
+ *   GOAL_CONTROL=timer       each live read keeps a fixed timer with the socket up: a's 0-reads must FAIL.
+ *   GOAL_CONTROL=every-kind  the live reads read on every notice on their topic: b must FAIL.
  */
+import { Window } from "happy-dom";
+import * as React from "react";
+import { createElement, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createClient, type Client } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import {
+  defineProjectsCollection,
+  workerMessagesResources,
+  WORKER_MESSAGES_RESOURCE,
+  WORKSTREAM_RESOURCES,
+  workstreamEntryKey,
+} from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { runPatchedGoal, goalTmpDir, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { definePinsFlow } from "../../../labs/claude-code-style/workforce/flows/pins.mts";
-import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
-import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
-import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
+import { runPatchedGoal, goalTmpDir, kitFlows, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
+import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
+import { AppProvider as TmAppProvider, ConversationFollower as TmConversationFollower, useConversation as useTmConversation } from "../../../labs/teammates/src/app/index.ts";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
+import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
+import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
+import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { useProjectWorkstreams } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
+import { PageReadsProvider, useReadPageAgain } from "../../../packages/shift-manager/src/lib/page-reads.tsx";
+import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/boards.ts";
+import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-app-views");
 const BOUND_MS = 1_000;
 const IDLE_MS = 10_000;
 const ORG = "acme";
-const LABS = ["labs/claude-code-style/src/adapter.ts", "labs/teammates/src/adapter.ts"];
+// The views that read on a notice are the client's live read (`client.live`):
+// the labs' watches and Shift Manager's message log, project entries and task run
+// link (and its snapshot, whose Lab reads read the log and the entries again). Shift Manager's conversation follows the
+// session stream instead. A patch to the live read reaches every one of them.
+const LIVE_READ = "packages/client/src/live/live-read.ts";
+/** The Talk panel's worker, and the shared project whose entries the Shift Manager view reads. */
+const TALK_WORKER = "researcher";
+const PROJECT = "apollo";
 
 const PATCHES: Record<string, ModulePatch[]> = {
   // A fixed timer beside the subscription, as a view that kept its poll would.
-  timer: LABS.map((module) => ({
-    module,
-    from: String.raw`const subscription = (fsd|client)\.subscribe\(topics, \{`,
-    to: "setInterval(() => void (typeof tick === 'function' ? tick() : run()), everyMs); const subscription = $1.subscribe(topics, {",
-  })),
+  timer: [
+    {
+      module: LIVE_READ,
+      from: String.raw`let subscription = subscribeTo\(topics\);`,
+      to: "let subscription = subscribeTo(topics); setInterval(() => reads.request(null), pollIntervalMs ?? 1_500);",
+    },
+  ],
   // Every notice on the topic reads, `items` included.
-  "every-kind": LABS.map((module) => ({
-    module,
-    from: String.raw`if \(notice === null \|\| notice\.kind === "resync" \|\| hears\(notice\)\)`,
-    to: "if (true)",
-  })),
+  "every-kind": [
+    {
+      module: LIVE_READ,
+      from: String.raw`if \(notice === null \|\| heard\(notice\)\) reads\.request\(notice\);`,
+      to: "reads.request(notice);",
+    },
+  ],
 };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
@@ -73,21 +117,76 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
   }).status);
 }
 
+const happy = new Window();
+// tsx compiles the apps' `.tsx` files with the classic JSX transform, which calls the global `React`.
+Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_ACT_ENVIRONMENT: false, React });
+
 // ---------------------------------------------------------------------------
-// The app: a turn that writes `count` messages, holding `holdMs` first; pins
+// The app: a turn that writes `count` messages, holding `holdMs` first; pins;
+// a row in the user's message log; a project and an entry of it. Kitchen
+// Sink's workforce, whose roster flow and worker flows declare the log, the
+// projects and their entries, is what the views read them through.
 // ---------------------------------------------------------------------------
+
+/** The log, the shared projects and their entries, as the roster flow declares them. */
+const WRITES = { ...workerMessagesResources, projects: defineProjectsCollection(), ...WORKSTREAM_RESOURCES };
 
 function deskFlow(): FlowInstance {
   return defineFlow({
     kind: "desk",
+    resources: WRITES,
     actions: {
+      // A message from the Talk panel's worker, as `sendMessage` logs it: one it waits on a reply to, so it is open.
+      logMessage: {
+        block: handler({
+          name: "log-message",
+          inputSchema: z.object({ id: z.string() }),
+          outputSchema: z.object({}).passthrough(),
+          resources: WRITES,
+          execute: async ({ id }, ctx) => {
+            const at = Date.now();
+            await ctx.resources[WORKER_MESSAGES_RESOURCE].create(id, {
+              id, exchange: id, from: TALK_WORKER, to: "writer", text: `line ${id}`, at,
+              fromSession: ctx.session.identity.id, fromFlow: "desk", toSession: ctx.session.identity.id, toFlow: "desk", hop: 1, status: "delivered", replyRequested: true,
+            });
+            return {};
+          },
+        }),
+      },
+      openProject: {
+        block: handler({
+          name: "open-project",
+          inputSchema: z.object({}),
+          outputSchema: z.object({}).passthrough(),
+          resources: WRITES,
+          execute: async (_input, ctx) => {
+            await ctx.resources.projects.create(PROJECT, { id: PROJECT, title: "Apollo", ownerUserId: "alice", members: ["alice"] });
+            return {};
+          },
+        }),
+      },
+      // A workstream entry, as the project coordinator's open writes it.
+      openEntry: {
+        block: handler({
+          name: "open-entry",
+          inputSchema: z.object({ id: z.string() }),
+          outputSchema: z.object({}).passthrough(),
+          resources: WRITES,
+          execute: async ({ id }, ctx) => {
+            const now = new Date().toISOString();
+            await ctx.resources.workstreams.create(workstreamEntryKey(PROJECT, "alice", id), {
+              title: `The ${id}`, lead: "researcher", sessionId: null, status: "on-track", due: null, objectives: [], openedAt: now, updatedAt: now, writtenBy: { userId: "alice" },
+            });
+            return {};
+          },
+        }),
+      },
       respond: {
-        inputSchema: z.object({ message: z.string(), count: z.number().default(1), holdMs: z.number().default(0) }),
         block: handler({
           name: "respond",
           inputSchema: z.object({ message: z.string(), count: z.number().default(1), holdMs: z.number().default(0) }),
           outputSchema: z.object({}).passthrough(),
-          execute: async ({ message, count, holdMs }, ctx: any) => {
+          execute: async ({ message, count, holdMs }, ctx) => {
             if (holdMs > 0) await new Promise((r) => setTimeout(r, holdMs));
             // One item at a time, as a streamed reply stores them: each is its own `items` notice.
             for (let i = 0; i < count; i++) {
@@ -111,8 +210,10 @@ type Host = { handle: ServeHandle; base: string; stores: StoreRegistry };
  */
 async function host(bus: "default" | "not-crossing"): Promise<Host> {
   const registry = createFlowRegistry();
+  for (const copy of await kitFlows([kitchenSinkWorkforce()])) registry.register(copy);
   registry.register(deskFlow());
-  registry.register(definePinsFlow()() as unknown as FlowInstance);
+  // The lab's pins: a user resource the host declares, written through the default write flow.
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { appPins }, actions: {} } as never)() as unknown as FlowInstance);
   const memory = createInMemoryStores();
   const notCrossing = crossingBus();
   notCrossing.setCrossing(false);
@@ -121,8 +222,9 @@ async function host(bus: "default" | "not-crossing"): Promise<Host> {
     registry,
     stores,
     staleSweepIntervalMs: 0,
+    // Every view's own credential is alice's, so each one's reads are counted apart.
     resolvePrincipal: (context) =>
-      (context.request?.headers.get("authorization") ?? "") === "Bearer tok-alice" ? { userId: "alice", orgId: ORG } : null,
+      (context.request?.headers.get("authorization") ?? "").startsWith("Bearer tok-") ? { userId: "alice", orgId: ORG } : null,
   });
   const handle = await serve(router, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200 });
   return { handle, base: `http://127.0.0.1:${handle.port}`, stores };
@@ -138,7 +240,7 @@ function clientOf(on: Host): { client: Client; reads: Read[] } {
     baseUrl: on.base,
     fetcher: (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      const isRead = (init?.method ?? "GET") === "GET" || url.includes("/reads/");
+      const isRead = (init?.method ?? "GET") === "GET" || url.includes("/views/");
       if (isRead && !url.includes("/stream") && !url.includes("/capabilities")) reads.push({ at: Date.now(), url });
       return fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: "Bearer tok-alice" } });
     },
@@ -147,6 +249,25 @@ function clientOf(on: Host): { client: Client; reads: Read[] } {
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Reads made under each Shift Manager credential: its provider builds its own
+ * client from a connection, so they are counted at the page's `fetch`. A
+ * view's read is a POST to its `/views/` path, so it counts as a read too.
+ */
+const pageReads = new Map<string, Read[]>();
+const realFetch = globalThis.fetch;
+globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input instanceof Request ? input.url : input);
+  const auth = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get("authorization") ?? "";
+  const reads = pageReads.get(auth.replace(/^Bearer /, ""));
+  if (reads !== undefined && ((init?.method ?? "GET") === "GET" || url.includes("/reads/") || url.includes("/views/")) && !url.includes("/stream")) reads.push({ at: Date.now(), url: decodeURIComponent(url) });
+  return realFetch(input, init);
+};
+let mounts = 0;
+
+/** What the Shift Manager project view drew. */
+type ProjectShown = { entries: string[] };
 
 async function firstAt<T>(seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, from: number, withinMs: number): Promise<number | undefined> {
   const deadline = Date.now() + withinMs;
@@ -184,33 +305,240 @@ function mountViews(on: Host, sessionId: string) {
   const cc = clientOf(on);
   const ccThread = record<ThreadView>();
   const ccPins = record<string[]>();
-  const ccLab = createWiredLab(cc.client);
   const pinsClient = clientOf(on);
+  // The Claude Code-style lab's thread and pins, as its screen reads them: each on its own client.
+  function CcThreadProbe() {
+    const view = useCcThread(sessionId);
+    useEffect(() => {
+      if (view !== undefined) ccThread.push({ at: Date.now(), value: view });
+    }, [view]);
+    return null;
+  }
+  function CcPinsProbe() {
+    const pins = useCcPins();
+    useEffect(() => {
+      if (pins !== undefined) ccPins.push({ at: Date.now(), value: pins });
+    }, [pins]);
+    return null;
+  }
+  const ccRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  ccRoot.render(
+    createElement(React.Fragment, null, [
+      createElement(CcAppProvider, { key: "thread", client: cc.client, children: createElement(CcThreadProbe) }),
+      createElement(CcAppProvider, { key: "pins", client: pinsClient.client, children: createElement(CcPinsProbe) }),
+    ]),
+  );
   const tm = clientOf(on);
   const tmConversation = record<ConversationView>();
-  const tmWindowReads = clientOf(on);
+  // Teammates' conversation under its provider: its one follower, as the page mounts one per teammate, and what it read.
+  function TmConversationProbe() {
+    const view = useTmConversation(sessionId)?.view;
+    useEffect(() => {
+      if (view !== undefined) tmConversation.push({ at: Date.now(), value: view });
+    }, [view]);
+    return null;
+  }
+  const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  tmRoot.render(
+    createElement(TmAppProvider, {
+      client: tm.client,
+      children: [createElement(TmConversationFollower, { key: "follower", sessionId }), createElement(TmConversationProbe, { key: "probe" })],
+    }),
+  );
   const sm = clientOf(on);
-  const smItems = record<SessionItems>();
+  const smItems = record<{ items: readonly OutputItem[]; truncated: boolean }>();
+  const talk = clientOf(on);
+  const tmTalk = record<{ id: string }[]>();
+  // Teammates' Talk lines under its provider: the worker's open messages, as its screen reads them.
+  function TalkProbe() {
+    const rows = useTalk(TALK_WORKER);
+    const key = rows === undefined ? null : rows.map((m) => m.id).join(",");
+    useEffect(() => {
+      if (rows !== undefined) tmTalk.push({ at: Date.now(), value: rows });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+    return null;
+  }
+  const talkRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  talkRoot.render(createElement(TmAppProvider, { client: talk.client, children: createElement(TalkProbe) }));
+  // Shift Manager under its real provider: a project's entries, as its view reads them.
+  const smToken = `tok-sm-${(mounts += 1)}`;
+  const smReads: Read[] = [];
+  pageReads.set(smToken, smReads);
+  const smProject = record<ProjectShown>();
+  const smMessages = record<string[]>();
+  let labRead: () => void = () => {};
+  function ProjectProbe() {
+    const { snapshot } = useLab();
+    // FIX-2775: R reads again what the page holds, each screen's own reads included.
+    labRead = useReadPageAgain();
+    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
+    // FIX-2775: the entries are read on their own, by the project's prefix, from the moment the view draws them.
+    const { value } = useProjectWorkstreams({ visibility: "shared", id: PROJECT });
+    const entries = value === undefined ? undefined : value.entries.map((e) => e.id);
+    const key = entries === undefined ? null : entries.join(",");
+    useEffect(() => {
+      if (entries !== undefined) smProject.push({ at: Date.now(), value: { entries } });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+    // The Messages view reads the log once the Lab has let Shift Manager in.
+    return loaded === undefined ? null : createElement(MessagesProbe);
+  }
+  function MessagesProbe() {
+    const { rows } = useMessages();
+    const ids = rows == null ? undefined : rows.map((m) => m.id);
+    const key = ids === undefined ? null : ids.join(",");
+    useEffect(() => {
+      if (ids !== undefined) smMessages.push({ at: Date.now(), value: ids });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+    return null;
+  }
+  const smRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(PageReadsProvider, { children: createElement(ProjectProbe) }) }));
   const stops = [
-    ccLab.watchThread(sessionId, (value) => ccThread.push({ at: Date.now(), value })),
-    createWiredLab(pinsClient.client).watchPins((value) => ccPins.push({ at: Date.now(), value })),
-    createLabAdapter(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
-    createLabAdapter(tmWindowReads.client).watchWindow(sessionId, () => {}),
-    followSessionItems(sm.client, sessionId, { onRead: (value) => smItems.push({ at: Date.now(), value }), onFailure: () => {} }),
+    () => ccRoot.unmount(),
+    () => tmRoot.unmount(),
+    // Shift Manager's conversation reads its session through one shared feed: the client's `sessionFeed`.
+    (() => {
+      const feed = sessionFeed(sm.client, sessionId);
+      let last: readonly OutputItem[] | undefined;
+      const stop = feed.subscribe(({ items, hasEarlier, historyLoaded }) => {
+        if (!historyLoaded || items === last) return;
+        last = items;
+        smItems.push({ at: Date.now(), value: { items, truncated: hasEarlier } });
+      });
+      return () => {
+        stop();
+        feed.close();
+      };
+    })(),
+    () => talkRoot.unmount(),
+    () => smRoot.unmount(),
   ];
-  const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
+  // The Claude Code-style thread reads its turns through workforce's session turns view.
+  const turnReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/views/sessionTurns"));
+  // One project read lists its entries by the project's one prefix.
+  const entryReads = () => smReads.filter((r) => r.url.includes(`topicPrefix=workstreams/${PROJECT}/`));
+  // One log read lists the user's `workforce/messages/*`.
+  const logReads = () => smReads.filter((r) => r.url.includes("workforce/messages"));
   return {
-    shown: { ccThread, ccPins, tmConversation, smItems },
+    shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages },
+    labRead: async () => labRead(),
     reads: {
-      "claude-code-style thread (running turn)": () => requestReads(cc.reads),
+      "claude-code-style thread (running turn)": () => turnReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
-      "Teammates conversation (answering)": () => requestReads(tm.reads),
-      "Teammates divider": () => tmWindowReads.reads,
+      "Teammates conversation (answering)": () => turnReads(tm.reads),
+      // The divider's own read: the session's state without its items, for the history summary's mark.
+      "Teammates divider": () => tm.reads.filter((r) => r.url.includes("/state") && r.url.includes("include_items=false")),
       "Shift Manager conversation": () => sm.reads,
+      "Teammates Talk": () => talk.reads.filter((r) => r.url.includes("/views/workerMessages")),
+      "Shift Manager project entries": entryReads,
+      "Shift Manager message log": logReads,
     } as Record<string, () => Read[]>,
-    all: [cc.reads, pinsClient.reads, tm.reads, tmWindowReads.reads, sm.reads],
+    all: [cc.reads, pinsClient.reads, tm.reads, sm.reads, talk.reads, smReads],
     close: () => stops.forEach((stop) => stop()),
   };
+}
+
+/** Before the views mount: alice's roster and the shared project. */
+async function opened(writer: Client, sessionId: string): Promise<void> {
+  await createWorkforceClient(writer).roster();
+  await (await writer.flow("desk").send("openProject", {}, { sessionId })).wait();
+}
+
+/** Until every view has shown its first read (15 s at most). */
+async function mounted(views: ReturnType<typeof mountViews>): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  const { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages } = views.shown;
+  while (![ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages].every((seen) => seen.length > 0)) {
+    if (Date.now() > deadline) throw new Error(`setup: not every view read on open (${Object.entries(views.shown).map(([name, seen]) => `${name}:${seen.length}`).join(" ")})`);
+    await delay(20);
+  }
+  await delay(500);
+}
+
+/** A task screen's run link pace wherever push can miss a change: since FIX-2776 its row comes from the task-list view, so `useView`'s default (`LIVE_POLL_MS` in the client's `live-read.ts`). */
+const RUN_LINK_POLL_MS = 3_000;
+
+/**
+ * A task screen waiting on its run's link, under its own provider and
+ * credential so its board reads are counted apart. Its task, filed on a
+ * coordinator conversation, waits on a held task, so nothing dispatches it;
+ * the screen follows it (as after a board action), so it waits for the board
+ * to hand it a run. `dispatch` drops the dependency: the board then claims it
+ * and writes the run's link to the row, and says when the link landed.
+ */
+async function taskScreen(on: Host, writer: Client) {
+  const conversation = await createWorkforceClient(writer).ensureWorkerSession({ worker: "support.help" });
+  const act = async (name: string, input: unknown) =>
+    ((await (await writer.flow(conversation.flowKind).send(name, input, { sessionId: conversation.id })).result()) as { output?: { taskId?: string } }).output;
+  const gate = (await act("createTask_tasks", { goal: "gate", assignee: "support.devices", held: true }))!.taskId!;
+  const taskId = (await act("createTask_tasks", { goal: "waits on the gate", assignee: "support.devices", deps: [gate], maxAttempts: 1 }))!.taskId!;
+  const token = `tok-task-${(mounts += 1)}`;
+  const reads: Read[] = [];
+  pageReads.set(token, reads);
+  const shown: Array<{ at: number; value: { waiting: boolean; linked: boolean } }> = [];
+  let follow: () => void = () => {};
+  function Shown() {
+    const task = useTask();
+    follow = task.retryRow;
+    const linked = task.row?.run != null;
+    useEffect(() => {
+      shown.push({ at: Date.now(), value: { waiting: task.waiting, linked } });
+    }, [task.waiting, linked]);
+    return null;
+  }
+  function Screen() {
+    const { snapshot } = useLab();
+    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
+    if (loaded === undefined || !loaded.sessions.some((session) => session.id === conversation.id)) return null;
+    return createElement(TaskProvider, { boardRef: conversationBoardRef(conversation.id), taskId, children: createElement(Shown) });
+  }
+  const root: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  root.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: token, baseUrl: on.base }, children: createElement(Screen) }));
+  const giveUpAt = Date.now() + 15_000;
+  while (shown.length === 0) {
+    if (Date.now() > giveUpAt) throw new Error("setup: the task screen never opened");
+    await delay(20);
+  }
+  follow();
+  while (!shown.at(-1)!.value.waiting) {
+    if (Date.now() > giveUpAt) throw new Error("setup: the task screen never waited on its run");
+    await delay(20);
+  }
+  return {
+    shown,
+    // One read of the conversation's board: the task screen's view of it (a POST), or the snapshot's (which reads only on a notice).
+    boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`) || r.url.includes("/views/listTasks_tasks")),
+    all: reads,
+    async dispatch(): Promise<number> {
+      await act("updateTask_tasks", { id: taskId, deps: [] });
+      for (const until = Date.now() + 5_000; Date.now() < until; await delay(5)) {
+        const rows = Object.values(await on.stores.resourceState.getByPrefix("user", `alice:~org:${ORG}`, "tasks/")) as Array<{ state: { id?: string; run?: unknown } }>;
+        if (rows.some((row) => row.state.id === taskId && row.state.run != null)) return Date.now();
+      }
+      throw new Error("setup: the board never linked the task's run");
+    },
+    close: () => root.unmount(),
+  };
+}
+
+/** Run `action` in the writer's session; when it landed. */
+async function writeIn(writer: Client, sessionId: string, action: string, input: unknown): Promise<number> {
+  await (await writer.flow("desk").send(action, input, { sessionId })).wait();
+  return Date.now();
+}
+
+/** How long after `writtenAt` a view first showed `match` (within `withinMs`); one shown before the write landed reads 0. */
+async function shownAfter<T>(seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, writtenAt: number, withinMs = 3_000): Promise<number | undefined> {
+  const at = await firstAt(seen, match, 0, withinMs);
+  return at === undefined ? undefined : Math.max(0, at - writtenAt);
+}
+
+/** Run `action` in the writer's session; how long after it landed the view showed `match` (within `withinMs`). */
+async function written<T>(writer: Client, sessionId: string, action: string, input: unknown, seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, withinMs = 3_000): Promise<number | undefined> {
+  return shownAfter(seen, match, await writeIn(writer, sessionId, action, input), withinMs);
 }
 
 await runGoal(async (failures, tell) => {
@@ -224,13 +552,13 @@ await runGoal(async (failures, tell) => {
     const writer = clientOf(on).client;
     const sessionId = (await writer.flow("desk").createSession()).id;
     await (await writer.flow("desk").send("respond", { message: "hello" }, { sessionId })).wait();
-    const pinsSession = (await writer.flow("pins").createSession()).id;
+    await opened(writer, sessionId);
     const views = mountViews(on, sessionId);
     closers.push(views.close);
-    await delay(1_500);
+    await mounted(views);
     await quiet(views.all);
 
-    // a · another session writes a slow turn and a pin.
+    // a · another session writes a slow turn, a pin, a message and a project's entry.
     {
       const before = new Map(Object.entries(views.reads).map(([name, reads]) => [name, reads().length]));
       const sent = await writer.flow("desk").send("respond", { message: "slow", holdMs: 1_500 }, { sessionId });
@@ -239,25 +567,70 @@ await runGoal(async (failures, tell) => {
       const answering = await firstAt(views.shown.tmConversation, (v) => v.running, startedAt - 50, 3_000);
       const doneAt = await requestDone(on, sent.id);
       const reply = await firstAt(views.shown.smItems, (v) => v.items.some((i) => JSON.stringify(i).includes("slow 0")), doneAt - 50, 3_000);
-      await writer.flow("pins").send("pin", { taskId: "t1" }, { sessionId: pinsSession }).then((s) => s.wait());
+      await writer.resource(appPins).update((s) => ({ pinned: [...s.pinned, "t1"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(views.shown.ccPins, (v) => v.includes("t1"), pinnedAt - 200, 3_000);
+      const loggedAt = await writeIn(writer, sessionId, "logMessage", { id: "msg_a" });
+      const message = await shownAfter(views.shown.tmTalk, (v) => v.some((m) => m.id === "msg_a"), loggedAt);
+      const logged = await shownAfter(views.shown.smMessages, (v) => v.includes("msg_a"), loggedAt);
+      const entry = await written(writer, sessionId, "openEntry", { id: "research" }, views.shown.smProject, (v) => v.entries.includes("research"));
       const lat: Record<string, number | undefined> = {
         "claude-code-style running turn": thread === undefined ? undefined : thread - startedAt,
         "Teammates answering": answering === undefined ? undefined : answering - startedAt,
         "Shift Manager reply": reply === undefined ? undefined : reply - doneAt,
         "claude-code-style pin": pin === undefined ? undefined : pin - pinnedAt,
+        "Teammates Talk message": message,
+        "Shift Manager message log": logged,
+        "Shift Manager project entry": entry,
       };
       const graded = tell.over("a:within-1s · each view showing the other session's change", Object.values(lat).filter((v): v is number => v !== undefined));
       for (const [what, ms] of Object.entries(lat)) {
         if (ms === undefined) failures.push(`a:within-1s: ${what} never shown within 3 s`);
         else if (ms >= BOUND_MS) failures.push(`a:within-1s: ${what} shown ${ms} ms after the write (bound ${BOUND_MS})`);
       }
-      if (graded.length === 4 && graded.every((ms) => ms < BOUND_MS)) {
+      if (graded.length === Object.keys(lat).length && graded.every((ms) => ms < BOUND_MS)) {
         evidence.push(`a: ${Object.entries(lat).map(([what, ms]) => `${what} ${Math.max(0, ms!)} ms`).join(", ")}`);
       }
       const moved = Object.entries(views.reads).filter(([name, reads]) => reads().length > before.get(name)!);
       tell.over("a:within-1s · views that read on the changes", moved);
+
+      // A task screen waiting on its run's link: nothing read while it waits, then the link within 1 s.
+      const task = await taskScreen(on, writer);
+      closers.push(task.close);
+      await quiet([task.all]);
+      const waitFrom = task.boardReads().length;
+      await delay(IDLE_MS);
+      const waitReads = task.boardReads().length - waitFrom;
+      tell.over("a:idle-0-reads · task screen board reads over 10 s waiting on its link", [waitReads]);
+      if (waitReads > 0) failures.push(`a:idle-0-reads: Shift Manager task run link ${waitReads} board reads over ${IDLE_MS / 1000} s waiting`);
+      const linkedAt = await task.dispatch();
+      const linkShown = await shownAfter(task.shown, (v) => v.linked, linkedAt);
+      tell.over("a:within-1s · task run link shown", linkShown === undefined ? [] : [linkShown]);
+      if (linkShown === undefined || linkShown >= BOUND_MS) failures.push(`a:within-1s: Shift Manager task run link shown ${linkShown ?? "never"} ms after its write (bound ${BOUND_MS})`);
+      else if (waitReads === 0) evidence.push(`a: task screen read its board 0 times over ${IDLE_MS / 1000} s waiting, and showed the run link ${linkShown} ms after its write`);
+      task.close();
+
+      // A Lab read (Shift Manager's R, which reads again what the page holds) reads the log and the entries again, as it did before.
+      await quiet(views.all);
+      const onLabRead = ["Shift Manager message log", "Shift Manager project entries"];
+      const readsBefore = new Map(onLabRead.map((name) => [name, views.reads[name]!().length]));
+      const refreshedAt = Date.now();
+      await views.labRead();
+      const reread = new Map<string, number | undefined>();
+      for (const name of onLabRead) {
+        let at: number | undefined;
+        for (const giveUpAt = Date.now() + 3_000; at === undefined && Date.now() < giveUpAt; await delay(10)) {
+          at = views.reads[name]!().find((r) => r.at >= refreshedAt)?.at;
+        }
+        reread.set(name, at === undefined ? undefined : at - refreshedAt);
+      }
+      for (const [name, ms] of reread) {
+        if (ms === undefined || ms >= BOUND_MS) failures.push(`a:lab-read: ${name} read ${ms === undefined ? "never" : `${ms} ms`} after a Lab read (bound ${BOUND_MS})`);
+      }
+      if ([...reread.values()].every((ms) => ms !== undefined && ms < BOUND_MS)) {
+        evidence.push(`a: read again after a Lab read: ${[...reread].map(([name, ms]) => `${name} ${ms} ms`).join(", ")}`);
+      }
+      tell.over("a:lab-read · reads after a Lab read", onLabRead.flatMap((name) => views.reads[name]!().slice(readsBefore.get(name)!)));
 
       await quiet(views.all);
       const idleFrom = new Map(Object.entries(views.reads).map(([name, reads]) => [name, reads().length]));
@@ -305,22 +678,55 @@ await runGoal(async (failures, tell) => {
       const w = clientOf(plain).client;
       const s = (await w.flow("desk").createSession()).id;
       await (await w.flow("desk").send("respond", { message: "hello" }, { sessionId: s })).wait();
-      const ps = (await w.flow("pins").createSession()).id;
+      await opened(w, s);
       const fallback = mountViews(plain, s);
       closers.push(fallback.close);
-      await delay(1_500);
-      await w.flow("pins").send("pin", { taskId: "t9" }, { sessionId: ps }).then((x) => x.wait());
+      await mounted(fallback);
+      await w.resource(appPins).update((s) => ({ pinned: [...s.pinned, "t9"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(fallback.shown.ccPins, (v) => v.includes("t9"), 0, 3_000 + BOUND_MS + 500);
       const sent = await w.flow("desk").send("respond", { message: "slow", holdMs: 3_000 }, { sessionId: s });
       const startedAt = Date.now();
       const answering = await firstAt(fallback.shown.tmConversation, (v) => v.running, startedAt - 50, 1_500 + BOUND_MS + 500);
       await requestDone(plain, sent.id);
-      const lat = [pin === undefined ? undefined : pin - pinnedAt, answering === undefined ? undefined : answering - startedAt];
-      tell.over("c:within-poll · fallback views showing the change", lat.filter((v): v is number => v !== undefined));
-      if (lat[0] === undefined || lat[0] >= 3_000 + BOUND_MS) failures.push(`c:within-poll: pins on a host with no crossing bus: ${lat[0] ?? "never"} ms (bound ${3_000 + BOUND_MS})`);
-      if (lat[1] === undefined || lat[1] >= 1_500 + BOUND_MS) failures.push(`c:within-poll: Teammates answering on a host with no crossing bus: ${lat[1] ?? "never"} ms (bound ${1_500 + BOUND_MS})`);
-      if (lat.every((v) => v !== undefined)) evidence.push(`c: with no crossing bus, pins ${lat[0]} ms, answering ${lat[1]} ms`);
+      const loggedAt = await writeIn(w, s, "logMessage", { id: "msg_c" });
+      const message = await shownAfter(fallback.shown.tmTalk, (v) => v.some((m) => m.id === "msg_c"), loggedAt, 1_500 + BOUND_MS + 500);
+      const logged = await shownAfter(fallback.shown.smMessages, (v) => v.includes("msg_c"), loggedAt, 5_000 + BOUND_MS + 500);
+      const entry = await written(w, s, "openEntry", { id: "fallback" }, fallback.shown.smProject, (v) => v.entries.includes("fallback"), 5_000 + BOUND_MS + 500);
+      // The task screen: on its old pace while it waits, and the link within that pace + 1 s.
+      const task = await taskScreen(plain, w);
+      closers.push(task.close);
+      await quiet([task.all], 300);
+      const waitFrom = task.boardReads().length;
+      await delay(6_000);
+      const waitReads = task.boardReads().length - waitFrom;
+      const linkedAt = await task.dispatch();
+      const linkShown = await shownAfter(task.shown, (v) => v.linked, linkedAt, RUN_LINK_POLL_MS + BOUND_MS + 500);
+      task.close();
+      const paced: Array<[string, number | undefined, number]> = [
+        ["pins", pin === undefined ? undefined : pin - pinnedAt, 3_000],
+        ["Teammates answering", answering === undefined ? undefined : answering - startedAt, 1_500],
+        ["Teammates Talk", message, 1_500],
+        ["Shift Manager message log", logged, 5_000],
+        ["Shift Manager project entries", entry, 5_000],
+        ["Shift Manager task run link", linkShown, RUN_LINK_POLL_MS],
+      ];
+      tell.over("c:within-poll · fallback views showing the change", paced.flatMap(([, ms]) => (ms === undefined ? [] : [ms])));
+      for (const [what, ms, pace] of paced) {
+        if (ms === undefined || ms >= pace + BOUND_MS) failures.push(`c:within-poll: ${what} on a host with no crossing bus: ${ms ?? "never"} ms (bound ${pace + BOUND_MS})`);
+      }
+      if (paced.every(([, ms]) => ms !== undefined)) evidence.push(`c: with no crossing bus, ${paced.map(([what, ms]) => `${what} ${ms} ms`).join(", ")}`);
+      // The in-process double still delivers what it hears, so a fast show alone doesn't prove the old
+      // pace runs: with nothing written, each moved view still reads on its fallback timer.
+      const kept = ["Teammates Talk", "Shift Manager message log", "Shift Manager project entries"];
+      await quiet(fallback.all, 300);
+      const from = new Map(kept.map((name) => [name, fallback.reads[name]!().length]));
+      await delay(6_000);
+      const timed = [...kept.map((name) => [name, fallback.reads[name]!().length - from.get(name)!] as const), ["Shift Manager task run link (6 s waiting)", waitReads] as const];
+      tell.over("c:fallback-reads · reads per moved view over 6 s idle, no crossing bus", timed);
+      const still = timed.filter(([, n]) => n === 0);
+      if (still.length > 0) failures.push(`c:fallback-reads: ${still.map(([name]) => name).join(", ")} made no read over 6 s idle with no crossing bus`);
+      else evidence.push(`c: over 6 s idle, ${timed.map(([name, n]) => `${name} ${n}`).join(", ")} reads on the fallback pace`);
     }
   } finally {
     for (const close of closers) close();

@@ -8,6 +8,10 @@
  * dropped on stop), or a throwaway cluster this starts with `initdb` and
  * `pg_ctl` on a free port and removes on stop.
  *
+ * And, for a goal that grades a store's reads by the database's own plan,
+ * `recordingExecutor` (the statements a store sent, to `EXPLAIN` afterwards)
+ * and `flattenPlan` (an `EXPLAIN (FORMAT JSON)` plan as a list of nodes).
+ *
  * **Not re-exported from `index.mts`**: it loads `pg`. Import it directly:
  *
  *   import { startPostgres } from "../../lib/postgres.mts";
@@ -17,6 +21,7 @@ import { chownSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import type { QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { freePort } from "./server.mts";
 
 export type RunningPostgres = {
@@ -24,6 +29,12 @@ export type RunningPostgres = {
   url: string;
   /** `"initdb"` for a cluster this started, `"FSD_DB_URL"` for the caller's. */
   source: "initdb" | "FSD_DB_URL";
+  /**
+   * The server's log file, for a cluster this started; `undefined` on
+   * `FSD_DB_URL`, whose log is the caller's. With `log_statement` in
+   * `settings`, it is where a goal reads what each process asked.
+   */
+  log?: string;
   /** Run one statement as the database's owner (setup, `pg_terminate_backend`). */
   query<R extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: unknown[]): Promise<R[]>;
   /** Stop the cluster or drop the scratch database. Idempotent. */
@@ -136,6 +147,7 @@ async function startCluster(options: StartPostgresOptions): Promise<RunningPostg
   return {
     url,
     source: "initdb",
+    log: join(dir, "server.log"),
     query: async (text, values) => (await pool.query(text, values)).rows,
     async stop() {
       if (stopped) return;
@@ -145,4 +157,46 @@ async function startCluster(options: StartPostgresOptions): Promise<RunningPostg
       rmSync(dir, { recursive: true, force: true });
     }
   };
+}
+
+/** One statement a store sent, as it sent it. */
+export type SentStatement = { text: string; values: unknown[] };
+
+/** A store executor over a pool that keeps every statement it sent, oldest first. */
+export type RecordingExecutor = QueryExecutor & { sent: SentStatement[] };
+
+/**
+ * An executor for a Postgres store that records what the store sent, so a goal
+ * can `EXPLAIN` the store's own SQL rather than a copy of it. Clear `sent`
+ * before the read under test.
+ */
+export function recordingExecutor(pool: pg.Pool): RecordingExecutor {
+  const sent: SentStatement[] = [];
+  return {
+    sent,
+    async query(text: string, values?: unknown[]) {
+      sent.push({ text, values: values ?? [] });
+      const result = await pool.query(text, values);
+      return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount ?? 0 };
+    }
+  };
+}
+
+/** The fields of an `EXPLAIN (ANALYZE, FORMAT JSON)` plan node a goal grades. */
+export type PlanNode = {
+  "Node Type": string;
+  "Index Name"?: string;
+  "Index Cond"?: string;
+  "Actual Rows"?: number;
+  "Actual Loops"?: number;
+  "Rows Removed by Filter"?: number;
+  "Rows Removed by Index Recheck"?: number;
+  Plans?: PlanNode[];
+};
+
+/** Every node of a plan, the root first and each child after its parent. */
+export function flattenPlan(node: PlanNode, out: PlanNode[] = []): PlanNode[] {
+  out.push(node);
+  for (const child of node.Plans ?? []) flattenPlan(child, out);
+  return out;
 }

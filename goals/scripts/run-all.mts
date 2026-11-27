@@ -62,8 +62,6 @@ function discover(root: string, dir = root, found: Goal[] = []): Goal[] {
     const goalMd = join(child, "goal.md");
     if (hasFile(goalMd)) {
       const spec = readFileSync(goalMd, "utf8");
-      // Two goal.md schemas are in use: the template's field list (`**Model:**`)
-      // and a prose form (`**Model.**`). Accept both.
       const modelLine = /^\*\*Model[:.]\*\*(.*)$/m.exec(spec);
       const declared = (modelLine?.[1] ?? "").trim().toLowerCase();
       const modelFreeEnv = modelFreeRunEnv(spec);

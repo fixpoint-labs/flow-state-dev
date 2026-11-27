@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, what Re-run on another coder does to the conversation&#x27;s coder. Chosen: it moves Code with to that coder, then refiles. Instead of: the re-run carries its own coder and the conversation&#x27;s pick stays. It comes down to the first row: a task&#x27;s coder keeps one writer, the filler from the server-held pick, against a second writer the board would trust from the refile&#x27;s body. The price is the second row: the conversation&#x27;s coder changes when you re-run elsewhere. The third row is a tie: the re-run runs on the coder pressed either way. Locks in: setSessionFields writes a turn field again. Flips if: people re-run to compare and expect the conversation to stay."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A person presses Re-run on Claude Code. What happens to the conversation’s coder?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Code with moves to it, then refile</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The re-run carries its own coder</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WRITERS OF A</text>
+    <text class="t-lbl" x="32" y="169">TASK’S CODER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">One: the filler</text>
+    <text class="t-s" x="248" y="179">from the pick the server holds</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Two: the filler, and the refile</text>
+    <text class="t-s" x="612" y="179">a coder from the request body</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="226">THE CONVERSATION</text>
+    <text class="t-lbl" x="32" y="239">AFTER A RE-RUN</text>
+    <text class="mark minus" x="228" y="232">−</text>
+    <text class="t-b" x="248" y="231">Now on the re-run’s coder</text>
+    <text class="t-s" x="248" y="249">the next request uses it</text>
+    <text class="mark plus" x="592" y="232">+</text>
+    <text class="t-b" x="612" y="231">Unchanged</text>
+    <text class="t-s" x="612" y="249">the first coder stays</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="284">THE RE-RUN</text>
+    <text class="mark tie" x="228" y="290">=</text>
+    <text class="t-b" x="248" y="289">Runs on the coder pressed</text>
+    <text class="t-s" x="248" y="307">same brief, new task</text>
+    <text class="mark tie" x="592" y="290">=</text>
+    <text class="t-b" x="612" y="289">Runs on the coder pressed</text>
+    <text class="t-s" x="612" y="307">the same</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">setSessionFields rewrites a turn field</text>
+    <text class="t-s" x="32" y="387">an open field stays write-once</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">People re-run to compare coders</text>
+    <text class="t-s" x="494" y="387">then the refile takes a person-checked coder</text>
+  </g>
+</svg>

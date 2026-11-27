@@ -4,25 +4,28 @@ import { z } from "zod";
 import { createTestContext, testBlock } from "../src";
 
 describe("sequencer state testing utilities", () => {
-  it("basic: testBlock supports seeded sequencer state and captures sequencer mutations", async () => {
+  it("combines a parent sequencer seed with the block's defaults and returns its updated state", async () => {
     const increment = handler({
       name: "increment",
       inputSchema: z.number(),
       outputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number().default(0), mode: z.string().default("ready") }),
       execute: async (input, ctx) => {
-        await ctx.sequencer?.incState({ count: input });
-        return Number(ctx.sequencer?.state.count ?? 0);
+        await ctx.sequencer!.incState({ count: input });
+        return ctx.sequencer!.state.count;
       }
     });
 
     const result = await testBlock(increment, {
       input: 2,
       sequencer: {
-        state: { count: 3 }
+        state: { count: 3, legacy: true }
       }
     });
 
-    expect(result.output).toBe(2);
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, mode: "ready", legacy: true });
     expect(result.stateChanges.some((change) => change.scope === "block_instance")).toBe(true);
     expect(
       result.stateChanges.find(
@@ -35,10 +38,11 @@ describe("sequencer state testing utilities", () => {
     const leaf = handler({
       name: "leaf",
       inputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number() }),
       outputSchema: z.object({ nearest: z.string(), count: z.number() }),
-      execute: (input, ctx) => ({
-        nearest: String(ctx.sequencer?.name ?? "none"),
-        count: Number((ctx.sequencer?.state as Record<string, unknown>)?.count ?? input)
+      execute: (_input, ctx) => ({
+        nearest: ctx.sequencer!.name,
+        count: ctx.sequencer!.state.count
       })
     });
 
@@ -52,10 +56,85 @@ describe("sequencer state testing utilities", () => {
       name: "outer",
       inputSchema: z.number(),
       stateSchema: z.object({ count: z.number().default(7) })
-    }).step(inner);
+    }).step(inner).sideChain(handler({
+      name: "audit",
+      inputSchema: z.unknown(),
+      execute: () => "recorded"
+    }));
 
-    const result = await testBlock(outer, { input: 1 });
+    const unseeded = await testBlock(outer, { input: 1 });
+    const result = await testBlock(outer, { input: 1, sequencer: { state: { count: 3 } } });
     expect(result.output).toEqual({ nearest: "inner", count: 11 });
+    expect(result.state.sequencer).toEqual({ count: 3 });
+    expect(result.steps.map(({ blockName, stepName, phase }) => ({ blockName, stepName, phase })))
+      .toEqual(unseeded.steps.map(({ blockName, stepName, phase }) => ({ blockName, stepName, phase })));
+    expect(result.loopIterations).toBe(unseeded.loopIterations);
+    expect(result.sideChainResults.map(({ blockName, output }) => ({ blockName, output })))
+      .toEqual(unseeded.sideChainResults.map(({ blockName, output }) => ({ blockName, output })));
+    expect(result.sideChainResults.some((trace) => trace.blockName === "audit")).toBe(true);
+  });
+
+  it("uses a fixture as the root state for a sequencer without a state schema", async () => {
+    const increment = handler({
+      name: "increment-untyped-root",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      sequencerStateSchema: z.object({ count: z.number().default(0), mode: z.string().default("ready") }),
+      execute: async (input, ctx) => {
+        if (ctx.sequencer === undefined) return 0;
+        await ctx.sequencer.incState({ count: input });
+        return ctx.sequencer.state.count;
+      }
+    });
+    const pipeline = sequencer({ name: "untyped-root", inputSchema: z.number() }).step(increment);
+
+    const unseeded = await testBlock(pipeline, { input: 2 });
+    const result = await testBlock(pipeline, { input: 2, sequencer: { state: { count: 3 } } });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, mode: "ready" });
+    const stepPath = (run: typeof result) => run.steps.find((step) => step.blockName === increment.name)?.stepName;
+    expect(stepPath(result)).toBeDefined();
+    expect(stepPath(result)).toEqual(stepPath(unseeded));
+  });
+
+  it("applies a fixture to the root's own state while keeping its defaults", async () => {
+    const pipeline = sequencer({
+      name: "stateful-root",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(0), label: z.string().default("default") })
+    }).map(async (input, ctx) => {
+      await ctx.sequencer!.incState({ count: input });
+      return ctx.sequencer!.state.count;
+    });
+
+    const result = await testBlock(pipeline, { input: 2, sequencer: { state: { count: 3 } } });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toBe(5);
+    expect(result.state.sequencer).toEqual({ count: 5, label: "default" });
+  });
+
+  it("isolates nested seed data from the caller", async () => {
+    const increment = handler({
+      name: "increment-nested",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (input, ctx) => {
+        const counters = ctx.sequencer?.state.counters as { value: number }[];
+        counters[0]!.value += input;
+        return counters[0]!.value;
+      }
+    });
+    const seed = { state: { counters: [{ value: 3 }] } };
+
+    const first = await testBlock(increment, { input: 2, sequencer: seed });
+    const second = await testBlock(increment, { input: 1, sequencer: seed });
+
+    expect(first.output).toBe(5);
+    expect(second.output).toBe(4);
+    expect(seed.state.counters).toEqual([{ value: 3 }]);
   });
 
   it("tool chain context: createTestContext seeds ctx.sequencer for downstream tool execution paths", async () => {

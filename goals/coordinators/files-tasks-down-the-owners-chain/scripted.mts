@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ORG, PEOPLE } from "./lab/people.mts";
 import { requests } from "./store.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** How long leg a's delegate holds its answer, so the filing can be seen returning first. */
 const HOLD_MS = 2_500;
@@ -25,7 +26,6 @@ const ROSTER = "workforce-roster";
 
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 const TERMINAL = new Set(["completed", "failed", "incomplete", "aborted", "interrupted"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const WORDS = ["heron", "copper", "lantern", "marble", "saffron", "willow", "ember", "glacier", "orchid", "tinsel"];
 const word = () => `${WORDS[randomBytes(1)[0]! % WORDS.length]}${randomBytes(3).toString("hex")}`;
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));

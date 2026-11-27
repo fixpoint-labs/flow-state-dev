@@ -1,4 +1,4 @@
-// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578.
+// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578; FIX-2538.
 /**
  * How a worker hears a message: the `onMessageReceived`
  * internal entry, on every worker flow. The hire refuses a worker flow
@@ -10,7 +10,7 @@
  * row before anything lands (`delivery.ts`), so a copy sent again,
  * at any distance, wakes the recipient once, and a copy that finds the taker
  * ended without delivering takes over. Then the message lands as two items: a line the model reads
- * in its history, and a client-only `workforce:received` component carrying
+ * in its history, and a client-only `workforce:received` data record carrying
  * the sender, the id and the message it answers, for an app to draw, and the
  * row is marked `delivered`. The
  * session's hop count and chain become the message's, and the flow's turn,
@@ -36,19 +36,34 @@
  * one, queues until nothing holds it (`./queue`). A message to a task session
  * whose task waits on something outside the board (an `external` hold) answers that wait instead, and runs no turn here: the task's owed
  * turn reads it.
+ *
+ * A service's forward (an event no other subscription heard) carries its
+ * mark, `addressed` or `inferred`, on its message: the landing copies it to request
+ * state, where the turn's board write and send tool read it. A flow's
+ * `landsOnly` can land a message as its items with no turn (a coordinator
+ * set to `inferredWork: off` does for an inferred forward), through the same
+ * turnless landing a flow with no turn has.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { messageTurnStateSchema, RECEIVED_REPLY_OWED_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
+import {
+  messageTurnStateSchema,
+  RECEIVED_FORWARD_STATE,
+  RECEIVED_LANDED_STATE,
+  RECEIVED_REPLY_OWED_STATE,
+  RECEIVED_TURNLESS_STATE,
+  startTurnAtHop
+} from "./hop";
+import type { WorkerMessageResourceState } from "./log-row";
 import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed-replies";
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
-import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
+import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
-import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
+import { MAX_MESSAGE_CHARS, MESSAGE_CHAINS_RESOURCE, workerMessagesResources } from "./message-log";
 import { answerExternalWait, queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
@@ -130,7 +145,8 @@ export function receivedMessagePrompt(received: MessageReceived): string {
 }
 
 const heardSchema = z.object({
-  act: z.enum(["none", "heard"]),
+  /** `landed`: the message landed as its items, and runs no turn (`landsOnly`). */
+  act: z.enum(["none", "heard", "landed"]),
   received: messageReceivedSchema.optional()
 });
 
@@ -163,6 +179,11 @@ export function messageReceivedEntry(options: {
   readonly installation: WorkerInstallation;
   readonly flowKind: string;
   readonly hears?: MessageHearing;
+  /**
+   * Whether this landed message runs no turn: it lands as its items only, as
+   * on a flow with no turn. Read after the take, from the message the server wrote.
+   */
+  readonly landsOnly?: (ctx: BlockContext, message: WorkerMessageResourceState) => boolean | Promise<boolean>;
 }) {
   const heard = handler({
     name: "message-received-heard",
@@ -190,8 +211,8 @@ export function messageReceivedEntry(options: {
       // draws lands here: no turn of this session runs on it.
       if (await answerExternalWait(ctx, row)) {
         const emit = storedEmitters(ctx);
-        await emit.component(
-          RECEIVED_MESSAGE_COMPONENT,
+        await emit.data(
+          RECEIVED_MESSAGE_DATA_TYPE,
           { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: 0 },
           { agentName: row.from, itemVisibility: { client: true, history: false } }
         );
@@ -206,14 +227,14 @@ export function messageReceivedEntry(options: {
       const { budget } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
       // branch, or a queue behind a busy recipient) have spent it too.
-      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx).getOptional(row.chain))?.state.sent.length ?? 0);
+      const chain = row.chain == null ? undefined : await ctx.resources[MESSAGE_CHAINS_RESOURCE].getOptional(row.chain);
       const received: MessageReceived = {
         id: row.id,
         from: row.from,
         text: row.text,
         ...(wantsReply(row) ? { replyRequested: true } : {}),
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
-        budget: Math.max(0, budget - Math.max(row.hop, chainSent))
+        budget: Math.max(0, budget - Math.max(row.hop, chain?.state.sent.length ?? 0))
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
@@ -221,8 +242,8 @@ export function messageReceivedEntry(options: {
       // A `user` line: the sender's words, which the recipient's model must
       // not read as something it already said.
       await emit.message(`From ${row.from}: ${row.text}`, { role: "user", agentName: row.from, itemVisibility: { client: false, history: true } });
-      await emit.component(
-        RECEIVED_MESSAGE_COMPONENT,
+      await emit.data(
+        RECEIVED_MESSAGE_DATA_TYPE,
         {
           id: row.id,
           from: row.from,
@@ -242,11 +263,14 @@ export function messageReceivedEntry(options: {
       // before its end does, even right after the delivery.
       if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx, row.id);
       await markDelivered(ctx, row.id);
+      const turnless = options.turn !== undefined && options.landsOnly !== undefined && (await options.landsOnly(ctx, row));
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
-        ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {})
+        ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {}),
+        ...(row.forward === undefined ? {} : { [RECEIVED_FORWARD_STATE]: row.forward }),
+        ...(turnless ? { [RECEIVED_TURNLESS_STATE]: true } : {})
       }));
-      return { act: "heard", received };
+      return turnless ? { act: "landed" } : { act: "heard", received };
     }
   });
 
@@ -256,8 +280,8 @@ export function messageReceivedEntry(options: {
    * or "no answer" for `reason` when it is blank. A turn that ran and gave
    * none is logged: the sender hears only that nothing came back.
    */
-  const replyOwedHere = async (ctx: Parameters<typeof sendOwedReply>[0], text: string, reason: NoAnswerReason) => {
-    const owed = (ctx.request.state as Record<string, unknown> | undefined)?.[RECEIVED_REPLY_OWED_STATE];
+  const replyOwedHere = async (ctx: BlockContext<z.infer<typeof messageTurnStateSchema>>, text: string, reason: NoAnswerReason) => {
+    const owed = ctx.request.state[RECEIVED_REPLY_OWED_STATE];
     if (typeof owed !== "string") return;
     if (text.trim() === "" && reason !== "turnless") {
       console.warn("[workforce] a reply-requested message's turn ended with no answer to send", { messageId: owed, reason, flowKind: options.flowKind });
@@ -276,13 +300,14 @@ export function messageReceivedEntry(options: {
     execute: async (input, ctx) => {
       // Read off the request's state, which the heard step wrote: never off the
       // input's shape, which a turn's own output could match.
-      const state = ctx.request.state as Record<string, unknown> | undefined;
-      if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
+      const state = ctx.request.state;
+      if (state[RECEIVED_LANDED_STATE] !== true) return {};
+      const ranNoTurn = options.turn === undefined || state[RECEIVED_TURNLESS_STATE] === true;
       // A turnless landing answers blank: "no answer".
-      const reply = options.turn === undefined ? "" : replyTextOf(input);
-      await replyOwedHere(ctx, reply, options.turn === undefined ? "turnless" : "silent");
+      const reply = ranNoTurn ? "" : replyTextOf(input);
+      await replyOwedHere(ctx, reply, ranNoTurn ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
-      if (options.turn === undefined) return { turnless: true as const };
+      if (ranNoTurn) return { turnless: true as const };
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
     }
   });

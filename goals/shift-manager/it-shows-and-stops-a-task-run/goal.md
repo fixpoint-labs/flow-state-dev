@@ -27,11 +27,11 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts`
 
-**Controls:** each rebuilds Shift Manager with one module swapped for a module under `controls/` (`src/lib/run.ts` unless it says otherwise). The build fails if the swap never fired.
+**Controls:** each rebuilds Shift Manager with one module swapped for a module under `controls/` (`src/lib/task-items.ts`, the run's flow and items, unless it says otherwise). The build fails if the swap never fired. FIX-2776 moved the screen onto package hooks and deleted `src/lib/run.ts`, which these controls used to swap; each now swaps the module that took its job.
 
-- `GOAL_CONTROL=worker-session`: the Session reads the newest other session on the run's flow, or on any flow when the run's flow has no other, and follows no stream. Must fail at **items equal the run session's**.
-- `GOAL_CONTROL=optimistic-interrupt`: Interrupt draws *interrupted* without calling abort. Must fail at **the request reads aborted first**.
-- `GOAL_CONTROL=board-flow`: every run is opened through the board's flow (the lead's), not the flow its session names. Must fail at **items equal the run session's** on every run row, since no run is on the lead's flow.
+- `GOAL_CONTROL=worker-session` (swaps `src/lib/session-feeds.tsx`): the Session's feed follows the newest other session on the run's flow, or on any flow when the run's flow has no other. Must fail at **items equal the run session's**.
+- `GOAL_CONTROL=optimistic-interrupt` (swaps `src/lib/workforce.ts`): Interrupt's `stopRun` answers without calling abort, so the run's record never reads `aborted`. Must fail at **the request reads aborted first**.
+- `GOAL_CONTROL=board-flow`: every run is opened through the board's flow (the lead's), not the flow its session names. Must fail at **the request reads aborted first** on every running row: the run's stream and its stop go through that flow, and no run is on the lead's. Since FIX-2776 the Session's items come from the run session's feed, which names no flow, so this control no longer reaches **items equal the run session's**; **worker-session** keeps that leg.
 - `GOAL_CONTROL=wrong-board` (swaps `src/lib/reads.ts`): the frame's action row is built against board id `"plan"`, not `"tasks"`. Must fail at **release**, **cancel** and both **retry** legs, each row unchanged, with the refusal on the page.
 - `GOAL_CONTROL=no-error-body` (swaps the `error` registry copy): `ErrorBody` draws nothing. Must fail at **error**, on the frame and on the Tasks row. The action row has no part in drawing an error, so `wrong-board` can't redden that leg.
 
@@ -78,4 +78,10 @@
 | 2026-11-04 | same | n/a | FAIL (control `no-error-body`, expected) | Only **error**: the frame's banner and the Tasks row's line read empty. |
 | 2026-11-04 | same | n/a | FAIL (controls `optimistic-interrupt`, `board-flow`, expected) | `optimistic-interrupt`: only **the request reads aborted first**, on both running rows. `board-flow`: **items equal**, **inspector**, **gaps** on all three run rows and Interrupt on both running ones. The action legs pass under both. |
 | 2026-11-04 | same | n/a | PASS (control `worker-session`, WRONG) | The control no longer fails: the Session reads items through `followSessionItems`, and the control still swaps only `readSessionItems`. On main it was red only through the two stale legs above, so this predates FIX-2382. Not fixed here; reported for follow-up. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (not from this change) | 27 lines, all **gaps** owners, e.g. *"[running on worker] gaps: task-disabled-action carries no owner: \"Handing a task to another worker, reassigning it and opening its PR arrive in a later release. Hand off\""*. The unconverted `run.mts` from `claude/fix-2627-impl-e` fails on the same 27 lines. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `board-flow`: beyond the clean run's lines, **items equal the run session's** (*"the Session never opened the run"*), **inspector** and **gaps** on the finished row. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `no-error-body`: beyond the clean run's lines, only **error** (*"its Tasks row's error line reads \"\"; the row's error is \"The audit note's folder is read only.\""*), on the frame and the row. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `optimistic-interrupt`: beyond the clean run's lines, only **the request reads aborted first**, on both running rows. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (not shown failing on its leg) | `worker-session`: the same 27 lines as the clean run and nothing more, as the 2026-11-04 row found. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `wrong-board`: beyond the clean run's lines, **cancel**, both **retry** and **release** (*"the page shows the board's refusal \"Request failed (N) Internal Server Error\""*). |
 | 2026-11-27 | working tree on 946929308 | n/a | PASS | Chromium matched stored runs in the worker, audit and finished views. Stop, release, cancel and retry were exercised. Deferred controls remained disabled and explained their availability. |

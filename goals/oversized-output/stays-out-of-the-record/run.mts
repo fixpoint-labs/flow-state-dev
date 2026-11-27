@@ -24,7 +24,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { ActionConfig, FlowInstance } from "@flow-state-dev/core/types";
 import {
   createCheckpointDurabilityProvider,
   createFlowApiRouter,
@@ -75,7 +75,7 @@ const sizeOnly = handler({
   execute: (input) => ({ bytes: input.bytes })
 });
 
-const durableFlow = (id: string, block: Parameters<typeof defineFlow>[0]["actions"]["run"]["block"]) =>
+const durableFlow = (id: string, block: ActionConfig["block"]) =>
   defineFlow({ kind: id, actions: { run: { block, inputSchema: z.object({ bytes: z.number() }) } } })({ id }) as unknown as FlowInstance;
 
 /** Misuse: a step returns the whole payload, then a pause, then a step that uses it. */

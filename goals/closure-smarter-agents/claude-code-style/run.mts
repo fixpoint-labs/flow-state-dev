@@ -22,9 +22,9 @@
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
-import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { act, askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
-import { claudeCodeSettings } from "../model.mts";
+import { createWorkforceClient, SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
+import { REPO_ROOT } from "../../lib/index.mts";
+import { act, askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 
 const USER = "u_closure";
 const MAIN = "desk.main";
@@ -37,28 +37,30 @@ const driver: AppDriver = {
   plant: (d, p) => skillFiles(join(tree(p.root), "teams", "desk", "workers", "main"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const data = join(scratch, "data");
-    // The project's repository: the draw's files, the coder ask's failing check, the `.fsdev/` ignore the lab
-    // requires, and on Haiku the project settings that set its Claude Code runs to Haiku.
-    const repo = gitRepository(join(scratch, "repo"), { ...d.files, [d.coder.file]: d.coder.script, ".gitignore": ".fsdev/\n", ...claudeCodeSettings(p.model) });
+    const repo = coderRepository(join(scratch, "repo"), d, p.model);
     const served = await serveFsdev({
       root: p.root,
       cwd: p.root,
       args: ["--config", join(lab(p.root), "fsdev.config.mts")],
       logTo: join(scratch, "server.log"),
-      env: { CLAUDE_CODE_STYLE_DATA: data, CLAUDE_CODE_STYLE_USER: USER },
+      // The host's checks are the operator's data, as Teammates' working folder's are: a fixture, not a switch.
+      env: { CLAUDE_CODE_STYLE_DATA: data, CLAUDE_CODE_STYLE_USER: USER, CLAUDE_CODE_STYLE_CHECKS: d.coder.check },
       model: p.model,
     });
     const fsd = clientFor(served.origin, USER);
     const workforce = createWorkforceClient(fsd);
     const projectId = "closure";
     const projects = (await fsd.flow("projects").createSession()).id;
-    // The project's checks are project data the coder's run reads, like its repository: a fixture, not a switch.
-    await act(fsd, "projects", projects, "createProject", { id: projectId, title: "Closure", visibility: "private", repository: `file://${repo}`, checks: [d.coder.check] });
+    // An older tree (the control's commit) reads its checks off the project instead of the host.
+    const projectChecks = p.root === REPO_ROOT ? {} : { checks: [d.coder.check] };
+    await act(fsd, "projects", projects, "createProject", { id: projectId, title: "Closure", visibility: "private", repository: `file://${repo}`, ...projectChecks });
     const project = { visibility: "private" as const, id: projectId };
-    /** A fresh session of `worker`, set to the project. */
+    /** A fresh session of `worker`, set to the project and opened on its repository, as the lab's open does. */
     const sessionOf = async (worker: string) => {
       const id = (await fsd.flow("agent").createSession({ state: { workerId: worker } })).id;
       await workforce.setWorkProject(worker, project, { sessionId: id });
+      // An older tree (the control's commit) finds its repository through the project, and has no session repository.
+      if (p.root === REPO_ROOT) await act(fsd, "agent", id, SET_SESSION_FIELDS_ACTION, { worker, fields: { repository: `file://${repo}` } });
       return id;
     };
     const main = async (line: string, budgetMs?: number) =>
@@ -70,7 +72,7 @@ const driver: AppDriver = {
         skill: async (d) => ({ ...(await main(d.lines.skill)), held: await heldSkills(tree(p.root), MAIN) }),
         multiFile: (d) => main(d.lines.multiFile),
         knowledge: async (d) => askWorker(fsd, { user: USER, worker: RESEARCHER, sessionId: await sessionOf(RESEARCHER), line: d.lines.knowledge }),
-        coder: async (d) => ({ ...(await main(d.lines.coder, 30 * 60_000)), checks: runChecks(join(data, "lab.db")) }),
+        coder: async (d) => ({ ...(await main(d.lines.coder, 30 * 60_000)), ...(await settledRunChecks(join(data, "lab.db"))) }),
         fold: (d) => askAfterFold(fsd, { user: USER, worker: MAIN, d }),
       },
     };

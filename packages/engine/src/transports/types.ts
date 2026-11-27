@@ -18,10 +18,12 @@ import type {
   ResolvedPrincipal,
   VoiceProvider
 } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
+import type { Principal } from "../context/principal";
 import type { RuntimeLogger } from "../execution/logging";
 import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "../execution/types";
@@ -82,8 +84,15 @@ export interface InboundRequestEnvelope {
   /** Raw input; validated by `action.inputSchema` downstream. */
   input: unknown;
 
-  /** Existing session, or undefined for a new session. */
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. An existing
+   * session, a new id (born on the run's first write), or, for a run that
+   * belongs to no conversation, `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time, `dispatch` throws
+   * `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   /** Adapter-generated or framework-generated when absent. */
   requestId?: string;
   // FIX-1442.
@@ -104,11 +113,18 @@ export interface InboundRequestEnvelope {
    */
   tenantId?: string;
 
+  // FIX-2942.
   /**
    * Resolved principal — normally populated by `host.resolvePrincipal`
-   * before dispatch. The runtime treats this as authoritative.
+   * before dispatch, and carried unchanged. The runtime treats this as
+   * authoritative.
+   *
+   * `kind` and `resolvedBy` are the door's (`Principal`). A principal
+   * assembled without them (a direct `host.dispatch` from server code) runs
+   * as its session's kind when the session exists, and as a machine's when
+   * the run creates it.
    */
-  principal: ResolvedPrincipal;
+  principal: ResolvedPrincipal & Partial<Pick<Principal, "kind" | "resolvedBy">>;
 
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
@@ -168,8 +184,20 @@ export interface InboundRequestEnvelope {
    * budget off the carried core that `runAction` runs. This within-run
    * degradation is the accepted cost of the dynamic schedule's ad-hoc path,
    * alongside its non-recoverability; static bindings have neither limitation.
+   *
+   * Not serializable, so a dispatch carrying it runs in the dispatching
+   * process whatever runner is installed: a job queue never sees it.
    */
   resolvedActionCore?: ActionCore;
+
+  /**
+   * The files the person's message carries, in reference form, already
+   * checked against the limits and claimed into the session by the action
+   * route's parse step (`routes/attachment-claim.ts`). Set by that step, never
+   * read from a body here. The run writes them on the user line and shows
+   * them to blocks as `ctx.request.attachments`.
+   */
+  attachments?: FileContent[];
 
   /**
    * Raw HTTP body bytes preserved for adapters that need pre-parse access
@@ -370,7 +398,7 @@ export interface InboundTransportHost {
    */
   resolvePrincipal(
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal>;
+  ): Promise<Principal>;
 }
 
 /**

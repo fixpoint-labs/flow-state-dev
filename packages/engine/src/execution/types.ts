@@ -1,7 +1,8 @@
 /**
  * Shared execution runtime types used by block and action orchestration paths.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { PrincipalKind } from "../context/principal";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionCore,
   BlockDefinition,
@@ -10,6 +11,7 @@ import type {
   RetryPolicy
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
+import { NoSessionError } from "../context/no-session";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { StoreRegistry } from "../stores/types";
@@ -75,7 +77,14 @@ export type RunActionOptions<
   actionName: TActionName;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. A run that belongs
+   * to no conversation passes `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time (an untyped caller),
+   * `runAction` throws `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   // FIX-1442.
   /**
    * The organization this run belongs to. **Required**.
@@ -100,6 +109,16 @@ export type RunActionOptions<
    * for callers that pre-date the transport adapter contract.
    */
   source?: string;
+  // FIX-2942.
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`Principal.kind`). Server-set, never a payload. Absent → the request
+   * record's, then the session's; a run that creates its session with none is
+   * a machine's, and reaches no other session.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → none, which matches nothing. */
+  resolvedBy?: string;
   // FIX-1707.
   /**
    * Caller-supplied request metadata. Treated as caller-controlled: the
@@ -116,6 +135,14 @@ export type RunActionOptions<
    * it adds no caller-addressed attack surface.
    */
   resolvedActionCore?: ActionCore;
+  /**
+   * The files the person's message carries, in reference form. Written as a
+   * `file` part per file after the text on the line `userMessage` writes,
+   * recorded on the request, and shown to blocks as `ctx.request.attachments`.
+   * Over HTTP the action route checks and claims them first; a direct caller
+   * passes only files already claimed into the session.
+   */
+  attachments?: FileContent[];
   signal?: AbortSignal;
   /**
    * An abort controller the caller registered under `requestId` before the
@@ -221,6 +248,17 @@ export type RunActionOptions<
   runtimeConfig: RuntimeConfig;
 };
 
+// FIX-2623.
+/** The run's session id, or none in a view that runs with no session. */
+function sessionIdOrNone(ctx: ExecuteBlockContext): string | undefined {
+  try {
+    return ctx.session.identity.id;
+  } catch (error) {
+    if (error instanceof NoSessionError) return undefined;
+    throw error;
+  }
+}
+
 /**
  * Builds execution metadata from context with optional caller overrides.
  */
@@ -237,7 +275,7 @@ export function createExecutionMetadata(
       ctx.user.identity.userId ??
       ctx.request.identity.userId ??
       "unknown_user",
-    sessionId: overrides.sessionId ?? ctx.session.identity.id,
+    sessionId: overrides.sessionId ?? sessionIdOrNone(ctx),
     orgId: overrides.orgId ?? ctx.request.identity.orgId,
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,

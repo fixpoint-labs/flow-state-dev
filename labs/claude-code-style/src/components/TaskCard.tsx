@@ -1,5 +1,7 @@
-import type { LabTask } from "../adapter";
-import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
+import { useContext } from "react";
+import type { CodingBoardTask, TaskStatus } from "../app";
+import { HarnessLabels } from "../lib/harness-labels";
+import { TASK_STATUS, timeSignalOf, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { TaskTime } from "./flow-state/task-signals";
@@ -16,8 +18,9 @@ import { harnessLabelOf, pullRequestOpenLine, waitsOnPullRequest } from "./Threa
  */
 
 /** A running or waiting task, at full size. */
-export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: LabTask; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
-  const status = TASK_STATUS[task.status];
+export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: CodingBoardTask; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
+  const status = TASK_STATUS[task.status as TaskStatus];
+  const labels = useContext(HarnessLabels);
   return (
     <button
       type="button"
@@ -32,21 +35,21 @@ export function TaskCard({ task, selected, onOpen, now, stale = false }: { task:
           {task.title}
         </span>
         <span className={cn("block truncate text-xs", status.tone)}>
-          {task.view === undefined ? status.label : <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} fallback={status.label} />}
+          <TaskTime {...timeSignalOf(task)} now={now} stale={stale} tone={taskSignalTone} fallback={status.label} />
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {/* Plain words: the card is a button, and the link is in the task's view. */}
         {waitsOnPullRequest(task) ? <span className="block truncate text-xs text-muted-foreground" data-testid="pull-request-wait">{pullRequestOpenLine(task)}</span> : null}
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
-        <Spend spend={task.spend} harnessLabel={harnessLabelOf(task)} />
+        <Spend spend={task.spend} harnessLabel={harnessLabelOf(task, labels)} />
       </span>
     </button>
   );
 }
 
 /** A finished task, on one line: its mark, title, worker, what it spent and how long ago it ended. */
-export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; selected: boolean; onOpen: () => void; now: number }) {
-  const status = TASK_STATUS[task.status];
+export function TaskDoneRow({ task, selected, onOpen, now }: { task: CodingBoardTask; selected: boolean; onOpen: () => void; now: number }) {
+  const status = TASK_STATUS[task.status as TaskStatus];
   return (
     <button
       type="button"
@@ -57,16 +60,15 @@ export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; se
       data-task-status={task.status}
     >
       <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} aria-label={status.label} />
-      <span className="min-w-0 flex-1 truncate" data-task-title>
+      {/* The title keeps room to be read; the worker and the spend give way to it, cut short, so the line never outgrows the pane. */}
+      <span className="min-w-24 flex-1 truncate" data-task-title>
         {task.title}
       </span>
-      {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
-      <Spend spend={task.spend} className="shrink-0" />
-      {task.view === undefined ? null : (
-        <span className="shrink-0 font-mono text-[10px]">
-          <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} />
-        </span>
-      )}
+      {task.assignee ? <span className="max-w-24 min-w-0 truncate text-muted-foreground">{task.assignee}</span> : null}
+      <Spend spend={task.spend} className="min-w-0" />
+      <span className="shrink-0 font-mono text-xs">
+        <TaskTime {...timeSignalOf(task)} now={now} tone={taskSignalTone} />
+      </span>
     </button>
   );
 }

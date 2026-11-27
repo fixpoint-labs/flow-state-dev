@@ -52,7 +52,7 @@ With the higher-level `createFlowState` assembly, the provider goes under `voice
 
 ```typescript
 createFlowState({
-  flows: { myFlow },
+  flows: [myFlow],
   voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
 });
 ```

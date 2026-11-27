@@ -37,17 +37,18 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
-import { createLabReader, readerSessionId } from "../src/lib/reads";
+import { createLabReader } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+import { readyHarness } from "../teams/devteam/harness.mts";
 
 const STOREFRONT: ProjectAddress = { visibility: "shared", id: "storefront" };
 const ALICE = LAB_USERS.owner;
@@ -241,7 +242,7 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
   lab = await openLab({
     modelResolver: scripted(lead),
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: CODER,
@@ -253,9 +254,10 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
   served = await serveLab(lab.state);
   const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
   await createLabReader(client).read();
-  const reader = readerSessionId(ALICE.userId, "projects");
-  await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: lead.id });
-  const workstream = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
+  // The session on the projects flow the workstream is opened through, made on its first send.
+  const opener = `projects-${ALICE.userId}`;
+  await runAction(client, "projects", opener, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: lead.id });
+  const workstream = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
     .sessionId!;
   const pc = (await createWorkforceClient(client).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
   await runAction(client, "coordinator", pc, "respond", { message: FIRST_ASK });

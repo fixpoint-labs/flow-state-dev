@@ -23,21 +23,27 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { withRequestOrg } from "../context/principal";
 import {
   isOrgAttributed,
   UnattributedOrgError,
   type OrgAttributedRecord
 } from "../context/org-attribution";
+import { sessionKeyOfBlobOwner, userBlobKeeper } from "../blobs/attachments";
+import type { BlobUploader } from "../blobs/types";
+import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import {
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
+  unknownBlobResponse,
   unknownRequestResponse,
   unknownRequestStreamResponse,
   unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
+import { DEFAULT_WRITE_FLOW, writeRecordGovernor } from "../resources/default-write-flow";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -113,6 +119,8 @@ const ALLOWED: RouteAuthResult = {};
  * `unknownSessionResponse`.
  */
 function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Response {
+  // A file's 404 names nothing: not the session that owns it, nor its owner.
+  if (route.kind === "get_blob") return unknownBlobResponse();
   return route.kind.startsWith("debug_")
     ? jsonResponse(404, { error: "session_not_found" })
     : unknownSessionResponse(sessionId);
@@ -139,9 +147,12 @@ function hiddenRequestResponse(
 /**
  * What a route addresses, and therefore who owns it.
  *
- * - `exempt` — no owner to check: public flow metadata, or `execute_action`
- *   and `run_read`, which resolve their own principal in their handlers.
+ * - `exempt` — no owner to check: public flow metadata, or `execute_action`,
+ *   `run_view`, both of which resolve their own principal in their handlers.
  * - `session` / `request` — owner is the stored record's `userId`.
+ * - `blob` — a stored file, checked as the session that owns it is: whoever
+ *   can read that session can read the file. A file no session
+ *   owns, or one in another tenant, is answered as an unknown file.
  * - `flow` — creating a session under a flow. No record exists yet, so the
  *   caller becomes the owner rather than being checked against one.
  * - `user` — addressed by `userId` in the path; that id is the owner.
@@ -151,6 +162,7 @@ function hiddenRequestResponse(
 export type RouteSubject =
   | { kind: "exempt" }
   | { kind: "session"; sessionId: string }
+  | { kind: "blob"; blobId: string }
   | { kind: "request"; requestId: string }
   | { kind: "flow"; flowKind: string }
   | { kind: "user"; userId: string }
@@ -172,9 +184,18 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_flows":
     case "capabilities":
     case "execute_action":
-    // A read resolves its principal the way an action does, in its handler,
-    // and runs under the same session binding checks (`read-routes.ts`).
-    case "run_read":
+    // FIX-2624: each resolves its caller in its handler through the declaring
+    // flow's own resolver (`scope-address.ts`), never the body, query or
+    // headers (BP-031); a send then runs as an action does.
+    case "read_scope_resource":
+    case "list_scope_entries":
+    case "read_scope_entry":
+    case "send_resource":
+    case "flow_identity":
+    // A view resolves its principal on the flow's path in its handler, as a
+    // read does, never from the body, query or headers (BP-031). A session
+    // view runs under the session binding checks (`view-routes.ts`).
+    case "run_view":
       return { kind: "exempt" };
 
     case "get_session":
@@ -247,6 +268,16 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "transcribe":
       return { kind: "host" };
 
+    // An upload has no owner yet: it is held for the caller who sent it, so
+    // this is authentication only. Addressed to a flow, it is that flow's own
+    // sign-in, so the uploader is the principal the flow's send resolves;
+    // otherwise the host's, as for `transcribe`.
+    case "upload_blob":
+      return route.flowKind === undefined ? { kind: "host" } : { kind: "flow", flowKind: route.flowKind };
+
+    case "get_blob":
+      return { kind: "blob", blobId: route.blobId };
+
     default: {
       const exhaustive: never = route;
       return exhaustive;
@@ -283,10 +314,20 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
-  record: OwnedRecord & OrgAttributedRecord
+  record: OwnedRecord & OrgAttributedRecord,
+  unused: () => Response
 ): { flow?: FlowInstance; denied?: Response } {
+  // FIX-2624: a write record answers to the sign-in of the flow that declares
+  // the resource it writes, read off the record's own session id, never to the
+  // default write flow (which has no resolver) or the host's fallback. One no
+  // declaring flow governs now gets the route's answer for an id nobody used,
+  // so the answer never says the id was a write's.
+  const write = writeRecordGovernor(ctx.registry, ctx.hostResolver, record);
+  if (write !== undefined && write.flow === undefined) {
+    return { denied: unused() };
+  }
   const owner = resolveRecordOwner(ctx.registry, record);
-  const flow = owner.ok ? owner.flow : undefined;
+  const flow = write?.flow ?? (owner.ok ? owner.flow : undefined);
   // The organization axis is checked FIRST and independently of the owner
   // (FIX-1442). A record can name its owning flow perfectly well and still
   // predate organizations entirely — which is the common case, since `flowId`
@@ -306,10 +347,25 @@ function ownerFlowOf(
       })
     };
   }
-  if (owner.ok) return { flow };
+  if (owner.ok || write !== undefined) return { flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
   return denied === undefined ? {} : { denied };
 }
+
+// BR-14; BP-030.
+/**
+ * The request routes that run stored work again: a retry, a continue, a
+ * resume and an answer. Each is held to the organization the stored record
+ * itself names. Its session's organization makes a record from before
+ * organizations visible to its owner (`withRequestOrg`), and nothing more:
+ * that owner is refused `migration-required` here until it is migrated.
+ */
+const RUNS_STORED_WORK: ReadonlySet<ParsedFlowRoute["kind"]> = new Set([
+  "retry_request",
+  "continue_request",
+  "resume_suspension",
+  "answer_suspension"
+]);
 
 /** Whether any registered flow configures a resolver that is not the framework default. */
 function anyFlowAuthenticates(ctx: RouteAuthContext): boolean {
@@ -321,7 +377,9 @@ function unauthenticatedFlowIds(ctx: RouteAuthContext): Set<string> {
   return new Set(
     ctx.registry
       .list()
-      .filter((flow) => !flowAuthenticates(flow))
+      // The default write flow is never open: its records answer to the
+      // declaring flow's sign-in (`ownerFlowOf`).
+      .filter((flow) => !flowAuthenticates(flow) && flow.id !== DEFAULT_WRITE_FLOW)
       .map((flow) => flow.id)
   );
 }
@@ -386,29 +444,67 @@ export async function authorizeManagementRoute(
    * authenticated or facing a route that authenticates nobody.
    */
   let pendingDenial: Response | undefined;
+  /** The route reads a file a user's own scope keeps: every refusal is an unknown file's 404. */
+  let userKept = false;
 
-  switch (subject.kind) {
+  // A file is read under the check of the session that owns it. A file no
+  // session owns (held for its uploader, or another tenant's) has no session
+  // to check against and is answered as no file at all.
+  let effective: RouteSubject = subject;
+  if (subject.kind === "blob") {
+    const owning = await blobSessionId(ctx.stores, subject.blobId, ctx.tenantId);
+    // A file a user's own scope keeps (a task's brief, FIX-2522) is read
+    // under that user's check, signed in as the flow that kept it would sign
+    // them in: the read route names no flow, and with authentication on the
+    // flow alone the host's resolver verifies nobody. The flow is the one the
+    // stored owner names, never the caller's choice (BP-031).
+    const keeper = owning === undefined ? await blobUserScope(ctx.stores, subject.blobId, ctx.tenantId) : undefined;
+    if (owning !== undefined) effective = { kind: "session", sessionId: owning };
+    else if (keeper !== undefined) {
+      owner = keeper.user.userId;
+      ownerOrgId = keeper.user.orgId;
+      governing = ctx.registry.get(keeper.flowId);
+      userKept = true;
+      // A keeping flow this app no longer runs leaves no sign-in to check the
+      // caller under. Where something authenticates, nobody can be shown to be
+      // the file's user, so it is no file at all.
+      if (governing === undefined && isDefaultBodyUserIdPrincipalResolver(ctx.hostResolver)) {
+        return { denied: unknownBlobResponse() };
+      }
+    } else return { denied: unknownBlobResponse() };
+  }
+
+  switch (effective.kind) {
     case "session": {
       const session = await loadTenantSession(
         ctx.stores.session,
-        subject.sessionId,
+        effective.sessionId,
         ctx.tenantId
       );
-      if (session === undefined) return { session: null };
-      const resolved = ownerFlowOf(ctx, session);
+      if (session === undefined) {
+        return subject.kind === "blob" ? { denied: unknownBlobResponse() } : { session: null };
+      }
+      const resolved = ownerFlowOf(ctx, session, () => hiddenSessionResponse(route, effective.sessionId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
       ownerOrgId = session.orgId;
-      sessionId = subject.sessionId;
+      sessionId = effective.sessionId;
       checked = { session };
       break;
     }
     case "request": {
-      const record = await ctx.stores.request.get(subject.requestId);
-      if (record !== undefined) {
-        checked = { request: record };
-        const resolved = ownerFlowOf(ctx, record);
+      const stored = await ctx.stores.request.get(effective.requestId);
+      if (stored !== undefined) {
+        checked = { request: stored };
+        // BP-030: a record written before organizations were stamped is read
+        // with its session's organization, as every request door reads it
+        // (`withRequestOrg`), so its owner keeps it; one that read can't
+        // attribute is still refused below as unattributed, and so is any such
+        // record a route would run again (`RUNS_STORED_WORK`).
+        const record = await withRequestOrg(ctx.stores, stored);
+        const admitted = RUNS_STORED_WORK.has(route.kind) ? stored : record;
+        const resolved = ownerFlowOf(ctx, admitted, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
         owner = record.userId;
@@ -422,7 +518,7 @@ export async function authorizeManagementRoute(
       // in-flight registry — which `runAction` writes earlier, and which
       // carries the same `userId` — keeps that window authorized instead of
       // letting it through unchecked.
-      const active = await ctx.stores.activeRequests.get(subject.requestId);
+      const active = await ctx.stores.activeRequests.get(effective.requestId);
       if (active === undefined) {
         // No record and no in-flight entry: nothing names an owner. The stream
         // would still replay an event log that outlived its record (evicted
@@ -436,21 +532,24 @@ export async function authorizeManagementRoute(
         }
         return ALLOWED;
       }
-      const resolved = ownerFlowOf(ctx, active);
+      const entry = await withRequestOrg(ctx.stores, active);
+      const resolved = ownerFlowOf(ctx, RUNS_STORED_WORK.has(route.kind) ? active : entry, () =>
+        hiddenRequestResponse(request, route, ctx.registry, effective.requestId)
+      );
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
-      owner = active.userId;
-      ownerOrgId = active.orgId;
-      sessionId = active.sessionId;
+      owner = entry.userId;
+      ownerOrgId = entry.orgId;
+      sessionId = entry.sessionId;
       break;
     }
     case "flow":
       // No record yet — the authenticated caller becomes the owner. The
       // address is an exact instance id.
-      governing = ctx.registry.get(subject.flowKind);
+      governing = ctx.registry.get(effective.flowKind);
       break;
     case "user":
-      owner = subject.userId;
+      owner = effective.userId;
       break;
     case "host":
       break;
@@ -479,6 +578,7 @@ export async function authorizeManagementRoute(
     // does not reach them. Without this, the open path is the one way around
     // BR-8.
     if (ownerOrgId !== undefined && ownerOrgId !== DEFAULT_ORG_ID) {
+      if (userKept) return { denied: unknownBlobResponse() };
       return {
         denied: jsonResponse(403, {
           error: "Caller's organization does not own the requested resource"
@@ -528,6 +628,9 @@ export async function authorizeManagementRoute(
     });
   } catch (error) {
     if (error instanceof PrincipalResolutionError) {
+      // A kept file's id travels in every brief that names it: a caller who
+      // can't sign in hears what an id nobody has used answers.
+      if (userKept) return { denied: unknownBlobResponse() };
       return { denied: jsonResponse(error.status, { error: error.message }) };
     }
     throw error;
@@ -539,9 +642,9 @@ export async function authorizeManagementRoute(
   // of the held refusal below: a legacy session's `migration-required` names
   // something about the record, and is its owner's to hear, not another
   // user's.
-  if (subject.kind === "session" && owner !== undefined && principal.userId !== owner) {
+  if (effective.kind === "session" && owner !== undefined && principal.userId !== owner) {
     return {
-      denied: hiddenSessionResponse(route, subject.sessionId),
+      denied: hiddenSessionResponse(route, effective.sessionId),
       sessionHidden: true
     };
   }
@@ -557,6 +660,11 @@ export async function authorizeManagementRoute(
   // to give. Before the owner and organization checks: a record that cannot be
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
+
+  // Another person's kept file is no file at all, as another session's is.
+  if (subject.kind === "blob" && owner !== undefined && principal.userId !== owner) {
+    return { denied: unknownBlobResponse() };
+  }
 
   if (owner !== undefined && principal.userId !== owner) {
     // Only a user-addressed route reaches here (sessions and requests were
@@ -588,6 +696,8 @@ export async function authorizeManagementRoute(
     if (subject.kind === "request") {
       return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
     }
+    // A file id travels inside every message that names it, the same way.
+    if (subject.kind === "blob") return { denied: unknownBlobResponse() };
     return {
       denied: jsonResponse(403, {
         error: "Caller's organization does not own the requested resource"
@@ -596,4 +706,41 @@ export async function authorizeManagementRoute(
   }
 
   return { principal, ...checked };
+}
+
+// FIX-2522.
+/**
+ * The user whose own scope keeps a stored file (`userBlobOwner`), in
+ * `tenantId`'s namespace, and the flow instance that kept it; `undefined` for
+ * any other file. The user is the file's uploader: a scope keeps only its own
+ * user's files.
+ */
+export async function blobUserScope(
+  stores: Pick<StoreRegistry, "blobs">,
+  blobId: string,
+  tenantId: string | undefined
+): Promise<{ user: BlobUploader; flowId: string } | undefined> {
+  const record = await stores.blobs?.head(blobId);
+  if (record?.owner === undefined) return undefined;
+  const flowId = userBlobKeeper(record.owner, tenantId, record.uploader);
+  return flowId === undefined ? undefined : { user: record.uploader, flowId };
+}
+
+/**
+ * The bare id of the session that owns a stored file, when that session is in
+ * `tenantId`'s namespace; `undefined` for a file held for its uploader, gone,
+ * or another tenant's. Shared with the read route, which runs it again on an
+ * app where nothing authenticates and this guard checked nothing.
+ */
+export async function blobSessionId(
+  stores: Pick<StoreRegistry, "blobs">,
+  blobId: string,
+  tenantId: string | undefined
+): Promise<string | undefined> {
+  const record = await stores.blobs?.head(blobId);
+  const key = record?.owner === undefined ? undefined : sessionKeyOfBlobOwner(record.owner);
+  if (key === undefined) return undefined;
+  const bare = toBareSessionId(key, tenantId);
+  // A key that doesn't round-trip is in another tenant's namespace.
+  return resolveSessionStorageKey(bare, tenantId) === key ? bare : undefined;
 }

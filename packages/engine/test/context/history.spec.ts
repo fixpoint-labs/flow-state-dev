@@ -603,16 +603,16 @@ describe("outputItemToSessionItem", () => {
   });
 
   it("gives no other item type a role", () => {
-    const component = {
+    const record = {
       id: "c1",
-      type: "component",
-      component: "note",
-      data: {},
+      type: "data",
+      dataType: "note",
+      value: {},
       status: "completed",
       requestId: "req1",
       itemIndex: 2,
       ts: 102,
     } as unknown as OutputItem;
-    expect(outputItemToSessionItem(component)).not.toHaveProperty("role");
+    expect(outputItemToSessionItem(record)).not.toHaveProperty("role");
   });
 });

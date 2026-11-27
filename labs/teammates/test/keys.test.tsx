@@ -7,8 +7,8 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFixtureLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -22,7 +22,7 @@ const press = (key: string, init: KeyboardEventInit = {}, on: Element = document
   act(() => void fireEvent.keyDown(on, { key, ...init }));
 
 async function openApp() {
-  render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+  render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
   await screen.findByLabelText("Message Lead");
   // Start every step from the list, not a text field.
   within(workers()).getAllByRole("button")[0]!.focus();
@@ -101,7 +101,7 @@ describe("keys", () => {
       document.removeEventListener("keydown", listen);
     }
   });
-  it("a pick from ⌘K over the key list closes the key list too, so the hire form takes the keys", async () => {
+  it("a pick from ⌘K over the key list closes the key list too, so the hire dialog takes the keys", async () => {
     await openApp();
     press("?");
     await screen.findByRole("dialog", { name: "Keys" });
@@ -109,7 +109,8 @@ describe("keys", () => {
     const input = await screen.findByRole("combobox");
     fireEvent.change(input, { target: { value: "hire" } });
     press("Enter", {}, input);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // The hire form is a dialog of its own: the only one left open.
+    await waitFor(() => expect(screen.getAllByRole("dialog").map((d) => d.getAttribute("aria-labelledby") && document.getElementById(d.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["Hire a teammate"]));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Teammate name")));
   });
 });

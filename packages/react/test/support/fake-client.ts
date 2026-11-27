@@ -11,6 +11,7 @@
  * `requestStream` and `sessionStream` with the route a real client would use
  * (`url`, `sessionId`), so a test can capture and drive them.
  */
+import { liveRead } from "@flow-state-dev/client/internal";
 import type {
   Client,
   RequestHandle,
@@ -32,6 +33,8 @@ export type FakeClientParts = {
   /** Request-level calls, each given the request id first (and the flow address last). */
   request?: Partial<Record<"status" | "result" | "continue" | "retry" | "resume" | "answer", AnyFn>>;
   resources?: Partial<Client["resources"]>;
+  /** `client.resource(def, options)`: the handle a hook reads and writes a user or org resource through. */
+  resource?: AnyFn;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each test types its own capture
   requestStream?: (options: RequestStreamOptions & { url: string } & Record<string, any>) => RequestStreamHandle;
   sessionStream?: (options: SessionStreamOptions & { sessionId: string }) => SessionStreamHandle;
@@ -98,6 +101,8 @@ export function fakeClient(parts: FakeClientParts): Client {
         return Object.assign(handle(address, response.request.id), { response });
       }) as never,
       createSession: async (options?: unknown) => call(parts.flow?.createSession, "flow.createSession", options),
+      upload: async () => missing("flow.upload"),
+      identity: async () => missing("flow.identity"),
       read: (async (name: string, input: unknown, options: unknown) => call(parts.flow?.read, "flow.read", name, input, options)) as never,
       request: (id: string) => handle(address, id)
     }),
@@ -117,9 +122,15 @@ export function fakeClient(parts: FakeClientParts): Client {
       get: (_t, name: string) =>
         (parts.resources as Record<string, Fn> | undefined)?.[name] ?? (() => missing(`resources.${name}`))
     }),
+    resource: ((def: unknown, options?: unknown) => call(parts.resource, "resource", def, options)) as Client["resource"],
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
-    transcribe: async () => missing("transcribe")
+    // The client's own live read, over the faked subscription.
+    live: ((topics: Parameters<Client["subscribe"]>[0], options: never) =>
+      liveRead((wanted, subscribeOptions) => parts.subscribe?.(wanted, subscribeOptions) ?? { close() {} }, topics, options)) as Client["live"],
+    view: async () => missing("view"),
+    transcribe: async () => missing("transcribe"),
+    upload: async () => missing("upload")
   };
 }
 

@@ -18,14 +18,14 @@ import type { Truncation } from "../src/react/hooks/use-dispatch-runs";
 /** One `task-change` item, so the fold produces a board with one task on it. */
 const taskItem = {
   id: "item_1",
-  type: "component",
+  type: "data",
   status: "completed",
   requestId: "req_1",
   itemIndex: 0,
   provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
   ts: 1_000,
-  component: "task-change",
-  data: {
+  dataType: "task-change",
+  value: {
     collectionId: "issues",
     taskId: "task-a",
     kind: "claimed",

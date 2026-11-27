@@ -70,7 +70,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "leaf-inline",
       actions: {
-        run: { inputSchema: z.object({ x: z.number() }), block: double }
+        run: double
       }
     })();
 
@@ -101,7 +101,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "ref-then",
       actions: {
-        run: { inputSchema: z.string(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -140,7 +140,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "map-inline",
       actions: {
-        run: { inputSchema: z.number(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -177,7 +177,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "stepAll-structure",
       actions: {
-        run: { inputSchema: z.string(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -215,7 +215,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "resolve-roundtrip",
       actions: {
-        run: { inputSchema: z.string(), block: pipeline }
+        run: pipeline
       }
     })();
 
@@ -250,7 +250,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "flatten-depth-4",
       actions: {
-        run: { inputSchema: z.string(), block: s1 }
+        run: s1
       }
     })();
 
@@ -298,7 +298,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "depth-n-payload",
       actions: {
-        run: { inputSchema: z.string(), block: s1 }
+        run: s1
       }
     })();
 
@@ -345,7 +345,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "router-ref",
       actions: {
-        run: { inputSchema: z.string(), block: r }
+        run: r
       }
     })();
 
@@ -381,7 +381,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const flow = defineFlow({
       kind: "tap-passthrough",
       actions: {
-        run: { inputSchema: z.string(), block: pipeline }
+        run: pipeline
       }
     })();
 

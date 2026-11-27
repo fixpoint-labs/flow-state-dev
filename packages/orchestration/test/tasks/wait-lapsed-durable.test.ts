@@ -30,7 +30,7 @@ function hostCtx(owed: Owed[], ended: () => boolean, memo = new Map<string, unkn
   return {
     // A request-end seam whose hooks never run: the request doesn't end in this process.
     [REQUEST_END_SEAM]: { add: () => undefined },
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     _blockIdentity: { blockName: "getTask", blockInstanceId: "req_1:root/step[0]/tool[getTask][0%3Ac1]:0" },
     session: { identity: { type: "session", id: SESSION, userId: "alice" }, state: {}, stopRequest: async () => undefined },
     request: { identity: { type: "request", id: requestId } },

@@ -53,13 +53,14 @@ import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, runPatchedGoal, goalTmpDir, loadFixture, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
-import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { claudeCodeEnv, claudeCodeHarness, selectHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { CONVERSATION_BOARD_COLLECTION, createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { CONVERSATION_BOARD_COLLECTION } from "../../../packages/shift-manager/src/lib/boards.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 
 stripIntentOverrides();
 
@@ -239,7 +240,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
   mkdirSync(join(root, "runs"), { recursive: true });
   const lab = await openLab({
     stores: sqliteStores({ filename: join(root, "lab.sqlite") }),
-    harness: slot as never,
+    harnesses: [readyHarness(slot as never)],
     runTimeoutMs,
     workspace: { root: join(root, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,
@@ -284,12 +285,8 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
   const taskId = listed[0]?.id as string | undefined;
   if (taskId === undefined) throw new Error("setup: the conversation filed no task for the coder");
 
-  const inbox = async (): Promise<InboxItem<unknown>[]> => {
-    const snapshot = await createLabReader(client).read();
-    if (!("inbox" in snapshot) || snapshot.inbox === undefined) throw new Error(`Shift Manager's read came back ${show(snapshot)}`);
-    if (!snapshot.inbox.ok) throw new Error(`Shift Manager's Inbox didn't load: ${snapshot.inbox.failure.message}`);
-    return snapshot.inbox.value as InboxItem<unknown>[];
-  };
+  // FIX-2774: Shift Manager's Inbox reads the roster flow's inbox view.
+  const inbox = async (): Promise<InboxItem<unknown>[]> => (await client.view(inboxViewRef, {})).value.items as InboxItem<unknown>[];
   const itemOf = async () => (await inbox()).find((item) => item.task?.taskId === taskId);
   const task = async () => {
     const read = await act("getTask_tasks", { id: taskId });

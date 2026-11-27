@@ -50,8 +50,12 @@ provider:
 ```ts
 type WebhookConfig = Record<string, WebhookSubscriptionConfig>;
 
-interface WebhookSubscriptionConfig {
-  on: Record<string, WebhookEventBinding>;
+// A provider entry is a bindings map (`on`) or a service route (`service`), never both.
+type WebhookSubscriptionConfig = { on: Record<string, WebhookEventBinding> } | { service: WebhookServiceRoute };
+
+interface WebhookServiceRoute {
+  entry: string; // the flow's internal action that routes one normalized event
+  normalize: (event: WebhookInboundEvent, at: { received: number }) => readonly SubscriptionEvent[];
 }
 
 // A webhook binding is an action in webhook form: it extends the shared
@@ -65,6 +69,22 @@ interface WebhookEventBinding extends ActionCore {
   when?: (event: WebhookInboundEvent) => boolean;
 }
 ```
+
+**Two ways to route, split by provider.** A binding runs one handler per
+event, in a session it names or a fresh one-off one: Stripe, Slack and custom
+providers. A **service route** brings the event to the sessions that asked for
+it: the transport verifies, parses and reads the delivery id exactly as for a
+binding, then `normalize` maps the delivery to zero or more normalized
+subscription events, and each one is routed through the flow's internal
+`entry` by `routeServiceEvent`, as `service:<provider>`. No session is made
+from the event. A provider's service flow factory declares it
+(`githubServiceFlow` in `@flow-state-dev/workforce`); an app doesn't write one
+by hand. `normalize` is pure, so a redelivery names the same objects at the
+same versions, and a poll that calls the same normalize agrees with the push.
+An event a session publishes takes the same routing without a webhook: it
+enters through the dispatch seam's service route (see `dispatched-work.md` →
+"A run as a resource's owner, fired by the host"), with the publishing session
+as its sender and only its own user's runs in its tenant fired.
 
 Because a webhook handler lives off `flow.actions`, the runtime resolves it from
 `flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate
@@ -161,8 +181,11 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
    `status`.
 10. **Validate dispatch** (`host.validateDispatch`) — enforces org binding. A
     throw → 403.
-11. **Ensure session** (find-or-create) when a `sessionId` was derived, so the
-    action's session exists before dispatch.
+11. **Ensure session** (find-or-create), so the action's session exists
+    before dispatch. A binding that derives no `sessionId` (or an empty one)
+    gets a one-off id from `oneOffSessionId()`, made here, so the envelope and
+    the request record name it from the first write; the session is born with
+    the same `metadata.source: "webhook"` as a named one.
 12. **Dispatch** fire-and-forget. `responseEmitter: null` — there's no outbound
     stream. Await `handle.accepted` (durable request recording) when the
     runner surfaces it, so a crash after the 202 doesn't silently drop the
@@ -171,6 +194,20 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
 
 Because the action runs after the 202, the ack returns well inside provider
 budgets (Slack 3s, GitHub 10s) regardless of action duration.
+
+**A service route** takes steps 1 to 6, then:
+
+7. **Normalize** (`service.normalize(event, { received })`). A throw → 400;
+   no events → 202 `ignored`.
+8. **Resolve principal**, as step 9 above: the org the service routes in. The
+   service runs as `service:<provider>` in that org, never as anyone the
+   payload names.
+9. **Route each event** through `routeServiceEvent`: the routing entry runs to
+   its end (code only), and each owner run it names is awaited until the host
+   recorded it. A routing error → 500; an owner run the host failed to record
+   → 503, so a redelivery sends it (a delivery's message id is
+   `<object>@<version>:<session>`, so what already landed lands once).
+10. **202** with `{ status: "accepted", events, ownerRuns, refused }`.
 
 ## Source and metadata provenance
 

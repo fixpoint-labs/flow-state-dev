@@ -27,7 +27,7 @@ const LEDGER = "convo-tasks";
 /** Minimal block context: the factory reads only `emit` and identity. */
 function ctxFor(userId = "alice"): BlockContext {
   return {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     resources: {},
     session: { identity: { type: "session", id: "s_1", userId } },
     request: { identity: { type: "request", id: "r_1" } },
@@ -181,7 +181,7 @@ describe("a ref resolved at one partition", () => {
     const seen: string[] = [];
     const ctx = {
       ...ctxFor(),
-      emit: { component: (_type: string, data: { taskId: string }) => void seen.push(data.taskId) },
+      emit: { data: (_type: string, value: { taskId: string }) => void seen.push(value.taskId) },
     } as unknown as BlockContext;
     const a = await getOrCreateTaskCollection({
       ctx,

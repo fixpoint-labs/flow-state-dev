@@ -462,7 +462,8 @@ export function createProjection({
   ): Promise<void> {
     const updatedAt = new Date().toISOString();
     const extra = mount.entryState?.(key) ?? {};
-    const state = { path: key, hash, updatedAt, ...extra } as Partial<ProjectedEntryState>;
+    // Extra first, so a mount cannot replace path, hash, or updatedAt.
+    const state = { ...extra, path: key, hash, updatedAt } as Partial<ProjectedEntryState>;
     const ref = await mount.collection.getOrCreate(key, state);
     // `getOrCreate` applies its initial state only when it creates, so an
     // entry that already existed reaches its new hash — and the mount's own
