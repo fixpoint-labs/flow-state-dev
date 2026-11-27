@@ -41,9 +41,12 @@
  * logins, a bot's without `[bot]`. A check run is sent by the app that ran
  * it (`check_run.app.slug`, a `bot`), not by whoever pushed.
  *
- * **A check carries only what GitHub sets.** Its title is `Check <name>: <conclusion>`, its
+ * **A check carries only what GitHub sets.** Its title is `Check <name>: <conclusion>` (the name
+ * the workflow's job name, kept only when it matches `[A-Za-z0-9 ._()/:-]{1,64}`, else
+ * `a CI check`), its
  * text the lines `status: completed`, `conclusion: <conclusion>` and `head: <sha>`, each value
- * checked against GitHub's form, and its url the run's page. Never the run's `output` (title,
+ * checked against GitHub's form, and its url the run's page on the event's own repository
+ * (`https://github.com/<owner>/<repo>/runs/<id>`, or `/actions/runs/<id>[/job/<id>]`), else empty. Never the run's `output` (title,
  * summary, text, annotations) or logs: the workflow writes those, and a pull request can change
  * the workflow, so no subscriber of any kind hears them.
  *
@@ -58,6 +61,26 @@ export const GITHUB_PROVIDER = "github";
 
 /** The conclusions GitHub gives a completed check run. A check's text carries one of these, or none. */
 const CHECK_CONCLUSIONS = new Set(["success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale", "startup_failure"]);
+
+/**
+ * A check name an event carries: an ordinary job name. The name is the workflow's job name, which a
+ * pull request can change, so any other is left out and the check is called {@link UNNAMED_CHECK}.
+ */
+const CHECK_NAME = /^[A-Za-z0-9 ._()/:-]{1,64}$/;
+
+/** What a check whose name is left out is called. */
+const UNNAMED_CHECK = "a CI check";
+
+/** The path of a check run's page on its repository: `runs/<id>`, or an Actions run, or one job of it. */
+const CHECK_RUN_PATH = /^\/(?:runs\/\d+|actions\/runs\/\d+(?:\/job\/\d+)?)$/;
+
+/** A check run's `html_url` when it is a run page on `fullName` (`owner/repo`, any case), else `""`. */
+function checkRunUrl(value: string | undefined, fullName: string): string {
+  if (value === undefined) return "";
+  const prefix = `https://github.com/${fullName.toLowerCase()}`;
+  if (!value.toLowerCase().startsWith(prefix)) return "";
+  return CHECK_RUN_PATH.test(value.slice(prefix.length)) ? value : "";
+}
 
 /** The conclusions that mean the check went red: what a run has to act on. */
 const FAILED_CHECK_CONCLUSIONS = new Set(["failure", "timed_out", "action_required", "startup_failure"]);
@@ -338,17 +361,19 @@ export function normalizeGitHubEvent(input: GitHubEventInput, options: GitHubNor
       // GitHub's own values, each checked against its form, so nothing else rides along in the text.
       const conclusion = CHECK_CONCLUSIONS.has(str(run.conclusion) ?? "") ? str(run.conclusion) : undefined;
       const head = /^[0-9a-f]{40}$/.test(str(run.head_sha) ?? "") ? str(run.head_sha) : undefined;
+      // The job name and the link are the workflow's and the payload's: kept only in their ordinary form.
+      const name = CHECK_NAME.test(str(run.name) ?? "") ? str(run.name)! : UNNAMED_CHECK;
       const base = {
         ...(from === undefined ? {} : { from }),
         kind: "check",
         id: `check_run:${runId}`,
         version: msOf(run.completed_at),
         association: undefined,
-        title: `Check ${str(run.name) ?? ""}: ${conclusion ?? "completed"}`,
+        title: `Check ${name}: ${conclusion ?? "completed"}`,
         // Only what GitHub sets: never the run's `output` (title, summary, text, annotations), which the workflow writes.
         text: [`status: completed`, ...(conclusion === undefined ? [] : [`conclusion: ${conclusion}`]), ...(head === undefined ? [] : [`head: ${head}`])].join("\n"),
         labels: [],
-        url: str(run.html_url) ?? ""
+        url: checkRunUrl(str(run.html_url), fullName)
       };
       const numbers = [
         ...new Set(
