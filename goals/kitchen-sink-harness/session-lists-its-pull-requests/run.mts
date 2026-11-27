@@ -18,12 +18,12 @@
  * Controls: GOAL_CONTROL=no-pr-record (must FAIL at r1, and may FAIL at r2; nothing else)
  *           GOAL_CONTROL=no-backstop  (must FAIL at b, and nothing else)
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { Page } from "playwright";
-import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
+import { runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
+import { startKitchenSinkHarness, stopButton } from "../../lib/kitchen-sink.mts";
 
 const PORT = 3052;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -81,38 +81,6 @@ function cleanUp(branches: string[]): void {
   }
 }
 
-/** `next dev`, working in the scratch repository's clone. */
-async function startDev(): Promise<{ stop: () => void }> {
-  await refuseIfAnswering(ORIGIN);
-  let log = "";
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    NODE_ENV: "development",
-    KITCHEN_SINK_TEST_MODE: "1",
-    NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
-    KITCHEN_SINK_REAL_HARNESS: "1",
-    KITCHEN_SINK_HARNESS_WORKSPACE: CHECKOUT,
-    STORE_TYPE: "filesystem",
-    ...(CONTROL === "" ? {} : { GOAL_CONTROL: CONTROL }),
-  };
-  const child: ChildProcess = spawn("pnpm", ["exec", "next", "dev", "--port", String(PORT)], {
-    cwd: KITCHEN_SINK,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  child.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  for (let i = 0; i < 240; i += 1) {
-    const status = await fetch(`${ORIGIN}/api/flows`).then((r) => r.status, () => undefined);
-    if (status === 200) return { stop: () => stopProcessGroup(child) };
-    if (child.exitCode !== null) throw new Error(`next dev exited (${child.exitCode}):\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  stopProcessGroup(child);
-  throw new Error(`next dev never served ${ORIGIN}/api/flows:\n${log}`);
-}
-
 type Row = { key: string; source: string };
 
 /** The panel's rows, as drawn. */
@@ -125,7 +93,6 @@ async function panelRows(page: Page): Promise<Row[]> {
   );
 }
 
-const stopButton = (page: Page) => page.getByRole("button", { name: "Stop" });
 
 /** Send a turn and wait for it to end. Returns the rows seen on the panel while it ran. */
 async function turn(page: Page, prompt: string): Promise<Set<string>> {
@@ -248,8 +215,8 @@ await runGoal(async (failures) => {
     return { failures, evidence: "" };
   }
 
-  const server = await startDev();
-  const browser = await launchChromium();
+  const server = await startKitchenSinkHarness(PORT, CONTROL, CHECKOUT);
+  const browser = await launchChromium(server.stop);
   try {
     for (const mode of MODES) {
       const page = await browser.newPage();
@@ -257,8 +224,8 @@ await runGoal(async (failures) => {
       await page.close();
     }
   } finally {
-    await browser.close();
     server.stop();
+    await browser.close();
   }
 
   if (CONTROL !== "") {

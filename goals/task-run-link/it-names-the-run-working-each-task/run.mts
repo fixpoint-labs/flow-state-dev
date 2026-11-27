@@ -40,9 +40,8 @@
  *
  * Run: pnpm tsx goals/task-run-link/it-names-the-run-working-each-task/run.mts
  */
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -61,14 +60,10 @@ import {
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import {
-  REPO_ROOT,
-  RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   actingAs,
   hearsMessages,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -115,15 +110,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
 // A patched control runs this same file again with the patch applied as it
 // loads, and checks the patch reached the code it names.
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({ patches: PATCHES[CONTROL]!, scratch: SCRATCH, label: `control ${CONTROL}:` }).status);
 }
 
 type Proof = { taskId: string; attempt: number; sessionId: string; requestId: string; marker: string };

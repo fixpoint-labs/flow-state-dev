@@ -34,7 +34,7 @@
  *                 opening the run's session, and following it lands there
  *   gaps          Diff, Checks, Hand off, reassign, Open PR, *also post* and
  *                 the inspector's unread values each carry a gap line naming
- *                 its owner, or saying it is not planned in the first cut; the
+ *                 why it is unavailable in this release; the
  *                 composer takes a message, since every worker flow has a door
  *   no run        the unclaimed row says no run has started and can't be stopped
  *   release       Release on the held row: the board's row reads pending (or
@@ -69,12 +69,8 @@
  * Control:  GOAL_CONTROL=board-flow PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
-import { onClosed } from "../../lib/server.mts";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
@@ -82,8 +78,8 @@ import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planResourcesPrefix, readPlanTarget 
 import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/internal";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { servedAddresses, buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -99,13 +95,12 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-task-run");
 const RUN_LAB = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "run-lab");
 const CONFIG = join(RUN_LAB, "fsdev.config.mts");
 const TREE = join(RUN_LAB, "workforce");
 /** A gap line names who ships the missing piece, or says it isn't coming in the first cut. */
-const OWNED = /\bFIX-\d+\b|not planned in the first cut/;
+const DEFERRED_COPY = /\bin a later release\b|not planned in the first cut/;
 /** How soon a stored item must be drawn. */
 const LIVE_MS = 2_000;
 /** How soon the board must show what a pressed action did. */
@@ -161,72 +156,29 @@ const SWAPPED: Record<string, string[]> = {
 
 async function buildShiftManager(control: string, boardFlow: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap =
     control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "run.ts"])), with: join(HERE, "controls", `${control}.ts`) };
-  let swapped = 0;
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "warn",
-    build: { outDir, emptyOutDir: true },
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with },
     define: { __BOARD_FLOW__: JSON.stringify(boardFlow), __STATIC_SEATS__: "[]" },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined || importer === swap.with) return null;
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
-                return swap.with;
-              },
-            },
-          ],
+    logLevel: "warn"
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
-  return outDir;
 }
 
 // ---- serving the Lab ---------------------------------------------------------
 
-type Running = { origin: string; devtool: string; child: ChildProcess; exited: Promise<void> };
+type Running = ServedShiftManager & { devtool: string };
 
 async function startLab(pages: string): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", "run-lab-"));
-  let log = "";
-  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
-    cwd: workDir,
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", RUN_LAB_TASK_ACTIONS: "1" }),
-    stdio: ["ignore", "pipe", "pipe"],
+  const served = await startShiftManager({
+    scratch: SCRATCH, label: "run-lab", config: CONFIG, pages, env: { RUN_LAB_TASK_ACTIONS: "1" }
   });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    onClosed(child, () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const served = servedAddresses(log);
-    if (served !== undefined && served.devtool === null) {
-      child.kill("SIGTERM");
-      throw new Error(`Shift Manager served no devtool; build its pages with pnpm build:assets. Log tail:\n${log.slice(-2000)}`);
-    }
-    if (served !== undefined) return { origin: served.origin, devtool: served.devtool!, child, exited };
-    if (gone) break;
-    await sleep(250);
+  const devtool = servedAddresses(served.log())?.devtool;
+  if (devtool == null) {
+    await served.stop();
+    throw new Error(`Shift Manager served no devtool; build its pages with pnpm build:assets. Log tail:\n${served.log().slice(-2000)}`);
   }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's command never served the run-lab. Log tail:\n${log.slice(-2000)}`);
+  return { ...served, devtool };
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -546,38 +498,38 @@ async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row)
 }
 
 async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
-  const owned = async (testId: string, disabled: boolean) => {
+  const checkPlaceholder = async (testId: string, disabled: boolean) => {
     const els = page.getByTestId(testId);
     const count = await els.count();
     if (count === 0) return fail("gaps", `${testId} is not on the screen`);
     for (let i = 0; i < count; i += 1) {
       const el = els.nth(i);
       const text = `${(await el.getAttribute("data-gap")) ?? ""} ${(await el.textContent()) ?? ""}`;
-      if (!OWNED.test(text)) fail("gaps", `${testId} carries no owner: "${text.trim()}"`);
+      if (!DEFERRED_COPY.test(text)) fail("gaps", `${testId} does not explain when the feature is available: "${text.trim()}"`);
       if (disabled && !(await el.isDisabled())) fail("gaps", `${testId} is enabled`);
     }
   };
-  await owned("task-disabled-action", true);
+  await checkPlaceholder("task-disabled-action", true);
   if ((await page.getByTestId("task-disabled-action").count()) !== 3) fail("gaps", "Hand off, reassign and Open PR are not all there");
   // Every worker flow has a door, so the composer takes a message on a running
   // task, and on a finished one, which the message picks up again (FIX-1764).
   const state = running ? "running" : "finished";
   if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", `the composer is disabled on a ${state} task whose worker has a door`);
   if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", `the composer says it is blocked on a ${state} task whose worker has a door`);
-  await owned("task-also-post", true);
-  await owned("inspector-acceptance-gap", false);
-  await owned("inspector-review-gap", false);
+  await checkPlaceholder("task-also-post", true);
+  await checkPlaceholder("inspector-acceptance-gap", false);
+  await checkPlaceholder("inspector-review-gap", false);
   for (const [tab, testId] of [
     ["diff", "task-diff-empty"],
     ["checks", "task-checks-empty"],
   ] as const) {
     await page.locator(`[role=tab][data-tab=${tab}]`).click();
     if (!(await visible(page, testId, 5_000))) fail("gaps", `the ${tab} tab shows no empty state`);
-    else await owned(testId, false);
+    else await checkPlaceholder(testId, false);
   }
   await page.locator("[role=tab][data-tab=brief]").click();
-  await owned("brief-acceptance-gap", false);
-  await owned("brief-fields-gap", false);
+  await checkPlaceholder("brief-acceptance-gap", false);
+  await checkPlaceholder("brief-fields-gap", false);
   await page.locator("[role=tab][data-tab=session]").click();
 }
 
@@ -803,8 +755,7 @@ await runGoal(async (failures) => {
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {
     await browser.close();
-    served.child.kill("SIGTERM");
-    await served.exited;
+    await served.stop();
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),

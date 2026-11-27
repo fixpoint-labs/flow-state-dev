@@ -29,10 +29,8 @@
 // Traces off before anything reads the flag: a resume must run no completed step again without them.
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
@@ -41,7 +39,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, loadFixture, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type HarnessToolApprovalHook, type StubRun } from "@flow-state-dev/harness-manager";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -102,17 +100,12 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const { patches, must, legs } = CONTROLS[CONTROL]!;
-  console.error(describePatches(patches, REPO_ROOT));
-  const mark = join(SCRATCH, `patched-${RUN_STAMP}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: { ...process.env, GOAL_LEGS: process.env.GOAL_LEGS ?? legs, ...modulePatchEnv(patches, REPO_ROOT, mark) },
-    encoding: "utf8",
+  const { output: out } = runPatchedGoal({
+    patches,
+    scratch: SCRATCH,
+    env: { GOAL_LEGS: process.env.GOAL_LEGS ?? legs },
+    capture: {}
   });
-  process.stdout.write(child.stdout ?? "");
-  process.stderr.write(child.stderr ?? "");
-  assertPatched(patches, REPO_ROOT, mark);
-  const out = `${child.stdout ?? ""}${child.stderr ?? ""}`;
   const failedOn = must.filter((assertion) => /^FAIL/m.test(out) && out.includes(`${assertion} —`));
   console.log(
     failedOn.length > 0

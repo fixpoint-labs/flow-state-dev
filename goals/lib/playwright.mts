@@ -5,11 +5,6 @@
  * goals never open a browser. Import it directly:
  *
  *   import { launchChromium } from "../../lib/playwright.mts";
- *
- * Two goals carry their own copy of {@link preinstalledChromium}
- * (`flow-instances/devtool-shows-the-selected-copy` and
- * `multi-worker-collab/it-hands-a-row-between-two-workers-in-view`). This is the
- * one a new goal imports; moving those two onto it is a separate change.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -44,12 +39,17 @@ export function preinstalledChromium(): string | undefined {
 /**
  * Launch a headless Chromium, preferring a pre-installed one.
  *
- * @returns The browser. The caller closes it.
+ * If launch fails, release any server the caller already started.
  */
-export async function launchChromium(): Promise<Browser> {
-  const executablePath = preinstalledChromium();
-  return await chromium.launch({
-    headless: true,
-    ...(executablePath === undefined ? {} : { executablePath }),
-  });
+export async function launchChromium(onFailure?: () => void | Promise<void>): Promise<Browser> {
+  try {
+    const executablePath = preinstalledChromium();
+    return await chromium.launch({
+      headless: true,
+      ...(executablePath === undefined ? {} : { executablePath }),
+    });
+  } catch (error) {
+    await onFailure?.();
+    throw error;
+  }
 }

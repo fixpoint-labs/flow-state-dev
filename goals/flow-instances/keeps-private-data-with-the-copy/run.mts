@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { loadFixture, runGoal, waitForRequestStatus, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { REVIEW_KIND, digestDefinition, reviewDefinition } from "./fixtures/reviewer";
 
 type Copy = { id: string; marker: string };
@@ -74,15 +74,6 @@ async function eastCells(stores: StoreRegistry): Promise<unknown> {
   };
 }
 
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
-}
-
 async function get(router: Router, path: string[]): Promise<{ status: number; body: unknown }> {
   const res = await router.GET(new Request(`http://goal/api/flows/${path.join("/")}`), {
     params: { path },
@@ -128,7 +119,7 @@ await runGoal(async (failures) => {
       const res = await act(router, copy.id, session, { marker: copy.marker, share });
       const body = (await res.json()) as { request?: { id: string } };
       if (res.status !== 202) failures.push(`${copy.id}: expected 202, got ${res.status}`);
-      const status = await settled(stores, body.request?.id ?? "");
+      const status = await waitForRequestStatus(stores, body.request?.id ?? "");
       if (status !== "completed") failures.push(`${copy.id}: request ended ${status}`);
     }
     evidence.push("both copies and a singleton wrote through the HTTP action route");

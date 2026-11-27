@@ -41,7 +41,6 @@ process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { harnessRunInputSchema } from "@flow-state-dev/core/harness";
@@ -53,7 +52,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, runPatchedGoal, goalTmpDir, loadFixture, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -112,17 +111,11 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const { patches, must } = CONTROLS[CONTROL]!;
-  console.error(describePatches(patches, REPO_ROOT));
-  const mark = join(SCRATCH, `patched-${RUN_STAMP}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: { ...process.env, ...modulePatchEnv(patches, REPO_ROOT, mark) },
-    encoding: "utf8",
+  const { output: out } = runPatchedGoal({
+    patches,
+    scratch: SCRATCH,
+    capture: {}
   });
-  process.stdout.write(child.stdout ?? "");
-  process.stderr.write(child.stderr ?? "");
-  assertPatched(patches, REPO_ROOT, mark);
-  const out = `${child.stdout ?? ""}${child.stderr ?? ""}`;
   const failedOn = must.filter((assertion) => /^FAIL/m.test(out) && out.includes(`${assertion} —`));
   console.log(
     failedOn.length > 0

@@ -1,6 +1,5 @@
 /** What this run proves is `goal.md` beside this file. */
-import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { handler } from "@flow-state-dev/core";
@@ -13,10 +12,8 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { deriveWorkerSessionId, ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_SESSION_ID, projectWorkspaceCapability, type ReportResourceState } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import {
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   REPO_ROOT,
   runGoal,
   silentLogger,
@@ -120,16 +117,12 @@ const control = CONTROL === "" ? undefined : CONTROLS[CONTROL]!;
 
 // A control runs this same script in a child process whose modules are patched as they load.
 const SCRATCH = goalTmpDir(SLUG);
-const MARK = join(SCRATCH, "patch-mark");
 if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  rmSync(MARK, { force: true });
-  say(`control ${CONTROL}: ${control.does}\n${describePatches(control.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(control.patches, REPO_ROOT, MARK) },
-  });
-  assertPatched(control.patches, REPO_ROOT, MARK);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: control.patches,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}: ${control.does}`
+  }).status);
 }
 const runs = (leg: string) => control === undefined || control.legs.includes(leg);
 

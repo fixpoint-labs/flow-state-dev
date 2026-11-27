@@ -9,13 +9,11 @@
  * Controls: GOAL_CONTROL=public-resume | new-attempt | cancel-keeps-item | steer-ignores-mark | default-deadline | no-question-message | wrapper-kill
  */
 import { randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
-import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
+import { runPatchedGoal } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { loadShipped } from "../workers-message-each-other/legs.mts";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -59,19 +57,12 @@ const harness: "claude-code" | "stub" = (process.env.GOAL_HARNESS ?? "claude-cod
 // A control runs the walk in a child that loads its patches; the Labs it serves inherit them, since
 // Shift Manager's command passes the environment on. This process grades the child's output.
 if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  console.error(describePatches(control.patches, REPO_ROOT));
-  const mark = join(SCRATCH, `patched-${RUN_STAMP}`);
-  mkdirSync(SCRATCH, { recursive: true });
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: { ...process.env, ...modulePatchEnv(control.patches, REPO_ROOT, mark) },
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
+  const { output } = runPatchedGoal({
+    patches: control.patches,
+    scratch: SCRATCH,
+    capture: { maxBuffer: 64 * 1024 * 1024 }
   });
-  process.stdout.write(child.stdout ?? "");
-  process.stderr.write(child.stderr ?? "");
-  assertPatched(control.patches, REPO_ROOT, mark);
-  process.exit(controlVerdict(`${child.stdout ?? ""}${child.stderr ?? ""}`, control));
+  process.exit(controlVerdict(output, control));
 }
 
 /** A control passes only when every assertion it must fail failed: exit 0 then, 1 when one stayed green. */

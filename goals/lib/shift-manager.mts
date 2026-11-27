@@ -119,11 +119,7 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
     writeFileSync(path, after);
     diff.push(`${patch.file}: ${patch.why}`);
   }
-  const vite = (await import(pathToFileURL(createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite")).href)) as {
-    build(config: Record<string, unknown>): Promise<unknown>;
-  };
-  const pages = join(scratch, name, "pages");
-  await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir: pages, emptyOutDir: true } });
+  const pages = await buildShiftManagerPages(join(scratch, name, "pages"), root);
   return { pages, diff };
 }
 
@@ -183,6 +179,8 @@ export async function startShiftManager(options: {
   });
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
+  let spawnError: Error | undefined;
+  child.once("error", (error) => { spawnError = error; });
   let gone = false;
   const exited = new Promise<void>((resolve) =>
     onClosed(child, () => {
@@ -195,9 +193,10 @@ export async function startShiftManager(options: {
     await exited;
   };
   for (let waited = 0; waited < (options.timeoutMs ?? 90_000); waited += 250) {
+    if (spawnError !== undefined) throw spawnError;
+    if (gone) break;
     const origin = start.origin(log);
     if (origin !== undefined) return { origin, workDir, child, log: () => log, exited, stop };
-    if (gone) break;
     await sleep(250);
   }
   stopProcessGroup(child);
@@ -336,17 +335,51 @@ export async function pendingSeatAsks(
  *
  * @returns `outDir`, for `--assets`.
  */
-export async function buildShiftManagerPages(outDir: string, root: string = SHIFT_MANAGER): Promise<string> {
+export async function buildShiftManagerPages(
+  outDir: string,
+  root: string = SHIFT_MANAGER,
+  options: {
+    define?: Record<string, string>;
+    logLevel?: "warn" | "error";
+    swap?: { targets: readonly string[]; with: string; resolveFrom?: string };
+  } = {}
+): Promise<string> {
   const viteEntry = createRequire(join(root, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
+  const { define, logLevel = "error", swap } = options;
+  const swapped = new Set<string>();
+  const plugins = swap === undefined ? [] : [{
+    name: "goal-control-swap",
+    enforce: "pre",
+    async resolveId(
+      this: { resolve(source: string, importer: string, options: Record<string, unknown>): Promise<{ id: string } | null> },
+      source: string,
+      importer: string | undefined,
+      options: Record<string, unknown>
+    ) {
+      if (importer === undefined) return null;
+      const resolveOptions = { ...options, skipSelf: true };
+      if (importer === swap.with) {
+        return swap.resolveFrom === undefined || source.startsWith(".")
+          ? null
+          : this.resolve(source, swap.resolveFrom, resolveOptions);
+      }
+      const resolved = await this.resolve(source, importer, resolveOptions);
+      if (resolved == null || !swap.targets.includes(resolved.id)) return null;
+      swapped.add(resolved.id);
+      return swap.with;
+    }
+  }];
   const nodeEnv = process.env.NODE_ENV;
   try {
-    await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir, emptyOutDir: true } });
+    await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel, build: { outDir, emptyOutDir: true }, define, plugins });
   } finally {
     // Vite leaves `production` behind, which every child this process spawns would inherit.
     if (nodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = nodeEnv;
   }
+  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
+  if (missed.length > 0) throw new Error(`the build never imported ${missed.join(", ")}, so nothing was swapped`);
   return outDir;
 }
 

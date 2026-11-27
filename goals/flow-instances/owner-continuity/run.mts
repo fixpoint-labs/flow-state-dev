@@ -7,17 +7,18 @@
  * Run: pnpm tsx goals/flow-instances/owner-continuity/run.mts
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createFlowJobProcessor } from "@flow-state-dev/bullmq";
 import type { FlowJobData } from "@flow-state-dev/bullmq";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, waitForRequestStatus, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { REVIEW_KIND, reviewInstance } from "./fixtures/review";
 
 type Copy = { id: string; marker: string };
@@ -47,15 +48,6 @@ async function act(router: Router, address: string, sessionId: string): Promise<
     }),
     { params: { path: [address, sessionId, "actions", "run"] } },
   );
-}
-
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
 }
 
 async function owned(stores: StoreRegistry, sessionId: string) {
@@ -96,7 +88,7 @@ await runGoal(async (failures) => {
       const body = (await res.json()) as { request?: { id: string; flowId?: string } };
       if (res.status !== 202) failures.push(`${copy.id}: expected 202, got ${res.status}`);
       if (body.request?.flowId !== copy.id) failures.push(`${copy.id}: response flowId ${body.request?.flowId}`);
-      const status = await settled(stores, body.request?.id ?? "");
+      const status = await waitForRequestStatus(stores, body.request?.id ?? "");
       if (status !== "completed") failures.push(`${copy.id}: request ended ${status}`);
       const o = await owned(stores, session);
       if (o.marker !== copy.marker || o.flowId !== copy.id || o.flowKind !== REVIEW_KIND) {
@@ -118,7 +110,7 @@ await runGoal(async (failures) => {
     const again = await act(router, fixture.east.id, sEast);
     const body = (await again.json()) as { request?: { id: string } };
     if (again.status !== 202) failures.push(`restart: A re-entry expected 202, got ${again.status}`);
-    if ((await settled(stores, body.request?.id ?? "")) !== "completed") failures.push("restart: A re-entry did not complete");
+    if ((await waitForRequestStatus(stores, body.request?.id ?? "")) !== "completed") failures.push("restart: A re-entry did not complete");
     const o = await owned(stores, sEast);
     if (o.marker !== fixture.east.marker || o.flowId !== fixture.east.id) {
       failures.push(`restart: A's session drifted to ${JSON.stringify(o)}`);
@@ -167,15 +159,19 @@ await runGoal(async (failures) => {
       failures.push(`cli bare kind: status ${bare.status}, stderr ${bare.stderr.slice(0, 200)}`);
     }
     const foreign = run(fixture.west.id, "cli_s_a");
-    if (foreign.status === 0 || !`${foreign.stdout}${foreign.stderr}`.includes("not owned by flow instance")) {
+    const refusal = `${foreign.stdout}${foreign.stderr}`;
+    if (foreign.status === 0 || !refusal.includes(`belongs to flow instance "${fixture.east.id}", not "${fixture.west.id}"`)) {
       failures.push(`cli B on A's session: status ${foreign.status} ${foreign.stderr.slice(0, 200)}`);
     }
-    // The CLI's own filesystem store under the scratch cwd still says A.
-    const record = JSON.parse(
-      readFileSync(join(cwd, ".fsdev", "data", "sessions", "cli_s_a.json"), "utf8"),
-    ) as { state?: { marker?: string }; flowId?: string };
-    if (record.state?.marker !== "east-ran" || record.flowId !== fixture.east.id) {
-      failures.push(`cli: A's session on disk is ${JSON.stringify(record)}`);
+    // Read the session from the CLI's default local SQLite store.
+    const cliStores = createSQLiteStores({ filename: join(cwd, ".fsdev", "data", "fsdev.db") });
+    try {
+      const record = await cliStores.session.get("cli_s_a");
+      if (record?.state.marker !== "east-ran" || record.flowId !== fixture.east.id) {
+        failures.push(`cli: A's session on disk is ${JSON.stringify(record)}`);
+      }
+    } finally {
+      cliStores.close();
     }
     evidence.push("CLI: both ids ran their own copy, the bare kind was refused naming both, B could not re-enter A's session");
   }
@@ -185,8 +181,8 @@ await runGoal(async (failures) => {
     const registry = createFlowRegistry();
     registry.registerMany([east(), west()]);
     const process_ = createFlowJobProcessor({ registry, stores, runtimeConfig: { logger: silentLogger } as never });
-    const job = (data: FlowJobData): Job<FlowJobData> =>
-      ({ id: `job_${data.requestId}`, data, attemptsMade: 0, opts: { attempts: 3 } }) as unknown as Job<FlowJobData>;
+    const job = (data: Omit<FlowJobData, "orgId">): Job<FlowJobData> =>
+      ({ id: `job_${data.requestId}`, data: { ...data, orgId: DEFAULT_ORG_ID }, attemptsMade: 0, opts: { attempts: 3 } }) as unknown as Job<FlowJobData>;
 
     await process_(job({ flowKind: fixture.east.id, actionName: "run", input: {}, userId: USER, sessionId: "q_s_a", requestId: "req_q_a" }));
     const qa = await owned(stores, "q_s_a");

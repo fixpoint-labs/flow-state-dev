@@ -48,8 +48,7 @@
  * Run: pnpm tsx goals/task-board/background-error-fails-the-attempt/run.mts
  * Legs: GOAL_LEGS=a,b,...,k (default: all)
  */
-import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -75,13 +74,10 @@ import {
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
 import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
-  REPO_ROOT,
   RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   actingAs,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -127,20 +123,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
 }
 // A control runs this same file again with its patch applied as it loads.
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      GOAL_SCRATCH: SCRATCH,
-      GOAL_LEGS: process.env.GOAL_LEGS ?? CONTROL_LEGS[CONTROL]!.join(","),
-      ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark)
-    }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? CONTROL_LEGS[CONTROL]!.join(",") }
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 

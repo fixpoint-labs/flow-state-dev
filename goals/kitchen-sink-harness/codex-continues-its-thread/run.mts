@@ -21,15 +21,14 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/codex-continues-its-thread/run.mts
  * Control:  GOAL_CONTROL=no-resume (must FAIL at c, s, r and x, and nothing else)
  */
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "playwright";
-import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
+import { runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
+import { boundId, loadedBoundId, startKitchenSinkHarness, stopButton, tokenCount } from "../../lib/kitchen-sink.mts";
 
 const PORT = 3049;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -47,66 +46,7 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** `next dev`, so the unset workspace setting means "the checkout the server runs in". */
-async function startDev(): Promise<{ stop: () => void; log: () => string }> {
-  await refuseIfAnswering(ORIGIN);
-  let log = "";
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    NODE_ENV: "development",
-    KITCHEN_SINK_TEST_MODE: "1",
-    NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
-    KITCHEN_SINK_REAL_HARNESS: "1",
-    STORE_TYPE: "filesystem",
-    ...(CONTROL === "" ? {} : { GOAL_CONTROL: CONTROL }),
-  };
-  delete env.KITCHEN_SINK_HARNESS_WORKSPACE;
-  const child: ChildProcess = spawn("pnpm", ["exec", "next", "dev", "--port", String(PORT)], {
-    cwd: KITCHEN_SINK,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  child.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  for (let i = 0; i < 240; i += 1) {
-    const status = await fetch(`${ORIGIN}/api/flows`).then((r) => r.status, () => undefined);
-    if (status === 200) return { stop: () => stopProcessGroup(child), log: () => log };
-    if (child.exitCode !== null) throw new Error(`next dev exited (${child.exitCode}):\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  stopProcessGroup(child);
-  throw new Error(`next dev never served ${ORIGIN}/api/flows:\n${log}`);
-}
-
-const bound = (page: Page) => page.getByTestId("bound-conversation");
 const notice = (page: Page) => page.getByTestId("turn-notice");
-const stopButton = (page: Page) => page.getByRole("button", { name: "Stop" });
-
-async function boundId(page: Page): Promise<string> {
-  return ((await bound(page).textContent()) ?? "").trim();
-}
-
-/** The bound id once a freshly loaded page has read it: it draws "none yet" until the session's state arrives. */
-async function loadedBoundId(page: Page): Promise<string> {
-  await page
-    .waitForFunction(
-      () => {
-        const text = document.querySelector('[data-testid="bound-conversation"]')?.textContent?.trim();
-        return text !== undefined && text !== "none yet";
-      },
-      undefined,
-      { timeout: 30_000 },
-    )
-    .catch(() => undefined);
-  return boundId(page);
-}
-
-/** How many times `token` shows in the conversation, as drawn. */
-async function tokenCount(page: Page, token: string): Promise<number> {
-  const text = (await page.getByTestId("conversation").textContent()) ?? "";
-  return text.split(token).length - 1;
-}
 
 /** Open a new session at `/codex`, and return its id. */
 async function newSession(page: Page): Promise<string> {
@@ -179,8 +119,8 @@ await runGoal(async (failures) => {
   const fail = (leg: string, message: string) => failures.push(`[${leg}] ${message}`);
   const token = `ks-goal-${randomBytes(6).toString("hex")}`;
 
-  const server = await startDev();
-  const browser = await launchChromium();
+  const server = await startKitchenSinkHarness(PORT, CONTROL);
+  const browser = await launchChromium(server.stop);
   try {
     const page = await browser.newPage();
 
@@ -279,8 +219,8 @@ await runGoal(async (failures) => {
       if ((await boundId(page)) !== idX) fail("x", `the turn after the refusal moved the session to ${await boundId(page)}`);
     }
   } finally {
-    await browser.close();
     server.stop();
+    await browser.close();
   }
 
   if (CONTROL !== "") {

@@ -10,9 +10,7 @@
  * Legs: GOAL_LEGS=a1,a2 (default: both)
  * Control: GOAL_CONTROL=no-plan (today's main: no plan, a step for itself is a task session of itself)
  */
-import { spawnSync } from "node:child_process";
 import { randomInt } from "node:crypto";
-import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -25,10 +23,8 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createWorkerInstallation, defineAgentWorkerFlow, defineSessionBoard, hireWorkforce, sessionIdOfFiling, workerConfigSchema } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import {
-  REPO_ROOT,
   RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   gatewayModel,
   goalAttempts,
   goalModel,
@@ -36,7 +32,6 @@ import {
   actingAs,
   keysServing,
   loadFixture,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   type ModulePatch
@@ -84,15 +79,7 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 const control = CONTROL === "" ? undefined : CONTROLS[CONTROL]!;
 if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(control.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(control.patches, REPO_ROOT, mark) }
-  });
-  assertPatched(control.patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({ patches: control.patches, scratch: SCRATCH, label: `control ${CONTROL}:` }).status);
 }
 
 const legs = new Set((process.env.GOAL_LEGS ?? "a1,a2").split(",").map((s) => s.trim()).filter(Boolean));

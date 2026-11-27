@@ -43,10 +43,9 @@
  * `GOAL_LAB=<dir>` swaps the held-out Lab: a folder with an `fsdev.config.mts`
  * and its tree under `workforce/`, importing only installed packages.
  */
-import { onClosed } from "../../lib/server.mts";
+import { freePort, onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -134,17 +133,6 @@ function dropPageConfig(project: string): void {
 }
 
 // ---- the command ------------------------------------------------------------------
-
-function freePort(): Promise<number> {
-  return new Promise((resolvePort, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address() as { port: number };
-      probe.close(() => resolvePort(port));
-    });
-  });
-}
 
 type Served = { origin: string; child: ChildProcess; log: () => string; exited: Promise<void> };
 

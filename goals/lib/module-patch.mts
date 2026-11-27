@@ -12,9 +12,11 @@
  * matching fails here, before the run, and again at load, so a control that
  * no longer applies can't pass by running unpatched.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { REPO_ROOT, RUN_STAMP } from "./paths.mts";
 
 /** One rewrite of one module, by its path from the checkout root. */
 export interface ModulePatch {
@@ -66,4 +68,39 @@ export function assertPatched(patches: readonly ModulePatch[], root: string, mar
       throw new Error(`setup: the patch never reached ${patch.module} in the code under test, so this run shows nothing`);
     }
   }
+}
+
+/** Run the current goal in a fresh process so the patches apply before its imports load. */
+export function runPatchedGoal(options: {
+  patches: readonly ModulePatch[];
+  scratch: string;
+  label?: string;
+  env?: NodeJS.ProcessEnv;
+  capture?: { maxBuffer?: number };
+  verify?: false | "unless-usage-error";
+}): { status: number; output: string } {
+  const { patches, scratch, label, env, capture, verify } = options;
+  const mark = join(scratch, `patch-mark-${RUN_STAMP}`);
+  mkdirSync(scratch, { recursive: true });
+  rmSync(mark, { force: true });
+  const diff = describePatches(patches, REPO_ROOT);
+  console.error(label === undefined ? diff : `${label}\n${diff}`);
+
+  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
+    stdio: capture === undefined ? "inherit" : ["inherit", "pipe", "pipe"],
+    env: { ...process.env, ...env, ...modulePatchEnv(patches, REPO_ROOT, mark) },
+    encoding: "utf8",
+    ...(capture?.maxBuffer === undefined ? {} : { maxBuffer: capture.maxBuffer })
+  });
+  const stdout = child.stdout ?? "";
+  const stderr = child.stderr ?? "";
+  if (capture !== undefined) {
+    process.stdout.write(stdout);
+    process.stderr.write(stderr);
+  }
+  if (child.error !== undefined) throw child.error;
+  if (verify !== false && (verify !== "unless-usage-error" || child.status !== 2)) {
+    assertPatched(patches, REPO_ROOT, mark);
+  }
+  return { status: child.status ?? 1, output: stdout + stderr };
 }

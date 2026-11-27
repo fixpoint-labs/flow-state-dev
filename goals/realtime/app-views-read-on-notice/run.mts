@@ -24,9 +24,6 @@
  *   GOAL_CONTROL=timer       each lab view keeps a fixed timer with the socket up: a's 0-reads must FAIL.
  *   GOAL_CONTROL=every-kind  the lab views read on every notice on their topic: b must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -35,7 +32,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@fl
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { runPatchedGoal, goalTmpDir, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { definePinsFlow } from "../../../labs/claude-code-style/workforce/flows/pins.mts";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
@@ -68,15 +65,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) },
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---------------------------------------------------------------------------

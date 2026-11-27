@@ -32,10 +32,9 @@
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 delete process.env.FSDEV_DEFAULT_MODEL;
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
@@ -58,7 +57,7 @@ import {
   type PhaseSpec,
 } from "@flow-state-dev/harness-manager";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, loadFixture, runGoal, type ModulePatch } from "../../lib/index.mts";
 
 interface Fixture {
   marker: string;
@@ -94,18 +93,12 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const { patches, must, legs } = CONTROLS[CONTROL]!;
-  console.error(describePatches(patches, REPO_ROOT));
-  mkdirSync(SCRATCH, { recursive: true });
-  const mark = join(SCRATCH, `patched-${RUN_STAMP}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: { ...process.env, GOAL_LEGS: process.env.GOAL_LEGS ?? legs, ...modulePatchEnv(patches, REPO_ROOT, mark) },
-    encoding: "utf8",
+  const { output: out } = runPatchedGoal({
+    patches,
+    scratch: SCRATCH,
+    env: { GOAL_LEGS: process.env.GOAL_LEGS ?? legs },
+    capture: {}
   });
-  process.stdout.write(child.stdout ?? "");
-  process.stderr.write(child.stderr ?? "");
-  assertPatched(patches, REPO_ROOT, mark);
-  const out = `${child.stdout ?? ""}${child.stderr ?? ""}`;
   const failedOn = must.filter((assertion) => /^FAIL/m.test(out) && out.includes(`${assertion} —`));
   console.log(
     failedOn.length > 0

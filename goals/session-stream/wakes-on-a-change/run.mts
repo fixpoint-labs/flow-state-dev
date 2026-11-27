@@ -17,9 +17,6 @@
  * Controls (each runs this file again with a patch applied as it loads):
  *   GOAL_CONTROL=no-publish  the write wrapper publishes nothing: a must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { PGlite } from "@electric-sql/pglite";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -34,12 +31,8 @@ import { type ChangeBus } from "@flow-state-dev/engine/host";
 import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {
-  REPO_ROOT,
-  RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   type ModulePatch
 } from "../../lib/index.mts";
@@ -64,15 +57,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---------------------------------------------------------------------------

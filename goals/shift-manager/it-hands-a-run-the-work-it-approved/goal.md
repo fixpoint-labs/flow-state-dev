@@ -20,6 +20,7 @@
 **Anti-game:** a hollow pass is a prompt that looks right in a stub while no run is handed the approved work, or a check that grades what it fed in. So the check never asserts on the row, on `lab.file`, or on a builder it calls itself. Leg a grades only the prompt the harness slot received. Leg b grades only the commit the real run left. The approval goes through the same route and bearer Shift Manager uses, and the posted feature as a turn in the workstream session, the way the app sends one. The EM's turn is scripted because its judgment is not under test; what is graded is what the run is handed once the task is filed. Leg b grades the token in the commit, not the code the model wrote, and has no stub fallback.
 
 **Model:** real — Claude Code's own, through the Agent SDK, for leg b only. Leg a and leg 0 are model-free (`GOAL_LEG=a` needs no credential).
+**Model-free run:** `GOAL_LEG=a`
 
 **Run:** `pnpm tsx goals/shift-manager/it-hands-a-run-the-work-it-approved/run.mts`
 

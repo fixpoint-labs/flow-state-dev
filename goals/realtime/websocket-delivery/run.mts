@@ -22,10 +22,7 @@
  *   GOAL_CONTROL=skip-check       the mint grants every topic: b's "C never hears" must FAIL.
  *   GOAL_CONTROL=ignore-crossing  the client treats every open socket as covering: c's second process must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
 import type { Duplex } from "node:stream";
-import { join } from "node:path";
 import { z } from "zod";
 import { PGlite } from "@electric-sql/pglite";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -43,12 +40,8 @@ import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {
-  REPO_ROOT,
-  RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   type ModulePatch
 } from "../../lib/index.mts";
@@ -90,15 +83,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---------------------------------------------------------------------------

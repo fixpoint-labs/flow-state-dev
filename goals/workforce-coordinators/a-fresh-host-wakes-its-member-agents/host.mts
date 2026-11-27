@@ -22,6 +22,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
   createWorkerInstallation,
@@ -74,24 +75,24 @@ export const REPLY_MARKER = "[reply:fresh-host]";
  */
 const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
-/** This app's own worker flow: takes a note when asked directly, and takes no posts. */
-const defineNote = (installation: WorkerInstallation) =>
+/** A worker flow with a direct action and no task entry. */
+const defineNonDelegate = (installation: WorkerInstallation, kind: "agent" | "note") =>
   defineFlow({
-    kind: "note",
+    kind,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "note" }) } }
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: kind }) } }
   } as never);
 
 /** The goal check's seams. An app passes none. */
 export interface HostSeams {
   /** The worker files as the host reads them, before anything is built. */
   adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
-  /** The `agent` flow the app registers, given the one it builds. */
-  adaptAgentFlow?: <T extends object>(agent: T) => T;
+  /** Register the agent kind without a task entry. */
+  omitAgentTask?: boolean;
   /** Leave the app's `resolvePrincipal` out, so nothing names its org. */
   omitPrincipal?: boolean;
 }
@@ -110,7 +111,7 @@ export interface FreshHost {
  * @param tree The workforce root to read.
  * @param seams The goal check's seams. An app passes nothing.
  */
-export async function startFreshHost(tree: string, seams: HostSeams = {}): Promise<FreshHost> {
+export async function startFreshHost(tree: string, seams: HostSeams = {}, sqliteFile?: string): Promise<FreshHost> {
   const read = await readWorkforce(tree);
   if (read.errors.length > 0) {
     throw new Error(`the tree did not load: ${read.errors.map((e) => `${e.path}: ${String(e.error)}`).join(", ")}`);
@@ -120,18 +121,16 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}): Promi
   // The flows are handed to the installation lazily, so each can be built on it.
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  const built = defineAgentWorkerFlow({ installation });
-  const agent = seams.adaptAgentFlow?.(built) ?? built;
   flows = {
-    agent,
+    agent: seams.omitAgentTask ? defineNonDelegate(installation, "agent") : defineAgentWorkerFlow({ installation }),
     coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-    note: defineNote(installation)
+    note: defineNonDelegate(installation, "note")
   };
   const copies = hireWorkforce(installation);
 
   const state = createFlowState({
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    stores: { default: { primary: inMemoryStores() } },
+    stores: { default: { primary: sqliteFile === undefined ? inMemoryStores() : sqliteStores({ filename: sqliteFile }) } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.
     ...(seams.omitPrincipal === true ? {} : { resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }) }),

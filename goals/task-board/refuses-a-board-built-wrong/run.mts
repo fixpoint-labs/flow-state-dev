@@ -8,21 +8,17 @@
  * Run: pnpm tsx goals/task-board/refuses-a-board-built-wrong/run.mts
  * Control: GOAL_CONTROL=no-fence (the refusals removed: every board must build)
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { dispatcher, handler } from "@flow-state-dev/core";
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { goalSeekLoop, taskBoard, taskWorkerInputSchema, type Verdict } from "@flow-state-dev/orchestration/task-board";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { runPatchedGoal, goalTmpDir, runGoal, type ModulePatch } from "../../lib/index.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = goalTmpDir("refuses-a-board-built-wrong");
 
 const CONTROLS: Record<string, ModulePatch[]> = {
-  // Today's `main`: no mode, so nothing contradicts it. The mode check and the
-  // loop's two guards are skipped.
+  // Skip the board's mode check and the loop's delegation guard.
   "no-fence": [
     {
       module: "packages/orchestration/src/task-board/board-mode.ts",
@@ -32,11 +28,6 @@ const CONTROLS: Record<string, ModulePatch[]> = {
     {
       module: "packages/orchestration/src/task-board/goal-seek-loop.ts",
       from: String.raw`if \(board\.mode === "delegation"\) \{`,
-      to: "if (false) {"
-    },
-    {
-      module: "packages/orchestration/src/task-board/index.ts",
-      from: String.raw`if \("onReview" in \(config as object\)\) \{`,
       to: "if (false) {"
     }
   ]
@@ -48,15 +39,7 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const patches = CONTROLS[CONTROL]!;
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(patches, REPO_ROOT, mark) }
-  });
-  assertPatched(patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({ patches, scratch: SCRATCH, label: `control ${CONTROL}:` }).status);
 }
 
 const inline = (name: string) =>
@@ -129,14 +112,6 @@ const WRONG: Array<{ name: string; build: () => unknown; setting: RegExp; fix: R
       }),
     setting: /"handed-off", a delegation board/,
     fix: /Loop over a plan board/
-  },
-  {
-    // A board written before FIX-2131, when a task waiting on a person parked:
-    // the option is gone, and a board that still sets it is refused by name.
-    name: "a board that still sets the removed onReview",
-    build: () => taskBoard({ name: "parks-out", collection: ledger("parks-out"), workers: inline("parks-out-w"), onReview: "exit" } as never),
-    setting: /"parks-out" sets `onReview`/,
-    fix: /Remove the option/
   }
 ];
 

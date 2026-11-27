@@ -33,7 +33,7 @@ goals/
 ```
 
 - **`goal.md`** is the contract. Tooling can glob `goals/*/*/goal.md`.
-- **`run.mts`** is the executable form of it. It lives outside any package's vitest root, so CI never runs it — that's the point. Run it with `pnpm tsx goals/<describe>/<it>/run.mts`.
+- **`run.mts`** is the default entry point. Run it with `pnpm tsx goals/<describe>/<it>/run.mts`. A standalone Node check can use `check.mjs`.
 - **`fixtures/`** holds the inputs and any expected snapshots.
 - A `describe` with many behaviours may nest a further level if it genuinely helps grouping; default to two.
 
@@ -112,10 +112,12 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
-| `server`     | `refuseIfAnswering`, `stopProcessGroup`, `crashAndRestart`, `onClosed` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade; `crashAndRestart(child, start)` crashes it (technique 6); `onClosed(child, done)` waits for a piped child's output to be read to the end (`close`, not `exit`), but at most 2s past `exit`, so a grandchild still holding the pipe can't hang a stop |
+| `server`     | `freePort` finds an unused loopback port. `refuseIfAnswering` detects an occupied HTTP endpoint. `stopProcessGroup` and `crashAndRestart` signal a detached process group. `onClosed` waits for the child's output to drain, with a two-second grace period after exit. |
 | `crash-reads` | `readConversation`, `readCutTurn`, `readTaskAfterCrash` — after `crashAndRestart`, what a crash goal reads back with the public client: the conversation kept, the cut turn listed by `requests.interrupted()` and not running, the task on a later attempt or ended with a reason. Each returns `undefined` or the FAIL sentence. **Not re-exported from `index.mts`**: import `../../lib/crash-reads.mts` |
-| `module-patch` | `modulePatchEnv`, `describePatches`, `assertPatched` — a named control as scratch patches to source modules, applied as the process under test loads them (`module-patch.mjs` through `NODE_OPTIONS`), never written to the checkout; the run prints the patch and fails when it never reached the code it served |
-| `http-actions` | `actingAs(router, userId)` (`call`, `act`, `open`) — drive an in-process host's router as a verified caller and read an action's answer back from the session's ended request, as an app does; `untilIdle(stores)` — wait until no request is running. The host's `resolvePrincipal` reads the caller from `x-user` |
+| `module-patch` | `runPatchedGoal` reruns the current goal with source patches applied at load time and verifies they reached the code under test. Use `modulePatchEnv`, `describePatches` and `assertPatched` when the patches must reach a separately launched host. |
+| `checkout` | `checkoutFor` serves the current tree or an archived commit with its own workspace install for before-state controls. |
+| `kitchen-sink` | Builds and serves Kitchen Sink, starts its development server on real or scripted harnesses, and provides the browser locators used by the goal runners. |
+| `client-actions` | `actingAs(router, userId)` drives an in-process host as a verified caller. The host's `resolvePrincipal` reads the caller from `x-user`. `untilIdle` waits for the host to settle. `waitForRequestStatus` reads one request's status after it leaves in-progress. |
 | `postgres` | `startPostgres({ slug, settings? })` — a real Postgres for a goal that grades what crosses between processes: `FSD_DB_URL` (with a scratch database on it when the role may make one), or a throwaway cluster from `initdb` and `pg_ctl` on a free port, run as the `postgres` user under root; `query` runs setup and `pg_terminate_backend`, `stop` removes it. PGlite can't stand in: it can't `LISTEN` across processes. **Not re-exported from `index.mts`** (it loads `pg`); import `../../lib/postgres.mts` directly |
 | `peers` | `forkPeer(module, name, env)` and, in the forked module, `servePeer(commands)` — real processes (`child_process.fork`, under the same loader and control patches) driven over IPC: `call` a named command, hear what the peer `push`es. One process with two registries is not two processes. **Not re-exported from `index.mts`**; import `../../lib/peers.mts` directly |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |
@@ -152,7 +154,7 @@ pnpm goal:all suspension
 pnpm goal:all --list
 ```
 
-`goal:all` reads each `goal.md`'s **Model** field to tell model-free from model-backed, prints a per-goal PASS / FAIL / CAN'T TELL / TIMEOUT summary from each runner's exit code, lists any goal that has a `goal.md` but no `run.mts`, and exits non-zero unless everything passed. CAN'T TELL is not passed: the summary counts it apart, as `N can't tell`.
+`goal:all` reads each `goal.md`'s **Model** and **Model-free run** fields. It runs `run.mts` or, if absent, `check.mjs`, then reports PASS, FAIL, CAN'T TELL or TIMEOUT from the exit code. Missing runners and any result other than PASS make the sweep exit nonzero.
 
 **Typecheck.** `goals/` is a workspace package with a `typecheck` script, so `pnpm typecheck` at the root covers every `run.mts` and the library.
 
@@ -174,6 +176,8 @@ Reach for a new `goals/lib` helper only when a *third* goal needs the same scaff
 ## Retired
 
 A goal is retired when the rule it proved no longer exists, and the line says which rule replaced it. Its history stays in git.
+
+- `coordinators/every-coordinator-is-a-worker-file`: the FIX-1792 inventory and verdict-tag checks verified a completed migration. The live coordinator behavior is covered by `workforce-coordinators/a-fresh-host-wakes-its-member-agents` on both in-memory and SQLite stores.
 
 Retired by FIX-1183, when a goal that can't tell stopped counting as a pass. Each proved nothing another check doesn't:
 

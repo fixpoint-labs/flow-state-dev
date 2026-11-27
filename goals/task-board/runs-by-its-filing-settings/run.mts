@@ -58,7 +58,7 @@ import {
   REPO_ROOT,
   RUN_STAMP,
   assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   actingAs,
   modulePatchEnv,
@@ -95,15 +95,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
 }
 // A patched control runs this same file again with the patch applied as it loads.
 if (PHASE === "main" && PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 type Proof = {

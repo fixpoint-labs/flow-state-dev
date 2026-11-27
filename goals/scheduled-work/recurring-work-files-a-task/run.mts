@@ -27,18 +27,15 @@
  * Control:  GOAL_CONTROL=memory-dedupe (must FAIL b:exactly-one-task)
  */
 import { onClosed } from "../../lib/server.mts";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  REPO_ROOT,
   RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   loadFixture,
-  modulePatchEnv,
   runGoal,
   type ModulePatch
 } from "../../lib/index.mts";
@@ -78,15 +75,11 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 // A control runs this file again with the patch applied as each process loads.
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}: ${CONTROLS[CONTROL]!.does}\n${describePatches(CONTROLS[CONTROL]!.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(CONTROLS[CONTROL]!.patches, REPO_ROOT, mark) }
-  });
-  assertPatched(CONTROLS[CONTROL]!.patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: CONTROLS[CONTROL]!.patches,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}: ${CONTROLS[CONTROL]!.does}`
+  }).status);
 }
 
 // ---- scheduled times, from the zone's wall clock --------------------------------

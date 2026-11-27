@@ -17,19 +17,15 @@
  *
  * Run: pnpm tsx goals/teammates-lab/shows-a-workers-steps/run.mts
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import {
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   loadFixture,
-  modulePatchEnv,
-  REPO_ROOT,
-  RUN_STAMP,
   runGoal,
   stopProcessGroup,
   type ModulePatch,
@@ -58,16 +54,12 @@ if (!["", "popup-only"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL
 
 // The adapter runs in this process, so the control re-runs this file with the patch applied as it loads.
 if (CONTROL === "popup-only" && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  mkdirSync(SCRATCH, { recursive: true });
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(POPUP_ONLY, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(POPUP_ONLY, REPO_ROOT, mark) },
-  });
-  assertPatched(POPUP_ONLY, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: POPUP_ONLY,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 /** The working folder: a git checkout with the decoys, and the one file whose body holds the value. */

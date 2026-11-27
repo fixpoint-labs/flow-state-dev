@@ -42,7 +42,7 @@ import { leg10, leg10b, leg10c, WAIT_DEFAULT_MS } from "./legs-calls.mts";
 import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
 import { leg9, SUB_LEGS, type Servers, type SubLeg } from "./legs-delivery.mts";
 import { faultPatches, type FaultName } from "./faults.mts";
-import { checkoutFor } from "./checkout.mts";
+import { checkoutFor } from "../../lib/checkout.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
 const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "9", "10", "10b", "10c", "5"] as const;
@@ -153,7 +153,7 @@ async function leg5(origin: string, alice: Person, sent: Map<string, { sessionId
 }
 
 await runGoal(async () => {
-  const checkout = checkoutFor(process.env.GOAL_COMMIT);
+  const checkout = checkoutFor(process.env.GOAL_COMMIT, "messages");
   mkdirSync(SCRATCH, { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });

@@ -24,6 +24,23 @@
  */
 import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
+
+/** Ask the OS for an unused loopback port and release it for the server the goal will start. */
+export function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      probe.close((error) => {
+        if (error !== undefined) reject(error);
+        else if (address === null || typeof address === "string") reject(new Error("no TCP port assigned"));
+        else resolve(address.port);
+      });
+    });
+  });
+}
 
 /**
  * Throw when anything answers HTTP at `origin`, whatever the status.

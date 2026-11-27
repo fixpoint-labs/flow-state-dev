@@ -36,7 +36,6 @@
  *   GOAL_CONTROL=hand-list  the rail lists `support.help` by hand: d must FAIL.
  *   GOAL_CONTROL=timer      the watch keeps a timer of its own with the socket up: a:quiet and b's reads must FAIL.
  */
-import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window } from "happy-dom";
@@ -52,7 +51,7 @@ import { COORDINATOR_FLOW, createWorkerInstallation, defineAgentWorkerFlow, defi
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { createWorkforceClient, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { buildKitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/workforce/hire.ts";
 import { TeamPanel } from "../../../apps/kitchen-sink/components/team-panel.tsx";
 import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
@@ -100,15 +99,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) },
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---------------------------------------------------------------------------

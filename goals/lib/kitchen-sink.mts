@@ -8,13 +8,15 @@
  *   import { buildKitchenSink, startKitchenSink, openShell } from "../../lib/kitchen-sink.mts";
  *
  * What a goal grades stays in its `run.mts`. This holds only the scaffolding
- * the `kitchen-sink-talk` goals repeat: the production build, `next start` on
- * the scripted model and the in-memory store, and the rail and panel locators.
+ * Kitchen Sink goals repeat: building and serving the app and reading its
+ * browser panels.
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import type { Locator, Page } from "playwright";
 import { intentFreeEnv } from "./env.mts";
 import { KITCHEN_SINK, REPO_ROOT } from "./paths.mts";
+import { onClosed, refuseIfAnswering, stopProcessGroup } from "./server.mts";
+import { sleep } from "./time.mts";
 
 // ---------------------------------------------------------------------------
 // The built app
@@ -37,77 +39,125 @@ export function buildKitchenSink(): void {
   });
 }
 
-/** A running production server. */
+/** A running Kitchen Sink server. */
 export interface KitchenSinkServer {
   /** `http://127.0.0.1:<port>`. */
   readonly origin: string;
   /** The spawned `pnpm` shim, leader of the server's own process group: what `crashAndRestart` kills. */
   readonly child: ChildProcess;
+  /** Resolves when the server command exits. */
+  readonly exited: Promise<void>;
   /** Everything the server has written to stdout and stderr so far. */
   log(): string;
   /** Stop the server. Safe to call twice. */
   stop(): void;
 }
 
-async function flowIndexStatus(origin: string): Promise<number | undefined> {
-  try {
-    return (await fetch(`${origin}/api/flows`)).status;
-  } catch {
-    return undefined;
-  }
+/** Serve the production build on the scripted model and in-memory store by default. */
+export function startKitchenSink(port: number, env: Record<string, string> = {}): Promise<KitchenSinkServer> {
+  return serveKitchenSink("start", port, intentFreeEnv(process.env, {
+    KITCHEN_SINK_TEST_MODE: "1",
+    STORE_TYPE: "memory",
+    ...env
+  }));
 }
 
-/**
- * Serve the built app with `next start`, on the scripted model and the
- * in-memory store. A control reaches the server through the same environment;
- * the app honours one only in test mode. A goal that restarts the server on
- * its store passes `{ STORE_TYPE: "sqlite", KITCHEN_SINK_STORE_FILE: <scratch file> }`.
- *
- * @param port The port to serve on. Refused if something already answers there.
- * @param env Extra environment for the server, e.g. `{ AI_GATEWAY_API_KEY: "" }` to run keyless.
- */
-export async function startKitchenSink(port: number, env: Record<string, string> = {}): Promise<KitchenSinkServer> {
-  const origin = `http://127.0.0.1:${port}`;
-  if ((await flowIndexStatus(origin)) !== undefined) {
-    throw new Error(`something is already answering on ${origin}; stop it first, or this check would grade it`);
-  }
-  let log = "";
-  // Detached, so the kill reaches `next start` and not only the pnpm shim.
-  let server: ChildProcess | undefined = spawn("pnpm", ["exec", "next", "start", "--port", String(port)], {
-    cwd: KITCHEN_SINK,
-    env: intentFreeEnv(process.env, { KITCHEN_SINK_TEST_MODE: "1", STORE_TYPE: "memory", ...env }),
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  server.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  server.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  const handle: KitchenSinkServer = {
-    origin,
-    child: server,
-    log: () => log,
-    stop: () => {
-      if (server?.pid !== undefined) {
-        try {
-          process.kill(-server.pid, "SIGTERM");
-        } catch {
-          // already gone
-        }
-      }
-      server = undefined;
-    },
+/** Serve the development build with the supplied harness and store settings. */
+export function startKitchenSinkDev(port: number, env: NodeJS.ProcessEnv): Promise<KitchenSinkServer> {
+  return serveKitchenSink("dev", port, { ...env, NODE_ENV: "development", STORE_TYPE: "filesystem" });
+}
+
+/** Serve the harness UI in test mode with real coding harnesses. */
+export function startKitchenSinkHarness(port: number, control: string, workspace?: string): Promise<KitchenSinkServer> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    KITCHEN_SINK_TEST_MODE: "1",
+    NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
+    KITCHEN_SINK_REAL_HARNESS: "1",
+    ...(control === "" ? {} : { GOAL_CONTROL: control })
   };
-  for (let i = 0; i < 180; i += 1) {
-    if ((await flowIndexStatus(origin)) === 200) return handle;
-    if (server.exitCode !== null) throw new Error(`the app exited (${server.exitCode}) before serving:\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  if (workspace === undefined) delete env.KITCHEN_SINK_HARNESS_WORKSPACE;
+  else env.KITCHEN_SINK_HARNESS_WORKSPACE = workspace;
+  return startKitchenSinkDev(port, env);
+}
+
+async function serveKitchenSink(mode: "dev" | "start", port: number, env: NodeJS.ProcessEnv): Promise<KitchenSinkServer> {
+  const origin = `http://127.0.0.1:${port}`;
+  const readiness = `${origin}/api/flows`;
+  await refuseIfAnswering(mode === "dev" ? origin : readiness);
+
+  const child = spawn("pnpm", ["exec", "next", mode, "--port", String(port)], {
+    cwd: KITCHEN_SINK,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true
+  });
+  let log = "";
+  let error: Error | undefined;
+  child.stdout.on("data", (chunk: Buffer) => { log += chunk.toString(); });
+  child.stderr.on("data", (chunk: Buffer) => { log += chunk.toString(); });
+  child.once("error", (cause) => { error = cause; });
+  const exited = new Promise<void>((resolve) => onClosed(child, () => resolve()));
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    stopProcessGroup(child);
+  };
+
+  try {
+    const deadline = Date.now() + (mode === "dev" ? 120_000 : 90_000);
+    while (Date.now() < deadline) {
+      const status = await fetch(readiness, { signal: AbortSignal.timeout(2_000) }).then(
+        (response) => {
+          void response.body?.cancel().catch(() => undefined);
+          return response.status;
+        },
+        () => undefined
+      );
+      if (error !== undefined) throw error;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`next ${mode} exited (${child.exitCode ?? child.signalCode}):\n${log}`);
+      }
+      if (status === 200) return { origin, child, log: () => log, exited, stop };
+      await sleep(500);
+    }
+    throw new Error(`next ${mode} never served ${readiness}:\n${log}`);
+  } catch (cause) {
+    stop();
+    throw cause;
   }
-  handle.stop();
-  throw new Error(`the built app never served ${origin}/api/flows:\n${log}`);
 }
 
 // ---------------------------------------------------------------------------
 // The page, as a person uses it
 // ---------------------------------------------------------------------------
+
+/** The harness conversation bound to the current session, as shown by the page. */
+export async function boundId(page: Page): Promise<string> {
+  return ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim();
+}
+
+/** Wait for a reloaded harness page to draw its saved conversation binding. */
+export async function loadedBoundId(page: Page): Promise<string> {
+  await page.waitForFunction(
+    () => {
+      const text = document.querySelector('[data-testid="bound-conversation"]')?.textContent?.trim();
+      return text !== undefined && text !== "none yet";
+    },
+    undefined,
+    { timeout: 30_000 }
+  ).catch(() => undefined);
+  return boundId(page);
+}
+
+/** How often a token appears in the harness conversation. */
+export async function tokenCount(page: Page, token: string): Promise<number> {
+  const text = (await page.getByTestId("conversation").textContent()) ?? "";
+  return text.split(token).length - 1;
+}
+
+export const stopButton = (page: Page) => page.getByRole("button", { name: "Stop" });
 
 /** The rail. */
 export const rail = (page: Page): Locator => page.getByTestId("rail");

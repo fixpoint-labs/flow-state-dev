@@ -29,7 +29,6 @@
  *   GOAL_CONTROL=own-sessions   the provider hears its own reading, roster and usage sessions: b must FAIL.
  *   GOAL_CONTROL=no-poll        the provider keeps no fallback timer: d must FAIL.
  */
-import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -57,7 +56,7 @@ import {
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { runAction } from "../../../packages/shift-manager/src/lib/action.ts";
 import { runUsageQuery } from "../../../packages/shift-manager/src/lib/usage.ts";
@@ -113,16 +112,13 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
   process.exit(2);
 }
 if (CONTROLS[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const control = CONTROLS[CONTROL]!;
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL} (must fail ${control.mustFail}):\n${describePatches(control.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? control.legs, ...modulePatchEnv(control.patches, REPO_ROOT, mark) },
-  });
-  assertPatched(control.patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  const control = CONTROLS[CONTROL];
+  process.exit(runPatchedGoal({
+    patches: control.patches,
+    scratch: SCRATCH,
+    label: `control ${CONTROL} (must fail ${control.mustFail}):`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? control.legs }
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d").split(",").map((s) => s.trim()).filter(Boolean));
 

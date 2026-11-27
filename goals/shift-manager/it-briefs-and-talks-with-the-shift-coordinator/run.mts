@@ -47,18 +47,14 @@
  * Control:  GOAL_CONTROL=optimistic-reply … (same command)
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
-import { onClosed } from "../../lib/server.mts";
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { workerOf, buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -80,7 +76,6 @@ if (CONTROL !== "" && !Object.hasOwn(SWAPS, CONTROL)) {
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-shift-coordinator");
 const LABS = {
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce") },
@@ -101,69 +96,19 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const spec = control === "" ? undefined : SWAPS[control as Control];
   const swap = spec === undefined ? undefined : { targets: spec.modules.map((m) => join(SHIFT_MANAGER, m)), with: join(HERE, "controls", spec.with) };
-  const swapped = new Set<string>();
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "warn",
-    build: { outDir, emptyOutDir: true },
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap,
     define: { __STATIC_SEATS__: "[]" },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined || importer === swap.with) return null;
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved === null || !swap.targets.includes(resolved.id)) return null;
-                swapped.add(resolved.id);
-                return swap.with;
-              },
-            },
-          ],
+    logLevel: "warn"
   });
-  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
-  if (missed.length > 0) throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
-  return outDir;
 }
 
 // ---- serving a Lab -----------------------------------------------------------
 
-type Running = { origin: string; child: ChildProcess; exited: Promise<void> };
-
-async function startLab(name: LabName, pages: string): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
-  let log = "";
-  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", LABS[name].config, "--port", "0", "--no-open", "--assets", pages], {
-    cwd: workDir,
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    onClosed(child, () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 120_000; waited += 250) {
-    const served = servedAddresses(log);
-    if (served !== undefined) return { origin: served.origin, child, exited };
-    if (gone) break;
-    await sleep(250);
-  }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's command never served ${name}. Log tail:\n${log.slice(-2000)}`);
+function startLab(name: LabName, pages: string): Promise<ServedShiftManager> {
+  return startShiftManager({ scratch: SCRATCH, label: name, config: LABS[name].config, pages });
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -436,8 +381,7 @@ await runGoal(async (failures) => {
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {
     await browser.close();
-    for (const lab of Object.values(served)) lab.child.kill("SIGTERM");
-    await Promise.all(Object.values(served).map((lab) => lab.exited));
+    await Promise.all(Object.values(served).map((lab) => lab.stop()));
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),

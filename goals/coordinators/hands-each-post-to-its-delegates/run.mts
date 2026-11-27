@@ -26,12 +26,12 @@
  *           only the legs still red (default 3; 1 under a control)
  */
 import { onClosed } from "../../lib/server.mts";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, runGoal } from "../../lib/index.mts";
+import { checkoutFor } from "../../lib/checkout.mts";
 import { buildShiftManagerPages, devteamShiftCoordinatorModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { CONTROL_NAMES, CONTROLS, controlEnv, describePatch, type Control } from "./controls/patches.mts";
 import { SHIFT_COORDINATOR, shiftCoordinatorDefaults, devteamLegs, loadShipped, type Asks, type LegResult, type Person } from "./devteam.mts";
@@ -58,28 +58,6 @@ for (const l of legs) if (!(ALL_LEGS as readonly string[]).includes(l)) throw ne
 const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as Asks;
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
-function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
-  const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
-  if (commit === undefined || commit === "") {
-    const head = git("rev-parse", "HEAD");
-    const dirty = git("status", "--porcelain", "--", ".", ":(exclude)goals").length > 0;
-    return { root: REPO_ROOT, commit: head, describe: `this checkout, \`${head.slice(0, 9)}\`${dirty ? " with uncommitted changes outside goals/" : ""}` };
-  }
-  const sha = git("rev-parse", `${commit}^{commit}`);
-  // Kept across runs: a commit's tree and install don't change.
-  const root = join(tmpdir(), "fsd-goal-coordinators-trees", sha.slice(0, 12));
-  if (!existsSync(join(root, "package.json"))) {
-    mkdirSync(root, { recursive: true });
-    execFileSync("sh", ["-c", `git -C "${REPO_ROOT}" archive --format=tar ${sha} | tar -x -C "${root}"`]);
-  }
-  if (!existsSync(join(root, "node_modules"))) {
-    say(`installing ${sha.slice(0, 9)} in ${root}`);
-    const installed = spawnSync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: root, encoding: "utf8", timeout: 900_000 });
-    if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
-  }
-  return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
-}
-
 /** Run leg e's host in `root`'s goals, with `env`, and read its one `__GOAL__` line. */
 async function runLegE(root: string, env: Record<string, string>): Promise<any> {
   let dir = HERE;
@@ -217,7 +195,7 @@ function gradeE(o: any): LegResult {
 }
 
 await runGoal(async () => {
-  const checkout = checkoutFor(process.env.GOAL_COMMIT);
+  const checkout = checkoutFor(process.env.GOAL_COMMIT, "coordinators");
   mkdirSync(SCRATCH, { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });

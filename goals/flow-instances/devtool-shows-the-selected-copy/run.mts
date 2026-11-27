@@ -13,10 +13,11 @@
  * Run: pnpm tsx goals/flow-instances/devtool-shows-the-selected-copy/run.mts
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Browser, type Page, type Request as PwRequest } from "playwright";
+import { launchChromium } from "../../lib/playwright.mts";
+import type { Browser, Page, Request as PwRequest } from "playwright";
 import {
   REPO_ROOT,
   goalTmpDir,
@@ -73,27 +74,6 @@ async function waitForServer(server: ChildProcess): Promise<void> {
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error(`dev server never became ready on ${ORIGIN}`);
-}
-
-/**
- * A Chromium already on the machine whose build number Playwright did not pick.
- *
- * An environment that pre-installs browsers into `PLAYWRIGHT_BROWSERS_PATH`
- * pins one build; bumping the Playwright package asks for a different one and
- * gets "run npx playwright install", which such a machine cannot do. Any
- * Chromium in that pool drives this page fine — the goal grades the DevTool,
- * not the browser — so an existing one is used rather than fetching. Returns
- * `undefined` when the default resolution is already right.
- */
-function preinstalledChromium(): string | undefined {
-  const pool = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (pool === undefined || !existsSync(pool)) return undefined;
-  for (const entry of readdirSync(pool)) {
-    if (!entry.startsWith("chromium-")) continue;
-    const binary = join(pool, entry, "chrome-linux", "chrome");
-    if (existsSync(binary)) return binary;
-  }
-  return undefined;
 }
 
 /**
@@ -291,11 +271,7 @@ async function main() {
       `the server did not register both copies and the singleton (got: ${ids.join(", ")})`,
     );
 
-    const executablePath = preinstalledChromium();
-    browser = await chromium.launch({
-      headless: true,
-      ...(executablePath === undefined ? {} : { executablePath }),
-    });
+    browser = await launchChromium();
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     page.on("request", (req: PwRequest) => {
       if (req.url().includes("/api/flows")) apiCalls.push(req.url());

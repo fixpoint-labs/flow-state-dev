@@ -1,9 +1,7 @@
 /**
  * The goals sweep — `pnpm goal:all`.
  *
- * The README has promised this since the library was created ("once a few goals
- * exist"); there are now more than twenty. Discovers every `goal.md` under
- * `goals/`, runs its sibling `run.mts`, and prints one summary table.
+ * Discover each goal, run its entry point, and print one summary table.
  *
  * Runs sequentially and by design: a model-backed goal costs real inference,
  * several drive the same app, and interleaved child stdio makes a failure
@@ -21,10 +19,11 @@
  * nor failed), anything else FAIL. CAN'T TELL is not passed: the sweep exits
  * non-zero on it, and lists it apart from FAIL.
  */
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stopProcessGroup } from "../lib/server.mts";
 import { CANT_TELL_EXIT } from "../lib/verdict.mts";
 
 /** The goals package: where each runner is spawned from, whatever tree is swept. */
@@ -33,8 +32,7 @@ const GOALS_PACKAGE = dirname(dirname(fileURLToPath(import.meta.url)));
 interface Goal {
   /** Path relative to `goals/`, e.g. `suspension/resumes-after-a-cold-restart`. */
   id: string;
-  dir: string;
-  hasRunner: boolean;
+  runner?: string;
   /** True when goal.md declares `Model: n/a` / `none` — costs no inference. */
   modelFree: boolean;
   /**
@@ -55,36 +53,30 @@ function modelFreeRunEnv(spec: string): Record<string, string> | undefined {
 }
 
 /** Recursively find every directory holding a `goal.md`, skipping `_template`. */
-function discover(dir: string, found: Goal[] = []): Goal[] {
+function discover(root: string, dir = root, found: Goal[] = []): Goal[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     if (entry.name === "node_modules" || entry.name === "lib" || entry.name === "scripts") continue;
     if (entry.name === "_template" || entry.name === "fixtures") continue;
     const child = join(dir, entry.name);
     const goalMd = join(child, "goal.md");
-    let isGoal = false;
-    try {
-      isGoal = statSync(goalMd).isFile();
-    } catch {
-      isGoal = false;
-    }
-    if (isGoal) {
+    if (hasFile(goalMd)) {
       const spec = readFileSync(goalMd, "utf8");
       // Two goal.md schemas are in use: the template's field list (`**Model:**`)
       // and a prose form (`**Model.**`). Accept both.
       const modelLine = /^\*\*Model[:.]\*\*(.*)$/m.exec(spec);
       const declared = (modelLine?.[1] ?? "").trim().toLowerCase();
-      const modelFree = declared.startsWith("n/a") || declared.startsWith("none");
-      const modelFreeEnv = modelFree ? undefined : modelFreeRunEnv(spec);
+      const modelFreeEnv = modelFreeRunEnv(spec);
+      const modelFree = modelFreeEnv === undefined && /^(?:n\/a|none)(?![\w/])/.test(declared);
+      const runner = ["run.mts", "check.mjs"].map((file) => join(child, file)).find(hasFile);
       found.push({
-        id: relative(GOALS_ROOT, child),
-        dir: child,
-        hasRunner: hasFile(join(child, "run.mts")),
+        id: relative(root, child),
+        runner,
         modelFree,
-        ...(modelFreeEnv === undefined ? {} : { modelFreeEnv }),
+        modelFreeEnv,
       });
     } else {
-      discover(child, found);
+      discover(root, child, found);
     }
   }
   return found;
@@ -109,8 +101,7 @@ const USAGE = `pnpm goal:all [options] [path-filter...]
                  start from the goals package.
   --timeout=<m>  Per-goal wall-clock cap in minutes (default 20). A goal that
                  exceeds it is killed, recorded TIMEOUT, and the sweep goes on.
-                 Keep it above ~1 — pnpm+tsx startup alone can trip a
-                 smaller cap, marking a goal TIMEOUT after it printed PASS.
+                 The cap includes startup and cleanup.
 
   Any non-option argument is a substring matched against the goal's path.
   With no filters, EVERY goal runs — including model-backed ones, which cost
@@ -137,15 +128,6 @@ if (args.includes("--help")) {
   process.exit(0);
 }
 
-/**
- * Per-goal wall-clock cap. Without one, a wedged goal stalls the whole
- * sequential sweep: `spawnSync` waits forever, so no later goal runs and no
- * summary prints. Historical note: a former trading-desk portfolio goal once
- * wedged a sweep for 30 minutes when `fsdev run analysis` hung in a container.
- *
- * 20 minutes is generous for the slowest legitimate goals while still bounding
- * a hang.
- */
 const DEFAULT_TIMEOUT_MINUTES = 20;
 const timeoutArg = args.find((a) => a.startsWith(TIMEOUT_FLAG));
 const timeoutMinutes = timeoutArg
@@ -170,15 +152,15 @@ const selected = all.filter((goal) => {
   return true;
 });
 
-const missingRunner = selected.filter((g) => !g.hasRunner);
-const runnable = selected.filter((g) => g.hasRunner);
+const missingRunner = selected.filter((g) => g.runner === undefined);
+const runnable = selected.filter((g): g is Goal & { runner: string } => g.runner !== undefined);
 
 if (listOnly) {
   for (const goal of selected) {
     const tags = [
       goal.modelFree ? "model-free" : "model-backed",
       goal.modelFreeEnv === undefined ? "" : `model-free legs: ${Object.entries(goal.modelFreeEnv).map(([k, v]) => `${k}=${v}`).join(" ")}`,
-      goal.hasRunner ? "" : "NO RUNNER",
+      goal.runner === undefined ? "NO RUNNER" : "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -196,6 +178,51 @@ if (runnable.length === 0) {
 type Verdict = "PASS" | "FAIL" | "CAN'T TELL" | "TIMEOUT";
 const results: { id: string; verdict: Verdict; note: string }[] = [];
 
+async function runWithTimeout(runner: string, env?: NodeJS.ProcessEnv): Promise<{ verdict: Verdict; note: string }> {
+  const args = runner.endsWith(".mts") ? ["--import", "tsx", runner] : [runner];
+  const detached = process.platform !== "win32";
+  const child = spawn(process.execPath, args, {
+    cwd: GOALS_PACKAGE,
+    // Stream goal output directly, including CLI traces that can exceed maxBuffer.
+    stdio: ["ignore", "inherit", "inherit"],
+    env: { ...process.env, ...env },
+    detached
+  });
+  const signal = (name: NodeJS.Signals) => detached ? stopProcessGroup(child, name) : child.kill(name);
+  let timedOut = false;
+  let interrupted: number | undefined;
+  let stopped: Promise<void> | undefined;
+  const stop = () => {
+    stopped ??= new Promise((done) => {
+      signal("SIGTERM");
+      // Give goal and host cleanup handlers time before forcing the runner down.
+      setTimeout(() => { signal("SIGKILL"); done(); }, 2_000);
+    });
+  };
+  const interrupt = () => { interrupted = 130; stop(); };
+  const terminate = () => { interrupted = 143; stop(); };
+  const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMinutes * 60_000);
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", terminate);
+  const result = await new Promise<{ status: number | null; signal?: NodeJS.Signals | null; error?: Error }>((done) => {
+    child.once("error", (error) => done({ status: null, error }));
+    child.once("exit", (status, signal) => done({ status, signal }));
+  });
+  clearTimeout(timer);
+  await stopped;
+  process.off("SIGINT", interrupt);
+  process.off("SIGTERM", terminate);
+
+  if (interrupted !== undefined) process.exit(interrupted);
+  if (timedOut) return { verdict: "TIMEOUT", note: `exceeded ${timeoutMinutes}m — killed` };
+  if (result.status === 0) return { verdict: "PASS", note: "" };
+  if (result.status === CANT_TELL_EXIT) return { verdict: "CAN'T TELL", note: "" };
+  return {
+    verdict: "FAIL",
+    note: result.error?.message ?? (result.status === null ? `killed by signal ${result.signal ?? "unknown"}` : `exit ${result.status}`)
+  };
+}
+
 for (const [index, goal] of runnable.entries()) {
   // A --model-free sweep runs a split goal's model-free legs only.
   const legEnv = modelFreeOnly && !goal.modelFree ? goal.modelFreeEnv : undefined;
@@ -203,56 +230,9 @@ for (const [index, goal] of runnable.entries()) {
   const header = `[${index + 1}/${runnable.length}] ${goal.id}${legNote}`;
   console.log(`\n${"=".repeat(Math.min(header.length + 4, 80))}\n${header}\n${"=".repeat(Math.min(header.length + 4, 80))}`);
 
-  // stdout is INHERITED, not piped.
-  //
-  // A goal that drives `fsdev run` without `--quiet` streams the CLI's full
-  // NDJSON item log — unbounded, growing with item count and answer length.
-  // Capturing that through a pipe hits `spawnSync`'s default 1 MiB `maxBuffer`,
-  // which returns ENOBUFS with a NULL status: an expensive goal that actually
-  // PASSED would be reported as failed, and its child may outlive the runner.
-  //
-  // Raising `maxBuffer` only moves the cliff. Inheriting removes it: the goal's
-  // output streams straight to the terminal (better for a long sweep anyway),
-  // and the verdict comes from the EXIT CODE, which `runGoal` already
-  // guarantees — 0 for PASS, 1 for FAIL, CANT_TELL_EXIT for CAN'T TELL. The
-  // verdict line has by then already been printed by the goal itself, so
-  // nothing is lost by not re-capturing it here.
-  const run = spawnSync("pnpm", ["tsx", join(goal.dir, "run.mts")], {
-    cwd: GOALS_PACKAGE,
-    stdio: ["ignore", "inherit", "inherit"],
-    timeout: timeoutMinutes * 60_000,
-    ...(legEnv === undefined ? {} : { env: { ...process.env, ...legEnv } }),
-  });
-
-  // A timeout is NOT the same verdict as a failure: the goal did not fail its
-  // assertions, it wedged. Reported separately so a hang can't be mistaken for
-  // a substrate regression. Still non-zero overall — a wedged goal proved
-  // nothing.
-  //
-  // CAVEAT: `spawnSync`'s timeout signals the direct child (`pnpm`). A wedged
-  // grandchild (tsx → fsdev → a stalled provider call) can outlive it and may
-  // need manual cleanup. Bounding the sweep is the goal here; full
-  // process-group teardown would need a different spawn strategy.
-  const timedOut = (run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
-  const verdict: Verdict = timedOut
-    ? "TIMEOUT"
-    : run.status === 0
-      ? "PASS"
-      : run.status === CANT_TELL_EXIT
-        ? "CAN'T TELL"
-        : "FAIL";
-  results.push({
-    id: `${goal.id}${legNote}`,
-    verdict,
-    note: timedOut
-      ? `exceeded ${timeoutMinutes}m — killed`
-      : run.status === 0 || run.status === CANT_TELL_EXIT
-        ? ""
-        : run.status === null
-          ? `killed by signal ${run.signal ?? "unknown"}`
-          : `exit ${run.status}`,
-  });
-  if (timedOut) {
+  const result = await runWithTimeout(goal.runner, legEnv);
+  results.push({ id: `${goal.id}${legNote}`, ...result });
+  if (result.verdict === "TIMEOUT") {
     console.error(`\nTIMEOUT — ${goal.id} exceeded ${timeoutMinutes}m and was killed; continuing.`);
   }
 }
@@ -268,7 +248,7 @@ for (const result of results) {
   );
 }
 if (missingRunner.length > 0) {
-  console.log(`\n${missingRunner.length} goal(s) have a goal.md but NO run.mts (not run):`);
+  console.log(`\n${missingRunner.length} goal(s) have a goal.md but no runner:`);
   for (const goal of missingRunner) console.log(`      ${goal.id}`);
 }
 console.log(
@@ -278,4 +258,4 @@ console.log(
     (missingRunner.length > 0 ? `, ${missingRunner.length} unimplemented` : ""),
 );
 
-process.exit(failed.length === 0 ? 0 : 1);
+process.exit(failed.length === 0 && missingRunner.length === 0 ? 0 : 1);

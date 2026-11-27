@@ -21,7 +21,7 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { fixtureDir, installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { fixtureDir, installWorkers, loadFixture, runGoal, waitForRequestStatus, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   TRIAGE_KIND,
   NO_CONTRACT_KIND,
@@ -101,15 +101,6 @@ async function ranOn(router: Router, sessionId: string) {
   return { status: res.status, ...(body.clientData?.session?.ran ?? {}) };
 }
 
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
-}
-
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -163,7 +154,7 @@ await runGoal(async (failures) => {
         continue;
       }
 
-      const status = await settled(stores, requestId);
+      const status = await waitForRequestStatus(stores, requestId);
       if (status !== "completed") failures.push(`${id}: request ended ${String(status)}`);
     }
     evidence.push("both workers ran an action to completion through the real HTTP route, each in a session naming it, with no model call");
@@ -272,7 +263,7 @@ await runGoal(async (failures) => {
           const opened = await open(router, HAND_ROLLED_KIND, HAND_ROLLED_WORKER.id, session);
           const res = opened === 201 ? await act(router, HAND_ROLLED_KIND, session) : undefined;
           const requestId = res?.status === 202 ? ((await res.json()) as { request?: { id: string } }).request?.id : undefined;
-          const status = requestId === undefined ? undefined : await settled(twinStores, requestId);
+          const status = requestId === undefined ? undefined : await waitForRequestStatus(twinStores, requestId);
           const ran = await ranOn(router, session);
           if (status !== "completed") failures.push(`the hand-rolled worker's turn ended ${String(status)} (session ${opened}, action ${res?.status})`);
           else if (ran.hasSeatSkills !== true) failures.push("the hand-rolled worker's turn carried no workerSkills key");
