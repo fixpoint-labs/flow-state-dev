@@ -29,7 +29,7 @@ export type { RecordedWorkView } from "./recorded-work-view";
 export type { HarnessRunChangesView } from "./run-changes";
 export { landedOf, type LandedWork } from "./landed-work";
 export { harnessUsageViewRef, recheckHarnessUsage } from "./usage-view-ref";
-export { reviewDetail, type ReviewCheck, type ReviewDetail, type ReviewFile, type ReviewLand, type ReviewPullRequest } from "./review-detail";
+export { reviewDetail, type ReviewCheck, type ReviewCommit, type ReviewDetail, type ReviewFile, type ReviewLand, type ReviewPullRequest } from "./review-detail";
 export { RUN_REPORT_HEADINGS, runReport, type RunReport, type RunReportCheck, type RunReportCheckStatus } from "./run-report";
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";
 export {

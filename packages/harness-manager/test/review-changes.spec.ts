@@ -406,6 +406,8 @@ describe("a coding run that made changes waits for a person's review", () => {
         branch: expect.any(String),
         commits: 1,
         subjects: ["Change 1"],
+        // The log behind the subjects, newest first: what the review's commit timeline draws.
+        log: [{ sha: expect.stringMatching(/^[0-9a-f]{40}$/), subject: "Change 1", author: "t", at: expect.any(String), merge: false }],
         judge: null,
         // This host can land an accept either way.
         lands: ["pull-request", "merge"],
@@ -464,6 +466,8 @@ describe("a coding run that made changes waits for a person's review", () => {
         fileCount: 1,
         added: 1,
         removed: 0,
+        // Each commit as a timeline draws it.
+        log: [{ subject: "Change 1", merge: false }],
       });
 
       const listed = await h.readChanges({});
@@ -473,7 +477,7 @@ describe("a coding run that made changes waits for a person's review", () => {
         diff: { files: [{ path: "change-1.txt", added: 1, removed: 0 }], verified: true },
         patch: null,
         // The run's commits, read live beside the files, for a screen that shows them while it runs.
-        commits: { count: 1, verified: true },
+        commits: { count: 1, verified: true, log: [{ subject: "Change 1", merge: false }] },
       });
       const opened = await h.readChanges({ path: "change-1.txt" });
       expect(opened.body.output).toMatchObject({ diff: null, patch: { path: "change-1.txt", truncated: false, verified: true } });
@@ -536,7 +540,11 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(h.seen[1]!.prompt).toContain("Keep the old flag name.");
       expect(h.review(again)!.ask.prompt).toContain("2 commits on");
       // The revision's round starts where the first review left off, so only its own commit is this round's.
-      expect(reviewDetail(await h.reviewData(again))?.round).toEqual({ commits: 1, subjects: ["Change 2"] });
+      expect(reviewDetail(await h.reviewData(again))?.round).toEqual({
+        commits: 1,
+        subjects: ["Change 2"],
+        log: [{ sha: expect.stringMatching(/^[0-9a-f]{40}$/), subject: "Change 2", author: "t", at: expect.any(String), merge: false }],
+      });
       expect(again.attempts).toBe(1);
 
       await h.answer({ verdict: "accepted" });

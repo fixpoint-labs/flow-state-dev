@@ -79,7 +79,8 @@ describe("a running task's changes so far", () => {
     expect(await screen.findByText("labs/teammates/host.mts")).toBeTruthy();
     expect(screen.getByText("uncommitted")).toBeTruthy();
     expect(screen.getByText("and 3 more files")).toBeTruthy();
-    expect(screen.getByText("feat: second")).toBeTruthy();
+    // The commits, as the timeline draws them: the type a chip, the subject after it.
+    expect(document.querySelector("[data-commit-timeline]")?.textContent).toContain("second");
     fireEvent.click(screen.getByRole("button", { name: /src\/wip\.ts/ }));
     expect(await screen.findByText("+work in progress")).toBeTruthy();
     // The working tree's diff of that file, from the same run session.

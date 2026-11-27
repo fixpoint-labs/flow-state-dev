@@ -1,7 +1,7 @@
 /**
  * What a coding run has changed so far, while it works: one quiet collapsed
  * row ("5 files changed (+117 −9) · 2 commits") that opens to the review's own
- * Files list and commits (`RunChanges`, `Fold`, `CommitList`), so the work can
+ * Files list and commits (`RunChanges`, `Fold`, `CommitTimeline`), so the work can
  * be read before the run stops for review.
  *
  * Read live from the run's checkout through harness-manager's run changes
@@ -26,7 +26,8 @@ import { useAppClient } from "../app";
 import { runPatchReader } from "../lib/run-patch";
 import { cn } from "../lib/utils";
 import { RunChanges } from "./flow-state/run-changes";
-import { CommitList, Fold } from "./TaskReview";
+import { CommitTimeline } from "./CommitTimeline";
+import { Fold } from "./TaskReview";
 
 const OPEN_POLL_MS = 5_000;
 const FOLDED_POLL_MS = 30_000;
@@ -84,7 +85,7 @@ export function RunningChanges({ task, open, onOpenChange }: { task: CodingBoard
           />
           {commits !== null && commits.subjects.length > 0 ? (
             <Fold data-running-commits label={commitCount === 1 ? "1 commit" : `${commitCount} commits`}>
-              <CommitList subjects={commits.subjects} />
+              <CommitTimeline commits={commits.log ?? commits.subjects.map((subject) => ({ subject }))} />
             </Fold>
           ) : null}
         </div>

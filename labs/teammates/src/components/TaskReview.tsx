@@ -22,6 +22,7 @@ import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIco
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
 import { LandFailure, landLabel, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
+import { CommitTimeline } from "./CommitTimeline";
 import { RunChanges, type RunChangesPatch } from "./flow-state/run-changes";
 import { runCheckPassed } from "./flow-state/run-checks";
 
@@ -182,19 +183,6 @@ export function Fold({ label, children, ...data }: { label: ReactNode; children:
       </summary>
       <div className="border-t border-border px-3.5 py-3">{children}</div>
     </details>
-  );
-}
-
-/** A run's commit subjects, newest first: the list under a commits fold, in the review and while the run works. */
-export function CommitList({ subjects }: { subjects: readonly string[] }) {
-  return (
-    <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
-      {subjects.map((subject, i) => (
-        <li key={i}>
-          <MarkdownText inline text={subject} className={WRAP} />
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -386,6 +374,8 @@ export function ReviewBody({
   const changed = report === null ? (review.answer ?? null) : report.changed;
   const round = review.round ?? null;
   const subjects = round?.subjects ?? review.subjects;
+  // The log when the review carried one; an older review's bare subjects otherwise.
+  const log = (round === null ? review.log : round.log) ?? subjects.map((subject) => ({ subject }));
   return (
     <div data-review-body className="flex flex-col gap-6 [overflow-wrap:anywhere]">
       <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex items-start gap-4 rounded-lg border border-border bg-card px-4 py-4 shadow-(--shadow-card)">
@@ -416,7 +406,7 @@ export function ReviewBody({
             data-review-commits
             label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
           >
-            <CommitList subjects={subjects} />
+            <CommitTimeline commits={log} />
           </Fold>
         ) : null}
         {review.goal ? (

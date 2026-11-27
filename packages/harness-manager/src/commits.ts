@@ -29,10 +29,28 @@ const GIT_READ_TIMEOUT_MS = 10_000;
 /** The most commit subjects reported for one run. */
 export const MAX_COMMIT_SUBJECTS = 20;
 
+/** One commit of a run's log: what a timeline draws for it. */
+export interface RunCommitEntry {
+  /** The full commit sha. */
+  sha: string;
+  subject: string;
+  /** The author's name. */
+  author: string;
+  /** When it was authored, ISO 8601. */
+  at: string;
+  /** It has more than one parent: a merge, most often of the base into the branch. */
+  merge: boolean;
+}
+
+/** {@link RunCommitEntry}, as a schema: what a review's data and a changes read carry. */
+export const runCommitEntrySchema = z.object({ sha: z.string(), subject: z.string(), author: z.string(), at: z.string(), merge: z.boolean() });
+
 /** The commits a run made: the count, and up to {@link MAX_COMMIT_SUBJECTS} subjects, newest first. */
 export interface RunCommits {
   count: number;
   subjects: string[];
+  /** The same commits as {@link RunCommitEntry}s, newest first: only when the read asked for it (`log`). */
+  log?: RunCommitEntry[];
   /** Git read the count against a base. `false` when no base or no checkout could be read, and the count is a fallback zero. */
   verified: boolean;
 }
@@ -52,16 +70,74 @@ const TRUE_HISTORY = {
   args: ["--shallow-file", "", "-c", "core.commitGraph=false"],
 };
 
-/** One git read in `cwd`, as {@link TRUE_HISTORY} reads it. With `onLine`, standard output is handed over line by line instead of returned. */
+/**
+ * Git that runs no command the checkout names. A run can write its checkout's
+ * config (`.git/config`, a worktree's `config.worktree`, a file either
+ * includes) and its `.gitattributes`, and some reads run a command named
+ * there: an fsmonitor hook, an external diff, a diff driver's command or
+ * textconv, a clean, smudge or process filter, a signature check's gpg. These
+ * reads run in the server when a person opens a run's changes, so every one
+ * here switches them all off: the settings below on the command line (which
+ * outrank every config file), no system or global config, and each filter
+ * and diff driver the checkout's config defines emptied by name.
+ */
+const NO_COMMANDS = {
+  env: { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull },
+  args: [
+    ["core.fsmonitor", "false"],
+    ["core.untrackedCache", "false"],
+    ["diff.external", ""],
+    ["core.pager", "cat"],
+    ["log.showSignature", "false"],
+  ].flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+};
+
+/** The flags every diff and log read takes, so neither an external diff nor a textconv runs even when a setting slips past. */
+const NO_DIFF_COMMANDS = ["--no-ext-diff", "--no-textconv"];
+
+/** The run's filter and diff drivers, as the checkout's config defines them, each emptied: `-c filter.x.clean=` and so on. */
+async function noDrivers(cwd: string): Promise<string[]> {
+  let keys: string;
+  try {
+    // Reading config runs nothing. Exit 1 is "no such key": no drivers.
+    keys = (await runGit(cwd, ["config", "--null", "--name-only", "--get-regexp", "^(filter|diff)\\..+\\."], [])).stdout;
+  } catch {
+    return [];
+  }
+  const filters = new Set<string>();
+  const drivers = new Set<string>();
+  for (const key of keys.split("\0")) {
+    const match = /^(filter|diff)\.(.+)\.[^.]+$/s.exec(key.trim());
+    if (match === null) continue;
+    (match[1] === "filter" ? filters : drivers).add(match[2]!);
+  }
+  return [
+    ...[...filters].flatMap((name) => ["clean", "smudge", "process"].map((key) => `filter.${name}.${key}=`).concat(`filter.${name}.required=false`)),
+    ...[...drivers].flatMap((name) => ["command", "textconv"].map((key) => `diff.${name}.${key}=`)),
+  ].flatMap((setting) => ["-c", setting]);
+}
+
+/** One git process in `cwd` with {@link TRUE_HISTORY} and {@link NO_COMMANDS}, and `drivers` (from {@link noDrivers}) before the command. */
+function runGit(cwd: string, args: string[], drivers: string[], onLine?: (line: string) => void) {
+  const [command, ...rest] = args;
+  const flags = command === "diff" || command === "log" ? NO_DIFF_COMMANDS : [];
+  return run("git", [...TRUE_HISTORY.args, ...NO_COMMANDS.args, ...drivers, command!, ...flags, ...rest], {
+    cwd,
+    timeoutMs: GIT_READ_TIMEOUT_MS,
+    env: { ...TRUE_HISTORY.env, ...NO_COMMANDS.env },
+    ...(onLine === undefined ? {} : { onLine }),
+  });
+}
+
+/**
+ * One git read in `cwd`, as {@link TRUE_HISTORY} reads it and running no
+ * command the checkout names ({@link NO_COMMANDS}). With `onLine`, standard
+ * output is handed over line by line instead of returned.
+ */
 async function git(cwd: string, args: string[], onLine?: (line: string) => void): Promise<string> {
-  return (
-    await run("git", [...TRUE_HISTORY.args, ...args], {
-      cwd,
-      timeoutMs: GIT_READ_TIMEOUT_MS,
-      env: TRUE_HISTORY.env,
-      ...(onLine === undefined ? {} : { onLine }),
-    })
-  ).stdout;
+  // A read that can't reach a driver (no diff, no working tree) skips reading the config for them.
+  const drivers = args[0] === "diff" || args[0] === "ls-files" ? await noDrivers(cwd) : [];
+  return (await runGit(cwd, args, drivers, onLine)).stdout;
 }
 
 /** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
@@ -141,12 +217,15 @@ async function resolveBases(cwd: string, baseRef: string | null, baseCommit: str
  * round needs both exclusions, the base (so the base's commits it merged in
  * aren't its work) and its start (so an earlier round's aren't), and one base
  * argument carries only the first.
+ *
+ * With `log`, the answer carries each of those commits (sha, author, time,
+ * merge or not) as `log`, read in the same `git log`.
  */
 export async function readRunCommits(
   cwd: string,
   baseRef: string | null,
   baseCommit: string | null = null,
-  options: { since?: string | null } = {},
+  options: { since?: string | null; log?: boolean } = {},
 ): Promise<RunCommits> {
   const resolved = await resolveBases(cwd, baseRef, baseCommit);
   // `since` counts on its own too, as a round read always has: a record with no cut and no named copy still has its round.
@@ -154,11 +233,18 @@ export async function readRunCommits(
   if (bases.length === 0) return { count: 0, subjects: [], verified: false };
   try {
     const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", ...bases])).trim(), 10);
-    const subjects = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%s", "HEAD", "--not", ...bases]))
+    // One line a commit, its fields apart by the unit separator, which no subject or name holds.
+    const lines = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%H%x1f%an%x1f%aI%x1f%P%x1f%s", "HEAD", "--not", ...bases]))
       .split("\n")
       .filter((line) => line.length > 0);
-    if (Number.isNaN(count)) return { count: 0, subjects, verified: false };
-    return { count, subjects, verified: true };
+    const log = lines.map((line): RunCommitEntry => {
+      const [sha = "", author = "", at = "", parents = "", ...subject] = line.split("\x1f");
+      return { sha, author, at, merge: parents.trim().split(" ").length > 1, subject: subject.join("\x1f") };
+    });
+    const subjects = log.map((entry) => entry.subject).filter((subject) => subject.length > 0);
+    const logged = options.log === true ? { log } : {};
+    if (Number.isNaN(count)) return { count: 0, subjects, ...logged, verified: false };
+    return { count, subjects, ...logged, verified: true };
   } catch (error) {
     console.warn(
       `[harness-manager] could not read the run's commits against ${bases.join(" and ")} in ${cwd} ` +

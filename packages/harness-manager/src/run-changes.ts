@@ -18,7 +18,7 @@ import { defineView, handler, type DefinedCapability } from "@flow-state-dev/cor
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
-import { effectiveCut, readRunChanges, readRunCommits, runChangesSchema } from "./commits";
+import { effectiveCut, readRunChanges, readRunCommits, runChangesSchema, runCommitEntrySchema } from "./commits";
 import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
@@ -35,12 +35,14 @@ export const harnessRunChangesInputSchema = z.object({
 
 /**
  * What the changes view answers: the task it read, and the diff or the one
- * file's patch. Beside the diff, the run's commits (count and subjects, as
+ * file's patch. Beside the diff, the run's commits (count, subjects and log, as
  * `readRunCommits` reads them); `null` beside a patch.
  */
 export const harnessRunChangesOutputSchema = runChangesSchema.extend({
   taskId: z.string(),
-  commits: z.object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() }).nullable(),
+  commits: z
+    .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), log: z.array(runCommitEntrySchema).optional(), verified: z.boolean() })
+    .nullable(),
 });
 
 /** How a host builds the view. */
@@ -111,7 +113,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
       // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
       const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);
       const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, cut, at);
-      const commits = input.path === undefined ? await readRunCommits(record.workspacePath, record.baseRef ?? null, cut) : null;
+      const commits = input.path === undefined ? await readRunCommits(record.workspacePath, record.baseRef ?? null, cut, { log: true }) : null;
       return { taskId: row.id, ...changes, commits };
     },
   });

@@ -291,3 +291,43 @@ describe("effectiveCut", () => {
     expect(await effectiveCut(dir, null, git(dir, "rev-parse", "HEAD").trim())).toBeNull();
   });
 });
+
+describe("readRunCommits, with its log", () => {
+  it("names each commit newest first: sha, subject, author, when, and whether it is a merge", async () => {
+    // What a timeline draws: a merge of the base folds away, a sha copies, a time reads as "4m ago".
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "fix(x): the run's change");
+    git(dir, "checkout", "-q", "main");
+    commit(dir, "a teammate's change");
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "-m", "Merge branch 'main' into run", "main");
+    commit(dir, "test: cover it");
+    const read = await readRunCommits(dir, "main", cut, { log: true });
+    // Newest first; commits made in the same second come in git's own order, so the rest are checked as a set.
+    expect(read.log?.map((entry) => entry.subject)).toEqual(read.subjects);
+    expect(read.log?.[0]?.subject).toBe("test: cover it");
+    expect(Object.fromEntries(read.log!.map((entry) => [entry.subject, entry.merge]))).toEqual({
+      "test: cover it": false,
+      "Merge branch 'main' into run": true,
+      "a teammate's change": false,
+      "fix(x): the run's change": false,
+    });
+    expect(read.log?.[0]).toMatchObject({ sha: git(dir, "rev-parse", "HEAD").trim(), author: "t" });
+    expect(Number.isNaN(Date.parse(read.log![0]!.at))).toBe(false);
+    // Asked without it, the read is what it always was.
+    expect(await readRunCommits(dir, "main", cut)).not.toHaveProperty("log");
+  });
+
+  it("logs no more commits than it names subjects for", async () => {
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    for (let i = 0; i < 23; i++) commit(dir, `change ${i}`);
+    const read = await readRunCommits(dir, "main", cut, { log: true });
+    expect(read.count).toBe(23);
+    expect(read.log).toHaveLength(20);
+    expect(read.log?.[0]?.subject).toBe("change 22");
+  });
+});

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { reviewDetail } from "../src/browser";
 
 /** The fields a review stop's data had none of before the card showed what a person decides on (FIX-2782). */
-const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
+const NONE_OF_THE_DECISION = { log: null, goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
 
 describe("reviewDetail", () => {
   it("reads a full review's data", () => {
@@ -150,5 +150,28 @@ describe("reviewDetail: what the review card needs to decide on", () => {
     expect(reviewDetail({ branch: "b", openPullRequest: { number: 5661, url: "javascript:alert(1)" } })?.openPullRequest).toBeNull();
     // Data from before the field: none open.
     expect(reviewDetail({ branch: "b" })?.openPullRequest).toBeNull();
+  });
+});
+
+describe("reviewDetail: the commit log", () => {
+  const entry = { sha: "a".repeat(40), subject: "fix: it", author: "Coder", at: "2026-11-27T10:00:00Z", merge: false };
+
+  it("reads each commit of the branch and of the round, dropping one it can't read", () => {
+    const detail = reviewDetail({
+      branch: "b",
+      commits: 2,
+      subjects: ["fix: it", "Merge branch 'main'"],
+      log: [entry, { ...entry, sha: "b".repeat(40), subject: "Merge branch 'main'", merge: true }, { subject: 7 }, null],
+      round: { commits: 1, subjects: ["fix: it"], log: [entry] },
+    });
+    expect(detail?.log).toEqual([entry, { ...entry, sha: "b".repeat(40), subject: "Merge branch 'main'", merge: true }]);
+    expect(detail?.round?.log).toEqual([entry]);
+  });
+
+  it("is null on a review recorded before commits carried a log, which keeps its subjects", () => {
+    const detail = reviewDetail({ branch: "b", commits: 1, subjects: ["fix: it"], round: { commits: 1, subjects: ["fix: it"] } });
+    expect(detail?.log).toBeNull();
+    expect(detail?.round?.log).toBeNull();
+    expect(detail?.subjects).toEqual(["fix: it"]);
   });
 });
