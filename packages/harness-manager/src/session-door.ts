@@ -20,7 +20,7 @@
  * finished task and a coder runs for a message about one: there is
  * one talk path. A message never steers, so the turn refuses an open task.
  */
-import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
+import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
@@ -179,12 +179,6 @@ const talkStateSchema = z.object({
  */
 export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   const name = options.name ?? "harness-manager";
-  const capability = defineCapability({
-    name: `harness-manager-talk:${name}`,
-    // The usage record a talk's harness writes its windows into, as a run's does.
-    resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
-  }) as unknown as DefinedCapability;
-  const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
 
@@ -193,6 +187,10 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   // attempt, so it records no session of its own.
   const talkHarness: HarnessBlock = options.harness({
     cwd: ({ sequencer }) => {
+      const cwd = sequencer?.state.cwd;
+      return typeof cwd === "string" ? cwd : "";
+    },
+    worktree: ({ sequencer }) => {
       const cwd = sequencer?.state.cwd;
       return typeof cwd === "string" ? cwd : "";
     },
@@ -214,7 +212,9 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     inputSchema: harnessTalkInputSchema,
     outputSchema: talkPromptSchema,
     sequencerStateSchema: talkStateSchema,
-    uses,
+    // A talk reads the finished run and records its harness usage.
+    resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
+    uses: options.uses,
     execute: async (input, ctx) => {
       const board = await options.board(ctx);
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);

@@ -33,7 +33,6 @@ export { createBashTool } from "./bash";
 export type {
   Sandbox,
   CommandResult,
-  FileEntryState,
   SandboxProvider,
   BashSessionState,
   CreateBashToolOptions,

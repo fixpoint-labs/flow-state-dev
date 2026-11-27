@@ -24,12 +24,12 @@ export const crawlInputSchema = z.object({
   url: z.string().describe("The root URL of the site to crawl"),
   maxPages: z
     .number()
-    .default(20)
-    .describe("Maximum number of pages to crawl"),
+    .optional()
+    .describe("Maximum number of pages to crawl. Capped by the app's limit."),
   maxDepth: z
     .number()
-    .default(2)
-    .describe("Maximum link-following depth from root URL"),
+    .optional()
+    .describe("Maximum link-following depth from root URL. Capped by the app's limit."),
 });
 
 export type CrawlInput = z.infer<typeof crawlInputSchema>;
@@ -39,9 +39,9 @@ export type CrawlInput = z.infer<typeof crawlInputSchema>;
 export interface CrawlConfig {
   /** Override auto-selection. Use a specific provider. */
   provider?: CrawlProviderName;
-  /** Maximum pages to crawl. Default: 20. */
+  /** Most pages one crawl may visit; the model can ask for fewer. Default: 20. */
   maxPages?: number;
-  /** Maximum link-following depth. Default: 2. */
+  /** Deepest link-following one crawl may go; the model can ask for less. Default: 2. */
   maxDepth?: number;
   /** URL glob patterns to include. Matched against path. */
   includePatterns?: string[];
@@ -49,6 +49,14 @@ export interface CrawlConfig {
   excludePatterns?: string[];
   /** Enable JS rendering per page when available. Default: false. */
   waitForJS?: boolean;
+  /**
+   * Hostnames the crawl may read from, matched exactly (`example.com` does not
+   * allow `www.example.com`). Checked on the root URL and on every redirect hop
+   * of every page. Only the built-in provider can check redirect hops, so
+   * setting this selects it, and naming Firecrawl with it throws. Unset: any
+   * public host; an empty list allows none.
+   */
+  allowedHosts?: string[];
   /** Explicit API keys. */
   keys?: {
     firecrawl?: string;
@@ -68,6 +76,10 @@ export interface CrawlProviderAdapter {
       excludePatterns: string[];
       waitForJS: boolean;
       apiKey?: string;
+      /** The run's signal; aborting it ends the crawl. */
+      signal?: AbortSignal;
+      /** See {@link CrawlConfig.allowedHosts}. */
+      allowedHosts?: string[];
     }
   ): Promise<CrawlResult>;
 }

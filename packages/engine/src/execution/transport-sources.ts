@@ -48,6 +48,16 @@ export const INTERNAL_SOURCE = "internal";
 export const CLI_SOURCE = "cli";
 
 /**
+ * Whether `source` is one the dispatch seam stamps (`internal`, `task`): the
+ * only sources whose top-level `metadata` the server assembles whole, so the
+ * only ones a reader may trust a server-set metadata entry under. The one
+ * predicate every such reader uses (`readDispatchStamp`, `readDeliveryOrigin`).
+ */
+export function isFrameworkStampedSource(source: string | undefined): boolean {
+  return source === INTERNAL_SOURCE || source === TASK_SOURCE;
+}
+
+/**
  * The dispatch type a source delivers. **A dispatch's type is decided by which
  * door it came through**, never by anything in its body — which is what makes
  * the entry map a caller cannot pick a boundary. Every caller-facing transport

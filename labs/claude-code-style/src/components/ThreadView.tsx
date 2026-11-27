@@ -79,7 +79,7 @@ export function ThreadView({
     if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return lab.requestChanges(sessionId, task, line);
+      return lab.requestChanges(sessionId, task, line, work?.reviewStop);
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

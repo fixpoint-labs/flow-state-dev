@@ -1,0 +1,7 @@
+{
+  "definition": "work",
+  "reachers": { "owner": "em", "visitor": "coder" },
+  "clashing": "reviewer",
+  "index": { "pattern": "tasks/**", "name": "byOwner" },
+  "notes": { "fromVisitor": "coder settled task t1", "fromOwner": "em filed task t2" }
+}

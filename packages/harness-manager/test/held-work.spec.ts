@@ -8,6 +8,7 @@
  * manager's workspace is switched from one to the other between attempts.
  * Only the harness is a stub.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,7 +35,7 @@ import {
   type RunSourceAnswer,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";

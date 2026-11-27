@@ -18,25 +18,12 @@ import type { DefinedResource } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   debateStateSchema,
-  type DebateState,
-  type DebateTranscriptState,
+  type DebateContextSlot,
 } from "../schemas";
 
 export type DebaterInstructions =
   | string
   | ((input: any, ctx: any) => string | Promise<string>);
-
-/** Render prior arguments as a stance-tagged transcript, in turn order. */
-function formatPriorForDebater(
-  entries: { round: number; stance: string; text: string }[],
-): string {
-  if (entries.length === 0) return "";
-  const lines: string[] = [];
-  for (const e of entries) {
-    lines.push(`[${e.stance}] ${e.text}`);
-  }
-  return lines.join("\n");
-}
 
 export interface CreateDebaterOptions {
   name: string;
@@ -62,6 +49,7 @@ export function createDebater(opts: CreateDebaterOptions) {
   const roleLine = opts.role
     ? `Your perspective: ${opts.role}`
     : null;
+  const context: DebateContextSlot | undefined = opts.context;
   return generator({
     name: `${opts.name}-debater-${opts.agentName}`,
     model: opts.model ?? "intent/chat",
@@ -83,15 +71,13 @@ export function createDebater(opts: CreateDebaterOptions) {
     // them produces two near-identical "{agentName} is composing..."
     // strings in the UI. The inline row wins because it's contextual
     // (visible inside the debate card with stance + streaming text).
-    ...(opts.context !== undefined ? { context: opts.context } : {}),
-    ...(opts.uses ? { uses: opts.uses as any } : {}),
-    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
+    ...(context !== undefined ? { context } : {}),
+    ...(opts.uses ? { uses: opts.uses } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
     prompt: async (input, ctx) => {
-      const resolved = opts.instructions
-        ? typeof opts.instructions === "function"
-          ? await opts.instructions(input, ctx)
-          : opts.instructions
-        : null;
+      const resolved = typeof opts.instructions === "function"
+        ? await opts.instructions(input, ctx)
+        : opts.instructions;
       const instructionsBlock = resolved
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
@@ -109,33 +95,31 @@ export function createDebater(opts: CreateDebaterOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as DebateState;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
-      const entries = transcriptState?.entries ?? [];
-      const priorBlock =
-        entries.length > 0
-          ? `\nPrior arguments (in order):\n${formatPriorForDebater(entries)}\n`
-          : "";
+      const state = ctx.sequencer?.state;
+      const entries = ctx.resources.transcript?.state?.entries ?? [];
+      let priorBlock = "";
+      if (entries.length > 0) {
+        const lines: string[] = [];
+        for (const entry of entries) lines.push(`[${entry.stance}] ${entry.text}`);
+        priorBlock = `\nPrior arguments (in order):\n${lines.join("\n")}\n`;
+      }
       // Pick the moderator decision that opened THIS round (the one whose
       // round number matches state.round). With the moderator running at
       // the top of the round, the most recent decision is the current
       // round's opener — but match on `round` explicitly to stay robust
       // if the loop order ever changes.
-      const decisions = state.moderatorDecisions ?? [];
-      const currentDecision =
-        decisions.find((d) => d.round === state.round) ?? null;
+      const currentDecision = state?.moderatorDecisions?.find((d) => d.round === state.round);
       const briefingBlock =
-        currentDecision && currentDecision.briefing
+        currentDecision?.briefing
           ? `\nBriefing from the moderator:\n${currentDecision.briefing}\n`
           : "";
       const angleBlock =
-        currentDecision && currentDecision.newAngle
+        currentDecision?.newAngle
           ? `\nFocus for this round:\n${currentDecision.newAngle}\n`
           : "";
       return [
-        `Question under debate: ${state.question ?? ""}`,
-        `Round ${state.round} of ${opts.maxRounds}.`,
+        `Question under debate: ${state?.question ?? ""}`,
+        `Round ${state?.round} of ${opts.maxRounds}.`,
         priorBlock,
         briefingBlock,
         angleBlock,

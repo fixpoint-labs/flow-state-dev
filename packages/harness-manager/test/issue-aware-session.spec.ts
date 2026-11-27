@@ -16,6 +16,7 @@
  *   - containment checked on the path alone: a linked spec reads a file
  *     outside the checkout into the prompt.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +32,6 @@ import {
   harnessSessionFlow,
   readIssueSpecSection,
   ISSUE_SPEC_MAX_BYTES,
-  type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
   type HarnessSessionWorkspace,
@@ -66,7 +66,7 @@ function specWorkspace(): HarnessSessionWorkspace & { places: HarnessSessionPlac
 
 /** A harness that records each prompt and confirms a conversation, as a real one does on its first turn. */
 function recordingAgent(prompts: string[]) {
-  return (feeds: HarnessSessionFeeds) =>
+  return (feeds: HarnessFeeds) =>
     handler({
       name: "recording-harness",
       inputSchema: z.object({ prompt: z.string() }),

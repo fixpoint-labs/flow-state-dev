@@ -97,6 +97,7 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -240,6 +241,18 @@ const SUSPEND_NEEDS_DURABILITY =
 const SUSPEND_IN_SCHEDULE_SESSION =
   "a fire in its schedule's own session can't stop or wait: the schedule's next fire may run there while it " +
   "waits. Leave the schedule's `session` at \"per-fire\" (the default) for fires that stop or wait. Nothing was held.";
+
+// FIX-2895.
+/**
+ * Why `ctx.suspend()` refused in a dynamic schedule's fire. Its handler was
+ * made by the schedule resolver and carried only on the dispatch, so whatever
+ * continued the parked fire would re-run it from its record and find no
+ * handler: the fire would stay stopped for good.
+ */
+const SUSPEND_IN_CARRIED_CORE =
+  "a dynamic schedule's fire can't stop or wait: its handler is made by the schedule resolver at fire time " +
+  "and isn't stored, so nothing could run it again. Declare the schedule under `schedules.static` for fires " +
+  "that stop or wait. Nothing was held.";
 
 /** A block's model usage as its lean trace records it: the counts, without provider metadata. */
 function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
@@ -753,6 +766,13 @@ export async function createExecutionContext<
   // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
   // `wait_unavailable` before it starts any work.
   const inScheduleSession = isScheduleSessionId(sessionId);
+  // FIX-2895: why this run may not park (SUSPEND_IN_CARRIED_CORE first, so a
+  // dynamic per-schedule fire isn't told to go per-fire), or undefined.
+  const noParkReason = options.runsCarriedCore === true
+    ? SUSPEND_IN_CARRIED_CORE
+    : inScheduleSession
+      ? SUSPEND_IN_SCHEDULE_SESSION
+      : undefined;
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).
@@ -1219,6 +1239,7 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
+          deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
@@ -1244,7 +1265,7 @@ export async function createExecutionContext<
                 }
               }
             : {}),
-          ...(options.requestHost.waits !== undefined && !inScheduleSession
+          ...(options.requestHost.waits !== undefined && noParkReason === undefined
             ? {
                 waits: {
                   provider: options.requestHost.waits.provider,
@@ -4496,8 +4517,8 @@ export async function createExecutionContext<
         if (!options.durabilityEnabled) {
           throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
-        if (inScheduleSession) {
-          throw new Error(SUSPEND_IN_SCHEDULE_SESSION);
+        if (noParkReason !== undefined) {
+          throw new Error(noParkReason);
         }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });

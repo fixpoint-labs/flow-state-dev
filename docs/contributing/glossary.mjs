@@ -770,7 +770,7 @@ export const ENTRIES = [
   },
   {
     term: "Harness",
-    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
+    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/core/harness`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
     decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627",
     retires: [],
   },

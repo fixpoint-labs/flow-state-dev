@@ -334,7 +334,8 @@ async function handleServiceRoute(
   let refused = 0;
   let failed = 0;
   for (const input of events) {
-    const routed = await routeServiceEvent(host, { flowKind, entry: route.entry, input, principal: service });
+    // The event came through the webhook door: the routing and every run it fires carry that origin.
+    const routed = await routeServiceEvent(host, { flowKind, entry: route.entry, input, principal: service }, { origin: "webhook" });
     if (routed.error !== undefined) {
       host.logger?.error?.("webhook service routing failed", { provider, eventType, error: errorMessage(routed.error) });
       return jsonResponse(500, { error: "route_failed" });

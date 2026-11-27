@@ -198,7 +198,7 @@ export interface WorktreeRecording {
 async function change(collection: WorktreeCollection, key: string, fn: (row: WorktreeResourceState) => WorktreeResourceState): Promise<boolean> {
   const ref = await collection.getOptional(key);
   if (ref === undefined) return false;
-  await ref.updateState((row) => fn(row as WorktreeResourceState));
+  await ref.updateState(fn);
   return true;
 }
 
@@ -260,7 +260,7 @@ export async function markWorktreeReady(
   });
   // The host calls this under the place's lock, the one removal takes, so no
   // removal lands between this and the provisioning write.
-  const found = await change(recording.collection, key, (row) => ({ ...row, ...fields(row) }) as WorktreeResourceState);
+  const found = await change(recording.collection, key, (row) => ({ ...row, ...fields(row) }));
   if (!found) await recording.collection.upsert(key, fields(undefined));
 }
 

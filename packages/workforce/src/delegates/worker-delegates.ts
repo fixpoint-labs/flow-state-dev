@@ -192,7 +192,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    */
   const seeded = async (ctx: BlockContext, defaults: DelegateDefaults): Promise<DelegateDefaults> => {
     if (options.seed === undefined) return defaults;
-    if ((ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] !== null) return defaults;
+    if (ctx.session.state[DELEGATES_STATE] !== null) return defaults;
     const records = await options.seed(ctx);
     return records === undefined ? defaults : { ...defaults, records };
   };
@@ -211,7 +211,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     if (verifiedWorkerOf(ctx.session) !== undefined) {
       return withRoster(installation, ctx, await seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx))));
     }
-    const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+    const named = ctx.session.state[WORKER_ID_STATE_KEY];
     return typeof named === "string" ? ownerDefaults(ctx) : withRoster(installation, ctx, delegateDefaultsOf(turnConfigOf(ctx)));
   };
 
