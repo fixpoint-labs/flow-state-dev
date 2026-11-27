@@ -43,6 +43,8 @@ describe("the activator with no evaluator", () => {
     const flow = defineFlow({
       kind: "activator-without-evaluator",
       resources: { skills: defineSkillsCollection({ scope: "session" }) },
+      // A session state_change carries only exposed fields, and the turn is read off them.
+      session: { client: { expose: ["activeSkills"] } },
       actions: {
         run: sequencer({ name: "turn", inputSchema: z.object({ message: z.string() }) }).step(activator),
       },

@@ -1236,7 +1236,9 @@ describe("execution runtime", () => {
           status: z.string().default("idle"),
           notes: z.array(z.string()).default([]),
           flags: z.record(z.boolean()).default({})
-        })
+        }),
+        // Every field exposed: an item carries only exposed fields.
+        client: { expose: ["count", "total", "status", "notes", "flags"] }
       },
       actions: {
         run: handler({
@@ -1338,8 +1340,9 @@ describe("execution runtime", () => {
       kind: "scope-state-change-multi",
       request: { stateSchema: z.object({ phase: z.string().default("idle") }) },
       session: { stateSchema: z.object({}).passthrough() },
-      user: { stateSchema: z.object({ role: z.string().default("guest") }) },
-      org: { stateSchema: z.object({ tier: z.string().default("free") }) },
+      // Exposed, since an item carries only a scope's exposed fields.
+      user: { stateSchema: z.object({ role: z.string().default("guest") }), client: { expose: ["role"] } },
+      org: { stateSchema: z.object({ tier: z.string().default("free") }), client: { expose: ["tier"] } },
       actions: {
         run: handler({
             name: "noop",
