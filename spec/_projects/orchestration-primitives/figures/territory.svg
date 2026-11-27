@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory in three bands. Owned here: the Task row and TaskCollection, the task board and its drain, the claim ticket that lets a task be answered once, detached and durable task execution, addressing a flow instance by id, dispatcher with reply-to-sender, and the five task tools, createTask with getTask waiting, under FIX-2056, and one Inbox item for each task that stops for a person, under FIX-2058; both drawn dashed until built. Below a fence, assembled but owned elsewhere: scope state and stores, Workforce workers and channels, sessions that stay open for assigned work, and the hosts that keep flows alive. Outside the project: the screens that ask a person, a second message layer, several trains of thought in one session, and waiting on several tasks at once.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .band  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .prop  { fill:var(--surface); stroke:var(--code); stroke-width:1.3; stroke-dasharray:5 3; }
+    .sub   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-f   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.08em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <g id="owned">
+    <rect class="band" x="8" y="8" width="924" height="152" rx="6"/>
+    <text class="t-lbl" x="20" y="30">OWNED HERE</text>
+    <text class="t-s" x="20" y="46">one work unit,</text>
+    <text class="t-s" x="20" y="58">one way to move it</text>
+    <rect class="own" x="180" y="22" width="172" height="56" rx="4"/>
+    <text class="t-b" x="192" y="44">Task · TaskCollection</text>
+    <text class="t-s" x="192" y="62">one row, one status set</text>
+    <rect class="own" x="365" y="22" width="172" height="56" rx="4"/>
+    <text class="t-b" x="377" y="44">task board · drain</text>
+    <text class="t-s" x="377" y="62">dispatcher × worker × loop</text>
+    <rect class="own" x="550" y="22" width="172" height="56" rx="4"/>
+    <text class="t-b" x="562" y="44">claim ticket</text>
+    <text class="t-s" x="562" y="62">a task is answered once</text>
+    <rect class="own" x="735" y="22" width="185" height="56" rx="4"/>
+    <text class="t-b" x="747" y="44">detached · durable tasks</text>
+    <text class="t-s" x="747" y="62">work outlives its request</text>
+    <rect class="own" x="180" y="90" width="172" height="56" rx="4"/>
+    <text class="t-b" x="192" y="112">flow instances</text>
+    <text class="t-s" x="192" y="130">addressed by global id</text>
+    <rect class="own" x="365" y="90" width="172" height="56" rx="4"/>
+    <text class="t-b" x="377" y="112">dispatcher()</text>
+    <text class="t-s" x="377" y="130">transport · reply to sender</text>
+    <rect class="prop" x="550" y="90" width="172" height="56" rx="4"/>
+    <text class="t-b" x="562" y="109">five task tools</text>
+    <text class="t-s" x="562" y="125">createTask · getTask wait</text>
+    <text class="t-s" x="562" y="138">FIX-2056</text>
+    <rect class="prop" x="735" y="90" width="185" height="56" rx="4"/>
+    <text class="t-b" x="747" y="109">one Inbox</text>
+    <text class="t-s" x="747" y="125">each stop for a person</text>
+    <text class="t-s" x="747" y="138">FIX-2058</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M8 176 H932"/>
+    <text class="t-f" x="20" y="192">FENCE · IS IT THE WORK UNIT, OR HOW ONE MOVES BETWEEN WORKERS?</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="band" x="8" y="200" width="924" height="76" rx="6"/>
+    <text class="t-lbl" x="20" y="222">ASSEMBLED,</text>
+    <text class="t-lbl" x="20" y="236">OWNED ELSEWHERE</text>
+    <rect class="sub" x="180" y="212" width="172" height="52" rx="4"/>
+    <text class="t-b" x="192" y="233">scope state · stores</text>
+    <text class="t-s" x="192" y="250">durability comes from here</text>
+    <rect class="sub" x="365" y="212" width="172" height="52" rx="4"/>
+    <text class="t-b" x="377" y="233">workers · WORKER.md</text>
+    <text class="t-s" x="377" y="250">Workforce: Layer 2</text>
+    <rect class="sub" x="550" y="212" width="172" height="52" rx="4"/>
+    <text class="t-b" x="562" y="233">sessions that stay open</text>
+    <text class="t-s" x="562" y="250">Shift Manager · FIX-1815</text>
+    <rect class="sub" x="735" y="212" width="185" height="52" rx="4"/>
+    <text class="t-b" x="747" y="233">hosts · queues · restart</text>
+    <text class="t-s" x="747" y="250">Keeping flows alive</text>
+  </g>
+
+  <g id="outside">
+    <rect class="band" x="8" y="288" width="924" height="76" rx="6"/>
+    <text class="t-lbl" x="20" y="310">OUTSIDE</text>
+    <rect class="out" x="180" y="300" width="172" height="52" rx="4"/>
+    <text class="t-b" x="192" y="321">screens that ask a person</text>
+    <text class="t-s" x="192" y="338">approvals · AskCard</text>
+    <rect class="out" x="365" y="300" width="172" height="52" rx="4"/>
+    <text class="t-b" x="377" y="321">a second message layer</text>
+    <text class="t-s" x="377" y="338">Relay · canceled</text>
+    <rect class="out" x="550" y="300" width="172" height="52" rx="4"/>
+    <text class="t-b" x="562" y="321">threads in one session</text>
+    <text class="t-s" x="562" y="338">Strands · canceled</text>
+    <rect class="out" x="735" y="300" width="185" height="52" rx="4"/>
+    <text class="t-b" x="747" y="321">wait on many tasks</text>
+    <text class="t-s" x="747" y="338">one wait per step</text>
+  </g>
+</svg>
