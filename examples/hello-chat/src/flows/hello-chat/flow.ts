@@ -10,7 +10,7 @@
  *   - handler()   — synchronous logic (here: incrementing a counter)
  *   - sequencer() — composes blocks into a linear pipeline
  *   - defineFlow() — ties actions, state, and scopes into a registerable flow
- *   - Partial state schemas — blocks declare only the state fields they use
+ *   - Scope state schemas — blocks get typed access to session state
  *   - userMessage — emits a user-role MessageItem in the conversation stream
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -22,9 +22,7 @@ export const chatInputSchema = z.object({
   message: z.string().min(1)
 });
 
-// Flow-level session state schema. In this simple flow there's only one field,
-// but the pattern is the same as in larger flows: each block declares a partial
-// slice, and the flow-level schema is the full picture.
+// Shared by the counter and the flow that exposes it.
 export const sessionStateSchema = z.object({
   messageCount: z.number().default(0)
 });
@@ -51,17 +49,12 @@ const chatGenerator = generator({
 });
 
 // Handler block: increments the message counter after each exchange.
-// Declares a partial sessionStateSchema with only { messageCount } — it doesn't
-// need to know about any other session state fields that might exist at the
-// flow level. This keeps the block reusable and self-documenting about its
-// state dependencies.
 const incrementMessageCount = handler({
   name: "increment-message-count",
   inputSchema: z.string(),
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
+  sessionStateSchema,
   execute: async (_input, ctx) => {
-    const count = ctx.session.state.messageCount ?? 0;
-    await ctx.session.patchState({ messageCount: count + 1 });
+    await ctx.session.incState({ messageCount: 1 });
   },
 });
 

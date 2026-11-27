@@ -97,6 +97,9 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { principalOwns, withRequestOrg, type Principal } from "./principal";
+import { resolveSessionKindRecord } from "./session-kind";
+import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
@@ -111,7 +114,7 @@ import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { cloneValue, getTransientKeys, getReadonlyStateKeys, ONE_OFF_SESSION_PREFIX } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -161,11 +164,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import {
-  claimRequestRecord,
-  principalOwnsRequest,
-  type RequestPrincipal
-} from "./request-principal";
+import { claimRequestRecord } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
@@ -215,6 +214,7 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { SessionRequiredError } from "../transports/errors";
 import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
 import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
@@ -239,6 +239,18 @@ const SUSPEND_NEEDS_DURABILITY =
 const SUSPEND_IN_SCHEDULE_SESSION =
   "a fire in its schedule's own session can't stop or wait: the schedule's next fire may run there while it " +
   "waits. Leave the schedule's `session` at \"per-fire\" (the default) for fires that stop or wait. Nothing was held.";
+
+// FIX-2895.
+/**
+ * Why `ctx.suspend()` refused in a dynamic schedule's fire. Its handler was
+ * made by the schedule resolver and carried only on the dispatch, so whatever
+ * continued the parked fire would re-run it from its record and find no
+ * handler: the fire would stay stopped for good.
+ */
+const SUSPEND_IN_CARRIED_CORE =
+  "a dynamic schedule's fire can't stop or wait: its handler is made by the schedule resolver at fire time " +
+  "and isn't stored, so nothing could run it again. Declare the schedule under `schedules.static` for fires " +
+  "that stop or wait. Nothing was held.";
 
 /** A block's model usage as its lean trace records it: the counts, without provider metadata. */
 function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
@@ -669,9 +681,8 @@ export async function createExecutionContext<
 
   // The request-host seam (FIX-999) is built further down, once the session
   // and org bindings have been RESOLVED — see "the request-host seam" below.
-  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
-  // session is generated below) and `options.orgId` may be absent on a request
-  // against an org-bound session, so both would be read before the authoritative
+  // It cannot be built here: `options.orgId` may be absent on a request
+  // against an org-bound session, so it would be read before the authoritative
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
@@ -741,11 +752,25 @@ export async function createExecutionContext<
   }
 
   const userId = options.userId;
-  const sessionId = options.sessionId ?? `${ONE_OFF_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Every run names its session; nothing here makes one up. Asserted for an
+  // untyped caller, before any read or write. A view (`noSession`) has none:
+  // it loads, makes and stores no session, so the empty id below names
+  // nothing and reaches no session read.
+  if (!noSession && (typeof options.sessionId !== "string" || options.sessionId.length === 0)) {
+    throw new SessionRequiredError(flow.kind, "createExecutionContext");
+  }
+  const sessionId: string = noSession ? "" : options.sessionId;
   // FIX-2886: a fire in its schedule's own session never parks
   // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
   // `wait_unavailable` before it starts any work.
   const inScheduleSession = isScheduleSessionId(sessionId);
+  // FIX-2895: why this run may not park (SUSPEND_IN_CARRIED_CORE first, so a
+  // dynamic per-schedule fire isn't told to go per-fire), or undefined.
+  const noParkReason = options.runsCarriedCore === true
+    ? SUSPEND_IN_CARRIED_CORE
+    : inScheduleSession
+      ? SUSPEND_IN_SCHEDULE_SESSION
+      : undefined;
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).
@@ -799,10 +824,11 @@ export async function createExecutionContext<
   // Asked before the read: a run that stops ending after this has already
   // recorded what it handed on, so the read below sees it (FIX-2145).
   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
-  const [loadedSession, loadedRequest] = await Promise.all([
+  const [storedSession, loadedRequest] = await Promise.all([
     noSession ? undefined : stores.session.get(sessionKey),
     stores.request.get(requestId)
   ]);
+  let loadedSession = storedSession;
   if (
     loadedSession !== undefined &&
     tenantMatches(loadedSession.tenantId, options.tenantId) &&
@@ -829,14 +855,30 @@ export async function createExecutionContext<
   }
   // A request id is an address: another user's record under it is never
   // adopted, however the id reached this run.
-  const requestPrincipal: RequestPrincipal = {
-    userId,
-    orgId: options.orgId,
-    tenantId: options.tenantId
-  };
-  if (loadedRequest !== undefined && !principalOwnsRequest(loadedRequest, requestPrincipal)) {
+  if (
+    loadedRequest !== undefined &&
+    !principalOwns(await withRequestOrg(stores, loadedRequest), { userId, orgId: options.orgId, tenantId: options.tenantId })
+  ) {
     throw new RequestOwnerMismatchError(requestId);
   }
+
+  // FIX-2942: who this run is, as its door set it and carried unchanged: the
+  // options' principal, else the request record's (a continuation, a queued
+  // job), else its session's own kind (a wake or an owner run, started from
+  // a stored record with no principal kind of its own). A run that has none
+  // and creates its session is a machine's. Backfilling a session from before
+  // kinds writes the kind and moves its version on, so the run builds on the
+  // record as written, not the copy read above.
+  let runKind = options.principalKind ?? loadedRequest?.principalKind ?? undefined;
+  if (runKind === undefined && loadedSession !== undefined) {
+    const resolved = await resolveSessionKindRecord(stores, loadedSession, {
+      queuedGraceMs: options.effectiveRuntimeConfig?.queuedGraceMs
+    });
+    runKind = resolved.kind;
+    loadedSession = resolved.session;
+  }
+  runKind ??= "machine";
+  const runResolvedBy = options.resolvedBy ?? loadedRequest?.resolvedBy ?? undefined;
 
   // The same filter as the session's reads; see `sessionRequestScope`.
   const turnScope = sessionRequestScope(
@@ -1000,7 +1042,8 @@ export async function createExecutionContext<
         },
         state: options.sessionState,
         fromCaller: true,
-        via: "action"
+        via: "action",
+        principalKind: runKind
       },
       () => ({
       id: sessionKey,
@@ -1185,13 +1228,8 @@ export async function createExecutionContext<
   // and inherits the parent's org, so the seam has to close over the values
   // execution actually ran with:
   //
-  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
-  //    which case an ephemeral session is generated and persisted above. Such a
-  //    request has a perfectly valid `ctx.session`, so gating the seam on
-  //    `options.sessionId` withheld it from a request that had lineage to
-  //    reason about. The approved decision — no seam without a session — is
-  //    unchanged and now checks the thing it meant: every context has a session
-  //    by this point, so the seam is present whenever the host wired it.
+  //  - `sessionId` is the session the run named (required for every run), so
+  //    the seam is present whenever the host wired it.
   //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
   //    org-bound session may omit `orgId` (only a *differing* value is
   //    rejected, above), so capturing `options.orgId` left the host unbound and
@@ -1217,6 +1255,14 @@ export async function createExecutionContext<
           },
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
+          principal: {
+            userId,
+            orgId: resolvedOrgId,
+            ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+            kind: runKind,
+            ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+          } satisfies Principal,
+          deliveryOrigin: readDeliveryOrigin(options.source, options.metadata),
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
@@ -1242,7 +1288,7 @@ export async function createExecutionContext<
                 }
               }
             : {}),
-          ...(options.requestHost.waits !== undefined && !inScheduleSession
+          ...(options.requestHost.waits !== undefined && noParkReason === undefined
             ? {
                 waits: {
                   provider: options.requestHost.waits.provider,
@@ -1748,6 +1794,8 @@ export async function createExecutionContext<
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
+        principalKind: runKind,
+        ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {}),
         metadata: options.metadata,
         input: options.input,
         requestState: options.requestState
@@ -4494,8 +4542,8 @@ export async function createExecutionContext<
         if (!options.durabilityEnabled) {
           throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
-        if (inScheduleSession) {
-          throw new Error(SUSPEND_IN_SCHEDULE_SESSION);
+        if (noParkReason !== undefined) {
+          throw new Error(noParkReason);
         }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });

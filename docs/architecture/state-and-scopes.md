@@ -14,7 +14,9 @@ request → session → user → org
 - **User**: Persisted, spans sessions, holds user preferences/resources
 - **Org**: Persisted, shared across users
 
-**Phase 1 policy:** User context is required for all flow execution. Sessions are always available — ephemeral sessions auto-create when no `sessionId` is provided.
+**Phase 1 policy:** User context is required for all flow execution, and every request names its session from the first write of its record. A caller that knows its conversation passes its id; one that names none is refused before anything is written (`400 session-required` over HTTP, `SessionRequiredError` from `runAction` and `host.dispatch`). A one-shot send passes `oneOffSessionId()` (`@flow-state-dev/core/helpers`), the only place a one-off `ephemeral_` id is made; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it themselves for a run with no session. The prefix is for display only (the navigator folds one-off sessions by it).
+
+**Requests recorded with no session.** Records written before this rule may have no `sessionId`. They stay readable and stoppable: a stop finds their gates and settles a parked one `aborted` without running it. Running one again is refused by name with `LegacySessionlessRequestError` (`legacy-sessionless-request`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake and the retry route. A queued BullMQ job with no session is settled failed under that name and not retried. Read types keep `sessionId` optional for these rows (`context/record-session.ts`).
 
 ## State Operations
 
@@ -546,7 +548,7 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
 ### Cross-flow schema registry (default)
 
-`FlowRegistry.register` collects each flow's merged user and org state schemas (its own `stateSchema` plus what its blocks and capabilities declare, see the scope-state defaults paragraph above), and user/org resource schemas, from every registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
+`FlowRegistry.register` collects each flow's merged user and org state schemas (its own `stateSchema` plus what its blocks and capabilities declare, see the scope-state defaults paragraph above), and its user, org and session resource schemas, from every registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
 
 | Scenario | Outcome |
 |----------|---------|
@@ -555,18 +557,20 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 | Shared required field whose types disagree | Throw `CrossFlowSchemaConflictError`. |
 | Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
 | A state field the two flows default differently, or one declares `.nullable()` | Throw `CrossFlowSchemaConflictError` (`incompatible-default` / `incompatible-types`), naming the field path (`stateSchema.<field>`). |
-| Two shared user/org resources at the same `ref` with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared resources in one scope whose names meet (the same `ref`, or a key or pattern that reaches the other's) with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared user/org resources at one address (the same `ref`, or the same collection `pattern`) whose client projection, owner rules, `secret`, `runBy` or `canWrite` differ | Throw `CrossFlowSchemaConflictError` (`client-config-mismatch`). `sameClientConfig`, the comparison the address path answers 409 with, so start-up and the address path hold one definition. `canWrite` and `client.data` compare by identity: share the one definition. |
 
-The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
+The error names both flow kinds, the scope (`user`, `org` or `session`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is reconciling the schemas, opting into isolation, or (at session scope, where there is no isolation) giving one declaration a distinct name.
+
+**One definition per name, in every scope.** A flow reaches a definition by declaring it, which it does by including a block that uses it; reach into another session's copy (`ctx.resources.at({ session })`) works the same way. So two flows that declare one name read and write the same rows, at session scope too, and the check holds every scope to one shape per name. Session state records are not compared: a session's record belongs to its own flow. There is no way to reach a definition a flow does not declare.
 
 **What each half compares.** The two halves of the check follow the two storage-key rules below, so they drop out of the shared view at different granularities:
 
 - The **scope record's `stateSchema`** is one blob per scope, so it follows the flow-level `isolateUserState` / `isolateOrgState` flag. A flow that isolates a scope contributes no `stateSchema` to it.
-- **Resources** are compared when two flows declare a shared resource at the same `(scope, ref)` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
+- **Resources** are compared when two flows declare shared resources whose names meet in one scope: the same `ref`, or a collection `pattern` that reaches the other's key or pattern (`patternsReach`), so a collection at `files/*` meets a resource at `files/a` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
 
-The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). Two overlaps are the exception, and are **not** detected today:
+The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). One overlap is the exception, and is **not** detected today:
 
-- **A collection pattern overlapping a concrete ref.** Refs are compared exactly, so a collection at `files/*` and a resource at `files/a` index separately even though the collection's `"a"` instance resolves to that same cell. Two collections declaring the *same* pattern are compared normally — a collection indexes on its `pattern`, which is what its instance keys derive from.
 - **Two instances of one flow kind whose `resources` overrides disagree.** Participants are retained per `flowKind` and same-kind pairs are skipped, so per-instance overrides are never compared against each other.
 
 ### Per-flow isolation (opt-in)
@@ -709,7 +713,9 @@ flow's session `stateSchema` (on a flow that binds its sessions, with a
 `.readonly()` field or a `createCheck`, a state the schema refuses is refused;
 any other flow keeps it as sent, so a flow can create sessions half-filled
 on purpose), runs the `serverOwned` refusal for caller-seeded state and the
-flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
+flow's `session.createCheck` on the parsed state (writing over it any fields
+the check derived and returned as `state`, such as a display name from the
+record it read), reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:
 

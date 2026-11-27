@@ -225,11 +225,24 @@ A durable dynamic run mid-crash cannot re-resolve its handler, so
 the run is dropped. If a durable scheduled action must survive a
 crash, make it static.
 
+Nothing runs a dynamic fire again, for the same reason:
+
+- retry, continue and resume refuse it with the not-found shape
+  (`isRequestPublicReentryAllowed`, by `metadata.schedule.origin`),
+  and request listings mark it `retryable: false`;
+- it never parks: a run with a carried core (`runsCarriedCore`) has
+  `ctx.suspend()` refuse before any gate is written and gets no
+  `waits`, since whatever continued it (an answer, a stop, a waited-on
+  child ending, the sweep) would re-run it from its record and find no
+  handler. A schedule whose fires stop or wait is static.
+
 ## Where a fire runs
 
 `session` on a schedule says where its fires run. `"per-fire"`, the
-default, names no session: each fire is a one-off run in an
-`ephemeral_` session of its own. `"per-schedule"` runs every fire in
+default, makes each fire a one-off run in a session of its own: the
+endpoint makes its `ephemeral_` id with `oneOffSessionId()` after the
+overlap check, so the request record names it from its first write.
+`"per-schedule"` runs every fire in
 one session whose id the endpoint derives after the overlap check
 (step 8), so a skipped fire never touches it: `fsd-schedule.` then
 the base64url of `[orgId, userId, flowId, scheduleId]`, from the
@@ -264,7 +277,8 @@ pre-claimed. The prefix is reserved beside the write session's
   fire leaves the active registry, so the next fire may already run
   there, and whatever continued the parked one (an answer, a stop, a
   waited-on child ending, the sweep's re-drive) would run it beside
-  that fire. A schedule whose fires stop or wait keeps `"per-fire"`.
+  that fire. A static schedule whose fires stop or wait keeps
+  `"per-fire"`.
 
 Unlike a write session, its owner still lists and reads it: the
 listing, the read routes and change notices don't hide it.

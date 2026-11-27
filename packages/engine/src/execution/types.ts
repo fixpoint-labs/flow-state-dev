@@ -1,6 +1,7 @@
 /**
  * Shared execution runtime types used by block and action orchestration paths.
  */
+import type { PrincipalKind } from "../context/principal";
 import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionCore,
@@ -76,7 +77,14 @@ export type RunActionOptions<
   actionName: TActionName;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. A run that belongs
+   * to no conversation passes `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time (an untyped caller),
+   * `runAction` throws `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   // FIX-1442.
   /**
    * The organization this run belongs to. **Required**.
@@ -101,6 +109,16 @@ export type RunActionOptions<
    * for callers that pre-date the transport adapter contract.
    */
   source?: string;
+  // FIX-2942.
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`Principal.kind`). Server-set, never a payload. Absent → the request
+   * record's, then the session's; a run that creates its session with none is
+   * a machine's, and reaches no other session.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → none, which matches nothing. */
+  resolvedBy?: string;
   // FIX-1707.
   /**
    * Caller-supplied request metadata. Treated as caller-controlled: the

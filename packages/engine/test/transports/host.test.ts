@@ -25,6 +25,7 @@ import {
 import type { FlowRunner } from "../../src/transports/runner";
 import { createFlowRouteHandlers } from "../../src/routes/http-handlers";
 import type { ResumeContext } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function buildHost(opts?: { runner?: FlowRunner }) {
   const registry = createFlowRegistry();
@@ -63,6 +64,7 @@ describe("createInboundTransportHost", () => {
     // now reads by coordinate rather than falling back to `flow.actions[name]`
     // when the caller supplies none.
     const handle = host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "custom-transport",
       flowKind: "host-test",
       action: "run",
@@ -194,6 +196,7 @@ describe("createInboundTransportHost", () => {
     });
 
     const handle = host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "http",
       flowKind: "keepalive-test",
       action: "run",
@@ -214,6 +217,7 @@ describe("createInboundTransportHost", () => {
   it("dispatch returns a usable liveStream by default", async () => {
     const { host } = buildHost();
     const handle = host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "test",
       flowKind: "host-test",
       action: "run",
@@ -230,6 +234,7 @@ describe("createInboundTransportHost", () => {
     // reserved `scheduled` event source, which needs a `metadata.schedule`
     // coordinate to resolve at all now that there is no name fallback.
     const handle = host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "custom-scheduler",
       flowKind: "host-test",
       action: "run",
@@ -245,6 +250,7 @@ describe("createInboundTransportHost", () => {
     const { host } = buildHost();
     const customEmitter = createResponseEmitter({ requestId: "req_custom" });
     const handle = host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "mcp",
       flowKind: "host-test",
       action: "run",
@@ -261,6 +267,7 @@ describe("createInboundTransportHost", () => {
     const { host } = buildHost();
     expect(() =>
       host.dispatch({
+        sessionId: oneOffSessionId(),
         source: "test",
         flowKind: "no-such-flow",
         action: "run",
@@ -302,7 +309,7 @@ describe("createInboundTransportHost", () => {
         metadata: { body: { userId: "u_body", orgId: "o_1" } }
       }
     });
-    expect(principal).toEqual({ userId: "u_body", orgId: DEFAULT_ORG_ID });
+    expect(principal).toEqual({ kind: "person", resolvedBy: expect.any(String), userId: "u_body", orgId: DEFAULT_ORG_ID });
   });
 
   describe("validateDispatch — the envelope carries an organization (FIX-1442)", () => {
@@ -318,6 +325,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "host-test",
           action: "run",
@@ -331,6 +339,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "host-test",
           action: "run",
@@ -345,6 +354,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "host-test",
           action: "run",
@@ -358,6 +368,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "host-test",
           action: "run",
@@ -402,6 +413,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "host-test",
           action: "run",
@@ -415,6 +427,7 @@ describe("createInboundTransportHost", () => {
       const { host } = buildHost();
       await expect(
         host.validateDispatch({
+          sessionId: oneOffSessionId(),
           source: "http",
           flowKind: "nope",
           action: "run",

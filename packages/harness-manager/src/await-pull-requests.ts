@@ -51,7 +51,7 @@ type RecordCollection = PullRequestCollection & {
 };
 
 function recordOf(ctx: Pick<BlockContext, "resources">): RecordCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[OBSERVED_PULL_REQUESTS] as RecordCollection | undefined;
+  const collection = ctx.resources?.[OBSERVED_PULL_REQUESTS] as RecordCollection | undefined;
   return typeof collection?.list === "function" && typeof collection.getOptional === "function" ? collection : undefined;
 }
 

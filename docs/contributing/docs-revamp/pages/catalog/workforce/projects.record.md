@@ -40,11 +40,15 @@ Written by `docs-writer` (sonnet), 1023 words. Scenario: Alice and Bob share the
 - After revise round 3, page sha256 2442f14c9e3d: exit 0.
 - After the loop (review): the two cold-read gaps now have their answers on the page. A workstream's lead never changes: reopening with another lead is refused `lead-differs` (`packages/workforce/src/projects/workstream-writes.ts:368`), and concurrent opens leave one entry and one session. A private project has only its owner, anyone else naming it is refused `no-such-project` as if it did not exist (`project-refusal.ts:12-14`), and visibility and members are fixed at create (`collections.ts:16-17,57-60`; `project-writes.ts:17-18,299`).
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/catalog/workforce/projects.md`: "how a handoff is refused" reads "how a delegation is refused" (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 08ceb1d500b0, and the 7 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+
+Cutover, 2026-11-24: "how a handoff is refused" reads "how a delegation is refused" (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

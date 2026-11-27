@@ -49,6 +49,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from 
 import { DRAIN_ENTRY, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["fixed-source", "no-sync-back"] as const;
@@ -173,7 +174,7 @@ async function runRow(lab: Lab, projectId: string, issue: string): Promise<Task 
   let row: Task | undefined;
   while (Date.now() < deadline) {
     const rows = Object.values(await lab.stored("user", board)) as Task[];
-    row = rows.find((r) => (r.input as { harnessFeature?: { issue?: string } } | undefined)?.harnessFeature?.issue === issue);
+    row = rows.find((r) => (r.input as { issue?: string } | undefined)?.issue === issue);
     if (row !== undefined && SETTLED.has(row.status)) return row;
     if (row === undefined || row.status === "pending") await emAct(lab, session, DRAIN_ENTRY, {});
     await sleep(200);
@@ -205,12 +206,12 @@ await runGoal(async (failures) => {
   // The control: the lab's one fixed repository, which holds no marker.
   const fixed = CONTROL === "fixed-source" ? createScratchRepo("projects-repo-fixed") : undefined;
   const workspace: OpenLabOptions["workspace"] =
-    fixed === undefined ? { root, remotes: { allow: ["file"] } } : { root: fixed.root, sourceRepo: fixed.sourceRepo, baseRef: BASE_REF };
+    fixed === undefined ? { root, remotes: { allow: ["file"] } } : { root: fixed.root, repo: fixed.sourceRepo, baseRef: BASE_REF };
 
   const stub = harnessStub({ duringRun });
   const lab = await openLab({
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     workspace,
     coderWorkerId: CODER_SEAT,
     logger: silentLogger,

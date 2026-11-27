@@ -629,7 +629,7 @@ Each row is a claim. **Carried** means true as stated or after the stated correc
 
 | # | Row (short) | Verdict | Where / why |
 |---|---|---|---|
-| 1 | Bash sync requirements: `path`, `hash`, `updatedAt`; content kept separately | **Carried, corrected.** The three fields are required string fields; content is in the content body, not state. State tracks path, content hash, last-sync timestamp. The workspace sets them; a value returned for those keys from `createState` is ignored. `FileEntryState` has string values only. | `packages/tools/src/bash/types.ts:50-66`; `capability.ts:61-67`; `apps/docs/docs/tools/bash.md:360-371` |
+| 1 | Bash sync requirements: `path`, `hash`, `updatedAt`; content kept separately | **Carried, corrected.** The three fields are required string fields; content is in the content body, not state. State tracks path, content hash, last-sync timestamp. The workspace sets them; a value returned for those keys from `createState` is ignored. `ProjectedEntryState` (workspace) has string values only. | `packages/workspace/src/types.ts`; `capability.ts:61-67`; `apps/docs/docs/tools/bash.md:360-371` |
 | 2 | Resource handle operations: `readContent`, `writeContent`, `patchState`, `state`, type error on an undeclared name | **Carried.** Wider than the row: the full table is 4.1. | res:445-531, 535-552 |
 | 3 | Identity and scope: storage keys, cross-flow sharing, `flowIsolation` | **Carried.** 5.2, 5.3. User keys carry the organization, which the row does not say. | `keys` |
 | 4 | Collection operations incl. `create` throws on existing, pattern syntax, prefix auto-prepended | **Carried.** 4.3, 8.1. Auto-prepend: a string key is appended to the static pattern prefix; `list("src/")` also prepends it. | reg:1927-1945 |
@@ -733,3 +733,8 @@ Items on the existing pages I could not confirm and **left off**: the DevTool "R
 - `ctx.resources.get(name)` returns the declared handle and `ctx.resources.list()` an array of every declared handle (`ResourceRegistry`, `packages/core/src/types/resource.ts:539-553`).
 - `ClientDataOf` with no projection or with `exclude` includes `secret` fields in its type; their values are never sent (section 12.2).
 - `onInstance*` context: the page lists `log`, `scopeType`, `scopeId`, `orgId` and leaves `cell` out (a storage coordinate, section 8).
+
+## Order lookup scoped to the caller
+
+- **A projected collection's `read` hook gets `ctx.userId` and `ctx.orgId` from the session, never from input.** `ProjectedResourceContext` (`packages/core/src/types/projected-resource-collection.ts:96-110`: `userId` "always populated — the server-derived owner. Never caller input."); built by `buildProjectedResourceContextFromSession` from the loaded session record (`packages/engine/src/resources/internal.ts:95-119`). The example passes `{ userId: ctx.userId, orgId: ctx.orgId }` to `findOrder`; the stand-in's ownership check replaces the hook's own `order.userId !== ctx.userId || order.orgId !== ctx.orgId` comparison, with the same result (`null` for another caller's order). **[page: code only]**
+- **Stand-in `findOrder(orderId, caller)`** from `src/lib/orders.ts`, `caller` being `{ userId?, orgId? }`; it returns `undefined` for an order the caller does not own, which the example's not-found branch handles. **[names only]**

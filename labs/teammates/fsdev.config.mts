@@ -8,7 +8,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { githubReviewers, operatorGitHubToken } from "@flow-state-dev/workforce";
+import { operatorGitHubToken } from "@flow-state-dev/workforce";
 import { checkCommands, defaultStore, openTeammates, runTimeout, setupCommand } from "./host.mts";
 
 /** The repository this lab lives in: the working folder when `TEAMMATES_WORKDIR` is unset. */
@@ -28,7 +28,6 @@ export default await openTeammates({
   setup: setupCommand(process.env.TEAMMATES_SETUP),
   checks: checkCommands(process.env.TEAMMATES_CHECKS),
   githubToken: operatorGitHubToken(),
-  githubReviewers: githubReviewers(process.env.TEAMMATES_GITHUB_REVIEWERS),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
   ...(process.env.GOAL_HARNESS === "stub" ? { scriptedHarnessStepMs: Number(process.env.GOAL_HARNESS_STEP_MS ?? 2_000) } : {}),

@@ -15,17 +15,20 @@ import {
   callerReachesRequest,
   jsonResponse,
   JsonMediaTypeError,
+  legacySessionlessResponse,
   parseJsonBody,
   SSE_HEADERS,
+  traceRequestAllowed,
   unknownRequestResponse
 } from "./route-utils";
+import { namesSession } from "../context/record-session";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
 import { isRequestPublicReentryAllowed } from "./public-reentry";
-import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 import { ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
+import { principalOwns, withRequestOrg } from "../context/principal";
 
 type RecoveryRouteContext = {
   registry: FlowRegistry;
@@ -53,20 +56,6 @@ type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
 
-/**
- * Whether a request record is a dynamic (resolver-produced) scheduled
- * dispatch, per its `metadata.schedule.origin` (falling back to the legacy
- * flat `metadata.origin` for in-flight records enqueued before namespacing —
- * see `request-separator.tsx`'s matching fallback).
- */
-function isDynamicScheduleRecord(record: { source: string; metadata?: Record<string, unknown> }): boolean {
-  if (record.source !== SCHEDULED_SOURCE) return false;
-  const scheduleMeta = (record.metadata?.schedule ?? record.metadata) as
-    | { origin?: unknown }
-    | undefined;
-  return scheduleMeta?.origin === "dynamic";
-}
-
 export async function handleRetryRequest(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "retry_request" }>,
@@ -76,7 +65,7 @@ export async function handleRetryRequest(
   const originalRecord = await ctx.stores.request.get(route.requestId);
   if (
     originalRecord === undefined ||
-    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRecord, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }
@@ -115,6 +104,10 @@ export async function handleRetryRequest(
   if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, not the generic failure below.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("retrying this request");
 
   // Parse optional input override
   let inputOverride: unknown;
@@ -197,7 +190,7 @@ export async function handleContinueRequest(
   const originalRecord = await ctx.stores.request.get(route.requestId);
   if (
     originalRecord === undefined ||
-    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRecord, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }
@@ -215,18 +208,9 @@ export async function handleContinueRequest(
     return unknownRequestResponse(route.requestId);
   }
 
-  // A dynamic schedule's action core is produced at dispatch time by a
-  // resolver and carried only on that original dispatch envelope — unlike a
-  // static schedule, it cannot be re-resolved from `flow.schedules.static`
-  // (see `resolve-action-core.ts`), so `continueRequest` has no core to
-  // re-enter with. The DevTool already hides Continue for these records
-  // (`request-separator.tsx`); reject here too so a direct API client can't
-  // reach the same dead end.
-  if (isDynamicScheduleRecord(originalRecord)) {
-    return jsonResponse(409, {
-      error: `Request "${route.requestId}" is a dynamic scheduled dispatch and cannot be continued — its action core is not persisted for recovery.`
-    });
-  }
+  // A request recorded with no session is history, never run again: a named
+  // 409, ahead of the session comparison its missing session would fail.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("continuing this request");
 
   // The route is session-scoped; continuing mutates an existing record's
   // lifecycle, so the path's sessionId must match the record's — otherwise the
@@ -268,7 +252,9 @@ export async function handleContinueRequest(
     // route) opts the caller's inline SSE response into trace-channel items —
     // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
     // `state_snapshot` from the resumed portion for its Trace tab.
-    const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
+    // Honoured only while trace observability is on (`traceRequestAllowed`).
+    const includeTrace =
+      new URL(request.url).searchParams.get("include") === "trace" && traceRequestAllowed();
     const handle = await ctx.host.continueRequest({
       requestId: route.requestId,
       includeTrace,
@@ -315,6 +301,7 @@ type ListedRecord = OwnedRecord & {
   userId: string;
   orgId?: string | null;
   tenantId?: string | null;
+  sessionId?: string | null;
 };
 
 // FIX-682.
@@ -330,19 +317,22 @@ type ListedRecord = OwnedRecord & {
  * own rows in their own organization; reached anonymously in a mixed app, the
  * rows of any instance that is not open are withheld.
  */
-async function listingAdmits(ctx: ListingRouteContext, row: ListedRecord): Promise<boolean> {
-  if (!tenantMatches(row.tenantId ?? undefined, ctx.tenantId)) return false;
+async function listingAdmits(ctx: ListingRouteContext, listed: ListedRecord): Promise<boolean> {
+  if (!tenantMatches(listed.tenantId ?? undefined, ctx.tenantId)) return false;
+  // BP-030: a row written before organizations were stamped is read with its
+  // session's organization, as the addressed request routes read it
+  // (`withRequestOrg`), so its owner keeps it on both verdicts below.
+  const row = await withRequestOrg(ctx.stores, listed);
   const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, row);
   if (own !== undefined) return own;
   const callerId = ctx.principal?.userId;
   // Both axes, for the reason BR-8 gives on the addressed routes: one person
   // in two organizations passes the user check while looking at the other
-  // organization's work. A row with no organization at all is a legacy row
-  // and is withheld rather than attributed to the caller (BR-14) —
-  // `row.orgId === callerOrgId` does that by construction, since an
+  // organization's work. A row with no organization even after that read is
+  // withheld rather than attributed to the caller (BR-14), since an
   // authenticated caller's org is never undefined.
   if (callerId !== undefined) {
-    return row.userId === callerId && row.orgId === ctx.principal?.orgId;
+    return principalOwns(row, { userId: callerId, orgId: ctx.principal?.orgId, tenantId: ctx.tenantId });
   }
   const allowed = ctx.anonymousFlowIds;
   if (allowed === undefined) return true;

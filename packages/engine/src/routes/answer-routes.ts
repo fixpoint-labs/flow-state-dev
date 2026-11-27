@@ -25,6 +25,7 @@
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
+import { namesSession } from "../context/record-session";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
@@ -32,7 +33,7 @@ import { isUserSuspension, type SuspensionRecord } from "@flow-state-dev/core/ty
 import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, latestGateIdOf, resumeUnderLease } from "../durability/resume-under-lease";
 import { loggedUserStop, PARKED } from "../durability/stop-suspended";
-import { callerReachesRequest, getString, jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
+import { callerReachesRequest, getString, jsonResponse, legacySessionlessResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { isResumeAction, RESUME_ACTIONS, validateResumePayload } from "./resume-routes";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -92,10 +93,13 @@ export async function handleAnswerSuspension(
     flow === undefined ||
     owner === undefined ||
     !ownsRecord(flow, owner) ||
-    !callerReachesRequest(owner, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, owner, ctx.tenantId, ctx.principal))
   ) {
     return unknownStop(suspensionId);
   }
+  // A request recorded with no session is history: answered as the resume
+  // route answers it, before its stop is loaded, so the stop stays pending.
+  if (!namesSession(owner)) return legacySessionlessResponse("answering this request");
 
   const provider = ctx.durabilityProvider;
   if (provider === undefined) {

@@ -28,7 +28,7 @@ import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-de
 import type { ProjectCheckout } from "@flow-state-dev/workforce";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
-import { commitScriptedWork } from "../teams/devteam/harness.mts";
+import { commitScriptedWork, readyHarness } from "../teams/devteam/harness.mts";
 import { harnessStub, type HarnessStub } from "@flow-state-dev/harness-manager";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
 import { CODER_BRIEF, FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
@@ -112,7 +112,7 @@ async function openMapped(checkout: string, stub: HarnessStub, model?: ModelReso
     ...(model === undefined ? {} : { modelResolver: model }),
     ...replaced,
     stores: inMemoryStores(),
-    harness: stub.slot,
+    harnesses: [readyHarness(stub.slot)],
     runTimeoutMs: 30_000,
     workspace: { root, remotes: { allow: [] }, checkouts: CHECKOUTS.map((entry) => ({ ...entry, checkout })) },
     coderWorkerId: CODER,
@@ -198,7 +198,7 @@ describe("a coding run on the fsd profile's projects", () => {
       const written = git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`);
       expect(written).toContain("A scripted run");
       // The file names its task, from the prompt's task line: a run that wrote "a task" would match the last one.
-      expect(written).toMatch(/\nTask \S+, phase \w+, attempt \d+\./);
+      expect(written).toMatch(/\nTask \S+, mode \w+, attempt \d+\./);
       branches.push(branch);
     }
     expect(new Set(stub.runs.map((r) => r.cwd)).size).toBe(2);

@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workforce",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "The worker factory for flow-state-dev: worker records become configured workers.",
   "keywords": [
     "ai",
@@ -138,7 +138,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
     "cron-parser": "^5.5.0",
-    "happy-dom": "^20.8.3",
+    "happy-dom": "^20.12.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "vitest": "^3.2.4"

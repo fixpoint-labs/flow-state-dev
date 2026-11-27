@@ -24,8 +24,6 @@ npx fsdev run index-time-facets search -i '{"topic":"billing"}'
 ```
 
 The `fsdev run` lines call the model: they need `AI_GATEWAY_API_KEY` or `OPENAI_API_KEY`.
-Inside the repository, `test/excerpts.test.ts` also checks the docs page's excerpts against
-`src/`; a copy has no docs page, so it skips that check.
 
 The config uses the in-memory store, which lasts one process, so a `search` run after a
 separate `write` run finds nothing. Point the config at a persistent store to try both from the

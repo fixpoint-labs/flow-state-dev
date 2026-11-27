@@ -6,6 +6,7 @@ import type { Schema } from "@cfworker/json-schema";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
+import { namesSession } from "../context/record-session";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
@@ -17,6 +18,7 @@ import {
   jsonResponse,
   parseJsonBody,
   getString,
+  legacySessionlessResponse,
   SSE_HEADERS,
   unknownRequestResponse
 } from "./route-utils";
@@ -105,7 +107,7 @@ export async function handleResumeSuspension(
   if (
     originalRequest === undefined ||
     !ownsRecord(flow, originalRequest) ||
-    !callerReachesRequest(originalRequest, ctx.tenantId, ctx.principal)
+    !(await callerReachesRequest(ctx.stores, originalRequest, ctx.tenantId, ctx.principal))
   ) {
     return unknownRequestResponse(route.requestId);
   }
@@ -152,6 +154,10 @@ export async function handleResumeSuspension(
       error: `Request is "${originalRequest.status}", not "suspended"`
     });
   }
+
+  // A request recorded with no session is history: it is stopped, never
+  // resumed. Refused before its gate is touched, so the gate stays pending.
+  if (!namesSession(originalRequest)) return legacySessionlessResponse("resuming this request");
 
   const suspension = await provider.loadSuspension(route.requestId, suspensionId);
   // A wait gate is never resumed from here, whatever source the waiting turn

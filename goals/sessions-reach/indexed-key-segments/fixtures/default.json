@@ -1,0 +1,24 @@
+{
+  "rows": 200000,
+  "collections": 40,
+  "collectionPrefix": "tasks/c{n}/",
+  "keyLeaf": "row-{i}",
+  "specialKeys": [
+    "docs/one",
+    "docs/two/three",
+    "docs0",
+    "docs.",
+    "docr",
+    "50%_off",
+    "5000_off",
+    "50%",
+    "café/menu",
+    "café/zz",
+    "cafë",
+    "z􏿿/a",
+    "{",
+    "😀/a",
+    "😁"
+  ],
+  "specialPrefixes": ["", "docs/", "docs", "50%_", "50%", "café/", "café", "caf", "z􏿿", "😀"]
+}

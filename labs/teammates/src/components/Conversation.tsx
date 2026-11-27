@@ -1,16 +1,18 @@
 import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
-import { PencilIcon } from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { useAppClient, useConversation, useConversationCalls } from "../app";
+import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
-import type { Look } from "../lib/looks";
-import { displayName, roleOf, useWorkforce } from "../lib/roster";
-import { answeringStep, PLAIN, useStatus, type Status } from "../lib/status";
+import type { BotStatus, Look } from "../lib/looks";
+import { displayName, settingOf, useWorkforce } from "../lib/roster";
+import { dayLabel } from "../lib/day-label";
+import { answeringStep, PLAIN, useStatus } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { cn } from "../lib/utils";
-import { Avatar } from "./Avatar";
+import { AnsweringLoader, useLoaderPerReply } from "./AnsweringLoader";
+import { BotFigure } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
 import { Divider } from "./Divider";
@@ -23,29 +25,30 @@ import { LoadEarlier } from "./LoadEarlier";
 import { LineContext, stillRunningLine, type LineContextValue } from "./flow-state/conversation-lines";
 import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
+import { WaitingCard } from "./WaitingCard";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { taskStatus, workerOf } from "../lib/task";
 
-/** A button in the conversation's header. */
+/** A borderless button in the conversation's header. */
 const HEADER_BUTTON =
-  "h-8 shrink-0 rounded-sm border border-border-strong px-3 text-sm font-medium hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "h-7 shrink-0 rounded-md border border-transparent px-2.5 text-sm font-medium text-text-2 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
-/** The header pill's colours: amber when it asks you to act, green while it works, quiet when idle, a task's own tone otherwise. */
-const pillTone = (status: Status) =>
-  status.needsYou
-    ? "border border-warning-line bg-warning-soft text-warning-text"
-    : status.tone !== PLAIN
-      ? cn("border border-border bg-surface", status.tone)
-      : status.text.startsWith("Idle")
-        ? "border border-border bg-surface text-text-2"
-        : "bg-success-soft text-success-text";
-const pillDot = (status: Status) => (status.needsYou ? "bg-warning" : status.tone === PLAIN && status.text.startsWith("Idle") ? "bg-presence-idle" : status.tone !== PLAIN ? "bg-current" : "bg-success");
+/**
+ * The header pill follows the bot: blue while it works, the highlighter when
+ * it needs you (a pill, never a panel), green once done, a dashed ring while
+ * it waits on someone else, quiet when idle.
+ */
+const PILL: Record<BotStatus, string> = {
+  running: "bg-(--bluebg) text-brand",
+  needs: "bg-attention text-attention-foreground",
+  done: "bg-success-soft text-success-text",
+  queued: "border border-dashed border-border-strong text-text-2",
+  idle: "bg-muted text-text-2",
+};
+const DOT: Record<BotStatus, string> = { running: "bg-brand", needs: "bg-attention-foreground", done: "bg-success", queued: "border border-dashed border-current", idle: "bg-presence-idle" };
 
 /** The ids of the messages the worker's sent lines sent. */
-/** A teammate's own string setting (`model`, `harness`), or `undefined` when it follows the lab's. */
-const settingOf = (worker: RosterEntry, key: string): string | undefined => {
-  const value = worker.settings[key];
-  return typeof value === "string" ? value : undefined;
-};
-
 const sentIds = (lines: readonly ItemLine[]) =>
   lines.flatMap((line) => (line.kind === "data" && line.item.dataType === SENT_MESSAGE_DATA_TYPE && typeof (line.item.value as Partial<SentMessageValue>)?.messageId === "string" ? [(line.item.value as SentMessageValue).messageId!] : []));
 
@@ -125,15 +128,17 @@ export function Conversation({
   const status = useStatus(worker.id, sessionId, nameOf, isCoding, stale);
   const workforce = useWorkforce();
   const [panel, setPanel] = useState<"fire" | "edit">();
+  // The header's ⋯ menu, and its button, where focus goes back to after Keep.
+  const [menu, setMenu] = useState(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
   const delegates = delegatesOf(worker, workers, context);
   // A starter line picked from the empty conversation: the composer takes it as its text, and nothing is sent.
   const [seed, setSeed] = useState<{ text: string; at: number }>();
   const keep = useRef<HTMLButtonElement>(null);
-  const fireButton = useRef<HTMLButtonElement>(null);
-  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where you were.
+  // Keep (or Esc) closes the fire confirmation and puts focus back on the header's ⋯, where Fire was picked.
   const keepWorker = () => {
     setPanel(undefined);
-    fireButton.current?.focus();
+    moreButton.current?.focus();
   };
   useEffect(() => {
     if (panel === "fire") keep.current?.focus();
@@ -146,6 +151,8 @@ export function Conversation({
   const answering = running && last?.kind !== "assistant";
   // What it is doing while it answers; a stale feed can't say, so the line falls back to "is answering".
   const step = answering && !stale ? answeringStep(drawn) : undefined;
+  // The bubble's loader, drawn once when the turn starts and kept until it ends, however often the bubble comes and goes.
+  const loader = useLoaderPerReply(running);
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -157,6 +164,7 @@ export function Conversation({
   // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
   const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
   const workerName = displayName(worker);
+  const model = settingOf(worker, "model") ?? context?.model;
   const backgroundRunning = view?.backgroundRunning ?? undefined;
   const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
   const names = useLinesNames(nameOf, lookOf, isCoding);
@@ -183,58 +191,118 @@ export function Conversation({
   );
 
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
+  // What the conversation's tasks wait on you for, each a card where it was asked; one you answered here keeps its line.
+  const tasks = useTasks(sessionId).value;
+  // Kept with the conversation they were given in: switching teammates shows none of another's.
+  const [given, setGiven] = useState<{ session: string; all: Readonly<Record<string, Answered>> }>({ session: sessionId, all: {} });
+  const answers = given.session === sessionId ? given.all : NONE_ANSWERED;
+  const waiting = useMemo(() => waitingCards(tasks ?? [], answers, lines), [tasks, answers, lines]);
+  const card = (w: Waiting) => (
+    <WaitingCard
+      key={w.key}
+      task={w.task}
+      hold={w.hold}
+      sessionId={sessionId}
+      who={isCoding(workerOf(w.task)) ? "The coding task" : nameOf(workerOf(w.task))}
+      answered={answers[w.key]?.line}
+      onAnswered={(line) => setGiven((was) => ({ session: sessionId, all: { ...(was.session === sessionId ? was.all : {}), [w.key]: { line, openedAt: w.openedAt, task: w.task } } }))}
+      onOpen={() => onOpen({ kind: "task", sessionId, taskId: w.task.id })}
+    />
+  );
+  // The first drawn line of each day, and its day's label.
+  const days = useMemo(() => dayBreaks(drawn), [drawn]);
+  // A lost feed may be out of date: the bot and the pill both drop to idle, the words stay, dimmed.
+  const shown = stale ? "idle" : status.state;
+  // A failed coding task leaves the bot idle, but its pill keeps the failure's red, as the sidebar's line does.
+  const failed = shown === "idle" && status.tone !== PLAIN;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex items-center gap-3 border-b border-border px-6 py-3.5">
-        <Avatar look={lookOf(worker.id)} size="lg" />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <header className="flex items-start gap-4 border-b border-border px-6 pt-4 pb-3">
+        <BotFigure look={lookOf(worker.id)} state={shown} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2.5">
-            <h1 className="truncate text-base font-semibold">{displayName(worker)}</h1>
+            <h1 className="truncate text-lg leading-7 font-semibold">{displayName(worker)}</h1>
             {/* Drawn while empty too (before the first read), hidden: what reads the line finds it from the start. */}
             {(
               <span
-                hidden={status.text === ""}
-                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs", pillTone(status), stale && STALE_CLASS)}
+                // What waits on you is a card in the conversation, never a banner here: the rail and the task panel say it waits.
+                hidden={status.text === "" || status.needsYou}
+                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", failed ? cn("bg-(--redbg)", status.tone) : PILL[shown], stale && STALE_CLASS)}
                 data-header-status
+                data-state={shown}
                 title={status.text}
               >
-                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", pillDot(status))} />
+                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-current" : DOT[shown])} />
                 <span className="truncate">{status.text}</span>
               </span>
             )}
+            <span aria-hidden className="flex-1" />
+            <button type="button" onClick={() => setPanel("edit")} aria-haspopup="dialog" aria-label="Edit teammate" title="Edit teammate" className={HEADER_BUTTON}>
+              Edit
+            </button>
+            {worker.standard ? null : (
+              <div
+                className="relative"
+                onKeyDown={(event) => event.key === "Escape" && menu && (event.stopPropagation(), setMenu(false), moreButton.current?.focus())}
+                // A click outside or a Tab away closes it: focus leaving the button and its menu.
+                onBlur={(event) => menu && !event.currentTarget.contains(event.relatedTarget as Node | null) && setMenu(false)}
+              >
+                <button
+                  ref={moreButton}
+                  type="button"
+                  aria-label={`More for ${displayName(worker)}`}
+                  aria-haspopup="menu"
+                  aria-expanded={menu}
+                  onClick={() => setMenu((open) => !open)}
+                  className={cn(HEADER_BUTTON, "grid w-8 place-items-center px-0")}
+                >
+                  <EllipsisIcon aria-hidden className="size-4" />
+                </button>
+                {menu ? (
+                  <div role="menu" className="absolute top-full right-0 z-20 mt-1 min-w-40 rounded-lg border border-border bg-card p-1 shadow-(--shadow-card)">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      autoFocus
+                      onClick={() => {
+                        setMenu(false);
+                        setPanel("fire");
+                      }}
+                      className="flex w-full rounded-md px-2.5 py-1.5 text-left text-sm text-danger hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      Fire {displayName(worker)}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
-          {roleOf(worker) === "" ? null : (
-            <p className="truncate text-sm text-text-2" title={roleOf(worker)}>
-              {roleOf(worker)}
+          {worker.description ? (
+            <p className="truncate text-sm text-text-2" title={worker.description}>
+              {worker.description}
             </p>
+          ) : null}
+          {onRecheck === undefined ? null : (
+            <ContextStrip
+              context={context}
+              harnesses={harnesses}
+              onRecheck={onRecheck}
+              model={model}
+              harness={context?.harness}
+            />
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setPanel("edit")}
-          aria-haspopup="dialog"
-          aria-label="Edit teammate"
-          title="Edit teammate"
-          className={cn(HEADER_BUTTON, "grid w-8 place-items-center px-0 text-text-2 hover:text-foreground")}
-        >
-          <PencilIcon aria-hidden className="size-4" />
-        </button>
-        {worker.standard ? null : (
-          <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={cn(HEADER_BUTTON, "text-danger")}>
-            Fire
-          </button>
-        )}
       </header>
       <TeammateDialog
         open={panel === "edit"}
         onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
         title={`Edit ${displayName(worker)}`}
-        description={`${displayName(worker)}'s name, instructions, model and default coding harness. Changes apply from its next turn.`}
+        description={`${displayName(worker)}'s name, instructions, look and model. Changes apply from its next turn.`}
       >
         <EditForm
           name={displayName(worker)}
-          choices={{ models: context?.models, harnesses }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness }}
+          choices={{ models: context?.models }}
+          current={{ model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
@@ -253,14 +321,13 @@ export function Conversation({
           ) : null}
         </EditForm>
       </TeammateDialog>
-      {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
       {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       {panel === "fire" ? (
         <div
           role="group"
           aria-label={`Fire ${displayName(worker)}?`}
-          className="flex items-center gap-3 border-b border-border bg-destructive/10 px-6 py-2 text-sm"
+          className="flex items-center gap-3 border-b border-border bg-(--redbg) px-6 py-2 text-sm"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();
@@ -269,10 +336,10 @@ export function Conversation({
           }}
         >
           <span className="min-w-0 flex-1">Fire {displayName(worker)}? It leaves your roster; this conversation stays readable.</span>
-          <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "text-destructive")}>
+          <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "border-border-strong text-destructive")}>
             Fire
           </button>
-          <button ref={keep} type="button" onClick={keepWorker} className={HEADER_BUTTON}>
+          <button ref={keep} type="button" onClick={keepWorker} className={cn(HEADER_BUTTON, "border-border-strong")}>
             Keep
           </button>
         </div>
@@ -301,8 +368,11 @@ export function Conversation({
                 </ul>
               </div>
             ) : null}
-            {lines.map((line, i) => (
+            {/* One keyed list, so a card stays mounted (and keeps your draft) when a new line moves it. */}
+            {lines.flatMap((line, i) => [
+              ...waiting.filter((w) => w.at === i).map(card),
               <Fragment key={line.id}>
+                {days.get(line.id) === undefined ? null : <Divider label={days.get(line.id)!} data-day="" />}
                 {i === markAt && mark ? (
                   <Divider label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} />
                 ) : null}
@@ -314,10 +384,12 @@ export function Conversation({
                 >
                   <Line line={line} />
                 </div>
-              </Fragment>
-            ))}
+              </Fragment>,
+            ]).concat(waiting.filter((w) => w.at === lines.length).map(card))}
             {answering ? (
-              <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
+              <div role="status" data-chat-activity className={cn("flex w-fit items-center gap-1 text-xs", step?.needsYou && !stale ? "rounded-lg bg-attention px-3 py-2 text-attention-foreground" : (step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
+                {/* Blue means live: a turn waiting on you gets the highlighter pill and no loader. The loader's stage is wider than its dots; the margins take up the empty sides. */}
+                {loader === undefined || step?.needsYou ? null : <AnsweringLoader variant={loader} className="-mr-4 -ml-6" />}
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
               </div>
             ) : null}
@@ -348,9 +420,9 @@ export function Conversation({
         onPrefilled={onPrefilled}
         uploader={calls}
         harnesses={harnesses}
-        // The teammate's own default coding harness and model when it has them set (in Edit teammate), else the lab's.
-        defaultHarness={settingOf(worker, "harness") ?? context?.harness}
-        replyModel={settingOf(worker, "model") ?? context?.model}
+        // The lab's default coder, where Lead starts coding work; the teammate's own model when it has one set (in Edit teammate), else the lab's.
+        defaultHarness={context?.harness}
+        replyModel={model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
@@ -359,4 +431,53 @@ export function Conversation({
       />
     </main>
   );
+}
+
+/** When a line was written: its item's time, or its first step's; `undefined` when it carries none. */
+function lineTime(line: ItemLine): number | undefined {
+  const ts = line.kind === "steps" ? line.items[0]?.ts : "item" in line ? line.item.ts : undefined;
+  return typeof ts === "number" && Number.isFinite(ts) && ts > 0 ? ts : undefined;
+}
+
+/** The lines that start a day, by id, with the day's label: the first timed line of each day. */
+function dayBreaks(lines: readonly ItemLine[], now: number = Date.now()): Map<string, string> {
+  const breaks = new Map<string, string>();
+  let last: string | undefined;
+  for (const line of lines) {
+    const ts = lineTime(line);
+    if (ts === undefined) continue;
+    const day = new Date(ts).toDateString();
+    if (day !== last) breaks.set(line.id, dayLabel(ts, now));
+    last = day;
+  }
+  return breaks;
+}
+
+/** No answers given yet: one object, so the cards' read doesn't change for a new empty one. */
+const NONE_ANSWERED: Readonly<Record<string, Answered>> = {};
+
+/** A card's hold you answered here: the line it keeps, and where it stood. */
+type Answered = { line: string; openedAt: number; task: CodingBoardTask };
+
+/** One card in the conversation: the task, its open hold (none once answered), when it was asked, and the line index it is drawn before. */
+type Waiting = { key: string; task: CodingBoardTask; hold: InboxHold | undefined; openedAt: number; at: number };
+
+/**
+ * The cards the conversation draws for what its tasks wait on you for: each
+ * open hold of each running task, and each hold answered here, drawn before the
+ * first line written after it was asked (at the end when none was).
+ */
+function waitingCards(tasks: readonly CodingBoardTask[], answers: Readonly<Record<string, Answered>>, lines: readonly ItemLine[]): Waiting[] {
+  const open = tasks.flatMap((task) =>
+    taskStatus(task) === "running" ? task.asks.map((hold) => ({ key: `${task.id}:${hold.id}`, task, hold: hold as InboxHold, openedAt: hold.openedAt })) : [],
+  );
+  const done = Object.entries(answers)
+    .filter(([key]) => !open.some((w) => w.key === key))
+    .map(([key, a]) => ({ key, task: a.task, hold: undefined, openedAt: a.openedAt }));
+  return [...open, ...done]
+    .map((w) => {
+      const at = lines.findIndex((line) => (lineTime(line) ?? 0) > w.openedAt);
+      return { ...w, at: at < 0 ? lines.length : at };
+    })
+    .sort((a, b) => a.openedAt - b.openedAt);
 }

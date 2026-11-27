@@ -51,13 +51,7 @@ import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } f
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
 import { warnOnceDev } from "../helpers/deprecation";
-import {
-  mergeScopeStateSchemas,
-  refuseUnstoredFactoryDefaults,
-  type ScopeStateDeclaration
-} from "../helpers/scope-state-merge";
-import { getBaseCapability } from "../capability/merge";
-import type { CapabilityRef } from "../capability/types";
+import { mergeFlowScopeStateSchemas } from "./scope-state-schemas";
 import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
@@ -69,7 +63,7 @@ import {
 } from "../helpers/flow-config";
 import type { ZodError, ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 
-type ScopeKind = "session" | "user" | "org";
+type ScopeKind = keyof NonNullable<FlowInstance["scopeStateSchemas"]>;
 
 type ScopeWithClient = {
   stateSchema?: unknown;
@@ -761,68 +755,6 @@ function collectBlockResources(
     collected = mergeDeclaredResources(collected, block.declaredResources);
   }
   return collected;
-}
-
-
-type StateScope = "session" | "user" | "org";
-const STATE_SCOPES: readonly StateScope[] = ["session", "user", "org"];
-
-/**
- * Every scope-state schema the reachable blocks declare, for one scope: each
- * block's own, then each capability it uses, named by the capability so a
- * refusal points at what the author wrote. Dynamic `uses` and presets
- * contribute none.
- */
-function blockScopeStateDeclarations(
-  scope: StateScope,
-  reachable: readonly BlockDefinition[]
-): ScopeStateDeclaration[] {
-  const key = `${scope}StateSchema` as const;
-  const out: ScopeStateDeclaration[] = [];
-  for (const block of reachable) {
-    const config = block.config as Partial<Record<typeof key, ZodTypeAny>> & {
-      __resolvedCapabilities?: readonly CapabilityRef[];
-    };
-    const own = config[key];
-    if (own !== undefined) out.push({ schema: own, source: `block "${block.name}"` });
-    for (const ref of config.__resolvedCapabilities ?? []) {
-      const capability = getBaseCapability(ref);
-      const schema = capability[key];
-      if (schema !== undefined) {
-        out.push({ schema, source: `capability "${capability.name}" (used by block "${block.name}")` });
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * The schema each scope's reads fill defaults from: the flow's own
- * `stateSchema` merged with every declaration its reachable blocks and their
- * capabilities make (`mergeScopeStateSchemas`). The flow's own schema still
- * validates writes; this one only fills defaults, so a block's declared
- * default reads on a fresh record without the flow restating it.
- *
- * Throws when two declarations disagree on a field, naming both. Never calls
- * an author's default factory: a dynamic default agrees only with itself.
- */
-function mergeFlowScopeStateSchemas(
-  kind: string,
-  scopes: Record<StateScope, { stateSchema?: ZodTypeAny } | undefined>,
-  reachable: readonly BlockDefinition[]
-): NonNullable<FlowInstance["scopeStateSchemas"]> {
-  const merged: { session?: ZodTypeAny; user?: ZodTypeAny; org?: ZodTypeAny } = {};
-  for (const scope of STATE_SCOPES) {
-    const own = scopes[scope]?.stateSchema;
-    const declarations = [
-      ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
-      ...blockScopeStateDeclarations(scope, reachable)
-    ];
-    refuseUnstoredFactoryDefaults(`Flow "${kind}"`, scope, own, declarations);
-    const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, declarations);
-    if (schema !== undefined) merged[scope] = schema;
-  }
-  return merged;
 }
 
 /**

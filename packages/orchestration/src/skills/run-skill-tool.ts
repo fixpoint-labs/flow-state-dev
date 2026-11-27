@@ -22,9 +22,7 @@ import { z } from "zod";
 import { router } from "@flow-state-dev/core";
 import type {
   BlockDefinition,
-  ResourceCollectionRef,
   InitialSkill,
-  SkillState,
 } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { resolveSkillsCollection } from "./partition";
@@ -68,23 +66,6 @@ export interface RunSkillToolOptions {
   collectionKey: string;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-}
-
-// ---------------------------------------------------------------------------
-// Helpers — retained for re-export and test use
-// ---------------------------------------------------------------------------
-
-function getRequiredCollection(
-  ctx: import("@flow-state-dev/core/types").BlockContext,
-  key: string,
-): ResourceCollectionRef {
-  const collection = resolveSkillsCollection(ctx, key);
-  if (!collection) {
-    throw new Error(
-      `Skills collection "${key}" is not registered on ctx.resources`,
-    );
-  }
-  return collection;
 }
 
 // Re-exported so existing importers of the v1 catalog primitive keep working.
@@ -141,7 +122,10 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     execute: async (input: RunSkillInput, ctx) => {
       validateSkillName(input.name);
 
-      const collection = getRequiredCollection(ctx, collectionKey);
+      const collection = resolveSkillsCollection(ctx, collectionKey);
+      if (!collection) {
+        throw new Error(`Skills collection "${collectionKey}" is not registered on ctx.resources`);
+      }
       // Lazy seed on first invocation per process. ensureSeeded is memoized
       // via WeakMap on the collection ref, so this is a no-op after the
       // initial pass.
@@ -157,8 +141,7 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
         );
       }
 
-      const state = manifest.state as unknown as SkillState;
-      if (state.disableModelInvocation) {
+      if (manifest.state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be invoked by the agent`,
         );

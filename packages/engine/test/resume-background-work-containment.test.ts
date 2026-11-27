@@ -26,6 +26,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { createInboundTransportHost } from "../src/transports/host/createInboundTransportHost";
 import { defaultBodyUserIdPrincipalResolver } from "../src/transports/auth/defaultBodyUserIdPrincipalResolver";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const FLOW_KIND = "resume-keepalive";
 
@@ -111,6 +112,7 @@ describe("resume — a throwing onBackgroundWork hook (FIX-1095)", () => {
 
     // Suspend for real, so the resume re-enters a genuine gate.
     const first = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: registry.get(FLOW_KIND)! as never,
       actionName: "transfer",

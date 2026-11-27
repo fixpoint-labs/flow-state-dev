@@ -325,4 +325,4 @@ The framework executes what you declared. You can take your blocks elsewhere if 
 
 These aren't principles we came up with afterward to justify decisions we'd already made. They're what we kept writing on whiteboards while we were figuring out what this thing should be.
 
-If you want to see them in practice, [get started](/docs/getting-started/quick-start).
+If you want to see them in practice, [get started](/docs/start/run-a-starter).

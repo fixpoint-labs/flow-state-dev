@@ -26,6 +26,7 @@ import {
 } from "@flow-state-dev/scheduled";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { vercelScheduler } from "../src/scheduler";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const SECRET = "scheduler-secret";
 const DEPLOYMENT = "https://reminders.example.com";
@@ -119,7 +120,7 @@ function boot(secretFrom: "env" | "option" = "env") {
     scheduler.route(new Request(`${DEPLOYMENT}/api/cron/schedules`, { headers: { Authorization: `Bearer ${SECRET}` } }));
   const planIn = async (orgId: string) => {
     const { stores, runtimeConfig } = await app.getRuntime();
-    return runAction({ flow, actionName: "plan", input: { key: "digest" }, userId: "alice", orgId, stores, runtimeConfig });
+    return runAction({ sessionId: oneOffSessionId(), flow, actionName: "plan", input: { key: "digest" }, userId: "alice", orgId, stores, runtimeConfig });
   };
   const fired = async () => {
     const { stores } = await app.getRuntime();

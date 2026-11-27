@@ -30,6 +30,7 @@ import { expandRequestToMessages } from "../src/context/history";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -166,6 +167,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -225,6 +227,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -305,6 +308,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -359,6 +363,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -419,6 +424,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
       })({ id: kind });
       const { stores, provider } = createDurableStores();
       const initial = await runAction({
+        sessionId: oneOffSessionId(),
         orgId: DEFAULT_ORG_ID,
         flow, actionName: "run", input: {}, userId: "u1", stores,
         runtimeConfig: { durabilityProvider: provider },
@@ -490,6 +496,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     })({ id: "gen-gate-and-mapper" });
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -537,6 +544,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -593,6 +601,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -650,6 +659,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -718,6 +728,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -783,6 +794,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -848,6 +860,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -906,6 +919,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -967,6 +981,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -1030,6 +1045,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -1067,6 +1083,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },
@@ -1122,6 +1139,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow, actionName: "run", input: {}, userId: "u1", stores,
       runtimeConfig: { durabilityProvider: provider },

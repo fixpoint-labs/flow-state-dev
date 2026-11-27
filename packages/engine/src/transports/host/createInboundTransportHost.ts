@@ -47,7 +47,7 @@ import {
   UserBindingMismatchError
 } from "../../context/binding-errors";
 import { isOrgAttributed } from "../../context/org-attribution";
-import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
+import { claimRequestRecord } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
@@ -65,7 +65,8 @@ import {
 import { generateId } from "../../utils/generate-id";
 import {
   OrgRequiredError,
-  PrincipalResolutionError
+  PrincipalResolutionError,
+  SessionRequiredError
 } from "../errors";
 import {
   continuationDecision,
@@ -74,7 +75,8 @@ import {
   type ConcurrencyAdmission,
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
-import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
+import { pickPrincipalResolver, principalResolverIdentity } from "../auth/pickPrincipalResolver";
+import { principalOwns, type Principal } from "../../context/principal";
 import {
   defaultBodyUserIdPrincipalResolver,
   isDefaultBodyUserIdPrincipalResolver
@@ -82,7 +84,8 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
 import { refuseRetiredDispatcherOption } from "../runner";
-import { CLI_SOURCE, INTERNAL_SOURCE, SCHEDULED_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { CLI_SOURCE, isFrameworkStampedSource, SCHEDULED_SOURCE } from "../../execution/transport-sources";
+import { isFrameworkDispatch, withoutDeliveryOrigin } from "../../execution/delivery-origin";
 import {
   createInProcessRunner,
   isInProcessRunner,
@@ -94,8 +97,7 @@ import type {
   InboundRequestEnvelope,
   InboundTransportHost,
   PrincipalResolutionContext,
-  PrincipalResolver,
-  ResolvedPrincipal
+  PrincipalResolver
 } from "../types";
 
 // FIX-999.
@@ -194,7 +196,7 @@ const inProcessWaits = new WeakSet<PrincipalResolutionContext>();
 
 /** An answer to "who is this caller", with whether the framework supplied it. */
 type PrincipalResolution = {
-  principal: ResolvedPrincipal;
+  principal: Principal;
   /**
    * True when the resolver that ran is the framework default, so the
    * organization is the reserved development one rather than a verified value.
@@ -348,8 +350,16 @@ function createPrincipalResolution(options: {
       );
     }
 
+    // FIX-2942: the door names a person, and which resolver answered, with
+    // the settings it applied. A door that fires for a machine says so itself.
+    const resolvedBy = principalResolverIdentity(registry, context.envelope.flowKind, resolvePrincipal);
     return {
-      principal: { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) },
+      principal: {
+        userId,
+        orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId),
+        kind: "person",
+        ...(resolvedBy !== undefined ? { resolvedBy } : {})
+      },
       isDevelopmentDefault
     };
   };
@@ -372,7 +382,7 @@ export interface InProcessPrincipalQuestion {
 }
 
 /** Who an in-process caller is, and where that answer came from. */
-export interface InProcessPrincipal extends ResolvedPrincipal {
+export interface InProcessPrincipal extends Principal {
   /**
    * `resolver` when a configured resolver named the organization;
    * `development-default` when the flow authenticates nobody and the framework
@@ -444,21 +454,27 @@ export async function resolveInProcessPrincipal(
  */
 // FIX-2624; FIX-2886; BP-031.
 /**
- * Refuse a dispatch, from any transport, that names a write session or the
- * default write flow, unless it is the server's own resource send. The
- * default write flow answers as an address this process does not hold.
+ * Refuse a dispatch, from any transport, that names no session, or names a
+ * write session or the default write flow, unless it is the server's own
+ * resource send. The default write flow answers as an address this process
+ * does not hold.
  *
  * A schedule session is admitted only from the scheduled transport, whose
  * `source` the transport sets and no caller can. Checked ahead of the
  * resource-send pass, so a resource send can't reach one either.
  */
 function refuseReservedAddress(envelope: InboundRequestEnvelope): void {
-  if (envelope.sessionId !== undefined && isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
+  // Every run names its session: an envelope with none (an untyped caller) is
+  // refused by name, before anything is written or enqueued.
+  if (typeof envelope.sessionId !== "string" || envelope.sessionId.length === 0) {
+    throw new SessionRequiredError(envelope.flowKind, "host.dispatch");
+  }
+  if (isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
     throw new ScheduleSessionIdError(envelope.sessionId);
   }
   if (isServerResourceSend(envelope)) return;
   if (envelope.flowKind === DEFAULT_WRITE_FLOW) throw new UnknownFlowError(envelope.flowKind);
-  if (envelope.sessionId !== undefined && isWriteSessionId(envelope.sessionId)) {
+  if (isWriteSessionId(envelope.sessionId)) {
     throw new ReservedSessionIdError(envelope.sessionId);
   }
 }
@@ -598,32 +614,29 @@ export function createInboundTransportHost(
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope
   ): Promise<SessionRecord | undefined> => {
-    let session: SessionRecord | undefined;
-    if (dispatchEnvelope.sessionId !== undefined) {
-      session = await stores.session.get(
-        resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    const session = await stores.session.get(
+      resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    );
+    assertSessionAdmitted(flow, session, {
+      sessionId: dispatchEnvelope.sessionId,
+      userId: dispatchEnvelope.userId,
+      tenantId: dispatchEnvelope.tenantId
+    });
+    // The organization binding the run enforces at execution, checked here
+    // too so a request from another organization is refused before it takes
+    // a place on the session's key. An unattributed session is left to the
+    // execution-time check, which names that condition itself.
+    if (
+      session !== undefined &&
+      tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+      isOrgAttributed(session) &&
+      session.orgId !== dispatchEnvelope.orgId
+    ) {
+      throw new OrgBindingMismatchError(
+        dispatchEnvelope.sessionId,
+        session.orgId as string,
+        dispatchEnvelope.orgId as string
       );
-      assertSessionAdmitted(flow, session, {
-        sessionId: dispatchEnvelope.sessionId,
-        userId: dispatchEnvelope.userId,
-        tenantId: dispatchEnvelope.tenantId
-      });
-      // The organization binding the run enforces at execution, checked here
-      // too so a request from another organization is refused before it takes
-      // a place on the session's key. An unattributed session is left to the
-      // execution-time check, which names that condition itself.
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        isOrgAttributed(session) &&
-        session.orgId !== dispatchEnvelope.orgId
-      ) {
-        throw new OrgBindingMismatchError(
-          dispatchEnvelope.sessionId,
-          session.orgId as string,
-          dispatchEnvelope.orgId as string
-        );
-      }
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
@@ -636,7 +649,7 @@ export function createInboundTransportHost(
         refusal.reason
       );
     }
-    if (active !== undefined && !principalOwnsRequest(active, dispatchEnvelope)) {
+    if (active !== undefined && !principalOwns(active, dispatchEnvelope)) {
       throw new RequestOwnerMismatchError(dispatchEnvelope.requestId);
     }
     return session;
@@ -691,7 +704,7 @@ export function createInboundTransportHost(
     // flow, is another session this request was never admitted to. A child
     // created since admission found none is new, so a view of its parent finds
     // it by its update time already.
-    if (dispatchEnvelope.sessionId !== undefined && admitted !== undefined) {
+    if (admitted !== undefined) {
       const sessionKey = resolveSessionStorageKey(
         dispatchEnvelope.sessionId,
         dispatchEnvelope.tenantId
@@ -741,8 +754,13 @@ export function createInboundTransportHost(
       sessionId: envelope.sessionId,
       orgId: envelope.orgId ?? envelope.principal.orgId,
       tenantId: envelope.tenantId,
+      // FIX-2942: the door's principal, carried unchanged to the run.
+      ...(envelope.principal.kind != null ? { principalKind: envelope.principal.kind } : {}),
+      ...(envelope.principal.resolvedBy != null ? { resolvedBy: envelope.principal.resolvedBy } : {}),
       source: envelope.source,
-      metadata: envelope.metadata,
+      // An adapter's envelope cannot carry a delivery origin: only one the
+      // engine built and marked keeps it (`delivery-origin.ts`, BP-031).
+      metadata: isFrameworkDispatch(envelope) ? envelope.metadata : withoutDeliveryOrigin(envelope.metadata),
       resolvedActionCore: envelope.resolvedActionCore,
       ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {})
     };
@@ -1048,8 +1066,7 @@ export function createInboundTransportHost(
         // become durable together. Under `allow` the gate below is a passthrough,
         // so the run still starts immediately — only what `accepted` waits for
         // changes.
-        const isDispatched =
-          envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
+        const isDispatched = isFrameworkStampedSource(envelope.source);
 
         // A `defer` run waits for its key like a `queue` run, so it needs the
         // same discoverable stub, heartbeat and cancel watch while it waits.
@@ -1466,7 +1483,7 @@ export function createInboundTransportHost(
    * parked request for the sweep.
    */
   const startContinuationInTurn = async (
-    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    { flow, record, orgId, sessionId }: { flow: FlowInstance; record: RequestRecord; orgId: string; sessionId: string },
     start: (signal?: AbortSignal) => Promise<ExecutionResult>,
     leaseId: string | undefined
   ): Promise<ExecutionResult> => {
@@ -1480,7 +1497,7 @@ export function createInboundTransportHost(
               actionName: record.actionName,
               input: record.input,
               userId: record.userId,
-              sessionId: record.sessionId,
+              sessionId,
               orgId,
               tenantId: record.tenantId,
               source: record.source,
@@ -1605,7 +1622,7 @@ export function createInboundTransportHost(
 
   const resolve = async (
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal> => (await resolution(context)).principal;
+  ): Promise<Principal> => (await resolution(context)).principal;
 
   return {
     registry,

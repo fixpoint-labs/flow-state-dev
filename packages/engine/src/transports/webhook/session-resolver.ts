@@ -2,8 +2,9 @@
  * Session upsert for webhook-originated requests.
  *
  * A webhook has no thread to key on, so the session id is whatever the flow's
- * binding/route derived (e.g. `customer-cus_123`). The first delivery for that
- * id creates the session; subsequent deliveries reuse it.
+ * binding/route derived (e.g. `customer-cus_123`), or, when the binding names
+ * none, a one-off id the route made for the delivery. The first delivery for
+ * an id creates the session; subsequent deliveries reuse it.
  *
  * Concurrency: the write is create-if-absent through the one birth function,
  * so of two near-simultaneous first deliveries for the same id one creates the
@@ -45,7 +46,9 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       sessionId,
       principal: { userId: principal.userId, orgId: principal.orgId },
       fromCaller: false,
-      via: "webhook"
+      via: "webhook",
+      // FIX-2942: a delivery runs as the provider's principal, never a person's sign-in.
+      principalKind: "machine"
     },
     () => ({
       id: sessionId,

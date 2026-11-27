@@ -23,11 +23,13 @@ import {
   type SchedulesConfig
 } from "@flow-state-dev/core/types";
 import { SCHEDULED_SOURCE as SCHEDULED_TRANSPORT_SOURCE } from "../../execution/transport-sources";
+import { scheduledFireKind, type Principal } from "../../context/principal";
 import { resolveSharedUserCellKey } from "../../stores";
 import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../types";
 import { findScheduledRequest } from "./findScheduledRequest";
 import { scheduleSessionId } from "./schedule-session-id";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { claimScheduledTime, firedRecordAddress, scheduledTimeOf } from "./scheduledTime";
 
 // Wider than the static-id pattern in core. A dynamic id is
@@ -199,6 +201,18 @@ export async function handleDispatch(
           ...schedule.principal,
           orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
         };
+  // FIX-2942: the fire's kind, decided here beside the one fallback, so it
+  // cannot diverge from the principal the run actually gets. The gateway (the
+  // fallback, or a schedule naming its own user and org) and the system user
+  // are machines, which reach no session but their own; a schedule naming a
+  // person runs as that person. No resolver produced a schedule's principal,
+  // so it carries no `resolvedBy` and reaches no target with a resolver of
+  // its own.
+  const firePrincipal: Principal = {
+    userId: effectivePrincipal.userId,
+    orgId: effectivePrincipal.orgId,
+    kind: scheduledFireKind(effectivePrincipal, gatewayPrincipal)
+  };
 
   // The scheduled time this fire counts against, claimed once in the store.
   const timezone = schedule.timezone ?? "UTC";
@@ -261,7 +275,7 @@ export async function handleDispatch(
     // or from the carried core below (dynamic), never this name.
     action: schedule.block.name,
     input,
-    principal: effectivePrincipal,
+    principal: firePrincipal,
     metadata: {
       schedule: {
         scheduleId,
@@ -279,19 +293,19 @@ export async function handleDispatch(
     // dynamic schedules carry the core and do not recover (documented non-goal).
     ...(origin === "dynamic" ? { resolvedActionCore: schedule } : {}),
     // FIX-2886: a per-schedule fire runs in the schedule's own session,
-    // created by its first fire. The overlap check above has already run, so
-    // a skipped fire never touches it. Per-fire (the default) names none and
-    // runs as a one-off.
-    ...(schedule.session === "per-schedule"
-      ? {
-          sessionId: scheduleSessionId({
+    // created by its first fire. Per-fire (the default) runs as a one-off, in
+    // a session of its own made here, so its request record names it from the
+    // first write. Both after the overlap check and the claim above, so a
+    // skipped or duplicate fire touches no session and makes no id.
+    sessionId:
+      schedule.session === "per-schedule"
+        ? scheduleSessionId({
             orgId: effectivePrincipal.orgId,
             userId: effectivePrincipal.userId,
             flowId: flow.id,
             scheduleId
           })
-        }
-      : {}),
+        : oneOffSessionId(),
     responseEmitter: null
   };
 

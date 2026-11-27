@@ -65,7 +65,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
     commits += landFailed === null ? 1 : 0;
     const id = `stop-${++stops}`;
     const data = { branch: BRANCH, commits, subjects: ["docs: fix the README typo"], judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." }, checks: null, lands: lands ? ["pull-request", "merge"] : [], landFailed };
-    server.push("run-1", { id, type: "suspension", kind: "review", status: "pending", requestId: "q1", itemIndex: 0, ts: Date.now(), data } as never);
+    server.push("run-1", { id: `item-${id}`, type: "suspension", suspensionId: id, kind: "review", status: "pending", requestId: "q1", itemIndex: 0, ts: Date.now(), data } as never);
     set({ asks: [hold("review", `${commits} commit${commits === 1 ? "" : "s"} on ${BRANCH}`, { id })] });
   };
   /** The run goes on past its question, or past nothing: it edits, then waits for review or completes, once the popup follows its session. */
@@ -158,13 +158,30 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     // Between the draw and the click, the round was answered elsewhere and the run stopped for a newer one.
     server.board[BOARD]![0] = { ...server.board[BOARD]![0]!, asks: [hold("review", "2 commits on fix/readme-typo", { id: "stop-2" })] };
     fireEvent.click(within(review).getByRole("button", { name: "Accept" }));
-    // The answer named the round the popup drew, and the server refused it: the popup says so.
-    expect((await within(review).findByRole("alert", {}, { timeout: 2000 })).textContent).toMatch(/409/);
+    // The answer named the round the popup drew, and the server refused it: the popup says so, in the server's words.
+    expect((await within(review).findByRole("alert", {}, { timeout: 2000 })).textContent).toMatch(/Suspension "stop-1" has already been resolved/);
     const answers = server.posts.filter((posted) => posted.path === "/api/flows/coder/requests/q1/answer");
     expect(answers.map((posted) => (posted.body as { suspensionId?: string }).suspensionId)).toEqual(["stop-1"]);
     // Nothing landed: the newer round still waits on you, and the task isn't done.
     expect(server.board[BOARD]![0]!.asks.map((h) => h.id)).toEqual(["stop-2"]);
     expect(within(popup).queryByRole("region", { name: "Result" })).toBeNull();
+  });
+
+  it("refuses a verdict when the board has reached a newer round than the review on screen: nothing is sent", async () => {
+    const { popup: opened, server } = playRun();
+    const popup = await opened;
+    await within(popup).findByRole("region", { name: "Your review" }, { timeout: 3000 });
+    // The run stopped for round 2, and the board's read has it, but the run's feed still draws round 1's changes.
+    // Accepting now would approve round 2's work, which nobody on this screen has seen.
+    server.board[BOARD]![0] = { ...server.board[BOARD]![0]!, asks: [hold("review", "2 commits on fix/readme-typo", { id: "stop-2" })] };
+    const from = server.boardReads.length;
+    await waitFor(() => expect(server.boardReads.slice(from).filter((read) => read.taskId === "t1").length).toBeGreaterThan(1));
+    expect(popup.querySelector("[data-review-commit-count]")?.textContent).toBe("1 commit");
+    const review = within(popup).getByRole("region", { name: "Your review" });
+    fireEvent.click(within(review).getByRole("button", { name: "Accept" }));
+    expect((await within(review).findByRole("alert", {}, { timeout: 2000 })).textContent).toMatch(/newer review than the one shown/);
+    expect(server.posts.filter((posted) => posted.path === "/api/flows/coder/requests/q1/answer")).toEqual([]);
+    expect(server.board[BOARD]![0]!.asks.map((h) => h.id)).toEqual(["stop-2"]);
   });
 
   // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:
@@ -190,7 +207,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
 
     const review = await within(popup).findByRole("region", { name: "Your review" }, { timeout: 3000 });
     belowFeed(review);
-    expect(status()).toBe("Needs review");
+    expect(status()).toBe("Needs your review");
     // The review leads the body, before the steps it was given over.
     const verdict = within(popup).getByRole("region", { name: "Verdict" });
     expect(verdict.compareDocumentPosition(feedOf()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -16,7 +16,6 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core/types";
 import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 
@@ -47,8 +46,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
         return { skillsMatched: 0 };
       }
 
-      const message = (input as { message: string }).message ?? "";
-      const lowered = message.toLowerCase();
+      const lowered = input.message.toLowerCase();
 
       const matchedSkills: Array<{ name: string }> = [];
       const collection = resolveSkillsCollection(ctx, opts.collectionKey);
@@ -62,7 +60,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
           if (seen.has(skillName)) continue;
           seen.add(skillName);
           if (allowedSet && !allowedSet.has(skillName)) continue;
-          const state = ref.state as unknown as SkillState;
+          const state = ref.state;
           if (state.disableModelInvocation) continue;
           if (!state.keywords || state.keywords.length === 0) continue;
           if (state.keywords.some((kw) => lowered.includes(kw))) {
@@ -72,11 +70,10 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
       }
 
       if (matchedSkills.length > 0) {
-        const existing = ctx.sequencer?.state.skills ?? [];
         await ctx.sequencer!.patchState({
           resolved: true,
           skills: [
-            ...existing,
+            ...ctx.sequencer!.state.skills,
             ...matchedSkills.map((s) => ({
               name: s.name,
               input: "",

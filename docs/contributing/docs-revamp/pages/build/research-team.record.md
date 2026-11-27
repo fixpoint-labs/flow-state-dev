@@ -36,6 +36,8 @@ Written by `docs-writer` (sonnet), 885 words. Scenario: Acme, Globex and Initech
 - After the loop (review): emit.data migration: the stop-reason `jq` filter reads `.item.dataType` and `.item.value`. Run from examples/guides/research-team: the filter prints `{"collectionId":"competitors","status":"completed","terminationReason":"all-completed",...}`. 1035 words. Page sha256 242cdc17b15e.
 - After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1849 words. Page sha256 5f7e4f8eb706.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/build/research-team.md`: "no hand-off code" reads "no code to pass them along" (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e5f5f09298a0, and the 8 Reference row(s) pass 6 moved.
@@ -43,6 +45,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e5f
 No untrue claim found.
 - Re-run after the review edit: the completed board report is `ctx.emit.data(TASK_BOARD_META_DATA_TYPE, { collectionId, status: "completed", terminationReason, counts, maxTotalRetries }, ...)` (packages/orchestration/src/task-board/blocks/board-meta.ts:313-317); an NDJSON `item_done` line carries the whole item (packages/fsdev/src/commands/run.ts:59,715); the run output above.
 - Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
+
+Cutover, 2026-11-24: "no hand-off code" reads "no code to pass them along" (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

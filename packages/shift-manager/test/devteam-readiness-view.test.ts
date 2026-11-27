@@ -1,16 +1,17 @@
 // FIX-2624.
 /**
- * DevTeam's harness readiness is the harness kit's view: the Lab installs the
- * kit with its coder off, and a user reads which harnesses can run here, and
+ * DevTeam's harness readiness is the harness kit's view, over the one list the
+ * coder runs on: a user reads which harnesses can run here, and
  * Re-checks, with no session found or made for the read. Each signed-in user reads the machine's entries.
  */
+import type { Harness } from "@flow-state-dev/core/harness";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { harnessStub, type Harness } from "@flow-state-dev/harness-manager";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { connect } from "../src/lib/connection";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -34,7 +35,7 @@ const SIGNED_OUT: HarnessReadiness = { ready: false, reason: "Codex is signed ou
 it("answers each user the machine's readiness entries from the harness kit's flow, Re-checks on refresh, and makes no session", async () => {
   const answers: HarnessReadiness[] = [SIGNED_OUT, { ready: true }];
   let checks = 0;
-  // A harness value the Lab fills the harness kit's slot with; its coder stays the Lab's own.
+  // The one harness the Lab's coder runs on, which fills the harness kit's slot.
   const codex: Harness = {
     id: "codex",
     label: "Codex",
@@ -46,10 +47,9 @@ it("answers each user the machine's readiness entries from the harness kit's flo
   const stores = inMemoryStores();
   lab = await openLab({
     stores,
-    harness: harnessStub({}).slot,
+    harnesses: [codex],
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
-    harnessValues: [codex],
   });
   served = await serveLab(lab.state);
   const runtime = await lab.state.getRuntime();

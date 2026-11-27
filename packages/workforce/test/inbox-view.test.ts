@@ -16,11 +16,16 @@ import { describe, expect, it } from "vitest";
 import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import { bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
 import { ROSTER_FLOW } from "../src/workers/keys";
+
+/** The hold id a seeded suspension lists under: request `requestId`, suspension `s_<requestId>` (`seedSuspension`'s). */
+const heldIn = (requestId: string) => suspensionHoldId(requestId, `s_${requestId}`);
 
 const INBOX = "inbox";
 
@@ -190,8 +195,8 @@ describe("which asks the inbox view lists, and whose they are", () => {
       await seedSuspension(h, { id: "r_other", flowKind: "other", sessionId: other });
       const { output } = await inboxOf(h, "alice");
       expect(listed(output.items)).toEqual([
-        ["s_r_otto", "otto", otto],
-        ["s_r_unnamed", null, unnamed]
+        [heldIn("r_otto"), "otto", otto],
+        [heldIn("r_unnamed"), null, unnamed]
       ]);
     } finally {
       await h.dispose();
@@ -205,8 +210,23 @@ describe("which asks the inbox view lists, and whose they are", () => {
       const due = Date.now() + 60_000;
       await seedSuspension(h, { id: "r_alone", flowKind: "agent", expiresAt: due });
       const { output } = await inboxOf(h, "alice");
-      expect(listed(output.items)).toEqual([["s_r_alone", null, null]]);
+      expect(listed(output.items)).toEqual([[heldIn("r_alone"), null, null]]);
       expect(output.items[0]).toMatchObject({ task: null, answerable: true, holds: [{ due, source: { kind: "suspension", flowId: "agent", requestId: "r_alone" } }] });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("lists a suspension in a one-off session as one with no conversation: from no worker, with nothing to reply into", async () => {
+    const h = bootBoardHost({ agentAnswer: quiet });
+    try {
+      await seedInventory(h, INVENTORY);
+      // A server run, a webhook delivery or a per-fire schedule fire runs in a one-off session,
+      // born before its record like any other; nobody converses in it, so no worker and no reply.
+      const once = (await h.create("alice", "agent", { sessionId: oneOffSessionId(), state: { workerId: "otto" } })).body.session!.id;
+      await seedSuspension(h, { id: "r_once", flowKind: "agent", sessionId: once });
+      const { output } = await inboxOf(h, "alice");
+      expect(listed(output.items)).toEqual([[heldIn("r_once"), null, null]]);
     } finally {
       await h.dispose();
     }
@@ -222,7 +242,7 @@ describe("which asks the inbox view lists, and whose they are", () => {
       await seedSuspension(h, { id: "r_expired", flowKind: "agent", expiresAt: Date.now() - 1 });
       await seedSuspension(h, { id: "r_gone", flowKind: "agent", sessionId: "sess_never_made" });
       expect((await inboxOf(h, "alice")).output.items).toEqual([]);
-      expect(listed((await inboxOf(h, "bob")).output.items).map(([id]) => id).sort()).toEqual(["s_r_bob", "s_r_bob_alone"]);
+      expect(listed((await inboxOf(h, "bob")).output.items).map(([id]) => id).sort()).toEqual([heldIn("r_bob"), heldIn("r_bob_alone")].sort());
     } finally {
       await h.dispose();
     }
@@ -247,7 +267,7 @@ describe("the inbox view's boards", () => {
       await h.writeRow("alice", decodeURIComponent(stored!.partition), { ...task, status: "in_progress", run } as never);
       await seedSuspension(h, { id: "r_run", flowKind: "coordinator", sessionId: lead });
       const again = (await inboxOf(h, "alice")).output;
-      expect(again.items.map((item) => [item.id, item.task?.taskId ?? null, item.holds.map((hold: any) => hold.id)])).toEqual([[`task:${lead}.tasks:${taskId}`, taskId, ["s_r_run"]]]);
+      expect(again.items.map((item) => [item.id, item.task?.taskId ?? null, item.holds.map((hold: any) => hold.id)])).toEqual([[`task:${lead}.tasks:${taskId}`, taskId, [heldIn("r_run")]]]);
       expect(again.items[0].holds[0].detail).toMatchObject({ workerId: "lead", sessionId: lead, message: "May I, r_run?" });
     } finally {
       await h.dispose();

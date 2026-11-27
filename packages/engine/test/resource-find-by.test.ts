@@ -19,6 +19,7 @@ import type { ResourceStateSetOptions } from "../src/host";
 import type { StoreRegistry } from "../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { createFindByConformanceTests } from "../src/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ORG = "acme";
 const taskSchema = z.object({ id: z.string(), tags: z.array(z.string()).default([]) });
@@ -48,7 +49,7 @@ const lookup = handler({
   outputSchema: z.object({ keys: z.array(z.string()), ids: z.array(z.string()) }),
   resources: { work },
   execute: async (input, ctx) => {
-    const ref = ctx.resources.work as unknown as ResourceCollectionRef<{ id: string }>;
+    const ref = ctx.resources.work;
     for (const write of input.before) {
       if (write.delete === true) await ref.delete(write.key);
       else await ref.upsert(write.key, { id: write.id! });
@@ -74,6 +75,7 @@ async function boot(flows: Record<string, unknown> = { ledger: ledgerFlow() }) {
   const runtime = await state.getRuntime();
   const run = async (input: z.input<typeof lookupInput>, userId = "alice") => {
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow: ledgerFlow(),
       actionName: "lookup",
       input,
@@ -149,7 +151,7 @@ describe("findBy", () => {
       outputSchema: z.array(z.string()),
       resources: { notes },
       execute: async (_input, ctx) =>
-        (await (ctx.resources.notes as unknown as ResourceCollectionRef).findBy("byTopic", "x")).map((r) => r.path),
+        (await ctx.resources.notes.findBy("byTopic", "x")).map((r) => r.path),
     });
     const notesFlow = defineFlow({ kind: "notes", actions: { find } });
     const h = await boot({ notes: notesFlow() });
@@ -158,6 +160,7 @@ describe("findBy", () => {
     const as = async (userId: string) =>
       (
         await runAction({
+          sessionId: oneOffSessionId(),
           flow: notesFlow(),
           actionName: "find",
           input: {},
@@ -215,7 +218,7 @@ describe("the index writer on the runtime's stores", () => {
       outputSchema: z.object({}),
       resources: { work: plainWork },
       execute: async (_input, ctx) => {
-        await (ctx.resources.work as unknown as ResourceCollectionRef).create("c9/x", { id: "t-other" });
+        await ctx.resources.work.create("c9/x", { id: "t-other" });
         return {};
       },
     });
@@ -223,6 +226,7 @@ describe("the index writer on the runtime's stores", () => {
     const h = await boot({ ledger: ledgerFlow(), writer: writerFlow() });
     const seen = recordSets(h.raw);
     await runAction({
+      sessionId: oneOffSessionId(),
       flow: writerFlow(),
       actionName: "write",
       input: {},
@@ -284,6 +288,7 @@ describe("the index writer and flow-isolated collections", () => {
     };
     const write = async (flow: typeof a) => {
       const result = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "write",
         input: {},
@@ -353,11 +358,18 @@ describe("the index writer and session cells", () => {
 });
 
 describe("startup check on index declarations", () => {
-  const declare = (pattern: string, scope: "org" | "user", version: number, kind: string) => {
+  const declare = (
+    pattern: string,
+    scope: "org" | "user" | "session",
+    version: number,
+    kind: string,
+    flowIsolation?: boolean
+  ) => {
     const collection = defineResourceCollection({
       pattern,
       scope,
       stateSchema: taskSchema,
+      ...(flowIsolation === undefined ? {} : { flowIsolation }),
       indexes: { byTaskId: { version, value: (_key, state) => state.id } },
     });
     return defineFlow({
@@ -386,6 +398,23 @@ describe("startup check on index declarations", () => {
   it("admits the same name at two versions in different scopes, or on patterns that cannot meet", () => {
     expect(() => start({ a: declare("work/**", "org", 1, "a"), b: declare("work/**", "user", 2, "b") })).not.toThrow();
     expect(() => start({ a: declare("work/**", "org", 1, "a"), b: declare("other/**", "org", 2, "b") })).not.toThrow();
+  });
+
+  // Isolated collections never share a cell, so their index declarations never meet.
+  it("admits one index name at two versions when either collection is isolated to its flow", () => {
+    expect(() =>
+      start({ a: declare("work/**", "org", 1, "a", true), b: declare("work/**", "org", 2, "b", true) })
+    ).not.toThrow();
+    expect(() =>
+      start({ a: declare("work/**", "user", 1, "a", true), b: declare("work/**", "user", 2, "b") })
+    ).not.toThrow();
+  });
+
+  // A session copy has no isolation: reach makes it one cell any declaring flow writes.
+  it("refuses one index name at two versions on overlapping session-scoped patterns", () => {
+    expect(() => start({ a: declare("work/**", "session", 1, "a"), b: declare("work/**", "session", 2, "b") })).toThrow(
+      /byTaskId.*version/
+    );
   });
 
   it("admits the same declaration on two flows", () => {

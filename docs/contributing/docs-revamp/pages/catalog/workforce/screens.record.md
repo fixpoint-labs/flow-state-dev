@@ -34,6 +34,8 @@ Written by `docs-writer` (sonnet), 819 words. Scenario: none: the page carries n
 - After revise round 2, page sha256 05bde1c9933b: exit 0.
 - After the loop (PR review): the PR review was taken: the install line adds `@flow-state-dev/orchestration`, whose `inbox` subpath the conversation example imports. Page sha256 34fe3118107b: the page check exits 0, the brand lint has 0 findings, and the edited examples type-check.
 
+- Re-run after the 2026-11-24 release docs pass, which added this release's changes to the page: `node scripts/check-docs-page.mjs` ok (1129 words), brand lint 0 findings, and each new or changed TypeScript example type-checked in a scratch folder, with a planted error caught.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 446dd9916a70, and the 10 Reference row(s) pass 6 moved.
@@ -42,6 +44,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 446
 - Page line 14 and line 116: each screen "reads a view" and the components "read the views Workforce already serves". Line 14 says "Each screen has the same shape". Untrue: BoardColumns and BoardList do not read a view. They read the board's collection resource (usePanelRows calls readEveryCollectionPage / getCollectionResourceState) and re-read on board or scope notices. Only `rosterView` and the task list go through `useView`. (/home/user/flow-state-dev/packages/workforce/src/react/components/reads.ts:151-176; /home/user/flow-state-dev/packages/workforce/src/react/components/BoardColumns.ts:196-203)
 - Reference row 10: Row 10: `slots.card` of `BoardColumns` "receives `{ card }`". Untrue: It receives a BoardCardRow, `{ topic, card }`, where `card` is the task's published fields (id, status, title, goal, assignee, error). The page's example destructures `{ card }`, which works, but the argument is the row rather than a bare `{ card }`. (/home/user/flow-state-dev/packages/workforce/src/react/components/BoardColumns.ts:70-80, 107-113; /home/user/flow-state-dev/packages/workforce/src/react/components/cards.ts:36-39) The row is recorded corrected.
 - Re-run after the review edit: the review edit checked against the code, true. `taskListViewRef` comes from `@flow-state-dev/orchestration/inbox` (`packages/orchestration/package.json:44`), and Workforce's exports do not include it (`packages/workforce/package.json:26-59`), so an app installs orchestration itself.
+
+- Re-run after the 2026-11-24 release docs pass: the writer checked each new claim and name against the package entries and source it describes. This was the writer's check, not a separate code-reader pass.
 
 ## 6 · Depth pass
 

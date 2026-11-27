@@ -1,8 +1,9 @@
 /**
- * Which coding harnesses can run on this machine, as one *Harnesses* pill: a
- * status dot and name per harness (green ready, amber not ready, grey for a
- * check that got no answer), a *How to fix* on one that can't run that shows what
- * to do, and a refresh icon that reads them again.
+ * Which coding harnesses can run on this machine, as the list the header's
+ * *N of M harnesses* control opens: a status dot, name and state per harness
+ * (green ready, red not ready, grey for a check that got no answer), a *How
+ * to fix* on one that can't run that shows what to do, and Re-check, which
+ * reads them again.
  *
  * Teammates' own drawing of the rows harness-manager's readiness view answers.
  * The registry's chips (`flow-state/harness-readiness.tsx`, a byte copy) stay
@@ -11,7 +12,7 @@
 import { RefreshCwIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useState } from "react";
-import { HARNESS_DOT, harnessState } from "../lib/harness";
+import { HARNESS_DOT, HARNESS_STATUS_WORDS, harnessState } from "../lib/harness";
 import type { HarnessReadinessChipRow, HarnessReadinessProps } from "./flow-state/harness-readiness";
 
 /** The `data-ready` value each state is marked with. */
@@ -26,10 +27,13 @@ function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
       data-harness={row.harness}
       data-ready={READY_MARK[state]}
       title={row.ready ? `${row.label} is ready` : row.unanswered ? `${row.label}: the check got no answer` : why}
-      className="relative inline-flex items-center gap-1.5 px-2 text-xs"
+      className="relative flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
     >
       <span aria-hidden className={["size-1.5 shrink-0 rounded-full", HARNESS_DOT[state]].join(" ")} />
       <span className="text-foreground">{row.label}</span>
+      <span aria-hidden className="ml-auto text-text-3">
+        {HARNESS_STATUS_WORDS[state]}
+      </span>
       {/* The remedy stays in the text for a screen reader; How to fix shows it to everyone else. */}
       {row.ready ? null : <span className="sr-only">: {why || (row.unanswered ? "the check got no answer" : "not ready")}</span>}
       {/* A popover: How to fix again, Escape, or a click outside closes it, and focus goes back to How to fix. */}
@@ -54,10 +58,10 @@ function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
 }
 
 const LINK = "rounded-sm font-medium text-brand hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
-const ICON_BUTTON =
-  "ml-0.5 inline-flex size-6 items-center justify-center rounded-sm text-text-3 hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+const RECHECK =
+  "mt-1 flex w-full items-center gap-2 rounded-md border-t border-border px-2 py-1.5 text-xs text-text-2 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ring";
 
-/** The pill: *Harnesses*, then each harness with a thin divider between, then Re-check as a refresh icon. */
+/** The list: each harness on its own line, then Re-check. */
 export function HarnessesPill({ rows, recheck, className }: HarnessReadinessProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -74,27 +78,22 @@ export function HarnessesPill({ rows, recheck, className }: HarnessReadinessProp
     }
   };
   return (
-    <div className={["flex flex-wrap items-center gap-2", className].filter(Boolean).join(" ")}>
-      <div role="group" aria-label="Coding harnesses" className="inline-flex h-7 items-center rounded-sm border border-border bg-surface pl-2.5 pr-1">
-        <span className="pr-1 text-xs text-text-3">Harnesses</span>
+    <div className={["flex flex-col", className].filter(Boolean).join(" ")}>
+      <div role="group" aria-label="Coding harnesses" className="flex flex-col">
         {rows === undefined ? (
-          <span className="px-2 text-xs text-text-2">Checking…</span>
+          <span className="px-2 py-1.5 text-xs text-text-2">Checking…</span>
         ) : (
-          rows.map((row, i) => (
-            <span key={row.harness} className="inline-flex items-center">
-              {i === 0 ? null : <span aria-hidden className="h-3 w-px bg-border-strong" />}
-              <HarnessEntry row={row} />
-            </span>
-          ))
+          rows.map((row) => <HarnessEntry key={row.harness} row={row} />)
         )}
         {recheck === undefined ? null : (
-          <button type="button" aria-label="Re-check harnesses" title="Re-check harnesses" className={ICON_BUTTON} disabled={busy || rows === undefined} onClick={() => void press()}>
+          <button type="button" aria-label="Re-check harnesses" className={RECHECK} disabled={busy || rows === undefined} onClick={() => void press()}>
             <RefreshCwIcon aria-hidden className={["size-3.5", busy ? "animate-spin" : ""].join(" ")} />
+            Re-check
           </button>
         )}
       </div>
       {error === undefined ? null : (
-        <span role="alert" className="text-xs text-danger">
+        <span role="alert" className="px-2 py-1 text-xs text-danger">
           {error}
         </span>
       )}

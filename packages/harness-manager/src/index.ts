@@ -34,9 +34,9 @@
  *   coding door kept before lines became steers onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
- * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
+ * - `ModeSpec` (a mode: its name, instructions and done check) and the run-context types its hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
- * - `WorkspaceConfig`, and the construction-time guards a host should run at
+ * - The construction-time guards a host should run at
  *   its own door (`assertDistinctRepository`, `assertBaseRefExists`,
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
@@ -80,10 +80,6 @@ export {
   describeTenant,
   withDeadline,
   harnessTaskInputSchema,
-  HARNESS_FEATURE_KEY,
-  namesHarnessFeature,
-  harnessFeatureOf,
-  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -102,12 +98,12 @@ export {
   type HarnessJudgeVerdict,
   type HarnessReviewAnswer,
   type HarnessSlot,
-  type HarnessFeeds,
-  type PhaseSpec,
-  type PhaseRunContext,
+  type ModeSpec,
+  type ModeDone,
+  type ModeRunContext,
   type PromptRunContext,
   type CompletionRunContext,
-  type PhaseDoneVerdict,
+  type ModeDoneVerdict,
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
@@ -180,7 +176,6 @@ export {
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   harnessSessionAttachedTo,
   HARNESS_SESSION_START_INVALID,
-  type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
   type HarnessSessionProvisioned,
@@ -248,9 +243,6 @@ export {
   toolApprovalStop,
   toolApprovalYesSchema,
   toolGrantSchema,
-  type HarnessToolApprovalDecision,
-  type HarnessToolApprovalHook,
-  type HarnessToolApprovalRequest,
   type HeldToolCall,
   type ToolApprovalOutcome,
   type ToolGrant,
@@ -274,6 +266,7 @@ export {
 // board is the authority on. A host builds its status surface from
 // `readRunRecord` and the collection; the writes stay internal.
 export {
+  readModeRunRecord,
   readRunRecord,
   runRecordCollection,
   runRecordStateSchema,
@@ -289,7 +282,7 @@ export {
 /**
  * The board segment of a run's identity: the ledger id, plus its partition on
  * a board read from the claim. `runTopic(runBoardSegment(ledgerId, partition),
- * issue, phase)` is that run's record key.
+ * issue, mode)` is that run's record key; `readModeRunRecord` also finds a run stored under its mode's former name.
  */
 export { runBoardSegment } from "./workspace";
 /**
@@ -329,8 +322,6 @@ export {
 } from "./harness-usage";
 
 // ── Which harnesses can run on this machine ─────────────────────────────────
-// FIX-2627: one harness as a value, for the harness kit's `harnesses` slot (`./kit`).
-export type { Harness } from "./harness";
 export {
   harnessReadiness,
   harnessReadinessCapability,
@@ -365,7 +356,7 @@ export {
 // The TYPES a host needs to write `workspace:` and `ownership:`. The functions
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
-export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+export type { OwnershipBounds } from "./workspace";
 
 // Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

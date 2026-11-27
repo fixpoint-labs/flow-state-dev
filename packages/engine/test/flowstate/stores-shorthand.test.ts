@@ -14,6 +14,7 @@ import { createFlowState, createInProcessFetch, inMemoryStores, type StoreAdapte
 import { FlowStateConfigError } from "../../src/errors/flow-error";
 import type { FlowState } from "../../src/flowstate/types";
 import { createInMemoryBus } from "../../src/bus/in-memory-bus";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 let flowCounter = 0;
 
@@ -60,7 +61,7 @@ async function ask(state: FlowState, kind: string, n: number): Promise<unknown> 
   const sent = await fetcher(`http://x.invalid/api/flows/${kind}/actions/double`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: "u1", input: { n } })
+    body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { n } })
   });
   expect(sent.status).toBeLessThan(300);
   const body = (await sent.json()) as { request?: { id: string }; requestId?: string };

@@ -25,23 +25,22 @@ export function createRecordArgument(opts: {
   return handler({
     name: `${opts.name}-record-${opts.agentName}`,
     inputSchema: z.any(),
-    resources: { transcript: opts.transcript },
+    resources: { transcript: opts.transcript as DefinedResource<DebateTranscriptState> },
     sequencerStateSchema: debateStateSchema,
     execute: async (input, ctx) => {
       const text = coerceText(input, opts.agentName, opts.warnedAgents, {
         tag: "debate",
         noun: "debater",
       });
-      const state = ctx.sequencer!.state;
-      const round = state.round;
+      const round = ctx.sequencer!.state.round;
 
-      const current = ctx.resources.transcript.state as DebateTranscriptState;
+      const current = ctx.resources.transcript.state;
       await ctx.resources.transcript.setState({
         entries: [
           ...(current.entries ?? []),
           { round, agentName: opts.agentName, stance: opts.stance, text },
         ],
-      } as Parameters<typeof ctx.resources.transcript.setState>[0]);
+      });
 
       const collection = await getOrCreateTaskCollection({
         ctx,

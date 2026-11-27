@@ -15,6 +15,7 @@ import { projectSetupView } from "@flow-state-dev/workforce/browser";
 import { connect } from "../src/lib/connection";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { LAB_USERS, openLab, PROJECTS_FLOW, type Lab } from "../teams/devteam/host.mts";
+import { readyHarness } from "../teams/devteam/harness.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -27,7 +28,7 @@ describe("the project setup view on the DevTeam Lab", () => {
     const root = mkdtempSync(join(tmpdir(), "sm-project-setup-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
     const stores = inMemoryStores();
-    const lab: Lab = await openLab({ stores, harness: harnessStub({}).slot, workspace: { root, remotes: { allow: ["file"] } }, coderWorkerId: "eng.coder" });
+    const lab: Lab = await openLab({ stores, harnesses: [readyHarness(harnessStub({}).slot)], workspace: { root, remotes: { allow: ["file"] } }, coderWorkerId: "eng.coder" });
     cleanups.push(() => lab.dispose());
     const served: ServedLab = await serveLab(lab.state);
     cleanups.push(() => served.handle.close());

@@ -36,7 +36,7 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
  * it starts a fresh budget all the same.
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
-  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const { state } = ctx.session;
   const taskId = state[TASK_ID_STATE_KEY];
   let mark: Record<string, unknown> = { [USER_TURN_STATE]: true };
   if (typeof taskId === "string") {
@@ -55,7 +55,7 @@ export async function markUserTurn(ctx: BlockContext): Promise<void> {
 
 /** Whether this request is a turn a user's own message started. */
 export function isUserTurn(ctx: BlockContext): boolean {
-  return (ctx.request.state as Record<string, unknown> | undefined)?.[USER_TURN_STATE] === true;
+  return ctx.request.state[USER_TURN_STATE] === true;
 }
 
 /** {@link markUserTurn} as a step, for a door whose message passes through untouched. */

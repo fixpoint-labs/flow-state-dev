@@ -362,7 +362,7 @@ mechanisms:
     overlaps:
       - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
     status: canonical
-    doc: apps/docs/guides/realtime.md
+    doc: apps/docs/docs/build/live-updates.md
 
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
@@ -681,6 +681,18 @@ mechanisms:
     status: canonical
     doc: packages/workforce/README.md
 
+  - id: task-input-schema
+    job: What a worker flow's tasks take, declared on its `work` entry (`taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project })`). Every write that files a task for one of its workers, or moves one onto it, is checked against it before anything is written, server-owned fields dropped and filled by the flow; the claim parses the stored task again; `listDelegates` shows it as `inputSchema`, JSON Schema. A flow that declares none takes any object.
+    package: "@flow-state-dev/workforce"
+    anchor: taskInputSchema
+    file: packages/workforce/src/task-input/declaration.ts
+    builtOn: [session-board, task]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "task is the row and its lifecycle; task-input-schema is the contract a row's input is checked against, per assignee's flow" }
+      - { id: session-board, relation: distinct-jobs, note: "session-board runs the checks on its writes; the declaration lives on the worker flow, and the raw ledger handles run the same check" }
+    status: canonical
+    doc: specs/issues/FIX-2894/SPEC.md
+
   - id: coordinator
     job: A coordinator flow that routes a request to the worker who should take it, and keeps the routed history.
     package: "@flow-state-dev/workforce"
@@ -801,7 +813,7 @@ mechanisms:
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper. Each also ships itself as one value for the harness kit's slot (harness-manager's `Harness`), `codexHarness()` and `cursorHarness()`; `claudeCode()` is a small kit that fills the slot (FIX-2627).
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper. Each also ships itself as one value for the harness kit's slot (core's `Harness`, from `@flow-state-dev/core/harness`), as `claudeCodeHarness()`, `codexHarness()` and `cursorHarness()` (FIX-2627, FIX-2928).
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -834,13 +846,14 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness). Installed as a kit, `harnesses` from `@flow-state-dev/harness-manager/kit` (FIX-2627), which contributes `coder`, the one coding worker flow, to workforce, its policy as config.
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness). Installed as a kit, `harnesses` from `@flow-state-dev/harness-manager/kit` (FIX-2627), which contributes `coder`, the one coding worker flow, to workforce, its policy as config. A run is keyed by its mode (`ModeSpec`); `readModeRunRecord` is the run record read that also finds a run stored under the mode's former name.
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, harness-steering, workspace, kit]
+    builtOn: [task-board, coding-harness, harness-steering, workspace, kit, task-input-schema]
     overlaps:
-      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
+      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. A fixed repository is a localRepoWorkspaceHost from the workspace package. It is not a second workspace implementation." }
+      - { id: task-input-schema, relation: distinct-jobs, note: "The coder flow's task input (codingTaskInputSchema: mode, issue, the server-written run settings) is a declaration on task-input-schema, and isCheckedCodingTask is a reader of that declaration's stamp, for a reader of stored coding tasks outside the flow. Neither is a second input contract or a second stamp." }
     status: canonical
     doc: packages/harness-manager/README.md
 

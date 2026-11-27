@@ -154,3 +154,18 @@ describe("useAction without result", () => {
     expect(urls.some((url) => url.includes("/status"))).toBe(false);
   });
 });
+
+describe("useAction with no session id", () => {
+  // Every send names its session: `execute` requires one, and a JavaScript
+  // caller that leaves it out is refused before anything is sent.
+  it("refuses the send before anything leaves the hook", async () => {
+    const { wrapper, urls } = server();
+    const { result } = renderHook(() => useAction({ action: "summarize" }), { wrapper });
+
+    await act(async () => {
+      // @ts-expect-error execute names the session it sends in
+      await expect(result.current.execute({ ticketId: "t1" })).rejects.toThrow(/sessionId is required/);
+    });
+    expect(urls).toEqual([]);
+  });
+});

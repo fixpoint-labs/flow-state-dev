@@ -53,6 +53,8 @@ Written by `docs-writer` (sonnet), 2683 words. Scenario: A support desk: handleT
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `escalate` queues the ticket for a human and is chained with `.tapIf` (it returns nothing) instead of a `.stepIf` no-op; `summarizeTicket` saves a summary through a `saveSummary` stand-in; in `gatherContext`, `lookUpOrder` reads a `findOrder` stand-in by `orderId` and `lookUpPlan` reads the user's plan from user state. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 3034 words. Page sha256 be383c2bc44f.
 
+- After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 3034 words. Page sha256 bd32af4aed7d.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1ab2dd48551f, and the 15 Reference row(s) pass 6 moved.
@@ -74,6 +76,8 @@ Final fact check of the page as it closed, sha256 71c858a4dcd2: 3 untrue, fixed 
 - Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+- Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

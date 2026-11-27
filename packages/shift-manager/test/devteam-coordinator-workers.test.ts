@@ -53,7 +53,7 @@ function emTurn(): GeneratorModel {
       const said = JSON.stringify(call.messages ?? []);
       const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
       return {
-        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } } }],
+        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { mode: PHASE, issue, project: STOREFRONT } } }],
         finishReason: "tool-calls",
       };
     },
@@ -83,7 +83,7 @@ async function open(): Promise<Lab> {
   opened = await openLab({
     modelResolver: noModel,
     stores: inMemoryStores(),
-    harness: harness.slot,
+    harnesses: [harness.value],
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coordinator-workers-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
@@ -145,6 +145,7 @@ describe("DevTeam's triage coordinator", () => {
         worker: "eng.em",
         description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
         takes: "tasks",
+        inputSchema: null,
       },
     ]);
   });
@@ -167,7 +168,7 @@ describe("DevTeam's triage coordinator", () => {
     expect(record.value).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The board of the EM session the routed task reached holds the coder's task only the EM files, and
     // its answer lands here under its name.
-    const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);
+    const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.issue === issue);
     expect(filed).toEqual([expect.objectContaining({ goal: "the cart badge is off by one", assignee: "eng.coder" })]);
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
     expect(answers).toEqual(["Filed."]);

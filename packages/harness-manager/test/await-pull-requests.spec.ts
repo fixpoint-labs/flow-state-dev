@@ -11,9 +11,10 @@
  *
  * What a person relies on: while the pull request is open the task stays
  * open, waiting on it, and takes their line as one more run on the same
- * session; once it merges a wake completes the task without a run; once it is
- * closed unmerged a wake cancels it; and while GitHub can't be read nothing
- * settles it either way.
+ * session; once it merges the task completes, and once it is closed unmerged
+ * it cancels, with no run when only the pull request's own news woke it; a
+ * line a person sent is always answered by a run first (FIX-2884), never taken
+ * and dropped; and while GitHub can't be read nothing settles it either way.
  */
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -121,6 +122,8 @@ const run = async (lab: Lab) => {
 const row = (lab: Lab) => lab.row(CONVERSATIONS, "t1", "conv-a");
 /** A person's line typed in the task's session. */
 const line = (lab: Lab, message: string) => lab.act("line", { ...AT, id: "t1", message });
+/** The pull request's own news reaching the task's wait from outside, as a followed pull request's close does. */
+const deliver = (lab: Lab, message: string) => lab.act("deliver", { ...AT, id: "t1", message });
 /** The task's run record: the coding session it confirmed is what a later message to the task resumes. */
 const record = (lab: Lab) => lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE));
 const statusText = (result: { items?: unknown[] }) => JSON.stringify(result.items ?? []);
@@ -217,13 +220,13 @@ describe("a coding task whose run opened a pull request", () => {
     expect(untakenSteers(await row(lab))).toEqual([]);
   }, 60_000);
 
-  it("merged: a line completes the task with the pull request on its output, and no harness run", async () => {
+  it("merged: the pull request's own news completes the task with the pull request on its output, and no harness run", async () => {
     setGh({ listed: [7], states: { 7: "open" } });
     const lab = await waitingLab();
     await run(lab);
 
     setGh({ listed: [7], states: { 7: "merged" } });
-    await line(lab, "merged it, thanks");
+    expect((await deliver(lab, "Pull request #7 was merged.")).output).toMatchObject({ outcome: "recorded" });
     const result = await run(lab);
 
     expect(lab.seen).toHaveLength(1);
@@ -236,19 +239,55 @@ describe("a coding task whose run opened a pull request", () => {
       pullRequests: [{ number: 7, state: "merged", url: "https://github.com/acme/app/pull/7" }],
     });
     expect(result.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
-    // The wake's line is taken with it: nothing is left owed on the finished task.
+    // The wake's news is taken with it: nothing is left owed on the finished task.
     expect(untakenSteers(done)).toEqual([]);
     // The coding session the run confirmed stays on its record, so a later message to the finished task can resume it.
     expect((await record(lab))?.sessionId).toBe("sess_1");
   }, 60_000);
 
-  it("closed without merging: a line cancels the task with the reason, and no harness run", async () => {
+  it("merged: a person's line is answered by one more run, told the pull request merged, and then the task completes", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Is the PR still open?");
+    await run(lab);
+
+    // Never taken and dropped: the words reach the same session, which is told what became of the pull request.
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.resume).toBe("sess_1");
+    expect(lab.seen[1]!.prompt).toContain("Is the PR still open?");
+    expect(lab.seen[1]!.prompt).toContain("Pull request #7 has merged.");
+    expect(lab.seen[1]!.prompt).not.toContain("which is still open");
+    const done = await row(lab);
+    expect(done.status).toBe("completed");
+    expect(done.attempts).toBe(1);
+    expect(done.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
+    expect(untakenSteers(done)).toEqual([]);
+  }, 60_000);
+
+  it("merged: a steer from the task's Steer box is answered by a run too, as a line is", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    setGh({ listed: [7], states: { 7: "merged" } });
+    expect((await lab.act("steer", { ...AT, id: "t1", message: "did it land?" })).output).toMatchObject({ outcome: "recorded" });
+    await run(lab);
+
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("did it land?");
+    expect((await row(lab)).status).toBe("completed");
+  }, 60_000);
+
+  it("closed without merging: the pull request's own news cancels the task with the reason, and no harness run", async () => {
     setGh({ listed: [7], states: { 7: "open" } });
     const lab = await waitingLab();
     await run(lab);
 
     setGh({ listed: [7], states: { 7: "closed" } });
-    await line(lab, "closed it");
+    await deliver(lab, "Pull request #7 was closed.");
     await run(lab);
 
     expect(lab.seen).toHaveLength(1);
@@ -258,6 +297,23 @@ describe("a coding task whose run opened a pull request", () => {
     expect(JSON.stringify(ended)).toContain(CLOSED_WITHOUT_MERGING);
     expect(openHolds(ended)).toEqual([]);
     expect((await record(lab))?.sessionId).toBe("sess_1");
+  }, 60_000);
+
+  it("closed without merging: a person's line is answered by a run, told it was closed, and then the task cancels", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    setGh({ listed: [7], states: { 7: "closed" } });
+    await line(lab, "closed it, why?");
+    await run(lab);
+
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("closed it, why?");
+    expect(lab.seen[1]!.prompt).toContain("Pull request #7 was closed without merging.");
+    const ended = await row(lab);
+    expect(ended.status).toBe("cancelled");
+    expect(JSON.stringify(ended)).toContain(CLOSED_WITHOUT_MERGING);
   }, 60_000);
 
   it("a line typed while the settle reads the pull request is not lost: it wakes the wait, and runs", async () => {
@@ -288,6 +344,58 @@ describe("a coding task whose run opened a pull request", () => {
     expect(untakenSteers(again)).toEqual([]);
   }, 60_000);
 
+  it("merged: a line typed while the wake reads the pull request is answered by a run, never taken with the settle", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    // The merge's own news wakes the wait; while the wake reads #7 from GitHub, the person asks about it.
+    const gate = join(bin, "gate");
+    rmSync(gate, { force: true });
+    setGh({ listed: [7], states: { 7: "merged" }, gate });
+    await deliver(lab, "Pull request #7 was merged.");
+    const woken = lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    while (prReads().length === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+    await line(lab, "did it merge cleanly?");
+    writeFileSync(gate, "");
+    const result = await woken;
+    expect(result.result.error, messageOf(result.result.error)).toBeUndefined();
+
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("did it merge cleanly?");
+    expect(lab.seen[1]!.prompt).toContain("Pull request #7 has merged.");
+    const done = await row(lab);
+    expect(done.status).toBe("completed");
+    expect(untakenSteers(done)).toEqual([]);
+  }, 60_000);
+
+  it("merged, with reviewChanges on: the answer turn completes the task, and asks for no review of the merged work", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = claimHost({
+      mode: "claim",
+      // The answer turn leaves a commit on the branch: with the pull request merged there is nothing left to review it on.
+      script: [{ answer: "Opened PR #7." }, { commits: 1, answer: "Yes, #7 merged." }],
+      manager: { awaitPullRequests: true, reviewChanges: true },
+      durable: true,
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "fix the bug", input: {} });
+    await run(lab);
+    // The task waits on its pull request.
+    const first = await row(lab);
+    expect(openHolds(first).map((hold) => hold.ask.kind)).toEqual(["external"]);
+
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Is the PR still open?");
+    await run(lab);
+
+    expect(lab.seen).toHaveLength(2);
+    const done = await row(lab);
+    // Not held on a review: the work is the merged pull request, and the turn only answered the person.
+    expect(openHolds(done)).toEqual([]);
+    expect(done.status).toBe("completed");
+    expect(done.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
+  }, 60_000);
+
   it("one merged and one closed: completes, the closed one noted on the output", async () => {
     setGh({ listed: [7, 8], states: { 7: "open", 8: "open" } });
     const lab = await waitingLab();
@@ -295,7 +403,7 @@ describe("a coding task whose run opened a pull request", () => {
     expect(waitedOn(await row(lab))).toEqual([7, 8]);
 
     setGh({ listed: [7, 8], states: { 7: "merged", 8: "closed" } });
-    await line(lab, "merged one, dropped the other");
+    await deliver(lab, "merged one, dropped the other");
     await run(lab);
 
     expect(lab.seen).toHaveLength(1);
@@ -317,7 +425,8 @@ describe("a coding task whose run opened a pull request", () => {
     await run(lab);
     expect(lab.seen).toHaveLength(2);
     expect((await row(lab)).status).toBe("in_progress");
-    expect(openHolds(await row(lab)).map((hold) => hold.ask.kind)).toEqual(["external"]);
+    const first = await row(lab);
+    expect(openHolds(first).map((hold) => hold.ask.kind)).toEqual(["external"]);
   }, 60_000);
 
   it("unreadable (gh signed out): the line runs, the task waits again with a status note, and nothing settles it", async () => {
@@ -368,7 +477,7 @@ describe("a coding task whose run opened a pull request", () => {
     expect(waitedOn(kept)).toEqual([7]);
 
     setGh({ listed: [7], states: { 7: "merged" } });
-    await line(after, "merged");
+    await deliver(after, "Pull request #7 was merged.");
     await run(after);
     expect(after.seen).toHaveLength(0);
     expect((await row(after)).status).toBe("completed");

@@ -55,6 +55,7 @@ import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-
 import { RAISE_ASK_STEP, raiseAsk, workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/worker-config.mts";
 import { sleep } from "../../lib/time.mts";
+import { readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 
 stripIntentOverrides();
 
@@ -104,8 +105,8 @@ async function open(
   const stub = harnessStub({ duringRun: commitWork });
   const lab = await openLab({
     stores,
-    harness: stub.slot,
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    harnesses: [readyHarness(stub.slot)],
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     ask: feature,
@@ -334,7 +335,7 @@ await runGoal(async (failures) => {
         const rows = await lab.rows();
         const ids = Object.values(rows).map((r) => r.id);
         if (ids.length !== 1) note("2", `after approve the board holds ${ids.length} row(s): ${ids.join(", ")}`);
-        if (row !== undefined && (row.input as { harnessFeature?: { issue?: string } } | undefined)?.harnessFeature?.issue !== feature.issue) {
+        if (row !== undefined && (row.input as { issue?: string } | undefined)?.issue !== feature.issue) {
           note("2", `the row "${row.id}" names ${JSON.stringify(row.input)}, not "${feature.issue}"`);
         }
         if (row?.status !== "completed") note("2", `the row settled "${row?.status}", wanted "completed"`);

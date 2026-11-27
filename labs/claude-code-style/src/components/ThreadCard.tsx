@@ -116,6 +116,7 @@ function ReviewActions({
           compact
           lands={accept.lands}
           failed={accept.failed}
+          openPullRequest={accept.openPullRequest}
           disabled={accept.waiting || !accept.ready}
           busy={accept.waiting}
           onAccept={accept.accept}

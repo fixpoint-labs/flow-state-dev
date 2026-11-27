@@ -32,6 +32,7 @@ import {
 } from "@flow-state-dev/scheduled";
 import { formatScheduleId } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const SECRET = "scheduler-secret-do-not-share";
 
@@ -167,6 +168,7 @@ function boot() {
   /** Alice runs `actionName` on `flow` while admitted under `orgId`. */
   const run = (actionName: "plan" | "reschedule", flow: FlowInstance, key: string, orgId: string) =>
     runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName,
       input: { key },
@@ -337,6 +339,7 @@ describe("a schedule created through the collection fires into the org that save
       // A run in globex names initech. The create is refused, so nothing can
       // later dispatch into initech on this run's say-so.
       await runAction({
+        sessionId: oneOffSessionId(),
         flow: app,
         actionName: "planInto",
         input: { key: "elsewhere", orgId: "initech" },
@@ -362,6 +365,7 @@ describe("a schedule created through the collection fires into the org that save
       // A later run names initech on the row. The update is refused, and the
       // row is left as it was.
       await runAction({
+        sessionId: oneOffSessionId(),
         flow: app,
         actionName: "moveInto",
         input: { key: "digest", orgId: "initech" },

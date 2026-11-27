@@ -57,18 +57,14 @@ import {
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
-  HarnessActivityHook,
   HarnessBlock,
-  HarnessEventHook,
-  HarnessResolver,
+  HarnessFeeds,
   HarnessRunInput,
-  HarnessSessionHook,
   HarnessSteer,
-  HarnessSteerHook,
-  HarnessUsageHook,
+  HarnessToolApprovalHook,
 } from "@flow-state-dev/core/harness";
 import { withTimeout } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, DeclaredResourceEntry, StateRef } from "@flow-state-dev/core/types";
 import {
   currentLeaseRenewal,
   renderSteers,
@@ -112,7 +108,6 @@ import {
   type HeldWork,
   type ExistingPullRequest,
   type Landed,
-  type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
@@ -128,6 +123,7 @@ import {
   placeStatusSchema,
   openRunRecord,
   readConfirmedSession,
+  readModeRunRecord,
   readRunRecord,
   runRecordCollection,
   runTopic,
@@ -158,6 +154,7 @@ import {
   type TaskPullRequest,
 } from "./await-pull-requests";
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
+import { withSettledState } from "./landed-work";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
@@ -167,12 +164,10 @@ import {
   MAX_APPROVAL_STEPS,
   grantMatches,
   heldToolCallOf,
-  heldToolCallSchema,
   heldToolDecision,
   toolApprovalOutcome,
   toolApprovalStop,
-  toolGrantSchema,
-  type HarnessToolApprovalHook,
+  toolApprovalStateSchema,
   type HeldToolCall,
 } from "./tool-approval";
 import {
@@ -196,9 +191,10 @@ import {
   acquireCheckout,
   assertBranchPrefix,
   branchFor,
+  checkoutLeaseFromState,
+  worktreesOf,
   freeRunLocation,
   locationFor,
-  hostForConfig,
   placeFor,
   refreshCheckout,
   releaseCheckout,
@@ -209,12 +205,11 @@ import {
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
-  type WorkspaceConfig,
 } from "./workspace";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
-/** What a phase's prompt builder and done-condition are handed. */
-export interface PhaseRunContext {
+/** What a mode's instructions and done check are handed. */
+export interface ModeRunContext {
   /**
    * The board's discriminator — see `RunLocation.epic`. A fixed board's id, or
    * for a board read from the claim, its ledger id and partition digest
@@ -222,7 +217,8 @@ export interface PhaseRunContext {
    */
   epic: string;
   issue: string;
-  phase: string;
+  /** The segment the run is keyed by: its mode's name, or the older one it was found under ({@link ModeSpec.formerName}). */
+  mode: string;
   /**
    * The tracker issue the task names (`ENG-142`), or `null` when it names
    * none. On a fixed board it is {@link issue}. On a board read from the
@@ -236,12 +232,12 @@ export interface PhaseRunContext {
   workspacePath: string;
   branch: string;
   /**
-   * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
-   * conductor.
+   * Whatever this mode's own {@link ModeDone.validate} returned, for THIS
+   * manager.
    *
-   * `unknown` because only the phase that produced it knows its shape — the
-   * manager carries it and never reads it. Absent when the phase has no
-   * `validate`, or when one is invoked outside `conductorFlow`.
+   * `unknown` because only the mode that produced it knows its shape — the
+   * manager carries it and never reads it. Absent when the mode has no
+   * `validate`.
    */
   validated?: unknown;
   /**
@@ -251,7 +247,7 @@ export interface PhaseRunContext {
    * nothing.
    */
   feedback?: string;
-  /** The block context, so a builder can read its phase's collections. */
+  /** The block context, so a builder can read its mode's collections. */
   ctx: BlockContext;
 }
 
@@ -264,15 +260,15 @@ export interface AnsweredQuestion {
 }
 
 /**
- * What a prompt builder gets on top of {@link PhaseRunContext}: the task it was
+ * What a prompt builder gets on top of {@link ModeRunContext}: the task it was
  * claimed for, and the two things the ask adds.
  *
- * Separate from `PhaseRunContext` rather than optional fields on it. The
+ * Separate from `ModeRunContext` rather than optional fields on it. The
  * done-condition needs none of them, and a field that is sometimes absent is the
  * silent-partial shape this lab exists to remove — a builder cannot tell "no
  * answers" from "nobody read them" if the same `undefined` means both.
  */
-export interface PromptRunContext extends PhaseRunContext {
+export interface PromptRunContext extends ModeRunContext {
   /**
    * The task this attempt was claimed for, as the board packed it: its `goal`,
    * and its `title`, `context`, `input`, `deps` and `priorWork` when the row has
@@ -280,7 +276,7 @@ export interface PromptRunContext extends PhaseRunContext {
    *
    * The same on every attempt, so a retry or the attempt after a person's
    * message starts from the same work. Build the prompt from this rather than
-   * from {@link PhaseRunContext.issue}, which is only the row's identity.
+   * from {@link ModeRunContext.issue}, which is only the row's identity.
    * `metadata` is left out: it is the board's bookkeeping, not the brief.
    *
    * A `Pick` of the board's worker-input schema, so its fields keep the
@@ -304,17 +300,17 @@ export interface PromptRunContext extends PhaseRunContext {
 }
 
 /**
- * What a done-condition gets on top of {@link PhaseRunContext}: the one thing
+ * What a done-condition gets on top of {@link ModeRunContext}: the one thing
  * the run's own report adds.
  *
- * Separate from `PhaseRunContext` for the same reason {@link PromptRunContext}
+ * Separate from `ModeRunContext` for the same reason {@link PromptRunContext}
  * is — a prompt builder has no use for it, and the two sides carry facts about
  * different attempts. `feedback` describes the attempt BEFORE this one and is
  * prompt-side only; `stopReport` describes THIS one and is completion-side
  * only. A single field meaning "this attempt" in one place and "the last one"
  * in another lies by position.
  */
-export interface CompletionRunContext extends PhaseRunContext {
+export interface CompletionRunContext extends ModeRunContext {
   /**
    * How the run said it stopped, as it said it — the run's own three-way word
    * (`finished` / `stopped-at-limit` / `failed`), reached only on a clean
@@ -370,39 +366,38 @@ export interface CompletionRunContext extends PhaseRunContext {
 }
 
 /**
- * What a phase's `isDone` may answer instead of a boolean: whether the job is
+ * What a mode's done check may answer instead of a boolean: whether the job is
  * done, why not, and the checks it ran (`commandCheck`).
  *
  * `reason` is added to the not-done message, which the board hands the next
  * attempt as its `feedback`. `checks` goes on the run record whatever the
  * verdict, and on the review's `data` when the run is done.
  */
-export interface PhaseDoneVerdict {
+export interface ModeDoneVerdict {
   done: boolean;
   /** Why it isn't done, in words the next attempt can act on. Read only when `done` is false. */
   reason?: string;
-  /** The checks the phase ran, in order. */
+  /** The checks the mode ran, in order. */
   checks?: CommandCheckResult[];
 }
 
-/** Everything that makes one phase a phase. Three values, passed in. */
-export interface PhaseSpec {
-  /** The phase segment of the run record's topic. */
-  phase: string;
-  /** Rebuilt on every wake from current state, never computed when the row was filed. */
-  buildPrompt(run: PromptRunContext): string | Promise<string>;
+/**
+ * When a mode's run counts as done: the server-side check, how long it may
+ * take, and what it needs from the workspace, checked at construction.
+ */
+export interface ModeDone {
   /**
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
    *
    * **The carry-forward field is prompt-time only: `feedback` is absent here,
    * deliberately and always.** It describes the attempt BEFORE this one, which
-   * is what a prompt needs and what a done-condition has no use for — the
+   * is what a prompt needs and what a done check has no use for — the
    * question is whether the job is done now, not how the last attempt went. It
    * is also not reachable at this point: it arrives on the worker's input, and
-   * the verdict handler is handed the run's own result instead. A phase whose
-   * done-condition genuinely needs it wants it put on the manager's state
-   * first; do that when such a phase exists rather than plumbing a field
+   * the verdict handler is handed the run's own result instead. A mode whose
+   * done check genuinely needs it wants it put on the manager's state
+   * first; do that when such a mode exists rather than plumbing a field
    * nothing reads.
    *
    * **What it DOES get is {@link CompletionRunContext.stopReport}: how this
@@ -410,45 +405,68 @@ export interface PhaseSpec {
    * predicate, and a run that exhausted its turn or spend budget is where they
    * most reliably diverge — it commits the half it managed and reports
    * `stopped-at-limit`. A check that answers from the branch alone closes that
-   * row as done, silently. Reading the field is the phase's call, and
+   * row as done, silently. Reading the field is the mode's call, and
    * declining to is a real choice with a real cost; the framework imposes
-   * nothing, because only the phase knows what finishing means for it.
+   * nothing, because only the mode knows what finishing means for it.
    */
-  isDone(run: CompletionRunContext): boolean | PhaseDoneVerdict | Promise<boolean | PhaseDoneVerdict>;
+  check(run: CompletionRunContext): boolean | ModeDoneVerdict | Promise<boolean | ModeDoneVerdict>;
   /**
-   * How long {@link isDone} may take, in milliseconds; a minute
+   * How long {@link check} may take, in milliseconds; a minute
    * (`NETWORK_CALL_TIMEOUT_MS`) when unset. `commandCheck` sets it to cover its
    * commands. Pass the same number to `harnessDrainBudgetMs({ doneTimeoutMs })`,
    * or a shutdown can stop a check before it ends.
    */
-  doneTimeoutMs?: number;
+  timeoutMs?: number;
   /**
-   * What this phase needs from the workspace, checked before anything is
-   * claimed. Throws to refuse; absent means the phase needs nothing.
+   * What this mode needs from the workspace, checked before anything is
+   * claimed. Throws to refuse; absent means the mode needs nothing.
    *
-   * **A phase's own preconditions are configuration, and configuration is
+   * **A mode's own preconditions are configuration, and configuration is
    * refused at startup.** The other guards at that door — the repository, the
    * base ref, the numbers — protect a *task* from paying for a shell typo: the
    * row is claimed, the attempt is charged, and the failure is permanent, so
-   * every retry spends itself on it. A precondition belonging to the phase has
-   * exactly that shape and could not use that door, because only the phase knows
+   * every retry spends itself on it. A precondition belonging to the mode has
+   * exactly that shape and could not use that door, because only the mode knows
    * what it needs and only the flow holds the workspace.
    *
-   * The implement phase's completion probe reads the source repository's
+   * The implement mode's completion probe reads the source repository's
    * `origin`; a checkout whose GitHub remote is called something else fails it
    * AFTER the paid agent run, once per retry. That is the case this exists for,
    * and it is why the hook takes the workspace rather than being a boolean.
    *
-   * **Whatever it returns is handed back to this phase's own `isDone` as
-   * {@link PhaseRunContext.validated}, once per conductor.** That is the only
-   * way a phase can carry something it learned at construction into a run:
-   * closing over it does not work, because one `PhaseSpec` can be given to two
-   * conductors and `conductorFlow`'s snapshot copies function references rather
-   * than what they close over. Three separate defects came out of a phase that
-   * tried — a pin shared between conductors, a pin retained by a construction
-   * that then failed, and a comparison written to paper over both.
+   * **Whatever it returns is handed back to this mode's own `check` and
+   * `instructions` as {@link ModeRunContext.validated}, once per manager.**
+   * That is the only way a mode can carry something it learned at
+   * construction into a run: closing over it does not work, because one
+   * `ModeSpec` can be given to two managers and the manager's snapshot copies
+   * function references rather than what they close over. Three separate
+   * defects came out of a mode that tried — a pin shared between managers, a
+   * pin retained by a construction that then failed, and a comparison written
+   * to paper over both.
    */
-  validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
+  validate?(workspace: WorkspaceHost): unknown;
+}
+
+/**
+ * One mode: a name for how a coding run is told what to do and when it counts
+ * as done. A manager runs one.
+ */
+export interface ModeSpec {
+  /** The mode's name: the last segment of its runs' keys (`<epic>/<issue>/<name>`), their branches and checkouts. */
+  name: string;
+  // BP-030.
+  /**
+   * The segment this mode's runs were stored under before it took {@link name},
+   * when that differs. A run whose key under {@link name} is absent is looked
+   * up under this one, and a run found there finishes there: its branch,
+   * checkout, retries and session keep that segment. Nothing is copied or
+   * moved. Absent: there is no older key to read.
+   */
+  formerName?: string;
+  /** The run's prompt, rebuilt on every wake from current state, never computed when the row was filed. */
+  instructions(run: PromptRunContext): string | Promise<string>;
+  /** When the run counts as done. */
+  doneWhen: ModeDone;
 }
 
 /**
@@ -654,6 +672,16 @@ export interface ManagerOptions {
    * default: the brief is the phase's prompt alone.
    */
   issueSpec?: IssueSpecOption;
+  // FIX-2878; BP-030.
+  /**
+   * On a board read from the claim: the tracker issue a task's `input` names
+   * (`ENG-142`), or `undefined` for a task that names none. A task naming one
+   * works on that issue's branch, in this manager's mode. A host whose tasks
+   * declare their input reads its own field: the harness kit's coding flow
+   * reads its task input's `issue`. Absent: the `harnessFeature` key, read
+   * for a row stored before task input was declared.
+   */
+  trackerIssueOf?: (input: unknown) => string | undefined;
   // FIX-2389.
   /**
    * Ask a person before each tool call the harness hasn't pre-allowed.
@@ -684,18 +712,17 @@ export interface ManagerOptions {
    * board's collection identity. Every request must resolve to it.
    */
   tenant: string | undefined;
-  phase: PhaseSpec;
+  /** How each run is told what to do, when it counts as done, and the segment its key ends in. */
+  mode: ModeSpec;
   /**
    * Where each run's files come from, and where it works.
    *
-   * `{ root, sourceRepo, baseRef }` cuts every run a new branch of
-   * `sourceRepo`, kept in that repository, with the checkout under `root`.
-   * A workspace host (`localWorkspaceHost` from `@flow-state-dev/workspace`)
-   * answers per run from its run source instead: a branch of an allowed
-   * remote with kept files beside it, or kept files alone. Both go through
-   * one provisioning path; the first is a host whose source is constant.
+   * A workspace host from `@flow-state-dev/workspace`, which answers per run
+   * from its run source: a branch of one repository on this machine
+   * (`localRepoWorkspaceHost`), a branch of an allowed remote with kept files
+   * beside it, or kept files alone (`localWorkspaceHost`).
    */
-  workspace: WorkspaceConfig | WorkspaceHost;
+  workspace: WorkspaceHost;
   // FIX-2794.
   /**
    * How long the harness may send nothing, in ms, before its run is stopped
@@ -774,14 +801,14 @@ export interface ManagerOptions {
    */
   stopsOnAbort?: boolean;
   /**
-   * Capabilities installed on the blocks whose contexts a phase sees — the same
+   * Capabilities installed on the blocks whose contexts a mode sees — the same
    * `uses` slot any other block takes.
    *
-   * **This replaces a bespoke `PhaseSpec.readable` record**, which was a second
-   * way to say what the framework already says. A phase that reads its own
+   * **This replaces a bespoke `readable` record on the mode**, which was a second
+   * way to say what the framework already says. A mode that reads its own
    * collections ships them as a capability and the host puts it here; the
-   * manager spreads it onto the blocks a phase's hooks run inside (the prompt
-   * builder's and the done-condition's), so `ctx.resources` resolves for them
+   * manager spreads it onto the blocks a mode's hooks run inside (the
+   * instructions' and the done check's), so `ctx.resources` resolves for them
    * exactly as it does anywhere else.
    *
    * The reserved-accessor guard is unchanged in effect and re-aimed at this:
@@ -790,91 +817,6 @@ export interface ManagerOptions {
    */
   uses?: UsesSlot;
   name?: string;
-}
-
-/**
- * The feeds a manager hands its harness, in one call.
- *
- * All of them are **declared in `@flow-state-dev/core`** and imported
- * here rather than restated: what this package picks is the slot that bundles
- * them, not the callbacks' names or their signatures.
- *
- * Why `onSession` and not only `cwd` and `resume`. A harness that throws on the manager's deadline
- * returns no handle at all, and a status item is transient by contract — so
- * neither can carry the session id to the next attempt in exactly the case
- * resume exists for. Unless the harness hands the id to manager-owned durable
- * state the MOMENT the run names it, the resume resolver reads nothing after a
- * deadline kill. `onSession` is that write side.
- */
-export interface HarnessFeeds {
-  /** Where this run works. Reads the checkout off the manager's own state. */
-  cwd: HarnessResolver<string>;
-  /**
-   * Which session this attempt continues, or `null` to start fresh.
-   *
-   * `null` on attempt 1, and on every attempt following one whose harness never
-   * confirmed a session — a resume the vendor refused, above all — so a dead id
-   * is asked for once rather than forever.
-   */
-  resume: HarnessResolver<string | null>;
-  /**
-   * Called by the harness the moment its vendor names the session, writing the
-   * id onto the run row. **The sole writer of that field.**
-   */
-  onSession: HarnessSessionHook;
-  /**
-   * Called by the harness with each subscription usage window its vendor
-   * reports during the run, writing it into the run owner's usage record
-   * (`harness-usage/**`, through `recordHarnessUsage`). A harness that reports
-   * no usage ignores it.
-   */
-  onUsage: HarnessUsageHook;
-  // FIX-2254.
-  /**
-   * Called by a harness whose run can take a line into its turn in flight,
-   * with the steer that does it, and with `null` once it can't.
-   * While a run offers one, the manager hands it each steer as it lands
-   * instead of stopping the step; a line the run refuses takes the step's
-   * end (or the stop, with `stopsOnAbort`). A harness that can't steer
-   * ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onSteerable?: HarnessSteerHook;
-  // FIX-2290.
-  /**
-   * Called by the harness with each assistant message and tool call of its
-   * run. The manager keeps the task's `statusNote` from it: the
-   * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
-   * fenced by the run's claim. A harness that reports none ignores it.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onActivity?: HarnessActivityHook;
-  // FIX-2794.
-  /**
-   * Called by the harness on every event its run sends. Each one starts the
-   * run's silence window (`idleTimeoutMs`) again and marks the run's checkout
-   * lock live. A harness that never calls it is stopped once that window has
-   * passed, however busy it is.
-   *
-   * Optional only so a host that wraps the manager's feeds in a slot of its
-   * own keeps compiling; the manager always hands one.
-   */
-  onEvent?: HarnessEventHook;
-  // FIX-2389.
-  /**
-   * Called by a harness that asks about each tool call before it runs,
-   * with the call; it answers allow, deny or held. Handed only
-   * when the manager is built with `approveTools`; absent otherwise. A held
-   * call stops the run, waits for a person, and the session resumes with the
-   * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
-   * slot that spreads `...feeds` passes it on. A harness that can't ask per
-   * call ignores it.
-   */
-  onToolApproval?: HarnessToolApprovalHook;
 }
 
 /**
@@ -906,10 +848,13 @@ export const harnessFeatureSchema = z.object({
   phase: z.string().optional(),
 });
 
-// FIX-2282.
+// FIX-2282; FIX-2878; BP-030.
 /**
- * The key a task's `input` names feature work under on a board read from the
- * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
+ * The key a task's `input` named feature work under on a board read from the
+ * claim, before task input was declared: `{ [HARNESS_FEATURE_KEY]: { issue,
+ * phase? } }`. **Internal, and read only as a legacy shape**: a manager given
+ * no `trackerIssueOf` reads it, and the harness kit's coding flow maps a
+ * stored row's onto its mode and issue. Nothing writes it any more.
  *
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
@@ -921,25 +866,15 @@ export const harnessFeatureSchema = z.object({
 export const HARNESS_FEATURE_KEY = "harnessFeature";
 
 /** True when a task's `input` names feature work, well formed or not. */
-export function namesHarnessFeature(input: unknown): boolean {
+function namesHarnessFeature(input: unknown): boolean {
   return typeof input === "object" && input !== null && HARNESS_FEATURE_KEY in input;
 }
 
-/** The parse of the key's value, or `undefined` when `input` doesn't name it: one parse for both readers below. */
+/** The parse of the key's value, or `undefined` when `input` doesn't name it. */
 function parseHarnessFeature(input: unknown) {
   return namesHarnessFeature(input)
     ? harnessFeatureSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY])
     : undefined;
-}
-
-/**
- * The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or
- * `undefined` for none or a malformed one. `phase` is absent when the task
- * names only its issue.
- */
-export function harnessFeatureOf(input: unknown): { issue: string; phase?: string } | undefined {
-  const parsed = parseHarnessFeature(input);
-  return parsed?.success === true ? parsed.data : undefined;
 }
 
 // BP-031.
@@ -989,6 +924,9 @@ const landedSchema = z.discriminatedUnion("kind", [
     // FIX-2781; BP-030.
     /** `true` when the pull request was already open from the branch, which was pushed to it. Absent on one an accept opened. */
     existing: z.boolean().optional(),
+    // FIX-2884; BP-030.
+    /** What became of it, stamped by the settle that ended the task on it: absent while open, unread, or on records before it was. */
+    state: z.enum(["merged", "closed"]).optional(),
     // FIX-2858; BP-030.
     /** The run's base, gone from the remote, when the pull request went into the default branch instead. */
     baseGone: z.string().optional(),
@@ -1088,6 +1026,10 @@ export type HarnessReviewAnswer = z.infer<typeof harnessReviewAnswerSchema>;
  */
 const decisionSchema = harnessJudgeInputSchema.nullable();
 
+// Persisted manager runs already require a nonnegative count. Session turns have historically accepted any integer.
+const managerApprovalSchema = toolApprovalStateSchema.extend({ steps: z.number().int().nonnegative().default(0) });
+const EMPTY_APPROVALS = managerApprovalSchema.parse({});
+
 /**
  * The manager's per-run values.
  *
@@ -1106,7 +1048,7 @@ const managerStateSchema = z.object({
   /** The board segment of the run's identity (`runBoardSegment`). */
   epic: z.string().nullable().default(null),
   issue: z.string().nullable().default(null),
-  /** The tracker issue the task names (`PhaseRunContext.trackerIssue`); `null` for none. */
+  /** The tracker issue the task names (`ModeRunContext.trackerIssue`); `null` for none. */
   trackerIssue: z.string().nullable().default(null),
   phase: z.string().nullable().default(null),
   topic: z.string().nullable().default(null),
@@ -1149,6 +1091,15 @@ const managerStateSchema = z.object({
    * `null` on any other turn.
    */
   wake: z.string().nullable().default(null),
+  // FIX-2884.
+  /**
+   * What the wake found when a person's words woke it and its pull requests had
+   * merged or closed: the lead those words reach the run under, in place of the
+   * one for a pull request still open. Non-null only when `wake` is, and the
+   * mark that this turn only answers (no review, no judge's verdict). `null` on
+   * any other turn.
+   */
+  wakeNews: z.string().nullable().default(null),
   // FIX-2086.
   /** How many more harness steps this request ran for a steer. Each names that read. */
   steerSteps: z.number().nullable().default(null),
@@ -1159,14 +1110,7 @@ const managerStateSchema = z.object({
    * the answers left (per try, never on the task), and how many steps
    * an answer resumed. `null` until the first call is held.
    */
-  approvals: z
-    .object({
-      pending: heldToolCallSchema.nullable().default(null),
-      grants: z.array(toolGrantSchema).default([]),
-      steps: z.number().int().nonnegative().default(0),
-    })
-    .nullable()
-    .default(null),
+  approvals: managerApprovalSchema.nullable().default(null),
   /**
    * What `decide` decided, for the step that settles it once a judge (if
    * any) has read the run: the output to return, and whether the task is held
@@ -1385,7 +1329,8 @@ export function describeTenant(tenantId: string | undefined): string {
  * feature row carries, or `undefined` for a row that names no feature work (a
  * task a conversation filed), whose task id then stands in for the issue.
  *
- * On a board read from the claim, feature work is named only under
+ * On a board read from the claim, feature work is named by the host's
+ * `trackerIssueOf` when it passes one, and otherwise only under
  * {@link HARNESS_FEATURE_KEY}; the rest of `input` is the filer's own, so a
  * plain `issue` or `phase` there says nothing. A row whose key holds anything
  * but both as strings is refused: such a row is never run as a task that
@@ -1399,7 +1344,12 @@ export function describeTenant(tenantId: string | undefined): string {
 function taskPayload(
   input: { input?: unknown; taskId: string },
   fixedBoard: boolean,
+  trackerIssueOf: ManagerOptions["trackerIssueOf"],
 ): { issue: string; phase?: string } | undefined {
+  if (!fixedBoard && trackerIssueOf !== undefined) {
+    const issue = trackerIssueOf(input.input);
+    return issue === undefined ? undefined : { issue };
+  }
   if (fixedBoard) {
     const parsed = harnessTaskInputSchema.safeParse(input.input);
     if (parsed.success) return parsed.data;
@@ -1424,10 +1374,12 @@ function taskPayload(
  * {@link managerStateSchema} are handed them.
  */
 type ManagerState = z.infer<typeof managerStateSchema>;
+type RunRecordIdentityState = Pick<ManagerState, "taskId" | "attempt" | "topic" | "ticket" | "claim">;
+type ManagerContext = Omit<BlockContext, "sequencer"> & { sequencer?: StateRef<ManagerState> };
 
 /** The attempt identity every run-record write is fenced against. */
 function identityFrom(
-  state: ManagerState | undefined,
+  state: RunRecordIdentityState | undefined,
   boardCollectionId: string,
 ): AttemptIdentity {
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
@@ -1445,31 +1397,9 @@ function identityFrom(
   };
 }
 
-/**
- * The manager's state as a HARNESS's callback sees it.
- *
- * The harness is not one of our blocks, so its callbacks are handed the
- * framework's DEFAULT sequencer state rather than this manager's — the cast is
- * where that gap is crossed. One function rather than the same cast at each of
- * the three feeds: three spellings of one assumption is the shape that drifts,
- * and only one of them would be updated when the state grows.
- *
- * Typed by what it reads, like {@link RequestIdentityContext} above, so any
- * context satisfies it structurally and no caller needs the harness alias.
- *
- * It asserts nothing. The manager owns this shape and the harness never learns
- * it, which is the point of the channel; what each feed does about an empty
- * state is the feed's own business, and they differ.
- */
-function harnessCtxState(ctx: {
-  sequencer?: { state?: unknown } | undefined;
-}): ManagerState | undefined {
-  return ctx.sequencer?.state as ManagerState | undefined;
-}
-
 /** This run's refusal of the row it holds. Claim board: `errored` (a cancel there reaches nobody). Fixed board: `cancelled`. */
-function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, message: string): HarnessRunRefused {
-  const state = harnessCtxState(ctx);
+function runRefused(ctx: Pick<ManagerContext, "sequencer">, message: string): HarnessRunRefused {
+  const state = ctx.sequencer?.state;
   return new HarnessRunRefused(message, {
     taskId: state?.taskId ?? "",
     ending: state?.claim != null ? "errored" : "cancelled",
@@ -1568,6 +1498,18 @@ function onPullRequestLine(open: ExistingPullRequest): string {
   return `The work goes onto pull request #${open.number}, already open from ${open.branch}: ${open.url}. No second pull request is opened.`;
 }
 
+/** An open pull request as the review card links it, or `null` when there is none or its link isn't a pull request's. */
+function openPullRequestOf(open: ExistingPullRequest | null): ReviewPullRequest | null {
+  const ref = open === null ? null : pullRequestRefFromUrl(open.url);
+  return ref === null ? null : { number: ref.number, url: ref.url };
+}
+
+// FIX-2920.
+/** The review's line for a pull request open from the branch that no accept on this task landed on yet. */
+function openPullRequestLine(open: ExistingPullRequest): string {
+  return `Pull request #${open.number} is already open from ${open.branch}: ${open.url}. An accept that lands as a pull request puts the work on it; no second pull request is opened.`;
+}
+
 /** The most characters a pull request's title keeps. */
 const PULL_REQUEST_TITLE_CHARS = 72;
 
@@ -1602,7 +1544,7 @@ function pullRequestText(
  * it. Never throws: a record that can't be written is a status note.
  */
 async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
+  const collection = ctx.resources?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
   const link = pullRequestRefFromUrl(landed.url);
   if (typeof collection?.upsert !== "function" || link === null) return;
   try {
@@ -1617,17 +1559,17 @@ async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed
 }
 
 /** The run a follower is handed: the task it works, so that task's failure or cancel ends what the follower made. */
-function followingRun(ctx: { sequencer?: { state?: unknown } | undefined }): FollowingRun {
-  const taskId = harnessCtxState(ctx)?.taskId;
+function followingRun(ctx: Pick<ManagerContext, "sequencer">): FollowingRun {
+  const taskId = ctx.sequencer?.state.taskId;
   return taskId == null ? {} : { taskId };
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
-function managerState(state: ManagerState | undefined): ManagerState {
-  if (state?.workspacePath == null) {
+function managerState<TState extends Record<string, unknown>>(state: TState | undefined): TState & { workspacePath: string } {
+  if (typeof state?.workspacePath !== "string") {
     throw new Error("[harness-manager] the manager's sequencer state has no checkout on it.");
   }
-  return state;
+  return state as TState & { workspacePath: string };
 }
 
 /**
@@ -1646,7 +1588,7 @@ function managerState(state: ManagerState | undefined): ManagerState {
  * 1. `waitMs` — the lock wait. A worker queued behind another attempt's tree is
  *    working, not stuck, and cancelling it is the same defect.
  * 2. the provisioning budget — one deadline for all of git, see
- *    `WorkspaceConfig.provisionTimeoutMs`.
+ *    the workspace host's `provisionTimeoutMs`.
  * 3. `runTimeoutMs` — the agent. A run capped on time by its host is waited
  *    out to its cap. The default cap (4 hours) and no cap (`0`) are not a
  *    length a shutdown should wait out, so the host names how long a
@@ -1955,9 +1897,9 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<void> {
+async function checkBranchPullRequests(ctx: ManagerContext, worktree?: string | null): Promise<void> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
-  const state = harnessCtxState(ctx);
+  const state = ctx.sequencer?.state;
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
   const worktrees = worktreesOf(ctx);
   const result = await recordBranchPullRequests(ctx, {
@@ -1973,12 +1915,6 @@ async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | nu
   }
 }
 
-/** The user's worktree rows off a block's context, when the capability is installed. */
-function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
-  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
-  return typeof collection?.upsert === "function" ? collection : undefined;
-}
-
 /**
  * The issue a run's branch leads with: a task's tracker issue, on a board read
  * from the claim only. A fixed board's branch is already named for its issue.
@@ -1989,7 +1925,7 @@ function branchIssue(claimBoard: boolean, trackerIssue: string | null | undefine
 
 // FIX-2086.
 /**
- * Build the manager: one dispatched worker for one phase.
+ * Build the manager: one dispatched worker for one mode.
  *
  * A steer on the task is in the attempt's first prompt, and one that arrives
  * while a step runs is the next step of the same request.
@@ -2005,9 +1941,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     awaitPullRequests = false,
     onPullRequestRecorded,
     issueSpec,
+    trackerIssueOf,
     approveTools = false,
     tenant,
-    phase: callerPhase,
+    mode: callerMode,
     workspace,
     runTimeoutMs,
     harnessLabel,
@@ -2045,13 +1982,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // cannot disagree.
   if (boardCollectionId !== undefined) assertDerivedIdentity("boardCollectionId", boardCollectionId);
 
-  // **A phase is caller-owned validated configuration, so it is snapshotted.**
+  // **A mode is caller-owned validated configuration, so it is snapshotted.**
   // Held by reference, a host could swap `implement` for `review` after this
   // returns and leave the implement prompt and completion check attached to
-  // rows both runtime guards now accept. Shallow, which is all the shape needs.
-  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+  // rows both runtime guards now accept. Two levels, which is all the shape needs.
+  const mode: ModeSpec = Object.freeze({ ...callerMode, doneWhen: Object.freeze({ ...callerMode.doneWhen }) });
 
-  // **The phase's own preconditions, at the manager's door.**
+  // **The mode's own preconditions, at the manager's door.**
   //
   // This used to live in one host's flow builder, which meant a host
   // constructing this manager directly — the documented way — silently skipped
@@ -2060,40 +1997,37 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // retry, until the budget is gone. A preflight only one caller runs is not a
   // preflight.
   //
-  // **Captured, not left on the phase.** What `validate` learns belongs to THIS
-  // manager; a phase that stored it on itself would hand it to the next one.
-  const validated = phase.validate?.(workspace);
+  // **Captured, not left on the mode.** What `validate` learns belongs to THIS
+  // manager; a mode that stored it on itself would hand it to the next one.
+  const validated = mode.doneWhen.validate?.(workspace);
 
-  // The phase this manager actually runs: this construction's `validated` bound
+  // The mode this manager actually runs: this construction's `validated` bound
   // into every run context, by a closure that belongs to it and nothing else.
-  // Two managers from one `PhaseSpec` get two wrappers, so neither can reach the
-  // other's value — the property the phase cannot give itself, since the
+  // Two managers from one `ModeSpec` get two wrappers, so neither can reach the
+  // other's value — the property the mode cannot give itself, since the
   // snapshot above copies function references and not what they close over.
   //
   // Gated on the VALUE rather than on `validate` being defined, and the two are
   // equivalent: binding `undefined` produces a context whose `validated` is
-  // `undefined`, which is what an unwrapped phase already receives. So a
+  // `undefined`, which is what an unwrapped mode already receives. So a
   // `validate` that only refuses costs no allocation per run.
   //
   // **Both hooks, because the type promises both.** `validated` lives on
-  // `PhaseRunContext`, which `PromptRunContext` extends — so a prompt builder is
-  // told it receives the value. Binding it into `isDone` alone made the type a
-  // lie for the other half: a phase whose prompt depends on what `validate`
-  // found would read `undefined` and build the wrong prompt, silently, after a
-  // construction that succeeded.
-  const runPhase: PhaseSpec =
+  // `ModeRunContext`, which `PromptRunContext` extends — so the instructions are
+  // told they receive the value. Binding it into the done check alone made the
+  // type a lie for the other half: a mode whose prompt depends on what
+  // `validate` found would read `undefined` and build the wrong prompt,
+  // silently, after a construction that succeeded.
+  const runMode: ModeSpec =
     validated === undefined
-      ? phase
+      ? mode
       : Object.freeze({
-          ...phase,
-          isDone: (run: CompletionRunContext) => phase.isDone({ ...run, validated }),
-          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+          ...mode,
+          instructions: (run: PromptRunContext) => mode.instructions({ ...run, validated }),
+          doneWhen: Object.freeze({ ...mode.doneWhen, check: (run: CompletionRunContext) => mode.doneWhen.check({ ...run, validated }) }),
         });
 
-  // **One provisioning path.** A fixed repository is a host whose source is
-  // constant and whose repository is used as it stands, so its runs' branches
-  // stay in `sourceRepo` and their checkouts where they always were.
-  const host: WorkspaceHost = isWorkspaceHost(workspace) ? workspace : hostForConfig(workspace);
+  const host: WorkspaceHost = workspace;
 
   // FIX-2794.
   // Checked here, before anything is claimed: a timer handed a bad number
@@ -2115,7 +2049,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const { ownership } = resolveOwnership({
     runTimeoutMs: idleTimeoutMs,
     provisionTimeoutMs: host.provisionTimeoutMs,
-    doneTimeoutMs: runPhase.doneTimeoutMs,
+    doneTimeoutMs: runMode.doneWhen.timeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -2250,8 +2184,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
   // FIX-2086.
   /** The run's row as stored now: a steer is another request's write. */
-  const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
-    const taskId = managerState(harnessCtxState(ctx)).taskId;
+  const committedRow = async (ctx: ManagerContext): Promise<Task | undefined> => {
+    const taskId = managerState(ctx.sequencer?.state).taskId;
     if (taskId === null) return undefined;
     const board = await runBoard(ctx);
     return readCommittedTask(board, taskId);
@@ -2259,7 +2193,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
   /** Take this attempt's untaken steers in `takenIn`, fenced to the claim, then return what `select` reads. */
   const takeSteersFor = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     takenIn: string,
     select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
   ): Promise<{ steers: ShownSteer[]; taken: TaskSteer[] } | null> => {
@@ -2270,7 +2204,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (board.takeSteers !== undefined && untakenSteers(row).length > 0) {
       // The claim this run holds, never one minted from the row now: a later
       // turn of the attempt holds another ticket, and its steers are its own.
-      const claim = harnessCtxState(ctx)?.ticket ?? null;
+      const claim = ctx.sequencer?.state.ticket ?? null;
       if (claim === null) return null;
       const outcome = await board.takeSteers(row.id, { claim, takenIn });
       // Declined: the attempt no longer holds the row (claimed again, finished).
@@ -2286,8 +2220,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   };
 
   /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
-  const runBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
-    const claim = harnessCtxState(ctx)?.claim ?? null;
+  const runBoard = async (ctx: ManagerContext): Promise<TaskCollectionRef> => {
+    const claim = ctx.sequencer?.state.claim ?? null;
     if (claim === null) return boardTasks(ctx);
     const board = await claimLedger(ctx, claim);
     if (board === undefined) {
@@ -2309,7 +2243,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const identityOf = (
     ctx: BlockContext,
-    state: ManagerState | undefined,
+    state: RunRecordIdentityState | undefined,
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
     const base = identityFrom(state, claim?.collectionId ?? boardCollectionId!);
@@ -2363,8 +2297,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * left as they were by the flush and are named on the record. A place with
    * no kept files (a fixed repository) writes nothing and answers `true`.
    */
-  const saveKeptFiles = async (ctx: BlockContext): Promise<boolean> => {
-    const state = harnessCtxState(ctx);
+  const saveKeptFiles = async (ctx: ManagerContext): Promise<boolean> => {
+    const state = ctx.sequencer?.state;
     const place = state?.place;
     if (place == null || place.filesDir === undefined) return true;
     let error: string | null = null;
@@ -2401,8 +2335,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * times first. A displaced attempt's record write is refused like every
    * other one, and nothing is dropped. With holding off, nothing runs.
    */
-  const holdWork = async (ctx: BlockContext): Promise<boolean> => {
-    const state = harnessCtxState(ctx);
+  const holdWork = async (ctx: ManagerContext): Promise<boolean> => {
+    const state = ctx.sequencer?.state;
     const place = state?.place;
     if (place == null || place.holding === undefined) return true;
     const identity = identityOf(ctx, state);
@@ -2447,9 +2381,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * Write where the run's place stands, where the host holds work. With
    * holding off this is never called and the record gains no `place`.
    */
-  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
+  const recordPlace = async (ctx: ManagerContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
     await fenced(
-      writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+      writeRunRecord(ctx, identityOf(ctx, ctx.sequencer?.state), {
         place: { host: placeHost, state: placeState },
       }),
       `the place was recorded ${placeState}`,
@@ -2471,11 +2405,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * stream; a failed one is said with its tail and the run goes on.
    */
   const provisionPlace = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     answer: RunSourceAnswer,
     location: RunLocation,
   ): Promise<WorkspacePlace> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const holding = host.holds(answer);
     const recordedHost = state.recordedPlace?.host ?? null;
     const held = recordedHoldOf(state.held);
@@ -2534,7 +2468,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * the manager's one way to stop for a person. Stops the run when its turn
    * no longer holds the row.
    */
-  const holdOnQuestion = async (ctx: BlockContext, question: string): Promise<void> => {
+  const holdOnQuestion = async (ctx: ManagerContext, question: string): Promise<void> => {
     if ((await askStep(ctx, await runBoard(ctx), question)) === "superseded") {
       throw new HarnessAttemptSuperseded("the run's question held its task");
     }
@@ -2548,11 +2482,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * the run and the field, never the work's contents.
    */
   const holdOnMismatch = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     mismatch: HeldWorkMismatchError,
     placeHost: string | null,
   ): Promise<never> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const identity = identityOf(ctx, state);
     const held = state.held === null ? null : { ...state.held, parked: true };
     await fenced(
@@ -2587,9 +2521,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The host's capabilities too: the workspace's run source is asked here,
     // and a source that reads a collection resolves it off this context.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // Annotated for the reason `prepare`'s is: the host's `uses` widens the
-    // inferred context past what the helpers below accept.
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       // **Which board, from the claim, checked against the row before
       // anything else.** The claim on the input is the entry adapter's copy of
       // the gate's ticket; the row at that ledger and partition is the
@@ -2633,6 +2565,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         goal: input.goal,
         decided: null,
         wake: null,
+        wakeNews: null,
         openedAt: Date.now(),
       });
 
@@ -2643,11 +2576,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // its own task ids, unique in their partition, so there the task id
       // keeps two rows with one payload out of one tree, as the derived id
       // does on a fixed board.
-      const payload = taskPayload(input, claim === null);
-      const phaseName = payload?.phase ?? phase.phase;
+      const payload = taskPayload(input, claim === null, trackerIssueOf);
+      // A legacy feature payload's own `phase` names the segment its run is keyed by.
+      const segment = payload?.phase ?? mode.name;
       const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
       if (payload !== undefined) {
-        assertFeatureRowIdentity(input.taskId, payload.issue, phaseName, phase.phase, claim === null);
+        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode, claim === null);
       }
       // The issue the task is for, when it names one. On a board read from
       // the claim it also leads the branch (see `branchFor`), checked as an
@@ -2728,11 +2662,39 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Building them from one object is what stops a discriminator reaching one
       // and missing another, which would leave the report partitioned and the
       // overwrite on disk.
-      const topic = runTopic(epic, issue, phaseName);
+      //
+      // BP-030: a run of this mode stored under its former name before the
+      // rename is found there, and finishes there: the segment it was found
+      // under keys its branch, checkout and every later write. Nothing is
+      // copied to the new key.
+      // A payload naming the mode's own name reads it with its fallback; one
+      // naming its former name (a row filed before the rename) is read, and
+      // finishes, under that segment, as its derived id and branch already are.
+      //
+      // **The key is folded as the checkout and the task id are**, so `DEFAULT`
+      // and `default`, which are one task, one checkout and one branch, are one
+      // run record too. And the former key is read for this task only: a
+      // record there of another row (another payload of the same issue) is not
+      // this run, and is never adopted.
+      const keyed = assertSafeSegment("mode", segment);
+      const found = await readModeRunRecord(
+        ctx,
+        epic,
+        issue,
+        sameSegment(segment, mode.name)
+          ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
+          : { name: keyed },
+        input.taskId,
+        // BP-030: before the key folded, the payload's own spelling was the key.
+        segment,
+      );
+      const phaseName = found.segment;
+      const topic = found.topic;
 
       await ctx.sequencer!.patchState({
         issue,
         trackerIssue,
+        // The state key keeps its name: a run held across a deploy reads it (BP-030).
         phase: phaseName,
         topic,
         taskId: input.taskId,
@@ -2742,9 +2704,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **Where the run works, from the workspace host.** Its source is asked
       // now because the checkout's path is recorded on the row and named in
       // the prompt before anything is provisioned. A run already provisioned
-      // keeps the repository its record names (see `pinnedAnswer`). With a
-      // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
-      const recorded = await readRunRecord(ctx, topic);
+      // keeps the repository its record names (see `pinnedAnswer`). On a
+      // `localRepoWorkspaceHost` this is the path `checkoutPathFor` derives.
+      const recorded = found.record;
       try {
         assertPlaceAndHeld(recorded);
       } catch (corrupt) {
@@ -2848,7 +2810,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await fenced(
         openRunRecord(
           ctx,
-          identityOf(ctx, harnessCtxState(ctx)),
+          identityOf(ctx, ctx.sequencer?.state),
           {
             workspacePath,
             branch,
@@ -2876,8 +2838,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * lease the caller holds: asked of the source on this context, refused when
    * the source moved the run since it opened.
    */
-  const provisionRunPlace = async (ctx: BlockContext): Promise<WorkspacePlace> => {
-    const state = managerState(harnessCtxState(ctx));
+  const provisionRunPlace = async (ctx: ManagerContext): Promise<WorkspacePlace> => {
+    const state = managerState(ctx.sequencer?.state);
     const location = locationFor(
       {
         principal: runPrincipal(ctx),
@@ -2907,12 +2869,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * check to add pull requests to; `null` for a run with no checkout or no
    * row. Never throws: a failed read is a status note.
    */
-  const recordRunCheckout = async (ctx: BlockContext): Promise<string | null> => {
-    const raw = harnessCtxState(ctx);
+  const recordRunCheckout = async (ctx: ManagerContext): Promise<string | null> => {
+    const state = ctx.sequencer?.state;
     const worktrees = worktreesOf(ctx);
-    if (raw?.workspacePath == null || raw.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
+    if (state?.workspacePath == null || state.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
     try {
-      const state = managerState(raw);
       const place = placeFor(
         locationFor(
           {
@@ -2945,15 +2906,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The host's capabilities ride alongside the manager's own, so a phase's
     // prompt builder reads its collections off `ctx.resources` like any block.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // **`ctx` is annotated rather than inferred, and the annotation is
-    // load-bearing.** The host's `uses` widens the context `handler()` infers —
-    // its capabilities' resources and namespaces appear in it — and a narrowed
-    // `BlockContext` is not assignable to a plain one, so every helper called
-    // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createManagerCapability` carries the long form of the same
-    // argument.
-    execute: async (input, ctx: BlockContext): Promise<HarnessRunInput> => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx): Promise<HarnessRunInput> => {
+      const state = managerState(ctx.sequencer?.state);
       // FIX-2522; FIX-2519. The brief's files go to every run of the task, so
       // a re-run sees what the first run saw. A harness that declares what it
       // takes refuses any other type itself, by name, before its run starts;
@@ -2981,9 +2935,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         epic: state.epic!,
         issue: state.issue!,
         trackerIssue: state.trackerIssue ?? null,
-        phase: state.phase!,
+        mode: state.phase!,
         attempt: input.attempts,
-        workspacePath: state.workspacePath!,
+        workspacePath: state.workspacePath,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
         ctx,
@@ -2999,7 +2953,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam
         // for a question to leave through (see `./ask`).
-        askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts, state.run!),
+        askMarkerPath: askMarkerPath(state.workspacePath, input.attempts, state.run!),
       };
 
       // **Bounded for the same reason the completion check is.** This await
@@ -3015,9 +2969,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // account for would make the advertised number wrong in the other
       // direction, which is the defect being fixed, inverted.
       const prompt = await withDeadline(
-        async () => runPhase.buildPrompt(run),
+        async () => runMode.instructions(run),
         NETWORK_CALL_TIMEOUT_MS,
-        `the ${state.phase} phase's prompt builder`,
+        `the ${state.phase} mode's instructions`,
       );
 
       // **Ownership first, then provisioning.** Validating the worktree and
@@ -3032,7 +2986,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
       const lease = await acquireCheckout(
-        state.workspacePath!,
+        state.workspacePath,
         `${input.taskId}#${input.attempts}`,
         ownership,
         Date.now,
@@ -3082,7 +3036,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               }
             : { filesOnly: true };
         await fenced(
-          writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
+          writeRunRecord(ctx, identityOf(ctx, ctx.sequencer?.state), pin),
           "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
@@ -3115,7 +3069,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const briefed = specSection === undefined ? withRestored : `${specSection}\n\n${withRestored}`;
       const withSteers = steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`;
       return {
-        prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, PULL_REQUEST_NEWS)}`,
+        prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, state.wakeNews ?? PULL_REQUEST_NEWS)}`,
         ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
       };
     },
@@ -3210,16 +3164,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     sequencerStateSchema: managerStateSchema,
     // The done-condition runs in here, and it sees a phase's collections too.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // **`ctx` is annotated rather than inferred, and the annotation is
-    // load-bearing.** The host's `uses` widens the context `handler()` infers —
-    // its capabilities' resources and namespaces appear in it — and a narrowed
-    // `BlockContext` is not assignable to a plain one, so every helper called
-    // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createManagerCapability` carries the long form of the same
-    // argument.
-    execute: async (handle, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
-      const identity = identityOf(ctx, harnessCtxState(ctx));
+    execute: async (handle, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
+      const identity = identityOf(ctx, state);
       const succeeded = handle.status === "completed";
       followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
@@ -3236,12 +3183,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       let resolvedCut: Promise<string | null> | undefined;
       const settleCut = (): Promise<string | null> =>
         (resolvedCut ??=
-          state.filesOnly === true || host.baseTip === undefined || state.workspacePath == null
+          state.filesOnly === true || host.baseTip === undefined
             ? Promise.resolve(state.baseCommit ?? null)
             : Promise.resolve()
-                .then(() => host.baseTip!({ cwd: state.workspacePath!, baseRef: state.baseRef }))
+                .then(() => host.baseTip!({ cwd: state.workspacePath, baseRef: state.baseRef }))
                 .then(
-                  (tip) => effectiveCut(state.workspacePath!, state.baseCommit ?? null, tip ?? null),
+                  (tip) => effectiveCut(state.workspacePath, state.baseCommit ?? null, tip ?? null),
                   () => state.baseCommit ?? null,
                 ));
 
@@ -3275,12 +3222,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())))
+            ? (read ?? (await readRunDiff(state.workspacePath, state.baseRef, await settleCut())))
             : null;
         // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
         const round: RunCommits | null =
           diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
-            ? await readRunCommits(state.workspacePath!, state.baseRef, await settleCut(), { since: state.roundStart })
+            ? await readRunCommits(state.workspacePath, state.baseRef, await settleCut(), { since: state.roundStart })
             : null;
         // The cut this settle read against, on every settle, so a file's patch read later reads as the review's files and the judge's did.
         await fenced(writeRunRecord(ctx, identity, { effectiveCut: await settleCut() }), "the cut the run was read against was recorded");
@@ -3291,7 +3238,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [], verified: true })
-          : settleCut().then((cut) => readRunCommits(state.workspacePath!, state.baseRef, cut));
+          : settleCut().then((cut) => readRunCommits(state.workspacePath, state.baseRef, cut));
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -3328,8 +3275,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // next turn, so an earlier run's question file is still on disk, and a
       // fixed path makes a run that quietly did nothing look exactly like a run
       // that asked.
-      const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
-      // Why the phase's check said not done, when it said (`PhaseDoneVerdict.reason`).
+      const question = await readAskMarker(state.workspacePath, identity.attempt, state.run!);
+      // Why the phase's check said not done, when it said (`ModeDoneVerdict.reason`).
       let notDoneReason: string | undefined;
 
       // ── Arm 1: the verdict did NOT fail AND this run asked ──────────────────
@@ -3359,10 +3306,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // under them. The wait for it counts against the same bound, so the
         // drain budget stays true; a wait that outlives it means this attempt
         // was displaced, and it fails rather than check another's tree.
-        const doneBoundMs = runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
+        const doneBoundMs = runMode.doneWhen.timeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
         const doneStarted = Date.now();
         const doneLease = await acquireCheckout(
-          state.workspacePath!,
+          state.workspacePath,
           `${identity.taskId}#${identity.attempt}`,
           ownership,
           Date.now,
@@ -3383,7 +3330,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // A task deleted and filed again under the same id can be on the same attempt and turn.
           (identity.incarnationId !== undefined && rowNow.incarnationId != null && rowNow.incarnationId !== identity.incarnationId)
         ) {
-          releaseLeaseFromState(ctx);
+          releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
           throw new HarnessAttemptSuperseded(`its completion check started (the task is ${rowNow?.status ?? "gone"})`);
         }
         // **Stopped before the lease goes.** `withDeadline` rejects on time
@@ -3393,13 +3340,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // kills its running command and starts none after it.
         const stopCheck = new AbortController();
         const checking = Promise.resolve().then(() =>
-          runPhase.isDone({
+          runMode.doneWhen.check({
             epic: state.epic!,
             issue: state.issue!,
             trackerIssue: state.trackerIssue ?? null,
-            phase: state.phase!,
+            mode: state.phase!,
             attempt: identity.attempt,
-            workspacePath: state.workspacePath!,
+            workspacePath: state.workspacePath,
             branch: state.branch!,
             // **Crossed as reported, and compared on by nothing here.** This
             // block's own input schema reads `outcome` as a plain string
@@ -3415,19 +3362,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             ctx,
           }),
         );
-        let doneAnswer: Awaited<ReturnType<PhaseSpec["isDone"]>>;
+        let doneAnswer: Awaited<ReturnType<ModeDone["check"]>>;
         try {
           doneAnswer = await withDeadline(
             () => checking,
             Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
-            `the ${state.phase} phase's completion check`,
+            `the ${state.phase} mode's completion check`,
           );
         } catch (error) {
           stopCheck.abort();
           await Promise.race([checking.then(() => undefined, () => undefined), sleepFor(DONE_STOP_GRACE_MS, undefined, { ref: false })]);
           throw error;
         } finally {
-          releaseLeaseFromState(ctx);
+          releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
         }
         const verdict = readVerdict(doneAnswer);
         // **The checks it ran go on the run record, whatever the verdict**, so
@@ -3464,7 +3411,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The judge reads what the commits changed, read once and kept for the review too.
           const diff =
             judged && state.filesOnly !== true && commits.verified
-              ? await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())
+              ? await readRunDiff(state.workspacePath, state.baseRef, await settleCut())
               : null;
           const judgeInput = judged
             ? {
@@ -3561,7 +3508,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Idempotent: the release is token-guarded, so the harness path's
       // `onSettled` having already released makes this a no-op, and it can
       // never remove a replacement's lock.
-      releaseLeaseFromState(ctx);
+      releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
 
       // **A failed run keeps what it wrote.** Saved after the lease is let go:
       // the save touches only the run's kept files, never the checkout. A
@@ -3622,9 +3569,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const askAboutToolCall: HarnessToolApprovalHook = (request, ctx) => {
     const requestId = ctx.request.identity.id;
-    const state = managerState(harnessCtxState(ctx));
-    const call = heldToolCallOf(request, state.workspacePath!);
-    const grants = state.approvals?.grants ?? [];
+    const state = managerState(ctx.sequencer?.state);
+    const call = heldToolCallOf(request, state.workspacePath);
+    const approvals = state.approvals as ManagerState["approvals"];
+    const grants = approvals?.grants ?? [];
     const spent = spentGrants.get(requestId) ?? new Set<number>();
     const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
     if (granted >= 0) {
@@ -3665,28 +3613,29 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * the run writes nor what conversation it continues, and that is structural
    * rather than a convention this manager keeps: a resolver is handed the
    * context alone, so the caller's prompt is not reachable from here at all.
-   *
-   * All three reach the manager's state through `harnessCtxState`, which is
-   * where the cast lives and says why.
    */
   const harnessBlock = harness({
     // The run edits ITS checkout, and the record of what it touched is keyed
     // there too.
-    cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
+    cwd: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
+    // The fence's directory is the checkout itself.
+    worktree: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
     // Which session this attempt continues. `null` on attempt 1, and on every
     // attempt after one whose harness named no session — a resume the vendor
     // refused, above all — so a dead id is not re-sent forever.
-    resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
+    resume: ({ sequencer }) => {
+      const sessionId = sequencer?.state.previousSessionId;
+      return typeof sessionId === "string" ? sessionId : null;
+    },
     // **Fenced like every other write.** A refusal here means a replacement
     // holds the row, and recording this attempt's session onto it would hand
     // the replacement's next attempt a conversation that belongs to a run
     // nobody is waiting on. Stopping is also the right answer for the run
     // itself: it is mid-stream in paid model work on a row it no longer owns.
     onSession: async (sessionId, ctx) => {
+      const state = ctx.sequencer?.state as RunRecordIdentityState | undefined;
       await fenced(
-        writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
-          sessionId,
-        }),
+        writeRunRecord(ctx, identityOf(ctx, state), { sessionId }),
         "the harness named its session",
       );
     },
@@ -3711,10 +3660,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       harnessStops.heard(ctx);
       const now = Date.now();
       if (now - (lockRefreshedAt.get(requestId) ?? 0) < LOCK_REFRESH_MS) return;
-      const state = harnessCtxState(ctx);
-      if (state?.lockPath == null || state.leaseToken == null) return;
+      const lease = checkoutLeaseFromState(ctx.sequencer?.state);
+      if (lease === undefined) return;
       lockRefreshedAt.set(requestId, now);
-      refreshCheckout({ lockPath: state.lockPath, token: state.leaseToken });
+      refreshCheckout(lease);
     },
     // The step's notes, throttled, onto the task's `statusNote`.
     onActivity: (activity, ctx) => {
@@ -3739,12 +3688,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * own context, like the steer watch.
    */
   const progressNotes = new Map<string, ProgressNotes>();
-  const startProgressNotes = (ctx: BlockContext): void => {
+  const startProgressNotes = (ctx: ManagerContext): void => {
     progressNotes.get(ctx.request.identity.id)?.stop();
     progressNotes.set(
       ctx.request.identity.id,
       throttledNotes(async (statusNote) => {
-        const state = harnessCtxState(ctx);
+        const state = ctx.sequencer?.state;
         const claim = state?.ticket ?? null;
         const taskId = managerState(state).taskId;
         if (claim === null || taskId === null) return false;
@@ -3804,10 +3753,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           ]);
 
   /** Read the task's pull requests from GitHub, in the run's checkout when it still has one, inside the one network-call bound. */
-  const readTaskPullRequests = (ctx: BlockContext, prs: readonly TaskPullRequest[]) => {
-    const path = managerState(harnessCtxState(ctx)).workspacePath;
+  const readTaskPullRequests = (ctx: ManagerContext, prs: readonly TaskPullRequest[]) => {
+    const path = managerState(ctx.sequencer?.state).workspacePath;
     return readPullRequestStates(ctx, prs, {
-      cwd: path != null && existsSync(path) ? path : process.cwd(),
+      cwd: existsSync(path) ? path : process.cwd(),
       timeoutMs: NETWORK_CALL_TIMEOUT_MS,
     });
   };
@@ -3827,12 +3776,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * no harness: `woken` says so, and the caller ends the chain on it.
    */
   const settleOnPullRequests = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     prs: readonly TaskPullRequest[],
     output: ManagerOutput,
     woken?: { readonly reads: Awaited<ReturnType<typeof readPullRequestStates>> },
   ): Promise<ManagerOutput> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const identity = identityOf(ctx, state);
     // Read once per settle: a wake hands over the read it already made.
     const reads = woken?.reads ?? (await readTaskPullRequests(ctx, prs));
@@ -3843,13 +3792,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         { transient: false },
       );
     }
-    const settled = { ...output, pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest) };
+    const settled = {
+      ...output,
+      pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest),
+      // FIX-2884.
+      landed: "unreadable" in reads ? output.landed : withSettledState(output.landed, reads.read),
+    };
     // A wake that settles runs no harness, and its open cleared the session the run confirmed:
     // put it back, so a later message to the finished task still resumes it.
     const confirmed = woken !== undefined ? { sessionId: state.previousSessionId } : {};
     if (verdict === "complete") {
-      // A wake's own words go with it: the task is done, and nothing is left owed.
-      if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      // A wake that settles here took what it was owed before choosing to: nothing is left owed.
       await fenced(writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the run record was completed");
       return settled;
     }
@@ -3900,9 +3853,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   /**
    * **The wake a task's pull-request wait owes**, before anything
    * else runs: the turn the wait's release owes reads its pull requests
-   * first. Merged or closed settles the task here, with no harness run, by
-   * ending the chain on {@link SettledOnPullRequests}; open or unreadable
-   * goes on, and the wake's words reach the run as its brief. A pass-through
+   * first. Merged or closed, with only outside news on the wake (the pull
+   * request's own delivery, a deadline), settles the task here, with no harness
+   * run, by ending the chain on {@link SettledOnPullRequests}. Words a person
+   * sent always run, led by what became of the pull requests, and
+   * the settle after the run ends the task. Open or unreadable goes on, and the
+   * wake's words reach the run as its brief. A pass-through
    * unless `awaitPullRequests` is on and this turn is that wake: the row's
    * newest external wait is answered, by a steer this attempt has not taken.
    */
@@ -3912,10 +3868,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (_input, ctx: BlockContext) => {
+    execute: async (_input, ctx) => {
       if (!awaitPullRequests) return;
       const row = await committedRow(ctx);
-      const state = managerState(harnessCtxState(ctx));
+      const state = managerState(ctx.sequencer?.state);
       const recorded = await readRunRecord(ctx, state.topic!);
       const wait = row === undefined ? undefined : wokenWait(row);
       // Each wait is woken once: a later turn of the task (a retry, a question's answer) is not its wake.
@@ -3939,6 +3895,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         return;
       }
       if (pullRequestsVerdict(reads.read) === "hold") return;
+      // FIX-2884.
+      // Words a person sent, or the filer on their behalf, always reach the run, told what became of the pull
+      // requests; the settle after it reads them again and ends the task. Only news from outside (the pull
+      // request's own merge or close, a deadline) settles here with no run. Everything owed is taken first, in
+      // one write, and the choice reads what that write took: a line sent while GitHub was read is never taken
+      // with a settle that doesn't answer it. A taken steer is this attempt's, so the brief still shows it.
+      const take = await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      const now = await committedRow(ctx);
+      if (personSpokeOnWake(now === undefined ? undefined : answerOf(now, wait.id), take?.taken ?? [])) {
+        await ctx.sequencer!.patchState({ wakeNews: settledPullRequestNews(reads.read) });
+        return;
+      }
       throw new SettledOnPullRequests(await settleOnPullRequests(ctx, prs, output, { reads }));
     },
   });
@@ -3968,8 +3936,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
       const decision = state.decided!;
       if (decision.settle === "asked") return decision.output;
       // Cancelled while it waited for review: the run records nothing more.
@@ -3986,6 +3954,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const prs = awaitPullRequests
         ? await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id])
         : [];
+      // FIX-2884.
+      // A turn that only answered a person on a merged or closed pull request settles on it, whatever a judge read.
+      if (state.wakeNews !== null && prs.length > 0) {
+        return settleOnPullRequests(ctx, prs, { ...decision.output, judged: read !== null, review: null, landed: decision.landed ?? null });
+      }
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
           if (prs.length === 0) throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
@@ -4056,10 +4029,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.object({ verdict: harnessJudgeVerdictSchema.nullable() }).nullable(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
       const decision = state.decided;
       if (!reviewChanges || decision?.settle !== "complete") return input;
+      // FIX-2884.
+      // A turn that answered a person after the pull request merged or closed has nothing to review;
+      // the settle reads the pull request again and ends the task.
+      if (state.wakeNews !== null) return input;
       const read = input?.verdict ?? null;
       // The judge's not-done fails the try and its ask holds a question, at the settle, as without review.
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) return input;
@@ -4079,7 +4056,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // The ways this host can land this run, as the host says (`landWays`): none where landing
       // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
       const probe = async (): Promise<LandHow[]> =>
-        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
+        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.branch == null
           ? []
           : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
       const ways: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
@@ -4093,7 +4070,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const probeOpen = async (): Promise<Probed> => {
         if (host.existingPullRequest === undefined || !ways.includes("pull-request")) return { open: null, unread: null, notOurs: null };
         try {
-          const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+          const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
           const open = await host.existingPullRequest(target);
           if (open === null) return { open: null, unread: null, notOurs: null };
           const link = pullRequestRefFromUrl(open.url);
@@ -4117,16 +4094,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
       let onPullRequest = probed.open;
+      // The pull request the review names for a user's `pull-request` accept (FIX-2920): it goes only
+      // there, so it never opens a second one the card didn't offer; one closed since is dropped, and asked again.
+      let named = probed.notOurs;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
       // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
-      // reads them, and the one open from its branch; each once. Read once, as the ways are.
+      // reads them, and the one open from its branch, whoever opened it (FIX-2920); each once. Read once, as the ways are.
       // Only shown on the card: a failed read shows none rather than failing the review.
       const readPullRequests = async (): Promise<ReviewPullRequest[]> => {
         const recorded = await readRunRecord(ctx, state.topic!)
           .then((record) => taskPullRequests(ctx, record?.requestIds ?? [ctx.request.identity.id]))
           .catch(() => []);
         // Each read as a pull request's web link and kept in its normalized form, so a card links only to one.
-        const links = [...recorded.map((pr) => pr.url), onPullRequest?.url ?? null].flatMap((url) => {
+        const links = [...recorded.map((pr) => pr.url), (onPullRequest ?? probed.notOurs)?.url ?? null].flatMap((url) => {
           const ref = url === null ? null : pullRequestRefFromUrl(url);
           return ref === null ? [] : [{ number: ref.number, url: ref.url }];
         });
@@ -4165,7 +4145,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             title: failed === null ? "Review the run's changes" : "The accepted changes didn't land",
             prompt:
               (failed === null ? "" : `${landFailedLine(failed, lands.length > 1)}\n\n`) +
-              (onPullRequest === null ? "" : `${onPullRequestLine(onPullRequest)}\n\n`) +
+              (onPullRequest !== null
+                ? `${onPullRequestLine(onPullRequest)}\n\n`
+                : named !== null
+                  ? `${openPullRequestLine(named)}\n\n`
+                  : "") +
               reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null, {
                 goal: state.goal ?? null,
                 answer: decision.output.answer,
@@ -4192,6 +4176,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               goal: state.goal ?? null,
               answer: decision.output.answer,
               pullRequests,
+              // The pull request a `pull-request` accept puts the work on, rather than opening one (FIX-2920).
+              openPullRequest: openPullRequestOf(onPullRequest ?? named),
               round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
@@ -4218,9 +4204,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The landing onto an open pull request nobody was asked about goes
           // only there: it never opens one, should that pull request be gone.
           const unasked = !askedPerson;
+          const onNamed = !unasked && answer.land === "pull-request" && named !== null;
           // Once per round, so a resume that runs this again doesn't push or merge twice.
-          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked);
+          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked || onNamed);
           if ("error" in outcome) {
+            // The pull request the review named closed since: asked again without it, so an accept may open one.
+            if (onNamed && outcome.reason === "pull-request-gone") named = null;
             // Closed or merged since it was found: the person is offered every way, as without one.
             if (unasked && outcome.reason === "pull-request-gone") {
               onPullRequest = null;
@@ -4320,7 +4309,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * session to continue, or the task takes no more steers): the person is asked.
    */
   const handLandingToRun = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     state: ManagerState,
     land: LandHow,
     words: string | null,
@@ -4361,7 +4350,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const landOnce = async (
     ctx: BlockContext,
-    state: ManagerState,
+    state: ManagerState & { workspacePath: string },
     decision: NonNullable<ManagerState["decided"]>,
     read: HarnessJudgeVerdict | null,
     how: LandHow,
@@ -4373,7 +4362,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         if (host.land === undefined) throw new WorkspaceRefusedError("land-unsupported", "this host can't push or merge a run's branch");
         // The base commit lets the host land the branch the checkout is on when
         // the run moved its work off its own (FIX-2658).
-        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+        const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
         const landed =
           how === "merge"
             ? await host.land(target, { kind: "merge" })
@@ -4403,7 +4392,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * either, the step's own end takes the steer.
    */
   const steerWatches = new Map<string, SteerWatch>();
-  const watchForSteers = (ctx: BlockContext): AbortSignal => {
+  const watchForSteers = (ctx: ManagerContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
     const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {}, stop: () => {} };
@@ -4423,7 +4412,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.timer = undefined;
       watch.polling = true;
       try {
-        const state = managerState(harnessCtxState(ctx));
+        const state = managerState(ctx.sequencer?.state);
         if (state.taskId === null) return;
         const row = await committedRow(ctx);
         if (!live()) return;
@@ -4567,7 +4556,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // already has: this composes into the block's own signal, which the SDK
       // path forwards into the query's abort controller. The row's watch
       // (a steer's stop, or the task's end) composes in beside it.
-      abortSignal: (ctx) => {
+      abortSignal: (callbackCtx) => {
+        // Step callbacks expose generic sequencer state. These watchers run inside the manager.
+        const ctx = callbackCtx as ManagerContext;
         // Before the harness starts recording, so a pull request it opens is followed mid-turn.
         followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
         // A run that goes silent is stopped; one that keeps working runs on
@@ -4587,7 +4578,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         lockRefreshedAt.delete(ctx.request.identity.id);
         stopWatching(ctx);
         stopProgressNotes(ctx);
-        releaseLeaseFromState(ctx);
+        releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
       },
     })
     .rescue([
@@ -4621,8 +4612,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * steer or follows a stop, so the steer cap bounds them; past it the
    * attempt fails.
    */
-  const stepForSteer = async (ctx: BlockContext, stopped: boolean, afterDecide = false): Promise<{ prompt: string; again: true } | undefined> => {
-    const state = managerState(harnessCtxState(ctx));
+  const stepForSteer = async (ctx: ManagerContext, stopped: boolean, afterDecide = false): Promise<{ prompt: string; again: true } | undefined> => {
+    const state = managerState(ctx.sequencer?.state);
     const row = await committedRow(ctx);
     // Only this attempt's own row: a task cancelled, finished or claimed again
     // since takes no more steps from this request.
@@ -4665,13 +4656,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (steers.length === 0 && !stopped) return undefined;
     // The steers this take wrote, as lines in the run's session from their senders.
     await showTakenSteers(ctx, take.taken);
-    const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+    const lease = await acquireCheckout(state.workspacePath, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     // A step after the verdict for a review's "Ask for changes" starts a new round where the reviewed one
     // ended (FIX-2782), so the next review sets the revision's commits apart from the ones already reviewed.
     // A mid-run steer step before the next review doesn't, or the revision's own earlier commits would drop out.
     if (afterDecide && state.decided?.reviewed === "revise" && state.filesOnly !== true) {
-      await ctx.sequencer!.patchState({ roundStart: await headCommit(state.workspacePath!) });
+      await ctx.sequencer!.patchState({ roundStart: await headCommit(state.workspacePath) });
     }
     // A turn's save points let a place with kept files go (`saveKeptFiles`):
     // the step a steer that came during the verdict adds works in it again,
@@ -4707,14 +4698,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       if (!approveTools) return value;
       const requestId = ctx.request.identity.id;
       const held = heldCalls.get(requestId);
       const spent = spentGrants.get(requestId);
       heldCalls.delete(requestId);
       spentGrants.delete(requestId);
-      const approvals = managerState(harnessCtxState(ctx)).approvals ?? { pending: null, grants: [], steps: 0 };
+      const approvals = managerState(ctx.sequencer?.state).approvals ?? EMPTY_APPROVALS;
       const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
       if (held === undefined && grants.length === approvals.grants.length) return value;
       await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
@@ -4742,12 +4733,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       if (!approveTools) return value;
-      let state = managerState(harnessCtxState(ctx));
+      let state = managerState(ctx.sequencer?.state);
       const approvals = state.approvals;
-      const call = approvals?.pending ?? null;
-      if (approvals == null || call === null) return value;
+      if (approvals?.pending == null) return value;
+      const call = approvals.pending;
 
       const steps = approvals.steps + 1;
       if (steps > MAX_APPROVAL_STEPS) {
@@ -4775,8 +4766,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         },
       });
 
-      state = managerState(harnessCtxState(ctx));
-      const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+      state = managerState(ctx.sequencer?.state);
+      const lease = await acquireCheckout(state.workspacePath, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
       await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session });
       if (state.place == null) await ctx.sequencer!.patchState({ place: await provisionRunPlace(ctx) });
       return { prompt: outcome.prompt, again: true };
@@ -4790,7 +4781,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       // An answered approval already resumes the session: its step goes round as it is.
       if ((value as { again?: unknown } | null)?.again === true) return value;
       // A step that ended on its own after its watch stopped it leaves the watch: it goes here.
@@ -4813,8 +4804,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
-      if (managerState(harnessCtxState(ctx)).decided?.settle !== "complete") return value;
+    execute: async (value: unknown, ctx) => {
+      if (managerState(ctx.sequencer?.state).decided?.settle !== "complete") return value;
       return (await stepForSteer(ctx, false, true)) ?? value;
     },
   });
@@ -4866,7 +4857,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 }
 
 /**
- * A feature row's identity checks: the row's phase is the manager's, and, on a
+ * A feature row's identity checks: the row's segment is the manager's mode, by
+ * its name or its former name (a row filed before the rename), and, on a
  * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
  * with no payload (a task a conversation filed) has neither to check. A row on
  * a board read from the claim is keyed by its own task id, so it has no
@@ -4876,9 +4868,10 @@ function assertFeatureRowIdentity(
   taskId: string,
   issue: string,
   phaseName: string,
-  configuredPhase: string,
+  mode: Pick<ModeSpec, "name" | "formerName">,
   fixedBoard: boolean,
 ): void {
+  const configuredPhase = mode.name;
   // **A manager runs exactly one phase, and it must be the one on the row.**
   // Without this the caller's phase names the checkout, the branch and the
   // run record while the CONFIGURED phase supplies the prompt and the
@@ -4898,7 +4891,8 @@ function assertFeatureRowIdentity(
   // different and refused, after `wake` had claimed the row and charged it.
   // Once per wake, until a valid task's budget was gone, for a mismatch its
   // own identity says does not exist.
-  if (!sameSegment(phaseName, configuredPhase)) {
+  // BP-030: a row filed under the mode's former name is the same mode.
+  if (!sameSegment(phaseName, configuredPhase) && !(mode.formerName !== undefined && sameSegment(phaseName, mode.formerName))) {
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +
@@ -5036,10 +5030,6 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   return answered;
 }
 
-/** Is the `workspace` option a host, rather than a fixed repository's config? */
-function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace is WorkspaceHost {
-  return typeof (workspace as WorkspaceHost).provision === "function";
-}
 
 // BR-19.
 /**
@@ -5141,6 +5131,35 @@ const PULL_REQUEST_NEWS =
   "News on your pull request, which is still open. Your checkout and your earlier work are as you left them. " +
   "Act on what it says, then push your changes to the pull request's branch:";
 
+// FIX-2884.
+/** Whether `steer` is words someone sent the run: a person's, or the filer's on their behalf. A service's delivery or the board's deadline is news, not a message to answer. */
+function spokenToTheRun(steer: Pick<TaskSteer, "from">): boolean {
+  return steer.from === "user" || steer.from === "filer";
+}
+
+// FIX-2884.
+/** Whether a person spoke on a pull-request wake: the steer that answered the wait, or one the wake took after it. */
+function personSpokeOnWake(answer: TaskSteer | undefined, taken: readonly TaskSteer[]): boolean {
+  return (answer !== undefined && spokenToTheRun(answer)) || taken.some(spokenToTheRun);
+}
+
+// FIX-2884.
+/**
+ * The lead a person's words open with when the wake found the task's pull
+ * requests merged or closed: what became of each, and that the run answers the
+ * words rather than pushing to a branch that is done. The settle after the run
+ * reads the pull requests again and ends the task.
+ */
+function settledPullRequestNews(read: readonly PullRequestRead[]): string {
+  const each = read.map(
+    (pr) => `Pull request #${pr.number} ${pr.state === "merged" ? "has merged" : pr.state === "closed" ? "was closed without merging" : "is still open"}.`,
+  );
+  return (
+    `${each.join(" ")} Your checkout and your earlier work are as you left them. Answer the message below. ` +
+    "Push nothing to a merged or closed pull request's branch: if the message asks for more changes, say they need a new task:"
+  );
+}
+
 /** The lead the step after a stop for a steer opens with. */
 const STOPPED_LEAD =
   "You were stopped so the messages below could reach you. The checkout keeps everything you wrote before you were " +
@@ -5162,35 +5181,5 @@ const STALE_AFTER_STOP =
 /** The prompt of a step after a stop whose steers another read took. */
 const CONTINUE_AFTER_STOP =
   "You were stopped while you were working. The checkout keeps everything you wrote. Carry on from where you were.";
-
-/**
- * **The one convergence point: release the checkout from state alone.**
- *
- * Called from both exits — the harness step's `onSettled` and the chain's
- * rescue — and neither of them passes anything but a context. That is what
- * forces the lease to be a value: `onSettled` is synchronous and gets only a
- * context, so a live handle had nowhere to live except a process-wide map, and
- * the map existed only because a completion hook could not reach the run that
- * took the lock.
- *
- * It reads `(lockPath, token)` off the run's own state and nothing else. **A
- * second release path that read anything else is the defect this shape
- * removes, coming back** — so if a third exit ever needs to release, it calls
- * this.
- *
- * Idempotent: `releaseCheckout` removes a lock only when the token still
- * matches, so a second call after the first succeeded finds nothing of ours and
- * does nothing.
- *
- * No module-level state remains, so two managers in one process cannot touch
- * each other's lock by construction rather than by keying a table correctly.
- */
-function releaseLeaseFromState(ctx: {
-  sequencer?: { state?: unknown } | undefined;
-}): void {
-  const state = harnessCtxState(ctx);
-  if (state?.lockPath == null || state.leaseToken == null) return;
-  releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
-}
 
 export { RUNS };

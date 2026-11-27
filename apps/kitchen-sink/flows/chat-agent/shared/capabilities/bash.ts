@@ -29,12 +29,14 @@ import path from "node:path";
  *   2. On Vercel (`process.env.VERCEL` truthy) with the static access-token
  *      triple (`VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`),
  *      auto-detect picks the Vercel Sandbox adapter.
- *   3. `STORE_TYPE=filesystem` → local shell on the host's filesystem.
- *   4. Fallback: `just-bash` (in-memory virtual filesystem, ~70 commands,
+ *   3. Fallback: `just-bash` (in-memory virtual filesystem, ~70 commands,
  *      python + js enabled, zero auth). Anonymous-visitor demos on Vercel
  *      land here when neither OIDC nor static creds are configured —
  *      bash works without errors instead of returning HTTP 400 on every
  *      call.
+ *
+ * The host shell (`local`) is only ever chosen by `BASH_PROVIDER=local`.
+ * No other setting, the store type included, turns on shell access.
  *
  * **Why OIDC isn't auto-detected.** Vercel Sandbox supports OIDC Federation
  * as the recommended auth path, but the OIDC token is delivered per-request
@@ -91,10 +93,6 @@ export function selectBashProvider(): SandboxProvider {
 
   if (process.env.VERCEL && hasVercelSandboxCredentials()) {
     return { type: "vercel", Sandbox: VercelSandbox };
-  }
-
-  if (process.env.STORE_TYPE === "filesystem") {
-    return { type: "local" };
   }
 
   return { type: "just-bash", python: true, javascript: true };

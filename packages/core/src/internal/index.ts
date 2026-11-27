@@ -166,6 +166,10 @@ export {
 } from "../helpers/harness-sdk-version";
 export type { InstalledSdkVersion, InstalledSdkVersionReader, TestedSdk } from "../helpers/harness-sdk-version";
 
+/** Scope schema collection shared by flow definitions and stand-alone block tests. */
+export { mergeFlowScopeStateSchemas } from "../flow/scope-state-schemas";
+export { walkBlockGraph } from "../helpers/block-graph";
+
 /** Runtime helpers the engine shares with core. */
 export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-status-message";
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";
@@ -201,7 +205,10 @@ export { SLASH_COMMAND_PATTERN } from "../helpers/slash-command";
 export { assertEvaluatorBlock } from "../blocks/evaluator";
 export { createBindingCache } from "../bindings";
 export { errorDetailsWithCause } from "../errors";
+export { serializeError } from "../errors/serialize-error";
 export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
+// FIX-2894: a delegate's task input, as `listDelegates` shows it to a model.
+export { inlinedJsonSchema } from "../helpers/inlined-json-schema";
 
 /**
  * The change-notice and push-delivery wire the engine and the node host serve,
@@ -211,3 +218,11 @@ export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey 
 // FIX-2625: the one cap and union rule for a notice's ids, shared by the engine's fold and the client's merge.
 export { NOTICE_MAX_IDS, noticeIdsOf, noticePartitionOf, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";
+
+/**
+ * Merge two flat resource maps by the flow-build rule: the same accessor with
+ * the same `defineResource()` reference dedupes; the same accessor with a
+ * different one throws. For a package that assembles a flow's `resources` from
+ * more than one source before `defineFlow` sees them.
+ */
+export { mergeDeclaredResources } from "../blocks/internal/build-block";

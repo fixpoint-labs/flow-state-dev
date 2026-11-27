@@ -5,6 +5,8 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
@@ -40,7 +42,6 @@ import {
   HarnessRunChangesRefused,
   harnessTaskInputSchema,
   runOwnerClaimOrder,
-  type HarnessFeeds,
   type HarnessJudgeVerdict,
 } from "../src";
 import { harnessTaskId } from "../src/workspace";
@@ -170,7 +171,7 @@ function host(options: {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, isDone: async () => true },
+    mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, doneWhen: { check: async () => true } },
     // The bare `origin` stands for a GitHub repository, as an operator's mirror would.
     workspace:
       options.clone === true
@@ -182,7 +183,7 @@ function host(options: {
             provisionTimeoutMs: 10_000,
             pullRequestRepo: () => "github.com/acme/widgets",
           })
-        : { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" },
+        : localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen, remote),
@@ -238,7 +239,7 @@ function host(options: {
         collectionId: BOARD_ID,
         collection: resolveResourceCollection(ctx, BOARD_ID)!,
       }),
-      runOf: () => ({ issue: ISSUE, phase: PHASE }),
+      runOf: () => ({ issue: ISSUE, mode: { name: PHASE } }),
     }),
   });
   const flow = defineFlow({
@@ -414,6 +415,8 @@ describe("a coding run that made changes waits for a person's review", () => {
         goal: "the feature",
         answer: "done",
         pullRequests: [],
+        // Nothing open from the branch, so a `pull-request` accept opens one.
+        openPullRequest: null,
         round: null,
         files: [{ path: "change-1.txt", added: 1, removed: 0 }],
         fileCount: 1,
@@ -1362,8 +1365,14 @@ process.stdout.write(out);
       await h.start();
       const asked = await h.until(h.waiting, "the review");
 
-      expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.lands).toEqual(["pull-request", "merge"]);
-      expect(h.review(asked)!.ask.prompt).not.toContain("already open");
+      const detail = reviewDetail((await h.stop(h.review(asked)!))?.data);
+      expect(detail?.lands).toEqual(["pull-request", "merge"]);
+      // FIX-2920: the review names that pull request as where a `pull-request` accept puts the work, so no card
+      // invites the user to open a second one. Without it, the card's button read "Open pull request" beside a #42 link.
+      expect(detail?.openPullRequest).toEqual({ number: 42, url: PR_URL });
+      expect(detail?.pullRequests).toEqual([{ number: 42, url: PR_URL }]);
+      expect(h.review(asked)!.ask.prompt).toContain(`Pull request #42 is already open from`);
+      expect(h.review(asked)!.ask.prompt).toContain("no second pull request is opened");
       expect((await h.statuses()).some((line) => line.includes("#42") && line.includes("didn't open it"))).toBe(true);
       const cwd = h.seen[0]!.cwd;
       const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
@@ -1376,6 +1385,33 @@ process.stdout.write(out);
       expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(cwd, "rev-parse", "HEAD"));
       expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
       expect((await h.runRecord())?.landedPullRequests).toEqual([KEY]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // FIX-2920 (review): the review named #42 and its accept read "Push to PR #42". Closed before the user accepted,
+  // the accept would have opened #43 instead, which the button never said. It pushes only to #42, and asks again.
+  it("a user's accept onto the pull request the review named opens none when it closed since, and asks again with every way", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    const calls = ghCalls().length;
+    try {
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.openPullRequest).toEqual({ number: 42, url: PR_URL });
+
+      // Closed before the accept's landing looks.
+      writeFileSync(listsLeft, "0");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(asked)!.id, "the review asked again");
+
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landFailed?.land).toBe("pull-request");
+      expect(detail?.openPullRequest).toBeNull();
+      expect(detail?.lands).toEqual(["pull-request", "merge"]);
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+      // Not handed to the coding session: there is nothing for it to fix.
+      expect(h.seen).toHaveLength(1);
     } finally {
       await h.dispose();
     }

@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Finds facts for the team, in the working folder's files and on the web, and replies to whoever asked.
-icon: "🔎"
+icon: hex
 color: teal
 tools: [globProjectSource, readProjectSource, grepProjectSource, search, fetch, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 ---

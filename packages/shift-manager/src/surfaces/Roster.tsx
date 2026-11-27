@@ -20,6 +20,7 @@ import { shiftCoordinatorOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUS
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useWorkers } from "../lib/directory";
 import { askWord, useInbox } from "../lib/inbox";
+import { suspensionIdOfHold } from "../lib/inbox-list";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -151,7 +152,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((hold) => (
-          <WaitEntry key={hold.id} kind="ask" id={hold.id} what={`you · ${askWord(hold)}`} when={hold.ask.title || hold.ask.prompt || "waiting on you"} />
+          <WaitEntry key={hold.id} kind="ask" id={suspensionIdOfHold(hold)!} what={`you · ${askWord(hold)}`} when={hold.ask.title || hold.ask.prompt || "waiting on you"} />
         ))}
       </ul>
     </li>

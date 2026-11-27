@@ -362,7 +362,8 @@ describe("where a session works (V6)", () => {
     await turn(stores, recorder, "s-untrusted", "hello");
     const run = recorder.runs[0]!;
     expect(run.settingSources).toEqual([]);
-    expect(run.settings).toBeUndefined();
+    // Nothing from the repository loads, and hooks stay off by the package's own default.
+    expect(run.settings).toEqual({ disableAllHooks: true });
     expect((run.env as Record<string, string | undefined>).KITCHEN_SINK_NAMED_KEY).toBeUndefined();
   });
 

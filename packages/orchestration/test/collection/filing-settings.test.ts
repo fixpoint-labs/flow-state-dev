@@ -581,3 +581,29 @@ describe("a dependent another process filed (resource-backed)", () => {
     expect(fresh.get("b")).toMatchObject({ status: "cancelled", causedBy: "a", labels: ["skipped"] });
   });
 });
+
+// FIX-2894.
+describe.each(BACKINGS)("an edit fenced on the row's revision (%s)", (_name, makeBacking) => {
+  // Two edits of one row decided at once must not both land: the second was
+  // decided on a row the first has changed, so it is declined, and the row
+  // keeps the first's write.
+  it("writes while the row is at the revision it read, and declines once another write moved it", async () => {
+    const { tasks } = await makeBacking();
+    await tasks.createTask({ id: "t", goal: "t", input: { n: 1 } });
+    const read = tasks.get("t")!.revision ?? 0;
+
+    expect(await tasks.patchSettings("t", { input: { n: 2 }, ifRevision: read })).toMatchObject({ outcome: "recorded" });
+    expect(tasks.get("t")?.input).toEqual({ n: 2 });
+
+    // Decided on the same read as the write above, so it lands on nothing.
+    expect(await tasks.patchSettings("t", { input: { n: 3 }, ifRevision: read })).toMatchObject({ outcome: "declined", reason: "revision-moved" });
+    expect(tasks.get("t")?.input).toEqual({ n: 2 });
+  });
+
+  it("is a fence, not a field: a patch naming only ifRevision changes nothing", async () => {
+    const { tasks } = await makeBacking();
+    await tasks.createTask({ id: "t", goal: "t" });
+    const read = tasks.get("t")!.revision ?? 0;
+    expect(await tasks.patchSettings("t", { ifRevision: read })).toMatchObject({ outcome: "unchanged" });
+  });
+});

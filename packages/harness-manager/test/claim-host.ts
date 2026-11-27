@@ -14,6 +14,8 @@
  * a real git checkout. Only the harness is a stub, scripted per call, and it
  * records what it was fed.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,12 +41,10 @@ import {
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
-  type HarnessFeeds,
   type PromptRunContext,
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
-import { hostForConfig } from "../src/workspace";
 import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -150,7 +150,11 @@ export interface HostOptions {
   script?: HarnessStep[];
   /** The file types the stub harness says it takes. Default: none, as a harness that declares nothing. */
   accepts?: HarnessBlock["accepts"];
-  /** The phase's done-condition. Default: always done. */
+  /** The mode's name, which keys its runs. Default `PHASE`. */
+  modeName?: string;
+  /** The segment the mode's runs were stored under before it took `modeName` (`ModeSpec.formerName`). */
+  formerName?: string;
+  /** The mode's done check. Default: always done. */
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
@@ -222,14 +226,16 @@ export function claimHost(options: HostOptions) {
 
   const seen: SeenRun[] = [];
   const answersSeen: Array<string | null | undefined> = [];
+  const host = localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 });
   const manager = harnessManager({
     ...(options.mode === "fixed"
       ? { boardCollectionId: FIXED_BOARD, boardCollection: fixedLedger }
       : { ledgers }),
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: async (run: PromptRunContext) => {
+    mode: {
+      name: options.modeName ?? PHASE,
+      ...(options.formerName === undefined ? {} : { formerName: options.formerName }),
+      instructions: async (run: PromptRunContext) => {
         await options.beforePrompt?.(run.ctx);
         return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
@@ -238,16 +244,15 @@ export function claimHost(options: HostOptions) {
           `ASK: ${run.askMarkerPath}`,
         ].join("\n");
       },
-      isDone: (run: CompletionRunContext) => {
-        const answer = (run as { answer?: string | null }).answer;
-        answersSeen.push(answer);
-        return options.isDone?.({ answer }) ?? true;
+      doneWhen: {
+        check: (run: CompletionRunContext) => {
+          const answer = (run as { answer?: string | null }).answer;
+          answersSeen.push(answer);
+          return options.isDone?.({ answer }) ?? true;
+        },
       },
     },
-    workspace:
-      options.baseTip === undefined
-        ? { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }
-        : { ...hostForConfig({ root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
+    workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
@@ -323,10 +328,25 @@ export function claimHost(options: HostOptions) {
     uses: [ledgerResources],
     execute: async (input, ctx) => {
       const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      const task = ref.get(input.id);
+      const hold = task === undefined ? undefined : openOwnHolds(task)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+    },
+  });
+  // A message from outside the app answering the task's external wait, as a delivery from a followed pull request writes it
+  // (workforce's `answerExternalWait`): its words from `"service"`, by the sender's handle.
+  const deliver = handler({
+    name: "claim-host-deliver",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
       const hold = row === undefined ? undefined : openOwnHolds(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
-      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+      return ref.answer!(input.id, { questionId: hold.id, message: input.message, from: "service", by: "github", key: `message:${hold.id}` });
     },
   });
   // A line typed in the task's session, as its door writes it (`steerFromLine`): a steer, or the answer to what the row waits on.
@@ -399,6 +419,7 @@ export function claimHost(options: HostOptions) {
       row: { block: rowAction },
       answer: { block: answer },
       line: { block: line },
+      deliver: { block: deliver },
       steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },

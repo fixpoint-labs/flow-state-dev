@@ -13,10 +13,8 @@
  * These are the pieces of that wait that are not the manager's own loop, so a
  * flow other than the manager (a session flow) composes the same ones:
  *
- * - the feed's types ({@link HarnessToolApprovalHook}), structurally the
- *   same as `@flow-state-dev/claude-code`'s `onToolApproval` option, so a slot
- *   that spreads `...feeds` into `claudeCodeAgent` type-checks with neither
- *   package importing the other;
+ * - (the feed's types, `HarnessToolApprovalHook` and its request and
+ *   decision, are core's: `@flow-state-dev/core/harness`);
  * - what a held call is ({@link heldToolCallOf}) and the decision that holds
  *   it ({@link heldToolDecision});
  * - the grant rule ({@link grantMatches}): the same tool on the same file
@@ -28,41 +26,9 @@
  * the epic's ER-1 keeps new harness nouns out of core.
  */
 import type { ApprovalAnswer, SuspendForUserOptions } from "@flow-state-dev/core/types";
-import type { HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import type { HarnessToolApprovalDecision, HarnessToolApprovalHook, HarnessToolApprovalRequest } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { toolCallDetail } from "./progress-note";
-
-/** One tool call the harness asks about, before it runs. */
-export interface HarnessToolApprovalRequest {
-  /** The tool's name as the harness calls it (`Bash`, `Edit`, `mcp__<server>__<tool>`). */
-  toolName: string;
-  /** The call's arguments, as the model issued them. */
-  input: unknown;
-  /** The harness's abort signal for this one call, when it has one. */
-  signal?: AbortSignal;
-}
-
-/**
- * What the feed answers for one call.
- *
- * - `allow`: the call runs (with `updatedInput`, when given).
- * - `deny`: it doesn't, the model is told with `message`, and the turn goes on.
- * - `held`: it doesn't run now, and the turn stops: a person decides it
- *   outside this run, and the session resumes with the answer.
- */
-export type HarnessToolApprovalDecision =
-  | { decision: "allow"; updatedInput?: unknown }
-  | { decision: "deny"; message?: string }
-  | { decision: "held"; message?: string };
-
-/**
- * The `onToolApproval` feed: called by a harness that can ask about each tool
- * call before it runs (Claude Code). A harness that can't ignores it.
- */
-export type HarnessToolApprovalHook = (
-  request: HarnessToolApprovalRequest,
-  ctx: HarnessCallbackContext,
-) => HarnessToolApprovalDecision | Promise<HarnessToolApprovalDecision>;
 
 /** A call held for a person, as its stop names it and a grant matches it. */
 export const heldToolCallSchema = z.object({
@@ -93,6 +59,13 @@ export const toolGrantSchema = z.object({
   scope: z.enum(["once", "run"]),
 });
 export type ToolGrant = z.infer<typeof toolGrantSchema>;
+
+/** The call held on a turn, grants left by its answers and the number of resumed steps. */
+export const toolApprovalStateSchema = z.object({
+  pending: heldToolCallSchema.nullable().default(null),
+  grants: z.array(toolGrantSchema).default([]),
+  steps: z.number().int().default(0),
+});
 
 /** The data a yes sends for *Allow for this run*. A plain yes sends none. */
 export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional() }).strict();

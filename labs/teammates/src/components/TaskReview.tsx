@@ -3,7 +3,9 @@
  * the judge's verdict on top, then what changed, each check, what is worth
  * knowing beyond the change, the files and the original request; and, at the
  * popup's foot, one compose box with **Request changes**, **Merge locally**
- * and **Open pull request** (its menu accepts without landing).
+ * and **Open pull request** (its menu accepts without landing). A branch
+ * with a pull request already open from it offers **Push to PR #N** and a
+ * **View PR #N** link instead: its work goes there, never onto a second one.
  *
  * What changed, the run's own checks and its notes come from the run's
  * report, read with harness-manager's `runReport`; an answer without the
@@ -16,10 +18,10 @@
  */
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { RUN_REPORT_HEADINGS, runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
-import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
+import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
-import { LandFailure, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
+import { LandFailure, landLabel, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
 import { RunChanges } from "./flow-state/run-changes";
 import { runCheckPassed } from "./flow-state/run-checks";
 
@@ -137,19 +139,22 @@ export function verdictOf(review: Pick<ReviewDetail, "judge">, lines: readonly C
   return { headline: judge.verdict.charAt(0).toUpperCase() + judge.verdict.slice(1), body, confidence: judge.confidence, tone: "muted" };
 }
 
-const TONE_TEXT: Record<Verdict["tone"], string> = { success: "text-success", warning: "text-warning", destructive: "text-destructive", muted: "text-muted-foreground" };
-
-/** The judge's confidence as a ring, filled to it. */
-function ConfidenceRing({ confidence, tone }: { confidence: number | null; tone: Verdict["tone"] }) {
+/**
+ * The judge's score as an ink ring: the score drawn solid, the remainder
+ * dashed, the figure inside. No judge, an all-dashed ring and a dash.
+ */
+function ConfidenceRing({ confidence }: { confidence: number | null }) {
   const pct = confidence === null ? 0 : Math.round(Math.min(1, Math.max(0, confidence)) * 100);
+  const r = 20;
+  const around = 2 * Math.PI * r;
+  const score = (around * pct) / 100;
   return (
-    <div
-      aria-hidden
-      className={cn("flex size-12 shrink-0 items-center justify-center rounded-full", TONE_TEXT[tone])}
-      // The track is border-strong: in this theme --muted is the card's own colour, and would vanish.
-      style={{ background: `conic-gradient(currentColor 0 ${pct}%, var(--border-strong) ${pct}% 100%)` }}
-    >
-      <div className="flex size-[38px] items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground tabular-nums">{confidence === null ? "–" : `${pct}%`}</div>
+    <div aria-hidden className="relative flex size-12 shrink-0 items-center justify-center" data-ring={pct}>
+      <svg viewBox="0 0 48 48" className="absolute inset-0 size-12 -rotate-90" fill="none" strokeWidth="3">
+        <circle cx="24" cy="24" r={r} stroke="var(--line3)" strokeDasharray="2 3" />
+        {pct === 0 ? null : <circle cx="24" cy="24" r={r} stroke="var(--ink)" strokeLinecap="round" strokeDasharray={`${score} ${around}`} />}
+      </svg>
+      <span className="font-mono text-xs font-semibold text-foreground tabular-nums">{confidence === null ? "–" : `${pct}%`}</span>
     </div>
   );
 }
@@ -159,7 +164,7 @@ function Section({ label, aside, children }: { label: string; aside?: ReactNode;
   return (
     <section aria-label={label} className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">{label}</h3>
+        <h3 className="font-mono text-xs font-medium tracking-[0.08em] text-text-3 uppercase">{label}</h3>
         {aside}
       </div>
       {children}
@@ -170,7 +175,7 @@ function Section({ label, aside, children }: { label: string; aside?: ReactNode;
 /** A folded block: a chevron that turns as it opens, the same look as the Files block's. Exported for the popup's steps. */
 export function Fold({ label, children, ...data }: { label: ReactNode; children: ReactNode } & Record<`data-${string}`, boolean | undefined>) {
   return (
-    <details {...data} className="group rounded-xl border border-border bg-surface-raised/40">
+    <details {...data} className="group rounded-lg border border-border bg-card">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-sm text-text-2 hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
         {label}
@@ -203,9 +208,19 @@ const STATE_LABEL: Record<CheckState, string> = {
   passed: "Passed",
   failed: "Failed",
   "pre-existing": "Pre-existing",
-  "not done": "Not done",
+  "not done": "Not run",
   skipped: "Skipped",
   reported: "Reported",
+};
+
+/** A check's result as plain coloured text: green passed, red failed, grey otherwise. */
+const STATE_TEXT: Record<CheckState, string> = {
+  passed: "text-success-text",
+  failed: "text-destructive",
+  "pre-existing": "text-text-3",
+  "not done": "text-text-3",
+  skipped: "text-text-3",
+  reported: "text-text-3",
 };
 
 /** One check: its mark, what was checked and found, how it ended, and its next step. */
@@ -214,21 +229,22 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
   const good = line.state === "passed";
   const bad = line.state === "failed";
   const gap = line.state === "not done";
-  const Icon = good ? CheckIcon : bad ? XIcon : gap ? InfoIcon : MinusIcon;
+  const Icon = good ? CheckIcon : bad ? XIcon : MinusIcon;
   const next = bad ? "Request fix" : gap ? "Request check" : null;
   const words = (line.detail === null ? line.title : `${line.title} (${line.detail})`).replace(/`/g, "");
   const output = line.tail?.trim() ? line.tail : null;
   const parts = line.detail === null ? null : detailParts(line.detail);
   return (
-    <li data-check={line.state} data-project={line.project || undefined} className={cn("flex flex-col border-b border-border last:border-b-0", gap && "bg-warning-soft", bad && "bg-destructive/[0.06]")}>
-      <div className="flex items-start gap-3 px-4 py-3.5">
+    <li data-check={line.state} data-project={line.project || undefined} className="flex flex-col border-b border-border last:border-b-0">
+      <div className="flex items-start gap-3 px-4 py-3">
+        {/* Round marks: green ✓ passed, red ✗ failed, a dashed ring for not yet run, grey – otherwise. */}
         <span
           className={cn(
             "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
-            good ? "bg-success-soft text-success" : bad ? "bg-destructive/15 text-destructive" : gap ? "bg-warning/15 text-warning" : "bg-border-strong text-text-2",
+            good ? "bg-success-soft text-success-text" : bad ? "bg-(--redbg) text-destructive" : gap ? "border-[1.5px] border-dashed border-text-3" : "bg-muted text-text-3",
           )}
         >
-          <Icon aria-hidden className="size-3" strokeWidth={3} />
+          {gap ? null : <Icon aria-hidden className="size-3" strokeWidth={3} />}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
           <MarkdownText inline text={line.title} className={cn(WRAP, "font-medium")} />
@@ -240,22 +256,22 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
             </button>
           )}
         </div>
-        {next !== null && onDraft !== undefined ? (
-          <button
-            type="button"
-            onClick={() => onDraft(bad ? `Fix the failing check: ${words}` : `Do this check: ${words}`)}
-            className={cn(
-              "h-7 shrink-0 rounded-md border px-2.5 text-xs font-medium whitespace-nowrap",
-              gap ? "border-warning-line bg-warning/5 text-warning-text hover:bg-warning/10" : "border-destructive/40 bg-destructive/5 text-destructive hover:bg-destructive/10",
-            )}
-          >
-            {next}
-          </button>
-        ) : (
-          <span className={cn("shrink-0 pt-px text-xs font-medium whitespace-nowrap", good ? "text-success-text" : bad ? "text-destructive" : "text-text-2")}>{STATE_LABEL[line.state]}</span>
-        )}
+        <span className="flex shrink-0 items-center gap-2.5">
+          {next !== null && onDraft !== undefined ? (
+            <button
+              type="button"
+              onClick={() => onDraft(bad ? `Fix the failing check: ${words}` : `Do this check: ${words}`)}
+              className="h-7 shrink-0 rounded-md border border-border-strong px-2.5 text-xs font-medium whitespace-nowrap hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              {next}
+            </button>
+          ) : null}
+          <span className={cn("pt-px text-xs font-medium whitespace-nowrap", STATE_TEXT[line.state])} data-check-result>
+            {STATE_LABEL[line.state]}
+          </span>
+        </span>
       </div>
-      {open && output !== null ? <pre className="overflow-x-auto border-t border-border bg-bg-subtle px-4 py-2.5 font-mono text-xs leading-5">{output}</pre> : null}
+      {open && output !== null ? <pre className="overflow-x-auto border-t border-border bg-muted px-4 py-2.5 font-mono text-xs leading-5">{output}</pre> : null}
     </li>
   );
 }
@@ -280,7 +296,7 @@ function ReportSections({ changed, lines, notes, onDraft, onFollowUp }: { change
       ) : null}
       {lines.length > 0 ? (
         <Section label="Checks">
-          <ul className="overflow-hidden rounded-xl border border-border bg-surface-raised/30">
+          <ul className="overflow-hidden rounded-lg border border-border bg-card">
             {lines.map((line, i) => (
               <CheckLineView key={`${i}:${line.title}`} line={line} {...(onDraft ? { onDraft } : {})} />
             ))}
@@ -289,14 +305,14 @@ function ReportSections({ changed, lines, notes, onDraft, onFollowUp }: { change
       ) : null}
       {notes.length > 0 ? (
         <Section label="Worth knowing">
-          <ul className="flex flex-col gap-2">
+          <ul className="overflow-hidden rounded-lg border border-border bg-card">
             {notes.map((note, i) => (
-              <li key={i} data-note className="flex items-start gap-3 rounded-xl border border-border bg-surface-raised/50 px-4 py-3.5">
+              <li key={i} data-note className="flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0">
                 <InfoIcon aria-hidden className="mt-[3px] size-3.5 shrink-0 text-text-3" />
                 <MarkdownText inline text={note} className={cn(WRAP, CODE_FITS, "min-w-0 flex-1 text-sm leading-relaxed text-text-2 [&_[data-streamdown=strong]]:text-foreground")} />
                 {onFollowUp ? (
-                  <button type="button" onClick={() => onFollowUp(note)} className="h-7 shrink-0 rounded-md border border-border-strong px-2.5 text-xs font-medium whitespace-nowrap hover:bg-surface-raised">
-                    Create follow-up
+                  <button type="button" onClick={() => onFollowUp(note)} aria-label="Create follow-up" className="h-7 shrink-0 rounded-md border border-border-strong px-2.5 text-xs font-medium whitespace-nowrap hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
+                    + Follow-up task
                   </button>
                 ) : null}
               </li>
@@ -344,8 +360,8 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
   const subjects = round?.subjects ?? review.subjects;
   return (
     <div data-review-body className="flex flex-col gap-6 [overflow-wrap:anywhere]">
-      <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex items-start gap-4 rounded-xl border border-border bg-surface-raised/50 px-4 py-4">
-        <ConfidenceRing confidence={verdict.confidence} tone={verdict.tone} />
+      <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex items-start gap-4 rounded-lg border border-border bg-card px-4 py-4 shadow-(--shadow-card)">
+        <ConfidenceRing confidence={verdict.confidence} />
         <div className="flex min-w-0 flex-col gap-1">
           <div className="text-base leading-6 font-semibold">{verdict.headline}</div>
           <p className="text-sm leading-relaxed text-text-2">{verdict.body}</p>
@@ -361,7 +377,7 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
               {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
               {...(review.added != null ? { added: review.added } : {})}
               {...(review.removed != null ? { removed: review.removed } : {})}
-              className="rounded-xl border-border bg-surface-raised/40 [&>button]:px-3.5 [&>button]:py-2.5"
+              className="rounded-lg border-border bg-card [&>button]:px-3.5 [&>button]:py-2.5"
             />
           </Section>
         ) : null}
@@ -390,11 +406,25 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
 }
 
 /**
- * A coding task's line under the title, its parts "·"-joined: what it ran on, what it spent and, while
- * its run waits for review, its commits and branch; then each pull request, a link once its address
- * is known. `on` is "Claude Code · claude-opus-5-5"; `tokens` is "1.3M tokens". Nothing to say: no line.
+ * A coding task's line under the title, its parts "·"-joined: what it ran on, what it spent, the
+ * current attempt's time so far (waits included) and, while its run waits for review, its commits and
+ * branch; then each pull request, a link once its address is known. `on` is "Claude Code ·
+ * claude-opus-5-5"; `tokens` is "1.3M tokens". Nothing to say: no line.
  */
-export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewDetail; on?: string; tokens?: string; pullRequests?: ReadonlyArray<{ number: number; url?: string }> }) {
+export function RunMeta({
+  review,
+  on,
+  tokens,
+  total,
+  pullRequests,
+}: {
+  review?: ReviewDetail;
+  on?: string;
+  tokens?: string;
+  /** The current attempt's time so far, waits included ("2d 3h"). */
+  total?: string;
+  pullRequests?: ReadonlyArray<{ number: number; url?: string }>;
+}) {
   const prs = pullRequests ?? review?.pullRequests ?? [];
   const commits = review?.commits == null ? null : `${review.commits} commit${review.commits === 1 ? "" : "s"}`;
   const parts: ReactNode[] = [
@@ -404,6 +434,11 @@ export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewD
       </span>
     ),
     tokens === undefined ? null : <span key="tokens">{tokens}</span>,
+    total === undefined ? null : (
+      <span key="total" title="Time on this attempt, waits included" data-run-total>
+        {total}
+      </span>
+    ),
     commits === null ? null : (
       <span key="commits" data-review-commit-count>
         {commits}
@@ -440,15 +475,19 @@ export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewD
   );
 }
 
-/** Each way to land, as the footer's buttons say it. */
-const LAND_BUTTON: Record<ReviewLand, string> = { "pull-request": "Open pull request", merge: "Merge locally" };
+/** Each way to land, as the footer's buttons say it; onto a pull request already open, the registry's "Push to PR #N". */
+const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullRequest"> | undefined): string =>
+  land === "pull-request" && review?.openPullRequest == null ? "Open pull request" : landLabel(land, review?.openPullRequest);
 
 /** What the primary button does, in a line under the buttons. Exported for its test. */
-export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch">, open: number): string {
+export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest">, open: number): string {
   const branch = review.branch === null ? "the run's branch" : shortBranch(review.branch);
+  const onto = review.openPullRequest ?? null;
   const said =
     land === "pull-request"
-      ? `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`
+      ? onto !== null
+        ? `Pushes ${branch} to PR #${onto.number}, already open from it; no second PR is opened.`
+        : `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`
       : land === "merge"
         ? `Merges ${branch} into your checkout.`
         : "Completes the task; the branch stays as it is.";
@@ -530,9 +569,10 @@ export function ReviewFooter({
   const primary = ordered[0] ?? null;
   const others = ordered.slice(1);
   const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;
-  const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${LAND_BUTTON[land]}` : LAND_BUTTON[land]);
+  const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${landButton(land, review)}` : landButton(land, review));
+  const onto = review?.openPullRequest ?? null;
   // A disabled secondary keeps its border, so it still reads as a button; only its words dim.
-  const secondary = "h-9 rounded-lg border border-border-strong px-3.5 text-sm font-medium hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-text-3 disabled:hover:bg-transparent";
+  const secondary = "h-9 rounded-md border border-border-strong px-3.5 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:text-text-3 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-ring";
   return (
     <section aria-label="Your review" data-review-footer className="flex flex-col gap-3 py-1">
       {review === undefined && prompt ? (
@@ -563,7 +603,7 @@ export function ReviewFooter({
           }
         }}
         placeholder={primary === null ? "What should change? Sent with Request changes" : "What should change, or a note the run reads if landing fails"}
-        className="w-full resize-none rounded-xl border border-border-strong bg-surface-raised/40 px-3.5 py-3 text-sm placeholder:text-text-3 focus-visible:border-ring focus-visible:outline-none"
+        className="w-full resize-none rounded-xl border border-border-strong bg-card px-3.5 py-3 text-sm placeholder:text-text-3 focus-visible:border-ring focus-visible:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={pending || note === ""} onClick={revise} className={secondary}>
@@ -581,7 +621,7 @@ export function ReviewFooter({
             data-land={primary ?? undefined}
             disabled={pending}
             onClick={() => accept(primary ?? undefined)}
-            className={cn("h-9 bg-brand px-4 text-sm font-semibold text-brand-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50", primary === null ? "rounded-lg" : "rounded-l-lg")}
+            className={cn("h-9 bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", primary === null ? "rounded-md" : "rounded-l-md")}
           >
             {primary === null ? "Accept" : label(primary)}
           </button>
@@ -594,13 +634,13 @@ export function ReviewFooter({
                 aria-expanded={menu}
                 disabled={pending}
                 onClick={() => setMenu(!menu)}
-                className="flex h-9 w-8 items-center justify-center rounded-r-lg border-l border-brand-foreground/20 bg-brand text-brand-foreground hover:opacity-90 disabled:opacity-50"
+                className="flex h-9 w-8 items-center justify-center rounded-r-md border-l border-primary-foreground/25 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 <ChevronDownIcon aria-hidden className="size-3.5" />
               </button>
               {menu ? (
-                <div role="menu" className="absolute right-0 bottom-full z-10 mb-1.5 min-w-60 rounded-xl border border-border-strong bg-surface-raised p-1 shadow-lg">
-                  <button type="button" role="menuitem" onClick={() => accept()} className="flex w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium hover:bg-selected">
+                <div role="menu" className="absolute right-0 bottom-full z-10 mb-1.5 min-w-60 rounded-lg border border-border bg-card p-1 shadow-(--shadow-card)">
+                  <button type="button" role="menuitem" onClick={() => accept()} className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left text-sm font-medium hover:bg-accent">
                     Accept without landing
                     <span className="text-xs font-normal text-text-2">Completes the task; the branch stays as it is.</span>
                   </button>
@@ -612,6 +652,15 @@ export function ReviewFooter({
       </div>
       <p className="text-xs leading-relaxed text-text-3" data-land-hint>
         {landHint(primary, review ?? { branch: null }, open)}
+        {onto === null ? null : (
+          <>
+            {" "}
+            <a href={onto.url} target="_blank" rel="noreferrer" data-open-pull-request className="inline-flex items-center gap-0.5 font-medium text-brand underline-offset-2 hover:underline">
+              View PR #{onto.number}
+              <ArrowUpRightIcon aria-hidden className="size-3" />
+            </a>
+          </>
+        )}
       </p>
       {error === null ? null : (
         <p role="alert" className="text-xs text-destructive">
@@ -627,17 +676,31 @@ export function ReviewFooter({
  * you: its words join the task's brief (the board's steer). Enter sends,
  * Shift+Enter starts a new line.
  */
-export function SteerCompose({ words, setWords, steer, placeholder }: { words: string; setWords: (words: string) => void; steer: (message: string) => Promise<void>; placeholder?: string }) {
+export function SteerCompose({
+  words,
+  setWords,
+  steer,
+  placeholder,
+  quickReplies,
+}: {
+  words: string;
+  setWords: (words: string) => void;
+  steer: (message: string) => Promise<void>;
+  placeholder?: string;
+  /** Lines one press sends as they are, shown under the box. */
+  quickReplies?: readonly string[];
+}) {
   const [pending, setPending] = useState(false);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
-  const send = async () => {
-    const message = words.trim();
+  const send = async (quick?: string) => {
+    const message = (quick ?? words).trim();
     if (message === "" || pending) return;
     setPending(true);
     setSaid(null);
     try {
       await steer(message);
-      setWords("");
+      // A quick reply leaves what was typed in the box.
+      if (quick === undefined) setWords("");
       setSaid({ ok: true, text: "Sent to the task." });
     } catch (error) {
       setSaid({ ok: false, text: error instanceof Error ? error.message : String(error) });
@@ -648,7 +711,7 @@ export function SteerCompose({ words, setWords, steer, placeholder }: { words: s
   return (
     <section aria-label="Steer" className="flex flex-col gap-2 py-1">
       {/* One line tall, as the composer: the box grows with what is typed, up to a limit, then scrolls. */}
-      <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-surface-raised/40 p-1.5 pl-2 focus-within:border-ring">
+      <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-card p-1.5 pl-2 focus-within:border-ring">
         <textarea
           aria-label="Steer this task"
           data-testid="task-action-steer-input"
@@ -672,11 +735,26 @@ export function SteerCompose({ words, setWords, steer, placeholder }: { words: s
           title={pending ? "Sending…" : "Send"}
           disabled={pending || words.trim() === ""}
           onClick={() => void send()}
-          className="grid size-8 shrink-0 place-items-center rounded-sm bg-brand text-brand-foreground hover:brightness-110 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-8 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          <ArrowUpIcon aria-hidden className="size-4" />
+          Send
         </button>
       </div>
+      {quickReplies === undefined || quickReplies.length === 0 ? null : (
+        <div aria-label="Quick replies" role="group" className="flex flex-wrap gap-1.5">
+          {quickReplies.map((reply) => (
+            <button
+              key={reply}
+              type="button"
+              disabled={pending}
+              onClick={() => void send(reply)}
+              className="rounded-full border border-border-strong px-2.5 py-0.5 text-xs text-text-2 hover:bg-accent hover:text-foreground disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              {reply}
+            </button>
+          ))}
+        </div>
+      )}
       {said === null ? null : (
         <p role={said.ok ? "status" : "alert"} data-testid={said.ok ? "task-action-outcome" : "task-action-refusal"} className={cn("text-xs", said.ok ? "text-muted-foreground" : "text-destructive")}>
           {said.text}

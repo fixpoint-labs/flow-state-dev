@@ -169,7 +169,7 @@ describe("a transport dispatch can't reach them either", () => {
     await expect(host.validateDispatch(envelope as never)).rejects.toThrow(/write session/);
     expect(() => host.dispatch(envelope as never)).toThrow(/write session/);
     await expect(
-      host.validateDispatch({ ...envelope, flowKind: DEFAULT_WRITE_FLOW, action: "set", sessionId: undefined } as never)
+      host.validateDispatch({ ...envelope, flowKind: DEFAULT_WRITE_FLOW, action: "set", sessionId: "s_bob" } as never)
     ).rejects.toThrow(`Unknown flow "${DEFAULT_WRITE_FLOW}"`);
   });
 });

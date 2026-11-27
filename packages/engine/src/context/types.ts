@@ -25,6 +25,7 @@ import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { RecordedRead } from "./view-reads";
 import type { SessionAdmission, SuspensionAdmission } from "./request-sessions";
+import type { PrincipalKind } from "./principal";
 
 export type RequestRuntime = {
   requestId: string;
@@ -77,14 +78,6 @@ export type CreateExecutionContextOptions<
   actionName: string;
   requestId: string;
   userId?: string;
-  sessionId?: string;
-  // FIX-2623.
-  /**
-   * Build the context with no session at all, for a user or org view: no
-   * session is loaded, made or stored, no session resource is installed, and
-   * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
-   */
-  noSession?: boolean;
   // FIX-2725 D1.
   /**
    * The scope of the view this run is, which decides the session reads it may
@@ -115,6 +108,15 @@ export type CreateExecutionContextOptions<
    * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
+  // FIX-2942.
+  /**
+   * The kind of the principal this run runs as, as its door set it
+   * (`context/principal.ts`). Absent → the request record's, then the
+   * session's; a run that creates its session with none is a machine's.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). Absent → the request record's, or none. */
+  resolvedBy?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
@@ -159,6 +161,13 @@ export type CreateExecutionContextOptions<
   tracingLevel?: TracingLevel;
   /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
   durabilityEnabled?: boolean;
+  // FIX-2895.
+  /**
+   * Whether the run's handler was carried on its dispatch rather than found
+   * on the flow (a dynamic schedule's fire). Such a run never parks: whatever
+   * continued it would re-run it from its record, which holds no handler.
+   */
+  runsCarriedCore?: boolean;
   // FIX-724.
   /**
    * Opt-in error-capture sink. When set, runtime block failures are
@@ -193,7 +202,29 @@ export type CreateExecutionContextOptions<
    * which is the correct answer when no caller derived one.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
-};
+} & CreateExecutionContextSession;
+
+/**
+ * The session a context is built for. A run names its session (required: the
+ * request record names it from the first write, and nothing here makes one
+ * up); only a view runs with none.
+ */
+export type CreateExecutionContextSession =
+  | {
+      /** The session the run lands in, born on the run's first write when it has no row. */
+      sessionId: string;
+      noSession?: false;
+    }
+  | {
+      sessionId?: undefined;
+      // FIX-2623.
+      /**
+       * Build the context with no session at all, for a user or org view: no
+       * session is loaded, made or stored, no session resource is installed, and
+       * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
+       */
+      noSession: true;
+    };
 
 // FIX-999.
 /**

@@ -19,6 +19,7 @@
  * Every field is visible to the session's browser. Never put a secret here.
  */
 import { handler } from "@flow-state-dev/core";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { SessionConfig } from "@flow-state-dev/core/types";
 import { z, type AnyZodObject, type ZodTypeAny } from "zod";
 import { linkedSessionOf } from "../projects/work-project";
@@ -89,7 +90,7 @@ export function setSessionFieldsAction(fields: SessionFields) {
       inputSchema: setSessionFieldsInputSchema,
       outputSchema: z.object({ fields: z.record(z.unknown()) }),
       execute: async (input, ctx) => {
-        const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+        const { state } = ctx.session;
         const running = state[WORKER_ID_STATE_KEY];
         if (typeof running !== "string") refuse("this session runs no worker.");
         if (input.worker !== undefined && input.worker !== running) {
@@ -112,12 +113,10 @@ export function setSessionFieldsAction(fields: SessionFields) {
         }
         // The absence check and the write are one versioned write, rerun on a conflict against the
         // stored state: of two opens that race, the second finds the first's value and is refused.
-        const already = (current: Readonly<Record<string, unknown>>) => names.find((name) => current[name] !== undefined);
-        let taken: string | undefined;
-        await ctx.session.atomicState(((current: Readonly<Record<string, unknown>>) => {
-          taken = already(current);
-          return taken === undefined ? written : {};
-        }) as never);
+        const taken = await withOutcome(ctx.session.atomicState, (current) => {
+          const existing = names.find((name) => current[name] !== undefined);
+          return { state: existing === undefined ? written : {}, result: existing };
+        });
         if (taken !== undefined) refuse(`"${taken}" is set when the session opens, and it already has one.`);
         return { fields: written };
       },

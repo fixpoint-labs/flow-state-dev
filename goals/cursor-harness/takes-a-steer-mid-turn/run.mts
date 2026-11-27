@@ -13,6 +13,7 @@
  * Run:      CURSOR_API_KEY=… pnpm tsx goals/cursor-harness/takes-a-steer-mid-turn/run.mts
  * Control:  GOAL_CONTROL=no-live-steer (no run offers a steer; k, h and w must FAIL)
  */
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -182,8 +183,8 @@ await runGoal(async (failures) => {
       boardCollectionId: BOARD,
       boardCollection: ledger,
       tenant: undefined,
-      phase: { phase: "implement", buildPrompt: async () => slowTask(), isDone: async () => true },
-      workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 60_000 },
+      mode: { name: "implement", instructions: async () => slowTask(), doneWhen: { check: async () => true } },
+      workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 60_000 }),
       runTimeoutMs: TURN_MS,
       stopsOnAbort: false,
       harness: (feeds) =>

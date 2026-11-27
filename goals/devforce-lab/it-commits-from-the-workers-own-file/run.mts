@@ -50,10 +50,9 @@ import { z } from "zod";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_BRANCH_PREFIX, LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { claudeCodeHarness, readyHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
@@ -140,7 +139,7 @@ await runGoal(async (failures) => {
 
   const lab = await openLab({
     stores: inMemoryStores(),
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
@@ -149,14 +148,20 @@ await runGoal(async (failures) => {
     // Claude Code as the lab's `claudeCodeHarness` sets it up — the same agent
     // a served Lab runs under `DEVFORCE_LAB_HARNESS=claude-code` — with the
     // prompt-recording tap in front of it.
-    harness: (feeds) =>
-      sequencer({
-        name: "devforce-lab-recorded-harness",
-        inputSchema: harnessRunInputSchema,
-        outputSchema: harnessRunHandleSchema,
-      })
-        .tap(recordPrompt)
-        .step(claudeCodeHarness(feeds) as never) as unknown as HarnessBlock,
+    harnesses: [
+      readyHarness(
+        (feeds) =>
+          sequencer({
+            name: "devforce-lab-recorded-harness",
+            inputSchema: harnessRunInputSchema,
+            outputSchema: harnessRunHandleSchema,
+          })
+            .tap(recordPrompt)
+            .step(claudeCodeHarness(feeds) as never) as unknown as HarnessBlock,
+        "claude-code",
+        "Claude Code",
+      ),
+    ],
   });
 
   try {

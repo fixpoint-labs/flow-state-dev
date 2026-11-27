@@ -76,17 +76,6 @@ import {
   type ResolveCodexClient,
 } from "./types";
 
-/**
- * The block context an option callback receives — the contract's own alias.
- *
- * This package declared a local copy of this shape until core exported one.
- * Using the contract's is the point of the contract: a resolver a host writes
- * against `HarnessResolver` is handed exactly this, so a harness that narrowed
- * or widened it locally would be the one place a host's callback stopped
- * type-checking for reasons that had nothing to do with the host.
- */
-type AgentCallbackContext = HarnessCallbackContext;
-
 /** The name Codex's usage is kept under, as its usage reader's record is. */
 const CODEX_HARNESS = "codex";
 
@@ -299,7 +288,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     outputSchema: codexAgentHandleSchema,
     ...(recordPullRequests ? { resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } } : {}),
     ...(uses !== undefined ? { uses } : {}),
-    execute: async (input, ctx: AgentCallbackContext): Promise<CodexAgentHandle> => {
+    execute: async (input, ctx: HarnessCallbackContext): Promise<CodexAgentHandle> => {
       const prompt = input.prompt?.trim();
       if (!prompt) {
         throw new CodexAgentRunError("codexAgent requires a non-empty prompt.");

@@ -16,7 +16,8 @@ const runActionMock = vi.fn((_options: RunActionOptions) =>
   Promise.resolve({ output: undefined, items: [], durationMs: 0 })
 );
 vi.mock("../../src/execution/runAction", () => ({
-  runAction: (options: RunActionOptions) => runActionMock(options)
+  runAction: (options: RunActionOptions) => runActionMock(options),
+  runFrameworkAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 /** The options `runAction` was called with; fails unless it was called exactly once. */
@@ -33,6 +34,7 @@ import {
   createInMemoryStores
 } from "../../src/host";
 import { createInboundTransportHost } from "../../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function provider(id: string): VoiceProvider {
   return {
@@ -74,6 +76,7 @@ function buildHost(opts: { routerProvider?: VoiceProvider; flowProvider?: VoiceP
 
 function dispatch(host: ReturnType<typeof buildHost>) {
   return host.dispatch({
+    sessionId: oneOffSessionId(),
     source: "test",
     flowKind: "voice-flow",
     action: "run",

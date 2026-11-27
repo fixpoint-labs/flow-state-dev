@@ -23,6 +23,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
+import type { Principal } from "../context/principal";
 import type { RuntimeLogger } from "../execution/logging";
 import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "../execution/types";
@@ -83,8 +84,15 @@ export interface InboundRequestEnvelope {
   /** Raw input; validated by `action.inputSchema` downstream. */
   input: unknown;
 
-  /** Existing session, or undefined for a new session. */
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. An existing
+   * session, a new id (born on the run's first write), or, for a run that
+   * belongs to no conversation, `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time, `dispatch` throws
+   * `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   /** Adapter-generated or framework-generated when absent. */
   requestId?: string;
   // FIX-1442.
@@ -105,11 +113,18 @@ export interface InboundRequestEnvelope {
    */
   tenantId?: string;
 
+  // FIX-2942.
   /**
    * Resolved principal — normally populated by `host.resolvePrincipal`
-   * before dispatch. The runtime treats this as authoritative.
+   * before dispatch, and carried unchanged. The runtime treats this as
+   * authoritative.
+   *
+   * `kind` and `resolvedBy` are the door's (`Principal`). A principal
+   * assembled without them (a direct `host.dispatch` from server code) runs
+   * as its session's kind when the session exists, and as a machine's when
+   * the run creates it.
    */
-  principal: ResolvedPrincipal;
+  principal: ResolvedPrincipal & Partial<Pick<Principal, "kind" | "resolvedBy">>;
 
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
@@ -383,7 +398,7 @@ export interface InboundTransportHost {
    */
   resolvePrincipal(
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal>;
+  ): Promise<Principal>;
 }
 
 /**

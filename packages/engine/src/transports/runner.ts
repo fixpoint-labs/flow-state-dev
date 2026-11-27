@@ -10,6 +10,7 @@ import type { ActionCore } from "@flow-state-dev/core/types";
 import type { FileContent } from "@flow-state-dev/core/items";
 import type { ExecutionResult } from "../execution/types";
 import type { LeasePlace } from "./concurrency/lease-backend";
+import type { PrincipalKind } from "../context/principal";
 
 /**
  * Serializable subset of InboundRequestEnvelope — everything a remote
@@ -28,7 +29,8 @@ export interface DispatchEnvelope {
   actionName: string;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /** The session the run lands in: always set by the host, which refuses an envelope with none. */
+  sessionId: string;
   // FIX-1442.
   /**
    * The organization the run belongs to. Required: a runner
@@ -39,6 +41,17 @@ export interface DispatchEnvelope {
    */
   orgId: string;
   tenantId?: string;
+  // FIX-2942; BP-030.
+  /**
+   * The kind of the principal the run runs as, as its door set it
+   * (`context/principal.ts`). `== null` on a job enqueued before the field, or
+   * from a caller that assembled its envelope without a door: the run then
+   * reads its request record's, then its session's, and is a machine's
+   * without either.
+   */
+  principalKind?: PrincipalKind;
+  /** The resolver identity that produced the principal (`Principal.resolvedBy`). `== null` → none, which matches nothing. */
+  resolvedBy?: string;
   source?: string;
   metadata?: Record<string, unknown>;
   /**

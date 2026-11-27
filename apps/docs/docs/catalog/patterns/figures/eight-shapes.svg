@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 493">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="46">parallelTasks</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="200">one pass, no review</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="64" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="79">goal</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="67" y1="86" x2="67" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="67" y1="132" x2="67" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="100" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="112" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="125" y1="86" x2="125" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="125" y1="132" x2="125" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="158" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="170" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="183" y1="86" x2="183" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="183" y1="132" x2="183" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="156" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="171">combine</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="248" y="24" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="262" y="46">supervisor</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="262" y="200">retry what is rejected</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="64" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="79">goal</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="287" y1="86" x2="287" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="287" y1="132" x2="287" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="320" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="332" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="345" y1="86" x2="345" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="345" y1="132" x2="345" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="378" y="110" width="50" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="390" y="125">task</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="403" y1="86" x2="403" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="403" y1="132" x2="403" y2="156" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="156" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="171">review each</text>
+<path class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" d="M428 167 H440 V121 H428" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="468" y="24" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="482" y="46">planAndExecute</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="482" y="200">replans if you turn it on</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="64" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="79">plan</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="110" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="125">tasks, in order</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="156" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="171">evaluate</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="565" y1="86" x2="565" y2="110" marker-end="url(#ah)"/>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="565" y1="132" x2="565" y2="156" marker-end="url(#ah)"/>
+<path class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" d="M648 167 H660 V75 H648" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="688" y="24" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="702" y="46">routedSpecialists</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="702" y="200">a controller picks next</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="64" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="79">controller</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="110" width="76" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="125">triage</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="792" y="110" width="76" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="804" y="125">refund</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="156" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="171">shared workspace</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="830" y1="86" x2="830" y2="110" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="830" y1="132" x2="830" y2="156" marker-end="url(#ah)"/>
+<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M868 167 H880 V75 H868" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="230" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="252">roundRobin</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="406">fixed order, set rounds</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="274" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="289">writer</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="146" y="274" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="158" y="289">editor</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="146" y="342" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="158" y="357">legal</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="342" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="357">design</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="104" y1="285" x2="146" y2="285" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="177" y1="296" x2="177" y2="342" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="146" y1="353" x2="104" y2="353" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="73" y1="342" x2="73" y2="296" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="248" y="230" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="262" y="252">debate</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="262" y="406">rounds, then one verdict</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="274" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="289">pro</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="366" y="274" width="62" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="378" y="289">con</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="342" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="357">judge</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="324" y1="285" x2="366" y2="285" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="293" y1="296" x2="293" y2="342" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="397" y1="296" x2="397" y2="342" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="468" y="230" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="482" y="252">eventActors</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="482" y="406">every matching actor runs</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="270" width="58" height="90"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="319">entry</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="576" y="270" width="72" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="588" y="285">billing</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="576" y="304" width="72" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="588" y="319">triage</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="576" y="338" width="72" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="588" y="353">audit</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="540" y1="281" x2="576" y2="281" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="540" y1="315" x2="576" y2="315" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="688" y="230" width="204" height="190"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="702" y="252">responseAuditor</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="702" y="406">answer goes out unchanged</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="270" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="285">finished answer</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="316" width="76" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="331">bias</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="792" y="316" width="76" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="804" y="331">tone</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="362" width="166" height="22"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="377">annotations</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="740" y1="292" x2="740" y2="316" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="740" y1="338" x2="740" y2="362" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="830" y1="292" x2="830" y2="316" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="830" y1="338" x2="830" y2="362" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="440" x2="920" y2="440"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="467" x2="54" y2="467" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="471">ONE STEP FEEDS THE NEXT</text>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="267" y1="467" x2="293" y2="467" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="301" y="471">ONLY WHEN ITS CONDITION HOLDS</text>
+</g>
+</svg>

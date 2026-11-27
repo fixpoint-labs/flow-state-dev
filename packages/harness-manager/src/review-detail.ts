@@ -6,7 +6,8 @@
  * branch, commit count, commit subjects, the judge's verdict, the checks
  * the phase ran (`commandCheck`), and the ways an accept can land the work
  * (with the last landing that failed). Beside them, what a person decides
- * on: the task's goal, the run's own summary, the task's pull requests, this
+ * on: the task's goal, the run's own summary, the task's pull requests (and
+ * the one open from the branch, which an accept lands on), this
  * round's commits and the files the run changed. This reads
  * that data as {@link ReviewDetail}, the shape the registry's `review-hold`
  * card takes as plain props, so an app never spells this package's field
@@ -54,6 +55,13 @@ export interface ReviewDetail {
   answer?: string | null;
   /** The task's pull requests, oldest first: where a person looks at the work. */
   pullRequests?: ReviewPullRequest[];
+  // FIX-2920.
+  /**
+   * The pull request already open from the run's branch, which a
+   * `pull-request` accept puts the work on rather than opening a second one.
+   * `null` when none is open, or GitHub couldn't say. Optional, as `lands` is.
+   */
+  openPullRequest?: ReviewPullRequest | null;
   /**
    * This round's commits, when the branch had commits before it: how many
    * and their subjects, newest first. `null` when the round is the whole
@@ -179,6 +187,7 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
     pullRequests: Array.isArray(data.pullRequests)
       ? data.pullRequests.map(pullRequestOf).filter((pr): pr is ReviewPullRequest => pr !== null)
       : [],
+    openPullRequest: pullRequestOf(data.openPullRequest),
     round: roundOf(data.round),
     files: Array.isArray(data.files) ? data.files.map(fileOf).filter((file): file is ReviewFile => file !== null) : null,
     fileCount: isCount(data.fileCount) ? data.fileCount : null,

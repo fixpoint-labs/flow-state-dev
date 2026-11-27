@@ -12,6 +12,8 @@
  * request, whichever way the agent opened it, and one opened before the run is
  * not claimed as the run's. A run that failed is checked too.
  */
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
+import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +29,7 @@ import type { HarnessBlock, PullRequestFollower, RecordedPullRequest } from "@fl
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";
@@ -100,8 +102,8 @@ function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullReque
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: () => "go", isDone: () => true },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    mode: { name: PHASE, instructions: () => "go", doneWhen: { check: () => true } },
+    workspace: localRepoWorkspaceHost({ root: join(dir, "checkouts"), repo: sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness,
