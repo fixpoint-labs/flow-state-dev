@@ -39,11 +39,10 @@ const LISTED_MATCHES = 10;
 type Entry = AttachmentResourceState & { ref: string };
 
 /** The session's documents, newest first. Images are not read on request, so they are not listed. */
-async function documentsOf(ctx: BlockContext): Promise<Entry[]> {
-  const list = (ctx.resources as Record<string, ResourceCollectionRef<AttachmentResourceState> | undefined>)[ATTACHMENTS];
+async function documentsOf(list: ResourceCollectionRef<AttachmentResourceState> | undefined): Promise<Entry[]> {
   if (list === undefined) return [];
   return (await list.list())
-    .map((instance) => instance.state as AttachmentResourceState)
+    .map((instance) => instance.state)
     .filter((entry): entry is Entry => entry.ref !== null && attachmentKind(entry.mediaType ?? "") === "document")
     .sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0));
 }
@@ -105,7 +104,7 @@ export const readAttachment = handler({
   outputSchema: readAttachmentOutput,
   resources: { [ATTACHMENTS]: attachmentsCollection },
   execute: async (input, ctx): Promise<z.infer<typeof readAttachmentOutput>> => {
-    const documents = await documentsOf(ctx);
+    const documents = await documentsOf(ctx.resources[ATTACHMENTS]);
     let file: FileContent | undefined;
     if (input.id !== undefined && input.id !== "") {
       file = fileForId(input.id.trim(), documents);
@@ -145,7 +144,8 @@ export const readAttachment = handler({
  * ones and how to read those. `null` while the session has none.
  */
 async function listedDocuments(_input: unknown, ctx: BlockContext): Promise<string | null> {
-  const documents = await documentsOf(ctx);
+  const attachments = ctx.resources[ATTACHMENTS] as ResourceCollectionRef<AttachmentResourceState> | undefined;
+  const documents = await documentsOf(attachments);
   if (documents.length === 0) return null;
   const listed = documents.slice(0, LISTED_DOCUMENTS);
   const older = documents.length - listed.length;
@@ -175,7 +175,7 @@ export const attachmentsCapability = defineCapability({
   presets: {
     default: ["tools", "context", "history"],
     tools: { tools: [readAttachment] },
-    context: { context: listedDocuments as (input: unknown, ctx: any) => Promise<string | null> },
+    context: { context: listedDocuments },
     // An earlier turn's document is named with its id, not re-sent.
     history: { history: { earlierDocuments: "named" } },
   },

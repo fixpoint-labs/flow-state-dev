@@ -155,8 +155,7 @@ describe("the teammates screen", () => {
   it("draws Lead's message to researcher in both conversations", async () => {
     const lab = fast();
     render(<TestProvider server={lab}><App /></TestProvider>);
-    // researcher's turn holds until Lead's row has been read: on the script's own clock its reply lands
-    // about 240 ms after the message, and Lead stops waiting then.
+    // researcher's answer waits until Lead's row has been read: at the tests' pace the exchange can finish first.
     const researcherAnswers = lab.holdNextTurn("teammates.researcher");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
 
@@ -166,9 +165,9 @@ describe("the teammates screen", () => {
 
     // While Lead waits, its row says so.
     await waitFor(() => expect(workerRow("Lead").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
+    act(() => researcherAnswers());
 
     // researcher sees the message as a line from Lead.
-    act(() => researcherAnswers());
     fireEvent.click(workerRow("researcher"));
     expect(await within(conversation()).findByRole("region", { name: "From Lead" })).toBeTruthy();
   });

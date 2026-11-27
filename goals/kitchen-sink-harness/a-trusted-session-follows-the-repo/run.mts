@@ -16,7 +16,7 @@
  * control it shows that a request can't turn trust on.
  *
  * Run:      pnpm tsx goals/kitchen-sink-harness/a-trusted-session-follows-the-repo/run.mts
- * Controls: GOAL_CONTROL=hooks-on  (no hooks-off layer; must FAIL hooks:off)
+ * Controls: GOAL_CONTROL=hooks-on  (the run asks for hooks, `disableAllHooks: false`; must FAIL hooks:off)
  *           GOAL_CONTROL=untrusted (the server reads as untrusted; must FAIL conventions:code-word)
  */
 import { randomBytes } from "node:crypto";

@@ -49,7 +49,7 @@ it("the Researcher holds the same tools on a lab over one fixed repository, wher
   lab = await openLab({
     stores: inMemoryStores(),
     harnesses: [readyHarness(harnessStub({}).slot)],
-    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-researcher-fixed-")), sourceRepo: process.cwd(), baseRef: "HEAD" },
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-researcher-fixed-")), repo: process.cwd(), baseRef: "HEAD" },
     coderWorkerId: "eng.coder",
   });
   expect(researcherTools(lab)).toEqual([...LOOKUPS, ...ROUTINES]);

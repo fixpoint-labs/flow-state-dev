@@ -378,6 +378,7 @@ export type TranslatedEvent =
       isError: boolean;
       finalMessage: string | null;
       sessionId: string | null;
+      /** The main agent loop's tokens, cached input (read and written) counted as input. */
       usage: { inputTokens: number; outputTokens: number } | null;
       /**
        * What the whole query spent, cached input included: `modelUsage`

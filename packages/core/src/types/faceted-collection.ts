@@ -492,7 +492,7 @@ export function defineFacetedCollection<
     inputSchema: z.object({ answers: z.record(z.string(), z.unknown()) }),
     parentInputSchema: stamped,
     execute: async ({ answers }, ctx) => {
-      const { key, token } = ctx.parent!.input as Stamp;
+      const { key, token } = ctx.parent!.input;
       const ref = await collectionOf(ctx).getOptional(key);
       if (ref === undefined) return;
       await ref.updateState((state) =>
@@ -525,7 +525,7 @@ export function defineFacetedCollection<
     reactTo: { ...(reactTo as ReactiveBindings | undefined), contentUpdated: reaction },
   } as ResourceCollectionConfig & { stateSchema: ZodTypeAny });
 
-  const declared = { [name]: collection } as Record<string, typeof collection>;
+  const declared = { [name]: collection };
 
   const search = handler({
     name: `search-${name}`,
@@ -537,7 +537,7 @@ export function defineFacetedCollection<
     outputSchema: z.object({ keys: z.array(z.string()) }),
     resources: declared,
     execute: async (query: Record<string, unknown>, ctx) => {
-      const rows = await (ctx.resources as Record<string, ResourceCollectionRef<JsonObject>>)[name]!.list();
+      const rows = await ctx.resources[name]!.list();
       const keys = rows
         .filter((row) =>
           matchesFacets(row.state.facets as Record<string, StoredAnswer> | null | undefined, query, ids)
@@ -553,7 +553,7 @@ export function defineFacetedCollection<
     inputSchema: reindexInput,
     resources: declared,
     execute: async (input: FacetReindexInput, ctx): Promise<ResourceContentChange[]> => {
-      const rows = await (ctx.resources as Record<string, ResourceCollectionRef<JsonObject>>)[name]!.list();
+      const rows = await ctx.resources[name]!.list();
       return (
         rows
           // `== null` also picks up rows stored before `facets` existed.

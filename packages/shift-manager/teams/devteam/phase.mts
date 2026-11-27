@@ -116,7 +116,7 @@ export async function buildWorkerPrompt(
  */
 async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<CodingBriefParts> {
   const ctx = run.ctx;
-  const { config } = await workerOf(ctx as never);
+  const { config } = await workerOf(ctx);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -134,7 +134,7 @@ async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<C
   }
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
-  const skills = config.workerSkills ?? [];
+  const skills = config.workerSkills;
   return {
     ...(config.instructions === undefined ? {} : { instructions: config.instructions }),
     standingBrief: { name: documentRef, text: brief },

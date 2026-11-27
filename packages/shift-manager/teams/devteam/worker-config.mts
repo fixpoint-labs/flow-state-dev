@@ -21,15 +21,8 @@
  */
 
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type WorkerInstallation, type WorkerTurnContext } from "@flow-state-dev/workforce";
 import { z } from "zod";
-
-/** Where a worker's resolved skill union arrives, spelled exactly as the factory imposes it. */
-export const WORKER_SKILLS_KEY = "workerSkills";
-
-/** The lab's own setting: which file-declared document this worker reads, by its minted ref. */
-export const DOCUMENT_KEY = "document";
 
 /** The public entry a check reads a worker's own configuration through. */
 export const INSPECT_ENTRY = "inspect";
@@ -51,43 +44,24 @@ export const WORKER_FACTS_DATA_TYPE = "devforce-worker-facts";
  * nothing to read passes every isolation check trivially. Optional only so
  * the shared copy, which carries no worker's settings, can be built.
  */
-export function workerSettingsSchema() {
-  return workerConfigSchema().extend({
-    [DOCUMENT_KEY]: z.string().min(1).optional(),
-  });
-}
-
-/** The parts of the bag this lab reads where the bag's type is erased. */
-export interface WorkerConfig {
-  /** The worker's own id, imposed by the hire and never authored. */
-  workerId?: string;
-  instructions?: string;
-  document?: string;
-  /** The coding harness a `coder` worker names, which its flow's schema checked at hire. */
-  harness?: string;
-  workerSkills: Array<{ name: string; skillMd: string }>;
-}
-
-/** The worker a turn runs as: its id and its own settings. */
-export interface Worker {
-  id: string;
-  config: WorkerConfig;
-}
-
-/** How a block finds the worker its turn runs as. */
-export type WorkerOf = (ctx: BlockContext) => Promise<Worker>;
+export const workerSettingsSchema = workerConfigSchema().extend({
+  document: z.string().min(1).optional(),
+});
 
 /**
  * The worker a turn on `flow` runs as, loaded through the installation: the
  * one the session names, checked, with its settings as its own file declared
  * them.
  */
-export function workerOf(installation: WorkerInstallation, flow: string): WorkerOf {
-  return async (ctx) => {
-    const worker = await installation.resolveWorker(ctx as never, flow);
-    return { id: worker.id, config: worker.config as unknown as WorkerConfig };
+export function workerOf(installation: WorkerInstallation, flow: string) {
+  return async (ctx: WorkerTurnContext) => {
+    const { id, config } = await installation.resolveWorker(ctx, flow);
+    return { id, config: config as z.infer<typeof workerSettingsSchema> };
   };
 }
+
+/** How a block finds the worker its turn runs as. */
+export type WorkerOf = ReturnType<typeof workerOf>;
 
 /**
  * What a worker can see of itself, read from inside a running block.
@@ -139,7 +113,7 @@ export function defineReadOwnFacts(workerOfTurn: WorkerOf) {
     name: "devforce-worker-facts",
     inputSchema: z.object({}).optional(),
     outputSchema: workerFactsSchema,
-    execute: async (_input: unknown, ctx: BlockContext): Promise<WorkerFacts> => {
+    execute: async (_input, ctx) => {
       const { id: worker, config } = await workerOfTurn(ctx);
       if (config.document === undefined) {
         throw new Error(`worker "${worker}" names no document, so it has nothing to read.`);
@@ -153,7 +127,7 @@ export function defineReadOwnFacts(workerOfTurn: WorkerOf) {
         );
       }
       const document = await (ref as { readContent(): Promise<string | null> }).readContent();
-      const skills = config.workerSkills ?? [];
+      const skills = config.workerSkills;
 
       const facts: WorkerFacts = {
         worker,

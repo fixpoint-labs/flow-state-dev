@@ -21,7 +21,7 @@ import { observedPullRequestsCollection, planKeySegment } from "@flow-state-dev/
 import { declaredIndexes } from "@flow-state-dev/core/types";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import type { Harness } from "../src/harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import { scriptedHarness } from "../src/scripted-harness";
 import { harnesses } from "../src/kit";
 

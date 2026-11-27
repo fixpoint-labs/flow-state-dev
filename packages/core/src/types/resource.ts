@@ -543,13 +543,15 @@ export type AnyResourceRef =
  * registry pass with no index signature of its own. Any index signature here
  * would have to read as a subtype of `AnyResourceRef`, and an undeclared name
  * would then compile wherever a ref is accepted. Without one, an undeclared
- * name is a missing-property error.
+ * name is a missing-property error. Optional entries can be absent by
+ * property access. `get` throws for an absent name and `list` returns only
+ * the handles that exist.
  */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
-  get: (<TKey extends keyof TResources>(name: TKey) => TResources[TKey]) & ResourceRef<any>;
-  list: (() => Array<TResources[keyof TResources]>) & ResourceRef<any>;
+  get: (<TKey extends keyof TResources>(name: TKey) => NonNullable<TResources[TKey]>) & ResourceRef<any>;
+  list: (() => Array<NonNullable<TResources[keyof TResources]>>) & ResourceRef<any>;
 };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
@@ -599,7 +601,7 @@ export function defineResource<
 >(
   config: TConfig
 ): TConfig & DefinedResource<
-  AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+  AsStateObject<StateOf<TConfig>> & EdgesField<TConfig>,
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   const contentSources = [
@@ -680,7 +682,7 @@ export function defineResource<
 
   return { ...config, stateSchema, default: defaultValue } as unknown as
     TConfig & DefinedResource<
-      AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
+      AsStateObject<StateOf<TConfig>> & EdgesField<TConfig>,
       ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
     >;
 }
