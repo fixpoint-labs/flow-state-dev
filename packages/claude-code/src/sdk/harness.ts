@@ -4,7 +4,8 @@
  *
  * Each run gets only Claude Code's environment (`harnessEnv` over
  * `CLAUDE_CODE_PASS`), records its work, may read, write, edit and run
- * commands, and reads the working folder's own settings with every hook off:
+ * commands by default (hosts can replace that tool list), and reads the working
+ * folder's own settings with every hook and inline skill shell command off:
  * a turn could write a hook into `.claude/settings.json` that would run by
  * itself on the next one. `acceptEdits` is its permission mode; with
  * `plan: true` the value is `claude-code-plan`, in `plan` mode, for workers
@@ -35,13 +36,16 @@ export interface ClaudeCodeHarnessOptions {
   /**
    * Tools the run may use without asking. Replaces the kit default
    * (`Read`, `Write`, `Edit`, `Bash`) when set; the agent block still adds
-   * Claude Code's to-do tools, and under `bypassPermissions` its search tools.
+   * Claude Code's to-do tools. Applies in both `acceptEdits` and `plan` mode;
+   * the SDK still enforces the selected mode. Name `Skill`, `Grep` and `Glob`
+   * explicitly to offer them. Pre-approving search skips path prompts,
+   * including for paths outside the working directory; this is no sandbox.
    */
   allowedTools?: string[];
   /**
    * Which settings layers the run loads (`CLAUDE.md`, skills, plugins). Replaces
-   * the kit default (`project`) when set. Hooks stay off via the harness's
-   * fixed `settings.disableAllHooks`.
+   * the kit default (`project`) when set. Hooks and inline skill shell execution
+   * stay off via the harness's fixed `settings`.
    */
   settingSources?: ClaudeCodeSettingSource[];
 }
@@ -72,7 +76,7 @@ export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harne
         allowedTools,
         permissionMode: plan ? "plan" : "acceptEdits",
         settingSources,
-        settings: { disableAllHooks: true },
+        settings: { disableAllHooks: true, disableSkillShellExecution: true },
       }),
     readiness: (check) => checkClaudeCodeReadiness({ env: env(), ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CLAUDE_CODE_PASS,

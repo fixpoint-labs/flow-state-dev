@@ -40,19 +40,32 @@ describe("a Claude Code run from claudeCodeHarness()", () => {
     expect(built!.env).toEqual(harnessEnv({ pass: CLAUDE_CODE_PASS }));
     expect(built!.permissionMode).toBe(mode);
     expect(built!.settingSources).toEqual(["project"]);
-    expect(built!.settings).toEqual({ disableAllHooks: true });
+    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
     expect(built!.recordWork).toBe(true);
     expect(built!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash"]);
   });
 
-  it("forwards host overrides of allowedTools and settingSources", () => {
+  it.each([false, true])("forwards host tools with plan=%s while keeping project settings and automatic execution off", (plan) => {
     claudeCodeHarness({
+      plan,
       allowedTools: ["Read", "Grep", "Glob", "Skill"],
-      settingSources: ["project", "user"],
     }).agent(feeds as never);
     const [built] = seen.options;
     expect(built!.allowedTools).toEqual(["Read", "Grep", "Glob", "Skill"]);
+    expect(built!.permissionMode).toBe(plan ? "plan" : "acceptEdits");
+    expect(built!.settingSources).toEqual(["project"]);
+    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
+  });
+
+  it("forwards host overrides of settingSources", () => {
+    claudeCodeHarness({ settingSources: ["project", "user"] }).agent(feeds as never);
+    const [built] = seen.options;
     expect(built!.settingSources).toEqual(["project", "user"]);
-    expect(built!.settings).toEqual({ disableAllHooks: true });
+    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
+  });
+
+  it("preserves an empty host tool list", () => {
+    claudeCodeHarness({ allowedTools: [] }).agent(feeds as never);
+    expect(seen.options[0]!.allowedTools).toEqual([]);
   });
 });
