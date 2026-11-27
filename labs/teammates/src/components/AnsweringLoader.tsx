@@ -22,17 +22,19 @@ export function pickLoader(random: () => number = Math.random): LoaderVariant {
 }
 
 /**
- * The move for the reply under way: drawn once when `replying` turns on, kept
- * while it stays on, dropped when it turns off so the next reply draws again.
+ * The move for the turn under way: drawn once when `turnRunning` turns on, kept
+ * while it stays on, dropped when it turns off so the next turn draws again.
+ * Pass the turn's running flag, not whether the bubble shows: the bubble hides
+ * while answer text streams and comes back on a later step, with the same move.
  */
-export function useLoaderPerReply(replying: boolean, random: () => number = Math.random): LoaderVariant | undefined {
+export function useLoaderPerReply(turnRunning: boolean, random: () => number = Math.random): LoaderVariant | undefined {
   const [pick, setPick] = useState<LoaderVariant>();
-  if (replying && pick === undefined) {
+  if (turnRunning && pick === undefined) {
     const next = pickLoader(random);
     setPick(next);
     return next;
   }
-  if (!replying && pick !== undefined) {
+  if (!turnRunning && pick !== undefined) {
     setPick(undefined);
     return undefined;
   }
