@@ -2,7 +2,7 @@
 "@flow-state-dev/claude-code": minor
 ---
 
-`FSD_CLAUDE_CODE_AUTH` chooses whether a server's `ANTHROPIC_API_KEY` reaches Claude Code. Claude Code always signs in with a key it finds over a `claude` sign-in, so a server that keeps the key for direct model calls billed every harness run to it.
+`FSD_CLAUDE_CODE_AUTH` chooses whether a server's `ANTHROPIC_API_KEY` reaches Claude Code (FIX-2954). Claude Code always signs in with a key it finds over a `claude` sign-in, so a server that keeps the key for direct model calls billed every harness run to it.
 
 - `api-key` (default, unchanged): the key is passed when set.
 - `prefer-login`: the key is held back when Claude Code finds a sign-in without it, and passed when it finds none. Asked once per process; restart after signing in.
