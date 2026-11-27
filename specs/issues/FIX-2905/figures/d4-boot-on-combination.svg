@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D4, what must hold before a branch goes into the preview. Chosen: the branch&#x27;s checks are green at its current tip, and the merged app boots from the merged tree, with a rollback to the previous tip if it does not. Instead of: per-branch checks only. It comes down to two branches that are each green and each boot alone but break the app together: the chosen option catches and names the culprit, the other shows a broken app. The price: a boot on every build, seconds to a minute. Locks in: each app declares its start command and a loaded check. Flips if: the boot is too slow or flaky to trust."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D4 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What must hold before a branch goes into the preview?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Green at its tip, and the merged app boots</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Green at its tip, per branch only</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">TWO GREEN BRANCHES</text>
+    <text class="t-lbl" x="32" y="169">THAT BREAK TOGETHER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Caught and named</text>
+    <text class="t-s" x="248" y="179">the preview goes back; the rest still show</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Shown, and broken</text>
+    <text class="t-s" x="612" y="179">the app fails; nobody knows which branch</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">COST OF A BUILD</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">One boot, per build</text>
+    <text class="t-s" x="248" y="241">seconds to a minute; more only on failure</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Checks only</text>
+    <text class="t-s" x="612" y="241">recorded for a Teammates run; cached by tip</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">A WRONG ROLLBACK</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">A good branch is left out</text>
+    <text class="t-s" x="248" y="299">named in the output, never silent</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">No boot to be wrong</text>
+    <text class="t-s" x="612" y="299">what merges cleanly is shown</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">Every app declares a start and a loaded check</text>
+    <text class="t-s" x="32" y="389">the declaration lives with the app, not the package</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">The boot is slow or flaky</text>
+    <text class="t-s" x="494" y="389">a false rollback then hides good branches</text>
+  </g>
+</svg>

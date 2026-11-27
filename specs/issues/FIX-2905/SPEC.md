@@ -6,123 +6,124 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **has several coding runs in flight and wants to see them all in the running app** | Starts one dev server per worktree, each with its own install and port, or merges the branches into their own checkout by hand | Runs one command. A preview of its own holds every in-flight branch merged, each named with the tip it was read at. They start the app there on a port they choose |
-| **has two in-flight features that edit the same file** | Finds out when merging by hand | The later one is left out and named, with the files and the branches that merged before it. Everything else still shows |
-| **has a pull request merge, or removes a worktree** | The by-hand list goes stale | The next rebuild drops it. The set is read from the worktrees each time, and merged work is in the base already. A finished run whose pull request is still open stays in |
-| **rebuilds the preview** | n/a | It resets to the latest main and merges again, and replays a conflict fix the person made by hand. It refuses, and says what is there, if the preview holds a commit the last build did not make. An explicit discard resets anyway |
-| **runs `git push` in the preview**, in any form | n/a | It fails: any branch name, a second remote, a typed-out URL, `--no-verify`. The preview has no remote and no address that works. Their repository and worktrees push as before |
-| **checks their own repository afterwards** | n/a | Untouched: same branch, files, status, branch list and config. The only thing added is the preview's directory |
+| **has several coding runs in flight and wants to see them together in the app they run** | Starts a server per worktree (about 3 GB and a port each), or has Claude merge the branches into their checkout, one git command at a time | One command. Their checkout sits on a local-only `preview/<user>` branch with every in-flight branch merged, each named with the tip it was read at. The app they already run shows it |
+| **has two features that edit the same file** | Finds out when merging | The later one is left out and named, with its files and what merged before it. The rest still show |
+| **has two features that each pass and boot, and break the app only together** | Finds out in the browser, with no one to blame | The merged tree must boot and load. If not, the preview goes back, the culprit is left out and named, the rest still show |
+| **has a branch with red checks, or one that changes the lockfile** | Merged blind | Left out and named. A lockfile change is "install owed": replacing `node_modules` under a running server breaks it |
+| **rebuilds, or has a pull request merge** | The by-hand list goes stale | One rebuild resets to the latest main, drops what merged, merges again and replays a conflict fix made by hand. It refuses if the preview holds a commit the build did not make |
+| **has uncommitted edits, or runs `git push` in their checkout** | The preview is theirs to guard | Edits stay: a rebuild stops, never overwrites. A push of the preview by name or tip is refused by a hook. `--no-verify` is not stopped |
 
-Two cases the table doesn't draw. A worktree with uncommitted changes, or one mid-rebase, shows its committed tip and is counted as *not fully shown*. A root with several repositories gets one preview per repository, each named.
-
-The person has one question: *what do the things in flight look like together?* A server per worktree answers *what does each look
-like alone*, at one install and one port each.
+The person has one question: *what do the things in flight look like together, in the app that runs?* A server per worktree answers *what does each look like alone*.
 
 ## The goal, and how we'll know it's met
 
-**A person sees every in-flight feature that merges cleanly together in one app, the ones that don't are named, and nothing of theirs is touched or can be sent to GitHub from the combination.**
+**A person sees, in the app they already run, every in-flight feature that merges cleanly and keeps the app working; the ones that don't are named; and nothing of theirs is lost.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | "Preview all live worktrees at once in one running app" (the owner's request). Each worktree is about 3 GB once installed, so one server each does not scale |
-| **Smaller, and rejected** | "A script that merges the branches." It leaves the push path open and loses a person's conflict fix on the next rebuild. Or "preview the most recent worktree", which is one feature, not the combination |
-| **Bigger, and not this issue's** | Starting, stopping and choosing ports for the dev server ([FIX-2251](https://linear.app/fixpoint-labs/issue/FIX-2251)). Leaving a feature out by name when it merges cleanly but breaks the app. A conflict screen or a rebuild button in an app. Rebuilding on its own when a branch moves |
-| **Not done if** | The merge is right but the push guard was tested only by branch name, or only against `origin` · the preview shows a stale tip · a rebuild throws away a hand resolution · a rebuild refuses forever after one hand commit, with no discard · the person's repository gained a branch, a setting or a cache · a branch's own files are not in the preview's tree · the goal check never ran on a conflicting pair, or on a bare repository with worktrees |
+| **The real need** | "Preview all live worktrees at once in one running app" (the owner's request). A server each does not scale. The owner's longer goal is any FSD app editing itself live; this preview, with its roll-back-on-failed-boot gate, is a step toward it |
+| **Smaller, and rejected** | "A script that merges the branches": it lets a pair that breaks only together through, and leaves Claude doing the merging |
+| **Bigger, and not this issue's** | The super-app screen (a preview row, "stale, Rebuild", a `/preview` route): a separate follow-up, the next piece. A server per worktree ([FIX-2251](https://linear.app/fixpoint-labs/issue/FIX-2251), Backlog), whose port allocation gate 2's free port will share |
+| **Not done if** | The boot gate is tested only with a pair git already refuses to merge · the control passes · a result recorded for an older tip is accepted · a lockfile branch is merged · a rebuild takes the person's edit · a hand resolution is lost |
 
 ```mermaid
 flowchart LR
-  I["scratch repo + bare remote · four in-flight branches, one conflicting, one merged, one just started"] --> B["the real build, a change, a rebuild"]
-  B --> T["the preview's tree and merges · every push from it · the person's repository"]
-  T -->|"in-flight tips in, conflict named, every push refused, repository unchanged"| P["PASS · goal met"]
-  C["control · the guard is a pre-push hook"] -.-> B
-  T -.->|"under the control"| F["must FAIL · a push with no-verify goes through"]
+  I["scratch repo · eight branches: a conflict, a lockfile, red checks, a fresh one, a pair green alone"] --> B["the real build, a move, a rebuild"]
+  B --> T["the preview's ancestry and tree · its own boot · every push · the person's edits"]
+  T -->|"good tips in, four left out and named, pair never both, tree boots, edits kept"| P["PASS · goal met"]
+  C["control · a build with no boot gate"] -.-> B
+  T -.->|"under the control"| F["must FAIL · the pair is in and the tree does not boot"]
 ```
 
-The check reads the preview's tree and refs and tries real pushes. It never asks the build whether it thinks it is safe. It proves the tree an app would start from, not that an app starts: running it is the person's.
+The check reads the preview's ancestry and files and boots the tree with its own code. It never asks the build whether it succeeded.
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workspace/preview-in-flight/` · model-free · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Each in-flight tip but the conflicting one is an ancestor of the preview's HEAD, and its own file is on disk in the tree. The conflicting branch is named with its files and what merged before it. A branch with no commits of its own is contained and not called a conflict. Moving a worker's branch and rebuilding picks up the new tip. Pushes from the preview all fail: HEAD to another name, the preview's branch, another local branch, a typed-out URL, a remote added later, and `--no-verify`; the remote holds none of them. A sibling worktree and the primary still push. The person's repository HEAD, status, branch list, worktree list and config are unchanged, with no rerere cache in it. A rebuild after a hand commit is refused; after a discard it replays the hand resolution; a rebuild with no hand commit succeeds. All of it again with a bare repository and worktrees as the source |
-| **Input** | A scratch repository and a bare remote; the merged pull request is a stub `gh` answer, and a failing stub stands for *unreachable*. A different branch count, order and conflicting pair must pass too |
-| **Anti-game** | Don't test the guard by branch name or against `origin` alone, don't read commit messages for what merged (read ancestry and files), and don't read the build's own report of success |
-| **Control that must fail** | `GOAL_CONTROL=hook-guard` must FAIL on *a push with `--no-verify` is refused*. Today's `main` has no preview and fails the build and push legs |
+| **Signal** | Each good tip is an ancestor of HEAD and its file is on disk. The conflicting, red, lockfile and boot-breaking branches are not, each named with its reason. A branch with no commits is contained. The pair: each alone is green and boots, together they merge with no git conflict and fail to boot, and the preview holds one. A recorded result is read for its tip; a moved branch is rechecked. Edits survive; a hand fix replays; a hand commit blocks a rebuild. If nothing boots, HEAD is the previous tip |
+| **Input** | A scratch repository, a bare remote, eight worktrees. Another count, order and pair must pass too |
+| **Anti-game** | Don't read the build's report or a commit message. Don't take one branch's boot as the pair's |
+| **Control that must fail** | `GOAL_CONTROL=no-boot` must FAIL: the pair is in and the tree does not boot. Today's `main` has no preview and fails the build legs |
 
 ## What changes
 
-![Left, the repository's worktrees: the person's checkout untouched, three in flight and one merged. Right, one preview, a clone of its own: latest main with two in-flight branches merged, the conflicting one left out and named, and a fence saying it has no remote](figures/changes.svg)
+![Left: the worktrees, unchanged, one merged and five in flight. Right: the person's primary checkout on a local-only preview branch, cut from the latest main, with two branches merged, three left out and named, a boot gate on the merged tree, and a note that the push guard is a hook](figures/changes.svg)
 
-Read the right column top to bottom: a base, two merges, one branch left out, and a fence at the bottom. The left column is unchanged by any of it.
+Read the right column top to bottom: a base, two merges, three branches left out for three reasons, and a boot gate before the preview is kept.
 
 ```diff
   fsdev worktrees .fsdev/teammates-runs
 + fsdev worktrees .fsdev/teammates-runs --preview
-+ #  preview   .fsdev/teammates-runs/.previews/repo   base main 1a2b3c4
++ #  preview   preview/jake on 1a2b3c4, base main
 + #  merged    feat-export 3fa9c2e, fix-login 8be0d1a
-+ #  left out  chore-docs a41c07d: conflicts after feat-export in shared.txt
-+ #  not shown 1 worktree has uncommitted changes, 1 is mid-rebase
-+ #  install   a lockfile changed: an install is owed
-+ cd .fsdev/teammates-runs/.previews/repo && pnpm dev --port 4300
++ #  left out  chore-docs: conflicts after feat-export in shared.txt
++ #  left out  feat-billing: changes the lockfile, install owed
++ #  left out  feat-report: boots alone, breaks the app once it joins fix-login
++ #  not shown 1 worktree has uncommitted changes
 ```
 
-Names are the implementer's. **Docs:** add a *Previewing in-flight worktrees* section to the `fsdev worktrees` entries in `apps/docs/docs/api/cli.md` and `apps/docs/docs/cli/overview.md`, to `packages/fsdev/README.md`, and to `packages/workspace/README.md` beside *Listing and removing worktrees* (with a row in its method table), and a line to `apps/docs/docs/workforce/projects.md` where a run's worktree is reviewed. No new page.
+- **One implementation, in `@flow-state-dev/workspace`**, as `fsdev worktrees --preview` (build, status, rebuild). `pnpm wt:preview` and the preview-mode skill call it, so Claude is called only on a conflict or failure. The skill's by-hand steps stay as the fallback for a broken tool. No second copy.
+- **Gate 1, per branch: checks green at its tip.** A Teammates run already must pass the operator's checks, and the result is on its run record. The tool reads it when it was made at this tip, else runs the checks in the worktree and keeps the result by tip.
+- **Gate 2, on the merged tree:** each app declares a start command and a loaded check. It boots on a free port, passes, and is stopped. A failure puts the preview back and names the culprit.
+- **A lockfile change is skipped:** "install owed".
+- **One writer** of `preview/<user>`, under a lock ([D5](DECISIONS.md#d5)).
+- **Teammates pins its base.** It names none, so a run is cut from the checked-out branch, which is now the preview ([Facts](DECISIONS.md#facts-read-from-the-code)). One line in `labs/teammates/host.mts`.
 
 ```mermaid
 flowchart LR
-  L["host.list · worktrees under the host's root"] --> E["in flight: on a branch, not matched by the FIX-2904 proof"]
-  E --> M["the preview: a clone with no remote, each branch merged by land's merge step"]
-  M -->|"conflict"| O["left out, named"]
-  M --> G["no remote, dead push address · build record in the clone's own config"]
+  A["callers · fsdev, pnpm, the skill, an app"] --> T["one tool · one lock"]
+  T --> E["in flight · host.list and preview.branch, minus merged"]
+  E --> G1["gate 1 · checks at the tip"]
+  G1 --> M["merge · land's merge step"]
+  M --> G2["gate 2 · boot the merged tree"]
+  G2 --> P["preview/user in the primary"]
 ```
 
-In flight is the complement of [FIX-2904](https://linear.app/fixpoint-labs/issue/FIX-2904)'s proof of *merged*: one function, two callers. The word is not *live*, which already means two other things in this package and its client.
+**Docs:** `docs/contributing/orchestration.md` and the preview-mode skill change in the same PR. User docs come at release: a *Previewing in-flight worktrees* section for `fsdev worktrees`, and a line in `workforce/projects.md`.
 
 ## What stays as it is
 
-- The person's repository, every worker's branch and worktree, and every row.
-- Running the app: the person starts it, and chooses a port. Nothing here allocates one.
-- Uncommitted work. A preview shows committed tips, and says how many worktrees it left out for having changes or a rebase under way.
-- Removal. The preview is a clone, not a worktree: it is never listed, so `--remove-merged` cannot take it and the in-flight set cannot contain it.
+- Every run's worktree, branch and row. A worktree with uncommitted changes or a rebase under way is counted *not fully shown*.
+- Running the app. The super app already rebuilds a page when a file it was built from changes (`rebuild.mjs`), offers a restart when a server's source changed (`lifecycle.mjs`) and installs only at start (`workspace.mjs`). It knows nothing of previews and keeps that.
+- `wt:prune`, the push guard (`check-preview-push.mjs`, `.husky/pre-push`) and the `preview.branch` list, as shipped.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| `workspace` · `host.list` | **Builds on.** The set of worktrees to read |
-| `workspace` · `host.baseTip` | **Builds on.** "Latest main" is the commit it returns after a fresh fetch from the pinned remote, never a local branch a run could move |
-| `workspace` · `land`'s private merge step (`merge()`, `programsOff`, `requireGit`) | **Extends.** It already makes a real merge commit, names the files from the index, aborts and restores the checkout, and switches off any program a worker planted in shared git config. It is pulled out so `land` and the preview share one step. The preview does not go through `host.land`, which merges into the person's own checkout. Sets the git floor at 2.31 |
-| `workspace` · `setUpCheckout` (the setup command) | **Builds on.** Run once when the clone is made. The CLI's host has no setup command today, so its output says an install is owed |
-| [FIX-2904](https://linear.app/fixpoint-labs/issue/FIX-2904)'s proof of *merged* | **Builds on, and depends on it.** In flight is what that proof does not match. This spec cannot land before FIX-2904 merges. With GitHub unreachable a squash-merged branch counts as in flight, and the output says so |
-| `workspace` · the provision that cuts a worktree | **Leaves alone.** It cuts worktrees of a repository, and needs a run source and a remote allowlist that `fsdev worktrees` refuses today. The preview is a clone of the local repository, which needs neither |
-| `host.land`, kind `merge` | **Leaves alone.** It merges one accepted run into the person's own checkout. The preview exists to avoid that |
-| Another way to see in-flight work running | **Two by hand, two planned, and they fit together.** A dev server started by hand in a worker's worktree, and `land` into the checkout. FIX-2251's per-worktree process and its live-checkout opt-out are unbuilt: a server it starts can run in the preview. Searched `preview`, `dev server`, `port`, `--port` across `packages/`, `labs/` and `apps/`: the only hits are `fsdev dev`'s fixed default port 4200, `serve`'s 3000, attachment previews and an error reporter's unrelated `preview` option. Nothing allocates a port per worktree |
-| [FIX-2251](https://linear.app/fixpoint-labs/issue/FIX-2251), a separate open issue, with "Rejected: a fixed preview slot symlinked to whichever worktree" | **Related, and keeps its job.** It keeps starting, stopping and choosing ports for a server. This is not a slot swapped between worktrees; it is a clone of its own |
-| [FIX-2252](https://linear.app/fixpoint-labs/issue/FIX-2252) and [FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768), separate open issues | **Related, and keep their jobs.** FIX-2252 keeps deciding when an unmerged worktree is stale. FIX-1768 keeps removal on merge. The preview reads worktrees and removes none |
+| `preview-mode` skill, `scripts/worktree.mjs`, the guard, the list | **Extends.** The skill is the by-hand version of this tool, and becomes its fallback. The model, list and guard are reused as shipped |
+| `workspace` · `host.list`, `host.baseTip`, `land`'s merge step, `runCheckoutCommands`, `acquireLock` | **Builds on.** No new merge, check or lock code |
+| [FIX-2904](https://linear.app/fixpoint-labs/issue/FIX-2904)'s proof of *merged* (spec merged to main) | **Builds on, and depends on it.** `scripts/worktree.mjs` holds its own ancestry-only proof for prune: the tool calls the package's and adds no third. Reconciling the script is not here |
+| Pull request #5583 | **Merged 2026-11-24**: build on its lanes, not after it. Merges use the host git lane, checks and boot the base lane, and the base fetch and FIX-2904's GitHub read the remote lane |
+| [FIX-2251](https://linear.app/fixpoint-labs/issue/FIX-2251), [FIX-2252](https://linear.app/fixpoint-labs/issue/FIX-2252), [FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768) | **Related, keep their jobs:** server life and ports, staleness, removal on merge |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| A preview clone per repository, under the host's root and outside what it lists | `workspace` · the host's bare clones; provision | The host's clones are bare, for workers to hang worktrees on. A preview is a working copy with no remote, and nothing in code makes one |
-| One build function: in-flight set, merges, conflict report, rebuild guard | `host.list`, `host.baseTip`, FIX-2904's proof, `land`'s merge step | Composed from all four. No new merge code |
-| `--preview` | `fsdev worktrees` | Extends the command |
+| `--preview` and one build function | The skill; `scripts/worktree.mjs` | The skill is this procedure done by Claude. Composed from the pieces above |
+| A start command and loaded check per app | `apps/super-app/apps.mjs` declares each app's start steps on fixed ports | No loaded check, no free port. Added there and handed to the tool: the package imports nothing from an app |
 
 | The debt | |
 |---|---|
-| **Removes** | Nothing in code. The by-hand merge of branches into a checkout |
-| **Adds** | One directory per repository the host lists, outside what it lists: accepted, because a clone is the only form that writes nothing to the person's repository ([D3](DECISIONS.md#d3)). Its objects are linked, not copied; its install is one more. A person who edits the clone's own config can turn the guard off: it guards against accidents. A third thing that reads in-flight work, beside FIX-2251's two: named so it reads this |
-| **Leaves** | Dependencies: a feature that changes a lockfile needs an install in the preview, which the output says. The server's life and ports: FIX-2251. Leaving a feature out by name when it merges cleanly but breaks the app. An app conflict view and rebuild button |
+| **Removes** | Claude merging by hand as the normal path |
+| **Adds** | The primary is occupied by the preview, and a merge-landing is unavailable while it is ([D3](DECISIONS.md#d3)). A guard that is a hook, not a wall. A boot on every build, and a false rollback hides a good branch ([D4](DECISIONS.md#d4)). One boot declaration per app |
+| **Leaves** | The super-app screen and FIX-2251's process life. Two proofs of *merged* side by side |
 
-**Net: up, slightly.** One new kind of directory is added, and nothing is removed. It composes from the existing host and writes nothing to the person's repository.
+**Net: up, small.** One tool and one declaration per app are added; the by-hand steps shrink to a fallback.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every in-flight feature that merges cleanly together in one app, nothing of the person's touched, nothing pushable. If wrong: we ship a preview that hides a feature that merges but breaks the app, or hold the issue open for a server lifecycle it was never meant to deliver.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size.** If wrong: the preview hides a feature that breaks only in combination, or the issue is held open for a screen it never meant to deliver.
 
-**[The debt](#whats-already-here-and-the-debt), net up, slightly:** one clone per repository is added; nothing is removed. If wrong: a directory of a few GB nobody remembers.
+**[The debt](#whats-already-here-and-the-debt), net up, small.** If wrong: a boot declaration per app that nobody keeps true.
 
-1. **[D1](DECISIONS.md#d1) · One preview with every in-flight branch merged, instead of a server per worktree.** If wrong: the person wanted each feature alone and gets a view where features meet.
-2. **[D3](DECISIONS.md#d3) · The preview is a clone of its own with no remote, instead of a worktree guarded by a setting.** If wrong: a second copy of the checkout and one more install.
-3. **[D2](DECISIONS.md#d2) · A conflicting feature is left out, named, and the rest still show.** If wrong: the preview quietly lacks a feature.
+Open, for you:
 
-**Open: none.** Number 1 is the one to weigh. This spec builds on FIX-2904's proof of merged work and cannot land before it. Open pull request [#5583](https://github.com/fixpoint-labs/flow-state-dev/pull/5583) changes how every git and `gh` call here is made (local lane for the merges, remote lane for the base fetch); the build adopts its lanes or lands after it. Reasoning and what lost is in [DECISIONS.md](DECISIONS.md).
+1. **[D5](DECISIONS.md#d5) · One tool writes the preview branch and every caller asks it; recommended over the app only proposing.** If wrong: a person waits on a session for a rebuild a button could have run.
+2. **[D1](DECISIONS.md#d1) · One preview with every in-flight branch merged, instead of a server per worktree.** If wrong: the person wanted each feature alone.
+3. **[D2](DECISIONS.md#d2) · A branch that conflicts is left out and named, and the rest show.** If wrong: the preview quietly lacks a feature.
 
-Feature · `workspace` + `fsdev` · small · epic FIX-2440 · blocked by FIX-2904 · related FIX-2252, FIX-1768, FIX-2251
+Answered by the owner, recorded as theirs: **[D3](DECISIONS.md#d3)**, the primary checkout and not a clone; **[D4](DECISIONS.md#d4)**, checks at the tip plus a boot of the combination; and one function in `workspace`.
+
+**Seen while verifying:** with the primary on the preview, a Teammates run is cut from it, and a merge-landing lands on it. Pinning the base fixes the first. The second means landing by pull request only while the primary is on the preview.
+
+Feature · `workspace` + `fsdev` + `labs/teammates` · small · epic FIX-2440 · blocked by FIX-2904 · related FIX-2251, FIX-2252, FIX-1768

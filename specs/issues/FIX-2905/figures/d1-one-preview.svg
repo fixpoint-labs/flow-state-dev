@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how one app shows every in-flight feature. Chosen: one preview with every in-flight branch merged. Instead of: one dev server per worktree. It comes down to three features in flight: one install and one port, against three of each. The price is that features meet, so one can hide another and conflicts are named. The person's own checkout is a tie. Locks in: a view of how features combine, not of each alone. Flips if: most previews are of one feature."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how one app shows every in-flight feature. Chosen: one preview with every in-flight branch merged. Instead of: one dev server per worktree. It comes down to three features in flight: one install and one port, against three of each. The price is that features meet, so one can hide another and conflicts are named. The person's own checkout sits on the local-only preview branch under the chosen option and is untouched under the other. Locks in: a view of how features combine, not of each alone. Flips if: most previews are of one feature."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -75,10 +75,10 @@
 
   <g id="row-tie">
     <text class="t-lbl" x="32" y="280">THE PERSON'S OWN CHECKOUT</text>
-    <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Untouched</text>
-    <text class="t-s" x="248" y="299">the preview is a clone of its own</text>
-    <text class="mark tie" x="592" y="282">=</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Sits on the preview branch</text>
+    <text class="t-s" x="248" y="299">local-only; uncommitted edits stay</text>
+    <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">Untouched</text>
     <text class="t-s" x="612" y="299">each is its own worktree</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Left: the repository's worktrees. The person's own checkout is untouched. Three in-flight worker worktrees and one whose pull request has merged. Right: one preview, a clone of its own, cut from the latest main, with the first two in-flight branches merged in. The third conflicts after the first two and is left out and named. A fence at the bottom of the preview says it has no remote and nothing can be pushed from it."
+<svg viewBox="0 0 940 560" role="img" aria-label="Left: the worktrees, unchanged: one whose pull request has merged and is already in main, and five in flight. Right: the person's primary checkout on a local-only preview branch, cut from the latest main. Two in-flight branches are merged, each with its checks green at the tip it was read at. Three are left out and named: one conflicts after an earlier branch, one changes the lockfile so an install is owed, and one passes its checks and boots alone but breaks the app when merged with another. A bar says the merged tree must boot on a free port and load, or the preview goes back to its previous tip. A last box says the push guard is a hook, which can be bypassed."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -25,71 +25,85 @@
     .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
     .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <rect class="bg" x="0" y="0" width="940" height="560"/>
 
   <g id="left-zone">
-    <rect class="zone" x="16" y="12" width="330" height="396" rx="8"/>
-    <text class="t-lbl" x="32" y="32">THE REPOSITORY'S WORKTREES</text>
-    <text class="t-s" x="32" y="48">nothing here is touched</text>
+    <rect class="zone" x="16" y="12" width="330" height="536" rx="8"/>
+    <text class="t-lbl" x="32" y="32">THE WORKTREES</text>
+    <text class="t-s" x="32" y="48">read as committed tips; none is changed</text>
 
-    <g id="your-checkout">
-      <rect class="box" x="32" y="62" width="298" height="52" rx="5"/>
-      <text class="t-h" x="46" y="84">Your own checkout</text>
-      <text class="t-s" x="46" y="102">branch, files and config as you left them</text>
+    <g id="merged-search">
+      <rect class="dim" x="32" y="62" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="84">feat-search</text>
+      <text class="t-s" x="46" y="102">pull request merged · already in main</text>
     </g>
     <g id="live-export">
-      <rect class="live" x="32" y="128" width="298" height="52" rx="5"/>
-      <text class="t-h" x="46" y="150">feat-export</text>
-      <text class="t-s" x="46" y="168">in flight · committed work only</text>
+      <rect class="live" x="32" y="124" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="146">feat-export</text>
+      <text class="t-s" x="46" y="164">in flight · checks green at its tip</text>
     </g>
     <g id="live-login">
-      <rect class="live" x="32" y="190" width="298" height="52" rx="5"/>
-      <text class="t-h" x="46" y="212">fix-login</text>
-      <text class="t-s" x="46" y="230">in flight · committed work only</text>
+      <rect class="live" x="32" y="186" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="208">fix-login</text>
+      <text class="t-s" x="46" y="226">in flight · checks green at its tip</text>
     </g>
     <g id="live-docs">
-      <rect class="live" x="32" y="252" width="298" height="52" rx="5"/>
-      <text class="t-h" x="46" y="274">chore-docs</text>
-      <text class="t-s" x="46" y="292">in flight · edits the same file as feat-export</text>
+      <rect class="live" x="32" y="248" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="270">chore-docs</text>
+      <text class="t-s" x="46" y="288">in flight · edits the same file as feat-export</text>
     </g>
-    <g id="merged-search">
-      <rect class="dim" x="32" y="314" width="298" height="52" rx="5"/>
-      <text class="t-h" x="46" y="336">feat-search</text>
-      <text class="t-s" x="46" y="354">pull request merged · already in main, not in flight</text>
+    <g id="live-billing">
+      <rect class="live" x="32" y="310" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="332">feat-billing</text>
+      <text class="t-s" x="46" y="350">in flight · changes the lockfile</text>
     </g>
-    <text class="t-s" x="32" y="392">in flight = on a branch, and no merged pull request</text>
+    <g id="live-report">
+      <rect class="live" x="32" y="372" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="394">feat-report</text>
+      <text class="t-s" x="46" y="412">in flight · green, boots alone, breaks with fix-login</text>
+    </g>
+    <text class="t-s" x="32" y="446">in flight = on a branch, with no merged pull request</text>
+    <text class="t-s" x="32" y="464">a branch gets in only past gate 1 (its checks) and</text>
+    <text class="t-s" x="32" y="480">gate 2 (the merged app boots)</text>
   </g>
 
   <g id="arrows">
-    <path class="arrow" d="M 332 154 L 452 154"/>
-    <path class="arrow" d="M 332 216 L 452 216"/>
-    <path class="arrow-x" d="M 332 278 L 452 278"/>
+    <path class="arrow" d="M 332 150 L 452 150"/>
+    <path class="arrow" d="M 332 212 L 452 212"/>
+    <path class="arrow-x" d="M 332 274 L 452 274"/>
+    <path class="arrow-x" d="M 332 336 L 452 336"/>
+    <path class="arrow-x" d="M 332 398 L 452 398"/>
   </g>
 
   <g id="preview-zone">
-    <rect class="zone" x="456" y="12" width="468" height="396" rx="8"/>
-    <text class="t-lbl" x="472" y="32">PREVIEW · A CLONE OF ITS OWN, REBUILT ON REQUEST</text>
-    <text class="t-s" x="472" y="48">run the app here, on a port you choose</text>
+    <rect class="zone" x="456" y="12" width="468" height="536" rx="8"/>
+    <text class="t-lbl" x="472" y="32">YOUR PRIMARY CHECKOUT · ON preview/&lt;user&gt;, NEVER PUSHED</text>
+    <text class="t-s" x="472" y="48">rebuilt on request by one tool; your uncommitted edits stay</text>
 
     <rect class="box" x="472" y="62" width="436" height="52" rx="5"/>
     <text class="t-h" x="486" y="84">Latest main</text>
-    <text class="t-s" x="486" y="102">the base every build starts from</text>
+    <text class="t-s" x="486" y="102">the base every build starts from, which includes feat-search</text>
+    <rect class="merge" x="472" y="124" width="436" height="52" rx="5"/>
+    <text class="t-ok" x="486" y="146">+ merge feat-export</text>
+    <text class="t-s" x="486" y="164">checks green at 3fa9c2, the tip it was read at</text>
+    <rect class="merge" x="472" y="186" width="436" height="52" rx="5"/>
+    <text class="t-ok" x="486" y="208">+ merge fix-login</text>
+    <text class="t-s" x="486" y="226">a merge commit, so each one can be seen apart</text>
+    <rect class="out" x="472" y="248" width="436" height="52" rx="5"/>
+    <text class="t-bad" x="486" y="270">left out: chore-docs</text>
+    <text class="t-s" x="486" y="288">conflicts after feat-export in shared.txt</text>
+    <rect class="out" x="472" y="310" width="436" height="52" rx="5"/>
+    <text class="t-bad" x="486" y="332">left out: feat-billing</text>
+    <text class="t-s" x="486" y="350">changes the lockfile: install owed, not merged</text>
+    <rect class="out" x="472" y="372" width="436" height="52" rx="5"/>
+    <text class="t-bad" x="486" y="394">left out: feat-report</text>
+    <text class="t-s" x="486" y="412">the app stops booting once it joins fix-login</text>
+    <rect class="merge" x="472" y="436" width="436" height="48" rx="5"/>
+    <text class="t-ok" x="486" y="458">Gate 2 on the merged tree</text>
+    <text class="t-s" x="486" y="475">boots on a free port, loads, is stopped; if not, the previous tip</text>
 
-    <rect class="merge" x="472" y="128" width="436" height="52" rx="5"/>
-    <text class="t-ok" x="486" y="150">+ merge feat-export</text>
-    <text class="t-s" x="486" y="168">its tip as committed (3fa9c2), read when built</text>
-
-    <rect class="merge" x="472" y="190" width="436" height="52" rx="5"/>
-    <text class="t-ok" x="486" y="212">+ merge fix-login</text>
-    <text class="t-s" x="486" y="230">a merge commit, so each one can be seen apart</text>
-
-    <rect class="out" x="472" y="252" width="436" height="52" rx="5"/>
-    <text class="t-bad" x="486" y="274">left out: chore-docs</text>
-    <text class="t-s" x="486" y="292">conflicts after feat-export in shared.txt; named in the output</text>
-
-    <rect class="fence" x="472" y="320" width="436" height="72" rx="5"/>
-    <text class="t-bad" x="486" y="344">No remote</text>
-    <text class="t-s" x="486" y="362">git push from here fails: any name, a second remote, a typed URL.</text>
-    <text class="t-s" x="486" y="378">Your repository and every worktree push as before.</text>
+    <rect class="fence" x="472" y="494" width="436" height="42" rx="5"/>
+    <text class="t-bad" x="486" y="512">The push guard is a hook</text>
+    <text class="t-s" x="486" y="528">refuses the preview by name or tip; --no-verify gets past it</text>
   </g>
 </svg>
