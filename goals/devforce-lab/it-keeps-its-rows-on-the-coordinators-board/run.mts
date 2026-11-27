@@ -91,7 +91,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     stores: inMemoryStores(),
     harnesses: [readyHarness(stub.slot)],
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: CODER,
     logger: silentLogger,
     // Model-free: the stub answers nothing a judge could pass.

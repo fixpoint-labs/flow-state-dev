@@ -24,12 +24,13 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import type { Harness } from "../src/harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import type { CompletionRunContext, PromptRunContext } from "../src/manager";
 import { scriptedHarness } from "../src/scripted-harness";
 import { seedRepo } from "./fixtures";
 import { harnesses } from "../src/kit";
 import { resolveCoderModes } from "../src/kit/coder-modes";
+import { isCheckedCodingTask } from "../src/kit";
 import { codingTaskInput, noteRunSettings, storedCodingInput } from "../src/kit/coding-task-input";
 
 const states: FlowState[] = [];
@@ -111,7 +112,7 @@ async function boot(defaultMode = "answer", runsIn: typeof workspace = workspace
   const userKey = `alice:~org:${DEFAULT_ORG_ID}`;
   const stored = async (taskId: string) => {
     const entries = await stores.resourceState.getByPrefix("user", userKey, "tasks/");
-    return Object.values(entries).map((entry) => entry.state as { id: string; status: string; assignee?: string; input?: Record<string, unknown> }).find((task) => task.id === taskId)!;
+    return Object.values(entries).map((entry) => entry.state as { id: string; status: string; assignee?: string; input?: Record<string, unknown>; metadata?: Record<string, unknown> }).find((task) => task.id === taskId)!;
   };
   /** Write a task as an older build stored it. */
   const restore = async (taskId: string, shape: (task: Record<string, any>) => Record<string, unknown>) => {
@@ -429,5 +430,17 @@ describe("a field a model wrote on a row stored before this change", () => {
       expect(task.status, `${JSON.stringify(issue)}: ${JSON.stringify(task)}`).toBe("completed");
       expect(runs.map((run) => run.mode)).toEqual(["answer"]);
     }
+  });
+});
+
+describe("whether a stored task's fields were checked", () => {
+  it("is true for a task the coder's filing check filed, and false once its stamp is gone or names another declaration", async () => {
+    const app = await boot();
+    const filed = await app.stored(filedId(await app.file("core.coder", { mode: "implement", issue: "FIX-2165" })));
+    expect(isCheckedCodingTask(filed)).toBe(true);
+    const { inputFilledFor: stamp, ...unstamped } = filed.metadata ?? {};
+    expect(isCheckedCodingTask({ metadata: unstamped })).toBe(false);
+    expect(isCheckedCodingTask({ metadata: { ...unstamped, inputFilledFor: { ...(stamp as object), declaration: "an-older-declaration" } } })).toBe(false);
+    expect(isCheckedCodingTask({ metadata: { ...unstamped, inputFilledFor: { ...(stamp as object), flow: "agent" } } })).toBe(false);
   });
 });

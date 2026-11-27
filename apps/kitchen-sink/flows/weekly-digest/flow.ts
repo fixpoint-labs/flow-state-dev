@@ -15,7 +15,7 @@ import {
   defineFlow,
   handler,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core";
+import { extractBareTopic } from "@flow-state-dev/core/types";
 import {
   createResourceCollectionScheduleResolver,
   defineScheduleCollection,
@@ -27,10 +27,9 @@ import {
 import { z } from "zod";
 import { scheduleIndex } from "@/lib/schedule-index";
 
-const schedulesCollection = defineScheduleCollection({
-  pattern: "schedules/*",
-  index: scheduleIndex,
-});
+const resources = {
+  schedules: defineScheduleCollection({ pattern: "schedules/*", index: scheduleIndex }),
+};
 
 const sendWeeklySummary = handler({
   name: "send-weekly-summary",
@@ -59,25 +58,13 @@ const scheduleDigestInputSchema = z.object({
 const scheduleDigest = handler({
   name: "schedule-digest",
   inputSchema: scheduleDigestInputSchema,
+  resources,
   execute: async (input, ctx) => {
     if (!ctx.user) {
       throw new Error("scheduleDigest requires a user scope");
     }
-    // Cast through `ctx.resources`'s loose typing — the collection
-    // branding doesn't carry into the flat registry lookup.
-    const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
-      cron: string;
-      kind: string;
-      enabled: boolean;
-    }>;
     const key = "digest";
-    const nextState = { cron: input.cron, kind: input.kind, enabled: true };
-    const existing = await schedules.getOptional(key);
-    if (existing !== undefined) {
-      await existing.setState(nextState);
-    } else {
-      await schedules.create(key, nextState);
-    }
+    await ctx.resources.schedules.create(key, input, { replace: true });
     return { key };
   },
 });
@@ -92,24 +79,14 @@ const clearSchedules = handler({
   name: "clear-schedules",
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.object({ cleared: z.number() }),
+  resources,
   execute: async (_input, ctx) => {
     if (!ctx.user) {
       throw new Error("clearSchedules requires a user scope");
     }
-    const schedules = ctx.resources.schedules as unknown as ResourceCollectionRef<{
-      cron: string;
-      kind: string;
-      enabled: boolean;
-    }>;
-    const prefix = "schedules/";
+    const { schedules } = ctx.resources;
     const refs = await schedules.list();
-    await Promise.all(
-      refs.map((ref) =>
-        schedules.delete(
-          ref.path.startsWith(prefix) ? ref.path.slice(prefix.length) : ref.path,
-        ),
-      ),
-    );
+    await Promise.all(refs.map((ref) => schedules.delete(extractBareTopic(schedules.pattern, ref.path))));
     return { cleared: refs.length };
   },
 });
@@ -132,7 +109,7 @@ const weeklyDigestFlow = defineFlow({
     requireUser: true,
   },
 
-  resources: { schedules: schedulesCollection },
+  resources,
 
   // Event-addressed handlers carry the action core inline (FIX-838): the
   // digest handler lives on its schedule bindings, never in `actions`, so it
@@ -146,7 +123,7 @@ const weeklyDigestFlow = defineFlow({
       },
     },
     resolve: createResourceCollectionScheduleResolver({
-      collection: schedulesCollection,
+      collection: resources.schedules,
       // Map the persisted `kind` discriminator back to a real handler block.
       blocks: { sendWeeklySummary },
     }),

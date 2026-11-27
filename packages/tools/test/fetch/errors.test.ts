@@ -68,12 +68,9 @@ describe("builtin adapter error shaping", () => {
   });
 
   it("throws a FlowError with HTTP details for a non-2xx response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 403,
-      statusText: "Forbidden",
-      text: () => Promise.resolve("Access denied by bot wall"),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("Access denied by bot wall", { status: 403, statusText: "Forbidden" })
+    );
 
     const err = await builtinFetchAdapter
       .fetch("https://seekingalpha.com/symbol/ATI/", { waitForJS: false })
@@ -92,12 +89,9 @@ describe("builtin adapter error shaping", () => {
   });
 
   it("marks a 5xx response retryable", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: "Service Unavailable",
-      text: () => Promise.resolve(""),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("", { status: 503, statusText: "Service Unavailable" })
+    );
 
     const err = (await builtinFetchAdapter
       .fetch("https://example.com", { waitForJS: false })
@@ -108,12 +102,9 @@ describe("builtin adapter error shaping", () => {
   });
 
   it("marks a 429 rate-limited response retryable", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      statusText: "Too Many Requests",
-      text: () => Promise.resolve("slow down"),
-    });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("slow down", { status: 429, statusText: "Too Many Requests" })
+    );
 
     const err = (await builtinFetchAdapter
       .fetch("https://example.com", { waitForJS: false })

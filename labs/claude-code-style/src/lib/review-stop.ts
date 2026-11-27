@@ -22,11 +22,12 @@ const latestReviewStop = (items: readonly OutputItem[]) =>
   [...items].reverse().find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).kind === "review");
 
 /**
- * The id of the latest review stop: one id per review round. A run sent back, or a landing retried,
- * stops for review again under a new id, which is how the accept tells a new round from the one it answered.
+ * The id of the latest review stop (its `suspensionId`, the id the board's review hold carries): one id per
+ * review round. A run sent back, or a landing retried, stops for review again under a new id, which is how
+ * the accept tells a new round from the one it answered, and a verdict names the round on screen.
  */
 export function reviewStopIdOf(items: readonly OutputItem[]): string | undefined {
-  return latestReviewStop(items)?.id;
+  return latestReviewStop(items)?.suspensionId;
 }
 
 /**

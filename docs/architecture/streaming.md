@@ -219,6 +219,7 @@ GET /stream?starting_after=42
 
 - If both provided, `starting_after` takes precedence
 - Server replays persisted events with `sequence_number > cursor` then continues live
+- A resumed stream keeps to the client view. An `item.updated` or content event carries only an item id, so the filter forwards it only for an item it knows is client-visible: one whose `item.added`/`item.done` it sent, or one the request record holds, which the route passes in (with no record, the route reads the whole event log and passes the items it announces, since content can follow an item's `item.done`, as a batch TTS snapshot does). It drops the rest (fail closed); the item's `item.done` carries the whole row, so a client that misses them still converges
 - A terminal request whose run is still writing its held terminal event is followed live, and one whose log has no terminal event and can get none ends with a synthesized one (see the terminal-status note under the event table)
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages

@@ -16,15 +16,10 @@ describe("builtin crawl adapter", () => {
     const linkTags = links
       .map((l) => `<a href="${l}">link</a>`)
       .join("\n");
-    return {
-      ok: true,
-      status: 200,
-      text: () =>
-        Promise.resolve(
-          `<html><head><title>${url}</title></head><body><p>${body}</p>${linkTags}</body></html>`
-        ),
-      headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
-    };
+    return new Response(
+      `<html><head><title>${url}</title></head><body><p>${body}</p>${linkTags}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }
+    );
   }
 
   it("crawls root page", async () => {
@@ -66,7 +61,7 @@ describe("builtin crawl adapter", () => {
     };
 
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      return Promise.resolve(callMap[url] ?? { ok: false, status: 404, statusText: "Not Found" });
+      return Promise.resolve(callMap[url] ?? new Response("", { status: 404, statusText: "Not Found" }));
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -96,7 +91,7 @@ describe("builtin crawl adapter", () => {
     };
 
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
-      return Promise.resolve(callMap[url] ?? { ok: false, status: 404, statusText: "Not Found" });
+      return Promise.resolve(callMap[url] ?? new Response("", { status: 404, statusText: "Not Found" }));
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -120,12 +115,9 @@ describe("builtin crawl adapter", () => {
           ])
         );
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve("PDF content"),
-        headers: new Headers({ "content-type": "application/pdf" }),
-      });
+      return Promise.resolve(
+        new Response("PDF content", { headers: { "content-type": "application/pdf" } })
+      );
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com", {
@@ -277,16 +269,13 @@ describe("builtin crawl adapter — network boundary", () => {
       if (url === "http://127.0.0.1/") {
         throw new Error("crawler opened a socket to a private address");
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () =>
-          Promise.resolve(
-            `<html><head><title>Root</title></head><body><p>Root page body text</p>` +
-              `<a href="http://127.0.0.1/">internal</a></body></html>`
-          ),
-        headers: new Headers({ "content-type": "text/html" }),
-      });
+      return Promise.resolve(
+        new Response(
+          `<html><head><title>Root</title></head><body><p>Root page body text</p>` +
+            `<a href="http://127.0.0.1/">internal</a></body></html>`,
+          { headers: { "content-type": "text/html" } }
+        )
+      );
     });
 
     const result = await builtinCrawlAdapter.crawl("https://example.com/", {
@@ -300,6 +289,129 @@ describe("builtin crawl adapter — network boundary", () => {
     expect(result.pages.map((p) => p.url)).toEqual(["https://example.com/"]);
     for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
       expect(call[0]).not.toContain("127.0.0.1");
+    }
+  });
+});
+
+describe("builtin crawl adapter — cancel", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("rejects when cancelled during the root fetch instead of returning no pages", async () => {
+    globalThis.fetch = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+        })
+    ) as typeof globalThis.fetch;
+    const run = new AbortController();
+
+    const pending = builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      signal: run.signal,
+    });
+    setTimeout(() => run.abort(), 20);
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("does not read the body of a page it skips by content type", async () => {
+    const pdf = new ReadableStream({
+      pull() {
+        throw new Error("crawler read a body it was going to skip");
+      },
+    });
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "https://example.com/"
+          ? new Response(`<html><body><p>Root page body text</p><a href="/file.pdf">pdf</a></body></html>`, {
+              headers: { "content-type": "text/html" },
+            })
+          : new Response(pdf, { headers: { "content-type": "application/pdf" } })
+      )
+    );
+
+    const result = await builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+    });
+
+    expect(result.pages).toHaveLength(1);
+    expect(pdf.locked).toBe(false);
+  });
+
+  it("ends during the pause between pages instead of waiting it out", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(`<html><body><p>Root page body text</p><a href="/next">next</a></body></html>`, {
+          headers: { "content-type": "text/html" },
+        })
+      )
+    );
+    const run = new AbortController();
+    const started = Date.now();
+
+    const pending = builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      signal: run.signal,
+    });
+    setTimeout(() => run.abort(), 50);
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    // The pause between pages is a second; a cancel must not sit through it.
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("builtin crawl adapter — allowed hosts", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("does not keep a page whose redirect leaves the list", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "https://docs.example/"
+          ? new Response(
+              `<html><body><p>Root page body text</p><a href="/moved">moved</a></body></html>`,
+              { headers: { "content-type": "text/html" } }
+            )
+          : new Response(null, {
+              status: 302,
+              headers: { location: "https://attacker.example/" },
+            })
+      )
+    );
+
+    const result = await builtinCrawlAdapter.crawl("https://docs.example/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+      waitForJS: false,
+      allowedHosts: ["docs.example"],
+    });
+
+    expect(result.pages.map((p) => p.url)).toEqual(["https://docs.example/"]);
+    for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[0]).not.toContain("attacker.example");
     }
   });
 });

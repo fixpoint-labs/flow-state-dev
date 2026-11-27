@@ -8,6 +8,8 @@ import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
+import { CLAUDE_CODE_PASS } from "../../src/sdk/env-pass";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -215,6 +217,20 @@ describe("claudeCodeAgent", () => {
     }>;
     expect(messageItems).toHaveLength(1);
     expect(messageItems[0].content[0].text).toBe("just one");
+  });
+
+  it("reports a cached run's whole input on the handle, cache reads and writes included", async () => {
+    // The handle's `usage` is what a host records as the run's spend when the
+    // sign-in bills no dollar cost; dropping the cached part under-reports it.
+    const cached: ClaudeCodeSdkMessage = {
+      ...RESULT_OK,
+      usage: { input_tokens: 5, output_tokens: 10, cache_read_input_tokens: 400, cache_creation_input_tokens: 45 },
+    };
+    const { output } = await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([cached]) }), {
+      input: { prompt: "go" },
+    });
+
+    expect((output as ClaudeCodeAgentHandle).usage).toEqual({ inputTokens: 450, outputTokens: 10 });
   });
 
   it("persists the SDK session id and appends the handle after a run", async () => {
@@ -465,7 +481,7 @@ describe("claudeCodeAgent", () => {
     expect(spy.mock.calls[0][0].options?.settingSources).toEqual([]);
   });
 
-  it("names none of the three when they are not set, so the SDK's own defaults stand", async () => {
+  it("names neither settingSources nor sandbox when they are not set, so the SDK's own defaults stand", async () => {
     // BP-035: the off state. A key present with `undefined` is not the same as
     // an absent key to a callee that checks `in` — and for `settingSources` the
     // difference decides whether the run reads CLAUDE.md out of its workspace.
@@ -478,8 +494,11 @@ describe("claudeCodeAgent", () => {
 
     const options = spy.mock.calls[0][0].options ?? {};
     expect("settingSources" in options).toBe(false);
-    expect("env" in options).toBe(false);
     expect("sandbox" in options).toBe(false);
+    // `env` and `settings` are never left to the SDK: its defaults are the
+    // server's whole environment and every hook the repository declares.
+    expect(options.env).toEqual(harnessEnv({ pass: CLAUDE_CODE_PASS }));
+    expect(options.settings).toEqual({ disableAllHooks: true });
   });
 
   it("resolves a symlinked directory to one physical path for both halves", async () => {

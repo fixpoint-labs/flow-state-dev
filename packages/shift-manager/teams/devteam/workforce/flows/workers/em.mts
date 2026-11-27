@@ -57,7 +57,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 
-import { featureInput, featureIssueOfInput } from "../../../phase.mts";
+import { featureInput, featureIssueOfTask } from "../../../phase.mts";
 import {
   ASK_ENTRY,
   defineReadOwnFacts,
@@ -123,19 +123,11 @@ const askInputSchema = z.object({
 });
 
 /**
- * The feature a row is filed for: its typed payload's `issue`, or `undefined`
+ * The feature a row is filed for: its checked `issue` (`featureIssueOfTask`), or `undefined`
  * for a row that names none.
  */
-export function featureIssueOf(row: { input?: unknown }): string | undefined {
-  return featureIssueOfInput(row.input);
-}
-
-/** What the turn reads off the worker it runs as: its file's settings. */
-interface EmSettings {
-  instructions?: string;
-  teamInstructions?: string;
-  model?: string;
-  tools?: string[];
+export function featureIssueOf(row: { input?: unknown; metadata?: Record<string, unknown> }): string | undefined {
+  return featureIssueOfTask(row);
 }
 
 export interface EmWorkerFlowOptions {
@@ -180,7 +172,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const factory = defineSessionBoard({ installation, flowKind: EM_FLOW });
   const catalog = { ...capabilityTools(options.uses ?? []), ...options.catalog };
   const toolNames = Object.keys(catalog);
-  const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
+  const settings = workerSettingsSchema.extend({
+    model: z.string().min(1).optional(),
+    tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
+  });
+  const settingsOf = (ctx: BlockContext) => workerConfigOf(ctx) as z.infer<typeof settings>;
 
   /**
    * The turn: one model call, as the worker the session names, with its
@@ -205,18 +201,18 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       // The default-layer entry. It must change together with the first
       // `prompt` entry of Workforce's built-in agent flow's turn: when that
       // entry changes, change this one to match.
-      (_input: unknown, ctx: BlockContext) => workerIdentityPrompt(ctx, installation),
-      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
-      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
+      (_input, ctx) => workerIdentityPrompt(ctx, installation),
+      (_input, ctx) => settingsOf(ctx).teamInstructions,
+      (_input, ctx) => settingsOf(ctx).instructions,
     ],
-    model: (_input: unknown, ctx: BlockContext) => {
-      const model = settingsOf(ctx).model;
-      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
+    model: (_input, ctx) => {
+      const { model, workerId } = settingsOf(ctx);
+      if (model === undefined) throw new Error(`EM worker "${workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
-    tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!),
-    user: (input: { message: string }) => input.message,
-  } as never);
+    tools: (_input, ctx) => (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!),
+    user: (input) => input.message,
+  });
 
   /**
    * Put one feature on the session's board, idempotently.
@@ -361,10 +357,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     // Registered once, under its flow name; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.
-    configSchema: workerSettingsSchema().extend({
-      model: z.string().min(1).optional(),
-      tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
-    }),
+    configSchema: settings,
     session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
     resources: { ...options.resources, ...installation.resources, ...factory.resources },
     // The board's task list and the delegates, as session views a screen watches (FIX-2776).

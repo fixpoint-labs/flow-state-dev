@@ -106,7 +106,7 @@ async function open(
   const lab = await openLab({
     stores,
     harnesses: [readyHarness(stub.slot)],
-    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    workspace: { root: dirs.root, repo: dirs.sourceRepo, baseRef: BASE_REF },
     coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     ask: feature,

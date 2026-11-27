@@ -35,16 +35,19 @@
 import { toolCallOf } from "@flow-state-dev/orchestration/internal";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { taskInputSchema, type TaskInputRecord, type TaskInputSchema } from "@flow-state-dev/workforce";
+import { stampMatches } from "@flow-state-dev/workforce/internal";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { HARNESS_FEATURE_KEY, harnessFeatureSchema } from "../manager";
 import { isTrackerIssue, TRACKER_ISSUE_REFUSED } from "../issue-spec";
 import { sameSegment } from "../workspace";
+import { CODER_FLOW } from "../coder-flow-name";
 import type { ResolvedModes } from "./coder-modes";
 import { quotedList as listed } from "./quoted-list";
 
 /** The run settings a coding task carries, written by the server only. */
-export const RUN_SETTINGS = ["harness", "model", "plan"] as const;
+const RUN_SETTINGS = ["harness", "model", "plan"] as const;
 
 /** What a filer may not set on a coding task: the run settings, and a mode's own done check and workspace. */
 const SERVER_OWNED = [...RUN_SETTINGS, "doneWhen", "workspace"] as const;
@@ -119,7 +122,7 @@ export function noteRunSettings(session: object, settings: RunSettings): void {
 }
 
 /** The run settings the running request's coding session runs with; `undefined` outside a coding run. */
-export function runSettingsOf(session: object): RunSettings | undefined {
+function runSettingsOf(session: object): RunSettings | undefined {
   return noted.get(session);
 }
 
@@ -172,7 +175,7 @@ export function storedCodingInput(raw: TaskInputRecord, resolved: ResolvedModes)
  * `mode` or `issue` that isn't a non-empty string reads as absent. A row the
  * filing check stamped always has them as strings, so this leaves it as is.
  */
-export function storedTypes(raw: TaskInputRecord): TaskInputRecord {
+function storedTypes(raw: TaskInputRecord): TaskInputRecord {
   const bad = (value: unknown) => value !== undefined && (typeof value !== "string" || value === "");
   if (!bad(raw.mode) && !bad(raw.issue)) return raw;
   const { mode, issue, ...rest } = raw;
@@ -195,6 +198,27 @@ export function trustedCodingInput(raw: TaskInputRecord, stamped: boolean, resol
   if (Object.hasOwn(typed, HARNESS_FEATURE_KEY)) return storedCodingInput(typed, resolved);
   const { mode: _mode, issue: _issue, ...rest } = typed;
   return rest;
+}
+
+/**
+ * The coder flow's declaration as the stamp names it, with and without a
+ * required project: its fingerprint is the schema, the server-owned names and
+ * the project rule, never the app's modes or hooks.
+ */
+const STAMPED_AS = (["required", "optional"] as const).map((project) =>
+  taskInputSchema(codingTaskInputSchema as unknown as z.ZodType<TaskInputRecord, z.ZodTypeDef, unknown>, { serverOwned: SERVER_OWNED, project }),
+);
+
+// BP-030; BP-031.
+/**
+ * Whether the filing check wrote this stored task's input for the coder
+ * flow's current declaration, so its `mode` and `issue` are the checked ones.
+ * A reader of a stored coding task outside the flow asks this before it reads
+ * either: on any other task they were a model's free fields, and only the old
+ * `harnessFeature` marker names its work.
+ */
+export function isCheckedCodingTask(task: Pick<Task, "metadata">): boolean {
+  return STAMPED_AS.some((declaration) => stampMatches(task, CODER_FLOW, declaration));
 }
 
 /** The mode a checked input names: its own, or the default the filing wrote. */
@@ -251,7 +275,7 @@ function lockOf(worker: { readonly id: string; readonly config: Readonly<Record<
  * the field, the worker's value and the one asked for; `undefined` when none
  * differs. Compared on the resolved values, never on what a filer sent.
  */
-export function lockProblem(workerId: string, lock: WorkerLock | undefined, resolved: Resolved): { code: string; text: string } | undefined {
+function lockProblem(workerId: string, lock: WorkerLock | undefined, resolved: Resolved): { code: string; text: string } | undefined {
   if (lock === undefined) return undefined;
   for (const field of ["mode", "harness"] as const) {
     const pinned = lock[field];

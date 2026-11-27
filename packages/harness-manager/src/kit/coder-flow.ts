@@ -62,16 +62,16 @@ import {
   workerFlow,
   workerMessagesResources,
   workerTaskEntry,
-  stampMatches,
   type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
+import { stampMatches } from "@flow-state-dev/workforce/internal";
 import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { codingBrief } from "../coding-brief";
 import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
-import type { Harness } from "../harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type ModeSpec } from "../manager";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
@@ -190,7 +190,7 @@ function coderSettingsSchema(ids: readonly string[], modes: readonly string[], o
   const buildable = Object.fromEntries(
     Object.entries(own).map(([key, setting]) => [key, setting.safeParse(undefined).success ? setting : setting.optional()]),
   );
-  return builtIn.extend(buildable) as unknown as typeof builtIn;
+  return builtIn.extend(buildable);
 }
 
 /**
@@ -401,10 +401,10 @@ export function coderWorkerFlow(
           ...(options.approveTools === true ? { approveTools: true } : {}),
           // A mode may work in its task's project when the kit doesn't, or not when it does.
           ...((mode.project ?? options.project) === true ? { uses: [projectWorkspaceCapability] } : {}),
-        } as never) as unknown as BlockDefinition<any, any>;
+        });
         // The claim gate shares a task's child session between tasks, so a harness that authors
         // session state beneath `work` would corrupt another task's: refused here, at start, naming the entry.
-        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built as never });
+        assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: built });
         return built;
       };
       const modeNames = Object.keys(resolved.modes);
@@ -420,8 +420,8 @@ export function coderWorkerFlow(
           name: `${CODER_FLOW}-${id}-by-mode${reviewChanges ? "-reviewed" : ""}`,
           inputSchema: taskWorkerInputSchema.passthrough(),
           routes: Object.values(managers),
-          execute: (task: { input?: unknown }) => managers[modeOfTask(task.input, resolved)]!,
-        } as never) as BlockDefinition<any, any>;
+          execute: (task) => managers[modeOfTask(task.input, resolved)]!,
+        });
       };
       const built = Object.fromEntries(
         Object.entries(harnesses).map(([id, harness]) => [
@@ -454,13 +454,13 @@ export function coderWorkerFlow(
        * input names, then asks whether its harness can run here. The harness chosen is noted for the
        * request, so a task its coding session files carries it.
        */
-      const byHarness = (name: string, inputSchema: unknown, pick: (b: Built) => unknown, ready: boolean) =>
+      const byHarness = (name: string, inputSchema: z.ZodTypeAny, pick: (b: Built) => BlockDefinition<any, any>, ready: boolean) =>
         router({
           name,
           inputSchema,
           routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
           resources: installation.resources,
-          execute: async (input: unknown, ctx: never) => {
+          execute: async (input, ctx) => {
             const task = ((input as { input?: unknown }).input ?? {}) as Record<string, unknown>;
             if (ready) {
               // The claim re-checks what the filing did: the app's modes or a mode's `requires` may have changed.
@@ -478,7 +478,7 @@ export function coderWorkerFlow(
             noteRunSettings((ctx as { session: object }).session, { harness: chosen.id });
             return pick(chosen);
           },
-        } as never) as BlockDefinition<any, any>;
+        });
       /**
        * The task as a coding route reads it: its input as stored, trusted as far as the row's stamp
        * says (`trustedCodingInput`). The row is read from the board the claim names, never from the
@@ -524,8 +524,8 @@ export function coderWorkerFlow(
               inputSchema: z.object({}),
               outputSchema: z.object({ harness: z.string() }),
               resources: installation.resources,
-              execute: async (_input: unknown, ctx: never) => ({ harness: (await harnessOf(ctx)).id }),
-            } as never),
+              execute: async (_input, ctx) => ({ harness: (await harnessOf(ctx)).id }),
+            }),
           },
         },
         internal: {
@@ -559,7 +559,7 @@ export function coderWorkerFlow(
             }),
           },
         },
-      } as never), options.worker?.settings);
+      }), options.worker?.settings);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
     { roles: ["contributor"], showSettings: ["harness"] },

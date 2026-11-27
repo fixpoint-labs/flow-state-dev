@@ -850,10 +850,16 @@ function translateStreamEvent(
 function translateResult(msg: Extract<ClaudeCodeSdkMessage, { type: "result" }>): TranslatedEvent[] {
   const rawSubtype = msg.subtype;
   const subtype = normalizeSubtype(rawSubtype);
+  // Cached input counts as input: `input_tokens` alone is only the uncached
+  // part, so a run that hit the prompt cache would report a fraction of what
+  // it read while `total_cost_usd` charged for all of it.
   const usage =
     msg.usage && (msg.usage.input_tokens !== undefined || msg.usage.output_tokens !== undefined)
       ? {
-          inputTokens: msg.usage.input_tokens ?? 0,
+          inputTokens:
+            (msg.usage.input_tokens ?? 0) +
+            (msg.usage.cache_read_input_tokens ?? 0) +
+            (msg.usage.cache_creation_input_tokens ?? 0),
           outputTokens: msg.usage.output_tokens ?? 0,
         }
       : null;

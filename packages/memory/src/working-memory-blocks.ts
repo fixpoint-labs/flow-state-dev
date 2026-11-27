@@ -98,8 +98,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       '- Return empty observations array if nothing new is worth storing',
     ].join('\n'),
     context: (_input: string, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
-      const formatted = formatForObserveContext(ref)
+      const formatted = formatForObserveContext(ctx.resources.workingMemory)
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
@@ -133,7 +132,7 @@ export function workingMemoryRemember(config?: WorkingMemoryBlockConfig) {
     outputSchema: z.array(workingMemoryEntrySchema),
     resources: { workingMemory: workingMemoryResource },
     execute: async (input, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
+      const ref = ctx.resources.workingMemory
       const added: z.infer<typeof workingMemoryEntrySchema>[] = []
 
       for (const obs of input.observations) {
@@ -147,7 +146,7 @@ export function workingMemoryRemember(config?: WorkingMemoryBlockConfig) {
           const entry = await add(ref, {
             content: obs.content,
             importance: obs.importance,
-            pinned: obs.pinned ?? false,
+            pinned: obs.pinned,
           }, helperConfig)
 
           added.push(entry)
@@ -179,8 +178,7 @@ export function workingMemoryTick(config?: WorkingMemoryBlockConfig) {
     inputSchema: z.any(),
     resources: { workingMemory: workingMemoryResource },
     execute: async (_input, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
-      await advance(ref, helperConfig)
+      await advance(ctx.resources.workingMemory, helperConfig)
     },
   })
 }
@@ -199,7 +197,7 @@ export function workingMemorySnapshot() {
     }),
     resources: { workingMemory: workingMemoryResource },
     execute: (_input, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
+      const ref = ctx.resources.workingMemory
       return {
         entries: items(ref),
         currentTurn: ref.state.currentTurn,
@@ -230,16 +228,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
     }),
     outputSchema: workingMemoryEntrySchema,
     resources: { workingMemory: workingMemoryResource },
-    execute: async (input, ctx) => {
-      const ref = ctx.resources.get('workingMemory')
-      return add(ref, {
-        content: input.content,
-        importance: input.importance,
-        pinned: input.pinned ?? false,
-        id: input.id,
-        metadata: input.metadata,
-      }, helperConfig)
-    },
+    execute: (input, ctx) => add(ctx.resources.workingMemory, input, helperConfig),
   })
 }
 

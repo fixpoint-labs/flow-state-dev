@@ -16,7 +16,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import type { Harness } from "../src/harness";
+import type { Harness } from "@flow-state-dev/core/harness";
 import { scriptedHarness } from "../src/scripted-harness";
 import { codingDrainBudgetMs, harnesses } from "../src/kit";
 import { z } from "zod";

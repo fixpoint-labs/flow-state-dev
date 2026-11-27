@@ -38,6 +38,7 @@ import type {
   PromptRunContext,
 } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
+import { isCheckedCodingTask } from "@flow-state-dev/harness-manager/kit";
 import { runAcceptance } from "./acceptance.mts";
 import type { WorkerOf } from "./worker-config.mts";
 
@@ -53,16 +54,18 @@ export function featureInput(issue: string): Record<string, unknown> {
   return { mode: PHASE, issue };
 }
 
-// BP-030.
+// BP-030; BP-031.
 /**
- * The issue a row's `input` names as feature work, or `undefined` for none:
- * an implement task's `issue`, or a row stored before modes, whose
- * `harnessFeature` marker named it.
+ * The issue a stored row names as feature work, or `undefined` for none: an
+ * implement task's `issue` on a row the coder's filing check stamped, or the
+ * `harnessFeature` marker of a row stored before modes. Any other row's
+ * `mode` and `issue` were a model's free fields, and name no feature.
  */
-export function featureIssueOfInput(input: unknown): string | undefined {
+export function featureIssueOfTask(task: { readonly input?: unknown; readonly metadata?: Record<string, unknown> }): string | undefined {
+  const { input } = task;
   if (typeof input !== "object" || input === null) return undefined;
   const { mode, issue, harnessFeature } = input as { mode?: unknown; issue?: unknown; harnessFeature?: { issue?: unknown } | null };
-  if (mode === PHASE && typeof issue === "string") return issue;
+  if (isCheckedCodingTask(task as never)) return mode === PHASE && typeof issue === "string" ? issue : undefined;
   return mode === undefined && typeof harnessFeature?.issue === "string" ? harnessFeature.issue : undefined;
 }
 
@@ -124,7 +127,7 @@ export async function buildWorkerPrompt(
  */
 async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<CodingBriefParts> {
   const ctx = run.ctx;
-  const { config } = await workerOf(ctx as never);
+  const { config } = await workerOf(ctx);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -142,7 +145,7 @@ async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<C
   }
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
-  const skills = config.workerSkills ?? [];
+  const skills = config.workerSkills;
   return {
     ...(config.instructions === undefined ? {} : { instructions: config.instructions }),
     standingBrief: { name: documentRef, text: brief },

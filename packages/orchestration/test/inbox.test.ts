@@ -206,6 +206,20 @@ describe("the one answer call, routed by source, typed by what the hold asks", (
     await expect(inbox.answer(noFlow!, { approved: true })).rejects.toThrow(NO_FLOW_UNANSWERABLE);
     expect(answer).not.toHaveBeenCalled();
   });
+
+  it("rejects a refused answer with the route's own words, not the transport's status line", async () => {
+    // A round already answered is a 409 whose body says so; "Request failed (409)" tells the person nothing.
+    const { answer, inbox } = engine();
+    const said = 'Suspension "sp1" has already been resolved (status: "resolved")';
+    answer.mockRejectedValueOnce(new ClientHttpError("Request failed (409) Conflict", { status: 409, body: { error: said, refused: "already-resolved" } }));
+    await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toThrow(said);
+    // Still the route's refusal: a caller that tells a 409 from a 404 by its status still can.
+    answer.mockRejectedValueOnce(new ClientHttpError("Request failed (409) Conflict", { status: 409, body: { error: said } }));
+    await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toMatchObject({ status: 409, message: said });
+    // A 5xx is not a refusal: it comes back as it came.
+    answer.mockRejectedValueOnce(new ClientHttpError("Request failed (503)", { status: 503, body: { error: "down" } }));
+    await expect(inbox.answer(itemAsking("review"), { value: { verdict: "ship" } })).rejects.toThrow("Request failed (503)");
+  });
 });
 
 describe("reconcileInbox", () => {
@@ -528,5 +542,10 @@ describe("a board's task actions: inbox.board(at)", () => {
   it("rejects a 4xx with the route's reason", async () => {
     const { actions } = boardClient({ ok: true }, { sendError: new ClientHttpError("Unknown action updateTask_eng_work", { status: 404, body: null }) });
     await expect(actions.cancel("t1")).rejects.toThrow("Unknown action updateTask_eng_work");
+  });
+
+  it("rejects a 4xx with the words its body carries over the transport's status line", async () => {
+    const { actions } = boardClient({ ok: true }, { sendError: new ClientHttpError("Request failed (403) Forbidden", { status: 403, body: { error: "You can't act on this board." } }) });
+    await expect(actions.cancel("t1")).rejects.toThrow("You can't act on this board.");
   });
 });

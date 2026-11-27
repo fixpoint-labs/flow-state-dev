@@ -42,7 +42,7 @@ import {
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
-import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessFeeds } from "@flow-state-dev/core/harness";
 import type { HarnessBlock, HarnessModelInfo, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
@@ -98,7 +98,7 @@ export interface CursorSeams {
  * Sink passes options and nothing else: the plan record, the child process and
  * the classification of a refused agent are the Cursor package's.
  */
-export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): CursorAgentOptions {
+export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {}): CursorAgentOptions {
   const resolveCursorClient = seams.resolveCursorClient ?? (cursorIsScripted() ? scriptedCursor() : undefined);
   return {
     cwd: feeds.cwd,
@@ -107,7 +107,7 @@ export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeam
     onSteerable: feeds.onSteerable,
     // Each event the run sends keeps a working turn from being stopped as silent.
     ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
-    model: async (ctx) => cursorModelSelection(await feeds.model(ctx)),
+    model: async (ctx) => cursorModelSelection(await feeds.model?.(ctx)),
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
@@ -132,7 +132,7 @@ export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeam
  * neutral `HarnessBlock` (core's own note on that type). Claude Code mode casts
  * the same way.
  */
-function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
+function cursorBlock(feeds: HarnessFeeds, seams: CursorSeams = {}): HarnessBlock {
   return cursorAgent(cursorBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 

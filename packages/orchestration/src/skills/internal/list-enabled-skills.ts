@@ -5,18 +5,19 @@
  * in the v1 router module just to read the catalog.
  */
 
-import type { ResourceCollectionRef, SkillContextMode, SkillState } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { SkillsCollectionState } from "../collection";
 
 export interface EnabledSkill {
   name: string;
   description: string;
   /** The skill's declared context mode (`inline` when undeclared). */
-  mode: SkillContextMode;
+  mode: NonNullable<SkillsCollectionState["contextMode"]>;
 }
 
 /** List enabled (non-disabled) skills for a tool surface. */
 export async function listEnabledSkills(
-  collection: ResourceCollectionRef,
+  collection: ResourceCollectionRef<SkillsCollectionState>,
 ): Promise<EnabledSkill[]> {
   const out: EnabledSkill[] = [];
   const seen = new Set<string>();
@@ -24,7 +25,7 @@ export async function listEnabledSkills(
     // The collection holds a mix of SKILL.md manifests and supporting files.
     // Manifests have keys ending in `/SKILL.md` once stripped of the prefix.
     if (!ref.path.endsWith("/SKILL.md")) continue;
-    const state = ref.state as unknown as SkillState;
+    const { state } = ref;
     if (state.disableModelInvocation) continue;
     // Extract skill name from the storage key — strip prefix and `/SKILL.md`.
     const segments = ref.path.split("/");

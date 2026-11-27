@@ -1,7 +1,6 @@
 ---
 "@flow-state-dev/harness-manager": minor
 "@flow-state-dev/shift-manager": patch
-"@flow-state-dev/workforce": minor
 ---
 
 A coding task names the mode it runs in, and the server writes its run settings at filing (FIX-2878).
@@ -11,7 +10,7 @@ A coding task names the mode it runs in, and the server writes its run settings 
 - **Breaking: the marker's names are gone, with no alias.** `HARNESS_FEATURE_KEY`, `harnessFeatureSchema`, `namesHarnessFeature` and `harnessFeatureOf` are no longer exported. `harnessManager` takes `trackerIssueOf(input)` for a board read from the claim: the issue a task names, which its run works on. With none given it reads the old key, for rows stored before.
 - **The run settings are the server's.** A coding task's `harness`, `model` and `plan` are written only by the server: a filer's are dropped, as are a `doneWhen` and a `workspace`, which are a mode's. A task filed from inside a coding run carries that run's harness; any other carries the kit's `defaultHarness`, on whatever worker the filer chose. Decided once per call, so a replayed call stores what its first attempt filled. Runs still start on their worker's `harness:` line until the settings are read at claim, in a later change.
 - **A worker's `lock:`.** A coding worker's file can fix the `harness` and `mode` its tasks run with: `lock: { mode: answer }`. A filing or a move that differs is refused (`mode_locked`, `harness_locked`), naming the worker, its value and the one asked for, and is never swapped to fit. A task filed before the lock was set is refused at its claim, and nothing runs.
-- **`stampMatches`** is exported from `@flow-state-dev/workforce`: whether a stored task's input was written by the filing check for a flow's current declaration, so a reader trusts a filer-written field only on such a task.
+- **`isCheckedCodingTask(task)`**, from `@flow-state-dev/harness-manager/kit`: whether the coder flow's filing check wrote a stored task's input. A reader of stored coding tasks outside the flow asks it before it trusts the task's `mode` or `issue`.
 - **Shift Manager's EM** files feature work as `{ mode: "implement", issue }`.
 
-Docs: packages/harness-manager/README.md and apps/docs/docs/orchestration/harness-manager.md (replace the `harnessFeature` paragraph with the coding task's input: `mode`, `issue`, the server-written run settings and `lock:`); the harness kit's docs gain where a coding task's harness comes from.
+Docs: packages/harness-manager/README.md and apps/docs/docs/orchestration/harness-manager.md (replace the `harnessFeature` paragraph with the coding task's input: `mode`, `issue`, the server-written run settings and `lock:`); the harness kit's docs gain where a coding task's harness comes from, and `isCheckedCodingTask` for apps that read stored coding tasks.

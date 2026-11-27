@@ -27,7 +27,7 @@ import {
   debateModeratorOutputSchema,
   debateStateSchema,
   type DebateState,
-  type DebateTranscriptState,
+  type DebateContextSlot,
 } from "../schemas";
 
 export type ModeratorInstructions =
@@ -57,6 +57,7 @@ export interface CreateModeratorOptions {
  * `{ nextSpeakers, newAngle, done }` per round.
  */
 export function createModerator(opts: CreateModeratorOptions) {
+  const context: DebateContextSlot | undefined = opts.context;
   return generator({
     name: `${opts.name}-moderator`,
     model: opts.model ?? "intent/synthesize",
@@ -67,20 +68,19 @@ export function createModerator(opts: CreateModeratorOptions) {
     // The moderator's tool loop can run for a while before it commits a
     // decision. Surface a global status so it's clear work is in flight.
     activeStatusMessage: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as DebateState;
-      return state.round > 0
-        ? `Moderator opening round ${state.round}...`
+      const state: Partial<DebateState> | undefined = ctx.sequencer?.state;
+      const round = state?.round ?? 0;
+      return round > 0
+        ? `Moderator opening round ${round}...`
         : "Moderator preparing...";
     },
-    ...(opts.context !== undefined ? { context: opts.context } : {}),
-    ...(opts.uses ? { uses: opts.uses as any } : {}),
-    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
+    ...(context !== undefined ? { context } : {}),
+    ...(opts.uses ? { uses: opts.uses } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
     prompt: async (input, ctx) => {
-      const resolved = opts.instructions
-        ? typeof opts.instructions === "function"
-          ? await opts.instructions(input, ctx)
-          : opts.instructions
-        : null;
+      const resolved = typeof opts.instructions === "function"
+        ? await opts.instructions(input, ctx)
+        : opts.instructions;
       const instructionsBlock = resolved
         ? `\n## Overall Instructions\n${resolved}\n`
         : "";
@@ -137,10 +137,8 @@ export function createModerator(opts: CreateModeratorOptions) {
         .join("\n");
     },
     user: (_input, ctx) => {
-      const state = (ctx.sequencer?.state ?? {}) as DebateState;
-      const transcriptState = ctx.resources.transcript
-        ?.state as DebateTranscriptState | undefined;
-      const entries = transcriptState?.entries ?? [];
+      const state = ctx.sequencer?.state;
+      const entries = ctx.resources.transcript?.state?.entries ?? [];
       const byRound = new Map<number, typeof entries>();
       for (const e of entries) {
         const arr = byRound.get(e.round) ?? [];
@@ -158,7 +156,7 @@ export function createModerator(opts: CreateModeratorOptions) {
       const transcriptBlock =
         transcriptLines.length > 0 ? transcriptLines.join("\n") : "(none yet — this is the opening round)";
 
-      const priorDecisions = state.moderatorDecisions ?? [];
+      const priorDecisions = state?.moderatorDecisions ?? [];
       const decisionsBlock =
         priorDecisions.length > 0
           ? priorDecisions
@@ -173,8 +171,8 @@ export function createModerator(opts: CreateModeratorOptions) {
           : "(none — this is your first decision)";
 
       return [
-        `Question: ${state.question ?? ""}`,
-        `You are opening round ${state.round}.`,
+        `Question: ${state?.question ?? ""}`,
+        `You are opening round ${state?.round}.`,
         `Transcript so far:\n${transcriptBlock}`,
         `Your prior decisions:\n${decisionsBlock}`,
       ].join("\n\n");
