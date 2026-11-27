@@ -92,7 +92,12 @@ export interface SessionDoorBoard {
    * manager behind this door runs. A mode's `formerName` finds a run stored
    * under it before the rename.
    */
-  readonly runOf: (row: Task) => { issue: string; mode: { readonly name: string; readonly formerName?: string } } | undefined;
+  readonly runOf: (
+    row: Task,
+  ) =>
+    | { issue: string; mode: { readonly name: string; readonly formerName?: string } }
+    | undefined
+    | Promise<{ issue: string; mode: { readonly name: string; readonly formerName?: string } } | undefined>;
 }
 
 /** How a host builds a talk turn: the door's options but the steer's. */
@@ -223,7 +228,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (!isTerminalStatus(row.status)) throw new SessionDoorRefused("task-running");
-      const identity = board.runOf(row);
+      const identity = await board.runOf(row);
       const record =
         identity === undefined
           ? undefined

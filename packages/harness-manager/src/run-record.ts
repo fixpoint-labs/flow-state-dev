@@ -731,10 +731,19 @@ export type FrozenRunSettings = z.infer<typeof frozenRunSettingsSchema>;
 // BP-030.
 /**
  * The run settings a run record froze, or `undefined` for a row that froze
- * none: one stored before this change, or one no claim opened yet.
+ * none: one stored before this change, or one no claim opened yet. With
+ * `task`, a record another task wrote, or another incarnation of this task's
+ * id (a task deleted and filed again under it), froze none for this one.
  */
-export function frozenRunSettingsOf(record: Partial<RunRecordState> | undefined): FrozenRunSettings | undefined {
+export function frozenRunSettingsOf(
+  record: Partial<RunRecordState> | undefined,
+  task?: { readonly taskId: string; readonly incarnationId?: string | null },
+): FrozenRunSettings | undefined {
   if (record == null || typeof record.frozenHarness !== "string" || typeof record.frozenMode !== "string") return undefined;
+  if (task !== undefined) {
+    if (record.taskId != null && record.taskId !== task.taskId) return undefined;
+    if (record.incarnationId != null && task.incarnationId != null && record.incarnationId !== task.incarnationId) return undefined;
+  }
   return {
     harness: record.frozenHarness,
     model: record.frozenModel ?? null,

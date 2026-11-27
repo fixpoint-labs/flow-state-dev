@@ -366,8 +366,17 @@ export function coderWorkerFlow(
           ? undefined
           : {
               tasks: filed.tasks,
-              runOf: (task: Task) => {
-                const mode = runModeOfTask(task.input, resolved, stampMatches(task, CODER_FLOW, declaration));
+              // The mode a task's run is keyed by is the one its first claim froze, so a talk finds it
+              // whatever the app's default says now; a task that froze none is read as the claim reads it.
+              runOf: async (task: Task) => {
+                const frozen = await frozenFor(ctx, filed.tasks.collectionId, filed.tasks.partition, task.id, task.incarnationId);
+                const spec = frozen !== undefined && Object.hasOwn(resolved.modes, frozen.mode) ? resolved.modes[frozen.mode]!.spec : undefined;
+                const mode =
+                  spec !== undefined
+                    ? spec.formerName === undefined
+                      ? { name: spec.name }
+                      : { name: spec.name, formerName: spec.formerName }
+                    : runModeOfTask(task.input, resolved, stampMatches(task, CODER_FLOW, declaration));
                 return mode === undefined ? undefined : { issue: taskIssueSegment(task.id), mode };
               },
             };
@@ -468,11 +477,19 @@ export function coderWorkerFlow(
        * before this change keys its run by the mode its first claim read), or `undefined` for a task
        * whose record froze none.
        */
-      const frozenFor = async (ctx: Ctx, collectionId: string, partition: string | undefined, taskId: string): Promise<FrozenRunSettings | undefined> => {
+      const frozenFor = async (
+        ctx: Ctx,
+        collectionId: string,
+        partition: string | undefined,
+        taskId: string,
+        incarnationId: string | undefined,
+      ): Promise<FrozenRunSettings | undefined> => {
         const epic = runBoardSegment(collectionId, partition);
         for (const { spec } of Object.values(resolved.modes)) {
           const mode = spec.formerName === undefined ? { name: spec.name } : { name: spec.name, formerName: spec.formerName };
-          const frozen = frozenRunSettingsOf((await readModeRunRecord(ctx, epic, taskIssueSegment(taskId), mode, taskId)).record);
+          // Another incarnation of this task id (deleted and filed again) froze nothing for this one.
+          const record = (await readModeRunRecord(ctx, epic, taskIssueSegment(taskId), mode, taskId)).record;
+          const frozen = frozenRunSettingsOf(record, { taskId, incarnationId: incarnationId ?? null });
           if (frozen !== undefined) return frozen;
         }
         return undefined;
@@ -494,7 +511,7 @@ export function coderWorkerFlow(
         const filed = await board(ctx);
         const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
         if (filed !== undefined && task !== undefined) {
-          const frozen = await frozenFor(ctx, filed.tasks.collectionId, filed.tasks.partition, task.id);
+          const frozen = await frozenFor(ctx, filed.tasks.collectionId, filed.tasks.partition, task.id, task.incarnationId);
           if (frozen !== undefined) return frozen;
           if (talks && isTerminalStatus(task.status)) throw new SessionDoorRefused("before-run-settings");
         }
@@ -543,13 +560,13 @@ export function coderWorkerFlow(
        */
       const trusted = (name: string, block: BlockDefinition<any, any>) =>
         sequencer({ name, inputSchema: taskWorkerInputSchema.passthrough() }).step(
-          async (task: { taskId: string; input?: unknown; claim?: { collectionId: string; partition?: string } }, ctx: never) => {
+          async (task: { taskId: string; input?: unknown; claim?: { collectionId: string; partition?: string; incarnationId?: string } }, ctx: never) => {
             const claim = task.claim;
             const ledger = claim === undefined ? undefined : await conversationLedgers(claim.collectionId, ctx, claim.partition, task.taskId);
             const stored = ledger?.get(task.taskId);
             const stamped = stored !== undefined && stampMatches(stored, CODER_FLOW, declaration);
             const input = trustedCodingInput((task.input ?? {}) as Record<string, unknown>, stamped, resolved);
-            const frozen = claim === undefined ? undefined : await frozenFor(ctx, claim.collectionId, claim.partition, task.taskId);
+            const frozen = claim === undefined ? undefined : await frozenFor(ctx, claim.collectionId, claim.partition, task.taskId, stored?.incarnationId ?? claim.incarnationId);
             const runSettings = frozen ?? resolveSettings(input, await installation.resolveWorker(ctx, CODER_FLOW));
             return { ...task, input: { ...input, mode: runSettings.mode }, runSettings };
           },

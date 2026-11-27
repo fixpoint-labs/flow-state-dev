@@ -113,8 +113,8 @@ async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOpt
     await stores.resourceState.set("user", userKey, key!, change(record!.state as Record<string, unknown>) as never, "any");
   };
   /** File a no-pick task to core.coder from Lead's conversation, and wait for it to end. */
-  const fileAndSettle = async () => {
-    const sent = await post(["agent", conversation, "actions", "createTask_tasks"], { userId: "alice", input: { goal: "Why does the export skip archived rows?", assignee: "core.coder" } });
+  const fileAndSettle = async (goal = "Why does the export skip archived rows?") => {
+    const sent = await post(["agent", conversation, "actions", "createTask_tasks"], { userId: "alice", input: { goal, assignee: "core.coder" } });
     const filed = (await settle(sent.body.request.id))?.result?.output as { ok: boolean; taskId: string };
     expect(filed, JSON.stringify(filed)).toMatchObject({ ok: true });
     let stored = await task(filed.taskId);
@@ -204,5 +204,45 @@ describe("a coding task's run settings", () => {
     const refused = await app.say(session!, "And the archived ones?");
     expect(refused.error).toContain("ran before its coder was recorded with it");
     expect(app.codex.runs).toHaveLength(2);
+  });
+
+  it("never take a run record another incarnation of the task's id froze: a task filed again under it freezes its own and starts fresh", async () => {
+    const app = await boot();
+    const gone = await app.fileAndSettle();
+    expect(gone.status, JSON.stringify(gone)).toBe("completed");
+    // Its record names its own incarnation and session; make its settings tell, should they be taken.
+    await app.rewriteRecord(gone.id, (record) => ({ ...record, frozenHarness: "cursor" }));
+    // The task is deleted, and another filed under the same id: a new incarnation, never claimed.
+    const entries = await app.stores.resourceState.getByPrefix("user", app.userKey, "tasks/");
+    const [key, entry] = Object.entries(entries).find(([, e]) => (e.state as Stored).id === gone.id)!;
+    const { run: _run, output: _output, completedAt: _completedAt, startedAt: _startedAt, leaseUntil: _leaseUntil, ...rest } = entry.state as Record<string, unknown>;
+    await app.stores.resourceState.set("user", app.userKey, key, { ...rest, status: "pending", attempts: 0, incarnationId: "a-later-incarnation" } as never, "any");
+    // Another filing runs the board's pass, which starts the task filed again too.
+    await app.fileAndSettle("Which rows does the nightly export read?");
+    let again = await app.task(gone.id);
+    for (let n = 0; n < 500 && !FINISHED.includes(again.status); n++) {
+      await new Promise((r) => setTimeout(r, 20));
+      again = await app.task(gone.id);
+    }
+    expect(again.status, JSON.stringify(again)).toBe("completed");
+    expect(app.cursor.runs).toHaveLength(0);
+    const ranAgain = app.codex.runs.slice(1);
+    expect(ranAgain.length).toBeGreaterThan(0);
+    // No run after the first resumed the deleted task's session.
+    for (const run of ranAgain) expect(run.resume).not.toBe(app.codex.runs[0]!.session);
+  });
+
+  it("find a finished run's session by the mode its claim froze, though the task now reads as another mode", async () => {
+    const app = await boot();
+    const done = await app.fileAndSettle();
+    // The mode the task would read as now differs from the one its first claim froze (`answer`),
+    // as when an app's default mode changes after the freeze.
+    const entries = await app.stores.resourceState.getByPrefix("user", app.userKey, "tasks/");
+    const [key, entry] = Object.entries(entries).find(([, e]) => (e.state as Stored).id === done.id)!;
+    const state = entry.state as Stored;
+    await app.stores.resourceState.set("user", app.userKey, key, { ...state, input: { ...state.input, mode: "implement", issue: "FIX-9" } } as never, "any");
+    expect((await app.say(done.run!.sessionId!, "And the deleted rows?")).error).toBeUndefined();
+    expect(app.codex.runs).toHaveLength(2);
+    expect(app.codex.runs[1]!.resume).toBe(app.codex.runs[0]!.session);
   });
 });

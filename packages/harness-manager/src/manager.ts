@@ -2787,7 +2787,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **The first claim freezes the run settings** (FIX-2878 D1). A record that froze none and still
       // names a session is from before the freeze: that session may be another harness's, so this
       // attempt starts fresh, once (D2).
-      const freezing = input.runSettings !== undefined && frozenRunSettingsOf(recorded) === undefined;
+      const freezing =
+        input.runSettings !== undefined &&
+        frozenRunSettingsOf(recorded, { taskId: input.taskId, incarnationId: ticket.incarnationId ?? null }) === undefined;
       const previousSessionId = freezing ? null : (recorded?.sessionId ?? null);
       // **Which run this is**, counted on the record and never reset: the
       // second number of the ask marker, so this run is never pointed at a
