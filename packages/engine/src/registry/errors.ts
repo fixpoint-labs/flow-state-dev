@@ -88,7 +88,7 @@ export class FlowIdentityConflictError extends Error {
   }
 }
 
-export type ConflictScope = "user" | "org";
+export type ConflictScope = "user" | "org" | "session";
 
 export interface CrossFlowSchemaConflictDetails {
   scope: ConflictScope;
@@ -147,7 +147,14 @@ export class CrossFlowSchemaConflictError extends Error {
     const sameFlow = details.flowA === details.flowB;
 
     let message: string;
-    if (isResource && sameFlow) {
+    if (isResource && details.scope === "session" && !sameFlow) {
+      // A session copy has no flow isolation: any flow declaring the name
+      // reaches the one copy, so a distinct name is the only way apart.
+      message =
+        `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas ` +
+        `(${details.reason}: ${details.detail}). Both reach one session copy under that name, so ${identityRemedy}, ` +
+        `or reconcile the schemas.`;
+    } else if (isResource && sameFlow) {
       const ref = details.field.slice("resources.".length);
       message =
         `Flow "${details.flowA}" declares two ${details.scope}-scoped ${kind}s that both resolve to "${ref}" ` +

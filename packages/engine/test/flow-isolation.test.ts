@@ -34,7 +34,7 @@ import { compareZodSchemas } from "../src/registry/schema-compat";
  */
 type ResourceSpec = {
   schema: z.ZodTypeAny;
-  scope?: "user" | "org";
+  scope?: "user" | "org" | "session";
   /** Storage namespace. Defaults to the accessor key when omitted. */
   ref?: string;
   /** Overrides the flow-level isolation flag in both directions. */
@@ -1079,16 +1079,12 @@ describe("cross-flow resource schema validation", () => {
   });
 
   /**
-   * Two overlaps this check does NOT catch, both excluded from FIX-1158 on
-   * purpose and both closed by FIX-1207. They are one question — what identity
-   * the check keys on — and answering it means extending the identity model,
-   * which is new capability rather than the repair this issue is.
-   *
-   * These assertions pin the CURRENT behaviour so the exclusion is visible and
-   * deliberate. When FIX-1207 lands, both flip to `captureConflict`.
+   * The check compares by name, so a collection pattern overlapping a concrete
+   * ref meets it. The one overlap it still leaves, by design, is two instances
+   * of one kind: same-kind pairs are never compared (see `validateScope`).
    */
-  describe("known gaps, excluded by design (FIX-1207)", () => {
-    it("does NOT catch a collection pattern overlapping a concrete ref", () => {
+  describe("overlaps by name, and the one gap left by design", () => {
+    it("catches a collection pattern overlapping a concrete ref", () => {
       const registry = createFlowRegistry();
       registry.register(
         makeFlow({
@@ -1098,16 +1094,16 @@ describe("cross-flow resource schema validation", () => {
       );
 
       // `resolveCollectionKey("files/*", "a")` resolves to `files/a` — the same
-      // ResourceStateStore cell flow-b declares. Exact-ref comparison indexes
-      // them under `files/*` and `files/a`, so they never meet.
-      expect(() =>
+      // ResourceStateStore cell flow-b declares.
+      const error = captureConflict(() =>
         registry.register(
           makeFlow({
             kind: "flow-b",
             resources: { fileA: { ref: "files/a", schema: z.object({ body: z.number() }) } },
           })
         )
-      ).not.toThrow();
+      );
+      expect(new Set([error.flowA, error.flowB])).toEqual(new Set(["flow-a", "flow-b"]));
     });
 
     it("does NOT catch two instances of one flow kind with differing overrides", () => {
@@ -1130,6 +1126,103 @@ describe("cross-flow resource schema validation", () => {
             resources: {
               preferences: defineResource({ scope: "user", stateSchema: z.object({ theme: z.number() }) }),
             } as never,
+          })
+        )
+      ).not.toThrow();
+    });
+  });
+
+  /**
+   * Reach (`ctx.resources.at({ session })`) lets a flow read and write another
+   * flow's session copy of a definition both declare, so two shapes under one
+   * session-scoped name would read each other's rows wrong. A session copy has
+   * no flow isolation to opt out with: the remedy is a distinct name.
+   */
+  describe("session scope", () => {
+    const work = (body: z.ZodTypeAny): ResourceSpec => ({ scope: "session", schema: z.object({ body }) });
+
+    it("refuses two shapes under one session-scoped name, naming both flows and the name", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "em", resources: { work: work(z.string()) } }));
+
+      const error = captureConflict(() =>
+        registry.register(makeFlow({ kind: "coder", resources: { work: work(z.number()) } }))
+      );
+      expect(error.scope).toBe("session");
+      expect(error.field).toBe("resources.work");
+      expect(new Set([error.flowA, error.flowB])).toEqual(new Set(["em", "coder"]));
+      expect(error.message).toContain("distinct ref");
+      expect(error.message).not.toContain("flowIsolation");
+    });
+
+    it("admits one session-scoped shape declared by two flows", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "em", resources: { work: work(z.string()) } }));
+      expect(() => registry.register(makeFlow({ kind: "coder", resources: { work: work(z.string()) } }))).not.toThrow();
+    });
+
+    it("keeps session scope apart from user scope under one name", () => {
+      const registry = createFlowRegistry();
+      registry.register(makeFlow({ kind: "em", resources: { work: work(z.string()) } }));
+      expect(() =>
+        registry.register(
+          makeFlow({ kind: "coder", resources: { work: { scope: "user", schema: z.object({ body: z.number() }) } } })
+        )
+      ).not.toThrow();
+    });
+  });
+
+  /**
+   * A collection keys its rows under its pattern, so a single resource at
+   * `files/a` and a collection at `files/*` write one cell. The
+   * check compares by name: every declaration whose key or pattern can reach
+   * the other's.
+   */
+  describe("overlapping names", () => {
+    it("refuses a single resource and a collection whose pattern reaches its key", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", resources: { file: { ref: "files/a", schema: z.object({ body: z.string() }) } } })
+      );
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { files: { pattern: "files/*", schema: z.object({ body: z.number() }) } },
+          })
+        )
+      );
+      expect(new Set([error.flowA, error.flowB])).toEqual(new Set(["flow-a", "flow-b"]));
+    });
+
+    it("refuses two collections whose patterns overlap", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", resources: { files: { pattern: "files/*", schema: z.object({ body: z.string() }) } } })
+      );
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { files: { pattern: "files/[id]", schema: z.object({ body: z.number() }) } },
+          })
+        )
+      ).toThrow(CrossFlowSchemaConflictError);
+    });
+
+    it("leaves patterns that cannot meet alone", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", resources: { files: { pattern: "files/*", schema: z.object({ body: z.string() }) } } })
+      );
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: {
+              notes: { pattern: "notes/*", schema: z.object({ body: z.number() }) },
+              deep: { ref: "files/a/b", schema: z.object({ body: z.number() }) },
+            },
           })
         )
       ).not.toThrow();
