@@ -80,7 +80,7 @@ import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn, SessionDoorRefused, sessionTask } from "../session-door";
 import { frozenRunSettingsOf, readModeRunRecord, RUNS, runRecordCollection, type FrozenRunSettings } from "../run-record";
-import { runBoardSegment, taskIssueSegment } from "../workspace";
+import { runBoardSegment, sameSegment, taskIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
@@ -475,7 +475,8 @@ export function coderWorkerFlow(
       /**
        * The run settings the task's run record froze, under any of the app's modes (a row stored
        * before this change keys its run by the mode its first claim read), or `undefined` for a task
-       * whose record froze none.
+       * whose record froze none. A frozen mode that is a mode's `formerName` reads as that mode's
+       * name now: the former name only finds the record.
        */
       const frozenFor = async (
         ctx: Ctx,
@@ -490,7 +491,10 @@ export function coderWorkerFlow(
           // Another incarnation of this task id (deleted and filed again) froze nothing for this one.
           const record = (await readModeRunRecord(ctx, epic, taskIssueSegment(taskId), mode, taskId)).record;
           const frozen = frozenRunSettingsOf(record, { taskId, incarnationId: incarnationId ?? null });
-          if (frozen !== undefined) return frozen;
+          if (frozen === undefined) continue;
+          if (Object.hasOwn(resolved.modes, frozen.mode)) return frozen;
+          const renamed = Object.values(resolved.modes).find(({ spec: { formerName } }) => formerName !== undefined && sameSegment(frozen.mode, formerName));
+          return renamed === undefined ? frozen : { ...frozen, mode: renamed.spec.name };
         }
         return undefined;
       };

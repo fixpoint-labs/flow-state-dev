@@ -50,7 +50,7 @@ type Stored = { id: string; status: string; error?: string; input?: Record<strin
  * An app on two scripted harnesses, `codex` the kit's default, whose one coder's own `harness:` is
  * `cursor`: Lead files to it.
  */
-async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOptions } = {}) {
+async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOptions } = {}, kitModeOnly = false) {
   const root = mkdtempSync(join(tmpdir(), "fsd-run-settings-"));
   dirs.push(root);
   const repo = join(root, "repo");
@@ -73,8 +73,13 @@ async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOpt
         workspace: localWorkspaceHost({ root: join(root, "runs"), remotes: { allow: ["file"] }, source: () => ({ kind: "repo", repo: `file://${repo}` }) }),
         defaultHarness: "codex",
         judge: false,
-        modes: { implement: { instructions: brief("implement"), doneWhen: finished, requires: ["issue"] }, answer: { instructions: brief("answer"), doneWhen: finished } },
-        defaultMode: "answer",
+        // `kitModeOnly`: the kit's own mode, `default`, whose runs were keyed `code` before it was renamed.
+        ...(kitModeOnly
+          ? {}
+          : {
+              modes: { implement: { instructions: brief("implement"), doneWhen: finished, requires: ["issue"] }, answer: { instructions: brief("answer"), doneWhen: finished } },
+              defaultMode: "answer",
+            }),
       }),
       workforce({ directory }),
     ],
@@ -112,6 +117,13 @@ async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOpt
     const [[key, record]] = await records(taskId);
     await stores.resourceState.set("user", userKey, key!, change(record!.state as Record<string, unknown>) as never, "any");
   };
+  /** Move the task's one run record to the key and frozen mode a mode named `mode` wrote, before it was renamed. */
+  const storeUnderFormerMode = async (taskId: string, mode: string) => {
+    const [[key, record]] = await records(taskId);
+    const state = record!.state as Record<string, unknown>;
+    await stores.resourceState.delete("user", userKey, key!, "any");
+    await stores.resourceState.set("user", userKey, key!.replace(/\/[^/]+$/, `/${mode}`), { ...state, frozenMode: mode } as never, "any");
+  };
   /** File a no-pick task to core.coder from Lead's conversation, and wait for it to end. */
   const fileAndSettle = async (goal = "Why does the export skip archived rows?") => {
     const sent = await post(["agent", conversation, "actions", "createTask_tasks"], { userId: "alice", input: { goal, assignee: "core.coder" } });
@@ -131,7 +143,7 @@ async function boot(stubs: { codex?: HarnessStubOptions; cursor?: HarnessStubOpt
     const done = await settle(sent.body.request.id);
     return { error: done?.result?.error === undefined ? undefined : JSON.stringify(done.result.error), status: done?.status };
   };
-  return { codex, cursor, fileAndSettle, task, records, rewriteRecord, say, userKey, stores };
+  return { codex, cursor, fileAndSettle, task, records, rewriteRecord, storeUnderFormerMode, say, userKey, stores };
 }
 
 describe("a coding task's run settings", () => {
@@ -254,6 +266,32 @@ describe("a coding task's run settings", () => {
     const ranAgain = app.codex.runs.slice(1);
     expect(ranAgain.length).toBeGreaterThan(0);
     for (const run of ranAgain) expect(run.resume).not.toBe(app.codex.runs[0]!.session);
+  });
+
+  it("run a task frozen under a mode's former name in the mode it became, on its session: a line and a retry both", async () => {
+    const app = await boot({}, true);
+    const done = await app.fileAndSettle();
+    expect(done.status, JSON.stringify(done)).toBe("completed");
+    const session = app.codex.runs[0]!.session;
+    // Its first claim froze mode `code`, under `code`'s key; the app's mode is now `default`, formerly `code`.
+    await app.storeUnderFormerMode(done.id, "code");
+    // A line typed in its session reaches the run, on its session.
+    expect((await app.say(done.run!.sessionId!, "And the deleted rows?")).error).toBeUndefined();
+    expect(app.codex.runs).toHaveLength(2);
+    expect(app.codex.runs[1]!.resume).toBe(session);
+    // A retry of the task runs in the mode `code` became, on its session.
+    const entries = await app.stores.resourceState.getByPrefix("user", app.userKey, "tasks/");
+    const [key, entry] = Object.entries(entries).find(([, e]) => (e.state as Stored).id === done.id)!;
+    const { output: _output, completedAt: _completedAt, leaseUntil: _leaseUntil, ...rest } = entry.state as Record<string, unknown>;
+    await app.stores.resourceState.set("user", app.userKey, key, { ...rest, status: "pending" } as never, "any");
+    await app.fileAndSettle("Which rows does the nightly export read?");
+    let again = await app.task(done.id);
+    for (let n = 0; n < 500 && !FINISHED.includes(again.status); n++) {
+      await new Promise((r) => setTimeout(r, 20));
+      again = await app.task(done.id);
+    }
+    expect(again.status, JSON.stringify(again)).toBe("completed");
+    expect(app.codex.runs.filter((run) => run.resume === session).length, JSON.stringify(app.codex.runs.map((run) => run.resume))).toBeGreaterThanOrEqual(2);
   });
 
   it("find a finished run's session by the mode its claim froze, though the task now reads as another mode", async () => {
