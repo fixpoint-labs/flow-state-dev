@@ -1,7 +1,6 @@
 /**
  * `@flow-state-dev/engine/internal`: seams only FSD's own packages read (the
- * HTTP transport adapter, read-only runs, the queue worker's replay of an
- * accepted job, the in-memory lease backend, owner-run
+ * HTTP transport adapter, read-only runs, the in-memory lease backend, owner-run
  * routing, and the resource helpers the MCP adapter projects). Published so
  * those packages can import it, but not part of the public API: no semver
  * promise, and no README entry. A name moves to `@flow-state-dev/engine/host`
@@ -9,7 +8,6 @@
  */
 export { encodeStreamEvent } from "./streaming";
 export { runView, type RunViewOptions, type ViewAnswer } from "./execution";
-export { runFrameworkAction } from "./execution/runAction";
 export type { RecordedRead } from "./context/view-reads";
 export {
   createHttpTransportAdapter,

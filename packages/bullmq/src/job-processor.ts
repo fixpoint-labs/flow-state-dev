@@ -32,9 +32,7 @@ import {
 } from "@flow-state-dev/engine/host";
 import { DelayedError, Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
-import { defaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine";
-// The worker replays a job the host accepted: its metadata passes whole.
-import { runFrameworkAction } from "@flow-state-dev/engine/internal";
+import { defaultBodyUserIdPrincipalResolver, runAction } from "@flow-state-dev/engine";
 import { installBuiltIns, withChangeBus, type PrincipalResolver } from "@flow-state-dev/engine/host";
 import type {
   FlowRegistry,
@@ -411,7 +409,7 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
       }
       const jobOrgId = data.orgId;
 
-      const result = await runFrameworkAction({
+      const result = await runAction({
         flow,
         actionName: data.actionName as keyof typeof flow.actions & string,
         input: data.input,

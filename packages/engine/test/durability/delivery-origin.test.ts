@@ -14,17 +14,34 @@
  * `internal` and `task` are not reserved sources (an app's own code runs an
  * internal entry through `runAction`), so the mark is honoured only on runs the
  * engine started: the public `runAction` and an adapter's `host.dispatch` drop
- * it, and the engine's own dispatches keep it.
+ * it, and the engine's own dispatches keep it. A worker behind an external
+ * runner replays through that same public `runAction`, so it gets the mark back
+ * from the record the host wrote when it accepted the request, never from the
+ * job it was handed.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowState, inMemoryStores, resolveUserStorageKey, runAction } from "../../src";
+import {
+  createFlowRegistry,
+  createFlowState,
+  defaultBodyUserIdPrincipalResolver,
+  inMemoryStores,
+  resolveUserStorageKey,
+  runAction
+} from "../../src";
 import { dispatchInternalAs } from "../../src/durability/dispatch-internal";
 import { fireOwnerRunThrough } from "../../src/durability/owner-runs";
 import { readDeliveryOrigin } from "../../src/execution/delivery-origin";
+import { callerRunMetadata } from "../../src/execution/runAction";
 import { routeServiceEvent } from "../../src/internal";
-import { type InboundTransportHost } from "../../src/host";
+import {
+  createInboundTransportHost,
+  createInMemoryStores,
+  type DispatchEnvelope,
+  type FlowRunner,
+  type InboundTransportHost
+} from "../../src/host";
 
 const ORG = "acme";
 
@@ -240,5 +257,104 @@ describe("a webhook delivery's origin", () => {
     expect(readDeliveryOrigin("task", { deliveryOrigin: "webhook" })).toBe("webhook");
     expect(readDeliveryOrigin("http", { deliveryOrigin: "webhook" })).toBeUndefined();
     expect(readDeliveryOrigin("internal", { deliveryOrigin: "poll" })).toBeUndefined();
+  });
+
+  describe("on a worker behind an external runner", () => {
+    /** A host whose runner only captures what it is handed, as a queue would. */
+    function bootQueued() {
+      const registry = createFlowRegistry();
+      registry.register(svc);
+      const stores = createInMemoryStores();
+      const handed: DispatchEnvelope[] = [];
+      const runner: FlowRunner = {
+        dispatch: async (envelope) => {
+          handed.push(envelope);
+          return { requestId: envelope.requestId, finished: new Promise(() => {}), abort: () => {} };
+        },
+        close: async () => {}
+      };
+      const host = createInboundTransportHost({
+        registry,
+        stores,
+        resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+        runtimeConfig: {},
+        runner
+      });
+      /**
+       * The origin a worker's public `runAction` runs a job with, read the way
+       * the running context reads it.
+       */
+      const originRunWith = async (job: DispatchEnvelope) =>
+        readDeliveryOrigin(job.source, await callerRunMetadata({ ...job, stores }));
+      return { host, handed, originRunWith };
+    }
+
+    const accept = (host: InboundTransportHost, sessionId: string) =>
+      dispatchInternalAs(host, {
+        flowKind: "svc",
+        entry: "deliver",
+        input: { note: "hi" },
+        as: { userId: "alice", orgId: ORG },
+        sessionId,
+        metadata: {},
+        origin: "webhook"
+      });
+
+    it("keeps the origin of a webhook-fired run the host accepted, from the host's record", async () => {
+      const { host, handed, originRunWith } = bootQueued();
+      await accept(host, "s-queued").accepted;
+      expect(handed).toHaveLength(1);
+      // The job as a queue hands it over, minus the mark: the worker must not need it.
+      expect(await originRunWith({ ...handed[0]!, metadata: {} })).toBe("webhook");
+    });
+
+    it("runs a job enqueued around the host unmarked, whatever its metadata claims", async () => {
+      const { originRunWith } = bootQueued();
+      // A direct enqueue, or a job queued before the host recorded the mark: no accepted record.
+      const job: DispatchEnvelope = {
+        requestId: "req_direct",
+        flowKind: "svc",
+        actionName: "deliver",
+        input: { note: "hi" },
+        userId: "alice",
+        orgId: ORG,
+        sessionId: "s-direct",
+        source: "internal",
+        metadata: { deliveryOrigin: "webhook" }
+      };
+      expect(await originRunWith(job)).toBeUndefined();
+    });
+
+    it("does not lend an accepted request's origin to a job naming another session or source", async () => {
+      const { host, handed, originRunWith } = bootQueued();
+      await accept(host, "s-accepted").accepted;
+      const job = handed[0]!;
+      expect(await originRunWith({ ...job, sessionId: "s-elsewhere" })).toBeUndefined();
+      expect(await originRunWith({ ...job, source: "task" })).toBeUndefined();
+    });
+
+    it("runs the accepted job on the worker and keeps its record webhook-originated", async () => {
+      const { host, handed } = bootQueued();
+      const handle = accept(host, "s-ran");
+      await handle.accepted;
+      const job = handed[0]!;
+      const result = await runAction({
+        flow: svc,
+        actionName: job.actionName as never,
+        input: job.input,
+        userId: job.userId,
+        orgId: job.orgId,
+        sessionId: job.sessionId,
+        requestId: job.requestId,
+        source: job.source,
+        metadata: {},
+        stores: host.stores,
+        runtimeConfig: {}
+      });
+      expect(result.requestId).toBe(handle.requestId);
+      const record = await host.stores.request.get(handle.requestId);
+      expect(record?.status).toBe("completed");
+      expect(readDeliveryOrigin(record!.source, record!.metadata)).toBe("webhook");
+    });
   });
 });

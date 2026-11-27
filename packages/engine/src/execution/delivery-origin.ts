@@ -23,10 +23,17 @@
  *   are not reserved: an app's own code legitimately runs an internal entry
  *   through the public `runAction` (a boot binder, a test harness). So the
  *   public `runAction` and an adapter's `host.dispatch` drop the key, and only
- *   the engine's own paths keep it: a dispatch marked {@link asFrameworkDispatch}
- *   and the runner, recovery and queue worker that replay what the host
- *   accepted ({@link runFrameworkAction}). A caller can neither forge the mark
+ *   the engine's own paths keep it: a dispatch marked {@link asFrameworkDispatch},
+ *   and the in-process runner, recovery and continuation that replay what the
+ *   host accepted (`runFrameworkAction`). A caller can neither forge the mark
  *   nor carry one it was not stamped with.
+ * - A worker on the other side of an external runner (the BullMQ worker, or
+ *   any custom `FlowRunner`'s) replays through the public `runAction`, so its
+ *   job's metadata is caller-shaped too. Its origin comes from the request
+ *   record the host wrote under the request's id before handing the request
+ *   to the runner: `runAction` reads it back from there for a
+ *   framework-stamped source, and only there. A job enqueued around the host
+ *   has no such record and runs unmarked.
  *
  * The mark follows dispatches, not data: a task a marked run files in its own
  * session, or the wake a settle starts, is not marked.
