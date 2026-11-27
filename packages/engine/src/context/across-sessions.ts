@@ -34,6 +34,7 @@ import {
   matchesPattern,
   type AcrossSessionsCollection,
   type AcrossSessionsListQuery,
+  type DeclaredResourceIndex,
   type AcrossSessionsPage,
   type AcrossSessionsEntry,
   type JsonObject,
@@ -43,12 +44,13 @@ import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { DeliveryOrigin } from "../execution/delivery-origin";
 import { FlowStateConfigError } from "../errors/flow-error";
 import { ownerKeyAdmits } from "../resources/owner-private";
+import { findIndexedKeys } from "../resources/resource-indexes";
 import { toBareSessionId } from "../stores/scope-keys";
 import type { AcrossSessionsOwner, AcrossSessionsQuery, ResourceStateStore } from "../stores/types";
 import { namedRecordAdmission, UntrustedReachError, type NamedSessionAdmission } from "./named-session";
 
 /** The most rows a page answers. */
-export const ACROSS_SESSIONS_PAGE = 50;
+const ACROSS_SESSIONS_PAGE = 50;
 
 /** What one run's read across sessions is built from: every field from the run, never a payload. */
 export type AcrossSessionsInputs = {
@@ -128,7 +130,14 @@ function openCursor(cursor: unknown, binding: string): CursorPosition {
 type Filter =
   | { kind: "none" }
   | { kind: "key"; key: string }
-  | { kind: "index"; name: string; stored: string; value: string | undefined; check: (key: string, state: JsonObject) => boolean };
+  | {
+      kind: "index";
+      name: string;
+      stored: string;
+      declared: DeclaredResourceIndex;
+      value: string | undefined;
+      check: (key: string, state: JsonObject) => boolean;
+    };
 
 /** The filter `where` asks for, checked against `config`'s declarations. */
 function filterOf(config: ResourceCollectionConfig, where: AcrossSessionsListQuery["where"]): Filter {
@@ -149,6 +158,7 @@ function filterOf(config: ResourceCollectionConfig, where: AcrossSessionsListQue
     kind: "index",
     name: index.name,
     stored: index.stored,
+    declared: index,
     value,
     check: (key, state) => value !== undefined && canonicalIndexValues(index.value(key, state as never)).includes(value)
   };
@@ -222,6 +232,22 @@ async function listPage(
         value: Object.freeze(cloneValue(read.state)) as JsonObject
       })
     );
+  }
+  // A session whose index isn't built answered every entry as a candidate:
+  // build it now, once, as a lookup would, so later pages and reads are
+  // answered by the index. A build that a racing write cleared is built again
+  // by the next read that meets it.
+  const indexes = inputs.store.indexes;
+  if (filter.kind === "index" && indexes !== undefined) {
+    const unbuilt = new Set<string>();
+    for (const met of page) if (met.indexBuilt === false) unbuilt.add(met.sessionKey);
+    for (const sessionKey of unbuilt) {
+      await findIndexedKeys(
+        { store: inputs.store, indexes, scopeType: "session", scopeId: sessionKey, collection: config.pattern, keyPrefix },
+        filter.declared,
+        filter.value!
+      );
+    }
   }
   // `next` marks the last row the store returned, never the last one shown,
   // so paging neither stalls on dropped rows nor skips the rows after them.

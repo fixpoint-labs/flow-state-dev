@@ -235,6 +235,14 @@ export function createAcrossSessionsConformanceTests(options: CreateAcrossSessio
             ? ["built notes/1", "built notes/2", "unbuilt notes/1", "unbuilt notes/2"]
             : ["built notes/1", "unbuilt notes/1", "unbuilt notes/2"]
         );
+        // A store with index verbs says, in the same statement, which sessions answered by their built index.
+        if (indexes !== undefined) {
+          expect(rows.map((r: { sessionKey: string; indexBuilt?: boolean }) => `${r.sessionKey} ${String(r.indexBuilt)}`)).toEqual([
+            "built true",
+            "unbuilt false",
+            "unbuilt false"
+          ]);
+        }
       });
     });
 

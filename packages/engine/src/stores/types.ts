@@ -1792,6 +1792,12 @@ export type AcrossSessionsStoredRow = {
   key: string;
   state: JsonObject;
   version: number;
+  /**
+   * With an `index` filter, on a store with index verbs: whether the row's
+   * session has that index built, read in the same statement. The engine
+   * builds a session's index the first time a read meets it unbuilt.
+   */
+  indexBuilt?: boolean;
 };
 
 // FIX-401; FIX-141; see FIX-401 spec.

@@ -149,7 +149,11 @@ export function createSQLiteResourceStateStore(
     if (statement === undefined) {
       statement = db.prepare(
         "SELECT s.id AS sessionKey, s.flow_kind AS flowKind, s.flow_id AS flowId, s.user_id AS userId, " +
-          "s.org_id AS orgId, s.tenant_id AS tenantId, rs.resource_key AS key, rs.state AS state, rs.version AS version " +
+          "s.org_id AS orgId, s.tenant_id AS tenantId, rs.resource_key AS key, rs.state AS state, rs.version AS version" +
+          (shape.index
+            ? ", EXISTS (SELECT 1 FROM resource_index_built b WHERE b.scope_type = 'session' AND b.scope_id = rs.scope_id " +
+              "AND b.collection = ? AND b.index_name = ? AND b.status = 'built') AS indexBuilt "
+            : " ") +
           "FROM sessions s CROSS JOIN resource_state rs " +
           "WHERE s.user_id = ? AND s.tenant_id IS ? AND s.org_id IS ? " +
           "AND rs.scope_type = 'session' AND rs.scope_id = s.id AND rs.lifecycle = 'live' " +
@@ -511,6 +515,7 @@ export function createSQLiteResourceStateStore(
         resource_key: string;
         state: string;
         version: number;
+        indexBuilt?: number;
       }>;
       const result: Record<string, VersionedResourceState> = {};
       for (const row of rows) {
@@ -553,6 +558,7 @@ export function createSQLiteResourceStateStore(
         after: after !== undefined
       });
       const rows = statement.all(
+        ...(index !== undefined ? [index.collection, index.index] : []),
         query.owner.userId,
         query.owner.tenantId ?? null,
         query.owner.orgId ?? null,
@@ -584,7 +590,8 @@ export function createSQLiteResourceStateStore(
         },
         key: row.key,
         state: JSON.parse(row.state) as JsonObject,
-        version: row.version
+        version: row.version,
+        ...(row.indexBuilt !== undefined ? { indexBuilt: row.indexBuilt === 1 } : {})
       }));
     },
 

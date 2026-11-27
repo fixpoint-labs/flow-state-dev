@@ -514,10 +514,14 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       values.push(...range.values);
       if (query.key !== undefined) where.push(`rs.resource_key = ${param(query.key)}`);
       const { index, after } = query;
+      let builtColumn = "";
       if (index !== undefined) {
         const collection = param(index.collection);
         const name = param(index.index);
         const value = param(index.value);
+        builtColumn =
+          ", EXISTS (SELECT 1 FROM resource_index_built b WHERE b.scope_type = 'session' AND b.scope_id = rs.scope_id " +
+          `AND b.collection = ${collection} AND b.index_name = ${name} AND b.status = 'built') AS index_built`;
         where.push(
           "(EXISTS (SELECT 1 FROM resource_index ri WHERE ri.scope_type = 'session' AND ri.scope_id = rs.scope_id " +
             `AND ri.collection = ${collection} AND ri.index_name = ${name} ` +
@@ -533,7 +537,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       }
       const result = await executor.query(
         "SELECT s.id AS session_key, s.flow_kind, s.flow_id, s.user_id, s.org_id, s.tenant_id, " +
-          "rs.resource_key, rs.state, rs.version " +
+          `rs.resource_key, rs.state, rs.version${builtColumn} ` +
           "FROM sessions s JOIN resource_state rs ON rs.scope_id = s.id " +
           `WHERE ${where.join(" AND ")} ` +
           `ORDER BY s.id COLLATE "C", rs.resource_key COLLATE "C" LIMIT ${param(query.limit)}`,
@@ -550,7 +554,8 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         },
         key: row.resource_key as string,
         state: row.state as JsonObject,
-        version: Number(row.version)
+        version: Number(row.version),
+        ...(row.index_built !== undefined ? { indexBuilt: row.index_built === true } : {})
       }));
     },
 

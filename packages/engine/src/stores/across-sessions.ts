@@ -21,7 +21,7 @@ import type {
 export type AcrossSessionsSessionReads = Pick<SessionStore, "list">;
 
 /** `a` against `b` by code point: UTF-8 byte order, as SQLite `BINARY` and Postgres `COLLATE "C"` compare. */
-export function compareByCodePoint(a: string, b: string): number {
+function compareByCodePoint(a: string, b: string): number {
   if (a === b) return 0;
   const left = a[Symbol.iterator]();
   const right = b[Symbol.iterator]();
