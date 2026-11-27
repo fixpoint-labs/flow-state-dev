@@ -188,15 +188,18 @@ function storedTypes(raw: TaskInputRecord): TaskInputRecord {
  * row for the coder flow's current declaration. A stamped row's `mode` and
  * `issue` are the checked ones. Any other row's were a filer's free fields, so
  * they are dropped, and it runs the default mode on no issue; a row carrying
- * the old marker is read by {@link storedCodingInput}.
+ * the old marker is read by {@link storedCodingInput}. Its server-owned values
+ * are dropped too, as the claim drops them, so every route reads a row alike.
  *
  * @throws TaskWriteRefusedError as {@link storedCodingInput} does.
  */
 export function trustedCodingInput(raw: TaskInputRecord, stamped: boolean, resolved: ResolvedModes): TaskInputRecord {
   const typed = storedTypes(raw);
   if (stamped) return typed;
-  if (Object.hasOwn(typed, HARNESS_FEATURE_KEY)) return storedCodingInput(typed, resolved);
-  const { mode: _mode, issue: _issue, ...rest } = typed;
+  // As the claim's parse drops them: on a row the filler never wrote, a server-owned value is absent.
+  const unfilled = Object.fromEntries(Object.entries(typed).filter(([name]) => !(SERVER_OWNED as readonly string[]).includes(name)));
+  if (Object.hasOwn(unfilled, HARNESS_FEATURE_KEY)) return storedCodingInput(unfilled, resolved);
+  const { mode: _mode, issue: _issue, ...rest } = unfilled;
   return rest;
 }
 

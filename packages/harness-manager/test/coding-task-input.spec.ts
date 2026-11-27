@@ -31,7 +31,7 @@ import { seedRepo } from "./fixtures";
 import { harnesses } from "../src/kit";
 import { resolveCoderModes } from "../src/kit/coder-modes";
 import { isCheckedCodingTask } from "../src/kit";
-import { codingTaskInput, noteRunSettings, storedCodingInput } from "../src/kit/coding-task-input";
+import { codingTaskInput, noteRunSettings, storedCodingInput, taskLockProblem, trustedCodingInput } from "../src/kit/coding-task-input";
 
 const states: FlowState[] = [];
 const dirs: string[] = [];
@@ -442,5 +442,25 @@ describe("whether a stored task's fields were checked", () => {
     expect(isCheckedCodingTask({ metadata: unstamped })).toBe(false);
     expect(isCheckedCodingTask({ metadata: { ...unstamped, inputFilledFor: { ...(stamp as object), declaration: "an-older-declaration" } } })).toBe(false);
     expect(isCheckedCodingTask({ metadata: { ...unstamped, inputFilledFor: { ...(stamp as object), flow: "agent" } } })).toBe(false);
+  });
+});
+
+describe("what a route reads off a row the check didn't stamp", () => {
+  const resolved = resolveCoderModes(shiftManager, { name: "default", instructions: brief("kit"), doneWhen: { check: () => true } }, "coder");
+  const planner = { id: "core.planner", config: { harness: "cursor", lock: { harness: "cursor" } } };
+
+  // The steer route reads the row as stored, where the claim's parse already dropped what the filler
+  // never wrote: both go through this one read, so a late steer is checked as its claim was.
+  it("drops every server-owned value as the claim does, so an old harness nobody filled can't trip the lock", () => {
+    const stored = { harness: "codex", model: "gpt-6-luna", plan: true, doneWhen: "always", workspace: { host: "/" }, description: "Why?" };
+    const read = trustedCodingInput(stored, false, resolved);
+    expect(read).toEqual({ description: "Why?" });
+    expect(taskLockProblem(planner, read, { modes: resolved, harnesses: ["codex", "cursor"], defaultHarness: "codex" })).toBeUndefined();
+    // On a stamped row the filler wrote them, and they stand.
+    expect(trustedCodingInput({ mode: "answer", harness: "codex" }, true, resolved)).toEqual({ mode: "answer", harness: "codex" });
+  });
+
+  it("drops them from an old marker row too", () => {
+    expect(trustedCodingInput({ harnessFeature: { issue: "FIX-2165" }, harness: "codex" }, false, resolved)).toEqual({ mode: "implement", issue: "FIX-2165" });
   });
 });
