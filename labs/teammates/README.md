@@ -214,7 +214,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
 | `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
-| `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
+| `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | none: the harness-manager's 4-hour cap applies, and a run that goes quiet for 20 minutes stops; set this to cap runs tighter |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
 | `GITHUB_REVIEWERS` | the GitHub accounts, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`; a person is heard only while they can also push to the repository. It is the default of the trusted-reviewers list until that list is first saved: after that the saved list wins, an empty one included, and Lead changes it on your own word, with your Approve in Inbox. The repository is public and a run acts on what it hears, so no one else is heard. Renamed from `TEAMMATES_GITHUB_REVIEWERS`, which is no longer read | none: nobody is heard until the list is saved |

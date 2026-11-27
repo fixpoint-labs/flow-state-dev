@@ -25,8 +25,8 @@
  *   takes the project's MCP servers the Lab relays, nor reports usage windows.
  *
  * That one is the default coder, for every worker naming no harness.
- * Every run may take {@link RUN_MINUTES_ENV} minutes,
- * {@link DEFAULT_RUN_MINUTES} by default.
+ * {@link RUN_MINUTES_ENV} caps how long a run may take; unset, the Lab names
+ * no cap and harness-manager's idle window and default cap govern.
  *
  * An unknown value is refused at startup rather than read as the default.
  * Either way, a start that goes ahead prints one line naming the coder.
@@ -79,7 +79,8 @@ export interface SelectedHarness {
   name: HarnessChoice;
   /** The coder, as a harness value for `openLab({ harnesses })`. */
   value: Harness;
-  runTimeoutMs: number;
+  /** One run's cap on time; absent, the Lab names none and harness-manager's defaults apply. */
+  runTimeoutMs?: number;
   /** What a user calls it ("Claude Code"), for `openLab`'s `coderHarness`. */
   label: string;
 }
@@ -228,17 +229,12 @@ export const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 /** How long one scripted run may take: five paced steps and a commit. */
 export const SCRIPTED_RUN_TIMEOUT_MS = 60_000;
 
-/** How long one run on a real harness may take, in minutes, when {@link RUN_MINUTES_ENV} names none. */
-export const DEFAULT_RUN_MINUTES = 20;
-
 /**
  * Overrides how long one run may take, in whole minutes, for any harness, the
  * scripted run included. A real FSD issue can need more than the default.
  */
 export const RUN_MINUTES_ENV = "DEVFORCE_LAB_RUN_MINUTES";
 
-/** How long one Claude Code run may take with no {@link RUN_MINUTES_ENV}: for checks that build a Lab by hand. */
-export const CLAUDE_CODE_RUN_TIMEOUT_MS = DEFAULT_RUN_MINUTES * 60_000;
 
 /**
  * The scripted run a served Lab uses by default: harness-manager's
@@ -306,8 +302,8 @@ function labHarnesses(stepEveryMs: number, check?: HarnessReadinessCheck): Recor
  *   Empty or absent means {@link SCRIPTED_STEP_MS}.
  * @param defaultChoice The profile's coder when `value` names none; `stub` by default.
  * @param runMinutes One run's budget in minutes, `process.env[RUN_MINUTES_ENV]`
- *   by default. Empty or absent means {@link DEFAULT_RUN_MINUTES} on a real
- *   harness and {@link SCRIPTED_RUN_TIMEOUT_MS} on the stub.
+ *   by default. Empty or absent means no cap on a real harness and
+ *   {@link SCRIPTED_RUN_TIMEOUT_MS} on the stub.
  * @returns The chosen harness. No credential is checked here: a served Lab
  *   starts through {@link startHarness}, whose harness kit reports it.
  * @throws When the value names no harness this Lab can run, `stepMs` is not
@@ -337,10 +333,11 @@ function selectFrom(
   }
   const name = choice as HarnessChoice;
   const harness = values[name];
+  const runTimeoutMs = budget ?? (name === "stub" ? SCRIPTED_RUN_TIMEOUT_MS : undefined);
   return {
     name,
     value: harness,
-    runTimeoutMs: budget ?? (name === "stub" ? SCRIPTED_RUN_TIMEOUT_MS : DEFAULT_RUN_MINUTES * 60_000),
+    ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }),
     label: harness.label ?? harness.id,
   };
 }
@@ -373,9 +370,9 @@ export interface StartedHarness extends SelectedHarness {
  * Pick a served Lab's default coder at start: {@link selectHarness} with the
  * profile's default, beside every harness the Lab runs.
  *
- * One run's budget is the same whichever harness runs it ({@link RUN_MINUTES_ENV},
- * else {@link DEFAULT_RUN_MINUTES}): a worker may name a real harness whatever
- * the default is.
+ * One run's cap is the same whichever harness runs it ({@link RUN_MINUTES_ENV},
+ * else none, so harness-manager's idle window and default cap govern): a
+ * worker may name a real harness whatever the default is.
  *
  * Whether a harness can run here never stops the start: the harness kit logs
  * the table of what can run, with what to run for what can't, when the checks
@@ -394,13 +391,16 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   const runMinutes = "runMinutes" in options ? options.runMinutes : process.env[RUN_MINUTES_ENV];
   const values = labHarnesses(readStepMs(stepMs), options.check);
   const harness = selectFrom(value, defaultChoice, runMinutes, values);
-  const runTimeoutMs = readRunMinutes(runMinutes) ?? DEFAULT_RUN_MINUTES * 60_000;
+  const runTimeoutMs = readRunMinutes(runMinutes);
   log(
     harness.name === "stub"
       ? `Coder: the scripted run, no model (${HARNESS_ENV}=stub).`
-      : `Coder: ${harness.label}; each run may take ${runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV}).`,
+      : runTimeoutMs === undefined
+        ? `Coder: ${harness.label}; no Lab cap on run time (${RUN_MINUTES_ENV} sets one).`
+        : `Coder: ${harness.label}; each run may take ${runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV}).`,
   );
-  return { ...harness, runTimeoutMs, harnesses: HARNESS_CHOICES.map((choice) => values[choice]) };
+  const { runTimeoutMs: _selected, ...chosen } = harness;
+  return { ...chosen, ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }), harnesses: HARNESS_CHOICES.map((choice) => values[choice]) };
 }
 
 /** The budget {@link RUN_MINUTES_ENV} asks for, in milliseconds, or none; refused rather than guessed when malformed. */

@@ -160,8 +160,9 @@ Codex and Cursor don't take the project's MCP servers the Lab relays, and report
 windows, so Usage shows Claude Code only.
 
 A `Coder:` line at start names the coder it started with and, on a real one, how long each run
-may take. That is 20 minutes for every run unless `DEVFORCE_LAB_RUN_MINUTES` names another whole
-number of minutes. A value that isn't a positive whole number is refused at start.
+may take. Unset, the Lab puts no cap of its own on a run: a run that goes quiet stops after
+harness-manager's idle window, and a busy one runs up to its default cap. `DEVFORCE_LAB_RUN_MINUTES`
+caps every run at that many whole minutes. A value that isn't a positive whole number is refused at start.
 
 That is the coder a worker naming no harness runs on. All four are one list, the harness kit's
 `harnesses` slot: the coder runs on it, and the readiness view checks and lists the same four
