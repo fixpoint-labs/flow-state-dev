@@ -6,7 +6,7 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
-import { defineScheduleCollection } from "../src/defineScheduleCollection";
+import { defineScheduleCollection, reassertSchedules } from "../src/defineScheduleCollection";
 import type { ScheduleIndex, ScheduleIndexEntry } from "../src/scheduleIndex";
 
 /**
@@ -20,6 +20,9 @@ function createFakeIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEnt
     rows,
     async upsert(row) {
       rows.set(`${row.cell}/${row.key}`, row);
+    },
+    async ensure(entry) {
+      if (!rows.has(`${entry.cell}/${entry.key}`)) rows.set(`${entry.cell}/${entry.key}`, entry);
     },
     async remove({ cell, key }) {
       rows.delete(`${cell}/${key}`);
@@ -442,5 +445,33 @@ describe("defineScheduleCollection", () => {
       HOOK_CTX
     );
     expect(index.rows.size).toBe(0);
+  });
+});
+
+// The index is mirrored only on write, so one that lost rows (a deleted index file) never fires the
+// schedules the collection still holds. The rebuild puts each enabled one back, once, and moves no due fire.
+describe("reassertSchedules", () => {
+  const PATTERN = "schedules/*";
+  const schedules = {
+    "schedules/daily": { state: bound({ cron: "0 9 * * *", kind: "k", enabled: true }) },
+    "schedules/paused": { state: bound({ cron: "0 9 * * *", kind: "k", enabled: false }) },
+    "schedules/elsewhere": { state: bound({ cron: "0 9 * * *", kind: "k", enabled: true, orgId: "org-other" }) },
+    "schedules/broken": { state: bound({ cron: "not a cron", kind: "k", enabled: true }) }
+  };
+  const reassert = (index: ScheduleIndex) => reassertSchedules({ index, pattern: PATTERN, cell: "user-1", userId: "user-1", orgId: EXEC_ORG, schedules });
+
+  it("puts every enabled schedule of the cell back, and leaves out a paused one, another organization's and a bad cron", async () => {
+    const index = createFakeIndex();
+    expect(await reassert(index)).toBe(1);
+    expect([...index.rows.keys()]).toEqual(["user-1/daily"]);
+    expect(index.rows.get("user-1/daily")).toMatchObject({ userId: "user-1", orgId: EXEC_ORG, cron: "0 9 * * *" });
+  });
+
+  it("keeps a row the index still has as it is, so a missed fire stays due", async () => {
+    const index = createFakeIndex();
+    index.rows.set("user-1/daily", { cell: "user-1", userId: "user-1", orgId: EXEC_ORG, key: "daily", cron: "0 9 * * *", nextFireAt: 1 });
+    await reassert(index);
+    await reassert(index);
+    expect([...index.rows.values()]).toEqual([expect.objectContaining({ key: "daily", nextFireAt: 1 })]);
   });
 });

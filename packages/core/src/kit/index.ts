@@ -13,6 +13,8 @@ export {
   type KitInstallation,
   type KitInstallInput,
   type KitInstance,
+  type KitStartedHost,
+  type KitUserCell,
   type KitWithheld,
   type ListSlot,
   type SlotDeclaration,

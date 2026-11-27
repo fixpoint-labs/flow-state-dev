@@ -83,8 +83,12 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
             (timer as { unref?: () => void }).unref?.();
           })
         ]);
-      } catch {
-        // Contention or a store hiccup: not holding, idle this minute.
+      } catch (err) {
+        // Contention or a store hiccup: not holding, idle this minute. Said, so
+        // a store that keeps failing doesn't idle the cron unnoticed.
+        logRuntimeEvent(logger, "warn", "[flow-state] schedule-tick lease renewal failed; not ticking until it succeeds", {
+          error: err instanceof Error ? err.message : String(err)
+        });
       } finally {
         clearTimeout(timer);
       }

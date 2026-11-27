@@ -50,6 +50,15 @@ export function createScheduleIndexConformanceTests(
       if (options.cleanup) await options.cleanup(index);
     });
 
+    // A rebuild of the index writes through `ensure`: a row still there must keep its due fire.
+    it("ensure inserts a missing entry and leaves an existing one, nextFireAt included", async () => {
+      const now = 1_000_000;
+      await index.ensure({ cell: "u1", userId: "u1", key: "a", cron: "* * * * *", nextFireAt: now });
+      await index.ensure({ cell: "u1", userId: "u1", key: "a", cron: "*/5 * * * *", nextFireAt: now + 600_000 });
+      const due = await index.claimDue(now, 10);
+      expect(due).toEqual([expect.objectContaining({ key: "a", cron: "* * * * *", nextFireAt: now })]);
+    });
+
     it("upsert is idempotent on (cell, key)", async () => {
       const now = 1_000_000;
       await index.upsert({ cell: "u1", userId: "u1", key: "a", cron: "* * * * *", nextFireAt: now });

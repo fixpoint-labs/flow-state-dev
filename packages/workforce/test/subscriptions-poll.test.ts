@@ -32,6 +32,7 @@ beforeEach(() => {
   pollTimeline.calls = [];
   pollTimeline.incomplete = false;
   pollTimeline.overlapMs = 0;
+  pollTimeline.failWith = undefined;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -400,4 +401,29 @@ describe("declared routines on a polled thread", () => {
       { hire: { routines: { declared } } }
     );
   });
+});
+
+// A poll that fails after its dispatch was accepted leaves nothing behind but a failed request: a token
+// GitHub refuses would stop every poll in silence. A failure says which thread and why, once per reason.
+describe("a poll that fails", () => {
+  it("says which thread failed and why, once per reason, keeps its mark, and says when it works again", () =>
+    withPolling(async (host) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const session = await host.follower("alice");
+        await host.subscribe("alice", session, { thread: PR });
+        pollTimeline.failWith = "GitHub /repos/acme/api/pulls/412 answered 401";
+        await run(host, 10);
+        const said = warn.mock.calls.filter(([line]) => String(line).startsWith(`[workforce] polling ${PR} failed`));
+        expect(pollTimeline.calls.length).toBe(2);
+        expect(said).toHaveLength(1);
+        expect(String(said[0]![0])).toContain("answered 401");
+        expect(new Set(pollTimeline.calls.map((c) => c.since)).size).toBe(1);
+        pollTimeline.failWith = undefined;
+        await run(host, 5);
+        expect(warn.mock.calls.map(([line]) => String(line))).toContain(`[workforce] polling ${PR} works again`);
+      } finally {
+        warn.mockRestore();
+      }
+    }));
 });

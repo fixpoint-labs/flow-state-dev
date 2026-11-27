@@ -16,7 +16,7 @@ export {
   type GitHubSubscriptionProvider,
   type GitHubSubscriptionProviderOptions
 } from "./github/provider";
-export { operatorGitHub, operatorGitHubToken, type OperatorGitHubOptions } from "./github/operator";
+export { checkGitHubToken, operatorGitHub, operatorGitHubToken, readOperatorGitHubToken, type GhRunner, type OperatorGitHubOptions, type OperatorGitHubTokenRead } from "./github/operator";
 export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
 export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
 export {

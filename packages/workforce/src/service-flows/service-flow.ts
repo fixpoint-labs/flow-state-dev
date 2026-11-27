@@ -643,6 +643,9 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
   // The poll schedules ride along untyped: blocks reach them through `pollSchedulesOf`, which reads them as declared or not.
   const pollResources = { ...subscriptionResources, ...workerMessagesResources, ...(polling?.resources ?? {}) } as typeof subscriptionResources & typeof workerMessagesResources;
 
+  /** The last reason each user's poll of a thread failed, so a failure that repeats every poll is logged once, and its recovery too. */
+  const pollFailures = new Map<string, string>();
+
   /** The running user's enabled subscriptions on `thread`, in the running org, under no tenant: the only ones its poll reaches (D1, ER-4). */
   const liveOnThread = async (ctx: BlockContext, thread: string): Promise<SubscriptionResourceState[]> => {
     const identity = ctx.session.identity;
@@ -693,15 +696,25 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       }
       const input = pollScheduleInputSchema.parse(poll.input);
       const owed = input.owed ?? [];
-      const result = await provider.poll!(
-        thread,
-        {
-          ...(input.polledThrough === undefined ? {} : { since: input.polledThrough }),
-          // No validator while a delivery is owed, so an unchanged answer can't hide its retry.
-          ...(owed.length === 0 && input.etags !== undefined ? { etags: input.etags } : {})
-        },
-        ctx
-      );
+      const failureKey = `${(ctx.session.identity as { userId?: string }).userId ?? ""}\n${thread}`;
+      const result = await provider
+        .poll!(
+          thread,
+          {
+            ...(input.polledThrough === undefined ? {} : { since: input.polledThrough }),
+            // No validator while a delivery is owed, so an unchanged answer can't hide its retry.
+            ...(owed.length === 0 && input.etags !== undefined ? { etags: input.etags } : {})
+          },
+          ctx
+        )
+        .catch((error: unknown) => {
+          // The fire fails after its dispatch was accepted, so nothing else says why. Said once per reason, not every poll.
+          const reason = error instanceof Error ? error.message : String(error);
+          if (pollFailures.get(failureKey) !== reason) console.warn(`[workforce] polling ${thread} failed, and each poll tries again: ${reason}`);
+          pollFailures.set(failureKey, reason);
+          throw error;
+        });
+      if (pollFailures.delete(failureKey)) console.warn(`[workforce] polling ${thread} works again`);
       const { fetched: _previous, ...rest } = input;
       if ("unchanged" in result) {
         await pollRef.setState({ ...poll, input: rest });

@@ -57,6 +57,7 @@ function boot(secretFrom: "env" | "option" = "env") {
     async upsert(row) {
       rows.push(row);
     },
+    async ensure() {},
     async remove() {},
     // A real index returns only rows already due; every row here is.
     async claimDue() {

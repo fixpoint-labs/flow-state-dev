@@ -119,6 +119,8 @@ export type {
   KitInstallation,
   KitInstallInput,
   KitInstance,
+  KitStartedHost,
+  KitUserCell,
   KitWithheld,
   ListSlot,
   SlotDeclaration,

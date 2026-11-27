@@ -256,6 +256,7 @@ async function boot(options: BootOptions) {
   const real = () => (opened ??= createSQLiteScheduleIndex(indexDb));
   const index: ReturnType<typeof createSQLiteScheduleIndex> = {
     upsert: (entry) => real().upsert(entry),
+    ensure: (entry) => real().ensure(entry),
     remove: (entry) => real().remove(entry),
     claimDue: (now, limit) => real().claimDue(now, limit)
   };

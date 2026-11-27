@@ -53,6 +53,15 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
       );
     },
 
+    async ensure(entry: ScheduleIndexEntry): Promise<void> {
+      await executor.query(
+        `INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (cell, key) DO NOTHING`,
+        [entry.cell, entry.key, entry.userId, entry.orgId ?? null, entry.cron, entry.timezone ?? null, entry.nextFireAt]
+      );
+    },
+
     async remove({ cell, key }: { cell: string; key: string }): Promise<void> {
       await executor.query(
         "DELETE FROM schedule_index WHERE cell = $1 AND key = $2",

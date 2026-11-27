@@ -19,6 +19,8 @@ const appContextSchema = z.object({
   folder: z.string(),
   /** Why a coding run's checkout of the folder would be refused, or `null` when it wouldn't. */
   folderProblem: z.string().nullable(),
+  /** Why the lab can't poll GitHub (no token at start, or one GitHub refused), or `null` when it can. Absent from an older server. */
+  githubProblem: z.string().nullable().optional(),
   /** The model the teammates answer on. */
   model: z.string(),
   /** The models a teammate may reply with (`TEAMMATES_MODELS`, and always `model`), each with where its calls would go or why they can't. Absent from an older server. */

@@ -53,6 +53,7 @@ export interface VercelPostgresStoresAdapter extends StoreAdapter {
 
 const NOOP_INDEX: ScheduleIndex = {
   async upsert() {},
+  async ensure() {},
   async claimDue() {
     return [];
   },
@@ -130,6 +131,7 @@ export function vercelPostgresStores(
 
   const scheduleIndex: ScheduleIndex = {
     upsert: (row: ScheduleIndexEntry) => (realIndex ?? NOOP_INDEX).upsert(row),
+    ensure: (entry: ScheduleIndexEntry) => (realIndex ?? NOOP_INDEX).ensure(entry),
     claimDue: (now: number, limit?: number) =>
       (realIndex ?? NOOP_INDEX).claimDue(now, limit),
     remove: (id: { cell: string; key: string }) =>

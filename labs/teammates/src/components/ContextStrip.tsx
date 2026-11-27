@@ -128,6 +128,11 @@ export function ContextStrip({
           Coding tasks will fail here: {context.folderProblem}
         </p>
       )}
+      {context?.githubProblem == null ? null : (
+        <p role="alert" className="text-xs text-danger" data-testid="context-github-problem">
+          {context.githubProblem}
+        </p>
+      )}
     </section>
   );
 }
