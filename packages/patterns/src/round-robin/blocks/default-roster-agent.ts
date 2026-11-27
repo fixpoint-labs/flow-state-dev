@@ -127,13 +127,13 @@ export function createRosterAgent(opts: CreateRosterAgentOptions) {
         entries.length > 0
           ? `\nPrior contributions:\n${formatPrior(entries)}\n`
           : "";
-      const critiques = state.refereeCritiques ?? [];
+      const critiques = state.refereeCritiques;
       const refereeBlock =
         critiques.length > 0
           ? `\nReferee critiques so far:\n${formatRefereeCritiques(critiques)}\n`
           : "";
       return [
-        `Goal: ${state.goal ?? ""}`,
+        `Goal: ${state.goal}`,
         `Round: ${state.round}`,
         priorBlock,
         refereeBlock,

@@ -755,7 +755,7 @@ describe('memory/workingMemory', () => {
     ) {
       const block = workingMemoryRemember(config)
       const ctx = {
-        resources: { get: () => ref },
+        resources: { workingMemory: ref },
         response: { emit: async () => {} },
       } as any
       // The schema uses .default() for pinned and replaces, so Zod applies

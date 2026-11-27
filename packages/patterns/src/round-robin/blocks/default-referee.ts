@@ -84,7 +84,7 @@ export function createReferee(opts: CreateRefereeOptions) {
         .map((e) => `[Round ${e.round}] ${e.agentName}: ${e.text}`)
         .join("\n");
       return [
-        `Goal: ${state.goal ?? ""}`,
+        `Goal: ${state.goal}`,
         `Round ${state.round} just completed.`,
         `Transcript:\n${transcript || "(empty)"}`,
       ].join("\n");

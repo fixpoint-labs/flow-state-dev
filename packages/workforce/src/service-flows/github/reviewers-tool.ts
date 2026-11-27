@@ -156,9 +156,10 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     name: "github-reviewers-edit-decide",
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
     outputSchema: z.union([judgedSchema, reviewersAnswerSchema]),
+    parentInputSchema: reviewersCheckedSchema,
     resources,
     execute: async ({ answers }, ctx) => {
-      const checked = reviewersCheckedSchema.parse(ctx.sequencer?.input);
+      const checked = ctx.parent!.input;
       const probability = (id: string) => (answers[id] as { probability?: unknown } | undefined)?.probability;
       const asked = probability("asked");
       const injected = probability("injected");
@@ -209,8 +210,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     }
   });
   const approved = sequencer({ name: "github-reviewers-edit-approved", inputSchema: judgedSchema, outputSchema: reviewersAnswerSchema }).tap(approve).step(write);
-  // Stateful, so the decision's `ctx.sequencer.input` is the checked edit, not the tool's input.
-  const judged = sequencer({ name: "github-reviewers-edit-judged", inputSchema: reviewersCheckedSchema, outputSchema: reviewersAnswerSchema, stateSchema: z.object({}) })
+  const judged = sequencer({ name: "github-reviewers-edit-judged", inputSchema: reviewersCheckedSchema, outputSchema: reviewersAnswerSchema })
     .step(judge)
     .step(decide)
     .stepIf((decided) => "judged" in decided && decided.judged === true, approved);
