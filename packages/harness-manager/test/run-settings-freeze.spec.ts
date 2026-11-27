@@ -232,6 +232,30 @@ describe("a coding task's run settings", () => {
     for (const run of ranAgain) expect(run.resume).not.toBe(app.codex.runs[0]!.session);
   });
 
+  it("never take a run record frozen before incarnations were recorded for a task filed again under its id with one", async () => {
+    const app = await boot();
+    const gone = await app.fileAndSettle();
+    expect(gone.status, JSON.stringify(gone)).toBe("completed");
+    // A task stored before incarnation ids: its first claim froze settings on a record naming no incarnation.
+    await app.rewriteRecord(gone.id, (record) => ({ ...record, incarnationId: null, frozenHarness: "cursor" }));
+    // The task is deleted, and another filed under the same id, which does carry an incarnation.
+    const entries = await app.stores.resourceState.getByPrefix("user", app.userKey, "tasks/");
+    const [key, entry] = Object.entries(entries).find(([, e]) => (e.state as Stored).id === gone.id)!;
+    const { run: _run, output: _output, completedAt: _completedAt, startedAt: _startedAt, leaseUntil: _leaseUntil, ...rest } = entry.state as Record<string, unknown>;
+    await app.stores.resourceState.set("user", app.userKey, key, { ...rest, status: "pending", attempts: 0, incarnationId: "a-later-incarnation" } as never, "any");
+    await app.fileAndSettle("Which rows does the nightly export read?");
+    let again = await app.task(gone.id);
+    for (let n = 0; n < 500 && !FINISHED.includes(again.status); n++) {
+      await new Promise((r) => setTimeout(r, 20));
+      again = await app.task(gone.id);
+    }
+    expect(again.status, JSON.stringify(again)).toBe("completed");
+    expect(app.cursor.runs).toHaveLength(0);
+    const ranAgain = app.codex.runs.slice(1);
+    expect(ranAgain.length).toBeGreaterThan(0);
+    for (const run of ranAgain) expect(run.resume).not.toBe(app.codex.runs[0]!.session);
+  });
+
   it("find a finished run's session by the mode its claim froze, though the task now reads as another mode", async () => {
     const app = await boot();
     const done = await app.fileAndSettle();

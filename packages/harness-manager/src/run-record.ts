@@ -733,7 +733,8 @@ export type FrozenRunSettings = z.infer<typeof frozenRunSettingsSchema>;
  * The run settings a run record froze, or `undefined` for a row that froze
  * none: one stored before this change, or one no claim opened yet. With
  * `task`, a record another task wrote, or another incarnation of this task's
- * id (a task deleted and filed again under it), froze none for this one.
+ * id (a task deleted and filed again under it), froze none for this one. A
+ * record naming no incarnation is taken only by a task that names none either.
  */
 export function frozenRunSettingsOf(
   record: Partial<RunRecordState> | undefined,
@@ -742,7 +743,9 @@ export function frozenRunSettingsOf(
   if (record == null || typeof record.frozenHarness !== "string" || typeof record.frozenMode !== "string") return undefined;
   if (task !== undefined) {
     if (record.taskId != null && record.taskId !== task.taskId) return undefined;
-    if (record.incarnationId != null && task.incarnationId != null && record.incarnationId !== task.incarnationId) return undefined;
+    // A task with an incarnation never takes a record naming none: that record is from a task
+    // stored before incarnation ids, which this one, filed again under its id, is not.
+    if (task.incarnationId != null && record.incarnationId !== task.incarnationId) return undefined;
   }
   return {
     harness: record.frozenHarness,
