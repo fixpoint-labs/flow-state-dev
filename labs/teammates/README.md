@@ -55,7 +55,7 @@ page follows the system's light or dark setting. Yellow marks only the user need
   you last picked for a teammate stays picked in this browser, and while it is hidden the panel
   opens on the first tab shown. A tab you are not on shows a yellow dot when something in it
   waits on you. *Pull Requests* lists the pull requests the runs of this teammate's tasks
-  opened, so Chief of Staff's are those of the coding tasks it handed out: open ones first, then
+  opened, so a coordinator's are those of the coding tasks it handed out: open ones first, then
   merged or closed, each with its state as its run last saw it and its task, which opens in the
   popup. A pull request links to GitHub only when its address is an `https://github.com` one;
   any other shows as plain text. *Tasks* holds the tasks its

@@ -1,6 +1,6 @@
 /**
  * A teammate's pull requests: the ones the runs of the tasks its conversation
- * filed recorded opening. So Chief of Staff's are the pull requests of the
+ * filed recorded opening. So a coordinator's are the pull requests of the
  * coding tasks it handed out, and a coding worker's are those of the tasks its
  * own conversation filed. Read through harness-manager's
  * `readSessionPullRequests`, one read per run session, never GitHub itself:
