@@ -115,6 +115,20 @@ describe("defineResourceCollection", () => {
     ).toThrow("sharedToLineage:true on user-scoped");
   });
 
+  it("takes wakeEntry only on a session-scoped collection, naming an entry", () => {
+    // A user or org copy is no one session's, so there is no session for a write
+    // from another session to wake.
+    expect(() =>
+      defineResourceCollection({ pattern: "files/*", scope: "user", wakeEntry: "filesChanged", stateSchema: z.object({}) })
+    ).toThrow("wakeEntry only on a session-scoped collection");
+    expect(() =>
+      defineResourceCollection({ pattern: "files/*", scope: "session", wakeEntry: "", stateSchema: z.object({}) })
+    ).toThrow("wakeEntry only on a session-scoped collection");
+    expect(
+      defineResourceCollection({ pattern: "files/*", scope: "session", wakeEntry: "filesChanged", stateSchema: z.object({}) }).wakeEntry
+    ).toBe("filesChanged");
+  });
+
   it("allows sharedToLineage:true on session-scoped collections", () => {
     expect(() =>
       defineResourceCollection({
