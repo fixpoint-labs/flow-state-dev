@@ -676,7 +676,7 @@ const OPEN_PULL_REQUESTS_READ = 20;
  * not this run's. A field gh doesn't give is not held against it.
  */
 async function openPullRequestOf(gh: GhCall, branch: string, base: string, timeoutMs: number): Promise<string | undefined> {
-  const ours = (await openPullRequestsFrom(gh, branch, timeoutMs)).find(
+  const ours = (await openPullRequestsFrom(gh, branch, timeoutMs)).open.find(
     (pr) => typeof pr.baseRefName !== "string" || pr.baseRefName === base,
   );
   return ours?.url;
@@ -689,8 +689,14 @@ type GhCall = { gh: string; ghDir: string; ghEnv: Record<string, string>; where:
  * The pull requests open from `branch` in the repository itself, into any
  * base; throws when GitHub can't be asked. One from a fork's branch of the
  * same name (`isCrossRepository`) is left out: a push here doesn't reach it.
+ * `full` when gh listed as many as it was asked for, forks included, so one
+ * past them may be missing.
  */
-async function openPullRequestsFrom(gh: GhCall, branch: string, timeoutMs: number): Promise<Array<{ url: string; baseRefName?: unknown }>> {
+async function openPullRequestsFrom(
+  gh: GhCall,
+  branch: string,
+  timeoutMs: number,
+): Promise<{ open: Array<{ url: string; baseRefName?: unknown }>; full: boolean }> {
   const { stdout } = await run(
     gh.gh,
     [
@@ -701,7 +707,10 @@ async function openPullRequestsFrom(gh: GhCall, branch: string, timeoutMs: numbe
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
   const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
-  return listed.filter((pr): pr is { url: string; baseRefName?: unknown } => typeof pr?.url === "string" && pr.isCrossRepository !== true);
+  return {
+    open: listed.filter((pr): pr is { url: string; baseRefName?: unknown } => typeof pr?.url === "string" && pr.isCrossRepository !== true),
+    full: listed.length >= OPEN_PULL_REQUESTS_READ,
+  };
 }
 
 // FIX-2973.
@@ -713,9 +722,9 @@ async function openPullRequestsFrom(gh: GhCall, branch: string, timeoutMs: numbe
  * is pushed.
  */
 async function refuseForeign(gh: GhCall, target: LandTarget, movedFrom: string, timeoutMs: number): Promise<void> {
-  let open: Array<{ url: string }>;
+  let listed: { open: Array<{ url: string }>; full: boolean };
   try {
-    open = await openPullRequestsFrom(gh, target.branch, timeoutMs);
+    listed = await openPullRequestsFrom(gh, target.branch, timeoutMs);
   } catch (error) {
     throw new WorkspaceRefusedError(
       "pull-request-failed",
@@ -723,8 +732,16 @@ async function refuseForeign(gh: GhCall, target: LandTarget, movedFrom: string, 
         `the branch its checkout is on, so nothing was pushed: ${firstLine(error) ?? "gh gave no reason"}.`,
     );
   }
+  // A full page can hide one from the repository behind newer ones from forks of the same name: not knowing is refused.
+  if (listed.full) {
+    throw new WorkspaceRefusedError(
+      "pull-request-failed",
+      `The run's branch "${movedFrom}" no longer exists, and GitHub lists ${OPEN_PULL_REQUESTS_READ} or more pull requests open from "${target.branch}", ` +
+        `the branch its checkout is on, so whose they all are can't be told and nothing was pushed. Put the run's commits on a branch of its own to land them.`,
+    );
+  }
   const own = new Set(target.ownPullRequests ?? []);
-  const foreign = open.find((pr) => {
+  const foreign = listed.open.find((pr) => {
     const ref = pullRequestRefFromUrl(pr.url);
     return ref === null || !own.has(pullRequestKey(ref));
   });

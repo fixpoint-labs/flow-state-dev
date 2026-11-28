@@ -574,6 +574,28 @@ describe("landing a run whose work moved off its branch", () => {
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
   });
 
+  // A full page can hide an older pull request from the repository behind newer ones from forks of the same name.
+  it("refuses, pushing nothing, when GitHub lists a full page of pull requests from that branch: one past it may be someone else's", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "patch-1");
+    const forks = Array.from({ length: 20 }, (_, i) => ({
+      number: 9000 + i,
+      url: `https://github.com/acme/widgets/pull/${9000 + i}`,
+      baseRefName: "main",
+      isCrossRepository: true,
+    }));
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '${JSON.stringify(forks)}'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({ reason: "pull-request-failed", message: expect.stringContaining("20") });
+    expect(() => upstream.rev("refs/heads/patch-1")).toThrow();
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+
   it("refuses, pushing nothing, when GitHub can't say whose pull requests are open from that branch", async () => {
     const { h, place } = await runWithCommit();
     git(place.cwd, "branch", "-m", "fsd/run-1", "short-name");
