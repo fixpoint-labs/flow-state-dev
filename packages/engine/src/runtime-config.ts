@@ -14,6 +14,7 @@
  * named parameters on that layer's options interface. RuntimeConfig only
  * holds fields that pass through verbatim.
  */
+import { assertSecret } from "./transports/auth/assert-secret";
 import type {
   FlowStateSettings,
   ModelResolver,
@@ -159,6 +160,18 @@ export interface RuntimeConfig {
    * client named it.
    */
   noticeIds?: NoticeIdScopes;
+  /**
+   * The host's secret for sealing values it hands a client to send back
+   * unread: today the cursor of a read across sessions
+   * (`ctx.resources.acrossSessions()`). Each use derives its own key from it
+   * (HKDF, under a label of its own), so one secret serves every use without
+   * one key serving two. Default: `process.env.FSD_SEALING_SECRET`. Unset, each
+   * process seals under a random key of its own, which is right for one
+   * process; a host that runs more than one process behind one address (a
+   * serverless deployment, a cluster) must set the same secret on every one,
+   * or a cursor one process hands out is refused by the next.
+   */
+  sealingSecret?: string;
 }
 
 // FIX-2625 D2.
@@ -218,6 +231,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   assertMaxChildSessionListLimit(options.maxChildSessionListLimit);
   assertUserDeadline(options.userDeadlineMs);
   assertNoticeIds(options.noticeIds);
+  const sealingSecret = options.sealingSecret ?? sealingSecretFromEnv();
+  if (sealingSecret !== undefined) assertSecret(sealingSecret, "sealingSecret");
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -238,8 +253,15 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     maxDebtAgeMs: options.maxDebtAgeMs,
     waitDeadlines: options.waitDeadlines,
     userDeadlineMs: options.userDeadlineMs,
-    noticeIds: options.noticeIds
+    noticeIds: options.noticeIds,
+    ...(sealingSecret !== undefined ? { sealingSecret } : {})
   };
+}
+
+/** `FSD_SEALING_SECRET`, when the environment sets it to something. */
+function sealingSecretFromEnv(): string | undefined {
+  const value = typeof process === "undefined" ? undefined : process.env.FSD_SEALING_SECRET;
+  return value !== undefined && value.length > 0 ? value : undefined;
 }
 
 // FIX-1012.

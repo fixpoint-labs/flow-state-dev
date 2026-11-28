@@ -45,7 +45,7 @@ function sessionByFlow(sessions: readonly SessionSummary[]): Map<string, string>
 }
 
 /** Every listed flow's single resources whose content a client may read, by ref. */
-async function documentsOf(client: Pick<Client, "resources">, sessions: readonly SessionSummary[]): Promise<DeclaredDocument[]> {
+export async function documentsOf(client: Pick<Client, "resources">, sessions: readonly SessionSummary[]): Promise<DeclaredDocument[]> {
   const byFlow = sessionByFlow(sessions);
   const found = new Map<string, DeclaredDocument>();
   for (const [flow, sessionId] of byFlow) {

@@ -102,9 +102,12 @@ describe("V8", () => {
   });
 
   // FIX-2624.
-  it("opens a reader session on no flow: the worker inventory and the projects are read by scope", async () => {
-    const reads = await import("../src/lib/reads");
-    expect(Object.keys(reads).filter((name) => /_READER_FLOW$/.test(name))).toEqual([]);
+  it("opens a reader session on no flow: the worker inventory and the projects are read by scope", () => {
+    const readerFlow = /\b[A-Z_]+_READER_FLOW\b/;
+    expect(sources.length).toBeGreaterThan(10);
+    expect(sources.filter((file) => readerFlow.test(readFileSync(file, "utf8"))).map((file) => relative(pkg, file))).toEqual([]);
+    // The check reaches what it covers: a planted reader flow is caught.
+    expect(readerFlow.test(`export const INVENTORY_READER_FLOW = "inventory-reader";`)).toBe(true);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {

@@ -16,7 +16,7 @@
  * puts a request in the compose box, for Request changes; a note's asks the
  * worker that filed the task to follow up. Nothing is sent from the body.
  */
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RUN_REPORT_HEADINGS, runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
 import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -540,6 +540,15 @@ export function ReviewFooter({
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [sent, setSent] = useState<string | null | undefined>(undefined);
+  // A new hold on the board starts a fresh foot, but not while a verdict is still landing.
+  const seenHold = useRef(holdId);
+  useEffect(() => {
+    if (seenHold.current === holdId) return;
+    seenHold.current = holdId;
+    if (pending) return;
+    setSent(undefined);
+    setError(null);
+  }, [holdId, pending]);
   const answerText = review?.answer;
   const report = useMemo(() => wholeReport(answerText), [answerText]);
   const failed = review?.landFailed ?? null;

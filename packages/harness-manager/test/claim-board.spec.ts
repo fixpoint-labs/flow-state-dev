@@ -217,6 +217,162 @@ describe("a manager reading its board from the claim", () => {
   }, 60_000);
 });
 
+// A follow-up is "now also handle X" on work its root already did. Keyed by its
+// own id, it got a new checkout, a new branch and a new coding session, and
+// started from scratch on a fresh base.
+describe("a follow-up of a finished coding task", () => {
+  it("continues its root's run: the same checkout and branch with the root's commits, and the root's coding session", async () => {
+    const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    const logs: string[] = [];
+    const logged = async () => {
+      logs.push(git(lab.seen.at(-1)!.cwd, "log", "--format=%s"));
+    };
+    const lab = claimHost({ mode: "claim", script: [{ commits: 1 }, { commits: 1, during: logged }, { during: logged }] });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const segment = runBoardSegment(CONVERSATIONS, "conv-a");
+    const ran = async (id: string) => {
+      const { result } = await lab.runAttempt(CONVERSATIONS, id, "conv-a");
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+    };
+
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    await ran("t-root");
+    expect((await lab.row(CONVERSATIONS, "t-root", "conv-a")).status).toBe("completed");
+    const rooted = (await lab.record(runTopic(segment, "t-root", PHASE)))!;
+
+    // A follow-up of the root, then a follow-up of that follow-up: both continue the root.
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    await ran("t-more");
+    await lab.seed({ ...at, id: "t-again", goal: "and Y", input: {}, followUpOf: "t-more" });
+    await ran("t-again");
+    expect((await lab.row(CONVERSATIONS, "t-again", "conv-a")).status).toBe("completed");
+
+    const root = lab.seen[0]!;
+    expect(lab.seen.map((run) => run.cwd)).toEqual([root.cwd, root.cwd, root.cwd]);
+    // The root's coding session, resumed by each follow-up.
+    expect(lab.seen.map((run) => run.resume)).toEqual([null, "sess_1", "sess_1"]);
+    // On the root's branch, with the root's commit in place when the follow-up worked.
+    expect(git(root.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe(rooted.branch);
+    expect(logs[0]).toContain("call1 commit 0");
+    expect(logs[1]).toContain("call1 commit 0");
+    expect(logs[1]).toContain("call2 commit 0");
+    // One run record, the root's, now naming the last follow-up; none under a follow-up's own id.
+    const record = (await lab.record(runTopic(segment, "t-root", PHASE)))!;
+    expect(record).toMatchObject({ taskId: "t-again", branch: rooted.branch, workspacePath: root.cwd, outcome: "succeeded" });
+    expect(await lab.record(runTopic(segment, "t-more", PHASE))).toBeNull();
+    expect(await lab.record(runTopic(segment, "t-again", PHASE))).toBeNull();
+  }, 60_000);
+
+  // BP-030: a record written before runs recorded their task's incarnation
+  // reads as any task's, so a root's later attempt would fence its follow-up's first.
+  it("continues a root whose record names no incarnation and a later attempt than the follow-up's", async () => {
+    const lab = claimHost({ mode: "claim" });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t-root", PHASE);
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    expect((await lab.runAttempt(CONVERSATIONS, "t-root", "conv-a")).result.error).toBeUndefined();
+    await lab.putRecord(topic, { incarnationId: null, attempt: 3 });
+
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t-more", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect((await lab.row(CONVERSATIONS, "t-more", "conv-a")).status).toBe("completed");
+    expect(lab.seen.map((run) => run.cwd)).toEqual([lab.seen[0]!.cwd, lab.seen[0]!.cwd]);
+    expect(await lab.record(topic)).toMatchObject({ taskId: "t-more", attempt: 1, outcome: "succeeded" });
+  }, 60_000);
+
+  // BP-030: a record written before runs recorded their task reads as no task's. Under the root's key it is the
+  // root's, so its later attempt fences the follow-up's first no more than a record naming the root does.
+  it("continues a root whose record names no task and a later attempt than the follow-up's", async () => {
+    const lab = claimHost({ mode: "claim" });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t-root", PHASE);
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    expect((await lab.runAttempt(CONVERSATIONS, "t-root", "conv-a")).result.error).toBeUndefined();
+    await lab.putRecord(topic, { taskId: null, incarnationId: null, attempt: 3 });
+
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t-more", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect((await lab.row(CONVERSATIONS, "t-more", "conv-a")).status).toBe("completed");
+    expect(lab.seen.map((run) => run.cwd)).toEqual([lab.seen[0]!.cwd, lab.seen[0]!.cwd]);
+    expect(await lab.record(topic)).toMatchObject({ taskId: "t-more", attempt: 1, outcome: "succeeded" });
+  }, 60_000);
+
+  // The follow-up works on the root's branch, so the pull request a user's accept on the root landed on is
+  // open from the follow-up's branch too. It is the work's, not someone else's: the follow-up's commits go there
+  // unasked. Forgotten, the user would be asked about their own pull request again, or a second one opened.
+  it("keeps the pull request the root's accept landed on, and puts the follow-up's work there unasked", async () => {
+    const PR_URL = "https://github.com/acme/widgets/pull/42";
+    const KEY = "github.com/acme/widgets/42";
+    const landings: string[] = [];
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      manager: { reviewChanges: true },
+      // The root changes nothing, so it completes with no review; the follow-up commits.
+      script: [{}, { commits: 1 }],
+      // #42 is open from whatever branch is asked about, and a landing on it pushes there.
+      workspace: (host) => ({
+        ...host,
+        landWays: async () => ["pull-request"],
+        existingPullRequest: async (target) => ({ url: PR_URL, number: 42, branch: target.branch }),
+        land: async (target) => {
+          landings.push(target.branch);
+          return { kind: "pull-request", url: PR_URL, number: 42, branch: target.branch, base: "main", remote: "origin", existing: true };
+        },
+      }),
+    });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t-root", PHASE);
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    expect((await lab.runAttempt(CONVERSATIONS, "t-root", "conv-a")).result.error).toBeUndefined();
+    // As the root's record stands once a user's accept on it landed on #42.
+    await lab.putRecord(topic, { ...(await lab.record(topic)), landedPullRequests: [KEY] });
+
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t-more", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const followUp = await lab.row(CONVERSATIONS, "t-more", "conv-a");
+    expect(followUp.status, JSON.stringify(followUp.holds)).toBe("completed");
+    expect(followUp.output).toMatchObject({ landed: { kind: "pull-request", number: 42, existing: true } });
+    expect(landings).toHaveLength(1);
+    expect(await lab.record(topic)).toMatchObject({ taskId: "t-more", landedPullRequests: [KEY] });
+  }, 60_000);
+
+  // A follow-up continues its root's checkout and coding session, so the two must never run at once. A board's
+  // one-open-task start test keeps a follow-up waiting while its root runs; a board without it hands the manager
+  // both, and the follow-up would open the root's record under it and resume the session the root is still in.
+  it("refuses to start while another task of its chain still runs: it never shares the root's live checkout or session", async () => {
+    let rootStarted!: () => void;
+    const started = new Promise<void>((resolve) => (rootStarted = resolve));
+    let finishRoot!: () => void;
+    const finished = new Promise<void>((resolve) => (finishRoot = resolve));
+    const lab = claimHost({ mode: "claim", script: [{ during: async () => { rootStarted(); await finished; } }, {}] });
+    const at = { ledgerId: CONVERSATIONS, partition: "conv-a" };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t-root", PHASE);
+    await lab.seed({ ...at, id: "t-root", goal: "add the feature", input: {} });
+    const rootRun = lab.runAttempt(CONVERSATIONS, "t-root", "conv-a");
+    await started;
+
+    await lab.seed({ ...at, id: "t-more", goal: "now also handle X", input: {}, followUpOf: "t-root" });
+    // Bounded, so a follow-up that waits on the checkout shows as a second run rather than a hang.
+    const bound = setTimeout(finishRoot, 1_000);
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t-more", "conv-a");
+    clearTimeout(bound);
+    const runsWhileRootRan = lab.seen.length;
+    const recordWhileRootRan = await lab.record(topic);
+    finishRoot();
+
+    expect(runsWhileRootRan).toBe(1);
+    expect(recordWhileRootRan).toMatchObject({ taskId: "t-root" });
+    const followUp = await lab.row(CONVERSATIONS, "t-more", "conv-a");
+    expect(`${followUp.feedback} ${messageOf(result.error)}`).toContain("t-root is still running");
+    expect((await rootRun).result.error).toBeUndefined();
+    expect((await lab.row(CONVERSATIONS, "t-root", "conv-a")).status).toBe("completed");
+  }, 60_000);
+});
+
 describe("a fixed board's feature rows", () => {
   it("still refuses a row whose id is not the one its payload derives, and runs nothing", async () => {
     const lab = claimHost({ mode: "fixed" });

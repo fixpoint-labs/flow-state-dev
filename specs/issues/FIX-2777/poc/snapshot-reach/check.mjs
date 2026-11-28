@@ -18,7 +18,7 @@
 //     included), or reads its source;
 //   - stands in for the reader (`createLabReader` outside the module);
 //   - reads a snapshot field off the provider (`snapshot`, `reader`,
-//     `refreshing`, `asking`): destructured (`{ snapshot } = useLab()`), by
+//     `refresh`, `refreshing`, `asking`): destructured (`{ snapshot } = useLab()`), by
 //     member access on a `useLab()` result (`useLab().snapshot`, or
 //     `const lab = useLab(); lab.snapshot`), or through a stand-in provider
 //     that carries the field (`snapshot:` in a file that mocks `lab-data`, or
@@ -53,9 +53,10 @@ const CONTROL_ARG = process.argv.find((arg) => arg === "--control" || arg.starts
 const BUILT = process.argv.includes("--built");
 const failures = [];
 
-// Measured on origin/main 372f30fa95.
+// Measured on origin/main 372f30fa95; `screen` on 361c9886f5, once
+// `refresh` joined the fields (the implementation found them: FIX-2775's census missed the screen).
 const EXPECTED = {
-  subject: 3, oracle: 25, fixture: 10, control: 5, source: 1, inventory: 1, lab: 1, provenance: 2, codemod: 2, probe: 5,
+  subject: 3, oracle: 25, fixture: 10, control: 5, source: 1, inventory: 1, lab: 1, provenance: 2, codemod: 2, probe: 5, screen: 1,
 };
 
 /**
@@ -79,6 +80,10 @@ const EXPECTED = {
  *  - probe:      a goal whose headless probe waits on, draws from or counts the
  *                provider's snapshot. Its leg is re-pointed at the read that does
  *                that job now, or retired with a reason, and shown failing.
+ *  - screen:     a screen module that reads a snapshot field off the provider.
+ *
+ * Under `--built`, the inventory settings may still name the modules in their
+ * `gone` list, which asserts they are absent: that is the one reach allowed.
  */
 const CLASSIFIED = {
   "packages/shift-manager/test/reads.test.ts": "subject",
@@ -118,6 +123,7 @@ const CLASSIFIED = {
   "packages/shift-manager/test/worker-settings-screen.test.tsx": "fixture",
   "packages/shift-manager/test/jump-message.test.tsx": "fixture",
   "packages/shift-manager/test/task-card-in-feed.test.tsx": "fixture",
+  "packages/shift-manager/src/lib/task.tsx": "screen",
   "packages/shift-manager/test/conversation.test.tsx": "fixture",
   "packages/shift-manager/test/session-view.test.tsx": "fixture",
   "packages/shift-manager/test/task-session.test.tsx": "fixture",
@@ -184,11 +190,12 @@ const resolvesTo = (file, spec) => {
   return base !== undefined && TARGETS.has(`${base}.ts`) ? `${base}.ts` : undefined;
 };
 const FILE_NAME = new RegExp(`["'\`](?:[^"'\`\\s]*/)?(?:${MODULES.join("|")})\\.ts["'\`]`);
-const FIELDS = "snapshot|reader|refreshing|asking";
+const FIELDS = "snapshot|reader|refresh|refreshing|asking";
 const DESTRUCTURED = new RegExp(`\\{[^}]*\\b(?:${FIELDS})\\b[^}]*\\}\\s*=\\s*useLab\\(\\)`);
 const MEMBER = new RegExp(`useLab\\(\\)\\??\\.(?:${FIELDS})\\b`);
 const ALIAS = /(?:const|let|var)\s+(\w+)\s*=\s*useLab\(\)/g;
-const STAND_IN_FIELD = new RegExp(`\\b(?:${FIELDS})\\s*:`);
+// `refresh:` is a key of many unrelated stand-ins (a read's refresh), so a stand-in is known by the snapshot's own fields.
+const STAND_IN_FIELD = /\b(?:snapshot|reader|refreshing|asking)\s*:/;
 const mocksLabData = (file, text) => [...text.matchAll(MOCK)].some(([, spec]) => `${resolved(file, spec)}.tsx` === LAB_DATA);
 const isLabDataFake = (file) => file !== LAB_DATA && /(^|\/)lab-data\.(ts|tsx|mts)$/.test(file);
 
@@ -217,7 +224,15 @@ for (const file of files) {
 if (BUILT) {
   console.log("GOAL CHECK: run on the implementation. Before it lands, FAIL here is expected: it is the control.");
   for (const target of TARGETS) if (existsSync(target)) failures.push(`still on disk: ${relative(ROOT, target)}`);
-  for (const [rel, how] of reaching) failures.push(`still reaches the snapshot: ${rel} (${how.join(", ")})`);
+  const INVENTORY = "packages/shift-manager/test/inventory-settings.ts";
+  for (const [rel, how] of reaching) {
+    // The inventory's `gone` list names the modules to assert they are absent; any other line naming one is a reach.
+    if (rel === INVENTORY && how.join() === "file name") {
+      const naming = readFileSync(join(ROOT, rel), "utf8").split("\n").filter((line) => FILE_NAME.test(line));
+      if (naming.every((line) => /^\s*gone:/.test(line))) continue;
+    }
+    failures.push(`still reaches the snapshot: ${rel} (${how.join(", ")})`);
+  }
 } else {
   const counts = {};
   for (const [rel, how] of reaching) {

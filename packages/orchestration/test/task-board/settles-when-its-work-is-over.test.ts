@@ -217,7 +217,7 @@ async function harness(
         execute: async (_input, ctx) => {
           const running = await runningTaskOf(async () => ledger(), ctx as never);
           const steers =
-            running === undefined || !steerTurnTakes ? [] : await takeRunningSteers(running, `turn:${ctx.request.identity.id}`);
+            running === undefined || !steerTurnTakes ? [] : await takeRunningSteers(running, `turn:${ctx.request.identity.id}`, ctx.request.identity.id);
           steerTurns.push(steers.map((s) => s.message));
           return steerTurn(steers, ctx as never, await ledger());
         },
@@ -693,7 +693,7 @@ describe("a steer no request took gives the task one more turn before it settles
     h.setBehaviour(async (ctx, ledger) => {
       await steer(ledger, "Skip the archive");
       const running = await runningTaskOf(async () => ledger, ctx);
-      await takeRunningSteers(running!, `step:${ctx.request.identity.id}`);
+      await takeRunningSteers(running!, `step:${ctx.request.identity.id}`, ctx.request.identity.id);
       return "took it";
     });
 
@@ -1157,7 +1157,7 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     h.setLaterTurn(async (ctx, ledger) => {
       await ledger.steer!("t1", { message: "Use the v2 API.", from: "filer" });
       const running = await runningTaskOf(async () => ledger, ctx);
-      expect((await takeRunningSteers(running!, `turn:${ctx.request.identity.id}`)).map((s) => s.message)).toEqual(["Use the v2 API."]);
+      expect((await takeRunningSteers(running!, `turn:${ctx.request.identity.id}`, ctx.request.identity.id)).map((s) => s.message)).toEqual(["Use the v2 API."]);
       return stopSelf(ctx);
     });
     const { requestId } = await h.runLater("notice");

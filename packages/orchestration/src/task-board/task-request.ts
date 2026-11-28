@@ -75,7 +75,7 @@ import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
 import { requestStates } from "../tasks/helpers/request-states";
-import { readFor, untakenBy, untakenSteers } from "../tasks/steers";
+import { takenByRequest, untakenBy, untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { isTerminalStatus } from "../tasks/schema/task-status";
@@ -657,10 +657,10 @@ async function takeBackLapsedLease(record: Admitted, task: Task): Promise<boolea
 
 /**
  * Whether request `requestId` took any of `task`'s steers on its attempt:
- * every read that takes one names the request in its `takenIn`.
+ * every take records its request (`takenFor`).
  */
 function tookSteers(task: Task, requestId: string): boolean {
-  return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId));
+  return (task.steers ?? []).some((steer) => takenByRequest(task, steer, requestId));
 }
 
 // FIX-2898.

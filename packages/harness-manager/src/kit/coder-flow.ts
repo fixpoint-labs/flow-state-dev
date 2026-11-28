@@ -76,15 +76,15 @@ import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type Completion
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
-import { taskIssueSegment } from "../workspace";
+import { runIssueSegment } from "../workspace";
 import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
 
 import { CODER_FLOW } from "../coder-flow-name";
 import { RECORDED_WORK_VIEW, RUN_CHANGES_VIEW } from "../coding-board-ref";
-import { recordedWorkView } from "../recorded-work-view";
 import { harnessRunChangesView } from "../run-changes";
+import { recordedWorkView } from "../recorded-work-view";
 import { checkoutGit } from "../safe-git";
 import { workingTreeChanged } from "../working-tree";
 
@@ -366,7 +366,8 @@ export function coderWorkerFlow(
               tasks: filed.tasks,
               runOf: (task: Task) => {
                 const mode = runModeOfTask(task.input, resolved, stampMatches(task, CODER_FLOW, declaration));
-                return mode === undefined ? undefined : { issue: taskIssueSegment(task.id), mode };
+                // Keyed as the manager keys it: a follow-up by its root.
+                return mode === undefined ? undefined : { issue: runIssueSegment(task, (id) => filed.tasks.get(id)), mode };
               },
             };
       };
@@ -513,8 +514,7 @@ export function coderWorkerFlow(
         // Optional only so the shared copy, which carries no worker's settings, can be built.
         configSchema: settingsSchema,
         session: installation.session(),
-        // FIX-2725: a run's plan and pull requests, read in its own session; and what it changed, a
-        // file's patch at a time, from the task's board the way its door finds it.
+        // FIX-2725: a run's plan and pull requests; FIX-2796: what it changed, a file's patch at a time. Both read in its own session.
         views: { [RECORDED_WORK_VIEW]: recordedWorkView(), [RUN_CHANGES_VIEW]: harnessRunChangesView({ name: CODER_FLOW, board }) },
         resources: flowResources,
         actions: {

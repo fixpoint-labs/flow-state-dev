@@ -1,4 +1,4 @@
-// FIX-2725.
+// FIX-2725; FIX-2796.
 /**
  * The client's handles on the coding board, recorded work and run changes views: each
  * flow's address and view name, typed by the view through a type import.
@@ -8,7 +8,7 @@ import { viewRef } from "@flow-state-dev/client";
 import { CODER_FLOW } from "./coder-flow-name";
 import type { CodingBoardView } from "./kit/coding-board";
 import type { RecordedWorkView } from "./recorded-work-view";
-import type { HarnessRunChangesView } from "./run-changes";
+import type { harnessRunChangesView } from "./run-changes";
 
 /** The flow the harness kit serves its views on. */
 export const HARNESSES_FLOW = "harnesses";
@@ -26,8 +26,8 @@ export const codingBoardViewRef = () => viewRef<CodingBoardView>(HARNESSES_FLOW,
 export const recordedWorkViewRef = (flow: string = CODER_FLOW) => viewRef<RecordedWorkView>(flow, RECORDED_WORK_VIEW);
 
 /**
- * What a run changed, a session view on the coding worker flow: one file's
- * patch with `{ taskId, path }`, or the files and lines without `path`:
- * `client.view(runChangesViewRef(), { taskId, path }, { sessionId })`, in the run's session.
+ * What a run changed, a session view on the coding worker flow (harness-manager's `harnessRunChangesView`):
+ * `client.view(runChangesViewRef(), { path }, { sessionId })` answers one file's patch; without `path`,
+ * the files and commits (`uncommitted: true` adds the working tree's, for a run still working).
  */
-export const runChangesViewRef = (flow: string = CODER_FLOW) => viewRef<HarnessRunChangesView>(flow, RUN_CHANGES_VIEW);
+export const runChangesViewRef = (flow: string = CODER_FLOW) => viewRef<ReturnType<typeof harnessRunChangesView>>(flow, RUN_CHANGES_VIEW);

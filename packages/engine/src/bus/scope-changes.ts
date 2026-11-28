@@ -23,6 +23,7 @@ import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";
+import { ownerNotice } from "./owner-topic";
 
 /** Which scope changed, under which tenant, and which request changed it. */
 export type ScopeChange = {
@@ -103,6 +104,12 @@ export function entryNotice(collection: object, storageKey: string, scope?: Topi
  *   dispatch seed and `evaluateAdoption`).
  * - `ownerUserId`: the owner of the session record the writer holds, never a
  *   caller-supplied or cached value.
+ * - `storageKey`, `ownerOrgId` and `ownerFlowId`: when the host has a view and
+ *   the row is the session's own (not lineage-shared), the write also
+ *   publishes one owner notice (`owner-topic.ts`), under the session record's
+ *   organization and flow instance, carrying the written key and no origin. Every read across the owner's sessions whose
+ *   collection pattern covers the key hears it, matched where it is
+ *   delivered, so a writer need not know which patterns a reader declares.
  */
 export function publishSessionResourceChange(
   bus: ChangeBus | undefined,
@@ -113,10 +120,18 @@ export function publishSessionResourceChange(
     notice: { resource?: string; ids?: string[] } | undefined;
     lineageShared: boolean;
     hostHasViews: boolean;
+    ownerOrgId?: string;
+    /** The flow instance of the session record the writer holds: what the owner notice is narrowed to. */
+    ownerFlowId?: string;
+    storageKey?: string;
     requestId?: string;
   }
 ): void {
   const origin = change.requestId !== undefined ? { requestId: change.requestId } : {};
+  if (bus !== undefined && change.hostHasViews && !change.lineageShared && change.storageKey !== undefined && change.ownerFlowId !== undefined) {
+    const owner = { userId: change.ownerUserId, orgId: change.ownerOrgId, tenantId: change.tenantId };
+    publishNotices(bus, [ownerNotice(owner, change.ownerFlowId, change.sessionId, change.storageKey)]);
+  }
   if (change.lineageShared && change.hostHasViews) {
     publishScopeChange(bus, { scope: "user", id: change.ownerUserId, tenantId: change.tenantId, kind: "resource", ...origin });
   }

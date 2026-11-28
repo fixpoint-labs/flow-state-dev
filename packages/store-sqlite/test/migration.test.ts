@@ -6,6 +6,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { initializeSchema } from "../src/schema";
+import { createSQLiteWakeStore } from "../src/wake-store";
 
 function tableInfo(db: Database.Database, table: string): string[] {
   return (
@@ -236,6 +237,42 @@ describe("project → org schema migration", () => {
 
     initializeSchema(db);
     expect(() => initializeSchema(db)).not.toThrow();
+    db.close();
+  });
+});
+
+// A wake is kept per resolver identity, so a turn's resolver is its row's key
+// and can't change under it. A database from before that keyed wakes on
+// (tenant, session, entry) alone; its kept wakes name no resolver and must
+// keep coalescing with each other, while a writer under a resolver gets a row
+// of its own.
+describe("wakes keyed by resolver identity migration", () => {
+  const OLD_COLUMNS = `
+    tenant_key TEXT NOT NULL, session_id TEXT NOT NULL, entry TEXT NOT NULL,
+    flow_kind TEXT NOT NULL, user_id TEXT NOT NULL, org_id TEXT NOT NULL,
+    due_at INTEGER NOT NULL, land_by INTEGER NOT NULL, version INTEGER NOT NULL,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL`;
+  it("re-keys a wakes table with no resolved_by column; its kept wake still coalesces with no resolver, and a resolver's owe is a row of its own", async () => {
+    const db = new Database(":memory:");
+    db.exec(`CREATE TABLE wakes (${OLD_COLUMNS}, PRIMARY KEY (tenant_key, session_id, entry));`);
+    db.prepare(
+      `INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, version, created_at, updated_at)
+       VALUES ('', 's1', 'dispatch', 'desk', 'u1', 'o1', 5, 6, 1, 1, 1)`
+    ).run();
+    initializeSchema(db);
+    initializeSchema(db);
+    const key = (db.prepare(`SELECT name FROM pragma_table_info('wakes') WHERE pk > 0 ORDER BY pk`).all() as Array<{ name: string }>).map((r) => r.name);
+    expect(key).toEqual(["tenant_key", "session_id", "entry", "resolved_by"]);
+    const store = createSQLiteWakeStore(db);
+    const kept = await store.get({ sessionId: "s1", entry: "dispatch" });
+    expect(kept).toMatchObject({ dueAt: 5, landBy: 6, version: 1 });
+    expect(kept?.resolvedBy).toBeUndefined();
+    const input = { sessionId: "s1", entry: "dispatch", flowKind: "desk", userId: "u1", orgId: "o1", dueAt: 9, landBy: 9 };
+    const coalesced = await store.owe(input);
+    expect(coalesced).toMatchObject({ dueAt: 5, version: 2 });
+    expect(coalesced.resolvedBy).toBeUndefined();
+    expect(await store.owe({ ...input, resolvedBy: "vault" })).toMatchObject({ resolvedBy: "vault", dueAt: 9, version: 1 });
+    expect(await store.listDue(Number.MAX_SAFE_INTEGER, 10)).toHaveLength(2);
     db.close();
   });
 });

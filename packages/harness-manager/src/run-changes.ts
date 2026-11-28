@@ -119,6 +119,3 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
   });
   return defineView({ scope: "session", block, description: "What this session's coding run changed: its files and lines, or one file's patch." });
 }
-
-/** The changes view, as {@link harnessRunChangesView} builds it. Import as a type in client code. */
-export type HarnessRunChangesView = ReturnType<typeof harnessRunChangesView>;
