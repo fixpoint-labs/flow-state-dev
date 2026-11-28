@@ -14,7 +14,8 @@ import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conver
 import { RULE_TOOLS, STANDING_RULES_LINE } from "../src/standing-rules/keys";
 import { MAX_RULES } from "../src/standing-rules/rules-list";
 import { ruleTools } from "../src/standing-rules/rules-capability";
-import { USER_TURN_STATE, markUserTurn } from "../src/standing-rules/user-turn";
+import { markUserTurn } from "../src/standing-rules/user-turn";
+import { USER_TURN_STATE } from "../src/standing-rules/user-turn-read";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../src/workers/keys";
 
 const RULE_TOOL_NAMES = Object.values(RULE_TOOLS).sort();

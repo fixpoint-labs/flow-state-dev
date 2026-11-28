@@ -37,7 +37,6 @@ import { taskLedgerResources, openOwnHolds, steerFromLine } from "@flow-state-de
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
-  harnessTaskInputSchema,
   readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
@@ -48,7 +47,7 @@ import { RUNS, collectionRef } from "../src/run-record";
 import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
-export const ORG_ID = "org_claim_host";
+const ORG_ID = "org_claim_host";
 export const ALICE = "alice";
 /** The fixed board's ledger id. */
 export const FIXED_BOARD = "feature-board";
@@ -78,10 +77,12 @@ export interface HarnessStep {
   throws?: string;
   /** Run while the harness holds the checkout, before it reports, on the harness's own context. */
   during?: (ctx: BlockContext) => Promise<unknown>;
+  /** Write these files, by name, to the reply folder the prompt names (`REPLIES:`); a function writes its own. */
+  replies?: Record<string, string> | ((folder: string) => void);
 }
 
 /** What the stub harness saw on one call. */
-export interface SeenRun {
+interface SeenRun {
   cwd: string;
   prompt: string;
   resume: string | null;
@@ -115,6 +116,13 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlo
         await feeds.onSession(sessionId, ctx as never);
         if (step.commits !== undefined) commitIn(cwd, step.commits, `call${seen.length}`);
         if (step.during !== undefined) await step.during(ctx as unknown as BlockContext);
+        if (step.replies !== undefined) {
+          const folder = /REPLIES: (\S+)/.exec(input.prompt)?.[1];
+          if (folder === undefined) throw new Error("the prompt names no reply folder");
+          mkdirSync(folder, { recursive: true });
+          if (typeof step.replies === "function") step.replies(folder);
+          else for (const [name, text] of Object.entries(step.replies)) writeFileSync(join(folder, name), text);
+        }
         if (step.ask !== undefined) {
           const marker = /ASK: (\S+)/.exec(input.prompt)?.[1];
           if (marker === undefined) throw new Error("the prompt names no ask marker");
@@ -244,6 +252,7 @@ export function claimHost(options: HostOptions) {
           ...(run.feedback !== undefined ? [`FEEDBACK: ${run.feedback}`] : []),
           ...run.answers.map((a) => `ANSWERED: ${a.question} => ${a.answer}`),
           `ASK: ${run.askMarkerPath}`,
+          ...(run.replyFolder === undefined ? [] : [`REPLIES: ${run.replyFolder}`]),
         ].join("\n");
       },
       doneWhen: {
@@ -578,9 +587,6 @@ export function messageOf(error: unknown): string {
   const e = error as { message?: unknown; cause?: { message?: unknown } } | undefined;
   return `${String(e?.message ?? "")} ${String(e?.cause?.message ?? "")} ${JSON.stringify(error)}`;
 }
-
-/** The harness task input schema, re-exported for seeding payload rows. */
-export { harnessTaskInputSchema };
 
 /**
  * A teammate moves the upstream's `main` on (one new file, `teammate.txt`),

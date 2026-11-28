@@ -46,7 +46,7 @@ import {
   taskLedgerResources,
   withoutNoticeMarkers,
 } from "@flow-state-dev/orchestration/internal";
-import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
+import { FILED_HOP, FILED_MARKER, FILED_PROJECT, OPERATOR_LINKS, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
 import { boardAboveOf } from "./board-above";
@@ -197,7 +197,7 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
  * make a row a piece of a task, or point a row at a
  * session as its split or as the session that filed its work,
  * or set the hop count its turn starts at, or the
- * project it was filed in, or set or clear the forward a task filed on an
+ * project it was filed in, or the links its user typed, or set or clear the forward a task filed on an
  * inferred turn was inferred from (the mark its approval guards read), or the
  * flow and declaration its input was filled for.
  */
@@ -207,6 +207,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [INFERRED_FORWARD_METADATA]: _inferred, [FILLED_FOR]: _filledFor, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [OPERATOR_LINKS]: _links, [INFERRED_FORWARD_METADATA]: _inferred, [FILLED_FOR]: _filledFor, ...rest } = kept;
   return rest;
 }

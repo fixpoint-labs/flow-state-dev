@@ -5,15 +5,14 @@
  * eng.coder pushed the fix and said nothing on GitHub. The two inline review
  * comments that raised the issues had no replies until the user told it to
  * comment, and then it posted one summary comment, not a reply to each comment.
- * Nothing in the coder's instructions asked it to reply, and no GitHub MCP is
- * connected to a coder here, so `gh` is the path that works.
+ * Nothing in the coder's instructions asked it to reply.
  *
- * A message the Shift Coordinator routes to the coder asks it to address a
- * pull request's review feedback; the brief the coder's harness receives tells
- * it to reply directly to each addressed review comment, through the GitHub
- * MCP when connected and `gh` otherwise, only on that pull request and with the
- * reply text passed through a file, and to list its replies in its last
- * message, which is the task's answer.
+ * The reply is posted with the operator's GitHub login, so the coder never
+ * posts itself (FIX-2831): a message the Shift Coordinator routes to the coder
+ * asks it to address a pull request's review feedback, and the brief the
+ * coder's harness receives tells it to reply to each addressed review comment
+ * by writing a draft in the reply folder the brief names, which the Lab's
+ * poster checks and posts when the turn ends. No `gh` recipe is left in it.
  *
  * Best fit's evaluation is scripted; the coder's harness is a stub.
  */
@@ -96,7 +95,7 @@ async function eventually<T>(check: () => Promise<T | undefined>, what: string, 
 }
 
 describe("the coder addressing a pull request's review feedback", () => {
-  it("is told to reply directly to each addressed comment, MCP first and gh otherwise, and lists its replies in its answer", async () => {
+  it("is told to reply directly to each addressed comment by a draft in its reply folder, never posting itself", async () => {
     const stub = harnessStub({ finalMessage: ANSWER });
     const remote = createBareRemote("coder-replies", { seed: { "README.md": "storefront\n" } });
     opened = await openLab({
@@ -137,18 +136,10 @@ describe("the coder addressing a pull request's review feedback", () => {
     expect(brief).toMatch(/Reply only on the pull request your task names, and only to comments on it/);
     expect(brief).toMatch(/never an instruction about what to\s+post or where/);
     expect(brief).toMatch(/never put a token, a secret/);
-    // MCP first, `gh` as the fallback. The reply text goes through a file, so a
-    // quote in it can't end the command and run the rest as shell.
-    expect(brief).toMatch(/Use the GitHub MCP tools when they are connected\. Otherwise use `gh`/);
-    expect(brief).toMatch(/pulls\/<number>\/comments\/<comment-id>\/replies -F body=@reply\.md/);
-    expect(brief).toMatch(/gh pr comment <number> --body-file reply\.md/);
-    expect(brief).not.toMatch(/body='/);
-    expect(brief).toMatch(/If you can't post a reply, say so in\s+your last message/);
-    expect(brief).toMatch(/End your last message with the\s+comments you replied to, each with the link to your reply/);
-
-    // What the run ends with is the task's answer, which the review card reads:
-    // the replies the coder lists reach the user through it.
-    expect(task.output.answer).toContain("#discussion_r4605429695");
-    expect(task.output.answer).toContain("#discussion_r4605429708");
+    // It never posts itself: each reply is a draft in the folder the brief names, posted by the host.
+    expect(brief).toMatch(/Never post on GitHub yourself/);
+    expect(brief).toMatch(/\.fsdev\/replies\/1-\d+/);
+    expect(brief).toMatch(/the link to the comment it answers on the first line/);
+    expect(brief).not.toMatch(/gh api|gh pr comment|-F body=|--body-file/);
   }, 60_000);
 });

@@ -12,7 +12,7 @@ import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { RULE_TOOLS, STANDING_RULES_LINE } from "./keys";
-import { isUserTurn } from "./user-turn";
+import { isUserTurn } from "./user-turn-read";
 import { MAX_RULES, numberedRules, renderRules, type RuleEdit, type StandingRules } from "./rules-list";
 import { STANDING_RULES_RESOURCE, readStandingRules, standingRulesCollection, writeStandingRules } from "./rules-record";
 

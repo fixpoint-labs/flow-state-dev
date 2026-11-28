@@ -32,7 +32,7 @@
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isUserTurn } from "../standing-rules/user-turn";
+import { isUserTurn } from "../standing-rules/user-turn-read";
 import { createWorkerHireBlocks, checkedHire, type HireChecks } from "./hire-blocks";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";

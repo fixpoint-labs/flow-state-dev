@@ -87,3 +87,14 @@ export const FILED_HOP = "filedAtHop";
  * hand-over reads its conversation's project, as before.
  */
 export const FILED_PROJECT = "filedInProject";
+
+// FIX-2831 D2; BP-031.
+/**
+ * The metadata key on a task holding the GitHub pull-request and comment
+ * links the user typed in the message that started its filing turn (a turn
+ * `isUserTurn` marks): the links a coding run's review replies may widen to
+ * (`operatorGitHub(…).reviewReplies`). Server-written by the filing; a
+ * caller's filing or patch never reaches it. **Absent** when that message
+ * linked nothing, or the turn was no user's.
+ */
+export const OPERATOR_LINKS = "operatorLinks";

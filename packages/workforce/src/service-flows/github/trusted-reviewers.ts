@@ -72,6 +72,33 @@ function settingLogins(value: string | undefined): string[] {
   return [...new Set(githubLoginsListed(items.join("\n")))];
 }
 
+/**
+ * Whether `login` can push to `repository`, asked of GitHub with `token`
+ * (`GET /repos/{owner}/{repo}/collaborators/{login}/permission`): `admin`,
+ * `maintain` and `write` can; anything else, a login GitHub doesn't know as a
+ * collaborator included, can't. Throws when GitHub can't be asked. The trusted
+ * reviewers' screen and the reply poster ask it the same way.
+ */
+export async function canWriteTo(options: {
+  readonly api: string;
+  readonly token: string;
+  readonly repository: string;
+  readonly login: string;
+  readonly fetch?: typeof fetch;
+  readonly signal?: AbortSignal;
+}): Promise<boolean> {
+  const res = await (options.fetch ?? fetch)(`${options.api}/repos/${options.repository}/collaborators/${encodeURIComponent(options.login)}/permission`, {
+    headers: { authorization: `Bearer ${options.token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+    // A cancelled request stops the lookup too.
+    ...(options.signal === undefined ? {} : { signal: options.signal })
+  });
+  // GitHub answers 404 for a login that isn't a collaborator: no write access.
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${options.login}'s permission`);
+  const body = (await res.json()) as { permission?: unknown; role_name?: unknown };
+  return [body.permission, body.role_name].some((p) => typeof p === "string" && WRITES.has(p));
+}
+
 /** Build the screen. */
 export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersScreenOptions): CustomScreen {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
@@ -90,16 +117,7 @@ export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersScre
       if (repository === undefined) return "the event names no repository";
       const token = await options.token(ctx, entry);
       if (token === undefined || token.length === 0) throw new Error("no token to ask GitHub who can write");
-      const res = await (options.fetch ?? fetch)(`${api}/repos/${repository}/collaborators/${encodeURIComponent(event.sender.id)}/permission`, {
-        headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
-        // A cancelled request stops the lookup too.
-        signal: ctx.signal
-      });
-      // GitHub answers 404 for a login that isn't a collaborator: no write access.
-      if (res.status === 404) return `"${event.sender.id}" can't write to ${repository}`;
-      if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${event.sender.id}'s permission`);
-      const body = (await res.json()) as { permission?: unknown; role_name?: unknown };
-      const can = [body.permission, body.role_name].some((p) => typeof p === "string" && WRITES.has(p));
+      const can = await canWriteTo({ api, token, repository, login: event.sender.id, ...(options.fetch === undefined ? {} : { fetch: options.fetch }), signal: ctx.signal });
       return can ? undefined : `"${event.sender.id}" can't write to ${repository}`;
     }
   };

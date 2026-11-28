@@ -17,9 +17,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { messageTurnStateSchema, newChainId, sessionUserLinesOf, startTurnAtHop, USER_LINES_STATE } from "../messages/hop";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-
-/** The request-state field the mark is kept in. */
-export const USER_TURN_STATE = "workforceUserTurn";
+import { USER_TURN_STATE } from "./user-turn-read";
 
 /** The request state the mark is kept in. */
 export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().optional() }).merge(messageTurnStateSchema);
@@ -51,11 +49,6 @@ export async function markUserTurn(ctx: BlockContext): Promise<void> {
   await startTurnAtHop(ctx, 0, newChainId(), mark, (current) => ({
     [USER_LINES_STATE]: sessionUserLinesOf(current) + 1
   }));
-}
-
-/** Whether this request is a turn a user's own message started. */
-export function isUserTurn(ctx: BlockContext): boolean {
-  return ctx.request.state[USER_TURN_STATE] === true;
 }
 
 /** {@link markUserTurn} as a step, for a door whose message passes through untouched. */

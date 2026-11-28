@@ -21,7 +21,7 @@ const seams = vi.hoisted(() => ({ refuseReportInUserTurn: false, failAckInUserTu
 
 vi.mock("../src/conversation-board/report-owed", async (original) => {
   const actual = await original<typeof import("../src/conversation-board/report-owed")>();
-  const { isUserTurn } = await import("../src/standing-rules/user-turn");
+  const { isUserTurn } = await import("../src/standing-rules/user-turn-read");
   return {
     ...actual,
     sendTaskReport: async (...args: Parameters<typeof actual.sendTaskReport>) => {
@@ -38,7 +38,7 @@ vi.mock("../src/conversation-board/report-owed", async (original) => {
 
 vi.mock("../src/conversation-board/ledger", async (original) => {
   const actual = await original<typeof import("../src/conversation-board/ledger")>();
-  const { isUserTurn } = await import("../src/standing-rules/user-turn");
+  const { isUserTurn } = await import("../src/standing-rules/user-turn-read");
   return {
     ...actual,
     // A process that dies between the dedupe write and the acknowledgement, in

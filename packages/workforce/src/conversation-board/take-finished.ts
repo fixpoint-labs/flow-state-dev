@@ -52,7 +52,7 @@ import {
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { isUserTurn } from "../standing-rules/user-turn";
+import { isUserTurn } from "../standing-rules/user-turn-read";
 import { taskChainResources } from "./chain";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { conversationBoardStateSchema, settleTakenNotice } from "./task-settled";
