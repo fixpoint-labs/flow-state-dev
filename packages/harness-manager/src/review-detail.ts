@@ -63,6 +63,15 @@ export interface ReviewDetail {
    */
   openPullRequest?: ReviewPullRequest | null;
   /**
+   * How the run's branch tip stands against {@link openPullRequest}'s head:
+   * `pushed` when the pull request already holds the work (no push is
+   * offered: an accept settles the task, and the pull request is where it
+   * lands), `ahead` when a push adds commits, `diverged` when the pull
+   * request has commits the branch lacks (no push is offered). `null` when
+   * none is open, or it couldn't be told. Optional, as `lands` is.
+   */
+  openPullRequestTip?: ReviewPullRequestTip | null;
+  /**
    * This round's commits, when the branch had commits before it: how many
    * and their subjects, newest first. `null` when the round is the whole
    * branch, or they couldn't be read.
@@ -83,6 +92,11 @@ export interface ReviewPullRequest {
   number: number;
   url: string;
 }
+
+/** How a run's branch tip stands against the head of the pull request open from it. */
+export type ReviewPullRequestTip = "pushed" | "ahead" | "diverged";
+
+const isTip = (value: unknown): value is ReviewPullRequestTip => value === "pushed" || value === "ahead" || value === "diverged";
 
 /** One file the run changed. `added`/`removed` are `null` for a binary file. */
 export interface ReviewFile {
@@ -188,6 +202,7 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
       ? data.pullRequests.map(pullRequestOf).filter((pr): pr is ReviewPullRequest => pr !== null)
       : [],
     openPullRequest: pullRequestOf(data.openPullRequest),
+    openPullRequestTip: isTip(data.openPullRequestTip) ? data.openPullRequestTip : null,
     round: roundOf(data.round),
     files: Array.isArray(data.files) ? data.files.map(fileOf).filter((file): file is ReviewFile => file !== null) : null,
     fileCount: isCount(data.fileCount) ? data.fileCount : null,

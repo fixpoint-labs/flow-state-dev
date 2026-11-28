@@ -98,7 +98,7 @@ export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy"
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
-export type { ExistingPullRequest, Landed, LandRequest, LandTarget } from "./land";
+export type { ExistingPullRequest, Landed, LandRequest, LandTarget, PullRequestTip } from "./land";
 export type {
   ListedWorktree,
   LocalWorkspaceHostOptions,

@@ -184,7 +184,19 @@ export interface ExistingPullRequest {
   readonly number: number;
   /** The branch it is open from: the run's own, or the one its checkout is on (see `LandTarget.baseCommit`). */
   readonly branch: string;
+  /**
+   * The branch's tip against the pull request's head: `pushed` when the head
+   * is the tip or already holds it (a push would change nothing), `ahead`
+   * when the tip holds the head and more (a push adds the rest), `diverged`
+   * when the head has commits the tip lacks, or one this repository doesn't
+   * have (a push wouldn't fast-forward). Absent when GitHub gave no head, or
+   * the branch couldn't be read.
+   */
+  readonly tip?: PullRequestTip;
 }
+
+/** How a run's branch tip stands against the head of the pull request open from it: see {@link ExistingPullRequest.tip}. */
+export type PullRequestTip = "pushed" | "ahead" | "diverged";
 
 // FIX-2781.
 /**
@@ -217,9 +229,11 @@ export async function existingPullRequest(
     const judged = checkRemoteShape(remote.url);
     // A base gone with no default to fall back on throws `base-gone`: it can't be told where a pull request would be.
     const base = "reason" in judged ? remote.base : (await baseOnRemote(host, remote, judged, left)).base;
-    const url = await openPullRequestOf(gh, branch, base, left());
-    const ref = url === undefined ? null : pullRequestRefFromUrl(url);
-    return url === undefined || ref === null ? null : { url, number: ref.number, branch };
+    const open = await openPullRequestOf(gh, branch, base, left());
+    const ref = open === undefined ? null : pullRequestRefFromUrl(open.url);
+    if (open === undefined || ref === null) return null;
+    const tip = open.head === undefined ? undefined : await tipAgainst(git, target.cwd, branch, open.head);
+    return { url: open.url, number: ref.number, branch, ...(tip === undefined ? {} : { tip }) };
   } finally {
     try {
       rmSync(ghDir, { recursive: true, force: true });
@@ -666,21 +680,40 @@ async function openPullRequestOf(
   branch: string,
   base: string,
   timeoutMs: number,
-): Promise<string | undefined> {
+): Promise<{ url: string; head?: string } | undefined> {
   const { stdout } = await run(
     gh.gh,
     [
       "pr", "list", ...gh.where, "--head", branch, "--state", "open",
-      "--json", "number,url,baseRefName,isCrossRepository", "--limit", String(OPEN_PULL_REQUESTS_READ),
+      "--json", "number,url,baseRefName,isCrossRepository,headRefOid", "--limit", String(OPEN_PULL_REQUESTS_READ),
     ],
     { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv, pass: gh.pass, gitCredentials: true },
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
-  const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
+  const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown; headRefOid?: unknown }>;
   const ours = listed.find(
     (pr) => typeof pr?.url === "string" && pr.isCrossRepository !== true && (typeof pr.baseRefName !== "string" || pr.baseRefName === base),
   );
-  return ours?.url as string | undefined;
+  if (ours === undefined) return undefined;
+  // Only a full commit id is compared: anything else is no head at all.
+  const head = typeof ours.headRefOid === "string" && /^[0-9a-f]{40}$/.test(ours.headRefOid) ? ours.headRefOid : undefined;
+  return { url: ours.url as string, ...(head === undefined ? {} : { head }) };
+}
+
+/**
+ * The branch's tip against a pull request's `head` commit, read from git's
+ * own objects; `undefined` when the branch can't be read. A head this
+ * repository doesn't have is commits the tip lacks, so it is `diverged`.
+ */
+async function tipAgainst(git: Git, cwd: string, branch: string, head: string): Promise<PullRequestTip | undefined> {
+  const tip = await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]).catch(() => undefined);
+  if (tip === undefined) return undefined;
+  if (tip === head) return "pushed";
+  const known = await git(cwd, ["cat-file", "-e", `${head}^{commit}`]).then(() => true, () => false);
+  if (!known) return "diverged";
+  const holds = (ancestor: string, of: string) => git(cwd, ["merge-base", "--is-ancestor", ancestor, of]).then(() => true, () => false);
+  if (await holds(tip, head)) return "pushed";
+  return (await holds(head, tip)) ? "ahead" : "diverged";
 }
 
 async function pushAndOpen(
@@ -723,7 +756,7 @@ async function pushAndOpen(
   // here when it is gone, or can't be found: it pushes nothing and opens none.
   let already: string | undefined;
   try {
-    already = await openPullRequestOf(gh, target.branch, remote.base, left());
+    already = (await openPullRequestOf(gh, target.branch, remote.base, left()))?.url;
   } catch (error) {
     if (request.onlyExisting === true) {
       throw new WorkspaceRefusedError(
@@ -753,7 +786,7 @@ async function pushAndOpen(
   // A try after one that pushed and opened it, but failed to record it: the open one, not a second.
   let url: string | undefined;
   try {
-    url = await openPullRequestOf(gh, target.branch, remote.base, left());
+    url = (await openPullRequestOf(gh, target.branch, remote.base, left()))?.url;
   } catch (error) {
     throw failed("asking GitHub for its open pull request", error);
   }

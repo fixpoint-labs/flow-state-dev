@@ -1507,7 +1507,13 @@ function openPullRequestOf(open: ExistingPullRequest | null): ReviewPullRequest 
 
 // FIX-2920.
 /** The review's line for a pull request open from the branch that no accept on this task landed on yet. */
-function openPullRequestLine(open: ExistingPullRequest): string {
+function openPullRequestLine(open: ExistingPullRequest, tip: ExistingPullRequest["tip"] | null): string {
+  if (tip === "pushed") {
+    return `The run's work is already on pull request #${open.number}, open from ${open.branch}: ${open.url}. Nothing is left to push: accept to settle the task, and the pull request is where it lands.`;
+  }
+  if (tip === "diverged") {
+    return `Pull request #${open.number}, open from ${open.branch} (${open.url}), has commits the run's branch doesn't, so nothing is pushed to it: a push wouldn't fast-forward. Ask for changes to reconcile them, or accept without landing.`;
+  }
   return `Pull request #${open.number} is already open from ${open.branch}: ${open.url}. An accept that lands as a pull request puts the work on it; no second pull request is opened.`;
 }
 
@@ -4121,7 +4127,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // The pull request the review names for a user's `pull-request` accept (FIX-2920): it goes only
       // there, so it never opens a second one the card didn't offer; one closed since is dropped, and asked again.
       let named = probed.notOurs;
-      let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
+      // **A pull request that already holds the branch's tip, or has commits it lacks, takes no push.**
+      // The run pushed its work itself, so a push would do nothing; or the head moved on without it, so a
+      // push wouldn't fast-forward. Neither is offered, and nothing is pushed unasked: the person accepts
+      // without landing (the pull request is where the work lands) or asks for changes. A local merge is
+      // not offered either: it would land the work beside the pull request it is under review on.
+      const openTip = (onPullRequest ?? named)?.tip ?? null;
+      if (onPullRequest !== null && openTip === "diverged") {
+        named = onPullRequest;
+        onPullRequest = null;
+      }
+      const noPush = named !== null && (openTip === "pushed" || openTip === "diverged");
+      let lands: LandHow[] = onPullRequest !== null ? ["pull-request"] : noPush ? [] : ways;
       // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
       // reads them, and the one open from its branch, whoever opened it (FIX-2920); each once. Read once, as the ways are.
       // Only shown on the card: a failed read shows none rather than failing the review.
@@ -4172,7 +4189,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               (onPullRequest !== null
                 ? `${onPullRequestLine(onPullRequest)}\n\n`
                 : named !== null
-                  ? `${openPullRequestLine(named)}\n\n`
+                  ? `${openPullRequestLine(named, openTip)}\n\n`
                   : "") +
               reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null, {
                 goal: state.goal ?? null,
@@ -4202,6 +4219,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               pullRequests,
               // The pull request a `pull-request` accept puts the work on, rather than opening one (FIX-2920).
               openPullRequest: openPullRequestOf(onPullRequest ?? named),
+              // Whether that pull request already holds the work, so the card offers no push that would do nothing.
+              openPullRequestTip: (onPullRequest ?? named) === null ? null : openTip,
               round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,

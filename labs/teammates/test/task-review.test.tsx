@@ -160,6 +160,31 @@ describe("the review's foot", () => {
     expect(answer).toHaveBeenLastCalledWith({ verdict: "accepted", land: "pull-request" });
   });
 
+  // The run pushed its branch to #5809 itself, and the foot still offered "Push to PR #5809" and "Merge locally":
+  // a push that would do nothing, with nothing saying the work was already there.
+  it("offers no push when the work is already on the open pull request: says so, links it, and settles with Accept", async () => {
+    const answer = vi.fn(async () => {});
+    const pr = { number: 5809, url: "https://github.com/acme/widgets/pull/5809" };
+    render(<Footer detail={review({ lands: [], pullRequests: [pr], openPullRequest: pr, openPullRequestTip: "pushed" })} answer={answer} />);
+    const foot = screen.getByRole("region", { name: "Your review" });
+    expect(within(foot).queryByRole("button", { name: /Push to PR/ })).toBeNull();
+    expect(within(foot).queryByRole("button", { name: /Merge locally/ })).toBeNull();
+    expect(foot.querySelector("[data-land-hint]")?.textContent).toContain("already on PR #5809");
+    expect(within(foot).getByRole("link", { name: "View PR #5809" }).getAttribute("href")).toBe(pr.url);
+    expect(within(foot).getByRole("button", { name: "Request changes" })).toBeTruthy();
+    fireEvent.click(within(foot).getByRole("button", { name: "Accept" }));
+    await screen.findByRole("status");
+    expect(answer).toHaveBeenLastCalledWith({ verdict: "accepted" });
+  });
+
+  it("says the open pull request has commits the branch lacks, rather than offer a blind push", () => {
+    const pr = { number: 5809, url: "https://github.com/acme/widgets/pull/5809" };
+    render(<Footer detail={review({ lands: [], openPullRequest: pr, openPullRequestTip: "diverged" })} answer={vi.fn(async () => {})} />);
+    const foot = screen.getByRole("region", { name: "Your review" });
+    expect(within(foot).queryByRole("button", { name: /Push to PR/ })).toBeNull();
+    expect(foot.querySelector("[data-land-hint]")?.textContent).toContain("PR #5809 has commits");
+  });
+
   it("says what the primary button does, and what is still open", () => {
     expect(landHint("pull-request", { branch: "a/b" }, 1)).toBe("Opens a PR from …/b, with the goal, commits, checks and the judge's verdict as its description. 1 check is still open.");
     expect(landHint(null, { branch: null }, 0)).toBe("Completes the task; the branch stays as it is.");

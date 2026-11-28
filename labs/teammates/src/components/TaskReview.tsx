@@ -6,6 +6,9 @@
  * and **Open pull request** (its menu accepts without landing). A branch
  * with a pull request already open from it offers **Push to PR #N** and a
  * **View PR #N** link instead: its work goes there, never onto a second one.
+ * When that pull request already holds the work (the run pushed it), or has
+ * commits the branch lacks, the review offers no way to land: the foot says
+ * so, links it, and **Accept** completes the task.
  *
  * What changed, the run's own checks and its notes come from the run's
  * report, read with harness-manager's `runReport`; an answer without the
@@ -480,11 +483,17 @@ const landButton = (land: ReviewLand, review: Pick<ReviewDetail, "openPullReques
   land === "pull-request" && review?.openPullRequest == null ? "Open pull request" : landLabel(land, review?.openPullRequest);
 
 /** What the primary button does, in a line under the buttons. Exported for its test. */
-export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest">, open: number): string {
+export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "branch" | "openPullRequest" | "openPullRequestTip">, open: number): string {
   const branch = review.branch === null ? "the run's branch" : shortBranch(review.branch);
   const onto = review.openPullRequest ?? null;
+  // The server offers no push onto a pull request that already holds the work, or has commits the branch lacks.
+  const tip = land === null && onto !== null ? (review.openPullRequestTip ?? null) : null;
   const said =
-    land === "pull-request"
+    tip === "pushed"
+      ? `The work is already on PR #${onto!.number}; nothing is left to push. Accept completes the task, and the PR is where it lands.`
+      : tip === "diverged"
+        ? `PR #${onto!.number} has commits ${branch} doesn't, so nothing is pushed to it. Request changes to reconcile them, or Accept to complete the task without landing.`
+        : land === "pull-request"
       ? onto !== null
         ? `Pushes ${branch} to PR #${onto.number}, already open from it; no second PR is opened.`
         : `Opens a PR from ${branch}, with the goal, commits, checks and the judge's verdict as its description.`

@@ -64,7 +64,17 @@ afterAll(() => {
 });
 
 /** What one harness step does: commit a file, commit nothing, commit without confirming a session, or fail. */
-type Step = "commits" | "no-commit" | "commits-no-session" | "throws" | "commits-renames" | "merges-base";
+type Step =
+  | "commits"
+  | "no-commit"
+  | "commits-no-session"
+  | "throws"
+  | "commits-renames"
+  | "merges-base"
+  // The run pushes its commit to the remote itself: then commits nothing more, commits again, or rewrites it.
+  | "commits-pushes"
+  | "commits-pushes-commits"
+  | "commits-pushes-amends";
 
 interface SeenStep {
   prompt: string;
@@ -91,10 +101,19 @@ function stubHarness(script: Step[], seen: SeenStep[], upstream: string) {
         if (step === "throws") throw new Error("the harness failed");
         const session = resume ?? `sess_${n}`;
         if (step !== "commits-no-session") await feeds.onSession(session, ctx as never);
-        if (step === "commits" || step === "commits-no-session" || step === "commits-renames") {
+        if (step === "commits" || step === "commits-no-session" || step === "commits-renames" || step.startsWith("commits-pushes")) {
           writeFileSync(join(cwd, `change-${n}.txt`), `change ${n}\n`);
           execFileSync("git", ["add", "."], { cwd });
           execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", `Change ${n}`], { cwd });
+        }
+        if (step.startsWith("commits-pushes")) {
+          execFileSync("git", ["push", "-q", upstream, "HEAD:refs/heads/" + execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, encoding: "utf8" }).trim()], { cwd });
+          if (step === "commits-pushes-commits") {
+            execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", `Change ${n}, after the push`], { cwd });
+          }
+          if (step === "commits-pushes-amends") {
+            execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--amend", "-m", `Change ${n}, rewritten`], { cwd });
+          }
         }
         // The run adds a line to a file, then merges the base a teammate moved on, with a line in the same file.
         if (step === "merges-base") {
@@ -417,6 +436,7 @@ describe("a coding run that made changes waits for a person's review", () => {
         pullRequests: [],
         // Nothing open from the branch, so a `pull-request` accept opens one.
         openPullRequest: null,
+        openPullRequestTip: null,
         round: null,
         files: [{ path: "change-1.txt", added: 1, removed: 0 }],
         fileCount: 1,
@@ -1229,6 +1249,8 @@ describe("a run on a branch with a pull request already open from it puts its wo
   let ghLog: string;
   // When set, how many more times `pr list` finds #42 open; then it finds none (closed since).
   let listsLeft: string;
+  // When written, the remote whose copy of the branch is #42's head.
+  let headFrom: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -1238,6 +1260,7 @@ describe("a run on a branch with a pull request already open from it puts its wo
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
     listsLeft = join(bin, "lists-left");
+    headFrom = join(bin, "head-from");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
@@ -1250,9 +1273,20 @@ const listed = () => {
   fs.writeFileSync(${JSON.stringify(listsLeft)}, String(left - 1));
   return left > 0;
 };
+// When headFrom names a remote, #42's head is that remote's copy of the branch asked about, as GitHub reports it.
+const head = () => {
+  if (!fs.existsSync(${JSON.stringify(headFrom)})) return {};
+  const branch = args[args.indexOf("--head") + 1];
+  try {
+    const sha = require("node:child_process").execFileSync("git", ["--git-dir", fs.readFileSync(${JSON.stringify(headFrom)}, "utf8"), "rev-parse", "refs/heads/" + branch], { encoding: "utf8" }).trim();
+    return { headRefOid: sha };
+  } catch {
+    return {};
+  }
+};
 const out =
   args[0] === "pr" && args[1] === "list"
-    ? JSON.stringify(listed() ? [{ number: 42, url: ${JSON.stringify(PR_URL)}, baseRefName: "main", isCrossRepository: false }] : [])
+    ? JSON.stringify(listed() ? [{ number: 42, url: ${JSON.stringify(PR_URL)}, baseRefName: "main", isCrossRepository: false, ...head() }] : [])
     : args[0] === "pr" && args[1] === "create"
       ? "https://github.com/acme/widgets/pull/43\\n"
       : args[0] === "api" && /pulls\\?/.test(args[args.length - 1])
@@ -1276,6 +1310,7 @@ process.stdout.write(out);
   });
   afterEach(() => {
     rmSync(listsLeft, { force: true });
+    rmSync(headFrom, { force: true });
   });
   /** Refuse the remote's first `times` pushes, as GitHub refuses one. */
   const refusePushes = (remote: string, times: number) => {
@@ -1412,6 +1447,91 @@ process.stdout.write(out);
       expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
       // Not handed to the coding session: there is nothing for it to fix.
       expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // The run pushed its branch to #42 itself. The card offered "Push to PR #42" and "Merge locally" about work
+  // already on #42: a push that would do nothing, and nothing said the work was there.
+  it("offers no push, and no local merge, when the pull request's head is already the run's tip; an accept settles it", async () => {
+    const h = host({ script: ["commits-pushes"], remote: true });
+    const calls = ghCalls().length;
+    try {
+      writeFileSync(headFrom, h.remote);
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      const hold = h.review(asked)!;
+      const detail = reviewDetail((await h.stop(hold))?.data);
+      expect(detail?.lands).toEqual([]);
+      expect(detail?.openPullRequest).toEqual({ number: 42, url: PR_URL });
+      expect(detail?.openPullRequestTip).toBe("pushed");
+      expect(hold.ask.prompt).toContain("already on pull request #42");
+      expect(hold.ask.prompt).not.toContain("An accept that lands as a pull request");
+
+      const cwd = h.seen[0]!.cwd;
+      const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      const pushed = git(h.remote, "rev-parse", `refs/heads/${branch}`);
+      await h.answer({ verdict: "accepted" });
+      const done = await h.until((t) => t.status === "completed", "the task settled without landing");
+      expect(done.output).toMatchObject({ review: "accepted" });
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(pushed);
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("still offers the push onto the pull request when the run's tip has commits its head lacks", async () => {
+    const h = host({ script: ["commits-pushes-commits"], remote: true });
+    try {
+      writeFileSync(headFrom, h.remote);
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      const detail = reviewDetail((await h.stop(h.review(asked)!))?.data);
+      expect(detail?.lands).toEqual(["pull-request", "merge"]);
+      expect(detail?.openPullRequestTip).toBe("ahead");
+
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      await h.until((t) => t.status === "completed", "the push onto #42");
+      const cwd = h.seen[0]!.cwd;
+      const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(cwd, "rev-parse", "HEAD"));
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("says the pull request has commits the run's branch lacks, and offers no blind push, when they diverged", async () => {
+    const h = host({ script: ["commits-pushes-amends"], remote: true });
+    try {
+      writeFileSync(headFrom, h.remote);
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      const hold = h.review(asked)!;
+      const detail = reviewDetail((await h.stop(hold))?.data);
+      expect(detail?.lands).toEqual([]);
+      expect(detail?.openPullRequestTip).toBe("diverged");
+      expect(hold.ask.prompt).toContain("has commits the run's branch doesn't");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("pushes nothing unasked onto the task's own pull request when it diverged: the person is asked, with no push", async () => {
+    const h = host({ script: ["commits-pushes-amends"], remote: true });
+    try {
+      await acceptedOnto42(h);
+      writeFileSync(headFrom, h.remote);
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      const detail = reviewDetail((await h.stop(h.review(asked)!))?.data);
+      expect(detail?.lands).toEqual([]);
+      expect(detail?.openPullRequestTip).toBe("diverged");
+      const cwd = h.seen[0]!.cwd;
+      const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).not.toBe(git(cwd, "rev-parse", "HEAD"));
+      expect(await h.statuses()).not.toContainEqual(expect.stringContaining("Pushed"));
     } finally {
       await h.dispose();
     }
