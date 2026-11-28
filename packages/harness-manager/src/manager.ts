@@ -2593,7 +2593,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // start test, or `followUpChainClaimOrder` (`./follow-up-chain`). This is the
       // backstop for a board wired with neither: it refuses after the claim, so
       // the attempt is spent, and it is refused before anything is opened.
-      const running = chainTaskRunning({ id: input.taskId, followUpOf: board.get(input.taskId)?.followUpOf }, board.list());
+      const running = chainTaskRunning(board.get(input.taskId) ?? { id: input.taskId, status: "in_progress", input: input.input }, board.list());
       if (running !== undefined) {
         throw new HarnessAttemptFailed(
           `[harness-manager] task ${input.taskId} continues the run of ${rootId}, and ${running.id} is still running ` +
