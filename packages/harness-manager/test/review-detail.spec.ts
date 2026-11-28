@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { reviewDetail } from "../src/browser";
 
 /** The fields a review stop's data had none of before the card showed what a person decides on (FIX-2782). */
-const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
+const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, openPullRequestTip: null, round: null, files: null, fileCount: null, added: null, removed: null };
 
 describe("reviewDetail", () => {
   it("reads a full review's data", () => {
@@ -150,5 +150,12 @@ describe("reviewDetail: what the review card needs to decide on", () => {
     expect(reviewDetail({ branch: "b", openPullRequest: { number: 5661, url: "javascript:alert(1)" } })?.openPullRequest).toBeNull();
     // Data from before the field: none open.
     expect(reviewDetail({ branch: "b" })?.openPullRequest).toBeNull();
+  });
+
+  // A card that can't tell the pull request already holds the work offers a push that would do nothing.
+  it("reads how the branch's tip stands against that pull request, and anything else as unknown", () => {
+    for (const tip of ["pushed", "ahead", "diverged"]) expect(reviewDetail({ branch: "b", openPullRequestTip: tip })?.openPullRequestTip).toBe(tip);
+    expect(reviewDetail({ branch: "b", openPullRequestTip: "same" })?.openPullRequestTip).toBeNull();
+    expect(reviewDetail({ branch: "b" })?.openPullRequestTip).toBeNull();
   });
 });

@@ -237,7 +237,7 @@ describe("the pull request already open from a run's branch, asked before its re
       branch: "teammates/tidy-task-list",
     });
     expect(ghCalls()).toEqual([
-      `pr list --repo ${GITHUB_REPO} --head teammates/tidy-task-list --state open --json number,url,baseRefName,isCrossRepository --limit 20`,
+      `pr list --repo ${GITHUB_REPO} --head teammates/tidy-task-list --state open --json number,url,baseRefName,isCrossRepository,headRefOid --limit 20`,
     ]);
   });
 
@@ -273,6 +273,53 @@ describe("the pull request already open from a run's branch, asked before its re
     writeFileSync(gh, "#!/bin/sh\necho 'gh: not logged in' >&2\nexit 1\n");
     vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
     await expect(h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).rejects.toThrow(/not logged in/);
+  });
+
+  // A run that pushed its branch itself leaves nothing for an accept to push: the review must not offer a push
+  // that would do nothing, nor a blind one onto a pull request holding commits the branch lacks.
+  describe("says how the branch's tip stands against the pull request's head", () => {
+    const openAt = (head: string) => ghOnPath(JSON.stringify([{ number: 5809, url: "https://github.com/acme/widgets/pull/5809", headRefOid: head }]));
+
+    it("pushed: the head is the tip", async () => {
+      const { h, place, commit } = await runWithCommit();
+      openAt(commit);
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ number: 5809, tip: "pushed" });
+    });
+
+    it("pushed: the head already holds the tip and more", async () => {
+      const { h, place, commit } = await runWithCommit();
+      git(place.cwd, "commit", "-q", "--allow-empty", "-m", "on the pull request only");
+      const head = git(place.cwd, "rev-parse", "HEAD");
+      git(place.cwd, "reset", "-q", "--hard", commit);
+      openAt(head);
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ tip: "pushed" });
+    });
+
+    it("ahead: the tip holds the head and more, so a push adds the rest", async () => {
+      const { h, place, commit } = await runWithCommit();
+      git(place.cwd, "commit", "-q", "--allow-empty", "-m", "made since the push");
+      openAt(commit);
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ tip: "ahead" });
+    });
+
+    it("diverged: each has commits the other lacks", async () => {
+      const { h, place, commit } = await runWithCommit();
+      git(place.cwd, "commit", "-q", "--amend", "-m", "rewritten after the push");
+      openAt(commit);
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ tip: "diverged" });
+    });
+
+    it("diverged: the head is a commit this repository doesn't have", async () => {
+      const { h, place } = await runWithCommit();
+      openAt("0123456789abcdef0123456789abcdef01234567");
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ tip: "diverged" });
+    });
+
+    it("says nothing when GitHub gives no head", async () => {
+      const { h, place } = await runWithCommit();
+      ghOnPath('[{"number":5809,"url":"https://github.com/acme/widgets/pull/5809"}]');
+      expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).not.toHaveProperty("tip");
+    });
   });
 });
 
