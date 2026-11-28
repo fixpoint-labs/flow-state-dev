@@ -57,7 +57,8 @@ describe("a teammate's routines in its panel", () => {
     expect(items.map((li) => li.getAttribute("data-routine"))).toEqual(["clock:daily-tweet-draft", "event:sub_1"]);
     expect(items[0]!.textContent).toMatch(/0 9 \* \* \* \(America\/New_York\) · next/);
     expect(items[0]!.textContent).toMatch(/Draft one tweet every morning\./);
-    expect(items[1]!.textContent).toMatch(/Follows github:o\/r#7/);
+    expect(items[1]!.textContent).toMatch(/github:o\/r#7/);
+    expect(items[1]!.textContent).toMatch(/Reviews on #7/);
     expect(within(items[1]!).getByText("Paused")).toBeTruthy();
     expect(list.textContent).not.toMatch(/someone-elses/);
   });
