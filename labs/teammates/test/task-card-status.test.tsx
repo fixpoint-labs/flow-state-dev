@@ -42,8 +42,8 @@ const running = (id: string, statusNote: string | null, extra: Partial<CodingBoa
   });
 };
 
-async function panel(rows: CodingBoardTask[]) {
-  const { client } = stubServer({ board: { s1: rows } });
+async function panel(tasks: CodingBoardTask[]) {
+  const { client } = stubServer({ board: { s1: tasks } });
   const { Follower } = standInFollower("s1", { lines: [], running: false, stopping: false, backgroundRunning: 0 });
   render(
     <TestProvider client={client}>
