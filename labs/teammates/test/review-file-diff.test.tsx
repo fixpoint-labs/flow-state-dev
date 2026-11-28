@@ -51,20 +51,20 @@ describe("a review's Files list", () => {
     const loadPatch = vi.fn(async () => ({ patch: PATCH, truncated: false, lines: 7 }));
     render(<ReviewBody review={review()} loadPatch={loadPatch} />);
     fireEvent.click(screen.getByRole("button", { name: /2 files changed/ }));
-    const row = screen.getByRole("button", { name: /labs\/teammates\/host\.mts/ });
-    expect(row.getAttribute("aria-expanded")).toBe("false");
+    const fileButton = screen.getByRole("button", { name: /labs\/teammates\/host\.mts/ });
+    expect(fileButton.getAttribute("aria-expanded")).toBe("false");
     expect(loadPatch).not.toHaveBeenCalled();
 
-    fireEvent.click(row);
-    expect(row.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(fileButton);
+    expect(fileButton.getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByText("+new line")).toBeTruthy();
     expect(screen.getByText("-old line")).toBeTruthy();
     expect(screen.getByText("@@ -1,2 +1,2 @@")).toBeTruthy();
 
-    fireEvent.click(row);
-    expect(row.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(fileButton);
+    expect(fileButton.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("+new line")).toBeNull();
-    fireEvent.click(row);
+    fireEvent.click(fileButton);
     expect(await screen.findByText("+new line")).toBeTruthy();
     expect(loadPatch).toHaveBeenCalledTimes(1);
     expect(loadPatch).toHaveBeenCalledWith("labs/teammates/host.mts");

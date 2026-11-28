@@ -63,12 +63,12 @@ describe("a running task's changes so far", () => {
   it("shows one collapsed row with the files, lines and commits, read live with the working tree", async () => {
     const h = host({ output: { taskId: "t1", diff: DIFF, commits: COMMITS, patch: null } });
     render(<Harness />, { wrapper: h.wrapper });
-    const row = await screen.findByRole("button", { name: /Changes so far/ });
-    expect(row.getAttribute("aria-expanded")).toBe("false");
-    expect(row.textContent).toContain("5 files changed");
-    expect(row.textContent).toContain("+117");
-    expect(row.textContent).toContain("−9");
-    expect(row.textContent).toContain("2 commits");
+    const toggle = await screen.findByRole("button", { name: /Changes so far/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toContain("5 files changed");
+    expect(toggle.textContent).toContain("+117");
+    expect(toggle.textContent).toContain("−9");
+    expect(toggle.textContent).toContain("2 commits");
     expect(screen.queryByText("labs/teammates/host.mts")).toBeNull();
     expect(h.calls[0]).toEqual({ url: `/api/flows/${CODER_FLOW}/run1/views/changes`, input: { taskId: "t1", uncommitted: true } });
   });
