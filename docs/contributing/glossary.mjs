@@ -1506,13 +1506,6 @@ const EXEMPTIONS = [
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
-    id: "teammates-routine-thread-field",
-    terms: ["thread"],
-    where: (path) => path === "labs/teammates/src/components/TeammatePanel.tsx",
-    strip: /\.thread\b|routine's thread\b/g,
-    why: "an event routine's own `thread` field, the key of the outside service's pull request or topic it follows, as the Teammates panel's routine line reads it",
-  },
-  {
     id: "routines-page-thread-field",
     terms: ["thread"],
     where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/routines\./.test(path),
