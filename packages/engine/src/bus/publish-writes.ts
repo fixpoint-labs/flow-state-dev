@@ -32,6 +32,7 @@
  * | any other session write | the same, and `run` on its owner's user topic (not for a write session) |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
  * | a session deleted, a write session's too | also `suspension` on its owner's user topic |
+ * | a session deleted (not a write session's) | also one owner notice for the whole session, on its owner's change topic for its flow instance |
  * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
  * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
  *
@@ -79,6 +80,7 @@ import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreReg
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
 import { isWriteSessionId } from "../resources/write-session-id";
+import { ownerSessionNotice } from "./owner-topic";
 
 type Wrapping = {
   /** Raw store → its one wrapper. */
@@ -273,6 +275,22 @@ function ownerHears(sessionId: string, userId: string | undefined): userId is st
   return userId !== undefined && !isWriteSessionId(sessionId);
 }
 
+/**
+ * Publishes that every entry of session `session.id` left every read across
+ * its owner's sessions: one owner notice for the whole session, naming no
+ * key, which every change topic of its flow instance hears
+ * (`owner-topic.ts`). A session's delete publishes it once its resources are
+ * gone and again with the record, so a record delete that fails still leaves
+ * the views told; an extra notice costs only a refetch.
+ */
+export function publishSessionResourcesGone(
+  bus: ChangeBus,
+  session: { id: string; userId: string | undefined; orgId: string | undefined; tenantId: string | undefined; flowId: string }
+): void {
+  if (!ownerHears(session.id, session.userId)) return;
+  publishNotices(bus, [ownerSessionNotice({ userId: session.userId, orgId: session.orgId, tenantId: session.tenantId }, session.flowId, session.id)]);
+}
+
 // FIX-2754.
 /**
  * Publishes on a session's owner's user topic the `run` a whole-record write
@@ -302,6 +320,9 @@ type SessionIdentity = {
   parentSessionId: string | undefined;
   /** The owner, whose user topic hears every change to the session but a write session's (see `ownerHears`). */
   userId: string | undefined;
+  /** The owner's organization and the session's flow instance: the owner change topic its delete publishes on. */
+  orgId: string | undefined;
+  flowId: string;
 };
 /** What a request write needs to name its topics. */
 type RequestIdentity = {
@@ -346,7 +367,9 @@ class Identities {
       id: toBareSessionId(storageKey, record.tenantId),
       tenantId: record.tenantId,
       parentSessionId: record.parentSessionId ?? undefined,
-      userId: record.userId ?? undefined
+      userId: record.userId ?? undefined,
+      orgId: record.orgId ?? undefined,
+      flowId: record.flowId ?? record.flowKind
     };
     remember(cacheOf(sessionIdentities, this.sessions), storageKey, identity);
     return identity;
@@ -359,6 +382,15 @@ class Identities {
   async session(storageKey: string): Promise<SessionIdentity | undefined> {
     const cached = cacheOf(sessionIdentities, this.sessions).get(storageKey);
     if (cached !== undefined) return cached;
+    const record = await this.sessions.get(storageKey).catch((error: unknown) => {
+      debugUnassembled(error, { store: "session", id: storageKey });
+      return undefined;
+    });
+    return record === undefined ? undefined : this.rememberSession(storageKey, record);
+  }
+
+  /** The session as stored now, read past the cache: a delete's notices name its current owner. */
+  async currentSession(storageKey: string): Promise<SessionIdentity | undefined> {
     const record = await this.sessions.get(storageKey).catch((error: unknown) => {
       debugUnassembled(error, { store: "session", id: storageKey });
       return undefined;
@@ -551,7 +583,10 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
       return result;
     },
     delete: (original) => async (id: string) => {
-      const identity = await identities.session(id);
+      // The session as stored now, read past the cache: another handle may
+      // have deleted it and made it again for someone else since this one
+      // remembered it, and the notices belong to whoever owns it now.
+      const identity = await identities.currentSession(id);
       await original(id);
       identities.forgetSession(id);
       if (identity !== undefined) {
@@ -560,6 +595,8 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
         publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
         // And the session's pending suspensions out of its owner's pending read (FIX-2770).
         if (identity.userId !== undefined) publishNotices(bus, [notice(userTopic(identity.userId, identity.tenantId), "suspension")]);
+        // And every entry it held out of every read across its owner's sessions.
+        publishSessionResourcesGone(bus, identity);
       }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))

@@ -19,6 +19,7 @@ import { createInMemoryStores } from "../../src/host";
 import { resolveStores } from "../../src/routes/http-handlers";
 import { publishSessionOwnerRun, storeIdentity } from "../../src/bus/publish-writes";
 import { writeSessionId } from "../../src/resources/default-write-flow";
+import { ownerTopic } from "../../src/bus/owner-topic";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -568,5 +569,36 @@ describe("withChangeBus · applied at every entry, once", () => {
     await tick();
     await tick();
     expect(heard.map((n) => n.kind)).toEqual(["request"]);
+  });
+});
+
+describe("withChangeBus · a session's delete, when another handle replaced the session", () => {
+  // Two processes over one store: this handle saw alice's session; the other
+  // deleted it and made it again for bob. Deleting it here takes bob's
+  // entries out of the reads across his sessions, so the notice must reach
+  // bob's change topic, never alice's.
+  it("publishes the owner notice for the session as stored at delete time", async () => {
+    const raw = createInMemoryStores();
+    const bus = createInMemoryBus();
+    const here = withChangeBus({ ...raw, bus });
+    // Another handle over the same data: its own objects, so its own wrapper.
+    const handle = <T extends object>(store: T): T => Object.create(store) as T;
+    const elsewhere = withChangeBus({
+      ...raw,
+      session: handle(raw.session),
+      request: handle(raw.request),
+      suspensions: handle(raw.suspensions),
+      bus: createInMemoryBus()
+    });
+    await here.session.set("s1", session("s1", { userId: "alice", flowId: "desk" }), "absent");
+    await elsewhere.session.delete("s1");
+    await elsewhere.session.set("s1", session("s1", { userId: "bob", orgId: "other", flowId: "desk" }), "absent");
+    const alice = hear(bus, ownerTopic({ userId: "alice", orgId: DEFAULT_ORG_ID, tenantId: undefined }, "desk"));
+    const bob = hear(bus, ownerTopic({ userId: "bob", orgId: "other", tenantId: undefined }, "desk"));
+    await here.session.delete("s1");
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+    expect(bob.length).toBe(1);
   });
 });

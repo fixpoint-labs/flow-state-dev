@@ -50,6 +50,24 @@ describe("a run stored under its mode's former name", () => {
     expect((await after.row(CONVERSATIONS, "t1", PARTITION)).status).toBe("completed");
   }, 60_000);
 
+  // A follow-up's run is its root's, so the root's record under the former key is its chain's, not another task's.
+  it("a follow-up of a root that ran before the rename continues the root's run there", async () => {
+    const before = claimHost({ mode: "claim", modeName: "code", script: [{ commits: 1 }] });
+    await before.seed({ ledgerId: CONVERSATIONS, partition: PARTITION, id: "t-root", goal: "change the README", input: {} });
+    await before.runAttempt(CONVERSATIONS, "t-root", PARTITION);
+    expect((await before.row(CONVERSATIONS, "t-root", PARTITION)).status).toBe("completed");
+    const stored = (await before.record(runTopic(SEGMENT, "t-root", "code")))!;
+
+    const after = claimHost({ mode: "claim", modeName: "default", formerName: "code", restartOf: { dir: before.dir, stores: before.stores } });
+    await after.seed({ ledgerId: CONVERSATIONS, partition: PARTITION, id: "t-more", goal: "now also the CHANGELOG", input: {}, followUpOf: "t-root" });
+    const followed = await after.runAttempt(CONVERSATIONS, "t-more", PARTITION);
+    expect(followed.result.error, messageOf(followed.result.error)).toBeUndefined();
+
+    expect(after.seen[0]).toMatchObject({ resume: stored.sessionId, cwd: before.seen[0]!.cwd });
+    expect(await after.record(runTopic(SEGMENT, "t-root", "code"))).toMatchObject({ taskId: "t-more", branch: stored.branch, outcome: "succeeded" });
+    expect(await after.record(runTopic(SEGMENT, "t-root", "default"))).toBeNull();
+  }, 60_000);
+
   it("a run that starts after the rename is keyed by the new name", async () => {
     const lab = claimHost({ mode: "claim", modeName: "default", formerName: "code" });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: PARTITION, id: "t2", goal: "change the README", input: {} });

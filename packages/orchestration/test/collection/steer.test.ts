@@ -177,13 +177,36 @@ describe.each([
 
     const [late] = (tasks.get("t") as Task).steers!;
     // The write names what it took, so a caller shows exactly that.
-    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r1" })).toEqual({ outcome: "recorded", taken: [late!.id] });
+    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r1", requestId: "r1" })).toEqual({ outcome: "recorded", taken: [late!.id] });
     const row = tasks.get("t") as Task;
-    expect(row.steers).toEqual([expect.objectContaining({ message: "late", takenBy: 1, takenIn: "step:r1" })]);
+    expect(row.steers).toEqual([expect.objectContaining({ message: "late", takenBy: 1, takenIn: "step:r1", takenFor: "r1" })]);
     // Taken already: a second take writes nothing, names nothing, and the first keeps it.
-    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r2" })).toEqual({ outcome: "unchanged", taken: [] });
+    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r2", requestId: "r2" })).toEqual({ outcome: "unchanged", taken: [] });
     expect((tasks.get("t") as Task).steers![0]!.takenIn).toBe("step:r1");
   });
+
+  // FIX-2899.
+  it.each([
+    ["a read named by no request", "turn-1", "req_1"],
+    ["a request whose id holds a colon", "step:job:7", "job:7"],
+  ] as const)(
+    "a stopped request gives back the steers it took, whatever its read is named: %s",
+    async (_case, takenIn, requestId) => {
+      const { tasks } = await makeBacking();
+      await tasks.createTask({ id: "t", goal: "t" });
+      const claim = ticketForClaim("tasks", (await tasks.claim("w"))!);
+      await tasks.steer!("t", { message: "late", from: "user" });
+      await tasks.takeSteers!("t", { claim, takenIn, requestId });
+
+      await tasks.setKeptOpenBy!("t", null, { claim, owesTurn: true, untakeSteersOf: requestId });
+
+      // Untaken again, so the turn after the stopped one reads it.
+      const task = tasks.get("t") as Task;
+      expect(task.steers![0]).not.toHaveProperty("takenBy");
+      expect(task.steers![0]).not.toHaveProperty("takenFor");
+      expect(untakenSteers(task).map((steer) => steer.message)).toEqual(["late"]);
+    }
+  );
 
   it.each([
     ["the row was claimed again", true],
@@ -213,7 +236,7 @@ describe.each([
     const stale = ticketForClaim("tasks", claimed);
     await tasks.cancel("t");
 
-    expect(await tasks.takeSteers!("t", { claim: stale, takenIn: "step:r1" })).toMatchObject({
+    expect(await tasks.takeSteers!("t", { claim: stale, takenIn: "step:r1", requestId: "r1" })).toMatchObject({
       outcome: "declined",
       reason: "terminal",
     });

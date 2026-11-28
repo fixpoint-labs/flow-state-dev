@@ -14,7 +14,7 @@ flow or page names any of it. The Shift Coordinator files the task for `eng.code
 (its scripted model's one tool call).
 
 **Signal:** in process, the DevTeam Lab (`openLab`) with `reviewChanges`, on SQLite, served over
-HTTP so Shift Manager's own reads (`createLabReader`) and send (`sendTurn`) reach it. The coder
+HTTP so Shift Manager's own reads (its views and collections) and send (`sendTurn`) reach it. The coder
 runs on harness-manager's scripted harness; Jev, the judge, is scripted to *done*. Storefront names
 `git@github.com:acme/app.git`, which the workspace maps to a local checkout (`checkouts`) whose
 `origin` is that remote. `goals/lib/github-stub` is first on `PATH`: a stub `ssh` takes the

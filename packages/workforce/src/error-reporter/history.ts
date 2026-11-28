@@ -41,6 +41,8 @@ const historyEntrySchema = z.object({
   key: z.string().optional(),
   /** The report it went to. A held occurrence names none: its task's report is joined when it is read. */
   reportId: z.string().optional(),
+  /** That report's first sighting, which tells it from an earlier report under the same id. Absent on held and older entries. */
+  since: z.number().optional(),
   /** What it came from: `request`, `held`, `task` or `manual` for an occurrence; the report's source for a status. */
   source: z.string().optional(),
   fingerprint: z.string().optional(),
@@ -108,6 +110,21 @@ async function firstOfDay(reports: ResourceCollectionRef, at: number): Promise<b
 /** The dedupe key of a status entry: one per report lifetime (its first sighting), status and issue. A report reopened under the same id keeps its own. */
 export function statusEntryKey(reportId: string, since: number, status: string, identifier: string | undefined): string {
   return `status:${reportId}:${since}:${status}:${identifier ?? ""}`;
+}
+
+/**
+ * The first sighting of the report an entry went to: its own `since`, or for
+ * an older status entry the one its {@link statusEntryKey} carries.
+ * `undefined` for an older occurrence and a held one.
+ *
+ * @param reportId The report the entry went to.
+ */
+export function historyEntrySince(entry: HistoryEntry, reportId: string): number | undefined {
+  if (entry.since !== undefined) return entry.since;
+  const prefix = `status:${reportId}:`;
+  if (entry.kind !== "status" || entry.key?.startsWith(prefix) !== true) return undefined;
+  const since = Number(entry.key.slice(prefix.length).split(":")[0]);
+  return Number.isFinite(since) ? since : undefined;
 }
 
 /**

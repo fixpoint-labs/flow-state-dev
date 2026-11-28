@@ -6,16 +6,16 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
+import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
+import { shiftSummary } from "../src/lib/tasks";
 import { shiftCoordinatorOf } from "../src/lib/shift";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { inboxSection, type Ask } from "../src/lib/reads";
 import type { BoardTaskView } from "../src/lib/boards";
 import type { Worker } from "../src/lib/workers";
 import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
-const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
 
 describe("landing (V1, BR-1)", () => {
@@ -108,61 +108,58 @@ const row = (ownerSessionId: string, id: string, status: string): BoardTaskView 
   completedAt: null,
 });
 
-const ask = (workerId: string, suspensionId: string): Ask => ({
-  sessionId: `s_${suspensionId}`,
-  workerId,
-  flowId: workerId,
-  parentSessionId: null,
-  kind: "approval",
-  item: { suspensionId } as Ask["item"],
-  since: 0,
-  unanswerable: null,
-});
+type AskAt = { suspensionId: string; workerId: string; sessionId?: string; requestId?: string };
+const ask = (workerId: string, suspensionId: string): AskAt => ({ workerId, suspensionId });
 
-function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
-  const read: Omit<LoadedSnapshot, "inbox"> = {
-    readAt: 0,
-    sessions: [],
-    orgId: ORG,
-    inventory: {
-      ok: true,
-      value: {
-        workers: [worker("ops.a"), worker("ops.b"), worker("ops.c")],
-      },
-    },
-    projects: { ok: true, value: { rows: [] } },
-    boards: {
-      s_desk: { ok: true, value: { refs: ["s_desk.tasks"], rows: [row("s_desk", "1", "in_progress"), row("s_desk", "2", "in_progress"), row("s_desk", "3", "pending")] } },
-      s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [row("s_side", "4", "in_progress"), row("s_side", "5", "completed")] } },
-    },
-    asks: { ok: true, value: [ask("ops.a", "x"), ask("ops.c", "y"), ask("ops.a", "z")] },
-    resources: { ok: true, value: [] },
-    ...over,
+const DESK_AND_SIDE = [
+  row("s_desk", "1", "in_progress"),
+  row("s_desk", "2", "in_progress"),
+  row("s_desk", "3", "pending"),
+  row("s_side", "4", "in_progress"),
+  row("s_side", "5", "completed"),
+];
+const THREE_ASKS = [ask("ops.a", "x"), ask("ops.c", "y"), ask("ops.a", "z")];
+
+/**
+ * The inbox view's answer over `tasks` and the asks, as the server builds it:
+ * orchestration's list over the rows (each answered on its conversation's
+ * board) and the asks, a task's run's ask claimed by its row.
+ */
+function viewOf(tasks: BoardTaskView[], asks: AskAt[] = THREE_ASKS): InboxViewValue {
+  return {
+    tasks: tasks.map((r) => ({ ...r, owner: r.ownerSessionId })),
+    items: inboxItems<InboxAsk>({
+      rows: tasks.map((r) => ({ ...r, board: r.boardRef, holder: { sessionId: r.ownerSessionId, action: taskActionName("updateTask", "tasks") } })),
+      suspensions: asks.map((at) => {
+        const sessionId = at.sessionId ?? `s_${at.suspensionId}`;
+        const requestId = at.requestId ?? `req_${at.suspensionId}`;
+        return {
+          sessionId,
+          flowId: at.workerId,
+          requestId,
+          suspensionId: at.suspensionId,
+          kind: "approval",
+          prompt: "ok?",
+          since: 0,
+          detail: { ...at, sessionId, requestId, flowKind: at.workerId, kind: "approval", message: "ok?", createdAt: 0, shape: "approval" } as unknown as InboxAsk,
+        };
+      }),
+      flowOf: () => "coordinator",
+    }),
   };
-  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) };
 }
 
 describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
-  it("counts the pending asks, the running rows and the boards they run on, from the snapshot", () => {
-    const summary = shiftSummary(snapshotOf());
-    expect(summary.asks).toEqual(snapshotOf().asks);
-    expect(summary.running).toEqual({ ok: true, value: { runs: 3, workstreams: 2 } });
+  it("counts the pending asks, the running rows and the boards they run on, from the inbox view", () => {
+    const summary = shiftSummary(viewOf(DESK_AND_SIDE));
+    expect(summary.needsYou).toBe(THREE_ASKS.length);
+    expect(summary.running).toEqual({ runs: 3, workstreams: 2 });
   });
 
   it("still counts what is running when nothing needs the user", () => {
-    const summary = shiftSummary(snapshotOf({ asks: { ok: true, value: [] } }));
-    expect(summary.asks).toEqual({ ok: true, value: [] });
-    expect(summary.running).toEqual({ ok: true, value: { runs: 3, workstreams: 2 } });
-  });
-
-  it("carries a failed read as that line's failure, and the other line whole", () => {
-    const failure = { message: "store offline", httpStatus: 503 };
-    const noAsks = shiftSummary(snapshotOf({ asks: { ok: false, failure } }));
-    expect(noAsks.asks).toEqual({ ok: false, failure });
-    expect(noAsks.running.ok).toBe(true);
-    const noBoard = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
-    expect(noBoard.running).toEqual({ ok: false, failure });
-    expect(noBoard.asks.ok).toBe(true);
+    const summary = shiftSummary(viewOf(DESK_AND_SIDE, []));
+    expect(summary.needsYou).toBe(0);
+    expect(summary.running).toEqual({ runs: 3, workstreams: 2 });
   });
 });
 
@@ -188,31 +185,17 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
 
   it("is the Inbox's list: a task held on a question is one item, beside the asks no task holds", () => {
     const waiting = heldOnQuestion("s_side", "6");
-    const snapshot = snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [waiting, row("s_side", "7", "completed")] } } } });
-    const summary = shiftSummary(snapshot);
-    expect(summary.inbox).toBe(snapshot.inbox);
-    const items = summary.inbox.ok ? summary.inbox.value : [];
-    expect(items.filter((item) => item.task?.taskId === "6")).toHaveLength(1);
-    expect(items).toHaveLength(snapshotOf().asks.ok ? 3 + 1 : 0);
+    const view = viewOf([...DESK_AND_SIDE.filter((r) => r.ownerSessionId !== "s_side"), waiting, row("s_side", "7", "completed")]);
+    expect(view.items.filter((item) => item.task?.taskId === "6")).toHaveLength(1);
+    expect(shiftSummary(view).needsYou).toBe(view.items.length);
+    expect(shiftSummary(view).needsYou).toBe(THREE_ASKS.length + 1);
   });
 
   it("counts a task once when its run also holds one of the asks", () => {
-    const pendingAsk = { ...ask("eng.coder", "q"), sessionId: "s_run", item: { suspensionId: "q", requestId: "r", taskId: "6" } as Ask["item"] };
     const held = heldOnQuestion("s_side", "6", { run: { sessionId: "s_run", requestId: "r", attempt: 1 } });
-    const summary = shiftSummary(
-      snapshotOf({
-        asks: { ok: true, value: [pendingAsk] },
-        boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [held] } } },
-      }),
-    );
-    expect(summary.inbox.ok && summary.inbox.value.map((item) => item.task?.taskId ?? null)).toEqual(["6"]);
-  });
-
-  it("fails as its own line when a board didn't load", () => {
-    const failure = { message: "store offline", httpStatus: 503 };
-    const summary = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
-    expect(summary.inbox.ok).toBe(false);
-    expect(summary.asks.ok).toBe(true);
+    const view = viewOf([held], [{ ...ask("eng.coder", "q"), sessionId: "s_run", requestId: "r" }]);
+    expect(view.items.map((item) => item.task?.taskId ?? null)).toEqual(["6"]);
+    expect(shiftSummary(view).needsYou).toBe(1);
   });
 });
 

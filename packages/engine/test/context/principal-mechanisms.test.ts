@@ -190,8 +190,9 @@ async function plantRequest(
   stores: StoreRegistry,
   id: string,
   sessionId: string,
-  fields: { source?: string; userId?: string; orgId?: string | null; at?: number } = {}
+  fields: { source?: string; userId?: string; orgId?: string | null; at?: number; endedAt?: number } = {}
 ) {
+  const at = fields.at ?? Date.now();
   const record = createInitialRequestRecord(
     {
       requestId: id,
@@ -203,9 +204,11 @@ async function plantRequest(
       ...(fields.orgId === null ? {} : { orgId: fields.orgId ?? ORG }),
       ...(fields.source !== undefined ? { source: fields.source } : {})
     },
-    fields.at ?? Date.now()
+    at
   );
-  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now() }, "absent");
+  // `endedAt`: when its run wrote it last (its final status); by default never written again.
+  const endedAt = fields.endedAt ?? at;
+  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now(), completedAtMs: endedAt, updatedAt: endedAt }, "absent");
 }
 
 /** A person's run in `sessionId`: what an HTTP turn in a session from before kinds carries. */
@@ -309,10 +312,11 @@ describe("backfill", () => {
     await plantSession(stores, "target", { principalKind: "person" });
     // Person: an HTTP start, and one from before `source` (read as `http`).
     await plantSession(stores, "l-http", { lineageId: "lin_http" });
-    // The birth request is written just before the session; a later turn's doesn't count.
+    // The birth request is written just before the session and its run ends
+    // after it; a later turn's doesn't count, however soon it comes.
     const born = (await stores.session.get("l-http"))!.createdAt;
     await plantRequest(stores, "r-http-2", "l-http", { source: "internal", at: born + 5 });
-    await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5 });
+    await plantRequest(stores, "r-http", "l-http", { source: "http", at: born - 5, endedAt: born + 1_000 });
     await plantSession(stores, "l-legacy");
     await plantRequest(stores, "r-legacy", "l-legacy");
     expect(await admit(personIn("l-http"), "target")).toBeDefined();
