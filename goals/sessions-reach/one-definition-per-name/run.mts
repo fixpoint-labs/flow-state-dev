@@ -1,21 +1,25 @@
 /**
  * Goal check — one definition per name: a block in one flow reads and writes
- * another flow's session copy of a definition both flows declare, two shapes
- * under one session-scoped name refuse start, and index declarations isolated
- * to their flows never clash (FIX-2943).
+ * the entries of a session-scoped collection both flows declare in another
+ * flow's session, two shapes under one session-scoped name refuse start, and
+ * index declarations isolated to their flows never clash (FIX-2943).
  *
  * **Model-free.** Real `createFlowState` hosts on in-memory stores. The flows
  * are built from blocks, and a flow declares a definition only by including a
  * block that uses it, as an app does.
  *
  * Legs (each failure is tagged with its leg):
- *   reach   the visitor flow, in its own session, writes the owner flow's
- *           session copy of the definition through `ctx.resources.at({ session })`,
- *           and the owner flow reads the write back from its own copy; then the
- *           owner writes and the visitor reads it back. Both flows include one
- *           declaring block. The rows are read through actions, never a store.
- *   clash   a flow declaring the same session-scoped name with another shape
- *           is refused at start, and the error names both flows and the name.
+ *   reach   the visitor flow, in its own session, writes an entry into the
+ *           owner's session of the stored collection `<definition>/*` through
+ *           `ctx.resources.at({ session })` (which reaches session-scoped stored
+ *           collections only), and the owner flow reads the write back from its
+ *           own session; then the owner writes and the visitor reads it back,
+ *           and the visitor's own session's entries stay apart. Both flows
+ *           include one declaring block. The rows are read through actions,
+ *           never a store.
+ *   clash   a flow declaring the same session-scoped collection pattern with
+ *           another entry shape is refused at start, and the error names both
+ *           flows and the name.
  *   isolated  two flows declaring one index name at two versions, each on a
  *           collection isolated to its flow, start, and each writes and reads
  *           a row of its own.
@@ -31,7 +35,6 @@ import { z } from "zod";
 import {
   DEFAULT_ORG_ID,
   defineFlow,
-  defineResource,
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
@@ -76,19 +79,32 @@ if (CONTROL === "skip-session-scope") {
 
 // ── the declaring block, shared by both reaching flows ──────────────────────
 
-const shape = z.object({ notes: z.array(z.string()).default([]) });
-const definition = defineResource({ scope: "session", ref: DEF, stateSchema: shape, default: { notes: [] } });
+/** The one name both reaching flows declare: a session-scoped, stored collection. */
+const PATTERN = `${DEF}/*`;
+const definition = defineResourceCollection({
+  scope: "session",
+  pattern: PATTERN,
+  stateSchema: z.object({ note: z.string() })
+});
 
 const entryInput = z.object({
   op: z.enum(["write", "read"]),
-  /** The session whose copy to reach; omitted, the block's own. */
+  /** The session whose entries to reach; omitted, the block's own. */
   session: z.string().optional(),
+  /** The entry key a write creates. */
+  key: z.string().optional(),
   note: z.string().optional()
 });
 
-type Accessors = Record<string, { state: { notes: string[] }; patchState(u: { notes: string[] }): Promise<void> }>;
+type Accessors = Record<
+  string,
+  {
+    create(key: string, state: { note: string }): Promise<unknown>;
+    list(): Promise<Array<{ state: { note: string } }>>;
+  }
+>;
 
-/** Reads or writes `DEF` in this session's copy, or in the named session's through reach. */
+/** Writes an entry into, or lists, `DEF`'s entries in this session, or in the named session through reach. */
 const entry = handler({
   name: `${DEF}-entry`,
   inputSchema: entryInput,
@@ -102,21 +118,20 @@ const entry = handler({
     }
     const ref = accessors[DEF];
     if (ref === undefined) throw new Error(`no accessor for "${DEF}"`);
-    if (input.op === "write") await ref.patchState({ notes: [...ref.state.notes, input.note ?? ""] });
-    return [...ref.state.notes];
+    if (input.op === "write") await ref.create(input.key ?? "entry", { note: input.note ?? "" });
+    return (await ref.list()).map((row) => row.state.note).sort();
   }
 });
 
 const reachingFlow = (kind: string) =>
   defineFlow({ kind, actions: { entry: { inputSchema: entryInput, block: entry } } })();
 
-/** A flow declaring `DEF` at session scope with another shape. */
+/** A flow declaring the collection `DEF` names at session scope with another entry shape. */
 function clashingFlow(kind: string) {
-  const other = defineResource({
+  const other = defineResourceCollection({
     scope: "session",
-    ref: DEF,
-    stateSchema: z.object({ notes: z.number().default(0) }),
-    default: { notes: 0 }
+    pattern: PATTERN,
+    stateSchema: z.object({ note: z.number() })
   });
   return defineFlow({
     kind,
@@ -171,6 +186,8 @@ function host(flows: unknown[]) {
       userId: USER,
       orgId: DEFAULT_ORG_ID,
       sessionId,
+      // As a door sets it: a run with no principal kind is a machine's, and reaches no other session.
+      principalKind: "person",
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig, logger: silentLogger }
     } as never);
@@ -191,18 +208,18 @@ await runGoal(async (failures, tell) => {
     try {
       const act = host([owner, visitor]);
       await act(owner, "entry", { op: "read" }, OWNER_SESSION);
-      await act(visitor, "entry", { op: "write", session: OWNER_SESSION, note: fixture.notes.fromVisitor }, VISITOR_SESSION);
-      const ownerSees = tell.over("reach · owner's copy after the visitor's write", (await act(owner, "entry", { op: "read" }, OWNER_SESSION)) as string[]);
-      if (!ownerSees.includes(fixture.notes.fromVisitor)) failures.push(`reach: the owner's copy lacks the visitor's write (${JSON.stringify(ownerSees)})`);
+      await act(visitor, "entry", { op: "write", session: OWNER_SESSION, key: "from-visitor", note: fixture.notes.fromVisitor }, VISITOR_SESSION);
+      const ownerSees = tell.over("reach · owner's session's entries after the visitor's write", (await act(owner, "entry", { op: "read" }, OWNER_SESSION)) as string[]);
+      if (!ownerSees.includes(fixture.notes.fromVisitor)) failures.push(`reach: the owner's session's entries lack the visitor's write (${JSON.stringify(ownerSees)})`);
 
-      await act(owner, "entry", { op: "write", note: fixture.notes.fromOwner }, OWNER_SESSION);
-      const visitorSees = tell.over("reach · owner's copy read by the visitor", (await act(visitor, "entry", { op: "read", session: OWNER_SESSION }, VISITOR_SESSION)) as string[]);
+      await act(owner, "entry", { op: "write", key: "from-owner", note: fixture.notes.fromOwner }, OWNER_SESSION);
+      const visitorSees = tell.over("reach · owner's session's entries read by the visitor", (await act(visitor, "entry", { op: "read", session: OWNER_SESSION }, VISITOR_SESSION)) as string[]);
       if (!visitorSees.includes(fixture.notes.fromOwner)) failures.push(`reach: the visitor did not read the owner's write (${JSON.stringify(visitorSees)})`);
 
       const visitorOwn = (await act(visitor, "entry", { op: "read" }, VISITOR_SESSION)) as string[];
-      tell.over("reach · visitor's own copy stays apart", visitorOwn.filter((n) => n === fixture.notes.fromVisitor), { emptyIs: "the claim: the write went to the owner's copy" });
-      if (visitorOwn.includes(fixture.notes.fromVisitor)) failures.push("reach: the visitor's write landed in its own copy");
-      evidence.push(`reach: both ways through "${DEF}"`);
+      tell.over("reach · visitor's own session's entries stay apart", visitorOwn.filter((n) => n === fixture.notes.fromVisitor), { emptyIs: "the claim: the write went to the owner's session" });
+      if (visitorOwn.includes(fixture.notes.fromVisitor)) failures.push("reach: the visitor's write landed in its own session's entries");
+      evidence.push(`reach: both ways through "${PATTERN}"`);
     } catch (error) {
       failures.push(`reach: ${message(error)}`);
     }
