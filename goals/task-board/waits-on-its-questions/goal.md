@@ -19,7 +19,7 @@
 
 Every leg ends with `reconcileInbox` over Shift Manager's own Inbox read against reads made apart from it (the board's `listTasks`, the task sessions' suspended requests): green, drift included, and a hold answered or cancelled is in no later read.
 
-**Anti-game:** the Inbox is Shift Manager's snapshot (`createLabReader().read().inbox`), every answer goes through orchestration's Inbox client (`createInboxClient`) or the board's `updateTask` action as a screen sends it, and the task is read through `getTask` and `listTasks`, never a store write by hand. The turn counter is a proof each scripted turn appends from inside its own run. The lease is shortened to 3 s by a scratch patch (printed by the run): that fakes time, not behaviour.
+**Anti-game:** the Inbox is Shift Manager's own read, workforce's inbox view (`inboxViewRef`), every answer goes through orchestration's Inbox client (`createInboxClient`) or the board's `updateTask` action as a screen sends it, and the task is read through `getTask` and `listTasks`, never a store write by hand. The turn counter is a proof each scripted turn appends from inside its own run. The lease is shortened to 3 s by a scratch patch (printed by the run): that fakes time, not behaviour.
 
 **Model:** n/a (model-free).
 

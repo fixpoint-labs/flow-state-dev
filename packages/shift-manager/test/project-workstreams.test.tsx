@@ -46,7 +46,6 @@ type ProjectSetup = { flow: string; projectCoordinator: string | null };
 async function readProjectSetup(client: Client): Promise<ProjectSetup> {
   return { flow: PROJECTS_FLOW, projectCoordinator: (await client.view(projectSetupView, {})).value.projectCoordinator };
 }
-import { createLabReader } from "../src/lib/reads";
 import { readSessionItems } from "./helpers/session-reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { selectHarness } from "../teams/devteam/harness.mts";
@@ -162,9 +161,9 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   const as = async (user: { userId: string; bearer: string }): Promise<User> => {
     const connection = { userId: user.userId, baseUrl, bearerToken: user.bearer };
     const client = connect(connection);
-    // The Lab read, as the app makes it first.
-    await createLabReader(client).read();
     const workforce = createWorkforceClient(client);
+    // The read the app makes first: the gate's organization read.
+    await workforce.organization();
     return { client, connection, roster: () => workforce.roster() };
   };
   const setup = await readProjectSetup((await as(ALICE)).client);

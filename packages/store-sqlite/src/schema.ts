@@ -72,6 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
 -- caller alike.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_tenant_owner_updated
   ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at);
+-- A read across one owner's sessions (\`listAcrossSessions\`) walks that
+-- owner's sessions in id order, every parentage, and reads each one's rows
+-- by the resource_state primary key's range. The owner leads, then the order:
+-- another owner's sessions are never walked. SQLite takes \`IS ?\` as an
+-- equality, so one index serves the bound and unbound caller alike.
+CREATE INDEX IF NOT EXISTS idx_sessions_owner
+  ON sessions(user_id, tenant_id, org_id, id);
 `;
 
 // FIX-1010: the most-recent-run index below.
@@ -577,8 +584,9 @@ CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at);
 `;
 
 // FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
-// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
-// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+// clears it. One row per (tenant, session, entry, resolver identity);
+// `tenant_key` and `resolved_by` are '' for none so the key has no NULL.
+// `due_at` is indexed for the sweeper's read.
 const WAKES_TABLE = `
 CREATE TABLE IF NOT EXISTS wakes (
   tenant_key TEXT NOT NULL,
@@ -589,13 +597,47 @@ CREATE TABLE IF NOT EXISTS wakes (
   org_id     TEXT NOT NULL,
   due_at     INTEGER NOT NULL,
   land_by    INTEGER NOT NULL,
+  resolved_by TEXT NOT NULL DEFAULT '',
   version    INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  PRIMARY KEY (tenant_key, session_id, entry)
+  PRIMARY KEY (tenant_key, session_id, entry, resolved_by)
 );
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
+
+// BP-030.
+/**
+ * Re-key a `wakes` table created before wakes were kept per resolver
+ * identity, which has no `resolved_by` column, from (tenant, session, entry)
+ * to (tenant, session, entry, resolver identity). Every kept wake names none
+ * (`''`), so they keep coalescing with each other as before.
+ *
+ * SQLite cannot change a primary key in place, so the table is rebuilt inside
+ * one `IMMEDIATE` transaction, re-checked under the lock as
+ * {@link migrateScheduleIndexCell} is. Idempotent: a table that has
+ * `resolved_by` is left alone.
+ */
+function migrateWakesResolverKey(db: Database.Database): void {
+  const needsKey = (): boolean => {
+    const exists = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wakes'").get();
+    return exists !== undefined && db.prepare("SELECT 1 FROM pragma_table_info('wakes') WHERE name = 'resolved_by'").get() === undefined;
+  };
+  if (!needsKey()) return;
+
+  db.transaction(() => {
+    if (!needsKey()) return;
+    db.exec("ALTER TABLE wakes RENAME TO wakes_pre_resolver");
+    db.exec("DROP INDEX IF EXISTS idx_wakes_due_at");
+    db.exec(WAKES_TABLE);
+    db.exec(`
+      INSERT INTO wakes (tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, resolved_by, version, created_at, updated_at)
+      SELECT tenant_key, session_id, entry, flow_kind, user_id, org_id, due_at, land_by, '', version, created_at, updated_at
+        FROM wakes_pre_resolver
+    `);
+    db.exec("DROP TABLE wakes_pre_resolver");
+  }).immediate();
+}
 
 // FIX-428.
 /**
@@ -751,6 +793,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddResourceStateVersioning(db);
   migrateAddScheduleIndexOrgId(db);
   migrateScheduleIndexCell(db);
+  migrateWakesResolverKey(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

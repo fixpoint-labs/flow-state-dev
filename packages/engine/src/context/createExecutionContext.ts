@@ -81,6 +81,7 @@ import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import {
   ConcurrentModificationError,
+  FlowStateConfigError,
   ResourceAlreadyExistsError
 } from "../errors/flow-error";
 import type { TraceStore, VersionedResourceState } from "../stores/types";
@@ -101,6 +102,9 @@ import { principalOwns, withRequestOrg, type Principal } from "./principal";
 import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
+import { createNamedSessionAt, isNamedReachable, namedReach, type CopyCell, type NamedCopyTarget } from "./named-session-copy";
+import { createAcrossSessions } from "./across-sessions";
+import { changeTopicResource } from "../bus/owner-topic";
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -729,6 +733,14 @@ export async function createExecutionContext<
     else if (scope === "org") orgResourceConfigs[accessor] = def;
     else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
     accessorScope[accessor] = scope;
+  }
+
+  // The session-scoped stored collections, read across the owner's sessions
+  // (`ctx.resources.acrossSessions()`): kept before a view with no session
+  // drops its session declarations below, since a user view reads them there.
+  const acrossSessionConfigs: Record<string, ResourceCollectionConfig> = Object.create(null);
+  for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
+    if (isNamedReachable(config)) acrossSessionConfigs[accessor] = config;
   }
 
   // FIX-2623: a user or org view has no session, so it installs none of the
@@ -1682,7 +1694,8 @@ export async function createExecutionContext<
   const retainOwnedKeys = <T>(
     scope: ContentScopeType,
     scopeId: string,
-    rows: Record<string, T>
+    rows: Record<string, T>,
+    scopeIdOf: (storageKey: string) => string | undefined = (key) => resolveResourceStorageScopeId(scope, key)
   ): Record<string, T> => {
     const owned = ownKeyRecord<T>();
     const scopeConfigs = Object.values(
@@ -1690,7 +1703,7 @@ export async function createExecutionContext<
     );
     for (const [key, value] of Object.entries(rows)) {
       if (!ownerKeyMaySeed(key, userId, scopeConfigs)) continue;
-      if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
+      if (scopeIdOf(key) === scopeId) owned[key] = value;
     }
     return owned;
   };
@@ -2031,10 +2044,10 @@ export async function createExecutionContext<
   // sibling declaration owns at a different address (FIX-1068). Recording the
   // bare prefix would claim coverage the scan never had, and the next lazy read
   // of such a key would answer "absent" for a row that exists.
-  const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
-    const scopeId = resolveResourceStorageScopeId(scope, storageKey);
+  const isMissAuthoritative = (cell: CopyCell, storageKey: string): boolean => {
+    const scopeId = cell.scopeIdOf(storageKey);
     if (scopeId === undefined) return false;
-    for (const token of loadedCollectionPrefixes[scope]) {
+    for (const token of cell.loadedPrefixes) {
       const split = token.indexOf("\n");
       if (token.slice(0, split) !== scopeId) continue;
       if (storageKey.startsWith(token.slice(split + 1))) return true;
@@ -2087,32 +2100,44 @@ export async function createExecutionContext<
   const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
     scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
+  const ownCell = (scope: ContentScopeType): CopyCell => ({
+    scope,
+    token: scope,
+    stateRef: scopeStateRef(scope),
+    contentRef: scopeContentRef(scope),
+    versionRef: scopeVersionRef(scope),
+    loadedPrefixes: loadedCollectionPrefixes[scope],
+    missing: missingResourceKeys[scope],
+    deletedState: deletedStateKeys[scope],
+    deletedContent: deletedContentKeys[scope],
+    scopeIdOf: (storageKey) => resolveResourceStorageScopeId(scope, storageKey),
+    storageScopeOf: (scopeId) => storageScopeOf(scope, scopeId)
+  });
+
   // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
   // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
   // as the eager waves, so a key fetched here and one fetched by a wave dedupe.
-  const makeLazyLoad = (scope: ContentScopeType): ScopeLazyLoad | undefined => {
-    if (scopeIdentityId(scope) === undefined) return undefined; // scope absent this request (org)
-    const stateRef = scopeStateRef(scope);
-    const contentRef = scopeContentRef(scope);
-    const versionRef = scopeVersionRef(scope);
+  const makeLazyLoad = (cell: CopyCell): ScopeLazyLoad | undefined => {
+    if (scopeIdentityId(cell.scope) === undefined) return undefined; // scope absent this request (org)
+    const { stateRef, contentRef, versionRef } = cell;
     return {
       async getInstance(storageKey: string): Promise<LazyLoadOutcome> {
         if (storageKey in stateRef.current) return { fetched: false, durationMs: 0 }; // already loaded
         // A miss under an already-bulk-loaded prefix is authoritative, and a
         // key confirmed absent earlier this request stays absent — skip the
         // store round-trip in both cases.
-        if (isMissAuthoritative(scope, storageKey)) return { fetched: false, durationMs: 0 };
-        if (missingResourceKeys[scope].has(storageKey)) return { fetched: false, durationMs: 0 };
+        if (isMissAuthoritative(cell, storageKey)) return { fetched: false, durationMs: 0 };
+        if (cell.missing.has(storageKey)) return { fetched: false, durationMs: 0 };
         // FIX-735: route to this key's isolation bucket (bare vs namespaced).
-        const scopeId = resolveResourceStorageScopeId(scope, storageKey)!;
+        const scopeId = cell.scopeIdOf(storageKey)!;
         let fetched = false;
         let durationMs = 0;
-        await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
+        await runSingleFlight(`${cell.token}:key:${storageKey}`, async () => {
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [row, content] = await Promise.all([
-            stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, storageKey),
-            stores.content.get(storageScopeOf(scope, scopeId), scopeId, storageKey)
+            stores.resourceState.get(cell.storageScopeOf(scopeId), scopeId, storageKey),
+            stores.content.get(cell.storageScopeOf(scopeId), scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
@@ -2124,7 +2149,7 @@ export async function createExecutionContext<
             versionRef.current[storageKey] = row!.version;
           } else {
             // Negatively cache: one round-trip caps repeated reads of an absent key.
-            missingResourceKeys[scope].add(storageKey);
+            cell.missing.add(storageKey);
           }
           if (typeof content === "string") {
             contentRef.current = mergeOwnKeyRecords({ [storageKey]: content }, contentRef.current);
@@ -2134,39 +2159,39 @@ export async function createExecutionContext<
       },
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
         // FIX-735: the collection's prefix resolves to its isolation bucket.
-        const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
+        const scopeId = cell.scopeIdOf(keyPrefix)!;
         // A loaded ancestor prefix (the whole collection) already covers a sub-prefix.
-        if (isMissAuthoritative(scope, keyPrefix)) return { fetched: false, durationMs: 0 };
+        if (isMissAuthoritative(cell, keyPrefix)) return { fetched: false, durationMs: 0 };
         let fetched = false;
         let durationMs = 0;
-        await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-          if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) return;
+        await runSingleFlight(`${cell.token}:prefix:${keyPrefix}`, async () => {
+          if (cell.loadedPrefixes.has(coverageToken(scopeId, keyPrefix))) return;
           const started = Date.now();
           // Same ownership re-check as the eager waves: a lazy collection is
           // fetched by prefix too, so a broad prefix sweeps up keys a narrower
           // sibling owns at a different address.
           const [rawRows, rawContent] = await Promise.all([
-            stores.resourceState.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix),
-            stores.content.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix)
+            stores.resourceState.getByPrefix(cell.storageScopeOf(scopeId), scopeId, keyPrefix),
+            stores.content.getByPrefix(cell.storageScopeOf(scopeId), scopeId, keyPrefix)
           ]);
-          const rows = retainOwnedKeys(scope, scopeId, rawRows);
-          const content = retainOwnedKeys(scope, scopeId, rawContent);
+          const rows = retainOwnedKeys(cell.scope, scopeId, rawRows, cell.scopeIdOf);
+          const content = retainOwnedKeys(cell.scope, scopeId, rawContent, cell.scopeIdOf);
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
-          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, deletedStateKeys[scope]), stateRef.current);
+          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, cell.deletedState), stateRef.current);
           // Versions for the keys this prefix read just brought in. Keys the
           // cache already held keep the version they were first read at, so a
           // later bulk load never silently re-bases an in-flight write.
           for (const [key, version] of Object.entries(toVersions(rows))) {
-            if (deletedStateKeys[scope].has(key)) continue;
+            if (cell.deletedState.has(key)) continue;
             versionRef.current[key] ??= version;
           }
           contentRef.current = mergeOwnKeyRecords(
-            withoutDeleted(content, deletedContentKeys[scope]),
+            withoutDeleted(content, cell.deletedContent),
             contentRef.current
           );
-          loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
+          cell.loadedPrefixes.add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
       }
@@ -2222,9 +2247,9 @@ export async function createExecutionContext<
       return [...new Set(found.flat())].sort();
     };
 
-  const sessionLazyLoad = makeLazyLoad("session");
-  const userLazyLoad = makeLazyLoad("user");
-  const orgLazyLoad = makeLazyLoad("org");
+  const sessionLazyLoad = makeLazyLoad(ownCell("session"));
+  const userLazyLoad = makeLazyLoad(ownCell("user"));
+  const orgLazyLoad = makeLazyLoad(ownCell("org"));
 
   // FIX-688 Waves 2 & 3; FIX-701.
   /**
@@ -2405,10 +2430,8 @@ export async function createExecutionContext<
   // `resolveResourceStorageScopeId(scope, key)` (each resource persists to its
   // own isolation bucket); the in-memory cache stays keyed by the resource key
   // regardless of which bucket backs it.
-  const makeKeyPersisters = (scope: ContentScopeType) => {
-    const stateRef = scopeStateRef(scope);
-    const versionRef = scopeVersionRef(scope);
-    const contentRef = scopeContentRef(scope);
+  const makeKeyPersisters = (cell: CopyCell) => {
+    const { stateRef, versionRef, contentRef } = cell;
     return {
       // FIX-663; FIX-992 (D10).
       /**
@@ -2442,7 +2465,7 @@ export async function createExecutionContext<
         mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
         opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
       ): Promise<{ committed: boolean; previousState: JsonObject }> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         if (scopeId === undefined) {
           // Scope absent this request — nothing was read and nothing written.
           return { committed: false, previousState: opts?.seed ?? {} };
@@ -2470,14 +2493,14 @@ export async function createExecutionContext<
             signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
               stores.resourceState.set(
-                storageScopeOf(scope, scopeId),
+                cell.storageScopeOf(scopeId),
                 scopeId,
                 key,
                 next,
                 expectedVersion,
                 ownedWrite(flow.id)
               ),
-            reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
+            reread: () => stores.resourceState.get(cell.storageScopeOf(scopeId), scopeId, key)
           });
         } catch (err) {
           // A lost create still taught us something: the store reported the
@@ -2524,7 +2547,7 @@ export async function createExecutionContext<
         return { committed: result.committed, previousState: result.previousState };
       },
       deleteResourceKey: async (key: string): Promise<boolean> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         // `!(key in stateRef.current)` is a load-state check, not a
         // correctness guarantee: it scopes the delete to keys present in the
         // cache, matching the prior whole-map reconciliation (which only ever
@@ -2539,7 +2562,7 @@ export async function createExecutionContext<
         // only re-delete something it has already been told it does not own.
         const expectedVersion = versionRef.current[key] ?? 0;
         const result = await stores.resourceState.delete(
-          storageScopeOf(scope, scopeId),
+          cell.storageScopeOf(scopeId),
           scopeId,
           key,
           expectedVersion
@@ -2596,7 +2619,7 @@ export async function createExecutionContext<
         }
         delete stateRef.current[key];
         delete versionRef.current[key];
-        deletedStateKeys[scope].add(key);
+        cell.deletedState.add(key);
         return true;
       },
       /**
@@ -2608,25 +2631,25 @@ export async function createExecutionContext<
        * would cost the same round trip as the write and still race it.
        */
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         if (scopeId === undefined) return;
-        await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
+        await stores.content.set(cell.storageScopeOf(scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
-        const scopeId = resolveResourceStorageScopeId(scope, key);
+        const scopeId = cell.scopeIdOf(key);
         // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
-        await stores.content.delete(storageScopeOf(scope, scopeId), scopeId, key);
+        await stores.content.delete(cell.storageScopeOf(scopeId), scopeId, key);
         delete contentRef.current[key];
-        deletedContentKeys[scope].add(key);
+        cell.deletedContent.add(key);
       }
     };
   };
 
-  const sessionKeyPersisters = makeKeyPersisters("session");
-  const userKeyPersisters = makeKeyPersisters("user");
-  const orgKeyPersisters = makeKeyPersisters("org");
+  const sessionKeyPersisters = makeKeyPersisters(ownCell("session"));
+  const userKeyPersisters = makeKeyPersisters(ownCell("user"));
+  const orgKeyPersisters = makeKeyPersisters(ownCell("org"));
 
   const requestContainer = createStateContainer<TRequestState>(
     requestRef.current.state as TRequestState,
@@ -2865,7 +2888,14 @@ export async function createExecutionContext<
   // FIX-2623 D1: read once per context, for all three scopes' handlers.
   const hostHasViews = options.requestHost?.hostHasViews?.() === true;
 
-  function makeResourceChangeHandler(scope: "session" | "user" | "org") {
+  /**
+   * The change handler for one scope's copy: this run's own, or, with
+   * `named`, another session's copy this run reaches (`ctx.resources.at`).
+   * A named copy's write publishes on that session's topics only, never on
+   * this run's stream, and starts a turn there only as the wake its write
+   * owed before it landed, never by running its `reactTo` blocks inside this turn.
+   */
+  function makeResourceChangeHandler(scope: "session" | "user" | "org", named?: NamedCopyTarget) {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
     const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
@@ -2918,12 +2948,15 @@ export async function createExecutionContext<
       // the stored key's, by the ownership rule writes route by; the owner is
       // this session record's.
       publishSessionResourceChange(stores.bus, {
-        sessionId,
-        ownerUserId: sessionRef.current.userId,
+        sessionId: named?.sessionId ?? sessionId,
+        ownerUserId: named?.ownerUserId ?? sessionRef.current.userId,
         tenantId: options.tenantId,
         notice,
         lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
         hostHasViews,
+        ownerOrgId: named !== undefined ? named.ownerOrgId : sessionRef.current.orgId,
+        ownerFlowId: named !== undefined ? named.ownerFlowId : (sessionRef.current.flowId ?? flow.id),
+        storageKey: resourcePath,
         requestId: requestRef.current.id
       });
     };
@@ -2932,6 +2965,11 @@ export async function createExecutionContext<
     // (FIX-739 streaming), a `reactTo` binding (FIX-751), and/or a resource
     // to publish on a bus (FIX-1506). Reactive-only resources still dispatch
     // even with no emitter present.
+    if (named !== undefined) {
+      return async (resourcePath: string): Promise<void> => {
+        publishChange(resourcePath);
+      };
+    }
     if (!emitter && !hasReactive && !(stores.bus !== undefined && publishesAny)) return undefined;
 
     const dispatchReactive = hasReactive
@@ -3561,6 +3599,61 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  // `ctx.resources.at({ session })`: another session's copy (`./named-session-copy`).
+  const atSession = createNamedSessionAt({
+    options,
+    stores,
+    userId,
+    resolvedOrgId,
+    sessionId,
+    noSession,
+    runKind,
+    runResolvedBy,
+    sessionResourceConfigs,
+    accessorScope,
+    scopeBuckets,
+    inView: viewDependencies !== undefined,
+    flatResourcesRegistry,
+    makeKeyPersisters,
+    makeLazyLoad,
+    makeResourceChangeHandler,
+    recordResourceLoad,
+    templateResolverRef,
+    buildProjectedResourceContext
+  });
+  (flatResourcesRegistry as { at: unknown }).at = atSession;
+
+  /**
+   * `ctx.resources.acrossSessions()`: this flow's session-scoped collections
+   * read across every session the run's owner has (`across-sessions.ts`).
+   * Each row is admitted as `ctx.resources.at` admits its session; a view's
+   * read is heard on the owner's change topic for each collection it lists.
+   */
+  let acrossSessionsHandles: ReturnType<typeof createAcrossSessions> | undefined;
+  const acrossSessions = (): ReturnType<typeof createAcrossSessions> => {
+    if (acrossSessionsHandles !== undefined) return acrossSessionsHandles;
+    const flows = options.requestHost?.flows;
+    if (flows === undefined) {
+      throw new FlowStateConfigError("`ctx.resources.acrossSessions()` needs the host's flow registry, to admit each session as the routes do.");
+    }
+    const reach = namedReach({ options, userId, resolvedOrgId, sessionId, runKind, runResolvedBy });
+    acrossSessionsHandles = createAcrossSessions({
+      configs: acrossSessionConfigs,
+      store: stores.resourceState,
+      admission: { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: reach.principal, sessionId },
+      owner: { userId, orgId: resolvedOrgId, tenantId: options.tenantId },
+      actorUserId: userId,
+      origin: reach.fence.origin,
+      ...(options.effectiveRuntimeConfig?.sealingSecret !== undefined ? { sealingSecret: options.effectiveRuntimeConfig.sealingSecret } : {}),
+      sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
+      ...(viewDependencies !== undefined
+        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(changeTopicResource(flow.id, config.pattern)) }
+        : {})
+    });
+    return acrossSessionsHandles;
+  };
+  (flatResourcesRegistry as { acrossSessions: unknown }).acrossSessions = acrossSessions;
+
   // FIX-2625: a task board's ledger is named by the accessor whose handle its
   // task collection read through, and lives at that accessor's scope.
   const accessorOfHandle = (handle: object): string | undefined =>

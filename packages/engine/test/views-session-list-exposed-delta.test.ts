@@ -14,6 +14,7 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineView, handler } from "@flow-state-dev/core";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
+import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "../src";
 import { createInMemoryBus, createInMemoryStores, type ChangeNotice } from "../src/host";
@@ -139,7 +140,7 @@ async function midTurnWrite(field: "project" | "notes", value: string) {
   await tick();
   await tick();
   // What the write alone woke: the turn's end, which publishes its status, is not counted.
-  const woke = heard.filter((notice) => hearsNotice(before.hears, notice));
+  const woke = heard.filter((notice) => hearsNotice(before.hears, notice as WireNotice));
   const during = await list();
   turn.end();
   const result = await running;

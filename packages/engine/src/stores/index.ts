@@ -58,6 +58,9 @@ export type {
   WakeRecord,
   WakeStore,
   ResourceStateStore,
+  AcrossSessionsOwner,
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
   VersionedResourceState,
   ResourceIndexEntry,
   ResourceStateSetOptions,
@@ -189,14 +192,16 @@ export function resolveTraceMaxRequests(explicit?: number): number {
 export function createInMemoryStores(options: CreateStoreOptions = {}): StoreRegistry {
   // The suspension store joins a user's pending suspensions to this request store (FIX-2770).
   const request = createInMemoryRequestStore();
+  // The resource-state store joins an owner's rows across sessions to this session store.
+  const session = createInMemorySessionStore();
   return {
-    session: createInMemorySessionStore(),
+    session,
     request,
     user: createInMemoryUserStore(),
     org: createInMemoryOrgStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
-    resourceState: createInMemoryResourceStateStore(),
+    resourceState: createInMemoryResourceStateStore({ sessions: session }),
     checkpoints: createInMemoryCheckpointStore(),
     traces: createInMemoryTraceStore({
       ...options.traceStore,
@@ -236,10 +241,12 @@ export function createFilesystemStores(
     rootDir: path.join(options.rootDir, "requests"),
     onPersistError
   });
+  // The resource-state store joins an owner's rows across sessions to this session store.
+  const session = createFilesystemSessionStore({
+    rootDir: path.join(options.rootDir, "sessions")
+  });
   return {
-    session: createFilesystemSessionStore({
-      rootDir: path.join(options.rootDir, "sessions")
-    }),
+    session,
     request,
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
@@ -252,7 +259,7 @@ export function createFilesystemStores(
       onPersistError
     }),
     content: createFilesystemContentStore(options.rootDir),
-    resourceState: createFilesystemResourceStateStore(options.rootDir),
+    resourceState: createFilesystemResourceStateStore(options.rootDir, { sessions: session }),
     checkpoints: createFilesystemCheckpointStore(options.rootDir),
     traces: createFilesystemTraceStore({
       rootDir: path.join(options.rootDir, "traces"),

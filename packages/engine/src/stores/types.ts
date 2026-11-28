@@ -107,7 +107,16 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * its first request record instead (`context/session-kind.ts`).
    */
   principalKind?: PrincipalKind;
-  // FIX-2942; BP-030.
+  /**
+   * A random token minted once per birth (`birthSession`): what tells two
+   * incarnations of one session id apart when their birth time (millisecond
+   * resolution) and lineage (inherited or derived) match. `set` keeps the
+   * stored value whatever a later write carries, as for {@link principalKind}.
+   *
+   * `== null` on a record written before the field: compared by its birth
+   * time and lineage instead (`sameSessionIncarnation`).
+   */
+  incarnationToken?: string;
   /**
    * The incarnation of the session that dispatched this one
    * (`sessionIncarnation`), recorded by the dispatch seam at the child's birth.
@@ -178,7 +187,6 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
-  // FIX-2942; BP-030.
   /**
    * The kind of the principal this request runs as, as its door set it
    * (`context/principal.ts`). A run started from this record (a continuation,
@@ -1723,7 +1731,74 @@ export interface ResourceStateStore {
    * scanning, with the same result.
    */
   indexes?: ResourceStateIndexes;
+
+  /**
+   * One collection's live rows across every session one owner has, a page at
+   * a time ({@link AcrossSessionsQuery}). Absent on a store built without the
+   * session store it joins to: the engine then refuses the read.
+   */
+  listAcrossSessions?(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]>;
 }
+
+/**
+ * The owner a read across sessions is scoped to: the same user, tenant and
+ * organization, each exact, absent matching only absent.
+ */
+export type AcrossSessionsOwner = {
+  userId: string;
+  tenantId: string | undefined;
+  orgId: string | undefined;
+};
+
+/**
+ * One page of {@link ResourceStateStore.listAcrossSessions}: the live
+ * session-scoped rows under `keyPrefix` in every session `owner` holds (any
+ * parentage), ordered by the session's storage key, then the row's key, both
+ * in byte (code-point) order. Rows strictly after `after`, at most `limit`.
+ *
+ * A SQL store answers it in one statement joined to the sessions table on the
+ * full owner; a store that keeps records in JavaScript walks the owner's
+ * sessions. Rows are a superset: the engine checks each against the
+ * collection's pattern, the owner's per-row admission and, for an `index`
+ * filter, the declared index, after the read.
+ */
+export type AcrossSessionsQuery = {
+  owner: AcrossSessionsOwner;
+  /** The collection's storage prefix: `""` or ending in `/`. */
+  keyPrefix: string;
+  /** Only the row at this exact key in each session. */
+  key?: string;
+  /**
+   * Only rows with an entry of `value` for the stored index `index` of
+   * `collection`, plus every row of a session whose index is not built there
+   * (a store without index verbs ignores it and answers every row).
+   */
+  index?: { collection: string; index: string; value: string };
+  /** The last row of the previous page, by session storage key and row key. */
+  after?: { sessionKey: string; key: string };
+  limit: number;
+};
+
+/** One row {@link ResourceStateStore.listAcrossSessions} answers. */
+export type AcrossSessionsStoredRow = {
+  /** The session's storage key (`resolveSessionStorageKey`). */
+  sessionKey: string;
+  /**
+   * The session's owner and flow, as its record holds them, read in the same
+   * statement: what the engine's per-row admission judges, so a page costs no
+   * session read of its own.
+   */
+  session: Pick<SessionRecord, "flowKind" | "flowId" | "userId" | "orgId" | "tenantId">;
+  key: string;
+  state: JsonObject;
+  version: number;
+  /**
+   * With an `index` filter, on a store with index verbs: whether the row's
+   * session has that index built, read in the same statement. The engine
+   * builds a session's index the first time a read meets it unbuilt.
+   */
+  indexBuilt?: boolean;
+};
 
 // FIX-401; FIX-141; see FIX-401 spec.
 /**
@@ -1871,9 +1946,10 @@ export interface LeaseStore {
 
 // FIX-2078 D1.
 /**
- * Where a wake is kept: one per session and internal entry.
+ * Where a wake is kept: one per session, internal entry and resolver identity.
  * `tenantId` is part of the key, so two tenants' sessions under one id never
- * share a wake.
+ * share a wake; so is `resolvedBy`, so writers under two resolvers never
+ * share one either, and a wake's resolver never changes while it is kept.
  */
 export type WakeKey = {
   readonly tenantId?: string;
@@ -1881,6 +1957,14 @@ export type WakeKey = {
   readonly sessionId: string;
   /** The internal entry the wake dispatches in that session. */
   readonly entry: string;
+  /**
+   * The resolver identity that produced the writer's principal
+   * (`Principal.resolvedBy`), which the woken run carries, so it reaches the
+   * own-resolver sessions that resolver admits. Absent is a key value of its
+   * own: the wake of writers that hold none (and every wake stored before the
+   * field), whose run admits no own-resolver session.
+   */
+  readonly resolvedBy?: string;
 };
 
 /** What a writer owes a wake: the key, its owner and its due time, all server-written. */
@@ -1920,8 +2004,9 @@ export type WakeRecord = WakeInput & {
  * written before it still type-checks and loads, and a host whose stores keep
  * no wakes logs once and pays debts on its fast paths only.
  *
- * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
- *   time and the LATER `landBy`, and bumping the version.
+ * - {@link owe} writes or coalesces: one wake per key (resolver identity
+ *   included), keeping the EARLIER due time and the LATER `landBy`, and
+ *   bumping the version.
  * - {@link move} and {@link clear} are conditional on the version a pass read,
  *   so a wake written during the pass survives it. Neither bumps the version.
  */

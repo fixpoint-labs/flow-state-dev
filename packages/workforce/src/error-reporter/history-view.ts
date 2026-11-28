@@ -18,9 +18,9 @@ import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import type { ProjectedResourceContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { HISTORY_RETENTION_DAYS, utcDay, type HistoryEntry } from "./history";
+import { HISTORY_RETENTION_DAYS, historyEntrySince, utcDay, type HistoryEntry } from "./history";
 import type { ErrorReporter } from "./reporter";
-import { statusInWords, type HistoryRead, type ReportResourceState } from "./reports";
+import { statusInWords, type EarlierReport, type HistoryRead, type ReportResourceState } from "./reports";
 
 /** The accessor a flow declares the history view under. */
 export const ERROR_HISTORY_RESOURCE = "errorHistory";
@@ -170,6 +170,31 @@ const entryView = (e: HistoryEntry, withIssue: boolean): z.infer<typeof entryVie
 type InboxLinkOf = (reportId: string) => string | undefined;
 
 /**
+ * Which report under one id an entry belongs to: the current one, or an
+ * earlier one a repeat after it replaced. `summary` is what that earlier
+ * report was, when the current report kept it.
+ */
+type Lifetime = { readonly current: true } | { readonly current: false; readonly key: string; readonly summary?: EarlierReport };
+
+/**
+ * The report an entry belongs to. By the first sighting it names; an entry
+ * that names none is the current report's from its first sighting on, and
+ * before it the earlier report that had started by then, of those the report
+ * kept or the day's entries name (`known`, sorted, oldest first). With none
+ * started by then, it is a late occurrence of the current report.
+ */
+function lifetimeOf(entry: HistoryEntry, since: number | undefined, report: ReportResourceState, known: readonly number[]): Lifetime {
+  if (since === undefined ? entry.at >= report.firstSeenAt : since === report.firstSeenAt) return { current: true };
+  const earlier = report.earlier ?? [];
+  const started = since ?? known.filter((s) => s <= entry.at).at(-1);
+  // Nothing says an earlier report had started: a late occurrence of the current one (a storm's, an older entry's).
+  if (started === undefined) return { current: true };
+  const summary = earlier.find((e) => e.since === started);
+  const key = String(started);
+  return summary === undefined ? { current: false, key } : { current: false, key, summary };
+}
+
+/**
  * One day's records the viewer may read. An occurrence entry is the
  * viewer's when its user is; a status entry belongs to the report, and shows
  * to anyone the report shows to. One fingerprint can hold several users'
@@ -177,32 +202,59 @@ type InboxLinkOf = (reportId: string) => string | undefined;
  * title, error, count and times are theirs, and it carries none of what comes
  * from every user's failures (the drafted title, the report's count, its
  * issue, the hours' cut).
+ *
+ * A failure back after its report's issue closed starts a new report under
+ * the same id. A day's entries of an earlier report make their own record,
+ * with that report's title, status, count and issue as it kept them; an
+ * earlier report the current one did not keep shows what its entries say.
  */
 function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: InboxLinkOf): ErrorHistoryRecord[] {
   if (viewer.kind === "none") return [];
   const hours = read.hours.filter((hour) => hour.hour.startsWith(`${day}-`));
   const cut = hours.reduce((sum, hour) => sum + hour.cut, 0);
-  const byReport = new Map<string, HistoryEntry[]>();
-  for (const entry of hours.flatMap((hour) => hour.entries)) {
+  const dayEntries = hours.flatMap((hour) => hour.entries);
+  const reports = new Map(read.reports.map((r) => [r.id, r]));
+  // The first sightings each report's earlier reports started at, kept or named that day: sorted once per day.
+  const named = new Map<string, Set<number>>();
+  for (const e of dayEntries) {
+    const since = e.reportId === undefined ? undefined : historyEntrySince(e, e.reportId);
+    if (since === undefined) continue;
+    const seen = named.get(e.reportId!);
+    if (seen === undefined) named.set(e.reportId!, new Set([since]));
+    else seen.add(since);
+  }
+  const knownCache = new Map<string, number[]>();
+  const knownOf = (report: ReportResourceState): number[] => {
+    let known = knownCache.get(report.id);
+    if (known === undefined) {
+      known = [...new Set([...(report.earlier ?? []).map((e) => e.since), ...(named.get(report.id) ?? [])])].sort((x, y) => x - y);
+      knownCache.set(report.id, known);
+    }
+    return known;
+  };
+  const groups = new Map<string, { report: ReportResourceState; lifetime: Lifetime; entries: HistoryEntry[] }>();
+  for (const entry of dayEntries) {
     const reportId = entry.reportId ?? (entry.taskId === undefined ? undefined : read.tasks[entry.taskId]);
-    if (reportId === undefined) continue;
-    const grouped = byReport.get(reportId);
-    if (grouped === undefined) byReport.set(reportId, [entry]);
-    else grouped.push(entry);
+    const report = reportId === undefined ? undefined : reports.get(reportId);
+    if (report === undefined) continue;
+    // A held request goes with the report its task's mapping names; an older mapping names none, and it goes with the current report.
+    const since = entry.reportId === undefined ? (read.taskSince[entry.taskId!] ?? report.firstSeenAt) : historyEntrySince(entry, report.id);
+    const lifetime = lifetimeOf(entry, since, report, knownOf(report));
+    const groupKey = lifetime.current ? report.id : `${report.id}@${lifetime.key}`;
+    const grouped = groups.get(groupKey);
+    if (grouped === undefined) groups.set(groupKey, { report, lifetime, entries: [entry] });
+    else grouped.entries.push(entry);
   }
   const records: ErrorHistoryRecord[] = [];
-  for (const [reportId, entries] of byReport) {
-    const report = read.reports.find((r) => r.id === reportId);
-    if (report === undefined) continue;
+  for (const { report, lifetime, entries } of groups.values()) {
     let visible = entries;
     if (viewer.kind === "user") {
       const own = (e: { userId?: string }) => e.userId === viewer.userId;
       // The report's own list of users outlives the entries an hour's cap cut and the occurrences it no longer keeps.
+      // An earlier report kept no such list: only the user's own entries that day admit them.
       const admitted =
-        (report.userIds ?? []).includes(viewer.userId) ||
         entries.some((e) => e.kind === "occurrence" && own(e)) ||
-        report.occurrences.some(own) ||
-        (report.heldRequests ?? []).some(own);
+        (lifetime.current && ((report.userIds ?? []).includes(viewer.userId) || report.occurrences.some(own) || (report.heldRequests ?? []).some(own)));
       if (!admitted) continue;
       visible = entries.filter((e) => e.kind === "status" || own(e));
     }
@@ -210,38 +262,54 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: Inbo
     const ownTaskIds = visible.flatMap((e) => (e.taskId === undefined ? [] : [e.taskId]));
     const newestFirst = [...visible].sort((a, b) => b.at - a.at);
     const entriesShown = newestFirst.slice(0, RECORD_ENTRIES).map((e) => entryView(e, viewer.kind === "operator"));
+    const occurrences = newestFirst.filter((e) => e.kind === "occurrence");
+    // A record's path is read back by its hash: an earlier report's is its own, so it never answers for the current one.
+    const refId = lifetime.current ? report.id : `${report.id}@${lifetime.key}`;
+    const summary = lifetime.current ? undefined : lifetime.summary;
+    // What an earlier report the current one did not keep last said of itself that day.
+    const lastStatus = newestFirst.find((e) => e.kind === "status");
+    const status = lifetime.current
+      ? statusInWords(report)
+      : summary !== undefined
+        ? statusInWords(summary)
+        : lastStatus !== undefined
+          ? statusInWords({ status: lastStatus.status as ReportResourceState["status"], issue: lastStatus.issue })
+          : "reported again since";
     if (viewer.kind === "operator") {
-      const title = titleFrom(report.draft?.title ?? report.parts.message);
+      const title = lifetime.current
+        ? titleFrom(report.draft?.title ?? report.parts.message)
+        : titleFrom(summary?.title ?? occurrences[0]?.message ?? report.parts.message);
+      const error = lifetime.current ? report.parts.message : (summary?.error ?? occurrences[0]?.message ?? report.parts.message);
+      const issue = lifetime.current ? report.issue : summary !== undefined ? summary.issue : newestFirst.find((e) => e.issue !== undefined)?.issue;
       records.push({
         day,
-        ref: refOf(title, report.id),
+        ref: refOf(title, refId),
         title,
-        error: (report.parts.message.split("\n")[0] ?? "").slice(0, 200),
-        status: statusInWords(report),
+        error: (error.split("\n")[0] ?? "").slice(0, 200),
+        status,
         source: report.source,
-        count: report.count,
-        firstSeen: new Date(report.firstSeenAt).toISOString(),
-        lastSeen: new Date(report.lastSeenAt).toISOString(),
-        taskIds: [...new Set([...report.occurrences.flatMap((o) => (o.taskId === undefined ? [] : [o.taskId])), ...ownTaskIds])],
-        issue: report.issue === undefined ? null : { identifier: report.issue.identifier ?? null, url: report.issue.url },
-        inbox: report.status === "previewing" ? (inboxOf(report.id) ?? null) : null,
+        count: lifetime.current ? report.count : (summary?.count ?? occurrences.length),
+        firstSeen: new Date(lifetime.current ? report.firstSeenAt : (summary?.since ?? newestFirst.at(-1)!.at)).toISOString(),
+        lastSeen: new Date(lifetime.current ? report.lastSeenAt : (summary?.lastSeenAt ?? newestFirst[0]!.at)).toISOString(),
+        taskIds: [...new Set([...(lifetime.current ? report.occurrences.flatMap((o) => (o.taskId === undefined ? [] : [o.taskId])) : []), ...ownTaskIds])],
+        issue: issue === undefined ? null : { identifier: issue.identifier ?? null, url: issue.url },
+        inbox: lifetime.current && report.status === "previewing" ? (inboxOf(report.id) ?? null) : null,
         entries: entriesShown,
         cut
       });
       continue;
     }
     // The user's own occurrences that day, newest first: what their record is made of.
-    const own = newestFirst.filter((e) => e.kind === "occurrence");
-    const timed = own.length > 0 ? own : newestFirst;
-    const title = titleFrom(own[0]?.message);
+    const timed = occurrences.length > 0 ? occurrences : newestFirst;
+    const title = titleFrom(occurrences[0]?.message);
     records.push({
       day,
-      ref: refOf(title, report.id),
+      ref: refOf(title, refId),
       title,
-      error: (own[0]?.message?.split("\n")[0] ?? "").slice(0, 200),
-      status: statusInWords(report),
+      error: (occurrences[0]?.message?.split("\n")[0] ?? "").slice(0, 200),
+      status,
       source: report.source,
-      count: own.length,
+      count: occurrences.length,
       firstSeen: new Date(timed.at(-1)!.at).toISOString(),
       lastSeen: new Date(timed[0]!.at).toISOString(),
       taskIds: [...new Set(ownTaskIds)],

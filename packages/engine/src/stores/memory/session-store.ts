@@ -21,7 +21,7 @@ import {
   matchesTenantFilter
 } from "../scope-keys";
 import { compareSessionsForListing } from "../list-order";
-import { withStoredPrincipalKind } from "../shared";
+import { withWriteOnceSessionFields } from "../shared";
 
 export class InMemorySessionStore implements SessionStore {
   private readonly records = new Map<string, SessionRecord>();
@@ -36,7 +36,7 @@ export class InMemorySessionStore implements SessionStore {
     value: SessionRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<SessionRecord>> {
-    return casWriteToMap(this.records, id, withStoredPrincipalKind(value, this.records.get(id)), expectedVersion);
+    return casWriteToMap(this.records, id, withWriteOnceSessionFields(value, this.records.get(id)), expectedVersion);
   }
 
   async patchField(

@@ -733,6 +733,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           hostResolver,
           tenantId,
           state: push,
+          callerFor,
           ...(principal !== undefined ? { principal } : {}),
           anonymous: anonymousFlowIds !== undefined
         });

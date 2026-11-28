@@ -30,7 +30,7 @@ describe("a task's ending", () => {
     const opened: string[] = [];
     drawLines(linesOf([result("r", "q1", { taskId: "task_y", from: WRITER, title: "Draft the post", text: "writer finished: Draft the post", ending: "completed" })]), { openTask: (id) => void opened.push(id), nameOf: () => "writer" });
     const line = screen.getByRole("button", { name: "writer finished: Draft the post" });
-    expect(line.getAttribute("data-status")).toBe("done");
+    expect(line.closest("[data-line=result]")?.getAttribute("data-status")).toBe("done");
     fireEvent.click(line);
     expect(opened).toEqual(["task_y"]);
   });
@@ -40,8 +40,8 @@ describe("a task's ending", () => {
       result("a", "q1", { taskId: "task_x", from: CODER, title: "Fix it", text: "…", ending: "errored" }),
       result("b", "q1", { taskId: "task_c", from: CODER, title: "Tidy", text: "…", ending: "cancelled" }),
     ]), { ...linesNames((id) => id, (id) => lookOf({ id, name: id }), (id) => id === CODER), openTask: () => undefined });
-    expect(screen.getByRole("button", { name: "Coding task couldn't finish: Fix it" }).getAttribute("data-status")).toBe("failed");
-    expect(screen.getByRole("button", { name: "Coding task was cancelled: Tidy" }).getAttribute("data-status")).toBe("cancelled");
+    expect(screen.getByRole("button", { name: "Coding task couldn't finish: Fix it" }).closest("[data-line=result]")?.getAttribute("data-status")).toBe("failed");
+    expect(screen.getByRole("button", { name: "Coding task was cancelled: Tidy" }).closest("[data-line=result]")?.getAttribute("data-status")).toBe("cancelled");
   });
 });
 

@@ -157,7 +157,7 @@ function isOpen(row: OpenTask): boolean {
 
 /** Hold one open task. */
 export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
-  const { client, refresh } = useLab();
+  const { client } = useLab();
   const sessions = useSessions().list;
   const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
@@ -298,7 +298,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     setRowRetries((n) => n + 1);
     if (holderFlowFailed) setFlowReads((n) => n + 1);
   }, [holderFlowFailed]);
-  // The task's Retry is the board's own; the row and the Lab are read again either way.
+  // The task's Retry is the board's own; the row is read again either way, and the views on screen keep themselves current.
   const retryTask = useMemo(
     () =>
       board === undefined
@@ -308,10 +308,9 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
               await board.retry(taskId);
             } finally {
               readTaskAgain();
-              void refresh();
             }
           },
-    [board, taskId, readTaskAgain, refresh],
+    [board, taskId, readTaskAgain],
   );
 
   const [sent, setSent] = useState<string[]>([]);
