@@ -66,7 +66,6 @@ const DECL_RENAMES: readonly DeclRename[] = [
   { file: "packages/orchestration/src/tasks/collection/types.ts", from: "holds", to: "questions", near: "readonly holds?: readonly string[]" },
   { file: "packages/orchestration/src/tasks/collection/types.ts", from: "waitingOn", to: "keptOpenBy", near: "TaskWaitingOn | null" },
   { file: "packages/devtool/src/react/lib/task-collection-state.ts", from: "holds", to: "questions" },
-  { file: "packages/shift-manager/src/lib/reads.ts", from: "holds", to: "questions", near: "holds: TaskHold[]" },
   { file: "packages/workforce/src/messages/midway-question.ts", from: "holds", to: "questions", near: "readonly RowHold[]" },
   { file: "packages/workforce/src/conversation-board/backfill-wakes.ts", from: "waitingOn", to: "keptOpenBy" },
 ];

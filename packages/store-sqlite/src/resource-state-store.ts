@@ -34,10 +34,13 @@ import type Database from "better-sqlite3";
 import {
   assertDeleteExpectedVersion,
   assertSetExpectedVersion,
+  keyPrefixSuccessor,
   resourceStateConflict
 } from "@flow-state-dev/core/helpers";
 import { matchesPattern, type JsonObject } from "@flow-state-dev/core/types";
 import type {
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
   ResourceIndexBuildEntry,
   ResourceIndexBuildStatus,
   ResourceIndexEntry,
@@ -133,6 +136,43 @@ export function createSQLiteResourceStateStore(
   const purgeTombstonesStmt = db.prepare(
     "DELETE FROM resource_state WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'"
   );
+
+  // --- the read across an owner's sessions ---------------------------------
+  // One statement per page: the owner's sessions (`idx_sessions_owner`),
+  // walked in id order with CROSS JOIN fixing them as the outer loop, each
+  // one's rows read by the primary key's range on the collection's prefix, so
+  // rows come in (session, key) order and the LIMIT stops the walk.
+  const acrossStatements = new Map<string, Database.Statement>();
+  const acrossStatement = (shape: { bounded: boolean; key: boolean; index: boolean; after: boolean }): Database.Statement => {
+    const id = JSON.stringify(shape);
+    let statement = acrossStatements.get(id);
+    if (statement === undefined) {
+      statement = db.prepare(
+        "SELECT s.id AS sessionKey, s.flow_kind AS flowKind, s.flow_id AS flowId, s.user_id AS userId, " +
+          "s.org_id AS orgId, s.tenant_id AS tenantId, rs.resource_key AS key, rs.state AS state, rs.version AS version" +
+          (shape.index
+            ? ", EXISTS (SELECT 1 FROM resource_index_built b WHERE b.scope_type = 'session' AND b.scope_id = rs.scope_id " +
+              "AND b.collection = ? AND b.index_name = ? AND b.status = 'built') AS indexBuilt "
+            : " ") +
+          "FROM sessions s CROSS JOIN resource_state rs " +
+          "WHERE s.user_id = ? AND s.tenant_id IS ? AND s.org_id IS ? " +
+          "AND rs.scope_type = 'session' AND rs.scope_id = s.id AND rs.lifecycle = 'live' " +
+          "AND rs.resource_key >= ? " +
+          (shape.bounded ? "AND rs.resource_key < ? " : "") +
+          (shape.key ? "AND rs.resource_key = ? " : "") +
+          (shape.index
+            ? "AND (EXISTS (SELECT 1 FROM resource_index ri WHERE ri.scope_type = 'session' AND ri.scope_id = rs.scope_id " +
+              "AND ri.collection = ? AND ri.index_name = ? AND ri.value = ? AND ri.resource_key = rs.resource_key) " +
+              "OR NOT EXISTS (SELECT 1 FROM resource_index_built b WHERE b.scope_type = 'session' AND b.scope_id = rs.scope_id " +
+              "AND b.collection = ? AND b.index_name = ? AND b.status = 'built')) "
+            : "") +
+          (shape.after ? "AND s.id >= ? AND (s.id > ? OR rs.resource_key > ?) " : "") +
+          "ORDER BY s.id, rs.resource_key LIMIT ?"
+      );
+      acrossStatements.set(id, statement);
+    }
+    return statement;
+  };
 
   // --- index upkeep --------------------------------------------------------
   const deleteKeyEntriesStmt = db.prepare(
@@ -504,6 +544,55 @@ export function createSQLiteResourceStateStore(
         };
       }
       return result;
+    },
+
+    async listAcrossSessions(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]> {
+      if (query.limit <= 0) return [];
+      const successor = keyPrefixSuccessor(query.keyPrefix);
+      const { index, after } = query;
+      const statement = acrossStatement({
+        bounded: successor !== null,
+        key: query.key !== undefined,
+        index: index !== undefined,
+        after: after !== undefined
+      });
+      const rows = statement.all(
+        ...(index !== undefined ? [index.collection, index.index] : []),
+        query.owner.userId,
+        query.owner.tenantId ?? null,
+        query.owner.orgId ?? null,
+        query.keyPrefix,
+        ...(successor !== null ? [successor] : []),
+        ...(query.key !== undefined ? [query.key] : []),
+        ...(index !== undefined ? [index.collection, index.index, index.value, index.collection, index.index] : []),
+        ...(after !== undefined ? [after.sessionKey, after.sessionKey, after.key] : []),
+        query.limit
+      ) as Array<{
+        sessionKey: string;
+        flowKind: string;
+        flowId: string | null;
+        userId: string;
+        orgId: string | null;
+        tenantId: string | null;
+        key: string;
+        state: string;
+        version: number;
+        indexBuilt?: number;
+      }>;
+      return rows.map((row) => ({
+        sessionKey: row.sessionKey,
+        session: {
+          flowKind: row.flowKind,
+          ...(row.flowId !== null ? { flowId: row.flowId } : {}),
+          userId: row.userId,
+          ...(row.orgId !== null ? { orgId: row.orgId } : {}),
+          ...(row.tenantId !== null ? { tenantId: row.tenantId } : {})
+        },
+        key: row.key,
+        state: JSON.parse(row.state) as JsonObject,
+        version: row.version,
+        ...(row.indexBuilt !== undefined ? { indexBuilt: row.indexBuilt === 1 } : {})
+      }));
     },
 
     async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {

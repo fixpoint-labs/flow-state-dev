@@ -958,6 +958,41 @@ describe("defineFlow", () => {
       ).toThrow(/sharedToLineage/);
     });
 
+    // `ctx.resources.at` is the registry's own verb: a resource under that
+    // accessor would be shadowed by it and silently unreachable by property.
+    it("reserves the `at` accessor", () => {
+      const notes = defineResourceCollection({ pattern: "notes/*", scope: "session", stateSchema: z.object({}) });
+      expect(() => defineFlow({ kind: "reserved-at", actions: {}, resources: { at: notes } })({ id: "reserved-at" })).toThrow(
+        /Resource accessor "at" in flow "reserved-at" is reserved/
+      );
+    });
+
+    // `ctx.resources.acrossSessions()` is the registry's own verb too.
+    it("reserves the `acrossSessions` accessor", () => {
+      const notes = defineResourceCollection({ pattern: "notes/*", scope: "session", stateSchema: z.object({}) });
+      expect(() =>
+        defineFlow({ kind: "reserved-across", actions: {}, resources: { acrossSessions: notes } })({ id: "reserved-across" })
+      ).toThrow(/Resource accessor "acrossSessions" in flow "reserved-across" is reserved/);
+    });
+
+    // A key two wakeEntry collections both match would wake one of the two
+    // entries, picked by declaration order.
+    it("rejects two collections whose patterns overlap and name different wake entries", () => {
+      const entrySchema = z.object({});
+      const inbox = defineResourceCollection({ pattern: "inbox/*", scope: "session", stateSchema: entrySchema, wakeEntry: "inboxChanged" });
+      const deep = defineResourceCollection({ pattern: "inbox/**", scope: "session", stateSchema: entrySchema, wakeEntry: "deepChanged" });
+      const byTopic = defineResourceCollection({ pattern: "[topic]/x", scope: "session", stateSchema: entrySchema, wakeEntry: "topicChanged" });
+      const outbox = defineResourceCollection({ pattern: "outbox/*", scope: "session", stateSchema: entrySchema, wakeEntry: "outboxChanged" });
+      const sameEntry = defineResourceCollection({ pattern: "inbox/**", scope: "session", stateSchema: entrySchema, wakeEntry: "inboxChanged" });
+      const build = (resources: Record<string, unknown>) => () =>
+        defineFlow({ kind: "wake-overlap", actions: {}, resources: resources as never })({ id: "wake-overlap" });
+      expect(build({ inbox, deep })).toThrow(/"inbox" \(inbox\/\*\) and "deep" \(inbox\/\*\*\).*"inboxChanged".*"deepChanged"/);
+      // `inbox/x` matches both.
+      expect(build({ inbox, byTopic })).toThrow(/overlap/);
+      expect(build({ inbox, outbox })).not.toThrow();
+      expect(build({ inbox, sameEntry })).not.toThrow();
+    });
+
     // FIX-1068: `defineResource` guards this too, but a resource can reach a
     // flow without passing through it, so the flow-build check has to stand on
     // its own — otherwise a user-scoped resource carrying the flag would build

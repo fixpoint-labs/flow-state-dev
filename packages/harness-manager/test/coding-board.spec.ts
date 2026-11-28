@@ -260,3 +260,16 @@ describe("the coding board view, for one open task", () => {
     expect((await read())[0]).toMatchObject({ status: "completed", error: null });
   });
 });
+
+// FIX-2796: a review card opens a changed file's diff in place, with no pull request to link to,
+// by calling this view in the run's session. The coder flow must serve it there.
+describe("the run changes view", () => {
+  it("is served on a coding run's session, reading the task that session ran", async () => {
+    const { post } = await boot();
+    const created = await post(["coder", "sessions"], { userId: "alice", state: { workerId: "core.codex" } });
+    const session = created.body.session.id as string;
+    const answer = await post(["coder", session, "views", "changes"], { userId: "alice", input: { path: "src/a.ts" } });
+    // The view ran and looked for the session's task: this session ran none, so it says so, rather than the flow having no such view.
+    expect(JSON.stringify(answer.body)).toContain("This session ran no coding task");
+  });
+});

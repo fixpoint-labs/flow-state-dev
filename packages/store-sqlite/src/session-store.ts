@@ -10,9 +10,10 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
   return createSQLiteRecordStore<SessionRecord, SessionListOptions>(db, {
     tableName: "sessions",
     columns: ["flow_kind", "flow_id", "user_id", "org_id", "tenant_id", "parent_session_id"],
-    // FIX-2942: a session's creator kind is written once (at birth, or a backfill
-    // for a session from before the field) and kept by every later `set`.
-    writeOnceJsonKeys: ["principalKind"],
+    // A session's creator kind and its incarnation token are written
+    // once (at birth, or a kind's backfill for a session from before the
+    // field) and kept by every later `set`.
+    writeOnceJsonKeys: ["principalKind", "incarnationToken"],
     toRow: (record) => [
       record.flowKind,
       record.flowId ?? null,

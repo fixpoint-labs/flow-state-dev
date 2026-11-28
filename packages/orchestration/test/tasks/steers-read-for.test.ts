@@ -1,9 +1,10 @@
-// FIX-2795.
+// FIX-2795; FIX-2899.
 /**
- * Which steers a stopped request gives back: the ones its own read took, named
- * by the read's `takenIn`. Matched on a whole `:`-separated segment, never a
- * substring, so a stop of one request never gives back a steer another one
- * (whose id it is a prefix of) is answering.
+ * Which steers a stopped request gives back: the ones its own read took, as
+ * the take recorded (`takenFor`). A steer taken before that was recorded is
+ * matched on its read's `takenIn` (BP-030): a whole `:`-separated segment,
+ * never a substring, so a stop of one request never gives back a steer another
+ * one (whose id it is a prefix of) is answering.
  */
 import { describe, expect, it } from "vitest";
 import { readFor, untakenBy } from "../../src/tasks/steers";
@@ -31,7 +32,18 @@ describe("a read's owner", () => {
 });
 
 describe("the steers a stopped request gives back", () => {
-  it("are only the ones its own read took: another request's steer stays taken", () => {
+  it("are the ones the take recorded for it, whatever the read's name says", () => {
+    const took = (id: string, takenIn: string, takenFor: string) => ({ ...steer(id, takenIn), takenFor });
+    const task = { attempts: 1, steers: [took("a", "turn-1", "req_1"), took("b", "step:req_1", "req_2")] };
+    const back = untakenBy(task as never, "req_1") as typeof task;
+    expect(back.steers.map((s) => [s.id, "takenBy" in s ? s.takenBy : undefined, "takenFor" in s])).toEqual([
+      ["a", undefined, false],
+      ["b", 1, true],
+    ]);
+  });
+
+
+  it("taken before the request was recorded, are only the ones its own read names: another request's steer stays taken", () => {
     const task = { attempts: 1, steers: [steer("a", "step:req_1"), steer("b", "step:req_10"), steer("c", undefined)] };
     const back = untakenBy(task as never, "req_1") as typeof task;
     expect(back.steers.map((s) => [s.id, "takenBy" in s ? s.takenBy : undefined])).toEqual([
