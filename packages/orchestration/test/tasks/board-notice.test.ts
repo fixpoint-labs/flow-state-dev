@@ -189,7 +189,7 @@ describe("every write to the ledger publishes the board notice naming its task",
         })
     ],
     ["steer", (b) => b.steer!("a", { message: "go left", from: "user" } as never)],
-    ["takeSteers", (b) => b.takeSteers!("a", { claim: ticketForClaim(BOARD, b.get("a")!), takenIn: "turn-1" })],
+    ["takeSteers", (b) => b.takeSteers!("a", { claim: ticketForClaim(BOARD, b.get("a")!), takenIn: "turn-1", requestId: "req_1" })],
     ["complete", (b) => b.complete("a", { done: true }, { claim: ticketForClaim(BOARD, b.get("a")!) })],
     ["claim and fail", async (b) => {
       const claimed = (await b.claim("w", { eligibility: (t) => t.id === "b" }))!;

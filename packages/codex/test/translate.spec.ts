@@ -205,7 +205,7 @@ describe("translateCodexEvent — items", () => {
         type: "item.completed",
         item: { id: "i5", type: "todo_list", items: [{ text: "step", completed: false }] },
       }).map((e) => e.kind),
-    ).toEqual(["tool_call", "tool_result"]);
+    ).toEqual(["tool_call", "tool_result", "plan_list"]);
   });
 
   it("the non-fatal error item is a kept notice, not an error: it is a warning and the run goes on", () => {

@@ -31,6 +31,8 @@ import {
   isStrictlyInside,
   releaseCheckout,
   taskIssueSegment,
+  runIssueSegment,
+  followUpRootId,
 } from "../src/workspace";
 import { localRepoWorkspaceHost, WorkspaceRefusedError } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
@@ -1820,6 +1822,34 @@ describe("a board-minted task id standing in for the issue", () => {
     ids.push(encoded);
     const segments = ids.map(taskIssueSegment);
     expect(new Set(segments).size).toBe(ids.length);
+  });
+});
+
+describe("the task a follow-up's run continues", () => {
+  const board = new Map<string, { followUpOf?: string }>([
+    ["root", {}],
+    ["more", { followUpOf: "root" }],
+    ["again", { followUpOf: "more" }],
+    ["loop-a", { followUpOf: "loop-b" }],
+    ["loop-b", { followUpOf: "loop-a" }],
+  ]);
+  const lookup = (id: string) => board.get(id);
+
+  it("is the task itself when it follows up nothing, so its run keeps the key of its own id", () => {
+    expect(followUpRootId({ id: "root" }, lookup)).toBe("root");
+    const routed = "routed:req_01J9.x%2Fy:0:eng.coder";
+    expect(runIssueSegment({ id: routed }, lookup)).toBe(taskIssueSegment(routed));
+  });
+
+  it("is the root of the chain, for a follow-up and a follow-up of a follow-up", () => {
+    expect(followUpRootId({ id: "more", followUpOf: "root" }, lookup)).toBe("root");
+    expect(followUpRootId({ id: "again", followUpOf: "more" }, lookup)).toBe("root");
+    expect(runIssueSegment({ id: "again", followUpOf: "more" }, lookup)).toBe("root");
+  });
+
+  it("ends on the id a link names when its task is gone, and on a loop without walking forever", () => {
+    expect(followUpRootId({ id: "orphan", followUpOf: "pruned" }, lookup)).toBe("pruned");
+    expect(followUpRootId({ id: "loop-a", followUpOf: "loop-b" }, lookup)).toBe("loop-b");
   });
 });
 

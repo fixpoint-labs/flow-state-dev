@@ -259,6 +259,22 @@ export function toolOutcome(toolName: string, output: unknown): ToolOutcome {
   return "ok";
 }
 
+const PLAN_LIST_TOOLS = new Set(["todo_list", "updatetodos"]);
+
+function planItemCount(record: Fields): number | undefined {
+  const items = record.items ?? record.todos;
+  return Array.isArray(items) ? items.length : undefined;
+}
+
+/** Names a whole-list harness plan update, not the wire tool name. */
+function planToolSubject(toolName: string, args: unknown): ToolSubject | undefined {
+  const lower = toolName.toLowerCase();
+  if (!PLAN_LIST_TOOLS.has(lower)) return undefined;
+  const count = planItemCount(asFields(args));
+  if (count === undefined) return { text: "Update the plan", code: false };
+  return { text: count === 0 ? "Clear the plan" : `Update the plan (${count} steps)`, code: false };
+}
+
 /**
  * Names what a call did, so a run of calls to one tool reads as distinct steps:
  * the command a shell ran, the file a read opened, the pattern a grep sought.
@@ -276,6 +292,8 @@ export function toolSubject(toolName: string, args: unknown, output?: unknown): 
     const result = output === undefined || output === null ? undefined : asFields(output);
     return { text: clip(work(asFields(args), result)), code: false };
   }
+  const plan = planToolSubject(toolName, args);
+  if (plan !== undefined) return plan;
   if (args === null || typeof args !== "object") return undefined;
   const record = args as Record<string, unknown>;
   const lower = toolName.toLowerCase();

@@ -62,7 +62,6 @@ const DECL_RENAMES: readonly DeclRename[] = [
   { file: "packages/orchestration/src/tasks/collection/questions.ts", from: "questions", to: "holds", near: "readonly RowQuestion[]" },
   { file: "packages/orchestration/src/tasks/collection/types.ts", from: "question", to: "hold", near: "question?: SuspensionQuestion" },
   { file: "packages/devtool/src/react/lib/task-collection-state.ts", from: "questions", to: "holds", near: "TaskHoldWire[]" },
-  { file: "packages/shift-manager/src/lib/reads.ts", from: "questions", to: "holds", near: "questions: TaskQuestion[]" },
   { file: "labs/claude-code-style/src/adapter.ts", from: "questions", to: "holds", near: "questions?: TaskQuestion[]" },
 ];
 

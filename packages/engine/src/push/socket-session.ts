@@ -29,6 +29,7 @@ import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-stat
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
 import { boardPartitionKey } from "./partition-key";
+import { changeTopicHears, openOwnerSubscription } from "../bus/owner-topic";
 import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
@@ -67,10 +68,15 @@ export type OpenPushSocketOptions = {
   noticeIds?: NoticeIdScopes;
 };
 
-/** A bus topic as the wire names it: no tenant, and no user or org id. */
+/**
+ * A bus topic as the wire names it: no tenant, and no user or org id. An
+ * owner's change topic is the user topic narrowed to its resource
+ * (`bus/owner-topic.ts`).
+ */
 function toWire(topic: Omit<BusTopic, "resource"> & { resource?: string | undefined }): WireTopic {
   const resource = topic.resource !== undefined ? { resource: topic.resource } : {};
-  return topic.scope === "session" ? { scope: "session", id: topic.id, ...resource } : { scope: topic.scope, ...resource };
+  if (topic.scope === "session") return { scope: "session", id: topic.id, ...resource };
+  return { scope: topic.scope === "owner" ? "user" : topic.scope, ...resource };
 }
 
 /** The key two equal bus topics share. */
@@ -128,7 +134,7 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   // tell an entry's path from a single resource's name (BP-030). A single
   // resource's watchers read once more for it. A subscription narrowed to the
   // resource keeps the path its client named.
-  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope] === false;
+  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope === "owner" ? "user" : scope] === false;
   const hear = (notice: ChangeNotice, subscribed: BusTopic): void => {
     const off = idsOff(notice.topic.scope);
     const bare = off && notice.kind === "resource" && subscribed.resource === undefined;
@@ -153,6 +159,24 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     return boardPartitionKey(secret, tenantId, partition);
   };
 
+  /**
+   * An owner's change topic (`bus/owner-topic.ts`): the bare owner topic on
+   * the bus, each notice matched against the topic's collection pattern by the
+   * key it wrote, and sent on the topic's wire form with no ids, so neither
+   * the key nor the session reaches the browser.
+   */
+  const subscribeChangeTopic = (topic: BusTopic, resource: string, wire: WireTopic): (() => void) =>
+    bus.subscribe(topic, (notice) => {
+      if (notice.kind !== "resync" && !changeTopicHears(resource, notice)) return;
+      // No ids and no origin: a request id could be fetched to tell a session that exists from one that doesn't.
+      send({
+        type: "notice",
+        topic: wire,
+        kind: notice.kind,
+        ...(notice.partition !== undefined ? { partition: partitionKey(notice.topic.tenantId, notice.partition) } : {})
+      });
+    });
+
   const subscribe = (ticket: unknown): void => {
     const secret = options.secret();
     const checked = verifyPushTicket(ticket, secret, userId);
@@ -167,10 +191,17 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     for (const granted of checked.claims.topics) {
       const key = busKey(granted.bus);
       if (subscriptions.has(key)) continue;
+      const change = openOwnerSubscription(granted.bus);
+      // An owner topic the ticket doesn't name in the change topic's shape is
+      // no topic this socket hears (a ticket from before per-instance grants).
+      if (granted.bus.scope === "owner" && change === undefined) continue;
+      const wire = change !== undefined ? ({ scope: "user", resource: change.resource } as WireTopic) : toWire(granted.bus);
       subscriptions.set(key, {
-        wire: toWire(granted.bus),
-        wireKey: wireTopicKey(toWire(granted.bus)),
-        off: bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
+        wire,
+        wireKey: wireTopicKey(wire),
+        off: change !== undefined
+          ? subscribeChangeTopic(change.bus, change.resource, wire)
+          : bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
       });
     }
     // Its topics are heard from here on: a read the client makes once it
