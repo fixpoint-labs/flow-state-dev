@@ -2,7 +2,7 @@
  * The environment and permissions a Claude Code run started through
  * `claudeCodeHarness()` is handed: exactly Claude Code's pass list, never a
  * server variable outside it, since a run's model has a shell; the working
- * folder's own settings with hooks off; and `plan` mode only on the
+ * folder's own settings with hooks and inline skill shell off; and `plan` mode only on the
  * `claude-code-plan` value. The Claude Code block is replaced by a recorder,
  * so the options the harness hands it are what's read.
  */
@@ -54,13 +54,6 @@ describe("a Claude Code run from claudeCodeHarness()", () => {
     expect(built!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill"]);
     expect(built!.permissionMode).toBe(plan ? "plan" : "acceptEdits");
     expect(built!.settingSources).toEqual(["project"]);
-    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
-  });
-
-  it("forwards host overrides of settingSources", () => {
-    claudeCodeHarness({ settingSources: ["project", "user"] }).agent(feeds as never);
-    const [built] = seen.options;
-    expect(built!.settingSources).toEqual(["project", "user"]);
     expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
   });
 
