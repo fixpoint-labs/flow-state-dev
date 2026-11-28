@@ -451,12 +451,20 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       ].sort(),
     );
     // The view's reads: the entries by the project's one prefix, the view's and the sidebar's for the project
-    // on screen, so they come in pairs. No other entry read. The row is the projects read the page holds
-    // (FIX-2775), so nothing reads it by its key; the Lab's own read never lists entries.
-    const workstreamReads = seen.filter((r) => /\/resources\/(org|user)\/workstreams\//.test(r.path));
+    // on screen, so they come in pairs. Each lists the entries once, then checks them once by a manifest of
+    // the same prefix when its push subscription is first heard, since a read before that could miss a change.
+    // Whether that lands before or after the list draws is the socket's timing, so wait for it.
+    // No other entry read. The row is the projects read the page holds (FIX-2775), so nothing reads it by
+    // its key; the Lab's own read never lists entries.
+    const workstreamReads = () => seen.filter((r) => /\/resources\/(org|user)\/workstreams\//.test(r.path));
+    await eventually(async () => (workstreamReads().length >= 4 ? true : undefined), "each workstream reader's connect read");
     const rowReads = seen.filter((r) => /\/resources\/(org|user)\/projects\/\*\/entries\/projects\/apollo\b/.test(r.path));
-    expect(workstreamReads).toHaveLength(2);
-    expect(workstreamReads.map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(workstreamReads.map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+    expect(workstreamReads().map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?")).sort()).toEqual([
+      "?limit=10000&topicPrefix=workstreams/apollo/&manifest=1",
+      "?limit=10000&topicPrefix=workstreams/apollo/&manifest=1",
+      "?limit=200&topicPrefix=workstreams/apollo/",
+      "?limit=200&topicPrefix=workstreams/apollo/",
+    ]);
     expect(rowReads).toEqual([]);
 
     // The Board: one lane per workstream of hers, each read from its own session; Bob's is never read.
@@ -647,8 +655,8 @@ describe("a project view (V8: BR-12, BR-18)", () => {
   });
 
   it("keeps the list on screen when a later read fails, and doesn't swap it for the failure", async () => {
-    // A poll that fails must not blank a list the user is reading; only a first read that fails shows the failure.
-    const { screen } = dom!;
+    // A read again that fails must not blank a list the user is reading; only a first read that fails shows the failure.
+    const { screen, act, fireEvent } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
     await openAs(alice, setup, "checkout");
@@ -665,7 +673,9 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       }
       return real(input, init);
     });
-    await eventually(async () => (failed > 0 ? true : undefined), "a poll that fails", 15_000);
+    // With push heard, nothing reads on a timer: R is the later read, made on demand rather than waited for.
+    act(() => void fireEvent.keyDown(window, { key: "r" }));
+    await eventually(async () => (failed > 0 ? true : undefined), "a read again that fails", 15_000);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(screen.queryByTestId("project-read-failure")).toBeNull();
     expect(screen.getAllByTestId("project-entry").map((li) => li.getAttribute("data-workstream-id"))).toEqual(["checkout"]);
