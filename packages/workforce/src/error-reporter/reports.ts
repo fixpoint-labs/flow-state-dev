@@ -16,7 +16,7 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { fingerprintOf, type FingerprintParts } from "./fingerprint";
-import { appendHistory, HISTORY_MESSAGE_CHARS, historyHourSchema, historyKeysOfDay, statusEntryKey, type HistoryEntry, type HistoryHour } from "./history";
+import { appendHistory, HISTORY_MESSAGE_CHARS, HISTORY_RETENTION_DAYS, historyHourSchema, historyKeysOfDay, statusEntryKey, type HistoryEntry, type HistoryHour } from "./history";
 import { redact } from "./redact";
 
 /** The accessor a flow declares the report rows under. */
@@ -110,6 +110,23 @@ export const CLAIM_LEASE_MS = 30 * 60_000;
 
 const issueSchema = z.object({ url: z.string(), identifier: z.string().optional() });
 
+/** What an earlier report under the same id was when a repeat after it started a new one: what its history days show. */
+const earlierReportSchema = z.object({
+  /** Its first sighting: what its history entries name as `since`. */
+  since: z.number(),
+  lastSeenAt: z.number(),
+  /** Its drafted title, or its error when it had no draft. */
+  title: z.string(),
+  error: z.string(),
+  status: z.enum(REPORT_STATUSES),
+  count: z.number(),
+  issue: issueSchema.optional()
+});
+export type EarlierReport = z.infer<typeof earlierReportSchema>;
+
+/** The earlier reports a report keeps: its history reads at most 90 days back, and so many reopenings in that time are unlikely. */
+const KEPT_EARLIER = 20;
+
 /** One entry of a storm report's list. */
 const stormEntrySchema = z.object({
   fingerprint: z.string(),
@@ -170,6 +187,8 @@ const reportResourceStateSchema = z.object({
   issue: issueSchema.optional(),
   /** The issue an earlier report of this fingerprint filed, closed since. */
   previousIssue: issueSchema.optional(),
+  /** The earlier reports under this id, oldest first, while their history is kept. Absent on older reports. */
+  earlier: z.array(earlierReportSchema).optional(),
   /** A `Don't file` answer: repeats are counted with no new card until then. */
   dismissedUntil: z.number().optional(),
   filedAt: z.number().optional(),
@@ -267,6 +286,8 @@ export interface HistoryRead {
   readonly reports: ReportResourceState[];
   /** A task's report, by task id, for the held entries that name a task and no report. */
   readonly tasks: Record<string, string>;
+  /** That report's first sighting, by task id, where the task's mapping names it. Older mappings don't. */
+  readonly taskSince: Record<string, number>;
 }
 
 /**
@@ -285,9 +306,11 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
   }
   const entries = hours.flatMap((hour) => hour.entries);
   const tasks: Record<string, string> = {};
+  const taskSince: Record<string, number> = {};
   for (const taskId of new Set(entries.filter((e) => e.reportId === undefined && e.taskId !== undefined).map((e) => e.taskId!))) {
-    const mapped = (await reports.getOptional(taskKey(taskId)))?.state as { reportId?: unknown } | undefined;
+    const mapped = (await reports.getOptional(taskKey(taskId)))?.state as { reportId?: unknown; since?: unknown } | undefined;
     if (typeof mapped?.reportId === "string") tasks[taskId] = mapped.reportId;
+    if (typeof mapped?.reportId === "string" && typeof mapped.since === "number") taskSince[taskId] = mapped.since;
   }
   const ids = new Set([...entries.flatMap((e) => (e.reportId === undefined ? [] : [e.reportId])), ...Object.values(tasks)]);
   const found: ReportResourceState[] = [];
@@ -295,7 +318,7 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
     const report = await readReport(reports, id);
     if (report !== undefined) found.push(report);
   }
-  return { hours, reports: found, tasks };
+  return { hours, reports: found, tasks, taskSince };
 }
 
 /**
@@ -399,6 +422,7 @@ export async function updateReport(
           kind: "status",
           key: statusEntryKey(after.id, after.firstSeenAt, after.status, after.issue?.identifier),
           reportId: after.id,
+          since: after.firstSeenAt,
           source: after.source,
           fingerprint: after.fingerprint,
           status: after.status,
@@ -452,7 +476,7 @@ function occurrenceKey(occurrence: Occurrence): string | undefined {
 }
 
 /** An occurrence's history entry: its time, ids, source and the start of its message, with the report it went to. */
-function occurrenceEntry(occurrence: Occurrence, to: { readonly reportId?: string; readonly fingerprint?: string }): HistoryEntry {
+function occurrenceEntry(occurrence: Occurrence, to: { readonly reportId?: string; readonly fingerprint?: string; readonly since?: number }): HistoryEntry {
   const { at: _at, orgId: _orgId, partition: _partition, ...ids } = idsOf(occurrence);
   const message = occurrence.kind === "task" ? occurrence.error : occurrence.kind === "manual" ? occurrence.description : occurrence.message;
   const key = occurrenceKey(occurrence);
@@ -461,6 +485,7 @@ function occurrenceEntry(occurrence: Occurrence, to: { readonly reportId?: strin
     kind: "occurrence",
     ...(key === undefined ? {} : { key }),
     ...(to.reportId === undefined ? {} : { reportId: to.reportId }),
+    ...(to.since === undefined ? {} : { since: to.since }),
     source: occurrence.kind,
     ...(to.fingerprint === undefined ? {} : { fingerprint: to.fingerprint }),
     ...ids,
@@ -553,21 +578,24 @@ export async function intakeOccurrence(
   const key = reportKey(fingerprint);
   const ids = idsOf(occurrence);
   const seenKey = occurrenceKey(occurrence);
+  // The first sighting of the report the occurrence went to, once decided: its history entry names it.
+  let since: number | undefined;
   const decided = await decide();
   // A task's report is where its failed requests are joined: the mapping first, then a fresh read of them.
   if (occurrence.kind === "task" && (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm")) {
-    await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId } as never);
+    // With the report's first sighting, so its held requests on another day go with the same report.
+    await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId, ...(since === undefined ? {} : { since }) } as never);
     if (decided.decision !== "storm") await joinHeld(reports, decided.reportId, await heldOf(reports, occurrence.taskId));
   }
   if (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm") {
-    await appendHistory(reports, occurrenceEntry(occurrence, { reportId: decided.reportId, fingerprint }), options.log);
+    await appendHistory(reports, occurrenceEntry(occurrence, { reportId: decided.reportId, fingerprint, since }), options.log);
   }
   return decided;
 
   async function decide(): Promise<IntakeDecision> {
     // A repeat of a live report only raises its count.
     const counted = await countOn(reports, key, ids, seenKey, now, limits);
-    if (counted !== undefined) return counted;
+    if (counted !== undefined) return countedOn(counted);
 
     const slot = await claimCapSlot(reports, fingerprint, now, limits);
     if (slot.claimed) {
@@ -595,15 +623,44 @@ export async function intakeOccurrence(
           ...(named === undefined ? {} : { named }),
           ...(task === undefined ? {} : { task }),
           // A failure back after its issue was closed links the old issue.
-          ...(existing?.status === "closed" && existing.issue !== undefined ? { previousIssue: existing.issue } : {})
+          ...(existing?.status === "closed" && existing.issue !== undefined ? { previousIssue: existing.issue } : {}),
+          ...(existing === undefined ? {} : { earlier: earlierWith(existing, now) })
         };
         return { state: row as never, result: true };
       });
-      if (made === true) return { decision: "new", reportId: key };
-      return (await countOn(reports, key, ids, seenKey, now, limits)) ?? { decision: "counted", reportId: key, commentOwed: false };
+      if (made === true) {
+        since = now;
+        return { decision: "new", reportId: key };
+      }
+      const recounted = await countOn(reports, key, ids, seenKey, now, limits);
+      return recounted === undefined ? { decision: "counted", reportId: key, commentOwed: false } : countedOn(recounted);
     }
     return listOnStorm(reports, slot.windowStart, { fingerprint, parts, ids, seenKey, now, limits });
   }
+
+  /** The decision a count made, with the report's first sighting kept for its history entry. */
+  function countedOn({ since: first, ...decision }: Counted): IntakeDecision {
+    since = first;
+    return decision;
+  }
+}
+
+/** A count's decision, and the first sighting of the report it counted on. */
+type Counted = Extract<IntakeDecision, { decision: "counted" }> & { readonly since: number };
+
+/** The earlier reports a new report under `existing`'s id keeps: `existing`'s, then `existing` itself, while their history is read. */
+function earlierWith(existing: ReportResourceState, now: number): EarlierReport[] {
+  const ended: EarlierReport = {
+    since: existing.firstSeenAt,
+    lastSeenAt: existing.lastSeenAt,
+    title: existing.draft?.title ?? existing.parts.message,
+    error: existing.parts.message,
+    status: existing.status,
+    count: existing.count,
+    ...(existing.issue === undefined ? {} : { issue: existing.issue })
+  };
+  const kept = now - HISTORY_RETENTION_DAYS * 24 * 60 * 60_000;
+  return [...(existing.earlier ?? []), ended].filter((e) => e.lastSeenAt >= kept).slice(-KEPT_EARLIER);
 }
 
 /**
@@ -732,13 +789,13 @@ async function countOn(
   seenKey: string | undefined,
   now: number,
   limits: ReportLimits
-): Promise<IntakeDecision | undefined> {
+): Promise<Counted | undefined> {
   const ref = await reports.getOptional(key);
   if (ref === undefined) return undefined;
   const result = await updateStateWith(ref as never, (current: unknown) => {
     const report = parseRow(current);
     if (report === undefined || !isLive(report, now)) return { state: current as never, result: undefined };
-    if (seenKey !== undefined && report.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
+    if (seenKey !== undefined && report.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false, since: report.firstSeenAt } };
     const commentOwed = commentOwedOn(report, now, limits);
     const next: ReportResourceState = {
       ...report,
@@ -749,8 +806,9 @@ async function countOn(
       ...(seenKey === undefined ? {} : { seen: withSeen(report.seen, seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
-    return { state: next as never, result: { commentOwed } };
+    return { state: next as never, result: { commentOwed, since: report.firstSeenAt } };
   });
   if (result === undefined) return undefined;
-  return { decision: "counted", reportId: key, commentOwed: (result as { commentOwed: boolean }).commentOwed };
+  const { commentOwed, since } = result as { commentOwed: boolean; since: number };
+  return { decision: "counted", reportId: key, commentOwed, since };
 }

@@ -1113,6 +1113,7 @@ class InternalFlowState<TSettings extends object>
       waitDeadlines: this.#options.waitDeadlines,
       userDeadlineMs: this.#options.userDeadlineMs,
       noticeIds: this.#options.noticeIds,
+      ...(this.#options.sealingSecret !== undefined ? { sealingSecret: this.#options.sealingSecret } : {}),
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
@@ -1125,6 +1126,8 @@ class InternalFlowState<TSettings extends object>
         // so wiring it anywhere later leaves one of them unable to resolve a
         // flow the process has plainly registered.
         resolveFlow: (address: string) => this.#registry.get(address),
+        // what a block's named reach is admitted against.
+        flows: this.#registry,
         // FIX-2623 D1: once any registered flow declares a view, every
         // resource write publishes. Read per request: a flow registered
         // later counts from its first request on.

@@ -12,16 +12,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionFeedStatus } from "../src/components/flow-state/connection-banner";
 import { GAPS } from "../src/gaps";
 import { FeedHealthContext } from "../src/lib/feed-health";
-import { useInbox } from "../src/lib/inbox";
+import { useInbox, useInboxTasks } from "../src/lib/inbox";
 import { Inbox } from "../src/surfaces/Inbox";
 
 type Read = { value?: unknown; stale: boolean; failure?: { message: string; httpStatus?: number }; refresh: () => void };
 const refresh = vi.fn();
 let read: Read = { stale: false, refresh };
+/** Each call's view input and options, as `useView` was asked. */
+const asked: Array<{ input: unknown; options: { pollIntervalMs?: number | null } }> = [];
 
 vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@flow-state-dev/react")>()),
-  useView: () => read,
+  useView: (_ref: unknown, input: unknown, options: { pollIntervalMs?: number | null }) => {
+    asked.push({ input, options });
+    return read;
+  },
 }));
 vi.mock("../src/lib/lab-data", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/lib/lab-data")>()),
@@ -94,5 +99,22 @@ describe("when the inbox view's answer last landed", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Jump to's read of every task, finished ones too, is the same view: where push can miss a change it reads at
+// the Inbox's pace, not the client's 3 s default, so an open Jump to doesn't read ten times as often as the Inbox.
+describe("Jump to's read of every task", () => {
+  it("reads the inbox view at the Inbox's own pace", () => {
+    asked.length = 0;
+    read = { stale: false, refresh };
+    renderHook(() => {
+      useInbox();
+      useInboxTasks(true);
+    });
+    const inbox = asked.find((call) => JSON.stringify(call.input) === "{}")!;
+    const tasks = asked.find((call) => JSON.stringify(call.input) === JSON.stringify({ done: true }))!;
+    expect(inbox.options.pollIntervalMs).toBe(30_000);
+    expect(tasks.options.pollIntervalMs).toBe(inbox.options.pollIntervalMs);
   });
 });

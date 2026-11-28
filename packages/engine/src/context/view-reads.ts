@@ -47,16 +47,24 @@ type ResourceRead = { resource: string; root: string };
 type BoardReadRecord = { board: string; covers?: string; partition?: string };
 
 /**
+ * A collection read across the owner's sessions, by its change topic's wire
+ * resource (the view's flow and the collection's pattern): heard on the
+ * owner's change topic for it (`bus/owner-topic.ts`).
+ */
+type AcrossSessionsReadRecord = { across: string };
+
+/**
  * One read a view's run made: a scope's state, one of its resources by
  * accessor, or a task board; for a session, also the session itself
  * (`"session"`: its items, metadata, window, journal or record), which flow
  * and lineage it is (`"identity"`), or its requests' statuses (`"turns"`);
- * for the user, the list of their sessions (`"sessions"`) or their pending
- * suspensions (`"suspensions"`).
+ * for the user, the list of their sessions (`"sessions"`), their pending
+ * suspensions (`"suspensions"`) or a collection across their sessions.
  */
 export type RecordedRead =
   | { scope: "session"; sessionId: string; what: "state" | "session" | "identity" | "turns" | ResourceRead | BoardReadRecord }
-  | { scope: "user" | "org"; what: "state" | "sessions" | "suspensions" | ResourceRead | BoardReadRecord };
+  | { scope: "user" | "org"; what: "state" | "sessions" | "suspensions" | ResourceRead | BoardReadRecord }
+  | { scope: "user"; what: AcrossSessionsReadRecord };
 
 /** A recorder for one run: what it read, and the topics that hear a change to it. */
 export type ReadRecorder = {
@@ -75,9 +83,11 @@ const readKey = (read: RecordedRead): string =>
     read.scope === "session" ? read.sessionId : "",
     typeof read.what === "string"
       ? read.what
-      : "board" in read.what
-        ? `b:${read.what.board}:${read.what.covers ?? ""}:${read.what.partition ?? ""}`
-        : `r:${read.what.resource}`
+      : "across" in read.what
+        ? `a:${read.what.across}`
+        : "board" in read.what
+          ? `b:${read.what.board}:${read.what.covers ?? ""}:${read.what.partition ?? ""}`
+          : `r:${read.what.resource}`
   ].join("\u0000");
 
 /**
@@ -132,7 +142,9 @@ type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string>; p
 function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
   const all = [...reads];
   const covered = new Set(
-    all.flatMap((read) => (typeof read.what !== "string" && "board" in read.what && read.what.covers !== undefined ? [read.what.covers] : []))
+    all.flatMap((read) =>
+      typeof read.what !== "string" && "board" in read.what && read.what.covers !== undefined ? [read.what.covers] : []
+    )
   );
   const byTopic = new Map<string, Hearing>();
   const at = (topic: WireTopic): Hearing => {
@@ -149,6 +161,13 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
       for (const kind of SESSION_KINDS) at(scopeTopic).kinds.add(kind);
     } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions" || read.what === "suspensions") {
       for (const kind of PEER_KINDS[read.what]) at(scopeTopic).kinds.add(kind);
+    } else if ("across" in read.what) {
+      // The owner's change topic: every write to any session's resources publishes
+      // a `resource` notice narrowed to it, whatever row it wrote.
+      const resource = read.what.across;
+      const hearing = at({ scope: "user", resource });
+      hearing.kinds.add("resource");
+      hearing.paths.add(resource);
     } else if ("board" in read.what) {
       const hearing = at({ ...scopeTopic, resource: read.what.board });
       hearing.kinds.add("board");
@@ -230,6 +249,13 @@ export type ViewDependencies = {
   // FIX-2770.
   /** The caller's pending suspensions read: heard on their user topic's `suspension` only. */
   userSuspensions(): void;
+  /**
+   * A collection read across the caller's sessions, by its change topic's wire
+   * resource (`changeTopicResource`): heard on the owner's change topic for
+   * it, which hears every write to any session's resources at a key the
+   * pattern covers, so a session made later is heard too.
+   */
+  acrossSessions(resource: string): void;
   // FIX-2625.
   /**
    * A task board read through its task collection, whose ledger is at
@@ -299,6 +325,9 @@ export function createViewDependencies(
     },
     userSuspensions() {
       record({ scope: "user", what: "suspensions" });
+    },
+    acrossSessions(resource) {
+      record({ scope: "user", what: { across: resource } });
     },
     board(board, scope, sessionIds, covers, reach, partition) {
       const at = partition !== undefined ? { partition } : {};

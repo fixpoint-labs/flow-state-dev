@@ -27,9 +27,13 @@ import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
  * under the scope. `tenantId` is required, so no subscriber hears another
  * tenant's notices; a single-tenant app's tenant is `""`. Adapters derive
  * their channel names from it.
+ *
+ * `owner` is the bus's own scope for an owner's change topics, the topics a
+ * read across sessions is heard on (`owner-topic.ts`): its id names a user
+ * and an organization. A client names one as a user topic.
  */
 export type BusTopic = {
-  scope: TopicScope;
+  scope: TopicScope | "owner";
   id: string;
   tenantId: string;
   resource?: string;

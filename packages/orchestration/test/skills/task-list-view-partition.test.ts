@@ -21,6 +21,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryBus, createInMemoryStores, type ChangeNotice } from "@flow-state-dev/engine/host";
 import { runView } from "@flow-state-dev/engine/internal";
 import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
+import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import { z } from "zod";
 import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection } from "../../src/tasks";
 import { taskToolViews } from "../../src/skills/views/task-list-view";
@@ -104,7 +105,7 @@ describe("a partitioned board's task-list view", () => {
     // The filing did go out on the user topic this view hears...
     expect(notices.map((notice) => notice.topic.scope)).toContain("user");
     // ...and the view's answer rules it out by its partition.
-    expect(notices.filter((notice) => hearsNotice(answer.hears, notice))).toEqual([]);
+    expect(notices.filter((notice) => hearsNotice(answer.hears, notice as WireNotice))).toEqual([]);
   });
 
   it("hears the first row filed in the partition it read empty, from a session it never listed", async () => {
@@ -114,7 +115,7 @@ describe("a partitioned board's task-list view", () => {
     expect(answer.output).toEqual([]);
 
     const notices = await boardNoticesDuring("conv-a", () => run("task-of-a", "file", { id: "a1", partition: "conv-a" }));
-    expect(notices.filter((notice) => hearsNotice(answer.hears, notice)).map((notice) => notice.topic.scope)).toEqual(["user"]);
+    expect(notices.filter((notice) => hearsNotice(answer.hears, notice as WireNotice)).map((notice) => notice.topic.scope)).toEqual(["user"]);
     // And the row it hears of is on the board when the view reads again.
     expect(((await view("conv-a")).output as Array<{ id: string }>).map((task) => task.id)).toEqual(["a1"]);
   });

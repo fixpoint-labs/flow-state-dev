@@ -12,6 +12,7 @@ import { DirectoryProvider } from "../src/lib/directory";
 
 const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
+import type { DirectoryFixture } from "./helpers/directory";
 
 /** The view's own timer where push can miss a change: `useView`'s default. */
 const VIEW_POLL_MS = 3_000;
@@ -20,7 +21,6 @@ type StoredTask = { id: string; goal: string; title?: string; status: string; as
 let rows: StoredTask[] = [];
 let failing = false;
 const calls: string[] = [];
-let refreshes = 0;
 const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
 /** The Lab's one client, its `subscribe` faked so a case delivers the notices. */
 const subscribe = (topics: readonly WireTopic[], options: SubscribeOptions) => {
@@ -38,18 +38,16 @@ const view = async (ref: { flow: string; view: string }, _input: unknown, option
   if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
   return answer;
 };
-const lab: { client: { userId: string; subscribe: typeof subscribe; view: typeof view }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
-  client: { userId: "alice", subscribe, view },
-  snapshot: { readAt: 1 },
-  refresh: async () => void refreshes++,
-};
+const lab = { client: { userId: "alice", subscribe, view } };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
-// FIX-2775: the directory the card reads its workers and sessions from: the case's snapshot.
+/** The directory the card reads its workers and sessions from; `undefined` until a case draws one. */
+let directory: DirectoryFixture | undefined;
+// FIX-2775: the directory the card reads its workers and sessions from: the case's fixture.
 vi.mock("../src/lib/directory-reads", async () => {
   const { useFixedReads } = await import("./helpers/directory");
-  return { useDirectoryReads: () => useFixedReads(() => ("inventory" in lab.snapshot ? lab.snapshot : undefined) as never) };
+  return { useDirectoryReads: () => useFixedReads(() => directory) };
 });
-// The user's conversation with the Error Reporter, as the snapshot lists it; `null` before a first line.
+// The user's conversation with the Error Reporter, as the directory lists it; `null` before a first line.
 let reporterConversation: string | null = null;
 const conversationsAskedFor: unknown[] = [];
 vi.mock("../src/lib/conversation", () => ({
@@ -72,9 +70,8 @@ beforeEach(() => {
   held.length = 0;
   rows = [];
   failing = false;
-  refreshes = 0;
   calls.length = 0;
-  lab.snapshot = { readAt: 1 };
+  directory = undefined;
   reporterConversation = null;
   conversationsAskedFor.length = 0;
   navigated.length = 0;
@@ -171,9 +168,8 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "completed" }];
     await hear(boardNotice);
     expect(cards()[0]).toMatchObject({ status: "completed", text: expect.stringContaining("completed") });
-    // The task moved, and the card reloads nothing: the snapshot hears the same
-    // move on its own subscription, one way to keep it fresh (FIX-2409).
-    expect(refreshes).toBe(0);
+    // The task moved, and the card read nothing but its board's view: one way to keep it fresh.
+    expect(new Set(calls)).toEqual(new Set([calls[0]]));
   });
 
   it("shows an ended task that took a message running again, on the view's own timer where push missed it", async () => {
@@ -211,9 +207,10 @@ describe("a delegated post's task in the feed", () => {
     await hear(boardNotice);
     expect(held.length).toBeGreaterThan(0);
     view.unmount();
+    const before = calls.length;
     held.forEach((release) => release());
     await tick(0);
-    expect(refreshes).toBe(0);
+    expect(calls.length).toBe(before);
   });
 
   it("reads one board for every card in the feed", async () => {
@@ -232,7 +229,7 @@ describe("a delegated post's task in the feed", () => {
 describe("a cancelled task's card", () => {
   const reporter = { id: "error-reporter", kind: "error-reporter", door: "run", rules: true, team: "general", name: "Error Reporter" };
   const withReporter = () => {
-    lab.snapshot = { readAt: 1, inventory: { ok: true, value: { workers: [reporter] } }, sessions: [] };
+    directory = { inventory: { ok: true, value: { workers: [reporter] } }, sessions: [] } as unknown as DirectoryFixture;
   };
   const cancelledRow = { id: "t1", goal: "g", title: "Post for eng.pm", status: "cancelled", assignee: "eng.pm", attempts: 1 };
 

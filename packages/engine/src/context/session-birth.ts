@@ -428,8 +428,9 @@ export async function birthSession(
     ...seed,
     state,
     lineageId: seed.lineageId ?? generateId("lin"),
-    // After the seed, so no record a caller shaped can set it.
-    principalKind: principalKindOf(request.principalKind)
+    // After the seed, so no record a caller shaped can set either.
+    principalKind: principalKindOf(request.principalKind),
+    incarnationToken: generateId("inc")
   };
   const created = await stores.session.set(storageKey, record, "absent");
   if (created.ok) return { born: true, record };

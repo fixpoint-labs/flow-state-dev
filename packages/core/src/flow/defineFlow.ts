@@ -45,6 +45,7 @@ import type { ResourceScope } from "../types/resource";
 import type { ViewDefinition } from "../types/view";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { isCollectionConfig, resourceStorageKeys } from "../types/storage-identity";
+import { patternsOverlap } from "../types/collection-patterns";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
@@ -1102,6 +1103,19 @@ function validateFlowResources(
   const storageKeys = resourceStorageKeys(resources);
 
   for (const [accessor, entry] of Object.entries(resources)) {
+    if (accessor === "at") {
+      throw new Error(
+        `Resource accessor "at" in flow "${flowKind}" is reserved: \`ctx.resources.at({ session })\` names another session. ` +
+        `Pick another accessor key.`
+      );
+    }
+    if (accessor === "acrossSessions") {
+      throw new Error(
+        `Resource accessor "acrossSessions" in flow "${flowKind}" is reserved: \`ctx.resources.acrossSessions()\` reads ` +
+        `across the owner's sessions. Pick another accessor key.`
+      );
+    }
+
     if (entry.scope === undefined) {
       throw new Error(
         `Resource "${accessor}" declared in flow "${flowKind}" has no intrinsic scope. ` +
@@ -1144,6 +1158,30 @@ function validateFlowResources(
       );
     }
     seen.set(key, { accessor, entry });
+  }
+
+  validateWakeEntryOverlap(resources, flowKind);
+}
+
+/**
+ * Two session collections whose patterns some key matches both must not name
+ * different `wakeEntry`s: a write from another session at that key would wake
+ * one of the two, picked by declaration order.
+ */
+function validateWakeEntryOverlap(resources: DeclaredResources, flowKind: string): void {
+  const waking: Array<{ accessor: string; pattern: string; wakeEntry: string }> = [];
+  for (const [accessor, entry] of Object.entries(resources)) {
+    if (!isCollectionConfig(entry) || entry.scope !== "session" || entry.wakeEntry === undefined) continue;
+    for (const prior of waking) {
+      if (prior.wakeEntry !== entry.wakeEntry && patternsOverlap(prior.pattern, entry.pattern)) {
+        throw new Error(
+          `Resource collections "${prior.accessor}" (${prior.pattern}) and "${accessor}" (${entry.pattern}) in flow ` +
+          `"${flowKind}" overlap and wake different entries ("${prior.wakeEntry}" and "${entry.wakeEntry}"): a key both ` +
+          `match would wake only one. Narrow a pattern or name the same wakeEntry.`
+        );
+      }
+    }
+    waking.push({ accessor, pattern: entry.pattern, wakeEntry: entry.wakeEntry });
   }
 }
 

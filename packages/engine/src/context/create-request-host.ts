@@ -914,7 +914,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         userId: identity.userId,
         tenantId: identity.tenantId,
         orgId: identity.orgId,
-        sessionId: identity.sessionId
+        sessionId: identity.sessionId,
+        ...(inputs.principal?.resolvedBy !== undefined ? { resolvedBy: inputs.principal.resolvedBy } : {})
       },
       flowId: flow.id,
       fenceMs: inputs.wakes.fenceMs,
