@@ -761,7 +761,7 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
         const declined = transitionDeclineReason(task, "in_progress", guards, collectionId, now());
         if (declined !== undefined) return { decline: declined };
         taken = untakenSteers(task).map((steer) => steer.id);
-        const taking = takeSteersPatch(task, takeOptions.takenIn);
+        const taking = takeSteersPatch(task, takeOptions.takenIn, takeOptions.requestId);
         return taking === undefined ? undefined : { patch: taking };
       });
       return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };

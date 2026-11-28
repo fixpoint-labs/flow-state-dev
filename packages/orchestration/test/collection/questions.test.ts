@@ -311,7 +311,7 @@ describe.each([
     it("the asking turn takes no answer as a steer: the answers are the next turn's", async () => {
       const { board, ticket, hold } = await askedMidway();
       await board.answer!("t4", user(hold, "signup_date"));
-      expect(await board.takeSteers!("t4", { claim: ticket, takenIn: "step:asking" })).toMatchObject({ taken: [] });
+      expect(await board.takeSteers!("t4", { claim: ticket, takenIn: "step:asking", requestId: "asking" })).toMatchObject({ taken: [] });
       expect(board.get("t4")!.steers?.every((steer) => steer.takenIn === undefined)).toBe(true);
     });
 

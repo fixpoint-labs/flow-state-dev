@@ -398,3 +398,44 @@ describe("two turns of one attempt (FIX-2133 D3)", () => {
     expect(await writeRunRecord(ctx, { ...identity(1), incarnationId: "first" }, { sessionId: "stale" })).toBe("refused");
   });
 });
+
+describe("a follow-up continuing its root's record", () => {
+  // A follow-up opens its root's record with attempts of its own, so the record alone cannot tell a stale
+  // root attempt from a live one: two tasks' attempts are two counters. The board fence on the writer's own
+  // task is what refuses a root attempt that is over, whatever attempt the follow-up is on.
+  const ROOT = "task_root";
+  const FOLLOW_UP = "task_root-f1";
+  const as = (taskId: string, attempt: number): AttemptIdentity => ({ ...identity(attempt), taskId });
+
+  async function followUpOpened(rootAttempt: number) {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(ROOT, { id: ROOT, status: "in_progress", attempts: rootAttempt, leaseUntil: Date.now() + 60_000 });
+    expect(await openRunRecord(ctx, as(ROOT, rootAttempt), OPENED)).toBe("applied");
+    await board.upsert(FOLLOW_UP, { id: FOLLOW_UP, status: "in_progress", attempts: 1 });
+    expect(await openRunRecord(ctx, as(FOLLOW_UP, 1), OPENED)).toBe("applied");
+    return { runs, board, ctx };
+  }
+
+  it("refuses a late write of a root attempt whose lease lapsed, on the attempt number the follow-up is on", async () => {
+    const { runs, board, ctx } = await followUpOpened(1);
+    await board.upsert(ROOT, { leaseUntil: Date.now() - 1_000 });
+    expect(await writeRunRecord(ctx, as(ROOT, 1), { sessionId: "zombie", outcome: "failed" })).toBe("refused");
+    expect((await runs.getOptional(TOPIC))!.state).toMatchObject({ taskId: FOLLOW_UP, outcome: "running", sessionId: null });
+  });
+
+  it("refuses a late write of a root attempt another attempt took over, or of a root that settled", async () => {
+    const { board, ctx } = await followUpOpened(2);
+    await board.upsert(ROOT, { attempts: 3 });
+    expect(await writeRunRecord(ctx, as(ROOT, 2), { sessionId: "zombie" })).toBe("refused");
+    await board.upsert(ROOT, { attempts: 2, status: "completed" });
+    expect(await writeRunRecord(ctx, as(ROOT, 2), { sessionId: "zombie" })).toBe("refused");
+  });
+
+  it("applies the follow-up's own writes, though the root's record carried a later attempt", async () => {
+    const { runs, ctx } = await followUpOpened(3);
+    expect(await writeRunRecord(ctx, as(FOLLOW_UP, 1), { sessionId: "follow-up" })).toBe("applied");
+    expect((await runs.getOptional(TOPIC))!.state).toMatchObject({ taskId: FOLLOW_UP, attempt: 1, sessionId: "follow-up" });
+  });
+});

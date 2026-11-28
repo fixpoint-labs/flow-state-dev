@@ -166,7 +166,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       // Shown in the session as it takes them, as a model call's take shows
       // them (FIX-2113): the turn's own message isn't kept, so a later turn
       // here (the notice of the work the task filed) reads them only there.
-      const steers = await takeRunningSteers(running, `turn:${ctx.request.identity.id}`, ctx);
+      const steers = await takeRunningSteers(running, `turn:${ctx.request.identity.id}`, ctx.request.identity.id, ctx);
       if (steers.length === 0) return SKIP;
       return { steers, taskId: running.row.id };
     }
