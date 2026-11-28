@@ -338,10 +338,11 @@ function routinesOf(output: unknown, workerId: string): ListedRoutine[] {
 
 /**
  * When a routine acts, in a line: a clock routine's cron and zone, and its next
- * run (none while paused); an event routine's thread.
+ * run (none while paused); for an event routine, what it listens for (its
+ * name already says what it follows).
  */
 export function routineWhen(r: ListedRoutine): string {
-  if ("event" in r.trigger) return `Follows ${r.trigger.event.thread}`;
+  if ("event" in r.trigger) return r.trigger.event.interest;
   const { cron, timezone, nextRunAt } = r.trigger.clock;
   const next = nextRunAt === null ? "" : ` · next ${new Date(nextRunAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
   return `${cron} (${timezone})${next}`;
