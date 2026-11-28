@@ -29,7 +29,7 @@
  * Every failure is a `WorkspaceRefusedError` whose message says what
  * happened and, where there is one, what clears it.
  */
-import { pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
+import { pullRequestKey, pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
 import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { childEnv, HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
@@ -65,9 +65,18 @@ export interface LandTarget {
    * The commit the run's branch was cut at. When the run's branch is gone
    * (the run renamed it, or moved its work to a branch of its own), the
    * branch the checkout has checked out is landed instead, but only when it
-   * holds commits over this one. Absent: a gone branch is refused.
+   * holds commits over this one, and no pull request open from it is someone
+   * else's (see {@link ownPullRequests}). Absent: a gone branch is refused.
    */
   readonly baseCommit?: string | null;
+  /**
+   * The pull requests known to be the run's own, by `pullRequestKey`. Read
+   * only when the run's branch is gone and the branch its checkout is on is
+   * pushed instead: a pull request open from that branch that isn't one of
+   * these may be someone else's, so nothing is pushed and the landing is
+   * refused `foreign-pull-request`. Absent: none is.
+   */
+  readonly ownPullRequests?: readonly string[] | null;
 }
 
 /** How a run's accepted work lands. */
@@ -207,7 +216,7 @@ export async function existingPullRequest(
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[]) =>
     (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: left(), env: host.env, pass: HOST_GIT_PASS })).stdout.trim();
-  const branch = await branchToLand(git, target);
+  const { branch } = await branchToLand(git, target);
   const { remote, repo } = await pullRequestPlace(git, host, target.baseRef);
   if (remote === undefined || repo === undefined) return null;
   const ghDir = scratchDir();
@@ -234,7 +243,7 @@ export async function existingPullRequest(
  * landing: the branch is pushed to it, and no second one is opened.
  *
  * @throws WorkspaceRefusedError `branch-gone`, `base-unknown`, `no-push-remote`, `no-pull-request-repo`,
- *   `remote-repointed`, `base-gone`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
+ *   `remote-repointed`, `base-gone`, `foreign-pull-request`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
  *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
  */
@@ -245,29 +254,31 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
     (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: { ...host.env, ...env }, pass: HOST_GIT_PASS })).stdout.trim();
   const restoreGit = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
     (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: { ...host.env, ...env }, pass: HOST_GIT_PASS })).stdout.trim();
-  const landing = { ...target, branch: await branchToLand(git, target) };
+  const { branch, moved } = await branchToLand(git, target);
+  const landing = { ...target, branch };
   const place = await pullRequestPlace(git, host, target.baseRef);
   return request.kind === "merge"
     ? await merge(git, restoreGit, host.repo, place.base, landing.branch, childEnv({ pass: HOST_GIT_PASS, env: host.env }))
-    : await openPullRequest(git, host, landing, place, request, left);
+    : await openPullRequest(git, host, landing, moved ? target.branch : undefined, place, request, left);
 }
 
 /**
  * The branch that holds the run's work: its own when it still exists, else
  * the one its checkout has checked out, when that holds commits over the
  * run's base commit. A run that renamed its branch, or moved its work to one
- * it named, lands from there.
+ * it named, lands from there. `moved` says which: such a branch may be
+ * someone else's, which a pull request landing checks before it pushes.
  */
-async function branchToLand(git: Git, target: LandTarget): Promise<string> {
+async function branchToLand(git: Git, target: LandTarget): Promise<{ branch: string; moved: boolean }> {
   const has = (ref: string) => git(target.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).then(() => true, () => false);
-  if (await has(`refs/heads/${target.branch}`)) return target.branch;
+  if (await has(`refs/heads/${target.branch}`)) return { branch: target.branch, moved: false };
   const head = await git(target.cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => undefined);
   const base = target.baseCommit ?? undefined;
   if (head !== undefined && base !== undefined && (await has(base))) {
     const holds =
       (await git(target.cwd, ["merge-base", "--is-ancestor", base, `refs/heads/${head}`]).then(() => true, () => false)) &&
       Number(await git(target.cwd, ["rev-list", "--count", `${base}..refs/heads/${head}`]).catch(() => "0")) > 0;
-    if (holds) return head;
+    if (holds) return { branch: head, moved: true };
   }
   throw new WorkspaceRefusedError(
     "branch-gone",
@@ -598,6 +609,7 @@ async function openPullRequest(
   git: Git,
   host: LandHost,
   target: LandTarget,
+  movedFrom: string | undefined,
   place: { base: Base; remote: PushRemote | undefined; repo: string | undefined },
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
@@ -643,7 +655,9 @@ async function openPullRequest(
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = ["--repo", repo];
   try {
-    return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, pass: host.remotePass ?? HOST_REMOTE_PASS, repo });
+    const ghCall = { gh, ghDir, ghEnv, where, pass: host.remotePass ?? HOST_REMOTE_PASS, repo };
+    if (movedFrom !== undefined) await refuseForeign(ghCall, target, movedFrom, left());
+    return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, ghCall);
   } finally {
     try {
       rmSync(ghDir, { recursive: true, force: true });
@@ -661,12 +675,28 @@ const OPEN_PULL_REQUESTS_READ = 20;
  * a pull request from a fork (`isCrossRepository`) or into another base is
  * not this run's. A field gh doesn't give is not held against it.
  */
-async function openPullRequestOf(
-  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; pass: readonly string[] },
+async function openPullRequestOf(gh: GhCall, branch: string, base: string, timeoutMs: number): Promise<string | undefined> {
+  const ours = (await openPullRequestsFrom(gh, branch, timeoutMs)).open.find(
+    (pr) => typeof pr.baseRefName !== "string" || pr.baseRefName === base,
+  );
+  return ours?.url;
+}
+
+/** How `gh` is run: its binary, its own empty directory and environment, its `--repo`, and the names it may see. */
+type GhCall = { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; pass: readonly string[] };
+
+/**
+ * The pull requests open from `branch` in the repository itself, into any
+ * base; throws when GitHub can't be asked. One from a fork's branch of the
+ * same name (`isCrossRepository`) is left out: a push here doesn't reach it.
+ * `full` when gh listed as many as it was asked for, forks included, so one
+ * past them may be missing.
+ */
+async function openPullRequestsFrom(
+  gh: GhCall,
   branch: string,
-  base: string,
   timeoutMs: number,
-): Promise<string | undefined> {
+): Promise<{ open: Array<{ url: string; baseRefName?: unknown }>; full: boolean }> {
   const { stdout } = await run(
     gh.gh,
     [
@@ -677,10 +707,52 @@ async function openPullRequestOf(
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
   const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
-  const ours = listed.find(
-    (pr) => typeof pr?.url === "string" && pr.isCrossRepository !== true && (typeof pr.baseRefName !== "string" || pr.baseRefName === base),
+  return {
+    open: listed.filter((pr): pr is { url: string; baseRefName?: unknown } => typeof pr?.url === "string" && pr.isCrossRepository !== true),
+    full: listed.length >= OPEN_PULL_REQUESTS_READ,
+  };
+}
+
+// FIX-2973.
+/**
+ * Refuse a landing from the branch the checkout is on, the run's own being
+ * gone, when a pull request open from it isn't one of the run's
+ * (`LandTarget.ownPullRequests`): a push there would add the run's work to
+ * it, whatever base it asks for. Not knowing is refused too, before anything
+ * is pushed.
+ */
+async function refuseForeign(gh: GhCall, target: LandTarget, movedFrom: string, timeoutMs: number): Promise<void> {
+  let listed: { open: Array<{ url: string }>; full: boolean };
+  try {
+    listed = await openPullRequestsFrom(gh, target.branch, timeoutMs);
+  } catch (error) {
+    throw new WorkspaceRefusedError(
+      "pull-request-failed",
+      `The run's branch "${movedFrom}" no longer exists, and GitHub couldn't be asked whose pull requests are open from "${target.branch}", ` +
+        `the branch its checkout is on, so nothing was pushed: ${firstLine(error) ?? "gh gave no reason"}.`,
+    );
+  }
+  // A full page can hide one from the repository behind newer ones from forks of the same name: not knowing is refused.
+  if (listed.full) {
+    throw new WorkspaceRefusedError(
+      "pull-request-failed",
+      `The run's branch "${movedFrom}" no longer exists, and GitHub lists ${OPEN_PULL_REQUESTS_READ} or more pull requests open from "${target.branch}", ` +
+        `the branch its checkout is on, so whose they all are can't be told and nothing was pushed. Put the run's commits on a branch of its own to land them.`,
+    );
+  }
+  const own = new Set(target.ownPullRequests ?? []);
+  const foreign = listed.open.find((pr) => {
+    const ref = pullRequestRefFromUrl(pr.url);
+    return ref === null || !own.has(pullRequestKey(ref));
+  });
+  if (foreign === undefined) return;
+  const ref = pullRequestRefFromUrl(foreign.url);
+  throw new WorkspaceRefusedError(
+    "foreign-pull-request",
+    `The run's branch "${movedFrom}" no longer exists, and its checkout is on "${target.branch}", where pull request ` +
+      `${ref === null ? foreign.url : `#${ref.number}`} is open and isn't one of this run's, so nothing was pushed to it. ` +
+      `Its commits are still on "${target.branch}"; put them on a branch of the run's own to land them.`,
   );
-  return ours?.url as string | undefined;
 }
 
 async function pushAndOpen(
@@ -692,7 +764,7 @@ async function pushAndOpen(
   judged: AllowedRemote,
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
-  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; pass: readonly string[]; repo: string },
+  gh: GhCall & { repo: string },
 ): Promise<Landed> {
   const landedAt = (url: string, existing = false): Landed => {
     const ref = pullRequestRefFromUrl(url)!;

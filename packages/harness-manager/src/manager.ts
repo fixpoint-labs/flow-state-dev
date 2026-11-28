@@ -4385,8 +4385,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       try {
         if (host.land === undefined) throw new WorkspaceRefusedError("land-unsupported", "this host can't push or merge a run's branch");
         // The base commit lets the host land the branch the checkout is on when
-        // the run moved its work off its own (FIX-2658).
-        const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+        // the run moved its work off its own (FIX-2658). A pull request open from that
+        // branch is pushed to only when an accept on this task landed on it (FIX-2973): one seen
+        // on the branch or opened by the coding session may be someone else's, as above.
+        const ownPullRequests = (await readRunRecord(ctx, state.topic!))?.landedPullRequests ?? [];
+        const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit, ownPullRequests };
         const landed =
           how === "merge"
             ? await host.land(target, { kind: "merge" })
