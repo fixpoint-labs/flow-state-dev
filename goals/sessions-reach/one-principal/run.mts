@@ -75,7 +75,11 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   ],
   // The session store writes whatever kind a whole-record write carries.
   "kind-not-sticky": [
-    { module: SHARED, from: String.raw`if \(kept === undefined \|\| value\.principalKind === kept\) return value;`, to: "return value;" }
+    {
+      module: SHARED,
+      from: String.raw`if \(was !== undefined && kept\[field\] !== was\)`,
+      to: `if (field !== "principalKind" && was !== undefined && kept[field] !== was)`
+    }
   ],
   // A session with no readable birth request reads as a person's.
   "backfill-as-person": [
@@ -288,7 +292,7 @@ async function plantRequest(
   id: string,
   sessionId: string,
   at: number,
-  fields: { source?: string | null; orgId?: string | null } = {}
+  fields: { source?: string | null; orgId?: string | null; endedAt?: number } = {}
 ) {
   const built = createInitialRequestRecord(
     {
@@ -305,7 +309,9 @@ async function plantRequest(
   );
   const { source, ...unsourced } = built;
   const record = fields.source === null ? (unsourced as typeof built) : { ...built, source };
-  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: at }, "absent");
+  // `endedAt`: when its run wrote it last (its final status); by default never written again.
+  const endedAt = fields.endedAt ?? at;
+  await stores.request.set(id, { ...record, status: "completed", completedAtMs: endedAt, finalizedAtMs: endedAt, updatedAt: endedAt }, "absent");
 }
 
 /** A person's run in `sessionId`: what an HTTP turn in a session from before kinds carries. */
@@ -408,12 +414,13 @@ await runGoal(async (failures, tell) => {
       await plantSession(stores, "target", born, { principalKind: "person" });
       const unknown = await admit(personIn("target"), UNKNOWN);
 
-      // A person's: an HTTP birth (its record written just before the session), and one from before `source`.
+      // A person's: an HTTP birth (its record written just before the session,
+      // its final status after), and one from before `source`.
       await plantSession(stores, "l-http", born, { lineageId: "lin_http" });
-      await plantRequest(stores, "r-http", "l-http", born - 5, { source: "http" });
+      await plantRequest(stores, "r-http", "l-http", born - 5, { source: "http", endedAt: born + 1_000 });
       await plantRequest(stores, "r-http-2", "l-http", born + 5, { source: "internal" });
       await plantSession(stores, "l-legacy", born);
-      await plantRequest(stores, "r-legacy", "l-legacy", born - 5, { source: null });
+      await plantRequest(stores, "r-legacy", "l-legacy", born - 5, { source: null, endedAt: born + 1_000 });
       // A dispatched child the parent can be proven for, by the lineage it inherited.
       await plantSession(stores, "l-child", born, { parentSessionId: "l-http", lineageId: "lin_http" });
       await plantRequest(stores, "r-child", "l-child", born, { source: "internal" });

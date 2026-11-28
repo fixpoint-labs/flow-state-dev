@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after for a coder's reply to a review comment. Before: the coding run posts with gh in its shell, as the operator, on any repository, pull request or comment, and only its prompt limits it. After: the run writes reply drafts to a file in its checkout; when the turn ends the harness manager hands them to one poster in workforce, which posts a draft only when the session user is the operator, the pull request is the task's own or one the operator linked, the comment was read from that pull request, and its author is a listed reviewer or the operator linked it. The body goes as a JSON field. Each draft ends as a reply on GitHub or a line in the session saying why not. Codex, Cursor and Claude Code all use the same path."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .done   { fill:var(--code-soft); stroke:var(--code); }
+    .gate   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .arrow  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .arrow-gone { stroke:var(--gone); stroke-width:1.6; fill:none; stroke-dasharray:5 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE</text>
+    <rect class="n-box" x="16" y="38" width="250" height="92" rx="5"/>
+    <text class="t-b" x="32" y="62">Coding run</text>
+    <text class="t-s" x="32" y="82">Claude Code: gh in a pre-allowed Bash</text>
+    <text class="t-s" x="32" y="100">Codex and Cursor: their own shell</text>
+    <text class="t-s" x="32" y="118">checked by: the prompt</text>
+    <path class="arrow-gone" d="M266 84 H640"/>
+    <text class="t-s" x="290" y="74">gh api …/replies -F body=@reply.md</text>
+    <text class="t-s" x="290" y="102">as the operator, any repository, any comment</text>
+    <rect class="n-box" x="648" y="38" width="276" height="92" rx="5"/>
+    <text class="t-b" x="664" y="62">GitHub</text>
+    <text class="t-s" x="664" y="82">whatever the command names</text>
+  </g>
+
+  <line class="row" x1="16" y1="150" x2="924" y2="150"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="176">AFTER · THE SAME PATH ON ALL THREE HARNESSES</text>
+    <rect class="n-box" x="16" y="190" width="200" height="120" rx="5"/>
+    <text class="t-b" x="32" y="214">Coding run</text>
+    <text class="t-s" x="32" y="234">writes reply drafts</text>
+    <text class="t-s" x="32" y="252">to a file the brief names</text>
+    <text class="t-s" x="32" y="270">comment link + body</text>
+    <text class="t-s" x="32" y="288">posts nothing itself</text>
+    <path class="arrow" d="M216 250 H246"/>
+    <rect class="n-box" x="250" y="190" width="150" height="120" rx="5"/>
+    <text class="t-b" x="266" y="214">Manager</text>
+    <text class="t-s" x="266" y="234">turn ends,</text>
+    <text class="t-s" x="266" y="252">after its push</text>
+    <text class="t-s" x="266" y="270">or landing</text>
+    <path class="arrow" d="M400 250 H430"/>
+    <rect class="gate" x="434" y="190" width="290" height="160" rx="5"/>
+    <text class="t-lbl" x="450" y="210">ONE POSTER · WORKFORCE</text>
+    <text class="t-s" x="450" y="232">1 session user is the operator</text>
+    <text class="t-s" x="450" y="252">2 PR is the task's own, or one the operator linked</text>
+    <text class="t-s" x="450" y="272">3 comment read from that PR on GitHub</text>
+    <text class="t-s" x="450" y="292">4 author listed, or the operator linked it</text>
+    <text class="t-s" x="450" y="312">5 body sent as a JSON field</text>
+    <text class="t-s" x="450" y="336">operator token only past gate 1</text>
+    <path class="arrow" d="M724 230 H766"/>
+    <rect class="n-box done" x="770" y="190" width="154" height="70" rx="5"/>
+    <text class="t-b" x="786" y="214">GitHub</text>
+    <text class="t-s" x="786" y="234">a reply in that</text>
+    <text class="t-s" x="786" y="250">comment's thread</text>
+    <path class="arrow-gone" d="M724 300 H766"/>
+    <rect class="n-box" x="770" y="276" width="154" height="74" rx="5"/>
+    <text class="t-b" x="786" y="300">Session line</text>
+    <text class="t-s" x="786" y="320">each refusal,</text>
+    <text class="t-s" x="786" y="336">and why</text>
+  </g>
+
+  <text class="t-s" x="16" y="382">The run keeps its shell. The coder is no longer told to post with gh (D3).</text>
+</svg>

@@ -33,6 +33,7 @@ import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
 import { Fold, ReviewBody, ReviewFooter, RunAnswer, RunMeta, SteerCompose } from "./TaskReview";
 import { runsOn, taskLine } from "./TaskCard";
+import { PlanChecklist } from "./PlanChecklist";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./flow-state/conversation-lines";
 import { durationText, tokenTotal } from "./flow-state/spend";
@@ -265,7 +266,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const footer =
     task && waiting === "review" ? (
       <ReviewFooter
-        key={`${task.id}:${hold?.id}`}
+        key={task.id}
         review={review}
         {...(review === undefined && hold?.ask.prompt ? { prompt: hold.ask.prompt } : {})}
         words={words}
@@ -296,6 +297,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     <>
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
+      {task && coding && work.plan !== undefined && work.plan !== null ? (
+        <PlanChecklist plan={work.plan} running={status === "running"} />
+      ) : null}
       {task && status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && coding ? (

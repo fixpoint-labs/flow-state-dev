@@ -288,7 +288,7 @@ const CONTROLS: Control[] = [
   {
     name: "static-names",
     build: async () => {
-      const swap = swapOf("reads.ts", "it-opens-a-lab", "static-names.ts");
+      const swap = swapOf("directory-reads.ts", "it-opens-a-lab", "static-names.ts");
       const seats = await devforceSeats();
       return { themed: await swapBuild("ctl-static-names", swap, false, seats), noTheme: await swapBuild("ctl-static-names-no-theme", swap, true, seats) };
     },

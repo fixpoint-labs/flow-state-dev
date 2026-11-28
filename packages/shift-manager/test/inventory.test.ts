@@ -1,13 +1,12 @@
 /**
  * Shift Manager's inventory: the content rules (L3, L4 over all of `src/`,
- * own sessions), no `reads.ts` and no snapshot type, graded by the shared
- * module (`labs/test-support/inventory.mts`) with Shift Manager's settings
- * (`inventory-settings.ts`). What it doesn't meet yet is on
- * `inventory-allowlist.json`, one entry per finding, keyed by file, symbol
- * and kind: each job of the epic deletes its own entries. The test fails on
- * a finding not on the list, an entry whose finding is gone, an entry the
- * merge-base's list doesn't have, a type moved to the screen-type list with
- * no reason, and `src/lib/reads.ts` past its merge-base length.
+ * own sessions), none of the snapshot's modules and no snapshot type, graded
+ * by the shared module (`labs/test-support/inventory.mts`) with Shift
+ * Manager's settings (`inventory-settings.ts`). Its allowlist
+ * (`inventory-allowlist.json`, one entry per finding, keyed by file, symbol
+ * and the finding's type) is empty. The test fails on a finding not on the list, an entry
+ * whose finding is gone, an entry the merge-base's list doesn't have, and a
+ * type moved to the screen-type list with no reason.
  *
  * The rules' own controls run on a fixed fixture app
  * (`labs/claude-code-style/test/inventory-module.test.ts`). The ones here
@@ -37,7 +36,7 @@ function planted(files: Record<string, string>): AppInventory {
 }
 
 describe("Shift Manager's inventory", () => {
-  it("meets the content rules but for its allowlist, which only shrinks, and reads.ts doesn't grow", () => {
+  it("meets the content rules, with nothing on its allowlist", () => {
     expect(checkInventory(shiftManager)).toEqual([]);
   });
 

@@ -57,10 +57,25 @@ export function untakenSteers(task: Pick<Task, "steers" | "attempts">): TaskStee
 /**
  * Whether the read named `takenIn` is request `requestId`'s: one of its
  * `:`-separated segments is the id, whole. Never a substring: `req_1` is not
- * in `step:req_10`.
+ * in `step:req_10`. Only for a steer taken before `takenFor` was recorded.
  */
 export function readFor(takenIn: string | undefined, requestId: string): boolean {
   return takenIn !== undefined && takenIn.split(":").includes(requestId);
+}
+
+// FIX-2899; BP-030.
+/**
+ * Whether request `requestId` took `steer` on `task`'s current attempt: its
+ * recorded `takenFor`, or, on a steer taken before that was recorded, its
+ * `takenIn` label ({@link readFor}).
+ */
+export function takenByRequest(
+  task: Pick<Task, "attempts">,
+  steer: Pick<TaskSteer, "takenBy" | "takenIn" | "takenFor">,
+  requestId: string
+): boolean {
+  if (steer.takenBy !== task.attempts) return false;
+  return steer.takenFor !== undefined ? steer.takenFor === requestId : readFor(steer.takenIn, requestId);
 }
 
 /**
@@ -70,13 +85,13 @@ export function readFor(takenIn: string | undefined, requestId: string): boolean
  */
 export function untakenBy<T extends Pick<Task, "steers" | "attempts">>(task: T, requestId: string): T {
   const steers = task.steers ?? [];
-  const took = (steer: TaskSteer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId);
+  const took = (steer: TaskSteer) => takenByRequest(task, steer, requestId);
   if (!steers.some(took)) return task;
   return {
     ...task,
     steers: steers.map((steer) => {
       if (!took(steer)) return steer;
-      const { takenBy: _by, takenIn: _in, ...rest } = steer;
+      const { takenBy: _by, takenIn: _in, takenFor: _for, ...rest } = steer;
       return rest;
     }),
   };
@@ -130,17 +145,20 @@ export function steerWrite(
 
 /**
  * The steers after `takenBy` attempt took every untaken one in the read named
- * `takenIn`, or `undefined` when none was untaken. One this attempt already
- * took is left, so the same read after a crash still finds it.
+ * `takenIn`, by request `requestId` (`takenFor`), or `undefined` when none
+ * was untaken. One this attempt already took is left, so the same read after
+ * a crash still finds it.
  */
-export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | undefined {
+export function takeSteersPatch(task: Task, takenIn: string, requestId: string): Partial<Task> | undefined {
   // A held row's steers, and the answers that released it (`turnOwed`), are
   // the next turn's (FIX-2133): the turn that asked takes none of them.
   if (hasOpenHold(task) || task.turnOwed === true) return undefined;
   const steers = task.steers ?? [];
   if (!steers.some((steer) => steer.takenBy !== task.attempts)) return undefined;
   return {
-    steers: steers.map((steer) => (steer.takenBy === task.attempts ? steer : { ...steer, takenBy: task.attempts, takenIn })),
+    steers: steers.map((steer) =>
+      steer.takenBy === task.attempts ? steer : { ...steer, takenBy: task.attempts, takenIn, takenFor: requestId }
+    ),
   };
 }
 
@@ -150,7 +168,7 @@ export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | un
  */
 export function steersForAttempt(steers: Task["steers"], attempt: number): Task["steers"] {
   if (steers === undefined || steers.length === 0) return steers;
-  return steers.map(({ takenIn: _read, ...steer }) => ({ ...steer, takenBy: attempt }));
+  return steers.map(({ takenIn: _read, takenFor: _for, ...steer }) => ({ ...steer, takenBy: attempt }));
 }
 
 /** Why a person's line couldn't steer its task: the limit, the task finished first, or a board that keeps no steer. */

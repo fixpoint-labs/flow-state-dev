@@ -510,6 +510,57 @@ export function createScopeStoreConformanceTests(
       );
     });
 
+    // A session's incarnation token is minted once, at birth, and kept by
+    // `set` like its principal kind, so a writer holding a stale snapshot of
+    // an earlier birth under the same id can't make the reborn session read
+    // as the one it replaced.
+    describe("a session's incarnation token is kept by set", () => {
+      const withToken = (record: SessionRecord, incarnationToken: string | undefined): SessionRecord => {
+        const { incarnationToken: _dropped, ...rest } = record;
+        return incarnationToken === undefined ? rest : { ...rest, incarnationToken };
+      };
+
+      it("keeps the stored token against a stale whole-record write carrying another, or none", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withToken(makeSession("s1", 0), "inc_reborn"), "absent");
+          expect((await store.set("s1", withToken(makeSession("s1", 1, { from: "stale" }), "inc_first"), "any")).ok).toBe(true);
+          const stored = await store.get("s1");
+          expect(stored?.incarnationToken).toBe("inc_reborn");
+          expect(stored?.state).toEqual({ from: "stale" });
+          await store.set("s1", withToken(makeSession("s1", 2), undefined), 1);
+          expect((await store.get("s1"))?.incarnationToken).toBe("inc_reborn");
+        });
+      });
+
+      // BP-030: a record from before the field has none, and none is invented.
+      it("leaves a record stored without one without one", async () => {
+        await withStore(async (store) => {
+          await store.set("s1", withToken(makeSession("s1", 0), undefined), "absent");
+          await store.set("s1", withToken(makeSession("s1", 1), undefined), "any");
+          expect((await store.get("s1"))?.incarnationToken ?? undefined).toBeUndefined();
+        });
+      });
+
+      it.runIf(createSharedPair !== undefined)(
+        "keeps a reborn session's token against a snapshot another connection read before the delete",
+        async () => {
+          const pair = await (createSharedPair as NonNullable<typeof createSharedPair>)();
+          try {
+            await pair.a.set("s1", withToken(makeSession("s1", 0), "inc_first"), "absent");
+            const snapshot = await pair.b.get("s1");
+            await pair.a.delete("s1");
+            await pair.a.set("s1", withToken(makeSession("s1", 0), "inc_reborn"), "absent");
+
+            await pair.b.set("s1", { ...(snapshot as SessionRecord), version: 1 }, "any");
+
+            expect((await pair.a.get("s1"))?.incarnationToken).toBe("inc_reborn");
+          } finally {
+            await pair.cleanup?.();
+          }
+        }
+      );
+    });
+
     describe.runIf(createSharedPair !== undefined)("across two connections", () => {
       async function withPair(
         fn: (a: ScopeStoreUnderTest, b: ScopeStoreUnderTest) => Promise<void>

@@ -1,0 +1,8 @@
+{
+  "org": "acme",
+  "otherOrg": "globex",
+  "person": "alice",
+  "otherPerson": "bob",
+  "tenant": "t-north",
+  "gate": { "sessions": 5000, "rows": 100000, "matching": 2000, "page": 50, "runs": 60, "budgetMs": 50 }
+}

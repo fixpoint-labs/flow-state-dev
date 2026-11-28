@@ -8,7 +8,7 @@
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.
 
-- `a`: the asking task (`[askq]`) reads, through `getTask`, `in_progress` with no lease and one open row hold, a question; the reviewed task (`[review]`) `in_progress` on its claim with one open suspension hold, a review. Shift Manager's snapshot lists one item for each, the first a `question`, the second a `review`. No row reads `parked`. The Inbox reconciles.
+- `a`: the asking task (`[askq]`) reads, through `getTask`, `in_progress` with no lease and one open row hold, a question; the reviewed task (`[review]`) `in_progress` on its claim with one open suspension hold, a review. Shift Manager's Inbox read (the inbox view) lists one item for each, the first a `question`, the second a `review`. No row reads `parked`. The Inbox reconciles.
 - `b`: the filer's model's `updateTask` naming no question leaves the question open and listed. Its `updateTask` naming the question answers it, kept from the filer: the task takes exactly one more turn, on attempt 1, whose message holds the answer with its question, and completes; the item leaves the list. An Inbox answer to the same hold after it is refused as already answered.
 - `c`: the review is listed as one suspension hold named a review, and the Inbox reconciles with it present. The Inbox's verdict resumes the block once, on attempt 1, with the verdict as its answer; the task completes; the item leaves the list and the hold is closed.
 - `d`: a task held on two questions (`[ask2]`). A line sent through Shift Manager's composer (`sendTurn`) into the task's session is written from the user as the answer to the oldest open question, leaving the other; a second line answers the second (`d:answers-a-second-question`), and the task takes its owed turn on attempt 1 with both answers and completes.
@@ -24,7 +24,7 @@
 - *Leg h's review row.* A review asked by an inline worker on a plan board suspends the drain's own request, and an inline drain mirrors no suspension hold, so no plan board can hold a row waiting on a review today. Leg h holds the question row alone; the review half of the excusal is proved by `quiescence.test.ts` and, on a dispatching board, by legs a and c.
 - *No leg f.* Stores are reset, so no stored parked row is read (the spec's owner decision).
 
-**Anti-game:** the Inbox is Shift Manager's snapshot, every Inbox answer goes through orchestration's Inbox client, a typed line goes through Shift Manager's composer, the filer's answer is its model's own `updateTask` call, and a task is read through `getTask`. Nothing asserts on the suspension store or on rows written by hand. The turn counter is a proof each turn appends from inside its own run, and a model's tool result is the model's own reading of it.
+**Anti-game:** the Inbox is Shift Manager's own read, workforce's inbox view, every Inbox answer goes through orchestration's Inbox client, a typed line goes through Shift Manager's composer, the filer's answer is its model's own `updateTask` call, and a task is read through `getTask`. Nothing asserts on the suspension store or on rows written by hand. The turn counter is a proof each turn appends from inside its own run, and a model's tool result is the model's own reading of it.
 
 **Model:** n/a (model-free: a scripted model calls the real tools).
 

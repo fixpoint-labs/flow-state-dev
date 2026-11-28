@@ -56,6 +56,22 @@ function open(task: CodingBoardTask = RUNNING, extra: Omit<StubData, "board"> = 
 const line = (popup: HTMLElement) => within(popup).queryByTestId("streaming-indicator");
 
 describe("a running task's feed ends in a live working line", () => {
+  it("shows the harness plan checklist while the task runs and after it ends", async () => {
+    const { popup, setTask } = open(RUNNING, {
+      plan: {
+        "req-1": [
+          { title: "Read", status: "completed" },
+          { title: "Fix", status: "in_progress" },
+        ],
+      },
+    });
+    await waitFor(() => expect(popup.querySelector("[data-plan-checklist]")).not.toBeNull());
+    setTask({ status: "completed", completedAt: STARTED + 120_000, detail: { answer: "Done.", answerCut: false } });
+    await waitFor(() => expect(line(popup)).toBeNull());
+    await waitFor(() => expect(popup.querySelector("[data-plan-checklist]")).not.toBeNull());
+    expect(within(popup).getByText("Fix")).toBeTruthy();
+  });
+
   it("names the tool call in flight, then the plan step, then falls back to Working...", async () => {
     const { popup, server, data, setTask } = open(RUNNING, { plan: { "req-1": [{ title: "Add regression test", status: "in_progress" }] } });
     await waitFor(() => expect(line(popup)?.textContent).toContain("Running pnpm test"));
@@ -115,7 +131,7 @@ describe("a running task's feed ends in a live working line", () => {
     expect(popup.querySelector("[data-run-total]")?.textContent).toBe("2d 3h");
     expect(popup.querySelector("[data-run-total]")?.getAttribute("title")).toBe("Time on this attempt, waits included");
     act(() => vi.advanceTimersByTime(2_000));
-    expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 32s)");
+    await waitFor(() => expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 32s)"));
   });
 
   it("uses the request start even when the reply begins before the newest page", async () => {

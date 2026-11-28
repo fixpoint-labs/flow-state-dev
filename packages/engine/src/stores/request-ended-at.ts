@@ -2,7 +2,8 @@
  * When a request reached its terminal status. A completed run stamps
  * `completedAtMs`, a failed one `failedAtMs`, an aborted one `abortedAt`;
  * every reader that needs "when did it end" goes through here so none of them
- * forgets one of the three.
+ * forgets one of the three. So does one that needs "when was it last written"
+ * ({@link requestLastWrittenAtMs}).
  */
 import type { RequestRecord } from "./types";
 
@@ -16,4 +17,14 @@ export function terminalAtMs(
 ): number | undefined {
   if (record.status === "in_progress" || record.status === "suspended") return undefined;
   return record.completedAtMs ?? record.failedAtMs ?? record.abortedAt;
+}
+
+/**
+ * When `record` was last written, in ms since epoch: its `updatedAt`, or its
+ * terminal stamp when later. Invariant: never earlier than `updatedAt`.
+ */
+export function requestLastWrittenAtMs(
+  record: Pick<RequestRecord, "status" | "updatedAt" | "completedAtMs" | "failedAtMs" | "abortedAt">
+): number {
+  return Math.max(record.updatedAt, terminalAtMs(record) ?? record.updatedAt);
 }
