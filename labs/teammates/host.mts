@@ -102,10 +102,11 @@ export async function openTeammates(options: TeammatesOptions) {
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
     ],
+    // Project skills only; search pre-approval permits paths outside the checkout, as the existing Bash tool already does.
     fill: {
       [harnesses.slots.harnesses]:
         scripted === undefined
-          ? [claudeCodeHarness(), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
+          ? [claudeCodeHarness({ extraAllowedTools: ["Grep", "Glob", "Skill"] }), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
           : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
     flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],

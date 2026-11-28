@@ -2,7 +2,7 @@
  * The environment and permissions a Claude Code run started through
  * `claudeCodeHarness()` is handed: exactly Claude Code's pass list, never a
  * server variable outside it, since a run's model has a shell; the working
- * folder's own settings with every hook off; and `plan` mode only on the
+ * folder's own settings with hooks and inline skill shell off; and `plan` mode only on the
  * `claude-code-plan` value. The Claude Code block is replaced by a recorder,
  * so the options the harness hands it are what's read.
  */
@@ -40,7 +40,25 @@ describe("a Claude Code run from claudeCodeHarness()", () => {
     expect(built!.env).toEqual(harnessEnv({ pass: CLAUDE_CODE_PASS }));
     expect(built!.permissionMode).toBe(mode);
     expect(built!.settingSources).toEqual(["project"]);
-    expect(built!.settings).toEqual({ disableAllHooks: true });
+    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
     expect(built!.recordWork).toBe(true);
+    expect(built!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash"]);
+  });
+
+  it.each([false, true])("appends extraAllowedTools with plan=%s while keeping project settings and automatic execution off", (plan) => {
+    claudeCodeHarness({
+      plan,
+      extraAllowedTools: ["Grep", "Glob", "Skill"],
+    }).agent(feeds as never);
+    const [built] = seen.options;
+    expect(built!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill"]);
+    expect(built!.permissionMode).toBe(plan ? "plan" : "acceptEdits");
+    expect(built!.settingSources).toEqual(["project"]);
+    expect(built!.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
+  });
+
+  it("keeps only the default tool list when extraAllowedTools is omitted", () => {
+    claudeCodeHarness().agent(feeds as never);
+    expect(seen.options.at(-1)!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash"]);
   });
 });
