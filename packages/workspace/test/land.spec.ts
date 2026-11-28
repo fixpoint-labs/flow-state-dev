@@ -8,6 +8,7 @@
  * and prints a pull request link. Every assertion reads git or that log, not
  * only what the host reports.
  */
+import { pullRequestKey } from "@flow-state-dev/core/harness";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +17,8 @@ import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
 import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
 
 const PR_URL = "https://github.com/acme/widgets/pull/42";
+/** Pull request 5027's key, as a caller names the run's own pull requests (`LandTarget.ownPullRequests`). */
+const OWN_5027 = pullRequestKey({ host: "github.com", owner: "acme", name: "widgets", number: 5027 });
 
 let root: string;
 let repo: string;
@@ -542,17 +545,57 @@ describe("landing a run whose work moved off its branch", () => {
     expect(ghCalls()).toEqual([]);
   });
 
+  // FIX-2973: the checkout being on a branch is no sign the branch is the run's. Pushing there
+  // would put the run's work on someone else's pull request, with the host's credentials.
+  it.each([
+    ["into the run's base", "main"],
+    ["into another base: the push would reach it all the same", "release"],
+  ])("refuses, pushing nothing, when the branch its checkout is on has someone else's pull request open %s", async (_, into) => {
+    const foreignTip = upstream.commit("teammates/other-feature", "theirs.txt", "someone else's work\n");
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "fetch", "-q", "origin", "teammates/other-feature");
+    git(place.cwd, "checkout", "-q", "-b", "teammates/other-feature", "FETCH_HEAD");
+    writeFileSync(join(place.cwd, "more.txt"), "the run's work, on their branch\n");
+    git(place.cwd, "add", "more.txt");
+    git(place.cwd, "commit", "-q", "-m", "More");
+    git(place.cwd, "branch", "-D", "fsd/run-1");
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":6001,"url":"https://github.com/acme/widgets/pull/6001","baseRefName":"${into}","isCrossRepository":false}]'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({
+      reason: "foreign-pull-request",
+      message: expect.stringMatching(/"fsd\/run-1" no longer exists.*#6001.*"teammates\/other-feature"/s),
+    });
+    expect(upstream.rev("refs/heads/teammates/other-feature")).toBe(foreignTip);
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+
+  it("refuses, pushing nothing, when GitHub can't say whose pull requests are open from that branch", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "short-name");
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho 'gh: not logged in' >&2\nexit 1\n`);
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({ reason: "pull-request-failed", message: expect.stringContaining("not logged in") });
+    expect(() => upstream.rev("refs/heads/short-name")).toThrow();
+  });
+
   it("takes the pull request already open from that branch, and opens no second one", async () => {
     const { h, place, commit } = await runWithCommit();
     git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
-    // The run pushed it and opened its pull request itself.
+    // The run pushed it and opened its pull request itself, and its manager knows it (`ownPullRequests`).
     writeFileSync(
       gh,
       `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
     );
 
     const landed = await h.land!(
-      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit },
+      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit, ownPullRequests: [OWN_5027] },
       { kind: "pull-request", title: "t", body: "b", gh },
     );
 
@@ -609,7 +652,7 @@ describe("landing a run whose work moved off its branch", () => {
     );
 
     const landed = await h.land!(
-      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit },
+      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit, ownPullRequests: [OWN_5027] },
       { kind: "pull-request", title: "t", body: "b", gh },
     );
 
@@ -634,7 +677,10 @@ describe("landing a run whose work moved off its branch", () => {
     );
 
     await expect(
-      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+      h.land!(
+        { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit, ownPullRequests: [OWN_5027] },
+        { kind: "pull-request", title: "t", body: "b", gh },
+      ),
     ).rejects.toMatchObject({ reason: "push-failed" });
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);

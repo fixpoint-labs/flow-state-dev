@@ -1390,6 +1390,42 @@ process.stdout.write(out);
     }
   }, 60_000);
 
+  // FIX-2973: the run's own branch is gone and its checkout is on another branch. #42 open from that branch is
+  // pushed to only when it is this task's; otherwise it may be someone else's, and the accept is refused, saying why.
+  it("puts a run's work moved to another branch onto the pull request open from it only when that pull request is this task's", async () => {
+    const h = host({ script: ["commits-renames"], remote: true });
+    try {
+      await acceptedOnto42(h);
+      await h.start();
+      const done = await h.until((t) => t.status === "completed", "the landing onto #42");
+      expect(done.output).toMatchObject({ landed: { kind: "pull-request", number: 42, branch: "teammates/tidy-task-list", existing: true } });
+      const cwd = h.seen[0]!.cwd;
+      expect(git(h.remote, "rev-parse", "refs/heads/teammates/tidy-task-list")).toBe(git(cwd, "rev-parse", "HEAD"));
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("refuses an accept that would push a run's moved work onto a pull request that isn't this task's, and pushes nothing", async () => {
+    const h = host({ script: ["commits-renames"], remote: true });
+    const calls = ghCalls().length;
+    try {
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(asked)!.id, "the review asked again");
+
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landFailed?.land).toBe("pull-request");
+      expect(detail?.landAttempts?.at(-1)?.message).toMatch(/#42 is open and isn't one of this run's, so nothing was pushed/);
+      expect(() => git(h.remote, "rev-parse", "--verify", "--quiet", "refs/heads/teammates/tidy-task-list")).toThrow();
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+      expect((await h.runRecord())?.landedPullRequests ?? []).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
   // FIX-2920 (review): the review named #42 and its accept read "Push to PR #42". Closed before the user accepted,
   // the accept would have opened #43 instead, which the button never said. It pushes only to #42, and asks again.
   it("a user's accept onto the pull request the review named opens none when it closed since, and asks again with every way", async () => {
