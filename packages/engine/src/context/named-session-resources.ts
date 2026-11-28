@@ -319,7 +319,7 @@ export function createNamedSessionAt(
     });
   };
   const atSession = (target: { readonly session: string }): ResourceRegistry<Record<string, AnyResourceRef>> => {
-    const named = target.session;
+    const named = target?.session;
     if (inputs.inView) {
       throw new Error("A view reads its own resources: `ctx.resources.at` is not available in a view.");
     }

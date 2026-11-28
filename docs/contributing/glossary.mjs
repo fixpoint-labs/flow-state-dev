@@ -176,7 +176,7 @@ export const ENTRIES = [
       {
         id: "session-copy",
         check: "guard",
-        re: /\bsession['’]s cop(?:y|ies)\b|\bsessions['’] cop(?:y|ies)\b|\bcop(?:y|ies) of (?:a|the|this|that|each) resource\b|\bhow many cop(?:y|ies) of\b|\bthe named cop(?:y|ies)\b|\bnamed-copy\b|\bnamed-session-copy\b|\bCopyCell\b|\bNamedCopy\w*|\bcaller['’]s (?:own )?cop(?:y|ies)\b(?! of (?:it|a standard worker|an edited)| under)|\b(?:user|org) or (?:user|org) cop(?:y|ies)\b|\bown empty cop(?:y|ies)\b/gi,
+        re: /\bsession['’]s cop(?:y|ies)\b|\bsessions['’] cop(?:y|ies)\b|\bhow many cop(?:y|ies) of\b|\bthe named cop(?:y|ies)\b|\bnamed-copy\b|\bnamed-session-copy\b|\bCopyCell\b|\bNamedCopy\w*|\bcaller['’]s (?:own )?cop(?:y|ies)\b(?! of (?:it\b|a standard worker|an edited)| under)|\b(?:user|org) or (?:user|org) cop(?:y|ies)\b|\bown empty cop(?:y|ies)\b/gi,
         say: "the possessive, no noun: another session's resources, this session's notes",
       },
     ],
