@@ -23,16 +23,20 @@ interface Comment {
   id: number;
   login: string;
   bot?: boolean;
+  /** The thread's first comment, when this one is a reply in it (GitHub's `in_reply_to_id`). */
+  inReplyTo?: number;
 }
 
 /** GitHub as the poster reads it: comments by pull request, permissions by login, and every write recorded. */
-function fakeGitHub() {
+function fakeGitHub(options: { endless?: boolean } = {}) {
   const inline: Record<string, Comment[]> = {
     "acme/app#7": [
       { id: 101, login: "alice" },
       { id: 102, login: "mallory" },
       { id: 103, login: "greptile-apps[bot]", bot: true },
-      { id: 104, login: "carol" }
+      { id: 104, login: "carol" },
+      { id: 105, login: "alice", inReplyTo: 101 },
+      { id: 106, login: "mallory", inReplyTo: 101 }
     ],
     "acme/app#8": [{ id: 301, login: "alice" }],
     "evil/app#7": [{ id: 401, login: "alice" }]
@@ -58,6 +62,10 @@ function fakeGitHub() {
       const [, repo, kind, n] = listed;
       const page = Number(/[?&]page=(\d+)/.exec(path)?.[1] ?? "1");
       const all = (kind === "pulls" ? inline : conversation)[`${repo}#${n}`] ?? [];
+      if (options.endless === true) {
+        // A pull request with more comments than the poster reads: every page is full, and none holds 101.
+        return asJson(200, Array.from({ length: 100 }, (_, i) => ({ id: 100_000 + page * 100 + i, user: { login: "alice", type: "User" } })));
+      }
       return asJson(
         200,
         page > 1
@@ -65,6 +73,7 @@ function fakeGitHub() {
           : all.map((c) => ({
               id: c.id,
               html_url: html(repo!, Number(n), c, kind === "pulls" ? "inline" : "issue"),
+              ...(c.inReplyTo === undefined ? {} : { in_reply_to_id: c.inReplyTo }),
               user: { login: c.login, type: c.bot === true ? "Bot" : "User" }
             }))
       );
@@ -108,6 +117,13 @@ describe("a reply the poster posts", () => {
     expect(outcomes[0]?.refused).toBeUndefined();
   });
 
+  it("answers a reply inside a thread on the thread's first comment, which is the only id GitHub takes a reply to", async () => {
+    // 105 is alice's reply to 101: GitHub answers 422 to a reply posted to 105 itself.
+    const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r105"))]);
+    expect(writes.map((w) => w.path)).toEqual(["/repos/acme/app/pulls/7/comments/101/replies"]);
+    expect(outcomes[0]?.refused).toBeUndefined();
+  });
+
   it("answers a listed bot's comment", async () => {
     const { writes } = await post([draft(LINK("acme/app", 7, "discussion_r103"))]);
     expect(writes.map((w) => w.path)).toEqual(["/repos/acme/app/pulls/7/comments/103/replies"]);
@@ -133,6 +149,12 @@ describe("a reply the poster posts", () => {
 describe("a reply the poster refuses, with nothing written", () => {
   it("another reviewer: an author on no list", async () => {
     const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r102"))]);
+    expect(writes).toEqual([]);
+    expect(outcomes[0]?.refused).toMatch(/mallory.*isn't a trusted reviewer/);
+  });
+
+  it("an outsider's reply in a trusted reviewer's thread: the linked comment's author is checked, not the thread's first", async () => {
+    const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r106"))]);
     expect(writes).toEqual([]);
     expect(outcomes[0]?.refused).toMatch(/mallory.*isn't a trusted reviewer/);
   });
@@ -167,6 +189,15 @@ describe("a reply the poster refuses, with nothing written", () => {
     const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r301"))]);
     expect(writes).toEqual([]);
     expect(outcomes[0]?.refused).toMatch(/301 isn't on acme\/app#7/);
+  });
+
+  it("a comment past the most pages the poster reads: says the read stopped there, not that the comment isn't on the pull request", async () => {
+    const github = fakeGitHub({ endless: true });
+    const { outcomes, writes, reads } = await post([draft(LINK("acme/app", 7, "discussion_r101"))], { github });
+    expect(writes).toEqual([]);
+    expect(reads.filter((r) => r === "/repos/acme/app/pulls/7/comments")).toHaveLength(20);
+    expect(outcomes[0]?.refused).toMatch(/stopped after 20 pages/);
+    expect(outcomes[0]?.refused).not.toMatch(/isn't on/);
   });
 
   it("a link that isn't a comment on a GitHub pull request, and an empty body", async () => {

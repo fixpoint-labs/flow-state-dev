@@ -26,7 +26,9 @@
  * nothing. Nothing in a draft but its link and its body is believed.
  *
  * An inline review comment gets its reply right under it, as GitHub's reply
- * to that comment. A conversation comment or a review's summary can't take a
+ * to that comment's thread: GitHub takes a reply only to a thread's first
+ * comment, so a link to a reply inside a thread posts to the first comment
+ * its `in_reply_to_id` names, still checked as the linked comment. A conversation comment or a review's summary can't take a
  * reply of its own on GitHub, so it gets one
  * comment on the same pull request that links the one it answers.
  */
@@ -92,6 +94,20 @@ export interface ReviewRepliesOptions {
 
 /** The most pages of comments read for one pull request. */
 const MAX_PAGES = 20;
+const PER_PAGE = 100;
+
+/** A comment as read from GitHub: its author, and the thread's first comment when it is a reply. */
+interface ReadComment {
+  readonly login: string;
+  readonly bot: boolean;
+  readonly thread?: number;
+}
+
+/** One pull request's comments on one surface, and whether the read stopped at {@link MAX_PAGES}. */
+interface PullRequestComments {
+  readonly found: Map<number, ReadComment>;
+  readonly capped: boolean;
+}
 
 /** Build the poster. */
 export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
@@ -116,7 +132,7 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
         return (await res.json()) as unknown;
       };
       // One paged read per pull request and surface, and one permission read per author, for the whole call.
-      const hydrated = new Map<string, Promise<Map<number, { login: string; bot: boolean }>>>();
+      const hydrated = new Map<string, Promise<PullRequestComments>>();
       const comments = (link: CommentLink) => {
         const key = `${prKey(link.repository, link.number)}:${link.surface}`;
         let read = hydrated.get(key);
@@ -128,15 +144,17 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
                 ? `/repos/${link.repository}/issues/${link.number}/comments`
                 : `/repos/${link.repository}/pulls/${link.number}/reviews`;
           read = (async () => {
-            const found = new Map<number, { login: string; bot: boolean }>();
+            const found = new Map<number, ReadComment>();
             for (let page = 1; page <= MAX_PAGES; page += 1) {
-              const batch = (await ask(`${path}?per_page=100&page=${page}`)) as { id?: unknown; user?: { login?: unknown; type?: unknown } | null }[];
+              const batch = (await ask(`${path}?per_page=${PER_PAGE}&page=${page}`)) as { id?: unknown; in_reply_to_id?: unknown; user?: { login?: unknown; type?: unknown } | null }[];
               for (const entry of batch) {
-                if (typeof entry.id === "number" && typeof entry.user?.login === "string") found.set(entry.id, { login: entry.user.login, bot: entry.user.type === "Bot" });
+                if (typeof entry.id === "number" && typeof entry.user?.login === "string") {
+                  found.set(entry.id, { login: entry.user.login, bot: entry.user.type === "Bot", ...(typeof entry.in_reply_to_id === "number" ? { thread: entry.in_reply_to_id } : {}) });
+                }
               }
-              if (batch.length < 100) break;
+              if (batch.length < PER_PAGE) return { found, capped: false };
             }
-            return found;
+            return { found, capped: true };
           })();
           hydrated.set(key, read);
         }
@@ -162,8 +180,13 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
         if (link === undefined) return `${draft.link} isn't a link to a comment on a GitHub pull request`;
         const pr = prKey(link.repository, link.number);
         if (!own.has(pr) && !linked.prs.has(pr)) return `${link.repository}#${link.number} isn't this task's pull request, and the operator didn't link it`;
-        const comment = (await comments(link)).get(link.id);
-        if (comment === undefined) return `comment ${link.id} isn't on ${link.repository}#${link.number}`;
+        const read = await comments(link);
+        const comment = read.found.get(link.id);
+        if (comment === undefined) {
+          return read.capped
+            ? `comment ${link.id} wasn't found on ${link.repository}#${link.number}: the read stopped after ${MAX_PAGES} pages of ${PER_PAGE} comments`
+            : `comment ${link.id} isn't on ${link.repository}#${link.number}`;
+        }
         if (linked.comments.has(`${pr}:${link.surface}:${link.id}`)) return undefined;
         const login = comment.login.toLowerCase();
         const list = await reviewers();
@@ -191,10 +214,12 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
             done({ refused: why ?? "unreadable link" });
             continue;
           }
+          // A reply inside a thread is answered on the thread's first comment: GitHub takes a reply to no other.
+          const thread = link.surface === "inline" ? ((await comments(link)).found.get(link.id)?.thread ?? link.id) : link.id;
           // The body is a JSON field, as written: nothing in it reaches a shell.
           const posted =
             link.surface === "inline"
-              ? await ask(`/repos/${link.repository}/pulls/${link.number}/comments/${link.id}/replies`, { method: "POST", body: JSON.stringify({ body: draft.body }) })
+              ? await ask(`/repos/${link.repository}/pulls/${link.number}/comments/${thread}/replies`, { method: "POST", body: JSON.stringify({ body: draft.body }) })
               : await ask(`/repos/${link.repository}/issues/${link.number}/comments`, { method: "POST", body: JSON.stringify({ body: `In reply to ${draft.link}:\n\n${draft.body}` }) });
           const url = (posted as { html_url?: unknown }).html_url;
           done({ posted: typeof url === "string" ? url : draft.link });
