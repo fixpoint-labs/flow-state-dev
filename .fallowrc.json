@@ -72,7 +72,9 @@
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
 
-    "goals/scripts/*.mts"
+    "goals/scripts/*.mts",
+    // The sweep discovers and spawns this runner by path. It sits above the goal-local glob.
+    "goals/closure-smarter-agents/run.mts"
   ],
 
   // Goals load their own files by path (the runnable check, fixtures, labs,
