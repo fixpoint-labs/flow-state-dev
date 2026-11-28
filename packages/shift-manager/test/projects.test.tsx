@@ -15,9 +15,7 @@ import { GAPS } from "../src/gaps";
 import { CollectionReadStoppedError, type Client } from "@flow-state-dev/client";
 import { readProject } from "../src/lib/projects";
 import { connect } from "../src/lib/connection";
-import { projectsOf, type LoadedSnapshot } from "../src/lib/derive";
-import { PROJECTS_PATTERN } from "@flow-state-dev/workforce/browser";
-import { createLabReader } from "../src/lib/reads";
+import { PROJECTS_PATTERN, privateProjectsResource, projectsResource } from "@flow-state-dev/workforce/browser";
 import { toProject, type Project } from "../src/lib/project";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -94,8 +92,9 @@ describe("PROJECTS (BR-22, D3)", () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     const client = connect({ userId: OTHER, baseUrl });
-    const snapshot = await createLabReader(client).read();
-    expect("projects" in snapshot && snapshot.projects.ok && snapshot.projects.value.rows.map((p) => p.id).sort()).toEqual(["desk", "empty"]);
+    // The directory's projects reads (`directory-reads.ts`): both collections, read whole by scope.
+    const [shared, own] = await Promise.all([client.resource(projectsResource).listAll(), client.resource(privateProjectsResource).listAll()]);
+    expect([...shared, ...own].flatMap((row) => toProject(row.value)?.id ?? []).sort()).toEqual(["desk", "empty"]);
     expect(await client.sessions.list({ userId: OTHER, include: "dispatch-runs" })).toEqual([]);
   });
 
@@ -155,10 +154,6 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a pre-project Lab, none of whose flows declares a projects collection (a 404), shows no project and no failure", async () => {
     const { baseUrl } = await lab([]);
     projectsAnswer(404);
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    const snapshot = await createLabReader(connect({ userId: ASK_LAB_USER_ID, baseUrl })).read();
-    expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
-
     openApp(baseUrl, "/inbox");
     await screen.findByTestId("inbox-empty");
     expect(screen.queryByTestId("projects-failure")).toBeNull();
@@ -168,11 +163,10 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a projects read that fails any other way is a failed projects read, never an empty list", async () => {
     const { baseUrl } = await lab();
     projectsAnswer(503);
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    const snapshot = await createLabReader(connect({ userId: OTHER, baseUrl })).read();
-    const projects = "projects" in snapshot ? snapshot.projects : undefined;
-    expect(projects?.ok).toBe(false);
-    expect(projects?.ok === false && projects.failure.message).toMatch(/no projects here \(503\)/);
+    openApp(baseUrl, "/inbox", OTHER);
+    const failed = await screen.findByTestId("projects-failure");
+    expect(failed.textContent).toMatch(/no projects here \(503\)/);
+    expect(screen.queryAllByTestId("project-group")).toEqual([]);
   });
 });
 
@@ -249,31 +243,7 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
   });
 });
 
-describe("grouping is the snapshot's (V4)", () => {
-  const snapshot = (rows: Project[]): LoadedSnapshot =>
-    ({
-      readAt: 0,
-      sessions: [],
-      orgId: "org",
-      inventory: { ok: true, value: { workers: [] } },
-      projects: { ok: true, value: { rows } },
-      boards: {},
-      asks: { ok: true, value: [] },
-      inbox: { ok: true, value: [] },
-      resources: { ok: true, value: [] },
-    }) as LoadedSnapshot;
-  const project = (over: Partial<Project>): Project => ({
-    id: "p",
-    title: "P",
-    brief: null,
-    status: "active",
-    ownerUserId: "alice",
-    members: ["alice"],
-    visibility: "shared",
-    repository: null,
-    ...over,
-  });
-
+describe("a project, as PROJECTS reads it (V4)", () => {
   it("a row's brief: an empty one stays an empty string; absent or not a string is no brief", () => {
     const row = { id: "p", title: "P", ownerUserId: ASK_LAB_USER_ID };
     expect(toProject({ ...row, brief: "" })?.brief).toBe("");
@@ -289,20 +259,13 @@ describe("grouping is the snapshot's (V4)", () => {
     expect(toProject({ ...row, repository: null })?.repository).toBeNull();
   });
 
-  it("projectsOf lists the rows, even one that still carries `workstreams`, and makes no read", () => {
+  it("reads a row that still carries `workstreams` as a project, and makes no read", () => {
     const spy = vi.spyOn(globalThis, "fetch");
     // A row an earlier version wrote, still naming workstreams: nothing reads the field.
-    const stale = toProject({ id: "s", title: "S", ownerUserId: ASK_LAB_USER_ID, workstreams: ["eng.a", "ops.b"] })!;
-    const view = projectsOf(snapshot([stale]));
+    const stale = toProject({ id: "s", title: "S", ownerUserId: ASK_LAB_USER_ID, workstreams: ["eng.a", "ops.b"] });
     expect(spy).not.toHaveBeenCalled();
-    expect(view).toEqual({ ok: true, value: { projects: [stale] } });
-  });
-
-  it("projectsOf fails only when the projects read did: an unread worker inventory leaves PROJECTS whole", () => {
-    const failure = { message: "store offline" };
-    const rows = [project({ id: "a" })];
-    expect(projectsOf({ ...snapshot(rows), inventory: { ok: false, failure } })).toEqual({ ok: true, value: { projects: rows } });
-    expect(projectsOf({ ...snapshot(rows), projects: { ok: false, failure } })).toEqual({ ok: false, failure });
+    expect(stale).toMatchObject({ id: "s", title: "S", ownerUserId: ASK_LAB_USER_ID });
+    expect(stale).not.toHaveProperty("workstreams");
   });
 
 });

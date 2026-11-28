@@ -64,4 +64,19 @@ describe("Jump to's documents", () => {
     rerender();
     await waitFor(() => expect(result.current).toEqual({ ok: true, value: [{ ref: "gamma-notes", sessionId: "s-gamma-2" }] }));
   });
+
+  it("fail by the server's reason when a flow's manifest read fails, never as no documents, and read again on the next open", async () => {
+    manifests.delta = Promise.reject(Object.assign(new Error("manifest offline"), { status: 503 }));
+    manifests.delta.catch(() => {});
+    listed = [{ id: "s-delta", flowKind: "delta" }];
+    const first = renderHook(() => useDocuments());
+    await waitFor(() => expect(first.result.current?.ok).toBe(false));
+    expect(first.result.current?.ok === false && first.result.current.failure.message).toMatch(/manifest offline/);
+    first.unmount();
+
+    // A failed read is not kept: the next open reads the manifest again.
+    manifests.delta = Promise.resolve({ resources: [doc("delta-notes")] });
+    const again = renderHook(() => useDocuments());
+    await waitFor(() => expect(again.result.current).toEqual({ ok: true, value: [{ ref: "delta-notes", sessionId: "s-delta" }] }));
+  });
 });

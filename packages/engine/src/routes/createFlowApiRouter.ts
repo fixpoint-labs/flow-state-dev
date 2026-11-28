@@ -296,6 +296,9 @@ export type CreateFlowApiRouterOptions = {
    */
   noticeIds?: NoticeIdScopes;
 
+  /** The host's sealing secret (`RuntimeConfig.sealingSecret`). Default: `process.env.FSD_SEALING_SECRET`. */
+  sealingSecret?: string;
+
   /**
    * @internal — set by `createFlowState`, which has already resolved its
    * resolvers and instance settings. Direct callers pass the flat options
@@ -499,7 +502,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     requestHost: {
       ...baseRuntimeConfig.requestHost,
       staleThresholdMs: staleSweepThresholdMs,
-      staleSweepIntervalMs
+      staleSweepIntervalMs,
+      // a direct router caller's flows are this router's.
+      flows: baseRuntimeConfig.requestHost?.flows ?? options.registry
     }
   };
 

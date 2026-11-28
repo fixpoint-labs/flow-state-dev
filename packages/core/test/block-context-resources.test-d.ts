@@ -118,9 +118,9 @@ handler({
   execute: (input, ctx) => {
     readsAnyCtx(ctx);
     readsOpenRegistry(ctx.resources);
-    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<{ name: string }>>();
+    expectTypeOf(ctx.resources.skills).toEqualTypeOf<ResourceCollectionRef<{ name: string }, "session">>();
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<
-      Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }>>
+      Array<ResourceRef<{ count: number }> | ResourceCollectionRef<{ name: string }, "session">>
     >();
     return input;
   },
@@ -144,6 +144,36 @@ handler({
     expectTypeOf(ctx.resources.portfolio).toEqualTypeOf<PortfolioRef | undefined>();
     expectTypeOf(ctx.resources.get("portfolio")).toEqualTypeOf<PortfolioRef>();
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<PortfolioRef[]>();
+  },
+});
+
+/**
+ * `ctx.resources.at({ session })` reaches only the session-scoped, stored
+ * collections: anything else throws at runtime, so it must not compile.
+ */
+const prefs = defineResourceCollection({ pattern: "prefs/*", scope: "user", stateSchema: z.object({ theme: z.string() }) });
+handler({
+  name: "reaches-another-session",
+  inputSchema: z.string(),
+  outputSchema: z.string(),
+  resources: { notes, skills, prefs, portfolio },
+  execute: (input, ctx) => {
+    readsAnyCtx(ctx);
+    const theirs = ctx.resources.at({ session: "s2" });
+    expectTypeOf(theirs.skills.list).returns.resolves.items.toHaveProperty("state");
+    // @ts-expect-error a single resource can't be reached in another session.
+    void theirs.notes.state;
+    // @ts-expect-error a user-scoped collection is no one session's copy.
+    void theirs.prefs.list;
+    // @ts-expect-error a projected collection can't be reached in another session.
+    void theirs.portfolio.get;
+    // @ts-expect-error `get` names only what `at` reaches.
+    theirs.get("notes");
+    // @ts-expect-error another session's resources have no read across sessions: its owner is the caller's either way.
+    void theirs.acrossSessions;
+    // The run's own registry reads across its owner's sessions, by the collections `at` reaches.
+    expectTypeOf(ctx.resources.acrossSessions().skills.list).returns.resolves.toHaveProperty("entries");
+    return input;
   },
 });
 

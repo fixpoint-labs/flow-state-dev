@@ -620,9 +620,16 @@ export async function writeRunRecord(
   // A later attempt, or a later turn of the same attempt, of the same task has opened the
   // record: this one is over. Only within one task: a task filed again under the same id
   // starts its attempts and turns over, and the board row's fence above already refuses the
-  // old task's writes.
+  // old task's writes. Nor across tasks: a follow-up continues its root's record with
+  // attempts of its own, and two tasks' attempts are two counters, so comparing them fences
+  // nothing (a stale attempt 1 of the root beside the follow-up's attempt 1 passes it). A
+  // stale attempt of another task of the chain is refused by the board fence above, on its
+  // own task: its claim moved on, its lease lapsed, or it settled. A record that names no task
+  // (written before records named theirs) is compared with no task's either (BP-030): under
+  // a follow-up's root key it is the root's, and the fence above holds for a task's own.
   const sameTask =
-    existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
+    existing?.taskId === identity.taskId &&
+    (existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId);
   if (sameTask && existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
   if (
     identity.turn !== undefined &&
@@ -721,18 +728,21 @@ export async function readRunRecord(
  * key, so it is read after `name` and before the former key.
  *
  * Every key but `name` is this task's only: a record there that names another
- * task (`taskId`) is another row's run, so it counts as absent and the task
+ * task (`taskId`) is another task's run, so it counts as absent and the task
  * opens a new run under `name`. A record that names no task is read as the
- * task's. Pass the reading task's id whenever it is known.
+ * task's. Pass the reading task's id whenever it is known, or, for a task whose
+ * run another task's record continues (a follow-up, its chain's), a test of
+ * whether a record's task id is this run's.
  */
 export async function readModeRunRecord(
   ctx: CollectionHoldingContext,
   epic: string,
   issue: string,
   mode: { readonly name: string; readonly formerName?: string },
-  taskId?: string,
+  taskId?: string | ((recordedTaskId: string) => boolean),
   spelled?: string,
 ): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
+  const isThisRun = typeof taskId === "string" ? (id: string) => id === taskId : taskId;
   const topic = runTopic(epic, issue, mode.name);
   const record = await readRunRecord(ctx, topic);
   const fresh = { segment: mode.name, topic, record };
@@ -741,7 +751,7 @@ export async function readModeRunRecord(
     if (older === undefined || older === mode.name) continue;
     const olderTopic = runTopic(epic, issue, older);
     const found = await readRunRecord(ctx, olderTopic);
-    const anotherTasks = taskId !== undefined && found?.taskId != null && found.taskId !== taskId;
+    const anotherTasks = isThisRun !== undefined && found?.taskId != null && !isThisRun(found.taskId);
     if (found !== undefined && !anotherTasks) return { segment: older, topic: olderTopic, record: found };
   }
   return fresh;
