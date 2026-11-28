@@ -86,6 +86,7 @@ import {
   CursorAgentConfigError,
   CursorAgentRunError,
   CursorSdkNotInstalledError,
+  isActiveRunFailure,
   isUnknownAgentFailure,
 } from "./errors";
 import {
@@ -100,6 +101,7 @@ import {
   type CursorRunResult,
   type CursorRunUsage,
   type CursorSendOptions,
+  type CursorUserMessage,
   type ResolveCursorClient,
   type ResolvedCursorClient,
 } from "./types";
@@ -520,6 +522,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       // stopped or fails still reports the turns it finished (FIX-2145).
       // `undefined` until a run was sent: nothing was spent before.
       let spent: RunSpent | undefined;
+      // Set once this invocation holds the agent's claim; called on every exit.
+      let releaseClaim: (() => void) | null = null;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
@@ -540,7 +544,10 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
-        const run = await agent.send(message, sendOptions);
+        // One run at a time per agent: wait out this process's own run on it
+        // first, so Cursor never refuses a turn for a run that is ours.
+        releaseClaim = await claimAgent(agent.agentId, ctx);
+        const run = await sendReleasingOrphan(agent, message, sendOptions, ctx);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
         // finished turn's running total, then the settled total.
@@ -593,9 +600,99 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // an estimate and its billing unknown.
         spent?.report();
         closeQuietly(agent);
+        // After the close: the next turn on the agent starts once this run's runtime is let go.
+        releaseClaim?.();
       }
     },
   }), { accepts: CURSOR_ACCEPTS });
+}
+
+/**
+ * The agents this process has a run on, each with a promise that settles when
+ * its invocation lets the agent go. Cursor's local store lets an agent hold
+ * one run at a time, so a second turn on an agent here waits for the first
+ * instead of being refused for it.
+ */
+const claimedAgents = new Map<string, Promise<void>>();
+
+/**
+ * Wait until no other invocation in this process holds `agentId`, then hold
+ * it. The claim is taken synchronously after the last wait, so two waiters
+ * never both get through. The wait is raced against the block's signal: a
+ * stopped turn stops waiting and leaves the live run alone.
+ */
+async function claimAgent(agentId: string, ctx: HarnessCallbackContext): Promise<() => void> {
+  let said = false;
+  for (let held = claimedAgents.get(agentId); held !== undefined; held = claimedAgents.get(agentId)) {
+    if (!said) {
+      ctx.emit.status(`Cursor agent ${agentId} is finishing a run; this turn starts when it ends.`);
+      said = true;
+    }
+    const deadline = abortRace(ctx.signal);
+    try {
+      await Promise.race([held, deadline.promise]);
+    } finally {
+      deadline.dispose();
+    }
+  }
+  let release: () => void = () => {};
+  const claim = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  claimedAgents.set(agentId, claim);
+  return () => {
+    if (claimedAgents.get(agentId) === claim) claimedAgents.delete(agentId);
+    release();
+  };
+}
+
+/**
+ * Send the turn. When Cursor refuses it for a run still in progress on the
+ * agent, that run is not one of ours (this invocation holds the agent's claim
+ * in this process): it is a run whose runtime is gone, most often cut by a
+ * server restart, which Cursor's local store records as running until someone
+ * cancels it. Release it and send once more. A refusal that can't be cleared
+ * fails the turn once, saying so, rather than leaving every later turn on the
+ * agent to fail the same way.
+ */
+async function sendReleasingOrphan(
+  agent: CursorAgentLike,
+  message: string | CursorUserMessage,
+  sendOptions: CursorSendOptions | undefined,
+  ctx: HarnessCallbackContext,
+): Promise<CursorRunLike> {
+  try {
+    return await agent.send(message, sendOptions);
+  } catch (err) {
+    if (!isActiveRunFailure(err)) throw err;
+    if (agent.releaseActiveRun === undefined) throw agentBusy(agent.agentId, err);
+    try {
+      await agent.releaseActiveRun();
+    } catch (releaseErr) {
+      throw agentBusy(agent.agentId, releaseErr);
+    }
+    ctx.emit.status(
+      `Cursor agent ${agent.agentId} still recorded a run in progress from a runtime that is gone. ` +
+        "It was cancelled, and this turn is sent again.",
+      { transient: false },
+    );
+    try {
+      return await agent.send(message, sendOptions);
+    } catch (again) {
+      if (isActiveRunFailure(again)) throw agentBusy(agent.agentId, again);
+      throw again;
+    }
+  }
+}
+
+/** The failure for an agent Cursor still holds a run on that this block couldn't release. */
+function agentBusy(agentId: string, err: unknown): CursorAgentRunError {
+  const reason = err instanceof Error ? err.message : String(err);
+  return new CursorAgentRunError(
+    `Cursor agent ${agentId} still has a run in progress, and it could not be released: ${reason}`,
+    { cause: reason },
+    err,
+  );
 }
 
 // FIX-2145, FIX-2288.

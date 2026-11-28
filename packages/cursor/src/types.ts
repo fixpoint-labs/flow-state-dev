@@ -302,6 +302,15 @@ export interface CursorAgentLike {
   send(message: string | CursorUserMessage, options?: CursorSendOptions): Promise<CursorRunLike>;
   /** Releases the local runtime. Called in a `finally`, so a run never leaks one. */
   close?(): void;
+  /**
+   * Cancel every run Cursor's local store still records as in progress on this
+   * agent, through the SDK's `Agent.listRuns` and `Agent.cancelRun`, and say
+   * how many there were. The block calls it only after `send` was refused for
+   * an active run while this process held no run on the agent: the run the
+   * store records is one whose runtime is gone. Absent on a client that can't
+   * reach the store, and then the refusal stands.
+   */
+  releaseActiveRun?(): Promise<number>;
 }
 
 /** The subset of the SDK's `Agent` class this package drives. */

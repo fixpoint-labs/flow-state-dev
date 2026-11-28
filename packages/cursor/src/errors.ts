@@ -91,6 +91,20 @@ export function isUnknownAgentFailure(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "agent_not_found";
 }
 
+/**
+ * Whether `err`, thrown by the SDK's `agent.send`, is Cursor refusing a run
+ * because its local store still records one in progress on the agent.
+ *
+ * Measured against `@cursor/sdk` 1.0.40: the refusal is a plain
+ * `Error("Agent <id> already has active run")` with no code, raised before any
+ * run starts, so the message is all there is to match. A store keeps that
+ * record until the run ends or is cancelled, and a runtime that dies mid-run
+ * (its server restarted) never ends it.
+ */
+export function isActiveRunFailure(err: unknown): boolean {
+  return err instanceof Error && /already has active run/.test(err.message);
+}
+
 // LAB-152 §9.
 /**
  * The caller's signal fired. A cancelled run is a throw and never a handle,

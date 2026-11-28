@@ -21,9 +21,14 @@
 const sdkModule = process.argv[2] || "@cursor/sdk";
 
 /** @type {any} */
+let Agent = null;
+/** @type {any} */
 let agent = null;
 /** @type {any} */
 let run = null;
+/** The directory the agent was opened in: Cursor keys an agent's local store by it. */
+/** @type {string | undefined} */
+let cwd;
 
 /** An error as plain data, so its class and code survive the channel. */
 function serializeError(err) {
@@ -50,11 +55,32 @@ function post(payload) {
   }
 }
 
+/** How long a close waits on a live run's cancel before it closes anyway. */
+const CANCEL_ON_CLOSE_MS = 5_000;
+
 /** Release the agent, then leave. Idempotent: disconnect and `close` can both get here. */
 let closing = false;
 async function closeAndExit() {
   if (closing) return;
   closing = true;
+  // A run still going when the parent lets go (the parent died, or the server
+  // restarted) is cancelled first. Left alone, Cursor's local store records it
+  // as running after this process is gone, and refuses every later turn on
+  // the agent for it.
+  // Bounded: a wedged runtime's cancel may never settle, and this process
+  // must still go.
+  if (run !== null && run.status === "running") {
+    let timer;
+    await Promise.race([
+      Promise.resolve()
+        .then(() => run.cancel())
+        .catch(() => {}),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, CANCEL_ON_CLOSE_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
   try {
     if (agent !== null && typeof agent[Symbol.asyncDispose] === "function") {
       await agent[Symbol.asyncDispose]();
@@ -77,19 +103,40 @@ async function pump(current) {
   }
 }
 
+/**
+ * Cancel every run the agent's local store records as running, and say how
+ * many. The same steps as `releaseActiveRuns` in `src/cursor-client.ts`.
+ */
+async function releaseActiveRuns() {
+  if (typeof Agent?.listRuns !== "function" || typeof Agent?.cancelRun !== "function") return 0;
+  const where = { runtime: "local", ...(cwd === undefined ? {} : { cwd }) };
+  const running = [];
+  let cursor;
+  do {
+    const page = await Agent.listRuns(agent.agentId, { ...where, ...(cursor === undefined ? {} : { cursor }) });
+    for (const listed of page.items) if (listed.status === "running") running.push(listed.id);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  for (const runId of running) await Agent.cancelRun(runId, where);
+  return running.length;
+}
+
 async function handle(msg) {
   switch (msg.op) {
     case "open": {
       const sdk = await import(sdkModule);
-      const Agent = sdk.Agent;
+      Agent = sdk.Agent;
       if (typeof Agent?.create !== "function" || typeof Agent?.resume !== "function") {
         throw Object.assign(new Error("`@cursor/sdk` was found but does not export an `Agent` with `create` and `resume`."), {
           code: "CURSOR_SDK_NO_AGENT",
         });
       }
+      cwd = msg.options?.local?.cwd;
       agent = msg.agentId == null ? await Agent.create(msg.options) : await Agent.resume(msg.agentId, msg.options);
       return { agentId: agent.agentId };
     }
+    case "release":
+      return await releaseActiveRuns();
     case "send": {
       run = await agent.send(msg.prompt, msg.options);
       const supportsWait = typeof run.supports === "function" ? run.supports("wait") !== false : true;

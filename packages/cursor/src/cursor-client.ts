@@ -31,6 +31,56 @@ const SDK_MODULE = "@cursor/sdk";
 interface SdkAgentStatics {
   create(options: unknown): Promise<CursorAgentLike>;
   resume(agentId: string, options?: unknown): Promise<CursorAgentLike>;
+  listRuns?(
+    agentId: string,
+    options: SdkLocalRunOptions & { cursor?: string },
+  ): Promise<{ items: Array<{ id: string; status: string }>; nextCursor?: string }>;
+  cancelRun?(runId: string, options: SdkLocalRunOptions): Promise<void>;
+}
+
+/** Where the SDK finds a local agent's runs: its store is keyed by the agent's directory. */
+interface SdkLocalRunOptions {
+  runtime: "local";
+  cwd?: string;
+}
+
+/**
+ * Cancel every run the local store records as running on `agentId`, through
+ * the SDK's `Agent.listRuns` and `Agent.cancelRun`: each marks the run
+ * cancelled and frees the agent for its next run (measured against 1.0.40).
+ * Resolves with how many it cancelled; `0` when the SDK has neither call.
+ *
+ * `runtime/cursor-runtime-child.mjs` carries the same steps for a run in the
+ * child process; it is plain JavaScript and can't import this.
+ */
+export async function releaseActiveRuns(
+  Agent: Pick<SdkAgentStatics, "listRuns" | "cancelRun">,
+  agentId: string,
+  cwd: string | undefined,
+): Promise<number> {
+  if (typeof Agent.listRuns !== "function" || typeof Agent.cancelRun !== "function") return 0;
+  const where: SdkLocalRunOptions = { runtime: "local", ...(cwd === undefined ? {} : { cwd }) };
+  const running: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await Agent.listRuns(agentId, { ...where, ...(cursor === undefined ? {} : { cursor }) });
+    for (const run of page.items) if (run.status === "running") running.push(run.id);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  for (const runId of running) await Agent.cancelRun(runId, where);
+  return running.length;
+}
+
+/** The SDK's agent, with the release this package adds beside it. */
+function withRelease(Agent: SdkAgentStatics, agent: CursorAgentLike, cwd: string | undefined): CursorAgentLike {
+  return {
+    get agentId() {
+      return agent.agentId;
+    },
+    send: (message, options) => agent.send(message, options),
+    close: () => agent.close?.(),
+    releaseActiveRun: () => releaseActiveRuns(Agent, agent.agentId, cwd),
+  };
 }
 
 /** How the resolver loads the SDK module. Overridable so the absent-SDK path is testable. */
@@ -55,7 +105,8 @@ export function readInstalledCursorSdkVersion(): InstalledSdkVersion {
  *
  * The adapter is thin on purpose: `create` and `resume` are the SDK's own, and
  * everything this package decides about them (the directory, the resumed id, the
- * refused keys) is decided before they are called.
+ * refused keys) is decided before they are called. The one addition is the
+ * agent's `releaseActiveRun`, over the SDK's own run calls.
  *
  * Exported mainly so a test can supply an importer that rejects; production uses
  * the default the block installs for itself.
@@ -82,10 +133,10 @@ export function createDefaultResolveCursorClient(
       );
     }
     return {
-      create: (options: CursorCreateOptions & { local?: { cwd?: string } }) =>
-        Agent.create(options),
-      resume: (agentId: string, options: CursorCreateOptions & { local?: { cwd?: string } }) =>
-        Agent.resume(agentId, options),
+      create: async (options: CursorCreateOptions & { local?: { cwd?: string } }) =>
+        withRelease(Agent, await Agent.create(options), options.local?.cwd),
+      resume: async (agentId: string, options: CursorCreateOptions & { local?: { cwd?: string } }) =>
+        withRelease(Agent, await Agent.resume(agentId, options), options.local?.cwd),
     };
   };
 }
