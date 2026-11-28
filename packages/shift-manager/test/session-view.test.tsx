@@ -18,8 +18,6 @@ const listSessions = vi.fn();
 const lab = {
   // The conversation's turns read (a view) never answers here.
   client: { userId: "u_1", sessions: { list: listSessions }, subscribe: () => ({ close: () => {} }), view: () => new Promise(() => {}) },
-  refresh: vi.fn(),
-  snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 /** What the page's directory holds: the session list and the inventory the case draws. */
@@ -41,8 +39,7 @@ const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 const reviewer = { id: "eng.reviewer", kind: "agent", door: "talk", rules: false, team: "", name: "Reviewer" };
 const session = (id: string, state: Record<string, unknown> = {}): SessionSummary =>
   ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer", ...state }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
-const snapshot = (sessions: SessionSummary[]) =>
-  ({ orgId: "org_1", sessions, inventory: { ok: true, value: { workers: [reviewer] } } }) as never;
+const directoryOf = (sessions: SessionSummary[]) => ({ sessions, inventory: { ok: true, value: { workers: [reviewer] } } }) as never;
 
 beforeEach(() => {
   read.mockReset();
@@ -52,7 +49,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 async function drawn(sessions: SessionSummary[], sessionId: string) {
-  listed = snapshot(sessions);
+  listed = directoryOf(sessions);
   render(<SessionView sessionId={sessionId} gaps={GAPS} />);
   await act(async () => {});
 }

@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1983
 **Outcome:** When something in a Lab fails for good, the operator gets one report in Inbox they can check and add to. Once they answer, the tracker gets one issue an engineer can reproduce from. This holds when the Shift Coordinator is what failed, and when a person reports a problem that threw nothing.
-**Input:** The devteam Lab, opened in-process with the Error Reporter on, served over HTTP and read the way Shift Manager reads it (`createLabReader`). A local MCP server stands in for Linear and records every call. The bugs are planted in `plant.mts`, a file the reporter's harness can read:
+**Input:** The devteam Lab, opened in-process with the Error Reporter on, served over HTTP and read the way Shift Manager reads it (workforce's inbox view, and each ask's own session for its draft). A local MCP server stands in for Linear and records every call. The bugs are planted in `plant.mts`, a file the reporter's harness can read:
 - the coordinator's model splits an undefined repository when a message names a project with none (Sandbox);
 - a worker's harness run throws for `[harness-bug]`, throws once for `[flaky]`, and does nothing for `[gives-up]`;
 - a `burst: <word>` message fails with an error naming the word.

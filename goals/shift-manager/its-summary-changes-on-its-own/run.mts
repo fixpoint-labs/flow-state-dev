@@ -22,11 +22,18 @@
  *   d     a second host whose bus doesn't cross: the ask shows within 30 s + 1 s.
  *   retry the view's read refused once: the Inbox says the server's reason, and its
  *         Retry runs the view again, which lists the ask.
+ *   live  directory live: from another client of the same user, a routine paused
+ *         and a project added show on the drawn Routines screen and in the
+ *         sidebar's PROJECTS within 2 s, each through the read of the screen that
+ *         shows it and no other: no session list, manifest, identity or
+ *         inventory read.
  *
  * Controls (each runs this file again with a scratch patch applied as it loads):
- *   GOAL_CONTROL=no-subscribe   a view's watch hears no topic: a must FAIL.
- *   GOAL_CONTROL=hear-run       the view lists the caller's sessions, as reads.ts does: c must FAIL.
- *   GOAL_CONTROL=no-poll        the view keeps no fallback timer: d must FAIL.
+ *   GOAL_CONTROL=no-subscribe           a view's watch hears no topic: a and live:routine must FAIL.
+ *   GOAL_CONTROL=hear-run               the view lists the caller's sessions: c must FAIL.
+ *   GOAL_CONTROL=no-poll                the view keeps no fallback timer: d must FAIL.
+ *   GOAL_CONTROL=resource-no-subscribe  a collection's live read hears no topic: live:project must FAIL.
+ *   GOAL_CONTROL=whole-read             the directory reads all its parts again on any notice: live:own-reads must FAIL.
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
@@ -42,8 +49,9 @@ import { createFlowState, runAction as runOnServer, type FlowState, type StoreAd
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
-import { routinesView } from "@flow-state-dev/workforce/browser";
+import { PROJECTS_FLOW, ROUTINE_VERBS, SCHEDULES_PATTERN, projectsResource, routinesView } from "@flow-state-dev/workforce/browser";
 import {
+  defineProjectBlocks,
   defineSessionBoard,
   defineWorkerInventoryCollection,
   inventoryWorkers,
@@ -58,9 +66,14 @@ import {
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, modulePatchEnv, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { useGate } from "../../../packages/shift-manager/src/lib/gate.ts";
 import { useInbox } from "../../../packages/shift-manager/src/lib/inbox.ts";
 import { recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
 import { Inbox } from "../../../packages/shift-manager/src/surfaces/Inbox.tsx";
+import { Routines } from "../../../packages/shift-manager/src/surfaces/Routines.tsx";
+import { Sidebar } from "../../../packages/shift-manager/src/surfaces/Sidebar.tsx";
+import { DirectoryProvider } from "../../../packages/shift-manager/src/lib/directory.tsx";
+import { PageReadsProvider } from "../../../packages/shift-manager/src/lib/page-reads.tsx";
 import { GAPS } from "../../../packages/shift-manager/src/gaps.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -80,15 +93,35 @@ const REFUSAL = `The Inbox is down for a moment ${RUN_STAMP}`;
 const INBOX = "packages/shift-manager/src/lib/inbox.ts";
 const VIEW_WATCH = "packages/client/src/view/view.ts";
 const INBOX_VIEW = "packages/workforce/src/workers/inbox-view.ts";
+const RESOURCE_READ = "packages/react/src/hooks/useResource.ts";
+const DIRECTORY_READS = "packages/shift-manager/src/lib/directory-reads.ts";
 const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail: string }> = {
-  // A view's watch subscribes to no topic its answer names: the Inbox reads only on mount and the person's own reads.
+  // A view's watch subscribes to no topic its answer names: the Inbox and Routines read only on mount and the person's own reads.
   "no-subscribe": {
     patches: [{ module: VIEW_WATCH, from: String.raw`return \{ value: keepUnchangedEntries\(entry, result\), topics: result\.topics,`, to: "return { value: keepUnchangedEntries(entry, result), topics: []," }],
-    legs: "a",
-    mustFail: "a:ask-within-1s",
+    legs: "a,live",
+    mustFail: "a:ask-within-1s, live:routine-within-2s",
   },
-  // The view finds an ask's worker through the session list, as `reads.ts` does in the browser:
-  // that list is heard on every turn's `run` on the user topic.
+  // A whole collection's live read subscribes to no topic: PROJECTS reads only on mount and the person's own reads.
+  "resource-no-subscribe": {
+    patches: [{ module: RESOURCE_READ, from: String.raw`\(topics, options\) => client\.subscribe\(topics, options\),`, to: "(_topics, options) => client.subscribe([], options)," }],
+    legs: "live",
+    mustFail: "live:project-within-2s",
+  },
+  // The directory reads every one of its parts again on any notice under the user or the org, as one whole-Lab read would.
+  "whole-read": {
+    patches: [
+      {
+        module: DIRECTORY_READS,
+        from: String.raw`const listing = useSessionList\(\{ client, includeDispatchRuns: true, includeStatus: false \}\);`,
+        to: "const listing = useSessionList({ client, includeDispatchRuns: true, includeStatus: false }); const again = [inventory.refresh, shared.refresh, own.refresh, listing.refresh]; React.useEffect(() => { const held = client.subscribe([{ scope: \"user\" }, { scope: \"org\" }], { onChange: (notice) => { if (notice !== null) for (const read of again) read(); } }); return () => held.close(); }, [client]);",
+      },
+    ],
+    legs: "live",
+    mustFail: "live:own-reads",
+  },
+  // The view finds an ask's worker through the session list, which is heard on every turn's
+  // `run` on the user topic.
   "hear-run": {
     patches: [{ module: INBOX_VIEW, from: String.raw`const sessions = sessionsOf\(ctx\);`, to: "const sessions = sessionsOf(ctx); await sessions.list({ limit: 100 });" }],
     legs: "c",
@@ -118,7 +151,7 @@ if (CONTROLS[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefin
   assertPatched(control.patches, REPO_ROOT, mark);
   process.exit(child.status ?? 1);
 }
-const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d,retry").split(",").map((s) => s.trim()).filter(Boolean));
+const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d,retry,live").split(",").map((s) => s.trim()).filter(Boolean));
 
 
 // ---------------------------------------------------------------------------
@@ -135,8 +168,11 @@ const nativeFetch = globalThis.fetch;
 const viewRuns: Array<{ at: number; origin: string }> = [];
 /** Leg retry: the next inbox view read is refused with {@link REFUSAL}, once. */
 let refuseNextView = false;
+/** Every request the providers made, by the host it read: what leg live grades its reads on. */
+const requests: Array<{ at: number; origin: string; method: string; path: string }> = [];
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
+  requests.push({ at: Date.now(), origin: url.origin, method: init?.method ?? (input instanceof Request ? input.method : "GET"), path: decodeURIComponent(url.pathname + url.search) });
   if (url.pathname.endsWith("/views/inbox")) {
     viewRuns.push({ at: Date.now(), origin: url.origin });
     if (refuseNextView) {
@@ -237,6 +273,8 @@ async function buildHost(stores: StoreAdapter): Promise<{ state: FlowState; flow
   const flows: Record<string, unknown> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)(),
+    // Leg live: the projects a person adds, read by scope as PROJECTS reads them.
+    [PROJECTS_FLOW]: defineFlow({ kind: PROJECTS_FLOW, actions: defineProjectBlocks().actions } as never)(),
   };
   // The inventory, written once as a Lab's boot does, so Shift Manager's read finds the workers.
   const open = async () => {
@@ -314,9 +352,10 @@ type Shown = { at: number; needsYou: number | undefined; failure: string | undef
 function mountProvider(on: Host) {
   const shown: Shown[] = [];
   function Probe() {
-    const { snapshot, client } = useLab();
-    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    const inbox = useInbox(loaded !== undefined);
+    const { client } = useLab();
+    // The shell reads the Inbox once the gate lets Shift Manager in, as the page does (`App.tsx`).
+    const inside = useGate().gate.state === "in";
+    const inbox = useInbox(inside);
     useEffect(() => {
       if (inbox.section === undefined) return;
       shown.push({ at: Date.now(), needsYou: inbox.section.ok ? inbox.section.value.items.length : undefined, failure: inbox.section.ok ? undefined : inbox.section.failure.message });
@@ -324,7 +363,7 @@ function mountProvider(on: Host) {
       // Usage's Re-check, as the screen sends it when it opens (FIX-2775: the rows are then the view's).
       void recheckHarnessUsage(client).catch(() => {});
     }, [inbox.section, client]);
-    return loaded === undefined ? null : createElement(Inbox, { snapshot: loaded, itemId: null, gaps: GAPS } as never);
+    return inside ? createElement(Inbox, { itemId: null, gaps: GAPS }) : null;
   }
   const container = happy.document.createElement("div");
   happy.document.body.appendChild(container);
@@ -334,6 +373,37 @@ function mountProvider(on: Host) {
   return { shown, container, runs: () => viewRuns.filter((r) => r.origin === origin), close: () => root.unmount() };
 }
 type Provider = ReturnType<typeof mountProvider>;
+
+/**
+ * A provider with the Routines screen and the sidebar drawn under it, as the
+ * page draws them once the gate lets Shift Manager in: the directory, the
+ * page's reads, and each screen's own.
+ */
+function mountDirectory(on: Host) {
+  function Screens() {
+    const inside = useGate().gate.state === "in";
+    if (!inside) return null;
+    return createElement(
+      DirectoryProvider,
+      null,
+      createElement(
+        PageReadsProvider,
+        null,
+        createElement(Sidebar, { route: { level: "routines" }, gaps: GAPS, onJump: () => {}, collapsed: false, onToggle: () => {} }),
+        createElement(Routines),
+      ),
+    );
+  }
+  const container = happy.document.createElement("div");
+  happy.document.body.appendChild(container);
+  const root: Root = createRoot(container as unknown as Element);
+  root.render(createElement(LabProvider, { connection: { userId: USER, bearerToken: TOKEN, baseUrl: on.base }, children: createElement(Screens) }));
+  const origin = new URL(on.base).origin;
+  return { container, requests: () => requests.filter((r) => r.origin === origin), close: () => root.unmount() };
+}
+
+/** The reads only a whole-Lab read makes: none of the screens leg live draws reads them for a routine or a project. */
+const WHOLE_LAB_READ = [/\/sessions\?/, /\/manifest\b/, /\/identity\b/, /inventory\/workers/];
 
 /** Wait until the provider has run the inbox view no more for `quietMs` (at most 20 s). */
 async function quiet(provider: Provider, quietMs = 1_500): Promise<void> {
@@ -526,6 +596,83 @@ await runGoal(async (failures, tell) => {
           else evidence.push(`retry: Retry ran the view again, and the Inbox lists ${listed} item(s)`);
         }
       }
+    }
+
+    // live · from another client of the same user, a routine paused and a project added show on the
+    // drawn page within 2 s, each through its own screen's read and no whole-Lab read.
+    if (legs.has("live")) {
+      const on = await host(stores("live"));
+      hosts.push(on);
+      const writer = writerOn(on);
+      const routine = `standup-${RUN_STAMP}`;
+      // A routine on a working schedule, saved as the user from another session: weekdays at 9, on the lead's board.
+      const saved = await writer
+        .resource({ scope: "user", pattern: SCHEDULES_PATTERN })
+        .send<{ ok?: unknown; error?: unknown }>(ROUTINE_VERBS.save, { name: routine, trigger: { clock: { cron: "0 9 * * 1-5" } }, task: { filer: "lead", goal: `Write the stand-up notes ${RUN_STAMP}`, assignee: "eng.doer" } });
+      if (saved?.ok !== true) throw new Error(`setup: saving the routine answered ${JSON.stringify(saved)}`);
+      // A shared project the page must list once its opening projects read lands: the sign it has, so a later
+      // project can only reach PROJECTS through a read the change itself starts.
+      const seeded = `seeded-${RUN_STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      await writer.resource(projectsResource).send("createProject", { id: seeded, title: `Seeded ${RUN_STAMP}` });
+      const page = mountDirectory(on);
+      closers.push(page.close);
+      const drawn = () => page.container.querySelector(`[data-testid="routine"][data-id="clock:${routine}"]`);
+      if ((await until(drawn, (el) => el !== null, 15_000)) === null) throw new Error("setup: the Routines screen never drew the routine");
+      if ((await until(() => page.container.querySelector(`[data-testid="nav-project-${seeded}"]`), (el) => el !== null, 15_000)) === null) {
+        throw new Error("setup: PROJECTS never listed the project saved before the page opened");
+      }
+      // Let the page's opening reads, and any its socket's connect makes, land.
+      await sleep(3_000);
+
+      /**
+       * Write with `write`, then wait for `shown`: how long it took to show, timed from before the
+       * write was sent (so the write's own round trip counts against the bound), and every request
+       * the page made from then until it showed.
+       */
+      const change = async (write: () => Promise<unknown>, shown: () => boolean) => {
+        const from = Date.now();
+        const fromIndex = page.requests().length;
+        await write();
+        await until(() => shown(), (ok) => ok, 2_000 + 3_000);
+        const ms = shown() ? Date.now() - from : undefined;
+        return { ms, made: page.requests().slice(fromIndex) };
+      };
+
+      const paused = await change(
+        () => writer.resource({ scope: "user", pattern: SCHEDULES_PATTERN }).send(ROUTINE_VERBS.pause, { id: `clock:${routine}`, paused: true }),
+        () => drawn()?.getAttribute("data-paused") === "true",
+      );
+      tell.over("live:routine-within-2s · ms from the pause to the drawn Routines screen", paused.ms === undefined ? [] : [paused.ms]);
+      if (paused.ms === undefined || paused.ms >= 2_000) failures.push(`live:routine-within-2s: the paused routine ${paused.ms === undefined ? "never showed paused within 5 s" : `showed paused ${paused.ms} ms after the pause`} (bound 2000)`);
+      else evidence.push(`live: Routines drew the routine paused ${paused.ms} ms after another session paused it`);
+
+      const project = `apollo-${RUN_STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      const added = await change(
+        // As an app adds one: through the projects collection, whose `runBy` is the projects flow.
+        () => writer.resource(projectsResource).send("createProject", { id: project, title: `Apollo ${RUN_STAMP}` }),
+        () => page.container.querySelector(`[data-testid="nav-project-${project}"]`) !== null,
+      );
+      tell.over("live:project-within-2s · ms from the add to PROJECTS", added.ms === undefined ? [] : [added.ms]);
+      if (added.ms === undefined || added.ms >= 2_000) failures.push(`live:project-within-2s: the added project ${added.ms === undefined ? "never showed in PROJECTS within 5 s" : `showed in PROJECTS ${added.ms} ms after it was added`} (bound 2000)`);
+      else evidence.push(`live: PROJECTS listed the project ${added.ms} ms after another session added it`);
+
+      // Each change reads what shows it, and nothing a whole-Lab read reads.
+      const made = [...paused.made, ...added.made];
+      tell.over("live:own-reads · the page's requests while each change showed", made.map((r) => `${r.method} ${r.path}`));
+      const whole = made.filter((r) => WHOLE_LAB_READ.some((pattern) => pattern.test(r.path)));
+      const routinesRead = paused.made.some((r) => r.path.endsWith("/views/routines"));
+      const projectsRead = added.made.some((r) => /\/resources\/(org|user)\/projects\//.test(r.path));
+      const listings = whole.filter((r) => /\/sessions\?/.test(r.path));
+      if (whole.length > 0) {
+        failures.push(
+          `live:own-reads: ${whole.length} whole-Lab read(s) while the changes showed: ${whole.map((r) => `${r.method} ${r.path}`).join(", ")}` +
+            (listings.length === whole.length
+              ? " (owed by FIX-2864: every one is the session list, read again on each write's run notice, which names no session; this signal stays red until it lands)"
+              : ""),
+        );
+      }
+      else if (!routinesRead || !projectsRead) failures.push(`live:own-reads: the changes showed without the screens' own reads (routines view ${routinesRead}, projects read ${projectsRead})`);
+      else evidence.push(`live: ${made.length} request(s) while the changes showed, the routines view and the projects read among them, no session list, manifest, identity or inventory read`);
     }
 
     // d · a bus that doesn't cross: two hosts over one SQLite file, each on its own bus that says

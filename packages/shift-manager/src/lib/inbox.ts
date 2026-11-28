@@ -23,6 +23,7 @@ import { CODER_FLOW, runChangesViewRef } from "@flow-state-dev/harness-manager/b
 import type { RunChangesPatch } from "../components/flow-state/run-changes";
 import { isDone } from "./columns";
 import { CONVERSATION_BOARD_COLLECTION } from "./boards";
+import type { ConnectionFeedStatus } from "../components/flow-state/connection-banner";
 import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure, type Section } from "./failure";
@@ -54,11 +55,27 @@ type InboxRead = {
 };
 
 /**
+ * What the inbox view tells the page's connection bar. With an answer drawn:
+ * `lapsed` while the latest read fails, else `live`. With no answer yet, a
+ * read that failed is the bar's too, since the frame is already on screen:
+ * `stopped` when the server refused it (a 4xx other than a timeout or a rate
+ * limit, which the next read won't change), `lapsed` when it couldn't be
+ * reached, and nothing while the first read is still running.
+ */
+function inboxFeedState(answered: boolean, lapsed: boolean, failure: Failure | undefined): ConnectionFeedStatus | undefined {
+  if (answered) return lapsed ? "lapsed" : "live";
+  if (failure === undefined) return undefined;
+  const status = failure.httpStatus;
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429 ? "stopped" : "lapsed";
+}
+
+/**
  * The user's inbox view. A failed read with an answer already drawn keeps
  * that answer, says it is `stale` and why (`failure`), and tells the page's
  * connection bar it has lapsed, so an old count never reads as current; with
- * no answer yet, the section is the failure. `enabled: false` reads nothing:
- * the shell reads it only once the Lab let Shift Manager in.
+ * no answer yet, the section is the failure, and the bar is told too
+ * ({@link inboxFeedState}). `enabled: false` reads nothing: the shell reads
+ * it only once the Lab let Shift Manager in.
  */
 export function useInbox(enabled = true): InboxRead {
   const { client } = useLab();
@@ -68,7 +85,7 @@ export function useInbox(enabled = true): InboxRead {
     [value, failure],
   );
   const lapsed = value !== undefined && stale && failure !== undefined;
-  useReportFeedState(enabled && value !== undefined ? (lapsed ? "lapsed" : "live") : undefined);
+  useReportFeedState(enabled ? inboxFeedState(value !== undefined, lapsed, failure as Failure | undefined) : undefined);
   const [readAt, setReadAt] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (value !== undefined) setReadAt(Date.now());
@@ -79,10 +96,12 @@ export function useInbox(enabled = true): InboxRead {
 /**
  * Every task, finished ones too, for Jump to while it is open: `undefined`
  * until that read lands, or while `enabled` is false (it reads nothing then).
+ * Where push can miss a change it reads at the Inbox's pace, not the client's
+ * default: it is the same view, with finished tasks too.
  */
 export function useInboxTasks(enabled: boolean): readonly InboxBoardTask[] | undefined {
   const { client } = useLab();
-  const { value } = useView(inboxViewRef, { done: true }, { client, enabled });
+  const { value } = useView(inboxViewRef, { done: true }, { client, enabled, pollIntervalMs: INBOX_POLL_MS });
   return value?.tasks;
 }
 
