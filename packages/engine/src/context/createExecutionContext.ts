@@ -3914,6 +3914,7 @@ export async function createExecutionContext<
       owner: { userId, orgId: resolvedOrgId, tenantId: options.tenantId },
       actorUserId: userId,
       origin: namedFence.origin,
+      ...(options.effectiveRuntimeConfig?.sealingSecret !== undefined ? { sealingSecret: options.effectiveRuntimeConfig.sealingSecret } : {}),
       sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
       ...(viewDependencies !== undefined
         ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(config.pattern) }

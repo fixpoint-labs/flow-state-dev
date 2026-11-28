@@ -61,7 +61,7 @@ export type RunViewOptions = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver" | "sealingSecret">;
   signal?: AbortSignal;
   // FIX-2625 D1.
   /** The change the caller asks the view to answer for: `ctx.view.changed`. A view with no `key` ignores it. */
@@ -295,7 +295,7 @@ type ReadOnlyRun = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources" | "hostResolver" | "sealingSecret">;
   signal?: AbortSignal;
   /** The run's source label. */
   source: "view";
@@ -350,8 +350,12 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     durabilityEnabled: false,
     ...(run.principalKind !== undefined ? { principalKind: run.principalKind } : {}),
     ...(run.resolvedBy !== undefined ? { resolvedBy: run.resolvedBy } : {}),
-    // The host's resolver, which a read across sessions names in a resolver identity.
-    ...(run.runtimeConfig?.hostResolver !== undefined ? { effectiveRuntimeConfig: { hostResolver: run.runtimeConfig.hostResolver } } : {}),
+    // The host's resolver, which a read across sessions names in a resolver
+    // identity, and its sealing secret, which seals that read's cursor.
+    effectiveRuntimeConfig: {
+      ...(run.runtimeConfig?.hostResolver !== undefined ? { hostResolver: run.runtimeConfig.hostResolver } : {}),
+      ...(run.runtimeConfig?.sealingSecret !== undefined ? { sealingSecret: run.runtimeConfig.sealingSecret } : {})
+    },
     // A dispatch into an existing session reaches this operation; one into a
     // child is refused earlier, at the child session's write.
     requestHost: {

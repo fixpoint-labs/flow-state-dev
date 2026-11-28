@@ -15,9 +15,10 @@
  *   listing ends only when `next` is absent.
  * - **Nothing names a dropped row.** A dropped row's session is in the rows
  *   read, and the cursor marks the last of them. So the cursor is sealed:
- *   encrypted and authenticated under a key this process holds, bound to the
- *   owner, the collection and the filter. The caller can't read it, and it
- *   opens nowhere else.
+ *   encrypted and authenticated, bound to the owner, the collection and the
+ *   filter, under a key derived from the host's sealing secret (or this
+ *   process's own key, with none set). The caller can't read it, and it opens
+ *   only where the same key is held.
  * - **A filter is the row's key or a declared index.** Either is answered in
  *   the store's query; a field with no declared index is refused, never
  *   filtered after the read. Every row an index filter returns is checked
@@ -25,7 +26,7 @@
  *   not built yet answers every row.
  * - **The fence.** A turn a webhook delivery started can't call it.
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import {
   canonicalIndexValue,
   canonicalIndexValues,
@@ -65,6 +66,8 @@ export type AcrossSessionsInputs = {
   actorUserId: string;
   /** The run's delivery origin: a fenced run can't read across sessions. */
   origin: DeliveryOrigin | undefined;
+  /** The host's sealing secret (`RuntimeConfig.sealingSecret`); absent, this process's own key. */
+  sealingSecret?: string;
   /** Whether rows under `prefix` are kept per lineage, not per session. */
   sharesLineage: (prefix: string) => boolean;
   /** In a view: record the read of `config`, so its watchers hear the owner's change topic for it. */
@@ -84,34 +87,55 @@ export class AcrossSessionsCursorError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * The key cursors are sealed with: one per process, shared by every copy of
- * the engine in it (`Symbol.for`), never written anywhere. A cursor therefore
- * opens only in the process that sealed it.
+ * The key cursors are sealed with when the host sets no sealing secret: one
+ * per process, shared by every copy of the engine in it (`Symbol.for`), never
+ * written anywhere. Such a cursor opens only in the process that sealed it.
  */
-const CURSOR_KEY: Buffer = (() => {
+const PROCESS_CURSOR_KEY: Buffer = (() => {
   const key = Symbol.for("@flow-state-dev/engine.across-sessions.cursor-key");
   const holder = globalThis as { [key]?: Buffer };
   return (holder[key] ??= randomBytes(32));
 })();
 
+/** What this use of the sealing secret is, so the key it derives serves no other. */
+const CURSOR_KEY_INFO = "flow-state-dev/across-sessions-cursor/v1";
+
+/** Keys derived per secret, so a page doesn't run HKDF again. */
+const derivedKeys = new Map<string, Buffer>();
+
+/**
+ * The key a cursor is sealed with: derived from the host's sealing secret by
+ * HKDF-SHA256 under {@link CURSOR_KEY_INFO}, so every process holding the
+ * secret opens what another sealed; else this process's own.
+ */
+function cursorKey(secret: string | undefined): Buffer {
+  if (secret === undefined) return PROCESS_CURSOR_KEY;
+  let key = derivedKeys.get(secret);
+  if (key === undefined) {
+    key = Buffer.from(hkdfSync("sha256", secret, Buffer.alloc(0), CURSOR_KEY_INFO, 32));
+    derivedKeys.set(secret, key);
+  }
+  return key;
+}
+
 /** The position a cursor seals: the last stored row a page read. */
 type CursorPosition = { sessionKey: string; key: string };
 
 /** `position`, sealed for reads bound to `binding` (owner, collection, filter). */
-function sealCursor(position: CursorPosition, binding: string): string {
+function sealCursor(position: CursorPosition, binding: string, key: Buffer): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", CURSOR_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(binding, "utf8"));
   const body = Buffer.concat([cipher.update(JSON.stringify([position.sessionKey, position.key]), "utf8"), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
 }
 
-/** The position `cursor` seals, when it was sealed here for `binding`. */
-function openCursor(cursor: unknown, binding: string): CursorPosition {
+/** The position `cursor` seals, when it was sealed under `sealingKey` for `binding`. */
+function openCursor(cursor: unknown, binding: string, sealingKey: Buffer): CursorPosition {
   if (typeof cursor !== "string" || cursor.length === 0) throw new AcrossSessionsCursorError();
   try {
     const raw = Buffer.from(cursor, "base64url");
-    const decipher = createDecipheriv("aes-256-gcm", CURSOR_KEY, raw.subarray(0, 12));
+    const decipher = createDecipheriv("aes-256-gcm", sealingKey, raw.subarray(0, 12));
     decipher.setAAD(Buffer.from(binding, "utf8"));
     decipher.setAuthTag(raw.subarray(12, 28));
     const plain = Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8");
@@ -200,7 +224,8 @@ async function listPage(
   if (filter.kind === "index" && filter.value === undefined) return { entries: [] };
   const { owner } = inputs;
   const binding = JSON.stringify([owner.userId, owner.orgId ?? null, owner.tenantId ?? null, config.pattern, filter.kind === "key" ? filter.key : filter.kind === "index" ? [filter.stored, filter.value] : null]);
-  const after = query?.after === undefined ? undefined : openCursor(query.after, binding);
+  const key = cursorKey(inputs.sealingSecret);
+  const after = query?.after === undefined ? undefined : openCursor(query.after, binding, key);
   const request: AcrossSessionsQuery = {
     owner,
     keyPrefix,
@@ -255,6 +280,6 @@ async function listPage(
   // so paging neither stalls on dropped rows nor skips the rows after them.
   const last = page.at(-1);
   return stored.length > ACROSS_SESSIONS_PAGE && last !== undefined
-    ? { entries, next: sealCursor({ sessionKey: last.sessionKey, key: last.key }, binding) }
+    ? { entries, next: sealCursor({ sessionKey: last.sessionKey, key: last.key }, binding, key) }
     : { entries };
 }

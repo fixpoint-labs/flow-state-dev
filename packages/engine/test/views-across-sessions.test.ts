@@ -450,3 +450,87 @@ describe("an owner's change topic, as the caller's credentials admit each flow",
     screen.close();
   });
 });
+
+describe("a cursor sealed under the host's sealing secret", () => {
+  // Two hosts over one store, as two processes behind one address are: a
+  // cursor one hands out opens on the other when both hold the same secret.
+  const fill = handler({
+    name: "fill",
+    inputSchema: z.object({ count: z.number() }),
+    outputSchema: z.object({}),
+    execute: async ({ count }, ctx) => {
+      for (let i = 0; i < count; i += 1) await (ctx.resources as any).notes.create(`n${String(i).padStart(3, "0")}`, { text: "x" });
+      return {};
+    }
+  });
+  const page = handler({
+    name: "page",
+    inputSchema: z.object({ after: z.string().optional() }),
+    outputSchema: z.object({ count: z.number(), next: z.string().optional() }),
+    execute: async ({ after }, ctx) => {
+      const answer = await (ctx.resources as any).acrossSessions().notes.list(after === undefined ? {} : { after });
+      return { count: answer.entries.length, ...(answer.next !== undefined ? { next: answer.next } : {}) };
+    }
+  });
+  const pager = defineFlow({
+    kind: "pager",
+    authentication: verified,
+    actions: { fill },
+    resources: { notes },
+    views: { page: defineView({ scope: "user", block: page }) }
+  })() as unknown as FlowInstance;
+
+  const stores: StoreRegistry = withChangeBus(createInMemoryStores());
+  function host(sealingSecret?: string) {
+    const registry = createFlowRegistry();
+    registry.register(pager);
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, ...(sealingSecret !== undefined ? { sealingSecret } : {}) });
+    routers.push(router);
+    return (path: string[], body: unknown) => post(router, path, "alice", "acme", body);
+  }
+
+  it("opens on a second host with the same secret, and on no host with another", async () => {
+    const a = host("secret-one-with-enough-length-0001");
+    const res = await a(["pager", "s1", "actions", "fill"], { input: { count: 55 } });
+    expect(res.status, res.body).toBe(202);
+    for (let i = 0; i < 400 && Object.keys(await stores.resourceState.getByPrefix("session", "s1", "notes/")).length < 55; i += 1) await settle();
+    const first = JSON.parse((await a(["pager", "views", "page"], { input: {} })).body) as { output: { count: number; next?: string } };
+    expect(first.output.count).toBe(50);
+    const next = first.output.next!;
+    expect(next).toBeTypeOf("string");
+
+    const b = host("secret-one-with-enough-length-0001");
+    const onB = await b(["pager", "views", "page"], { input: { after: next } });
+    expect(onB.status, onB.body).toBe(200);
+    expect((JSON.parse(onB.body) as { output: { count: number } }).output.count).toBe(5);
+
+    const c = host("secret-two-with-enough-length-0002");
+    const onC = await c(["pager", "views", "page"], { input: { after: next } });
+    expect(onC.status, onC.body).toBe(400);
+    expect(JSON.parse(onC.body)).toMatchObject({ error: "invalid_cursor" });
+  });
+
+  it("reads the secret from FSD_SEALING_SECRET when the host passes none", async () => {
+    const a = host("secret-from-the-environment-00003");
+    const first = JSON.parse((await a(["pager", "views", "page"], { input: {} })).body) as { output: { next?: string } };
+    const before = process.env.FSD_SEALING_SECRET;
+    process.env.FSD_SEALING_SECRET = "secret-from-the-environment-00003";
+    try {
+      const fromEnv = host();
+      const res = await fromEnv(["pager", "views", "page"], { input: { after: first.output.next } });
+      expect(res.status, res.body).toBe(200);
+    } finally {
+      if (before === undefined) delete process.env.FSD_SEALING_SECRET;
+      else process.env.FSD_SEALING_SECRET = before;
+    }
+  });
+
+  it("pages within one host with no secret", async () => {
+    const none = host();
+    const first = JSON.parse((await none(["pager", "views", "page"], { input: {} })).body) as { output: { count: number; next?: string } };
+    expect(first.output.next).toBeTypeOf("string");
+    const second = await none(["pager", "views", "page"], { input: { after: first.output.next } });
+    expect(second.status, second.body).toBe(200);
+    expect((JSON.parse(second.body) as { output: { count: number } }).output.count).toBe(5);
+  });
+});
