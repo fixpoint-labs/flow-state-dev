@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, engineering, from the POC: how the next phase waits for a judgment. Chosen: the phase after a judging phase is filed held and the worker releases it; an approval is a waitForUser approval the worker asks on the feature task. Beside it: gate rows, one held row per gate; and a review that fails its task when it asks for changes. It comes down to the first row, an approval between phases: under the choice it is a waitForUser approval on the feature task, one Inbox item under PR-3; a gate row is a row a person answers, with a no-op run on release; failing the review leaves no place for one. The second row: on a review that asks for changes, the next phase waits under the choice and under gate rows, and a failed review reads as a crash. The third row is the price: the worker releases each held step under the choice; gate rows cost a row and a run per gate; a failed review spends an attempt and retries. Locks in: a judging phase&#x27;s successor filed held, released by updateTask, no gate row and no run. Flips if the woken turn can&#x27;t suspend an approval on the feature task: the kill line."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recom  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · ENGINEERING, FROM THE POC</text>
+    <text class="t-q" x="32" y="52">How does the phase after a review wait for the worker&#x27;s judgment?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Held, the worker releases</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">Gate rows</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">Fail the review</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">AN APPROVAL</text>
+    <text class="t-lbl" x="32" y="169">BETWEEN PHASES</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">An approval on the task</text>
+    <text class="t-s" x="244" y="179">waitForUser, one Inbox item</text>
+    <text class="mark minus" x="466" y="162">−</text>
+    <text class="t-b" x="484" y="161">A row a person answers</text>
+    <text class="t-s" x="484" y="179">and a no-op run on release</text>
+    <text class="mark minus" x="706" y="162">−</text>
+    <text class="t-b" x="724" y="161">No place for one</text>
+    <text class="t-s" x="724" y="179">a second mechanism needed</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">A REVIEW THAT</text>
+    <text class="t-lbl" x="32" y="231">ASKS FOR CHANGES</text>
+    <text class="mark plus" x="226" y="224">+</text>
+    <text class="t-b" x="244" y="223">Next phase waits</text>
+    <text class="t-s" x="244" y="241">until the worker releases it</text>
+    <text class="mark plus" x="466" y="224">+</text>
+    <text class="t-b" x="484" y="223">Next phase waits</text>
+    <text class="t-s" x="484" y="241">on the gate row</text>
+    <text class="mark minus" x="706" y="224">−</text>
+    <text class="t-b" x="724" y="223">Reads as a crash</text>
+    <text class="t-s" x="724" y="241">the same as a reviewer failing</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHAT IT COSTS</text>
+    <text class="mark minus" x="226" y="282">−</text>
+    <text class="t-b" x="244" y="281">Worker releases each</text>
+    <text class="t-s" x="244" y="299">one updateTask per step</text>
+    <text class="mark minus" x="466" y="282">−</text>
+    <text class="t-b" x="484" y="281">A row and a run per gate</text>
+    <text class="t-s" x="484" y="299">M counts must skip them</text>
+    <text class="mark minus" x="706" y="282">−</text>
+    <text class="t-b" x="724" y="281">An attempt per review</text>
+    <text class="t-s" x="724" y="299">and a retry re-runs it</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A judged phase&#x27;s successor is filed held</text>
+    <text class="t-s" x="32" y="387">released by updateTask, no gate row, no run</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">The woken turn can&#x27;t suspend on it</text>
+    <text class="t-s" x="494" y="387">the kill line: re-gate before a gate row</text>
+  </g>
+</svg>
