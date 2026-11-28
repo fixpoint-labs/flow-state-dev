@@ -67,12 +67,12 @@ async function renderPanel(tasks: CodingBoardTask[] = TASKS) {
 const rows = (list: HTMLElement) => within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
 const statusOf = (list: HTMLElement, i: number) => within(list).getAllByRole("button")[i]!.querySelector("[data-status]")?.textContent ?? null;
 const tab = (panel: HTMLElement, name: string) => within(panel).getByRole("tab", { name: new RegExp(name) });
-const tiles = (panel: HTMLElement) => within(panel).getAllByRole("tab").map((t) => [t.textContent, t.getAttribute("aria-selected")]);
+const tiles = (panel: HTMLElement) => within(within(panel).getByRole("tablist", { name: "Task status" })).getAllByRole("tab").map((t) => [t.textContent, t.getAttribute("aria-selected")]);
 
 describe("a teammate's tasks in its panel", () => {
   it("totals them in the heading and counts each filter on its tile, Running first and selected", async () => {
     const panel = await renderPanel();
-    expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
+    expect(within(panel).getByRole("tab", { name: "Tasks 3" })).toBeTruthy();
     // The tiles are the tabs: the only way to choose which tasks show. Done counts completed and cancelled alike.
     expect(within(panel).getByRole("tablist", { name: "Task status" })).toBeTruthy();
     expect(tiles(panel)).toEqual([["Running2", "true"], ["Idle1", "false"], ["Failed2", "false"], ["Done8", "false"]]);
@@ -182,8 +182,8 @@ describe("a busy panel stays short", () => {
     expect(within(panel).queryByRole("list", { name: "Failed" })).toBeNull();
     expect(within(panel).getByText("No failed tasks.")).toBeTruthy();
     expect(tab(panel, "Failed").textContent).toBe("Failed0");
-    // Not deleted: the task is still the board's, so the heading's total keeps it.
-    expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
+    // Clearing moves no open task: the Tasks tab still counts the six running ones.
+    expect(within(panel).getByRole("tab", { name: "Tasks 6" })).toBeTruthy();
     // Clear was a dead end; now a cleared failure is under Done, still saying it failed and why.
     expect(tab(panel, "Done").textContent).toBe("Done7");
     fireEvent.click(tab(panel, "Done"));

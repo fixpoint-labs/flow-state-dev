@@ -40,6 +40,13 @@ export const teammates: AppInventory = {
     ],
     "src/lib/attention.ts": ["Alert", "TeammateAttention"],
     "src/lib/looks.ts": ["TeammateColor", "BotFace", "BotStatus", "Look"],
+    "src/lib/panel-tab.ts": [{ name: "PanelTab", reason: "Which of the panel's own tabs is open, kept per teammate in this browser; no server read." }],
+    "src/lib/pull-requests.ts": [
+      {
+        name: "TeammatePullRequest",
+        reason: "What the panel works out from two reads: each run session's pull-request record (harness-manager's `readSessionPullRequests`) joined to the coding board row of the task whose run recorded it.",
+      },
+    ],
     "src/lib/status.ts": ["StatusInputs", "Status", "Need"],
     "src/lib/task-presentation.ts": ["TaskPresentation"],
     "src/lib/theme.ts": ["Theme"],

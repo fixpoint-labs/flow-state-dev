@@ -49,16 +49,26 @@ page follows the system's light or dark setting. Yellow marks only the user need
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running. Above the feed, a collapsible
   checklist shows the harness's own to-do list for the run, and keeps it after the task ends.
-- **Right:** the open teammate's panel. At the top, *Tasks* and their count: the tasks its
-  conversation started, coding tasks and teammates' jobs alike. Under it, three count tiles,
-  *Running*, *Failed* and *Done*, which are the panel's tabs; the selected one lists its tasks
+- **Right:** the open teammate's panel, in tabs, each with its count: *Tasks* (its open tasks,
+  the ones *Running* and *Idle* list), *Pull Requests* (its open ones) and *Routines*. *Tasks* shows once the teammate has a task and *Pull Requests* once it has a
+  pull request; *Routines* always shows, so a new teammate's panel is one *Routines* tab. The tab
+  you last picked for a teammate stays picked in this browser, and while it is hidden the panel
+  opens on the first tab shown. A tab you are not on shows a yellow dot when something in it
+  waits on you. *Pull Requests* lists the pull requests the runs of this teammate's tasks
+  opened, so a coordinator's are those of the coding tasks it handed out: open ones first, then
+  merged or closed, each with its state as its run last saw it and its task, which opens in the
+  popup. A pull request links to GitHub only when its address is an `https://github.com` one;
+  any other shows as plain text. *Tasks* holds the tasks its
+  conversation started, coding tasks and teammates' jobs alike. In it, four count tiles,
+  *Running*, *Idle*, *Failed* and *Done*, which pick the tasks shown; the selected one lists its tasks
   as cards, newest first. A running task waiting on you leads, and every running task shows,
   however many there are. *Failed* gives each task the first line of its reason. *Failed* and
   *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
   to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
   holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
   its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
-  uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
+  uses the same word and colour as its card. *Routines* lists the routines that act through
+  the teammate.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired

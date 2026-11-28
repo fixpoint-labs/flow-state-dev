@@ -41,9 +41,11 @@ export interface StubData {
    * requests, as harness-manager's direct reads read them. A section left out is one the run's
    * harness records none of.
    */
-  recorded?: Record<string, { files?: (string | { path: string; applied: number })[]; pullRequests?: { number: number; url: string; title: string | null }[] }>;
+  recorded?: Record<string, { files?: (string | { path: string; applied: number })[]; pullRequests?: { number: number; url: string; title: string | null; state?: string | null }[] }>;
   /** Every coding board read fails, as a server that lost the board does: the screen keeps its last rows, stale. */
   boardFails?: boolean;
+  /** The user's routines, as Workforce's routines view answers them (every teammate's). Absent: none. */
+  routines?: unknown[];
   /** Answers a POST the screen made: a throw fails it as the board's refusal does. Absent: done. */
   answer?: (posted: Posted) => unknown;
 }
@@ -137,6 +139,7 @@ export function stubServer(data: StubData = {}) {
         return json({ output: { plan: steps === undefined ? null : { rows: steps.map((r, i) => ({ id: `p${i}`, ...r })), truncated: false }, pullRequests: { rows: [], truncated: false } }, topics: [] });
       }
       if (path.endsWith("/views/sessionTurns")) return json({ output: [], topics: [] });
+      if (path.endsWith("/views/routines")) return json({ output: { routines: data.routines ?? [] }, topics: [] });
       const posted = { path, body };
       posts.push(posted);
       requests += 1;
