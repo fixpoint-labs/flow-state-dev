@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/tools",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Reusable tool blocks for flow-state-dev.",
   "keywords": [
     "ai",

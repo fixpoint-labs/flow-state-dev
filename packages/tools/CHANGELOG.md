@@ -1,5 +1,69 @@
 # @flow-state-dev/tools
 
+## 0.4.0
+
+### Minor Changes
+
+- 28e37c7: `createBashBlocks()` now runs in the just-bash emulator when no `provider` is given, the same default as `createBashCapability()` and `createBashTool()` (FIX-2818).
+
+  - **Breaking: the host shell is an explicit choice.** It was the default. A caller that relied on it passes `provider: { type: "local" }`. There is no alias for the old default.
+  - **Install `just-bash` to run commands on the default.** It is an optional peer dependency of `@flow-state-dev/tools`. Without it, the default sandbox still reads and writes files but refuses commands, with `install just-bash for full bash support` on stderr. That is the same fallback `createBashCapability()` and `createBashTool()` already have.
+
+  Docs: apps/docs/docs/reference/tools.md (the "Default provider" column for `createBashBlocks` reads `just-bash`, not `local`).
+
+- 990ebc5: Where a bash scope keeps its files, and how a projection is opened and flushed, are each written once, in `@flow-state-dev/workspace` (FIX-2935).
+
+  - **New in `@flow-state-dev/workspace`:** `scopeFolder(root, scope, principal)`, the folder one scope instance keeps its files in (`root/.fsdev/workspaces/<scope>/…`). The bash tools use it, and every existing bash folder resolves to the same path as before.
+  - **New:** `projectionSession({ place, mounts })` opens a projection, hydrates it, and flushes it back. A place that could not be read settles as `{ readable: false, error }`; a store failure rejects. Bash and the Claude Code workspace use it.
+  - **New:** `encodeSegment` and `tenantSegment` (the harness checkout encoder, unchanged), `readableSegment`, and `segmentDigest` (the 12-hex digest in a bash folder and MOAT run name) are exported from `@flow-state-dev/workspace`. `@flow-state-dev/harness-manager/checkout` still exports the first two.
+  - **Breaking:** `FileEntryState` is removed from `@flow-state-dev/tools` and `@flow-state-dev/tools/bash`. Use `ProjectedEntryState` from `@flow-state-dev/workspace`; it is the same shape. No alias.
+
+  Docs: packages/workspace/README.md (`scopeFolder`, `projectionSession`) · packages/tools/README.md and apps/docs/docs/tools/bash.md (`FileEntryState` becomes `ProjectedEntryState` from workspace)
+
+- dc01275: The `fetch` and `crawl` tools take an `allowedHosts` option (FIX-2747).
+
+  - `fetch({ allowedHosts: ["docs.example.com"] })` and `crawl({ allowedHosts })` limit the tool to those hostnames. The list is checked on the URL the model asks for and on every redirect hop, so an allowed site can no longer redirect the tool to any other public host. Hosts match exactly: `example.com` does not allow `www.example.com`.
+  - A refusal is `fetch_blocked_url` (not retryable), and its message names the host and the hop: the starting URL or `redirect hop <n>`. A crawl skips a refused page.
+  - Only the built-in provider can check redirect hops, so setting `allowedHosts` selects it even when a Firecrawl or Jina key is set, and naming a hosted provider with `allowedHosts` throws.
+  - Unset, nothing changes.
+
+  Docs: apps/docs/docs/reference/tools.md (fetch and crawl config tables gain `allowedHosts`; the fetch network section says the list is checked on every hop and selects the built-in provider).
+
+- df074bb: The built-in `fetch` and `crawl` tools are bounded (FIX-2821).
+
+  - **Breaking: the app's crawl limits are ceilings.** `crawl({ maxPages, maxDepth })` now sets the most one crawl may visit (default 20 pages, depth 2). The model can ask for less in the tool call, never more. Before, the input schema filled in 20 and 2 and the config values were never used, so a model (or a crawled page steering it) could ask for any number. The tool input's `maxPages` and `maxDepth` are now optional, with no default, so the crawl tool's input JSON schema no longer has `default` on either field and `CrawlInput` types them as optional.
+  - **Time limit.** A built-in fetch, and each page a built-in crawl reads, has 30 seconds for every redirect hop and the body together. Running out throws `fetch_transport_error` with `errorType: "timeout"` (retryable). Cancelling the run aborts the request (`errorType: "abort"`) and ends a crawl.
+  - **Size limit.** A body is streamed and cut off past 5 MiB. The fetch tool throws the new `fetch_response_too_large` code, `errorType: "too_large"`, not retryable. A crawl skips that page. A non-2xx response keeps its `fetch_http_error` and retry choice even when its body is too large to read; only the body excerpt is dropped. A crawl does not read the body of a page it skips for its status or content type.
+  - **DNS rebinding is closed.** A hostname is resolved once, when the socket connects, and refused unless every address is public; the connection uses that answer. A name that answers public to one lookup and private to the next can no longer reach a private address. The refusal is `fetch_blocked_url`, as before.
+  - `FetchProviderAdapter` and `CrawlProviderAdapter` options gain an optional `signal`.
+
+  Docs: apps/docs/docs/reference/tools.md (fetch: the rebinding caveat goes, add the time and size limits and the `too_large` row; crawl: `maxPages`/`maxDepth` are ceilings set in config, drop the "config values never apply" note) and apps/docs/docs/reference/errors.md (list `fetch_response_too_large`).
+
+### Patch Changes
+
+- 302364e: Bash workspace folders and MOAT run names no longer collide for ids that differ only in lone UTF-16 surrogates (FIX-2939). Ids like `"\ud800"`, `"\udfff"` and `"�"` used to resolve to one folder, so a caller who controlled a user, org, tenant or session id could share another principal's files. Each now gets its own folder and container.
+
+  Ids that are valid Unicode, which is every ordinary id, keep the exact folder and run name they had, so existing workspaces stay where they are. The rare id with a lone surrogate gets a new, empty folder; its old folder was shared and is left untouched on disk.
+
+  Docs: none (no public API changes)
+
+- Updated dependencies [990ebc5]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/core@0.7.0
+
 ## 0.3.0
 
 ### Minor Changes

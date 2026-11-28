@@ -1,5 +1,37 @@
 # @flow-state-dev/cursor
 
+## 0.3.1
+
+### Patch Changes
+
+- 7ffd582: A Cursor run's handle `usage.inputTokens` now counts the prompt tokens the cache read and wrote, so it matches the run's reported spend and cost. `cursorUsage` still carries the raw counters (FIX-2940).
+- 019b156: A harness is a core value, and the harness packages no longer depend on the harness manager (FIX-2928).
+
+  - **`@flow-state-dev/core/harness` exports `Harness`, `harnessSchema` and `HarnessFeeds`**, beside `HarnessBlock`, plus the tool-approval feed's types (`HarnessToolApprovalHook`, `HarnessToolApprovalRequest`, `HarnessToolApprovalDecision`). A harness package, or a harness of your own, imports these from core.
+  - **One feed type.** A task run and a session turn both hand a harness `HarnessFeeds`. Required: `cwd`, `resume`, `onSession`, `onUsage` and `worktree` (the run's directory, for a fence that names it; a task run now hands it too). Optional: `model` (a session turn's pick), `onSteerable`, `onActivity`, `onEvent`, `onToolApproval`.
+  - **Breaking:** `@flow-state-dev/harness-manager` no longer exports `Harness`, `HarnessFeeds`, `HarnessSessionFeeds` or the tool-approval feed types. Import them from `@flow-state-dev/core/harness`; `HarnessSessionFeeds` is `HarnessFeeds`. No alias.
+  - **Breaking: `claudeCode()` is gone; fill `claudeCodeHarness()` instead,** the way you fill `codexHarness()` and `cursorHarness()`: `fill: { [harnesses.slots.harnesses]: [claudeCodeHarness(), claudeCodeHarness({ plan: true })] }`. `plan: true` gives the `claude-code-plan` value. A run's work collections (`observed-file-ops`, `observed-gaps`, the plan record) are served by the flow that runs it, so there is no `claude-code` flow.
+  - `@flow-state-dev/codex` and `@flow-state-dev/cursor` drop their dependency on `@flow-state-dev/harness-manager`.
+
+  Docs: packages/claude-code/README.md · packages/harness-manager/README.md · apps/docs/docs/reference/kits.md, apps/docs/docs/reference/harness-runs.md and apps/docs/docs/build/webhooks/github-reviews.md (every `claudeCode()` becomes `claudeCodeHarness()` in the `harnesses` fill; the `claude-code` flow is gone)
+
+- Updated dependencies [990ebc5]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/core@0.7.0
+
 ## 0.3.0
 
 ### Minor Changes

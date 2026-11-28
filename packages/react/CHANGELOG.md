@@ -1,5 +1,35 @@
 # @flow-state-dev/react
 
+## 0.6.1
+
+### Patch Changes
+
+- 73aa85a: A screen can keep a whole user or org collection current without re-reading every entry, and can read one newest-first, one page at a time (FIX-2845). Shift Manager's message log shows the newest messages first and loads older ones as you scroll.
+
+  Docs: apps/docs/docs/shift-manager/overview.md (the message log), apps/docs/docs/resources/client-access.md (`useResource` on a user or org collection: `all` and `newest`).
+
+- 4380b06: `useSession` fixes two edge cases in how it reads a session (FIX-2508).
+
+  - A state change that arrives while `refresh({ items: false })` is waiting on its detail read, after its state read answered and before the first full read lands, is no longer lost. An `increment` in that window used to be dropped from the state the view showed.
+  - When the latest-request read fails and the hook holds no earlier record, the request the view shows last now reads its own status, so `followedRequest` is no longer stuck at `null`. With `live`, it is read again until it has ended, as when the latest-request read names another request.
+
+  Docs: none; behaviour now matches what `followedRequest` and `refresh({ items: false })` already describe.
+
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+  - @flow-state-dev/client@0.6.1
+  - @flow-state-dev/core@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

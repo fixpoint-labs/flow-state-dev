@@ -1,5 +1,26 @@
 # @flow-state-dev/client
 
+## 0.6.1
+
+### Patch Changes
+
+- 73aa85a: A screen can keep a whole user or org collection current without re-reading every entry, and can read one newest-first, one page at a time (FIX-2845). Shift Manager's message log shows the newest messages first and loads older ones as you scroll.
+
+  Docs: apps/docs/docs/shift-manager/overview.md (the message log), apps/docs/docs/resources/client-access.md (`useResource` on a user or org collection: `all` and `newest`).
+
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+  - @flow-state-dev/core@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

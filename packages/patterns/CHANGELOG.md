@@ -1,5 +1,33 @@
 # @flow-state-dev/patterns
 
+## 0.4.0
+
+### Minor Changes
+
+- 86d888b: `createSynthesize` is no longer exported from the package root. Import it from `@flow-state-dev/patterns/plan-and-execute` (FIX-2918).
+
+### Patch Changes
+
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [5c9acb4]
+- Updated dependencies [8828dd9]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [2f1597b]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [45650b1]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [93781d9]
+  - @flow-state-dev/core@0.7.0
+  - @flow-state-dev/orchestration@0.8.0
+  - @flow-state-dev/testing@0.4.1
+
 ## 0.3.0
 
 ### Minor Changes
