@@ -828,6 +828,13 @@ function PanelContent({ className }: { className?: string }) {
   // left behind: the ids come back, the visit does not.
   const workspaceKey = `${activeFlowId ?? "none"}:${effectiveSessionId ?? "none"}:${workspaceToken}`;
 
+  // The open workspace tab, read by the rail: on Trace a block's detail opens
+  // under its row, so the rail leaves it out. The Tabs stay uncontrolled and
+  // remount (back to Stream) with the key; a value recorded under another key
+  // is stale, which the derivation reads as Stream without an effect.
+  const [tabVisit, setTabVisit] = useState<{ key: string; tab: string }>({ key: "", tab: "stream" });
+  const activeTab = tabVisit.key === workspaceKey ? tabVisit.tab : "stream";
+
   return (
     <TraceLookupProvider requestGroups={requestGroups}>
     <div className={rootClass} data-fs-theme={THEME_ATTRIBUTE[theme]}>
@@ -956,7 +963,11 @@ function PanelContent({ className }: { className?: string }) {
         <InventoryProvider sessionId={effectiveSessionId}>
         {/* Main workspace */}
         <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-fs-surface">
-          <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0 gap-0">
+          <Tabs
+            defaultValue="stream"
+            onValueChange={(tab) => setTabVisit({ key: workspaceKey, tab })}
+            className="flex flex-1 flex-col min-h-0 gap-0"
+          >
             <div className="flex min-h-11 select-none items-end justify-between gap-4 border-b border-fs-ink/20 px-[18px]">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
@@ -1057,7 +1068,7 @@ function PanelContent({ className }: { className?: string }) {
           <div className="flex-1 divide-y divide-fs-ink/20 [&>*]:px-4 [&>*]:py-3.5">
             <TokenUsageSummary requestGroups={requestGroups} />
             <SessionContextPanel sessionId={effectiveSessionId} refreshKey={stateRefreshKey} />
-            <ItemDetail />
+            <ItemDetail blockDetailInline={activeTab === "trace"} />
           </div>
         </aside>
         </SelectionProvider>

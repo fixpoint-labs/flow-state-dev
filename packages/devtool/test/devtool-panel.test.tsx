@@ -12,7 +12,7 @@
  * outright; this test locks that decision in.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import React from "react";
 
 const requestsState = {
@@ -189,5 +189,61 @@ describe("DevToolPanel — the Inventory tab is wired into the workspace", () =>
     expect(devToolState.client.resources.getResourceManifest).toHaveBeenCalledWith("sess_1");
     expect(screen.queryByRole("tab", { name: "Inventory" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Tasks" })).toBeInTheDocument();
+  });
+});
+
+describe("DevToolPanel — the rail leaves a block's detail to the Trace tab", () => {
+  beforeEach(() => {
+    devToolState.client.resources.getResourceManifest.mockResolvedValue({ flowKind: "demo", resources: [] });
+    requestsState.requests = [
+      {
+        id: "req_1",
+        flowKind: "demo",
+        actionName: "run",
+        userId: "u1",
+        status: "completed",
+        source: "http",
+        startedAtMs: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        items: [
+          {
+            id: "trace-steer",
+            type: "block_trace",
+            status: "completed",
+            requestId: "req_1",
+            itemIndex: 0,
+            ts: 1,
+            provenance: { blockName: "steer-next", blockInstanceId: "inst-steer", phase: "main" },
+            blockName: "steer-next",
+            blockKind: "handler",
+            blockInstanceId: "inst-steer",
+            output: { kind: "inline", value: { verdict: "done" } },
+          },
+        ],
+      },
+    ];
+  });
+
+  it("opens the detail under the row on Trace, with no block panel in the rail", async () => {
+    await act(async () => {
+      render(<DevToolPanel userId="u1" />);
+    });
+    const traceTab = screen.getByRole("tab", { name: "Trace" });
+    await act(async () => {
+      fireEvent.mouseDown(traceTab, { button: 0 });
+    });
+    expect(traceTab).toHaveAttribute("aria-selected", "true");
+
+    // A completed request that was never active renders collapsed.
+    if (screen.queryByText("steer-next") === null) fireEvent.click(screen.getByText("run"));
+    const toggle = screen.getByText("steer-next").closest("[aria-expanded]") as HTMLElement;
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // One copy button: the inline detail's. The rail renders none.
+    const copies = screen.getAllByTitle("Copy block detail");
+    expect(copies).toHaveLength(1);
+    expect(document.getElementById(toggle.getAttribute("aria-controls")!)).toContainElement(copies[0]);
   });
 });

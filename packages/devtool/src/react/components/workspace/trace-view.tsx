@@ -13,6 +13,7 @@ import { useDebug } from "../../context/debug-context";
 import { useTraceLookup } from "../../context/trace-context";
 import { isInternalBlockValue } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
+import { BlockNodeDetail } from "../detail/item-detail";
 import { cn, errorSummary } from "../../lib/utils";
 
 type TraceViewProps = {
@@ -317,7 +318,7 @@ function TimelineBar({
 }
 
 // Types that are always cosmetic in the tree — their payloads show up in
-// the block detail sidebar (or other surfaces). Hidden from the trace
+// the block detail (or other surfaces). Hidden from the trace
 // tree unless the user flips "Show trace items" on.
 const HIDDEN_TRACE_ITEM_TYPES = new Set([
   "state_snapshot",
@@ -350,7 +351,7 @@ function TraceNodeView({
   traceItemsVisible: boolean;
   timeline?: TimelineWindow;
 }) {
-  const { selectedItemId, selectItem, selectedBlockNode, selectBlock } = useSelection();
+  const { selectedItemId, selectItem, selectedBlockNode, selectBlock, clearSelection } = useSelection();
   const { isDebugMode } = useDebug();
   const isExpanded = shouldExpand(node, parentRequestExpanded);
   // Children actually rendered — filter out hidden trace item rows unless
@@ -428,24 +429,38 @@ function TraceNodeView({
         ? errorSummary(node.traceItem.error?.details)
         : undefined;
 
-    // Chevron toggles expansion; clicking the row body selects the block.
-    // Keeping these separate means you can inspect a block without
-    // collapsing its child list.
+    // Chevron toggles the child list; the row body toggles the block's own
+    // detail, opened directly beneath the row. Keeping these separate means you
+    // can inspect a block without collapsing its child list. The detail follows
+    // the single selection, so one block's detail is open at a time.
     const handleChevronClick = (event: React.MouseEvent) => {
       event.stopPropagation();
       toggleNode(node.id, isExpanded);
     };
-    const handleRowClick = () => selectBlock(node);
+    const toggleDetail = () => (isBlockSelected ? clearSelection() : selectBlock(node));
+    const handleRowKeyDown = (event: React.KeyboardEvent) => {
+      // Keys on the chevron belong to the chevron.
+      if (event.target !== event.currentTarget) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleDetail();
+    };
+    const detailId = `trace-detail-${node.id}`;
 
     return (
       <div>
         {/* The row and its in/out preview are one target: hover, selection and click cover both. */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={isBlockSelected}
+          aria-controls={detailId}
           className={cn(
-            "cursor-pointer hover:bg-fs-ink/5",
+            "cursor-pointer hover:bg-fs-ink/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40",
             isBlockSelected && "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]",
           )}
-          onClick={handleRowClick}
+          onClick={toggleDetail}
+          onKeyDown={handleRowKeyDown}
         >
         <div className={cn(ROW_GRID, "min-h-7 w-full text-left")}>
           <div className="flex min-w-0 items-center gap-1.5 self-stretch">
@@ -538,6 +553,7 @@ function TraceNodeView({
         </div>
         <BlockIOPreview node={node} depth={depth} />
         </div>
+        {isBlockSelected && <InlineBlockDetail id={detailId} node={node} depth={depth} />}
         {isExpanded &&
           visibleChildren.map((child) => (
             <TraceNodeView
@@ -615,6 +631,27 @@ function TraceDividerView({ item, depth }: { item: DevtoolItem; depth: number })
         {label}
       </span>
       <div className="h-px flex-1 bg-fs-ink/20" />
+    </div>
+  );
+}
+
+/**
+ * A block's full detail, opened under its row and indented to the row's depth.
+ * Renders the live node (not the selection's snapshot), so a block still
+ * running keeps updating. Bounded height: long JSON scrolls inside it rather
+ * than pushing the rest of the tree a screen away.
+ */
+function InlineBlockDetail({ id, node, depth }: { id: string; node: TraceNode; depth: number }) {
+  return (
+    <div
+      id={id}
+      className="pb-2.5 pr-[18px] pt-1 select-text"
+      // Aligns with the block name column, like the in/out preview.
+      style={{ paddingLeft: `${depth * 16 + 76}px` }}
+    >
+      <div className="max-h-[28rem] overflow-auto">
+        <BlockNodeDetail node={node} />
+      </div>
     </div>
   );
 }
