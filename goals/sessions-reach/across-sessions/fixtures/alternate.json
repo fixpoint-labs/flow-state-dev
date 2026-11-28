@@ -1,0 +1,8 @@
+{
+  "org": "initech",
+  "otherOrg": "umbrella",
+  "person": "dana",
+  "otherPerson": "erin",
+  "tenant": "t-south",
+  "gate": { "sessions": 5000, "rows": 100000, "matching": 2000, "page": 50, "runs": 60, "budgetMs": 50 }
+}

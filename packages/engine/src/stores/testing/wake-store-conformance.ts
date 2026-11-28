@@ -7,8 +7,9 @@
  * fired by the sweeper until a pass clears it. The cases pin the properties
  * that make that true:
  *
- * - one wake per (tenant, session, entry): a second write coalesces, keeping
- *   the earlier due time and the later `landBy`;
+ * - one wake per (tenant, session, entry, resolver identity): a second write
+ *   coalesces, keeping the earlier due time and the later `landBy`, and two
+ *   writers under different resolvers keep two wakes;
  * - every write bumps the version, and a move or a clear is conditional on the
  *   version the pass read, so a wake written during a pass survives it;
  * - `listDue` and `earliestDueAt` read every due wake, across tenants and
@@ -85,6 +86,38 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
         expect(sooner.dueAt).toBe(5_000);
         expect(sooner.landBy).toBe(30_000);
         expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toMatchObject({ dueAt: 5_000, landBy: 30_000 });
+      });
+    });
+
+    // A woken run carries the resolver identity its wake names, and reaches
+    // the own-resolver sessions that resolver admits. So a wake is kept per
+    // resolver: writers under different resolvers never share one, and each
+    // row's resolver is fixed for its life. No resolver is its own key value.
+    it("keeps one wake per resolver identity: writers under different resolvers never coalesce", async () => {
+      await withStore(async (store) => {
+        const vault = await store.owe(wake({ resolvedBy: "vault", dueAt: 10_000 }));
+        const other = await store.owe(wake({ resolvedBy: "other", dueAt: 5_000 }));
+        const none = await store.owe(wake({ dueAt: 7_000 }));
+        expect([vault.resolvedBy, other.resolvedBy, none.resolvedBy]).toEqual(["vault", "other", undefined]);
+        // The same resolver coalesces into its own row, and keeps naming it.
+        const again = await store.owe(wake({ resolvedBy: "vault", dueAt: 12_000 }));
+        expect(again).toMatchObject({ resolvedBy: "vault", dueAt: 10_000, version: vault.version + 1 });
+        // No resolver coalesces with no resolver.
+        expect((await store.owe(wake({ dueAt: 8_000 }))).version).toBe(none.version + 1);
+        expect(await store.get({ sessionId: "s1", entry: "dispatch", resolvedBy: "vault" })).toMatchObject({ resolvedBy: "vault", dueAt: 10_000 });
+        expect(await store.get({ sessionId: "s1", entry: "dispatch", resolvedBy: "other" })).toMatchObject({ resolvedBy: "other", dueAt: 5_000 });
+        const unnamed = await store.get({ sessionId: "s1", entry: "dispatch" });
+        expect(unnamed).toMatchObject({ dueAt: 7_000 });
+        expect(unnamed?.resolvedBy).toBeUndefined();
+        const due = await store.listDue(Number.MAX_SAFE_INTEGER, 10);
+        expect(due.map((w) => w.resolvedBy ?? null)).toEqual(["other", null, "vault"]);
+        // A move or a clear touches only the row its key names.
+        expect(await store.clear({ sessionId: "s1", entry: "dispatch", resolvedBy: "other" }, other.version)).toBe(true);
+        expect(await store.move({ sessionId: "s1", entry: "dispatch", resolvedBy: "vault" }, again.version, 1)).toBe(true);
+        expect((await store.listDue(Number.MAX_SAFE_INTEGER, 10)).map((w) => [w.resolvedBy ?? null, w.dueAt])).toEqual([
+          ["vault", 1],
+          [null, 7_000]
+        ]);
       });
     });
 

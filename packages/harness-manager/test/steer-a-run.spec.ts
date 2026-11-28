@@ -293,6 +293,22 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
       return { id: FOLLOW_UP_ID };
     },
   });
+  // The follow-up let go, as starting it from the board does: the next drain runs it.
+  const releaseFollowUp = handler({
+    name: "steer-release-follow-up",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.release(FOLLOW_UP_ID);
+    },
+  });
   const doorBoard = async (ctx: BlockContext) => ({
     tasks: await getOrCreateTaskCollection({
       ctx,
@@ -318,7 +334,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
   });
   const flow = defineFlow({
     kind: "steer-host",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel }, followUp: { block: followUp }, message, talk: { block: talk } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel }, followUp: { block: followUp }, releaseFollowUp: { block: releaseFollowUp }, message, talk: { block: talk } },
     internal: { actions: { ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "steer-host" } as never);
@@ -343,12 +359,12 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
       runtimeConfig: { ...rt.runtimeConfig },
     } as never)) as { output?: any; error?: any };
   };
-  const row = async (): Promise<Task> =>
-    (await (await runtime()).stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as Task;
-  const until = async (predicate: (task: Task) => boolean, what: string, timeoutMs = 30_000): Promise<Task> => {
+  const row = async (id = TASK_ID): Promise<Task> =>
+    (await (await runtime()).stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${id}`))?.state as Task;
+  const until = async (predicate: (task: Task) => boolean, what: string, timeoutMs = 30_000, id = TASK_ID): Promise<Task> => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const current = await row();
+      const current = await row(id);
       if (current !== undefined && predicate(current)) return current;
       if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}; row is ${JSON.stringify(current)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -819,6 +835,15 @@ describe("a line typed in a coding run's session", () => {
       expect(line.output).toEqual({ steered: FOLLOW_UP_ID });
       // No talk ran: the line waits on the follow-up for its first prompt.
       expect(h.seen).toHaveLength(1);
+
+      // Started, the follow-up continues the root's run, with the line in its first prompt.
+      expect((await h.act("releaseFollowUp")).error).toBeUndefined();
+      await h.act("drain");
+      const followed = await h.until((t) => ["completed", "errored", "failed"].includes(t.status), "the follow-up to end", 30_000, FOLLOW_UP_ID);
+      expect(followed.status, followed.error).toBe("completed");
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("And update the docs.");
+      expect(h.seen[1]).toMatchObject({ resume: "sess_1", cwd: h.seen[0]!.cwd });
     } finally {
       await h.dispose();
     }

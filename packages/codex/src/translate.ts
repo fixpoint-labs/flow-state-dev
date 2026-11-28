@@ -197,10 +197,14 @@ function translateItem(
         query: readString((item as { query?: unknown }).query) ?? "",
       });
 
-    case "todo_list":
-      return settledPair(callId, "todo_list", {
-        items: (item as { items?: unknown }).items ?? [],
+    case "todo_list": {
+      const raw = (item as { items?: unknown }).items;
+      const planList = confirmedCodexTodoList(raw);
+      const pair = settledPair(callId, "todo_list", {
+        items: raw ?? [],
       });
+      return planList === null ? pair : [...pair, { kind: "plan_list", items: planList }];
+    }
 
     // Non-fatal by the SDK's own type ("a non-fatal error surfaced as an
     // item"): Codex's warnings, such as a configured service tier the model
@@ -226,6 +230,17 @@ function translateItem(
         },
       ];
   }
+}
+
+/** The whole to-do list in a settled `todo_list` item, or `null` when it carries none. */
+function confirmedCodexTodoList(raw: unknown): Array<{ title: string | null; status: string | null }> | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((entry) => {
+    const item = (entry ?? {}) as { text?: unknown; completed?: unknown };
+    const title = readString(item.text);
+    // Codex only carries a boolean completed flag today, not in-progress steps.
+    return { title: title ?? null, status: item.completed === true ? "completed" : "pending" };
+  });
 }
 
 /**

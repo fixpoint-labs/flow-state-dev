@@ -395,6 +395,14 @@ export interface CreateFlowStateOptions<
    * timing is sensitive. Read by every push edge of the app.
    */
   noticeIds?: RuntimeConfig["noticeIds"];
+
+  /**
+   * The host's secret for sealing what it hands a client to send back unread
+   * (`RuntimeConfig.sealingSecret`): today a read across sessions' cursor.
+   * Default: `process.env.FSD_SEALING_SECRET`. Set the same secret on every
+   * process behind one address.
+   */
+  sealingSecret?: RuntimeConfig["sealingSecret"];
   
   /**
    * Low-level escape hatch: a pre-built FlowRunner controlling where

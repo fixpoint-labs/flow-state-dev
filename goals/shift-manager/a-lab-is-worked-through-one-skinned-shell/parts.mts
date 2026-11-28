@@ -365,8 +365,10 @@ export function part4(base: string, report: Report): void {
     // Shift Manager's sends an action or aborts a request itself.
     "sendAction(": [],
     "abortRequest(": [],
-    "resumeSuspension(": ["lib/reads.ts"],
-    "createSession(": ["lib/reads.ts", "lib/conversation.ts"],
+    // An answer goes through orchestration's one answer call (`inbox.ts`): no module resumes a suspension itself.
+    "resumeSuspension(": [],
+    // A read opens no session (FIX-2624): only a conversation's first line opens one.
+    "createSession(": ["lib/conversation.ts"],
     // The person's project coordinator for a project, found or started through Workforce's client (FIX-1793).
     "ensureWorkerSession(": ["surfaces/Project.tsx"],
   };
@@ -380,10 +382,6 @@ export function part4(base: string, report: Report): void {
       if (!(allowed[call] ?? []).includes(rel)) report.fail("P4:ER-15", `${rel} writes through ${call}, outside the doors ER-15 names`);
     }
   }
-  // The Lab's reads (FIX-2624): reads.ts creates no session; the projects and the inventory are read by scope.
-  const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
-  const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== 0) report.fail("P4:ER-15", `lib/reads.ts creates ${createCount} session(s): a read opens none`);
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
@@ -392,7 +390,7 @@ export function part4(base: string, report: Report): void {
   if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*worker\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*worker\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door, Interrupt's stop and a delegate change through workforce's client (deliver.ts, task.tsx, DelegatesPanel.tsx), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the person's project coordinator (Project.tsx, through ensureWorkerSession), no session for a read (reads.ts; ${createCount} createSession) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door, Interrupt's stop and a delegate change through workforce's client (deliver.ts, task.tsx, DelegatesPanel.tsx), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the person's project coordinator (Project.tsx, through ensureWorkerSession), no session for a read and no resume of Shift Manager's own; Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and Shift Coordinator's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "ShiftCoordinator.tsx"]) {

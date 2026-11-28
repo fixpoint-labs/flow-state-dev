@@ -25,6 +25,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryBus, createInMemoryStores, type ChangeNotice, type SessionRecord } from "@flow-state-dev/engine/host";
 import { runView } from "@flow-state-dev/engine/internal";
 import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
+import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import { z } from "zod";
 import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection } from "../../src/tasks";
 import { taskToolViews } from "../../src/skills/views/task-list-view";
@@ -136,7 +137,7 @@ describe("an org board's task-list view, watched by a member who didn't file its
     const answer = await view(bob);
 
     const heard = await heardDuring(bob, () => act(alice, "hold", "t1"));
-    expect(heard.some((notice) => hearsNotice(answer.hears, notice))).toBe(true);
+    expect(heard.some((notice) => hearsNotice(answer.hears, notice as WireNotice))).toBe(true);
   });
 });
 
@@ -151,7 +152,7 @@ describe("a board's task-list view hears a filing from a session its answer neve
       expect(answer.output).toEqual([]);
 
       const heard = await heardDuring(alice, () => act(writers[scope], "file", "w1"));
-      expect(heard.filter((notice) => hearsNotice(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
+      expect(heard.filter((notice) => hearsNotice(answer.hears, notice as WireNotice)).map((notice) => notice.kind)).toContain("board");
     });
   }
 });
@@ -165,7 +166,7 @@ describe("a session board shared to its lineage", () => {
     expect(answer.output).toEqual([]);
 
     const heard = await heardDuring(alice, () => act(member, "file", "w1"));
-    expect(heard.filter((notice) => hearsNotice(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
+    expect(heard.filter((notice) => hearsNotice(answer.hears, notice as WireNotice)).map((notice) => notice.kind)).toContain("board");
     // And the row it hears of is on the board when the view reads again.
     expect(((await view(alice)).output as Array<{ id: string }>).map((task) => task.id)).toEqual(["w1"]);
   });

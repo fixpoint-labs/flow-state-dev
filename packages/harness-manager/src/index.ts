@@ -286,10 +286,15 @@ export {
  */
 export { runBoardSegment } from "./workspace";
 /**
- * The issue a task's own id stands in for, on a board that mints its ids: a
- * session door's `runOf` keys a row's run with it, as the manager did.
+ * The issue a task's own id stands in for, on a board that mints its ids.
  */
 export { taskIssueSegment } from "./workspace";
+/**
+ * The issue a task's run is keyed by on a board that mints its ids: its
+ * follow-up root's id, encoded. A session door's `runOf` keys a task's run
+ * with it, as the manager does, so a follow-up reads its root's run.
+ */
+export { runIssueSegment } from "./workspace";
 /**
  * The directory a run writes its question into, which no repository may
  * commit: what every provision hands the workspace host. A host asks the same
