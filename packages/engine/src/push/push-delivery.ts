@@ -23,10 +23,10 @@ import { authorizeManagementRoute, type RouteAuthContext } from "../routes/route
 import { jsonResponse, loadCheckedSession } from "../routes/route-utils";
 import { isWireTopic, openPushSocket, type PushSocket, type PushSocketIO } from "./socket-session";
 import { PUSH_TICKET_TTL_MS, signPushTicket, type GrantedTopic } from "./ticket";
-import { isChangeTopicResource, ownerSubscription } from "../bus/owner-topic";
-import { ownResolverVerdict, type InstanceCallerResolver } from "../routes/instance-caller";
-import { pinRejectsCaller } from "../context/instance-pin";
-import { isWriteRecord } from "../resources/default-write-flow";
+import { isChangeTopicResource, ownerSubscription, readChangeTopicResource } from "../bus/owner-topic";
+import type { InstanceCallerResolver } from "../routes/instance-caller";
+import { namedRecordAdmission } from "../context/named-session";
+import type { BusTopic } from "../bus/types";
 
 /** Options for {@link enablePushDelivery}. */
 export type EnablePushDeliveryOptions = {
@@ -129,22 +129,29 @@ export type MintContext = RouteAuthContext & {
 };
 
 /**
- * The flow instances whose sessions of `owner` this request would be shown,
- * by the session listing's per-row rule: an instance with a resolver of its
- * own admits when that resolver accepts these credentials as the owner
- * (`ownResolverVerdict`); any other when the verified caller is outside no
- * pin. A write session's flow is never one. A session of any other instance
- * reads as empty to a read across sessions, so its writes wake nothing.
+ * What the change topic at wire resource `resource` subscribes: one owner
+ * topic per flow instance the read across sessions admits. The caller is
+ * resolved at the view's flow, as the view route resolved the view's
+ * principal, and each instance is judged by the read's own admission
+ * (`namedRecordAdmission`, for a run with no session of its own), so the two
+ * can't disagree. A session of any instance it refuses reads as empty, so
+ * its writes wake nothing. A view flow the host doesn't hold, or a caller its
+ * door refuses or names as someone else, gets nothing.
  */
-async function admittedFlows(ctx: MintContext, owner: { userId: string; orgId: string; tenantId: string | undefined }): Promise<string[]> {
-  const admitted: string[] = [];
+async function changeTopicGrants(ctx: MintContext, userId: string, resource: string): Promise<BusTopic[]> {
+  const named = readChangeTopicResource(resource);
+  const viewFlow = named === undefined ? undefined : ctx.registry.get(named.viewFlowId);
+  if (viewFlow === undefined) return [];
+  const principal = await ctx.callerFor(viewFlow);
+  if (principal === undefined || principal.userId !== userId) return [];
+  const admit = namedRecordAdmission({ stores: ctx.stores, registry: ctx.registry, hostResolver: ctx.hostResolver, principal, sessionId: "" });
+  const owner = { userId: principal.userId, orgId: principal.orgId, tenantId: principal.tenantId };
+  const grants: BusTopic[] = [];
   for (const flow of ctx.registry.list()) {
-    const record = { flowKind: flow.kind, flowId: flow.id, userId: owner.userId, orgId: owner.orgId, ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}) };
-    if (isWriteRecord(record)) continue;
-    const verdict = await ownResolverVerdict(ctx.registry, ctx.callerFor, record);
-    if (verdict ?? !pinRejectsCaller(flow.ownerPin, { userId: owner.userId, orgId: owner.orgId })) admitted.push(flow.id);
+    const session = { id: "", flowKind: flow.kind, flowId: flow.id, userId: owner.userId, orgId: owner.orgId, ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}) };
+    if (await admit("", session)) grants.push(ownerSubscription(owner, flow.id, resource));
   }
-  return admitted;
+  return grants;
 }
 
 /**
@@ -192,8 +199,7 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
     // instances whose sessions this request's credentials would be shown
     // (`bus/owner-topic.ts`).
     if (wire.scope === "user" && isChangeTopicResource(wire.resource)) {
-      const owner = { userId: ctx.principal?.userId ?? userId, orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID, tenantId: ctx.tenantId };
-      for (const flowId of await admittedFlows(ctx, owner)) granted.push({ wire, bus: ownerSubscription(owner, flowId, wire.resource) });
+      for (const bus of await changeTopicGrants(ctx, userId, wire.resource)) granted.push({ wire, bus });
       continue;
     }
     const id = wire.scope === "user" ? ctx.principal?.userId ?? userId : ctx.principal?.orgId ?? DEFAULT_ORG_ID;

@@ -119,7 +119,7 @@ describe("a user view reading across sessions", () => {
     const answer = await env.view();
     expect(answer.output.entries).toEqual(["s1 first", "s2 second"]);
     const changeTopic = answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource !== undefined);
-    expect(changeTopic).toEqual({ topic: { scope: "user", resource: "/sessions/notes/*" }, kinds: ["resource"], paths: ["/sessions/notes/*"] });
+    expect(changeTopic).toEqual({ topic: { scope: "user", resource: "/sessions/desk/notes/*" }, kinds: ["resource"], paths: ["/sessions/desk/notes/*"] });
   });
 
   it("hears a row filed in a session made after it ran: the write publishes on the owner's topic, naming no session", async () => {
@@ -137,7 +137,7 @@ describe("a user view reading across sessions", () => {
       expect(notice.partition).toBe("made-later");
     }
     // The notice, as the socket delivers it, is one the answer's hearing hears.
-    const wire = { topic: { scope: "user" as const, resource: "/sessions/notes/*" }, kind: "resource" as const };
+    const wire = { topic: { scope: "user" as const, resource: "/sessions/desk/notes/*" }, kind: "resource" as const };
     expect(hearsNotice(before.hears, wire)).toBe(true);
     expect((await env.view()).output.entries).toEqual(["made-later late", "s1 first"]);
   });
@@ -532,5 +532,122 @@ describe("a cursor sealed under the host's sealing secret", () => {
     const second = await none(["pager", "views", "page"], { input: { after: first.output.next } });
     expect(second.status, second.body).toBe(200);
     expect((JSON.parse(second.body) as { output: { count: number } }).output.count).toBe(5);
+  });
+});
+
+describe("an owner's change topic, as the read admits each flow", () => {
+  // `alpha` and `beta` each resolve their callers with a resolver of their
+  // own, and both accept the same request. A view on alpha is resolved by
+  // alpha's resolver, so the read leaves beta's sessions out (their resolver
+  // didn't produce the view's principal); its change topic must too.
+  const resolverOf = () => ({
+    resolvePrincipal: (context: { request?: Request }) => {
+      const userId = context.request?.headers.get("x-verified-user");
+      const orgId = context.request?.headers.get("x-verified-org");
+      return userId && orgId ? { userId, orgId } : null;
+    }
+  });
+  function bootResolvers() {
+    const put = handler({
+      name: "put-resolvers",
+      inputSchema: z.object({ key: z.string() }),
+      outputSchema: z.object({}),
+      execute: async ({ key }, ctx) => {
+        await (ctx.resources as any).notes.create(key, { text: key });
+        return {};
+      }
+    });
+    const board = handler({
+      name: "board-resolvers",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ entries: z.array(z.string()) }),
+      execute: async (_input, ctx) => ({
+        entries: (await (ctx.resources as any).acrossSessions().notes.list()).entries.map((e: { session: string }) => e.session)
+      })
+    });
+    const alphaFlow = defineFlow({ kind: "alpha", authentication: resolverOf(), actions: { put }, resources: { notes }, views: { board: defineView({ scope: "user", block: board }) } })() as unknown as FlowInstance;
+    const betaFlow = defineFlow({ kind: "beta", authentication: resolverOf(), actions: { put }, resources: { notes } })() as unknown as FlowInstance;
+    const registry = createFlowRegistry();
+    registry.register(alphaFlow);
+    registry.register(betaFlow);
+    const stores: StoreRegistry = withChangeBus(createInMemoryStores());
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: verified.resolvePrincipal });
+    routers.push(router);
+    const delivery = enablePushDelivery(router, { secret: "test-secret" });
+    const call = (path: string[], body: unknown) => post(router, path, "alice", "acme", body);
+    const putIn = async (flow: "alpha" | "beta", sessionId: string, key: string) => {
+      const res = await call([flow, sessionId, "actions", "put"], { input: { key } });
+      expect(res.status, res.body).toBe(202);
+      const { request } = JSON.parse(res.body) as { request: { id: string } };
+      for (let i = 0; i < 200 && (await stores.request.get(request.id))?.status !== "completed"; i += 1) await settle();
+    };
+    const watch = async () => {
+      const res = await call(["alpha", "views", "board"], { input: {} });
+      expect(res.status, res.body).toBe(200);
+      const answer = JSON.parse(res.body) as { output: { entries: string[] }; topics: unknown[] };
+      const minted = await call(["users", "alice", "stream"], { topics: answer.topics });
+      expect(minted.status, minted.body).toBe(200);
+      const frames: Array<Record<string, unknown>> = [];
+      const socket = delivery.openSocket("alice", { send: (frame) => frames.push(frame as never), close: () => {} });
+      socket.receive(JSON.stringify({ type: "subscribe", ticket: (JSON.parse(minted.body) as { ticket: string }).ticket }));
+      return { answer, notices: () => frames.filter((frame) => frame.type === "notice"), close: () => socket.closed() };
+    };
+    return { putIn, watch };
+  }
+
+  it("never wakes a view resolved by alpha for beta's write, and wakes it for alpha's", async () => {
+    const env = bootResolvers();
+    await env.putIn("alpha", "a1", "seed");
+    await env.putIn("beta", "b1", "seed");
+    const screen = await env.watch();
+    expect(screen.answer.output.entries).toEqual(["a1"]);
+    await env.putIn("beta", "b1", "late");
+    await settle();
+    await settle();
+    expect(screen.notices()).toEqual([]);
+    await env.putIn("alpha", "a2", "late");
+    for (let i = 0; i < 50 && screen.notices().length === 0; i += 1) await settle();
+    expect(screen.notices().length).toBeGreaterThan(0);
+    screen.close();
+  });
+});
+
+describe("a session deleted after a view read its entries", () => {
+  it("wakes the view, and its next answer leaves the session out", async () => {
+    const registry = createFlowRegistry();
+    registry.register(desk());
+    const stores: StoreRegistry = withChangeBus(createInMemoryStores());
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: verified.resolvePrincipal });
+    routers.push(router);
+    const delivery = enablePushDelivery(router, { secret: "test-secret" });
+    const call = (path: string[], body: unknown) => post(router, path, "alice", "acme", body);
+    for (const sessionId of ["s1", "s2"]) {
+      const res = await call(["desk", sessionId, "actions", "file"], { input: { key: "1", text: sessionId } });
+      expect(res.status, res.body).toBe(202);
+      const { request } = JSON.parse(res.body) as { request: { id: string } };
+      for (let i = 0; i < 200 && (await stores.request.get(request.id))?.status !== "completed"; i += 1) await settle();
+    }
+    const read = async () => JSON.parse((await call(["desk", "views", "board"], { input: {} })).body) as { output: { entries: string[] }; topics: unknown[] };
+    const before = await read();
+    expect(before.output.entries).toEqual(["s1 s1", "s2 s2"]);
+    const minted = await call(["users", "alice", "stream"], { topics: before.topics });
+    const frames: Array<Record<string, unknown>> = [];
+    const socket = delivery.openSocket("alice", { send: (frame) => frames.push(frame as never), close: () => {} });
+    socket.receive(JSON.stringify({ type: "subscribe", ticket: (JSON.parse(minted.body) as { ticket: string }).ticket }));
+
+    const deleted = await router.DELETE(
+      new Request("http://test/api/flows/sessions/s2", { method: "DELETE", headers: { "x-verified-user": "alice", "x-verified-org": "acme" } }),
+      { params: { path: ["sessions", "s2"] } }
+    );
+    expect(deleted.status, await deleted.clone().text()).toBe(204);
+    for (let i = 0; i < 50 && frames.every((frame) => frame.type !== "notice"); i += 1) await settle();
+    const notices = frames.filter((frame) => frame.type === "notice");
+    expect(notices.length).toBeGreaterThan(0);
+    for (const notice of notices) {
+      expect(notice.ids).toBeUndefined();
+      expect(notice.origin).toBeUndefined();
+    }
+    expect((await read()).output.entries).toEqual(["s1 s1"]);
+    socket.closed();
   });
 });

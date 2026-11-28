@@ -105,6 +105,7 @@ import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 import { admitNamedSession, fenceNamedReach, SessionNotFoundError } from "./named-session";
 import { createAcrossSessions } from "./across-sessions";
+import { changeTopicResource } from "../bus/owner-topic";
 import { resolveRecordOwner } from "./record-owner";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { noteWakeOwed } from "../durability/request-wakes";
@@ -3917,7 +3918,7 @@ export async function createExecutionContext<
       ...(options.effectiveRuntimeConfig?.sealingSecret !== undefined ? { sealingSecret: options.effectiveRuntimeConfig.sealingSecret } : {}),
       sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
       ...(viewDependencies !== undefined
-        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(config.pattern) }
+        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(changeTopicResource(flow.id, config.pattern)) }
         : {})
     });
     return acrossSessionsHandles;

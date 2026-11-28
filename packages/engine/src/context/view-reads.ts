@@ -27,7 +27,6 @@ import { wireTopicKey } from "@flow-state-dev/core/internal";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import type { RequestHost } from "@flow-state-dev/core/internal";
 import { NoSessionError } from "./no-session";
-import { changeTopicResource } from "../bus/owner-topic";
 import type { StorageReach } from "../resources/lineage-scope";
 
 /**
@@ -48,8 +47,9 @@ type ResourceRead = { resource: string; root: string };
 type BoardReadRecord = { board: string; covers?: string; partition?: string };
 
 /**
- * A collection read across the owner's sessions, by its declared pattern:
- * heard on the owner's change topic for it (`bus/owner-topic.ts`).
+ * A collection read across the owner's sessions, by its change topic's wire
+ * resource (the view's flow and the collection's pattern): heard on the
+ * owner's change topic for it (`bus/owner-topic.ts`).
  */
 type AcrossSessionsReadRecord = { across: string };
 
@@ -164,7 +164,7 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
     } else if ("across" in read.what) {
       // The owner's change topic: every write to any session's resources publishes
       // a `resource` notice narrowed to it, whatever row it wrote.
-      const resource = changeTopicResource(read.what.across);
+      const resource = read.what.across;
       const hearing = at({ scope: "user", resource });
       hearing.kinds.add("resource");
       hearing.paths.add(resource);
@@ -250,12 +250,12 @@ export type ViewDependencies = {
   /** The caller's pending suspensions read: heard on their user topic's `suspension` only. */
   userSuspensions(): void;
   /**
-   * A collection read across the caller's sessions, by its declared pattern:
-   * heard on the owner's change topic for it, which hears every write to any
-   * session's resources at a key the pattern covers, so a session made later is
-   * heard too.
+   * A collection read across the caller's sessions, by its change topic's wire
+   * resource (`changeTopicResource`): heard on the owner's change topic for
+   * it, which hears every write to any session's resources at a key the
+   * pattern covers, so a session made later is heard too.
    */
-  acrossSessions(pattern: string): void;
+  acrossSessions(resource: string): void;
   // FIX-2625.
   /**
    * A task board read through its task collection, whose ledger is at
@@ -326,8 +326,8 @@ export function createViewDependencies(
     userSuspensions() {
       record({ scope: "user", what: "suspensions" });
     },
-    acrossSessions(pattern) {
-      record({ scope: "user", what: { across: pattern } });
+    acrossSessions(resource) {
+      record({ scope: "user", what: { across: resource } });
     },
     board(board, scope, sessionIds, covers, reach, partition) {
       const at = partition !== undefined ? { partition } : {};

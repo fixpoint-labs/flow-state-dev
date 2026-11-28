@@ -797,7 +797,7 @@ describe("enablePushDelivery", () => {
 describe("the socket session · an owner's change topic", () => {
   // The topic a read across the owner's sessions is heard on: the user topic
   // narrowed to `/sessions/<root>` on the wire, the owner's own on the bus.
-  const changeTopic = topic.user({ resource: "/sessions/notes/*" });
+  const changeTopic = topic.user({ resource: "/sessions/demo/notes/*" });
   async function ticketFor(router: FlowApiRouter, headers = ALICE) {
     const { answer } = await mint(router, [changeTopic, topic.user()], headers);
     if (answer.transport !== "websocket") throw new Error("expected a websocket answer");
