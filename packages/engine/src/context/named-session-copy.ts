@@ -34,8 +34,8 @@ import type { CreateExecutionContextOptions } from "./types";
  */
 const NAMED_WRITE_WAKE_DUE_MS = 2_000;
 
-/** Whether a session-scoped declaration can be reached in another session (`ctx.resources.at`): a stored collection. */
-function isNamedReachable(config: ResourceConfig | ResourceCollectionConfig): config is ResourceCollectionConfig {
+/** Whether a session-scoped declaration can be reached in another session (`ctx.resources.at`, `ctx.resources.acrossSessions()`): a stored collection. */
+export function isNamedReachable(config: ResourceConfig | ResourceCollectionConfig): config is ResourceCollectionConfig {
   return isCollectionConfig(config) && !isProjectedResourceCollection(config);
 }
 
@@ -43,8 +43,12 @@ function isNamedReachable(config: ResourceConfig | ResourceCollectionConfig): co
 export type NamedCopyTarget = {
   /** The session written, by its id. */
   readonly sessionId: string;
-  /** Its owner, for a lineage-shared key's user-topic notice. */
+  /** Its owner, for a lineage-shared key's user-topic notice and its owner's change topic. */
   readonly ownerUserId: string;
+  /** Its owner's organization, for its owner's change topic. */
+  readonly ownerOrgId: string | undefined;
+  /** Its flow instance, for its owner's change topic. */
+  readonly ownerFlowId: string;
 };
 
 /**
@@ -128,6 +132,28 @@ export type NamedSessionAtInputs = {
 };
 
 /**
+ * The principal a run reaches other sessions as, and the fence its reach
+ * passes first: from the run itself, never a payload. Shared by
+ * `ctx.resources.at` and `ctx.resources.acrossSessions()`, so the two admit
+ * alike.
+ */
+export function namedReach(
+  run: Pick<NamedSessionAtInputs, "options" | "userId" | "resolvedOrgId" | "sessionId" | "runKind" | "runResolvedBy">
+): { principal: Principal; fence: { origin: ReturnType<typeof readDeliveryOrigin>; sessionId: string } } {
+  const { options, userId, resolvedOrgId, sessionId, runKind, runResolvedBy } = run;
+  return {
+    principal: {
+      userId,
+      orgId: resolvedOrgId,
+      ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
+      kind: runKind,
+      ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
+    },
+    fence: { origin: readDeliveryOrigin(options.source, options.metadata), sessionId }
+  };
+}
+
+/**
  * `ctx.resources.at({ session })`: another session's copy of this flow's
  * session-scoped collections, by this flow's definitions. Each verb waits
  * on one admission per named session per run: the fence (`fenceNamedReach`),
@@ -167,14 +193,7 @@ export function createNamedSessionAt(
     templateResolverRef,
     buildProjectedResourceContext
   } = inputs;
-  const namedPrincipal: Principal = {
-    userId,
-    orgId: resolvedOrgId,
-    ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
-    kind: runKind,
-    ...(runResolvedBy !== undefined ? { resolvedBy: runResolvedBy } : {})
-  };
-  const namedFence = { origin: readDeliveryOrigin(options.source, options.metadata), sessionId };
+  const { principal: namedPrincipal, fence: namedFence } = namedReach({ options, userId, resolvedOrgId, sessionId, runKind, runResolvedBy });
   type NamedCopy = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
   const namedCopies = new Map<string, Promise<NamedCopy | undefined>>();
   /** Admit `target` from scratch, and keep the answer for this run's later verbs. */
@@ -309,7 +328,7 @@ export function createNamedSessionAt(
         if (!contentDeletesOwed.delete(storageKey)) await oweTurnBeforeWrite(storageKey);
         return persisters.deleteResourceContentKey(storageKey);
       },
-      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId }),
+      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId, ownerOrgId: record.orgId, ownerFlowId: record.flowId ?? record.flowKind }),
       lazyLoad: makeLazyLoad(cell),
       recordResourceLoad,
       templateResolverRef,

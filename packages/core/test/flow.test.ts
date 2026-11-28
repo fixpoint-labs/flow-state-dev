@@ -967,6 +967,14 @@ describe("defineFlow", () => {
       );
     });
 
+    // `ctx.resources.acrossSessions()` is the registry's own verb too.
+    it("reserves the `acrossSessions` accessor", () => {
+      const notes = defineResourceCollection({ pattern: "notes/*", scope: "session", stateSchema: z.object({}) });
+      expect(() =>
+        defineFlow({ kind: "reserved-across", actions: {}, resources: { acrossSessions: notes } })({ id: "reserved-across" })
+      ).toThrow(/Resource accessor "acrossSessions" in flow "reserved-across" is reserved/);
+    });
+
     // A key two wakeEntry collections both match would wake one of the two
     // entries, picked by declaration order.
     it("rejects two collections whose patterns overlap and name different wake entries", () => {

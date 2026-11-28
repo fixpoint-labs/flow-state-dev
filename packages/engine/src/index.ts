@@ -11,6 +11,7 @@
  */
 export { createExecutionContext } from "./context/createExecutionContext";
 export { SessionNotFoundError, UntrustedReachError } from "./context/named-session";
+export { AcrossSessionsCursorError } from "./context/across-sessions";
 export {
   type CapabilitySlot,
   type CapabilitySlotMap,

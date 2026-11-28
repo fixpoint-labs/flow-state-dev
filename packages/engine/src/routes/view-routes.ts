@@ -39,6 +39,7 @@ import {
 import { InstancePinMismatchError, pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { NoSessionError } from "../context/no-session";
 import { UnrecordedReadError, ViewModelCallError } from "../context/view-reads";
+import { AcrossSessionsCursorError } from "../context/across-sessions";
 import { FlowError } from "../errors/flow-error";
 import { runView, UnknownViewError } from "../execution/runView";
 import { isWireTopic } from "../push/socket-session";
@@ -148,6 +149,11 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       runtimeConfig: ctx.runtimeConfig,
       signal: request.signal,
       resolveFlow: (address) => ctx.registry.get(address),
+      // The door's kind and resolver, kept for the run, as an action's are: a
+      // read across the caller's sessions admits each as a named reach would.
+      ...(principal.kind !== undefined ? { principalKind: principal.kind } : {}),
+      ...(principal.resolvedBy !== undefined ? { resolvedBy: principal.resolvedBy } : {}),
+      flows: ctx.registry,
       admitSession: viewSessionAdmission(ctx, flow, tenantId),
       admitSuspension: (entry) => viewSuspensionAdmission(ctx, flow, entry)
     });
@@ -252,6 +258,8 @@ function viewFailureResponse(error: unknown, route: ViewRoute): Response {
     });
   }
   // The view's own code is wrong, not the call: 422, named.
+  // A cursor that doesn't open (forged, stale, from before a key change) is the call's: start the listing again.
+  if (hasCause(error, AcrossSessionsCursorError)) return jsonResponse(400, { error: "invalid_cursor", message: new AcrossSessionsCursorError().message });
   if (error instanceof ViewModelCallError) return jsonResponse(422, { error: "view_model_call", message: error.message });
   if (error instanceof NoSessionError) return jsonResponse(422, { error: "view_no_session", message: error.message });
   if (error instanceof UnrecordedReadError) return jsonResponse(422, { error: "view_unrecorded_read", message: error.message });

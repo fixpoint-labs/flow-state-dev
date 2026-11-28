@@ -19,10 +19,15 @@
  * Every refusal reads as a missing session: {@link admitNamedSession} answers
  * `undefined`, exactly as it does for an id nobody holds, so a caller cannot
  * learn which ids exist.
+ *
+ * The read across an owner's sessions judges each session its query joined
+ * with the same rule ({@link namedRecordAdmission}), on the session columns
+ * the query read, so it reaches no session `ctx.resources.at` would refuse.
+ * A run with no session of its own (a view) is judged by its principal alone.
  */
 import type { DeliveryOrigin } from "../execution/delivery-origin";
 import type { FlowRegistry } from "../registry/flow-registry";
-import { admitSession, flowAuthenticates, type InstanceCallerResolver } from "../routes/instance-caller";
+import { admitSession, flowAuthenticates, type AdmittedSession, type InstanceCallerResolver } from "../routes/instance-caller";
 import { principalResolverIdentity } from "../transports/auth/pickPrincipalResolver";
 import type { PrincipalResolver } from "../transports/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
@@ -40,7 +45,7 @@ export interface NamedSessionAdmission {
   readonly hostResolver?: PrincipalResolver;
   /** The run's principal, as its door set it. */
   readonly principal: Principal;
-  /** The run's own session: the one session a machine still holds. */
+  /** The run's own session: the one session a machine still holds. `""` for a run with none (a view). */
   readonly sessionId: string;
 }
 
@@ -58,7 +63,7 @@ function blockCallerFor(inputs: NamedSessionAdmission): InstanceCallerResolver {
 
 /** The host rule for a target no own resolver owns: the one owner comparison, then the instance's pin. */
 function blockHostRule(inputs: NamedSessionAdmission) {
-  return (session: SessionRecord): boolean => {
+  return (session: AdmittedSession): boolean => {
     if (!principalOwns(session, inputs.principal)) return false;
     const owner = resolveRecordOwner(inputs.registry, session);
     return owner.ok && !pinRejectsCaller(owner.flow.ownerPin, inputs.principal);
@@ -75,20 +80,43 @@ export async function admitNamedSession(
   sessionId: string
 ): Promise<SessionRecord | undefined> {
   if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
-  const { principal, stores } = inputs;
-  const record = await stores.session.get(resolveSessionStorageKey(sessionId, principal.tenantId));
+  const record = await inputs.stores.session.get(resolveSessionStorageKey(sessionId, inputs.principal.tenantId));
   if (record === undefined) return undefined;
-  // The run's own session, unchecked: `inputs.sessionId` comes from the run,
-  // never a payload, so it names the session this run already holds.
-  if (sessionId === inputs.sessionId) return record;
-  if (principal.kind !== "person") return undefined;
-  const own = await stores.session.get(resolveSessionStorageKey(inputs.sessionId, principal.tenantId));
-  if (own === undefined || (await resolveSessionKind(stores, own)) !== "person") return undefined;
-  const admitted = await admitSession(
-    { registry: inputs.registry, callerFor: blockCallerFor(inputs), tenantId: principal.tenantId, hostRule: blockHostRule(inputs) },
-    record
-  );
-  return admitted ? record : undefined;
+  return (await namedRecordAdmission(inputs)(sessionId, record)) ? record : undefined;
+}
+
+/**
+ * The judgment {@link admitNamedSession} makes, on a session record already
+ * read: whether the run may reach `record`, the session `sessionId` names.
+ * Whether the run reaches any session but its own (a person's principal, in
+ * a session a person made) is read once per admission, however many
+ * sessions it judges.
+ */
+export function namedRecordAdmission(
+  inputs: NamedSessionAdmission
+): (sessionId: string, record: AdmittedSession) => Promise<boolean> {
+  const { principal, stores } = inputs;
+  let reachesOthers: Promise<boolean> | undefined;
+  const runReachesOthers = async (): Promise<boolean> => {
+    if (principal.kind !== "person") return false;
+    // A run with no session of its own (a view) is its principal's alone.
+    if (inputs.sessionId.length === 0) return true;
+    const own = await stores.session.get(resolveSessionStorageKey(inputs.sessionId, principal.tenantId));
+    return own !== undefined && (await resolveSessionKind(stores, own)) === "person";
+  };
+  const context = {
+    registry: inputs.registry,
+    callerFor: blockCallerFor(inputs),
+    tenantId: principal.tenantId,
+    hostRule: blockHostRule(inputs)
+  };
+  return async (sessionId, record) => {
+    // The run's own session, unchecked: `inputs.sessionId` comes from the run,
+    // never a payload, so it names the session this run already holds.
+    if (inputs.sessionId.length > 0 && sessionId === inputs.sessionId) return true;
+    if (!(await (reachesOthers ??= runReachesOthers()))) return false;
+    return admitSession(context, record);
+  };
 }
 
 /**

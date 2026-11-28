@@ -17,10 +17,12 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
+import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
 import { createInMemoryBus, createInMemoryStores, withChangeBus, type BusTopic, type ChangeNotice } from "../src/host";
+import { changeTopicHears, isChangeTopicResource, ownerTopic } from "../src/bus/owner-topic";
 import { runView, type ViewAnswer } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -59,13 +61,17 @@ const overlap = {
   sharedNotes: defineResourceCollection({ scope: "session", sharedToLineage: true, pattern: "notes/shared/*", stateSchema: value, client: routeGrant })
 } as const;
 
+/** A per-session collection read across the owner's sessions. */
+const across = defineResourceCollection({ scope: "session", pattern: "across/*", stateSchema: value });
+
 type Scope = keyof typeof direct;
 const SCOPES: Scope[] = ["session", "user", "org", "lineage"];
 const resources = {
   ...Object.fromEntries(
     [...Object.values(direct), ...Object.values(template), ...Object.values(rendered)].map((r) => [(r as { ref: string }).ref, r])
   ),
-  ...overlap
+  ...overlap,
+  across
 } as unknown as Record<string, (typeof direct)[Scope]>;
 const out = z.object({ v: z.string().nullable() });
 
@@ -223,6 +229,30 @@ actions.overlap_lineage = handler({
     return { ok: true };
   }
 });
+// The read across the owner's sessions: heard on the owner's change topic for the collection.
+views.across_user = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-across-sessions",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({
+      v: ((await (ctx.resources as any).acrossSessions().across.list()).entries as Array<{ session: string; value: { v: string } }>)
+        .map((entry) => `${entry.session}=${entry.value.v}`)
+        .join(",")
+    })
+  })
+});
+actions.across_user = handler({
+  name: "write-across",
+  inputSchema: z.object({ v: z.string() }),
+  resources,
+  execute: async (input, ctx) => {
+    await (ctx.resources as any).across.upsert("n1", { v: (input as { v: string }).v });
+    return { ok: true };
+  }
+});
 actions.say = handler({ name: "say", inputSchema: z.object({ v: z.string() }), resources, execute: (input) => ({ said: (input as { v: string }).v }) });
 
 function cap(scope: string): string {
@@ -251,6 +281,8 @@ async function seed(stores: StoreRegistry, id: string, parent?: string) {
     updatedAt: ts,
     journal: [],
     lineageId: "lin_matrix",
+    // Made by a person, as a door makes it: a read across sessions reaches its siblings.
+    principalKind: "person",
     ...(parent !== undefined ? { parentSessionId: parent } : {})
   };
   await stores.session.set(id, record, "any");
@@ -258,13 +290,16 @@ async function seed(stores: StoreRegistry, id: string, parent?: string) {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+const registry = createFlowRegistry();
+registry.register(flow);
+
 // FIX-2625.
 /**
  * The notices of `heard` a watcher of `answer` reads on, by the client's own
  * rule (`hearsNotice`).
  */
 function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNotice[] {
-  return heard.filter((notice) => hearsNotice(answer.hears, notice));
+  return heard.filter((notice) => hearsNotice(answer.hears, notice as WireNotice));
 }
 
 async function cell(viewName: string, actionName: string, writer: string, writeFirst = true, recreate = false) {
@@ -299,15 +334,25 @@ async function cell(viewName: string, actionName: string, writer: string, writeF
     await tick();
   };
   if (writeFirst) await write("1");
-  const before = await runView({ flow, viewName, input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+  // The caller as a person's door resolves them, and the registry that admits each session a read across sessions joins.
+  const caller = { principalKind: "person" as const, flows: registry };
+  const before = await runView({ flow, viewName, input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores, ...caller });
   const heard: ChangeNotice[] = [];
   for (const t of before.topics) {
+    // A change topic hears the owner topic's notices its pattern covers, as the socket matches them, on its own wire topic.
+    if (t.scope === "user" && isChangeTopicResource(t.resource)) {
+      const resource = t.resource;
+      bus.subscribe(ownerTopic({ userId: "u_1", orgId: DEFAULT_ORG_ID, tenantId: undefined }, flow.id), (notice) => {
+        if (changeTopicHears(resource, notice)) heard.push({ ...notice, topic: { scope: "user", id: "u_1", tenantId: "", resource } });
+      });
+      continue;
+    }
     const busTopic: BusTopic =
       t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
     bus.subscribe(busTopic, (notice) => heard.push(notice));
   }
   await write("2");
-  const after = await runView({ flow, viewName, input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+  const after = await runView({ flow, viewName, input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores, ...caller });
   return { before, after, heard };
 }
 
@@ -323,6 +368,13 @@ describe("a view hears a change through every read path, at every scope", () => 
       });
     }
   }
+
+  it("read across sessions × user, written in a sibling session", async () => {
+    const { before, after, heard } = await cell("across_user", "across_user", "b");
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
 
   it("overlapping collections × lineage", async () => {
     const { before, after, heard } = await cell("overlap_lineage", "overlap_lineage", "b");
