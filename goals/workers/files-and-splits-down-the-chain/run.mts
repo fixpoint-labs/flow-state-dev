@@ -25,12 +25,11 @@
  * Legs:     GOAL_LEGS=a,b,c,d,e (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
+import { checkoutFor } from "../../lib/checkout.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, devteamShiftCoordinatorModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { ORG, PEOPLE } from "./lab/people.mts";
@@ -107,28 +106,6 @@ const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8"
 // ---- the tree under test --------------------------------------------------------
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
-function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
-  const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
-  if (commit === undefined || commit === "") {
-    const head = git("rev-parse", "HEAD");
-    const dirty = git("status", "--porcelain", "--", ".", ":(exclude)goals").length > 0;
-    return { root: REPO_ROOT, commit: head, describe: `this checkout, \`${head.slice(0, 9)}\`${dirty ? " with uncommitted changes outside goals/" : ""}` };
-  }
-  const sha = git("rev-parse", `${commit}^{commit}`);
-  // Kept across runs: a commit's tree and install don't change.
-  const root = join(tmpdir(), "fsd-goal-workers-trees", sha.slice(0, 12));
-  if (!existsSync(join(root, "package.json"))) {
-    mkdirSync(root, { recursive: true });
-    execFileSync("sh", ["-c", `git -C "${REPO_ROOT}" archive --format=tar ${sha} | tar -x -C "${root}"`]);
-  }
-  if (!existsSync(join(root, "node_modules"))) {
-    say(`installing ${sha.slice(0, 9)} in ${root}`);
-    const installed = spawnSync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: root, encoding: "utf8", timeout: 900_000 });
-    if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
-  }
-  return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
-}
-
 /**
  * The goal-local Lab's config in `root`'s goals: this checkout's own, or a
  * copy of `lab/` and `fixtures/` placed in another commit's tree, so its
@@ -415,7 +392,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
 // ---- the run ------------------------------------------------------------------------
 
 await runGoal(async () => {
-  const checkout = checkoutFor(process.env.GOAL_COMMIT);
+  const checkout = checkoutFor(process.env.GOAL_COMMIT, "workers");
   mkdirSync(join(SCRATCH, "stores"), { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });

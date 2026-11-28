@@ -26,17 +26,16 @@
 // Traces off before anything reads the flag, as the Lab's other in-process checks run it.
 process.env.FSDEV_TRACE_OBSERVABILITY = "0";
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import { scriptedHarness } from "@flow-state-dev/harness-manager";
 import { serve } from "@flow-state-dev/node";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, loadFixture, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { githubStub, REMOTE, stubPullRequestUrl } from "../../lib/github-stub.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/kit";
@@ -69,17 +68,11 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const { patches, must } = CONTROLS[CONTROL]!;
-  console.error(describePatches(patches, REPO_ROOT));
-  const mark = join(goalTmpDir("sm-pr-wait-control"), `patched-${RUN_STAMP}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: { ...process.env, ...modulePatchEnv(patches, REPO_ROOT, mark) },
-    encoding: "utf8",
+  const { output: out } = runPatchedGoal({
+    patches,
+    scratch: goalTmpDir("sm-pr-wait-control"),
+    capture: {}
   });
-  process.stdout.write(child.stdout ?? "");
-  process.stderr.write(child.stderr ?? "");
-  assertPatched(patches, REPO_ROOT, mark);
-  const out = `${child.stdout ?? ""}${child.stderr ?? ""}`;
   const failedOn = must.filter((assertion) => /^FAIL/m.test(out) && out.includes(`${assertion}:`));
   console.log(
     failedOn.length > 0

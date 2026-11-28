@@ -35,7 +35,6 @@
  *   GOAL_CONTROL=resource-no-subscribe  a collection's live read hears no topic: live:project must FAIL.
  *   GOAL_CONTROL=whole-read             the directory reads all its parts again on any notice: live:own-reads must FAIL.
  */
-import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -64,7 +63,7 @@ import {
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, modulePatchEnv, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
+import { RUN_STAMP, runPatchedGoal, goalTmpDir, installWorkers, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useGate } from "../../../packages/shift-manager/src/lib/gate.ts";
 import { useInbox } from "../../../packages/shift-manager/src/lib/inbox.ts";
@@ -140,16 +139,13 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
   process.exit(2);
 }
 if (CONTROLS[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const control = CONTROLS[CONTROL]!;
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL} (must fail ${control.mustFail}):\n${describePatches(control.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? control.legs, ...modulePatchEnv(control.patches, REPO_ROOT, mark) },
-  });
-  assertPatched(control.patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  const control = CONTROLS[CONTROL];
+  process.exit(runPatchedGoal({
+    patches: control.patches,
+    scratch: SCRATCH,
+    label: `control ${CONTROL} (must fail ${control.mustFail}):`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? control.legs }
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d,retry,live").split(",").map((s) => s.trim()).filter(Boolean));
 

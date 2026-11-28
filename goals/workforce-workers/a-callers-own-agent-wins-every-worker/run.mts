@@ -25,7 +25,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry, createInPr
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { AGENT_FLOW, workerFlow, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides, workforceTree } from "../../lib/index.mts";
+import { installWorkers, loadFixture, runGoal, waitForRequestStatus, silentLogger, stripIntentOverrides, workforceTree } from "../../lib/index.mts";
 import { defineCallerAgent } from "./fixtures/flows";
 
 type Worker = {
@@ -80,15 +80,6 @@ async function call(router: Router, method: "GET" | "POST", path: string[], body
     });
 }
 
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
-}
-
 await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-caller-agent-"));
@@ -129,7 +120,7 @@ await runGoal(async (failures) => {
         continue;
       }
       const body = (await res.json()) as { request?: { id: string } };
-      const status = await settled(stores, body.request?.id ?? "");
+      const status = await waitForRequestStatus(stores, body.request?.id ?? "");
       if (status !== "completed") failures.push(`(b) ${worker.id}: request ended ${String(status)}`);
       const state = await call(router, "GET", ["sessions", sessionId, "state"]);
       const ran = ((await state.json()) as {

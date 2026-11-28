@@ -8,7 +8,7 @@
  *           GOAL_CONTROL=no-viewer (must FAIL a:attached)
  */
 import type { HarnessFeeds } from "@flow-state-dev/core/harness";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,12 +18,10 @@ import { harnessSessionFlow, harnessStub, workPlace, type ModeSpec } from "@flow
 import { localRepoWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
-  REPO_ROOT,
   actingAs,
-  assertPatched,
-  describePatches,
+  goalTmpDir,
+  runPatchedGoal,
   loadFixture,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -83,14 +81,13 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 // A control re-runs this file with its patch applied as the code loads.
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const patches = CONTROLS[CONTROL]!.patches;
-  const mark = join(mkdtempSync(join(tmpdir(), "where-the-work-went-mark-")), "mark");
-  console.error(`control ${CONTROL}:\n${describePatches(patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_LEGS: CONTROLS[CONTROL]!.legs.join(","), ...modulePatchEnv(patches, REPO_ROOT, mark) },
-  });
-  if (child.status !== 2) assertPatched(patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches,
+    scratch: goalTmpDir("where-the-work-went-mark"),
+    label: `control ${CONTROL}:`,
+    env: { GOAL_LEGS: CONTROLS[CONTROL]!.legs.join(",") },
+    verify: "unless-usage-error"
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,b").split(",").map((s) => s.trim()));
 

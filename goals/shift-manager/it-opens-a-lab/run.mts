@@ -52,13 +52,12 @@
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Needs:    PLAYWRIGHT_BROWSERS_PATH pointing at a Chromium pool, or Playwright's own.
  */
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, readTree as readKitTree, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
+import { labApi, startShiftManager, type LabApi, type ServedShiftManager, buildShiftManagerPages } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-worker-collab/run-scenario.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { PROJECTS_FLOW as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -152,43 +151,16 @@ function swapFor(control: string): { targets: string[]; with: string } | undefin
 /** Build Shift Manager's pages into a scratch directory, with the control's swap if one is set. */
 async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap = swapFor(control);
-  const swapped = new Set<string>();
   const staticSeats =
     control === "static-names"
       ? (await readKitTree(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
       : [];
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "warn",
-    build: { outDir, emptyOutDir: true },
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap,
     define: { __STATIC_SEATS__: JSON.stringify(staticSeats) },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined || importer === swap.with) return null;
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                const id: string | undefined = resolved?.id;
-                if (id === undefined || !swap.targets.includes(id)) return null;
-                swapped.add(id);
-                return swap.with;
-              },
-            },
-          ],
+    logLevel: "warn"
   });
-  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
-  if (missed.length > 0) {
-    throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
-  }
-  return outDir;
 }
 
 // ---- serving a Lab -----------------------------------------------------------
@@ -454,7 +426,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (name === "multi-worker-collab") {
       const labTree = await readLabTree();
       const scenario = new Scenario(
-        { origin: served.origin, workDir: served.workDir, outbox, log: served.log, stop: () => served.child.kill("SIGTERM"), exited: () => served.exited } satisfies ServedLab,
+        { origin: served.origin, workDir: served.workDir, outbox, log: served.log, stop: served.stop, exited: () => served.exited } satisfies ServedLab,
         labTree,
         // The app's own desk -> delegate map; this goal's controls are Shift Manager's, not the filer's.
         routesFor(""),
@@ -706,8 +678,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     );
   } finally {
     await browser.close();
-    served.child.kill("SIGTERM");
-    await served.exited;
+    await served.stop();
   }
 }
 

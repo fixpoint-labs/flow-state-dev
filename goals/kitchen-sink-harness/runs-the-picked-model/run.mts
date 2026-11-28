@@ -5,7 +5,6 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/runs-the-picked-model/run.mts
  * Control:  GOAL_CONTROL=ignore-model (must FAIL at every <mode>.m and <mode>.x, and nothing else)
  */
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -15,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { KITCHEN_SINK, REPO_ROOT, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
+import { boundId, startKitchenSinkHarness, stopButton } from "../../lib/kitchen-sink.mts";
 import { locateSessionWorktree } from "../../../apps/kitchen-sink/lib/harness-worktree.ts";
 import { KITCHEN_SINK_USER_ID } from "../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts";
 import { HARNESS_SESSION_FAILED_OUTCOME } from "@flow-state-dev/harness-manager";
@@ -42,38 +41,6 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 
 const CLAUDE_HOME = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 const CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
-
-/** `next dev`, so the unset workspace setting means "the checkout the server runs in". */
-async function startDev(): Promise<{ stop: () => void; log: () => string }> {
-  await refuseIfAnswering(ORIGIN);
-  let log = "";
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    NODE_ENV: "development",
-    KITCHEN_SINK_TEST_MODE: "1",
-    NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
-    KITCHEN_SINK_REAL_HARNESS: "1",
-    STORE_TYPE: "filesystem",
-    ...(CONTROL === "" ? {} : { GOAL_CONTROL: CONTROL }),
-  };
-  delete env.KITCHEN_SINK_HARNESS_WORKSPACE;
-  const child: ChildProcess = spawn("pnpm", ["exec", "next", "dev", "--port", String(PORT)], {
-    cwd: KITCHEN_SINK,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  child.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  for (let i = 0; i < 240; i += 1) {
-    const status = await fetch(`${ORIGIN}/api/flows`).then((r) => r.status, () => undefined);
-    if (status === 200) return { stop: () => stopProcessGroup(child), log: () => log };
-    if (child.exitCode !== null) throw new Error(`next dev exited (${child.exitCode}):\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  stopProcessGroup(child);
-  throw new Error(`next dev never served ${ORIGIN}/api/flows:\n${log}`);
-}
 
 /** Every file under `dir`, or none when it doesn't exist. */
 function filesUnder(dir: string): string[] {
@@ -161,12 +128,7 @@ async function recordOf(mode: ModeId, conversation: string, sessionId: string): 
   return cursorRecord(conversation, sessionId);
 }
 
-const stopButton = (page: Page) => page.getByRole("button", { name: "Stop" });
 const notice = (page: Page) => page.getByTestId("turn-notice");
-
-async function boundId(page: Page): Promise<string> {
-  return ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim();
-}
 
 async function headerModel(page: Page): Promise<string | null> {
   await page.getByTestId("session-model").waitFor({ timeout: 30_000 }).catch(() => undefined);
@@ -205,8 +167,8 @@ await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, message: string) => failures.push(`[${leg}] ${message}`);
 
-  const server = await startDev();
-  const browser = await launchChromium();
+  const server = await startKitchenSinkHarness(PORT, CONTROL);
+  const browser = await launchChromium(server.stop);
   try {
     const page = await browser.newPage();
     for (const mode of GRADED) {
@@ -285,8 +247,8 @@ await runGoal(async (failures) => {
       evidence.push(`${mode} x: ${bogus} → ${refused.kind}: ${refused.text.slice(0, 160)}`);
     }
   } finally {
-    await browser.close();
     server.stop();
+    await browser.close();
   }
 
   if (CONTROL !== "") {

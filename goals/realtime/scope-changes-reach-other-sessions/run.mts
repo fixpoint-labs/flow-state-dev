@@ -24,9 +24,6 @@
  *   GOAL_CONTROL=no-publish  the scope-change publish cut out: a, b and c must FAIL.
  *   GOAL_CONTROL=no-origin   the writer's skip of its own notice off: d must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { Window } from "happy-dom";
 import { createElement, useEffect } from "react";
@@ -54,12 +51,8 @@ import {
 } from "@flow-state-dev/react";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {
-  REPO_ROOT,
-  RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   type ModulePatch
 } from "../../lib/index.mts";
@@ -94,15 +87,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---------------------------------------------------------------------------

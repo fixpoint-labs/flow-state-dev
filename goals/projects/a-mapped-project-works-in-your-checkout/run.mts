@@ -27,11 +27,10 @@
  *           `pnpm --filter @flow-state-dev/workspace... build`)
  */
 import type { HarnessFeeds } from "@flow-state-dev/core/harness";
-import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -44,7 +43,7 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
 import { hashContent, localWorkspaceHost } from "@flow-state-dev/workspace";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, runPatchedGoal, goalTmpDir, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
 
 const CONTROLS = {
   "no-mapping": { assertion: "a:in-checkout", does: "projectWorkspace() is built with no checkouts" },
@@ -69,18 +68,13 @@ const say = (s: string) => console.error(`[mapped-checkout ${new Date().toISOStr
 
 // ---- ignore-org runs the check in a child process that loads the patch ----
 if (control === "ignore-org" && process.env.GOAL_MODULE_PATCH === undefined) {
-  const scratch = goalTmpDir("mapped-checkout");
-  mkdirSync(scratch, { recursive: true });
-  const mark = join(scratch, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  say(`control ignore-org: ${CONTROLS["ignore-org"].does}; patch:\n${describePatches(IGNORE_ORG, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(IGNORE_ORG, REPO_ROOT, mark) },
+  const { status } = runPatchedGoal({
+    patches: IGNORE_ORG,
+    scratch: goalTmpDir("mapped-checkout"),
+    label: `control ignore-org: ${CONTROLS["ignore-org"].does}; patch:`
   });
-  assertPatched(IGNORE_ORG, REPO_ROOT, mark);
   say(`the patch reached ${IGNORE_ORG[0]!.module}`);
-  process.exit(child.status ?? 1);
+  process.exit(status);
 }
 
 const execFileAsync = promisify(execFile);

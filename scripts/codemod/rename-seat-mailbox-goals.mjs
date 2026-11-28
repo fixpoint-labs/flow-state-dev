@@ -12,10 +12,8 @@
  * What it leaves as written:
  * - History (`specs/`, `docs/internal/`, changelogs, changesets: the guard's
  *   `history` area), and every `goal.md`'s `## Verdict log` section. Dated
- *   records keep the names they ran under. One file under `specs/` is a live
- *   check, not a record: FIX-1792's inventory, whose goal table
- *   `coordinators/every-coordinator-is-a-worker-file` resolves on disk, so it
- *   is rewritten.
+ *   records keep the names they ran under. The codemod also updates FIX-1792's
+ *   inventory because its goal table resolves paths on disk.
  * - A goal that no longer exists. A renamed subject folder's name is rewritten
  *   only when it stands alone or is followed by one of its own entries, so
  *   `goals/README.md`'s list of retired goals (`mailbox-boards/it-hands-a-task-to-a-fresh-hire`)

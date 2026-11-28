@@ -1,7 +1,6 @@
 /** What this run proves is `goal.md` beside this file. */
 import { AsyncLocalStorage } from "node:async_hooks";
-import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -25,8 +24,8 @@ import {
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
-import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
+import { runPatchedGoal, type ModulePatch } from "../../lib/module-patch.mts";
 import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -76,15 +75,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
 }
 // A control runs this same file again with its patch applied as it loads.
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${CONTROL}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 // ---- the fixture ------------------------------------------------------------

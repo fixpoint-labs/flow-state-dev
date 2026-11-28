@@ -24,6 +24,7 @@ import {
   readTree,
   loadFixture,
   runGoal,
+  waitForRequestStatus,
   silentLogger,
   stripIntentOverrides
 } from "../../lib/index.mts";
@@ -104,15 +105,6 @@ async function ranOn(router: Router, sessionId: string) {
   return { status: res.status, ...(body.clientData?.session ?? {}) };
 }
 
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
-}
-
 const sessionOf = (id: string): string => `s_${id.replace(".", "_")}`;
 
 await runGoal(async (failures) => {
@@ -171,7 +163,7 @@ await runGoal(async (failures) => {
         continue;
       }
 
-      const status = await settled(stores, requestId);
+      const status = await waitForRequestStatus(stores, requestId);
       if (status !== "completed") failures.push(`${seat.id}: request ended ${String(status)}`);
     }
     evidence.push("all three seats ran an action to completion through the real HTTP route, with no model call");

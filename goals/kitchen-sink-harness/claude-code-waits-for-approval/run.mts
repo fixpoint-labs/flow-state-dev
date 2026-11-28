@@ -28,16 +28,17 @@
  *           By hand: take `SuspensionResolverProvider` off the harness page and c fails (the page stays on waiting);
  *           show Stop only while streaming and s fails.
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
-import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
+import { runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
+import { startKitchenSinkDev } from "../../lib/kitchen-sink.mts";
+import { setTimeout as delay } from "node:timers/promises";
 import { locateSessionWorktree } from "../../../apps/kitchen-sink/lib/harness-worktree.ts";
 import { KITCHEN_SINK_USER_ID } from "../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts";
 
@@ -68,44 +69,23 @@ function scratch(): { repo: string; stateHome: string; root: string } {
 
 /** `next dev` in test mode on the scripted Claude Code and the filesystem store. */
 async function startDev(repo: string, stateHome: string): Promise<{ stop: () => Promise<void>; log: () => string }> {
-  await refuseIfAnswering(ORIGIN);
-  let log = "";
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    NODE_ENV: "development",
     KITCHEN_SINK_TEST_MODE: "1",
     NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1",
-    STORE_TYPE: "filesystem",
     KITCHEN_SINK_HARNESS_WORKSPACE: repo,
     XDG_STATE_HOME: stateHome,
     ...(CONTROL === "" ? {} : { GOAL_CONTROL: CONTROL }),
   };
   delete env.KITCHEN_SINK_REAL_HARNESS;
-  const child: ChildProcess = spawn("pnpm", ["exec", "next", "dev", "--port", String(PORT)], {
-    cwd: KITCHEN_SINK,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  child.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  for (let i = 0; i < 240; i += 1) {
-    const status = await fetch(`${ORIGIN}/api/flows`).then((r) => r.status, () => undefined);
-    if (status === 200) {
-      return {
-        stop: async () => {
-          stopProcessGroup(child);
-          await Promise.race([exited, new Promise((r) => setTimeout(r, 15_000))]);
-        },
-        log: () => log,
-      };
+  const server = await startKitchenSinkDev(PORT, env);
+  return {
+    log: server.log,
+    stop: async () => {
+      server.stop();
+      await Promise.race([server.exited, delay(15_000, undefined, { ref: false })]);
     }
-    if (child.exitCode !== null) throw new Error(`next dev exited (${child.exitCode}):\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  stopProcessGroup(child);
-  throw new Error(`next dev never served ${ORIGIN}/api/flows:\n${log}`);
+  };
 }
 
 const client = createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: ORIGIN });
@@ -200,7 +180,7 @@ await runGoal(async (failures) => {
   const denyFile = `deny-${token}.txt`;
 
   let server = await startDev(repo, stateHome);
-  const browser = await launchChromium();
+  const browser = await launchChromium(server.stop);
   try {
     const page = await browser.newPage();
     // `next dev` compiles each page on its first load, which can take minutes on a busy host.
@@ -378,8 +358,8 @@ await runGoal(async (failures) => {
       evidence.push(`after restart + Stop: ran ${ranS}`);
     }
   } finally {
-    await browser.close();
     await server.stop();
+    await browser.close();
     rmSync(root, { recursive: true, force: true });
   }
 

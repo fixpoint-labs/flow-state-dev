@@ -42,8 +42,9 @@
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { KITCHEN_SINK, readTree, runGoal, workforceTree } from "../../lib/index.mts";
+import { KITCHEN_SINK, goalTmpDir, readTree, runGoal, workforceTree } from "../../lib/index.mts";
 import type { FreshHost, HostSeams } from "./host.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -107,7 +108,7 @@ async function quiet(app: FreshHost, ms: number): Promise<void> {
   }
 }
 
-await runGoal(async (failures) => {
+async function checkHost(failures: string[], sqliteFile?: string): Promise<string> {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
 
@@ -115,7 +116,7 @@ await runGoal(async (failures) => {
   const workforce = (await import("@flow-state-dev/workforce")) as Record<string, unknown>;
   if (typeof workforce.defineCoordinatorFlow !== "function") {
     fail("import", "@flow-state-dev/workforce exports no defineCoordinatorFlow");
-    return { failures, evidence: "" };
+    return "";
   }
   evidence.push("defineCoordinatorFlow resolves from @flow-state-dev/workforce");
 
@@ -168,7 +169,7 @@ await runGoal(async (failures) => {
           [TREE],
         )
       : TREE;
-  const app = await startFreshHost(tree, controlSeams());
+  const app = await startFreshHost(tree, controlSeams(), sqliteFile);
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
     const res = await createInProcessFetch(app.router)(`http://fresh-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,
@@ -310,5 +311,24 @@ await runGoal(async (failures) => {
       if (!want.includes(leg) && leg !== "control") failures.push(`[control] GOAL_CONTROL=${CONTROL} also reddened the ${leg} leg`);
     }
   }
-  return { failures, evidence: evidence.join("; ") };
+  return evidence.join("; ");
+}
+
+await runGoal(async (failures) => {
+  const store = process.env.GOAL_STORE;
+  if (store !== undefined && store !== "memory" && store !== "sqlite") {
+    throw new Error(`unknown GOAL_STORE "${store}"; expected memory or sqlite`);
+  }
+  const stores = store === undefined ? ["memory", "sqlite"] : [store];
+  const evidence: string[] = [];
+  for (const backend of stores) {
+    const findings: string[] = [];
+    try {
+      const sqliteFile = backend === "sqlite" ? join(goalTmpDir("fresh-coordinator"), "goal.sqlite") : undefined;
+      evidence.push(`${backend}: ${await checkHost(findings, sqliteFile)}`);
+    } finally {
+      failures.push(...findings.map((finding) => `${finding} (${backend})`));
+    }
+  }
+  return { failures, evidence: evidence.join("\n") };
 });

@@ -148,7 +148,7 @@ describe("a screen with no right panel", () => {
     expect(screen.queryByTestId("right-panel-slot")).toBeNull();
     press("]");
     act(() => fireEvent.click(screen.getByTestId("nav-shift-coordinator")));
-    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
+    expect(await screen.findByTestId("shift-coordinator-panel")).toBeTruthy();
   });
 });
 

@@ -13,9 +13,7 @@
  * Size: GOAL_WINDOW=50 GOAL_TURNS=60 (default 8 and 14); GOAL_RUNS (default 3)
  * Controls: GOAL_CONTROL=no-summary (no capability, no fold) · GOAL_CONTROL=no-mark (no historyStart)
  */
-import { spawnSync } from "node:child_process";
 import { randomInt } from "node:crypto";
-import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, generator, sequencer, utility } from "@flow-state-dev/core";
@@ -23,17 +21,14 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { createModelResolver } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
-  REPO_ROOT,
   RUN_STAMP,
   actingAs,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   gatewayModel,
   goalModel,
   goalTmpDir,
   keysServing,
   loadFixture,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   summaryAsSeen,
@@ -73,15 +68,7 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 const control = CONTROL === "" ? undefined : CONTROLS[CONTROL]!;
 if (control !== undefined && control.patches.length > 0 && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(control.patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(control.patches, REPO_ROOT, mark) }
-  });
-  assertPatched(control.patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({ patches: control.patches, scratch: SCRATCH, label: `control ${CONTROL}:` }).status);
 }
 if (TURNS - 1 <= WINDOW) {
   console.error(`GOAL_TURNS (${TURNS}) must exceed GOAL_WINDOW + 1 (${WINDOW + 1}), or turn 1 never leaves the window`);

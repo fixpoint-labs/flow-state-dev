@@ -38,8 +38,8 @@
  * Run: pnpm tsx goals/task-board/holds-a-task-waiting-on-a-person/run.mts
  * Legs: GOAL_LEGS=a,b,c,cprime,d,e,f,g (default: all; e waits out a 60 s resume lease)
  */
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
@@ -66,13 +66,10 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
-  REPO_ROOT,
   RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   actingAs,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -186,21 +183,13 @@ const PATCHES = [...TIMING, ...(CONTROLS[CONTROL]?.patches ?? [])];
 
 // Every run re-runs this file with its patches applied as it loads.
 if (process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`${CONTROL === "" ? "timing patches" : `control ${CONTROL}`}:\n${describePatches(PATCHES, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      GOAL_SCRATCH: SCRATCH,
-      FSDEV_TRACE_OBSERVABILITY: "0",
-      GOAL_LEGS: process.env.GOAL_LEGS ?? (CONTROL === "" ? ALL_LEGS.join(",") : CONTROLS[CONTROL]!.legs.join(",")),
-      ...modulePatchEnv(PATCHES, REPO_ROOT, mark)
-    }
-  });
-  if (ROLE === "main" && child.status !== 2) assertPatched(PATCHES, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES,
+    scratch: SCRATCH,
+    label: `${CONTROL === "" ? "timing patches" : `control ${CONTROL}`}:`,
+    env: { GOAL_SCRATCH: SCRATCH, FSDEV_TRACE_OBSERVABILITY: "0", GOAL_LEGS: process.env.GOAL_LEGS ?? (CONTROL === "" ? ALL_LEGS.join(",") : CONTROLS[CONTROL]!.legs.join(",")) },
+    verify: ROLE === "main" ? "unless-usage-error" : false
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 

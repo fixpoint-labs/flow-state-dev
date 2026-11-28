@@ -38,8 +38,7 @@
  * Run: pnpm tsx goals/task-board/waits-on-its-questions/run.mts
  * Legs: GOAL_LEGS=a,b,c,d,dnowake,e,edue,f (default: all; a, b, c run in order)
  */
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -67,13 +66,10 @@ import {
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
-  REPO_ROOT,
   RUN_STAMP,
   actingAs,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -219,20 +215,13 @@ const PATCHES = [...TIMING, ...(CONTROLS[CONTROL]?.patches ?? [])];
 
 // Every run re-runs this file with its patches applied as it loads.
 if (process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`${CONTROL === "" ? "timing patches" : `control ${CONTROL}`}:\n${describePatches(PATCHES, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      GOAL_SCRATCH: SCRATCH,
-      GOAL_LEGS: process.env.GOAL_LEGS ?? (CONTROL === "" ? ALL_LEGS.join(",") : CONTROLS[CONTROL]!.legs.join(",")),
-      ...modulePatchEnv(PATCHES, REPO_ROOT, mark)
-    }
-  });
-  if (child.status !== 2) assertPatched(PATCHES, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES,
+    scratch: SCRATCH,
+    label: `${CONTROL === "" ? "timing patches" : `control ${CONTROL}`}:`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? (CONTROL === "" ? ALL_LEGS.join(",") : CONTROLS[CONTROL]!.legs.join(",")) },
+    verify: "unless-usage-error"
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 

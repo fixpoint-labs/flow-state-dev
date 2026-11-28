@@ -42,21 +42,18 @@
  * Control:  GOAL_CONTROL=fresh-session … (same command)
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
-import { onClosed } from "../../lib/server.mts";
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { LAB_ORG_ID, LAB_USER_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, readTree, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, goalTmpDir, readTree, runGoal } from "../../lib/index.mts";
+import { buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { ASKER_FLOW, heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
@@ -75,7 +72,6 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-turn");
 const RUNS_FILE = join(SCRATCH, `runs-${Date.now()}.ndjson`);
 const STORE_FILE = join(SCRATCH, `devteam-${Date.now()}.db`);
@@ -96,76 +92,28 @@ const token = (route: string) => `${route}-${randomBytes(4).toString("hex")}`;
 
 async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "optimistic-turn" ? control : "as-written"}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap =
     control === "optimistic-turn"
       ? { target: join(SHIFT_MANAGER, "src", "lib", "deliver.ts"), with: join(HERE, "controls", "optimistic-turn.ts") }
       : undefined;
-  let swapped = 0;
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "warn",
-    build: { outDir, emptyOutDir: true },
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with },
     define: { __STATIC_SEATS__: "[]" },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined || importer === swap.with) return null;
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
-                return swap.with;
-              },
-            },
-          ],
+    logLevel: "warn"
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
-  return outDir;
 }
 
 // ---- serving a Lab -----------------------------------------------------------
 
-type Running = { origin: string; child: ChildProcess; exited: Promise<void>; log: () => string };
-
-async function startLab(name: LabName, pages: string): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
-  let log = "";
-  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", LABS[name].config, "--port", "0", "--no-open", "--assets", pages], {
-    cwd: workDir,
-    env: intentFreeEnv(process.env, {
-      INIT_CWD: workDir,
-      GOAL_CONTROL: "",
+function startLab(name: LabName, pages: string): Promise<ServedShiftManager> {
+  return startShiftManager({
+    scratch: SCRATCH, label: name, config: LABS[name].config, pages, timeoutMs: 120_000,
+    env: {
       TURN_GOAL_RUNS: RUNS_FILE,
       [STORE_ENV]: STORE_FILE,
-      TURN_GOAL_CONTROL: CONTROL === "fresh-session" ? CONTROL : "",
-    }),
-    stdio: ["ignore", "pipe", "pipe"],
+      TURN_GOAL_CONTROL: CONTROL === "fresh-session" ? CONTROL : ""
+    }
   });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    onClosed(child, () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 120_000; waited += 250) {
-    const served = servedAddresses(log);
-    if (served !== undefined) return { origin: served.origin, child, exited, log: () => log };
-    if (gone) break;
-    await sleep(250);
-  }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's command never served ${name}. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -488,8 +436,7 @@ await runGoal(async (failures) => {
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {
     await browser.close();
-    for (const lab of Object.values(served)) lab.child.kill("SIGTERM");
-    await Promise.all(Object.values(served).map((lab) => lab.exited));
+    await Promise.all(Object.values(served).map((lab) => lab.stop()));
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),

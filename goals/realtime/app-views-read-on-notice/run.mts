@@ -35,9 +35,6 @@
  *   GOAL_CONTROL=timer       each live read keeps a fixed timer with the socket up: a's 0-reads must FAIL.
  *   GOAL_CONTROL=every-kind  the live reads read on every notice on their topic: b must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { Window } from "happy-dom";
 import * as React from "react";
 import { createElement, useEffect } from "react";
@@ -59,7 +56,7 @@ import {
   workstreamEntryKey,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { runPatchedGoal, goalTmpDir, kitFlows, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
@@ -114,15 +111,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) },
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH }
+  }).status);
 }
 
 const happy = new Window();

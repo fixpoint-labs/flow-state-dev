@@ -11,7 +11,7 @@
  * The host's `resolvePrincipal` must read the caller from the `x-user` header.
  */
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
-import { createInProcessFetch } from "@flow-state-dev/engine";
+import { createInProcessFetch, type StoreRegistry } from "@flow-state-dev/engine";
 import { sleep } from "./time.mts";
 
 
@@ -95,4 +95,14 @@ export async function untilIdle(stores: { request: { list: (q: object) => Promis
     await sleep(20);
   }
   throw new Error("a request never finished");
+}
+
+/** Read a request's status once it leaves in-progress, or return undefined if it never settles. */
+export async function waitForRequestStatus(stores: Pick<StoreRegistry, "request">, requestId: string): Promise<string | undefined> {
+  for (let i = 0; i < 200; i += 1) {
+    const record = await stores.request.get(requestId);
+    if (record !== undefined && record.status !== "in_progress") return record.status;
+    await sleep(25);
+  }
+  return undefined;
 }

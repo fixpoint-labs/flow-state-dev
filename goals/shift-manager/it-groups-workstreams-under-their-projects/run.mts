@@ -80,15 +80,12 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>
  */
-import { onClosed } from "../../lib/server.mts";
-import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, readTree, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, devteamShiftCoordinatorModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, loadFixture, readTree, runGoal } from "../../lib/index.mts";
+import { devteamShiftCoordinatorModel, personPage, buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
@@ -131,7 +128,6 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const PROJECTS_SRC = join(REPO_ROOT, "packages", "workforce", "src", "projects");
 const SQLITE_SRC = join(REPO_ROOT, "packages", "store-sqlite", "src", "index.ts");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-projects");
 const CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
 const TREE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce");
@@ -179,50 +175,18 @@ function serverSwapFor(control: string): { target: string; with: string } | unde
 async function buildShiftManager(control: string): Promise<string> {
   const swap = pageSwapFor(control);
   const outDir = join(SCRATCH, `pages-${swap === undefined ? "as-written" : control}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
-  let swapped = 0;
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "error",
-    build: { outDir, emptyOutDir: true },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined) return null;
-                // The control resolves packages (React, its JSX runtime) as the module it replaces would.
-                if (importer === swap.with) {
-                  return source.startsWith(".") ? null : this.resolve(source, swap.target, { ...options, skipSelf: true });
-                }
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
-                return swap.with;
-              },
-            },
-          ],
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with, resolveFrom: swap.target }
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
-  return outDir;
 }
 
 // ---- serving the Lab ---------------------------------------------------------
-
-type Running = { origin: string; child: ChildProcess; log: () => string; exited: Promise<void> };
 
 /**
  * Shift Manager's command over the DevTeam profile, on the store file at
  * `store`, with the server control's swap if one is set.
  */
-async function startLab(pages: string, fired: string | undefined, store: string): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", "devteam-"));
+async function startLab(pages: string, fired: string | undefined, store: string): Promise<ServedShiftManager> {
   const swap = serverSwapFor(CONTROL);
   const swapEnv: Record<string, string> =
     swap === undefined || fired === undefined
@@ -233,44 +197,15 @@ async function startLab(pages: string, fired: string | undefined, store: string)
           GOAL_SWAP_WITH: swap.with,
           GOAL_SWAP_FIRED: fired,
         };
-  let log = "";
-  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
-    cwd: workDir,
-    // A fresh store per run, for a profile whose store outlives the process;
-    // the restart opens the same one. Every run, the plain one and each control, holds the store's checked writes
-    // (`write-latency.mts`), so the bursts really race and a PASS means the writes absorbed it.
-    env: intentFreeEnv(process.env, {
-      INIT_CWD: workDir,
-      GOAL_CONTROL: "",
-      DEVTEAM_STORE: store,
-      DEVFORCE_LAB_WRITE_LATENCY_MS: String(WRITE_LATENCY_MS),
-      ...swapEnv,
-    }),
-    stdio: ["ignore", "pipe", "pipe"],
+  const served = await startShiftManager({
+    scratch: SCRATCH, label: "devteam", config: CONFIG, pages,
+    env: { DEVTEAM_STORE: store, DEVFORCE_LAB_WRITE_LATENCY_MS: String(WRITE_LATENCY_MS), ...swapEnv }
   });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    onClosed(child, () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const served = servedAddresses(log);
-    if (served !== undefined) {
-      if (!log.includes(`holding checked store writes up to ${WRITE_LATENCY_MS}ms`)) {
-        child.kill("SIGTERM");
-        throw new Error("the Lab did not hold its store writes, so the bursts would not race");
-      }
-      return { origin: served.origin, child, log: () => log, exited };
-    }
-    if (gone) break;
-    await sleep(250);
+  if (!served.log().includes(`holding checked store writes up to ${WRITE_LATENCY_MS}ms`)) {
+    await served.stop();
+    throw new Error("the Lab did not hold its store writes, so the bursts would not race");
   }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's command never served DevTeam. Log tail:\n${log.slice(-2000)}`);
+  return served;
 }
 
 // ---- the Lab's routes, as one verified user ----------------------------------
@@ -1184,8 +1119,7 @@ await runGoal(async (failures) => {
 
       // Stop the Lab and start it again on the same store.
       const before = await whatIsHeldQuiet(apis.owner, [apis.owner, apis.member]);
-      served.child.kill("SIGTERM");
-      await served.exited;
+      await served.stop();
       served = await startLab(pages, fired, store);
       logs.push(served.log);
       await restarted(before, labApi(served.origin, LAB_USERS.owner), fail, evidence);
@@ -1196,8 +1130,7 @@ await runGoal(async (failures) => {
     }
     finished = true;
   } finally {
-    served.child.kill("SIGTERM");
-    await served.exited;
+    await served.stop();
     if (!finished || failures.length > 0) {
       const kept = join(SCRATCH, `lab-${RUN_STAMP}.log`);
       writeFileSync(kept, logs.map((log, i) => `===== Lab ${i + 1} =====\n${log()}`).join("\n"));

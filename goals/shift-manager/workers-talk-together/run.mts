@@ -16,7 +16,7 @@ import { RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages, openShiftManager, personPage, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
-import { checkoutFor } from "../workers-message-each-other/checkout.mts";
+import { checkoutFor } from "../../lib/checkout.mts";
 import { faultPatches, type FaultName } from "../workers-message-each-other/faults.mts";
 import type { Servers } from "../workers-message-each-other/legs-delivery.mts";
 import { connect, hireTeam, loadShipped, openConversations, quiet, word, HELPER_A, RESEARCHER, type LegResult, type Person, type World } from "../workers-message-each-other/legs.mts";
@@ -195,7 +195,7 @@ async function journey(origin: string, alice: Person, world: World, walked: Walk
 }
 
 await runGoal(async () => {
-  const checkout = checkoutFor(process.env.GOAL_COMMIT);
+  const checkout = checkoutFor(process.env.GOAL_COMMIT, "messages");
   mkdirSync(SCRATCH, { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });

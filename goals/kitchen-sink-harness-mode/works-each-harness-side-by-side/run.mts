@@ -35,12 +35,11 @@
  * GOAL_SCRIPTED=1 walks the scripted harnesses and model instead: a dry run of
  * the walk's own mechanics on any host, never a verdict on the epic.
  */
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Page, Route } from "playwright";
-import { KITCHEN_SINK, loadFixture, runGoal } from "../../lib/index.mts";
+import { loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
+import { startKitchenSinkDev } from "../../lib/kitchen-sink.mts";
 
 interface ModeFixture {
   readonly id: string;
@@ -76,10 +75,8 @@ const SCRIPTED = process.env.GOAL_SCRIPTED === "1";
  * runs in". Outside a server control nothing is in test mode: every harness
  * and Flow State's model are the real ones.
  */
-async function startDev(): Promise<{ stop: () => void; log: () => string }> {
-  await refuseIfAnswering(ORIGIN);
-  let log = "";
-  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "development", STORE_TYPE: "filesystem" };
+function startDev() {
+  const env = { ...process.env };
   delete env.KITCHEN_SINK_HARNESS_WORKSPACE;
   delete env.KITCHEN_SINK_TEST_MODE;
   delete env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE;
@@ -87,22 +84,7 @@ async function startDev(): Promise<{ stop: () => void; log: () => string }> {
   if (SERVER_CONTROL || SCRIPTED) Object.assign(env, { KITCHEN_SINK_TEST_MODE: "1" });
   if (SERVER_CONTROL) Object.assign(env, { GOAL_CONTROL: CONTROL });
   if (!SCRIPTED) Object.assign(env, { KITCHEN_SINK_REAL_HARNESS: "1" });
-  const child: ChildProcess = spawn("pnpm", ["exec", "next", "dev", "--port", String(fixture.port)], {
-    cwd: KITCHEN_SINK,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  child.stdout?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
-  for (let i = 0; i < 240; i += 1) {
-    const status = await fetch(`${ORIGIN}/api/flows`).then((r) => r.status, () => undefined);
-    if (status === 200) return { stop: () => stopProcessGroup(child), log: () => log };
-    if (child.exitCode !== null) throw new Error(`next dev exited (${child.exitCode}):\n${log}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  stopProcessGroup(child);
-  throw new Error(`next dev never served ${ORIGIN}/api/flows:\n${log}`);
+  return startKitchenSinkDev(fixture.port, env);
 }
 
 /** Flow State draws a mobile and a desktop copy of some handles; only the shown one is the person's. */
@@ -272,10 +254,7 @@ await runGoal(async (failures, tell) => {
 
   const server = await startDev();
   // The server runs in its own process group, so a browser that never starts must not leave it holding the port.
-  const browser = await launchChromium().catch((error: unknown) => {
-    server.stop();
-    throw error;
-  });
+  const browser = await launchChromium(server.stop);
   try {
     // ---- host: which modes this host can run, read off the picker
     const picker = await browser.newPage();
@@ -441,8 +420,8 @@ await runGoal(async (failures, tell) => {
       }
     }
   } finally {
-    await browser.close();
     server.stop();
+    await browser.close();
   }
 
   if (CONTROL !== "") {

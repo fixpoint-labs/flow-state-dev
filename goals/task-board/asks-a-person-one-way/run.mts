@@ -47,8 +47,7 @@
  * Run: pnpm tsx goals/task-board/asks-a-person-one-way/run.mts
  * Legs: GOAL_LEGS=a,b,c,d,e,g,h (default: all; a runs first, b to e read its tasks)
  */
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -76,13 +75,10 @@ import {
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
-  REPO_ROOT,
   RUN_STAMP,
   actingAs,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -145,15 +141,13 @@ const PATCHES = CONTROLS[CONTROL]?.patches ?? [];
 
 // A control re-runs this file with its patches applied as it loads.
 if (PATCHES.length > 0 && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? CONTROLS[CONTROL]!.legs.join(","), ...modulePatchEnv(PATCHES, REPO_ROOT, mark) }
-  });
-  if (child.status !== 2) assertPatched(PATCHES, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? CONTROLS[CONTROL]!.legs.join(",") },
+    verify: "unless-usage-error"
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
 

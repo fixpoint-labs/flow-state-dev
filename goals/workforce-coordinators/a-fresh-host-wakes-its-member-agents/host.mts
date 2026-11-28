@@ -22,6 +22,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
   defineAgentWorkerFlow,
@@ -73,7 +74,7 @@ export const REPLY_MARKER = "[reply:fresh-host]";
  */
 const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
-/** This app's own worker flow: takes a note when asked directly, and takes no posts. */
+/** A worker flow with a direct action and no task entry. */
 const defineNote = (installation: WorkerInstallation) =>
   defineFlow({
     kind: "note",
@@ -109,7 +110,7 @@ export interface FreshHost {
  * @param tree The workforce root to read.
  * @param seams The goal check's seams. An app passes nothing.
  */
-export async function startFreshHost(tree: string, seams: HostSeams = {}): Promise<FreshHost> {
+export async function startFreshHost(tree: string, seams: HostSeams = {}, sqliteFile?: string): Promise<FreshHost> {
   // Each flow is built on the installation the workforce kit hires.
   const workerFlows = {
     agent: workerFlow(
@@ -126,7 +127,7 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}): Promi
   const state = createFlowState({
     kits: [workforce({ directory: tree })],
     fill: { [workforce.slots.workerFlows]: workerFlows },
-    stores: { default: { primary: inMemoryStores() } },
+    stores: { default: { primary: sqliteFile === undefined ? inMemoryStores() : sqliteStores({ filename: sqliteFile }) } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.
     ...(seams.omitPrincipal === true ? {} : { resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }) }),

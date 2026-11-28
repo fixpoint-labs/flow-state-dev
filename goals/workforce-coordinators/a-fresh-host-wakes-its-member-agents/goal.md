@@ -8,7 +8,7 @@
 
 **Input:** `fixtures/workforce/`: one team, two agent workers (no `flow:`), one worker of the app's own `note` flow (only a public action, no delegated-post entry), and one coordinator naming all three as delegates. `host.mts` is the app: the tree, the published packages, and the `coordinator` flow registered with the built-in `agent` as the flow its delegates take posts on. Held-out: who is an agent delegate is read off the tree (a worker with no `flow:`), never hardcoded, and each run's posts carry fresh tokens.
 
-**Signal:** the host served in-process on in-memory stores and a scripted model. The person opens a conversation with the coordinator the way a page does (a session on `coordinator` naming it) and posts twice through its public `run` action. Everything graded is read back through the host's own router, the routes a page reads: the conversation's items, and each worker's conversations, dispatch runs included.
+**Signal:** The host runs in-process twice, once in memory and once on a fresh SQLite database, with the same scripted model. The person opens a conversation with the coordinator through its public API and posts twice. The check grades the conversation's items and each worker's conversations, including dispatch runs, through the host's router.
 
 - **import**: `defineCoordinatorFlow` resolves from `@flow-state-dev/workforce`. Checked first; the rest needs it.
 - **woken**: each agent delegate holds exactly one conversation under the person's, and in it each post is heard in exactly one `user` turn with an `assistant` reply right under it.
@@ -22,7 +22,7 @@
 
 **Model:** n/a. The built-in agent flow answers from a scripted model (`@flow-state-dev/testing`), keyless (epic FIX-1592 D3). The goal is who ran, not what they said.
 
-**Run:** `pnpm --dir goals exec tsx workforce-coordinators/a-fresh-host-wakes-its-member-agents/run.mts`
+**Run:** `pnpm --dir goals exec tsx workforce-coordinators/a-fresh-host-wakes-its-member-agents/run.mts`. Set `GOAL_STORE=memory` or `GOAL_STORE=sqlite` to run one backend.
 
 **Controls:** on the same command. Each is applied by the check around the host, never inside the package.
 
@@ -60,3 +60,5 @@ The **import** and **source** legs have no control: a checkout without the expor
 | 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | FAIL (control `no-wake`, expected) | On the kit (the agent registered with no task entry and as a manager only, which the kit's hire takes): **woken** and **answers**, nothing else. |
 | 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | FAIL (control `answers-go-on`, expected) | On the kit (a copy of the tree with the coordinator's file saying `rounds: 1`): **answers** and **quiet**. |
 | 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | FAIL (control `no-org`, expected) | On the kit: **org**, every session on `__fsd_default_org__`. |
+| 2026-11-27 | working tree on 946929308 | scripted | PASS | Both in-memory and SQLite runs delivered both posts once to each agent, kept the named replies, and left the non-delegate idle. |
+| 2026-11-27 | working tree on 946929308 | scripted | FAIL (expected) | `no-wake` failed only **woken** and **answers** on both backends. |

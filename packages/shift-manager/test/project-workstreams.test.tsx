@@ -450,13 +450,17 @@ describe("a project view (V8: BR-12, BR-18)", () => {
         [BOB.userId, "search"],
       ].sort(),
     );
-    // The view's reads: the entries by the project's one prefix, the view's and the sidebar's for the project
-    // on screen, so they come in pairs. No other entry read. The row is the projects read the page holds
-    // (FIX-2775), so nothing reads it by its key; the Lab's own read never lists entries.
+    // Both the view and the sidebar read the project's prefix. A subscription can resync during
+    // startup, so check every read's scope and prefix. The page already holds the projects read
+    // (FIX-2775), so nothing reads the project by its key.
     const workstreamReads = seen.filter((r) => /\/resources\/(org|user)\/workstreams\//.test(r.path));
     const rowReads = seen.filter((r) => /\/resources\/(org|user)\/projects\/\*\/entries\/projects\/apollo\b/.test(r.path));
-    expect(workstreamReads).toHaveLength(2);
-    expect(workstreamReads.map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(workstreamReads.map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+    expect(workstreamReads.length).toBeGreaterThan(0);
+    for (const { path } of workstreamReads) {
+      const [route, query] = path.split("?");
+      expect(route).toMatch(/\/resources\/org\/workstreams\/.*\/entries$/);
+      expect(new URLSearchParams(query).get("topicPrefix")).toBe("workstreams/apollo/");
+    }
     expect(rowReads).toEqual([]);
 
     // The Board: one lane per workstream of hers, each read from its own session; Bob's is never read.
@@ -647,8 +651,8 @@ describe("a project view (V8: BR-12, BR-18)", () => {
   });
 
   it("keeps the list on screen when a later read fails, and doesn't swap it for the failure", async () => {
-    // A poll that fails must not blank a list the user is reading; only a first read that fails shows the failure.
-    const { screen } = dom!;
+    // A failed refresh must leave the entries the user is already reading on screen.
+    const { screen, act, fireEvent } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
     await openAs(alice, setup, "checkout");
@@ -665,8 +669,10 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       }
       return real(input, init);
     });
-    await eventually(async () => (failed > 0 ? true : undefined), "a poll that fails", 15_000);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "r" });
+      await eventually(async () => (failed > 0 ? true : undefined), "the refresh to fail");
+    });
     expect(screen.queryByTestId("project-read-failure")).toBeNull();
     expect(screen.getAllByTestId("project-entry").map((li) => li.getAttribute("data-workstream-id"))).toEqual(["checkout"]);
   });

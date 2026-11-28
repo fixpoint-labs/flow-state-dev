@@ -137,7 +137,7 @@ export const CHECKS: Record<string, Check[]> = {
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */
 export const NAMED: Check[] = [
-  { goal: "coordinators/every-coordinator-is-a-worker-file", controls: { "mailbox-left": ["a:no-mailbox-file", "b:after"] } },
+  { goal: "workforce-coordinators/a-fresh-host-wakes-its-member-agents", controls: { "no-wake": ["woken", "answers"] } },
   { goal: "coordinators/files-tasks-down-the-owners-chain", controls: { unpartitioned: ["c:runs-its-own", "c:lists-its-own"], "no-follow-up": ["a:one-notice", "e:one-notice"] } },
   {
     goal: "coordinators/hands-each-post-to-its-delegates",

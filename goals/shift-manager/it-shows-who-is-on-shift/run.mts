@@ -42,15 +42,11 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=<pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  * Control:  GOAL_CONTROL=ignore-asks pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  */
-import { onClosed } from "../../lib/server.mts";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Browser, Page } from "playwright";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, pendingSeatAsks, servedAddresses } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
+import { pendingSeatAsks, buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
@@ -71,7 +67,6 @@ const fixture = loadFixture<{ spreads: Array<Record<string, ShiftState[]>> }>(im
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-roster");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
@@ -96,67 +91,20 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 /** Build Shift Manager's pages into a scratch directory, with the control's swap if one is set. */
 async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
-  const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
-  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "shift.ts"), with: join(HERE, "controls", `${control}.ts`) };
-  let swapped = 0;
-  await vite.build({
-    root: SHIFT_MANAGER,
-    configFile: join(SHIFT_MANAGER, "vite.config.ts"),
-    logLevel: "warn",
-    build: { outDir, emptyOutDir: true },
-    plugins:
-      swap === undefined
-        ? []
-        : [
-            {
-              name: "goal-control-swap",
-              enforce: "pre",
-              async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
-                if (importer === undefined || importer === swap.with) return null;
-                const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
-                return swap.with;
-              },
-            },
-          ],
+  return buildShiftManagerPages(outDir, SHIFT_MANAGER, {
+    swap: swap === undefined ? undefined : { targets: [swap.target], with: swap.with },
+    logLevel: "warn"
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
-  return outDir;
 }
 
 // ---- serving the Lab ---------------------------------------------------------
 
-type Running = { origin: string; child: ChildProcess; exited: Promise<void> };
-
 /** Shift Manager's command over the shift-lab, booted under `spread`. */
-async function startLab(pages: string, spread: Record<string, ShiftState[]>): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", "shift-lab-"));
-  let log = "";
-  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
-    cwd: workDir,
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", SHIFT_LAB_SPREAD: JSON.stringify(spread) }),
-    stdio: ["ignore", "pipe", "pipe"],
+function startLab(pages: string, spread: Record<string, ShiftState[]>): Promise<ServedShiftManager> {
+  return startShiftManager({
+    scratch: SCRATCH, label: "shift-lab", config: CONFIG, pages, env: { SHIFT_LAB_SPREAD: JSON.stringify(spread) }
   });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    onClosed(child, () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const served = servedAddresses(log);
-    if (served !== undefined) return { origin: served.origin, child, exited };
-    if (gone) break;
-    await sleep(250);
-  }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's command never served the shift-lab. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script ------------------------------------------
@@ -508,8 +456,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     if (n === 1) await oneAnswer(page, served.origin, userId, store, fail, evidence);
   } finally {
     await browser?.close();
-    served.child.kill("SIGTERM");
-    await served.exited;
+    await served.stop();
   }
 }
 

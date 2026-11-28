@@ -16,7 +16,6 @@
  * Run: pnpm tsx goals/workers/roles-checked-at-hire/run.mts
  * Control: GOAL_CONTROL=no-role-check (the role check removed from the hire)
  */
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,14 +37,11 @@ import {
   type WorkerRole
 } from "@flow-state-dev/workforce";
 import {
-  REPO_ROOT,
   RUN_STAMP,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
   actingAs,
   installWorkers,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
@@ -78,15 +74,7 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
 }
 if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   const patches = CONTROLS[CONTROL]!;
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(patches, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, ...modulePatchEnv(patches, REPO_ROOT, mark) }
-  });
-  assertPatched(patches, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({ patches, scratch: SCRATCH, label: `control ${CONTROL}:` }).status);
 }
 
 const doorInput = z.object({ message: z.string() });

@@ -32,10 +32,11 @@
  *           silent-park | one-worker  (each must FAIL, at the legs goal.md names)
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Browser, type Page } from "playwright";
+import { launchChromium } from "../../lib/playwright.mts";
+import type { Browser, Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { LAB_USER_ID, readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
@@ -126,18 +127,6 @@ function treeFiles(dir: string): string[] {
     const path = join(dir, entry);
     return statSync(path).isDirectory() ? treeFiles(path) : [path];
   });
-}
-
-/** A Chromium already on the machine, when the pinned build is not. See `flow-instances`. */
-function preinstalledChromium(): string | undefined {
-  const pool = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (pool === undefined || !existsSync(pool)) return undefined;
-  for (const entry of readdirSync(pool)) {
-    if (!entry.startsWith("chromium-")) continue;
-    const binary = join(pool, entry, "chrome-linux", "chrome");
-    if (existsSync(binary)) return binary;
-  }
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +265,7 @@ async function main() {
   let browser: Browser | undefined;
   try {
     await lab.open();
-    browser = await chromium.launch({ headless: true, ...(preinstalledChromium() === undefined ? {} : { executablePath: preinstalledChromium() }) });
+    browser = await launchChromium();
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     await page.goto(served.origin, { waitUntil: "networkidle" });
 

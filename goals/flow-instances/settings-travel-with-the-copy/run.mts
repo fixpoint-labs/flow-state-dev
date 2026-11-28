@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { loadFixture, runGoal, waitForRequestStatus, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { auditDefinition, seatDefinition, seatWork } from "./fixtures/seats";
 
 type Seat = { id: string; config: Record<string, unknown> };
@@ -67,15 +67,6 @@ async function ranOn(router: Router, sessionId: string) {
   return { status, ranOn: seen?.ranOn, routedTo: seen?.routedTo, runs: seen?.runs };
 }
 
-async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
-  for (let i = 0; i < 200; i += 1) {
-    const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress") return record.status;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return undefined;
-}
-
 /** What a copy's settings SHOULD read as, rendered the way the blocks render them. */
 function expected(seat: Seat) {
   const harness = seat.config.harness as string;
@@ -127,7 +118,7 @@ await runGoal(async (failures, tell) => {
       const res = await act(router, seat.id, sessions[seat.id]!);
       const body = (await res.json()) as { request?: { id: string } };
       if (res.status !== 202) failures.push(`${seat.id}: expected 202, got ${res.status}`);
-      const status = await settled(stores, body.request?.id ?? "");
+      const status = await waitForRequestStatus(stores, body.request?.id ?? "");
       if (status !== "completed") failures.push(`${seat.id}: request ended ${status}`);
     }
     evidence.push("each copy ran the same action through the real HTTP route");

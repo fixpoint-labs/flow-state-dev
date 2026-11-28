@@ -85,7 +85,15 @@ runs Haiku (the project's `.claude/settings.json`; Kitchen Sink's session model)
 stamped with its models (`app` or the Haiku id) beside its commit, and the verdict refuses a pass whose
 sheets mix them.
 
-**Run** (one pass = all four, then the verdict):
+**Model-free run:** `GOAL_GRADERS_ONLY=1`
+
+**Run:** `pnpm tsx goals/closure-smarter-agents/run.mts` runs the graders, all
+four apps and the verdict against fresh sheets. A normal `pnpm goal:all` runs
+the wrap pass. With `--model-free`, the sweep runs only the graders.
+Set `GOAL_PASS=control` or `GOAL_PASS=cut` on the direct command to run either of
+those passes and grade the results across all four apps.
+
+For individual app runs or to resume work on existing sheets:
 
 ```bash
 pnpm tsx goals/closure-smarter-agents/graders/run.mts         # graders and rules, model-free

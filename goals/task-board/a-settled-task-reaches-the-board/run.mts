@@ -31,8 +31,6 @@
  *                                 on Teammates' card read and its popup's `taskId` read as on the merged view.
  *   GOAL_CONTROL=tasks-only       the lab views hear `tasks` alone (no plan topics): a's plan-step signal must FAIL.
  */
-import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Window } from "happy-dom";
@@ -63,13 +61,10 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { startPostgres } from "../../lib/postgres.mts";
 import {
-  REPO_ROOT,
   RUN_STAMP,
   actingAs,
-  assertPatched,
-  describePatches,
+  runPatchedGoal,
   goalTmpDir,
-  modulePatchEnv,
   runGoal,
   silentLogger,
   sleep,
@@ -122,15 +117,12 @@ if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   process.exit(2);
 }
 if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
-  const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
-  rmSync(mark, { force: true });
-  console.error(`control ${CONTROL}:\n${describePatches(PATCHES[CONTROL]!, REPO_ROOT)}`);
-  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? "a", ...modulePatchEnv(PATCHES[CONTROL]!, REPO_ROOT, mark) }
-  });
-  assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
-  process.exit(child.status ?? 1);
+  process.exit(runPatchedGoal({
+    patches: PATCHES[CONTROL]!,
+    scratch: SCRATCH,
+    label: `control ${CONTROL}:`,
+    env: { GOAL_SCRATCH: SCRATCH, GOAL_LEGS: process.env.GOAL_LEGS ?? "a" }
+  }).status);
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,b,c").split(",").map((s) => s.trim()).filter(Boolean));
 

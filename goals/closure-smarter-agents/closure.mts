@@ -21,7 +21,7 @@
  *   counts in, graded, written to the pass's sheet, and reported through
  *   `runGoal`.
  */
-import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +31,8 @@ import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessSessionStateSchema, runRecordStateSchema, type RunRecordState } from "@flow-state-dev/harness-manager";
-import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, readTree, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
+import { checkoutFor } from "../lib/checkout.mts";
+import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, readTree, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
   ASKS,
   cellsFor,
@@ -94,28 +95,7 @@ export function closurePass(): ClosurePass {
     process.exit(2);
   }
   const commit = process.env.GOAL_COMMIT ?? (pass === "control" ? CONTROL_COMMIT : "");
-  return { pass, switches: pass !== "wrap", model, ...treeFor(commit) };
-}
-
-/** This checkout, or a commit's own tree and install, kept across runs (a commit's tree doesn't change). */
-function treeFor(commit: string): { root: string; describe: string; commit: string } {
-  const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
-  if (commit === "") {
-    const head = git("rev-parse", "HEAD");
-    return { root: REPO_ROOT, describe: `this checkout, \`${head.slice(0, 9)}\``, commit: head };
-  }
-  const sha = git("rev-parse", `${commit}^{commit}`);
-  const root = join(tmpdir(), "fsd-goal-closure-trees", sha.slice(0, 12));
-  if (!existsSync(join(root, "package.json"))) {
-    mkdirSync(root, { recursive: true });
-    execFileSync("sh", ["-c", `git -C "${REPO_ROOT}" archive --format=tar ${sha} | tar -x -C "${root}"`]);
-  }
-  if (!existsSync(join(root, "node_modules"))) {
-    console.error(`installing ${sha.slice(0, 9)} in ${root}`);
-    const installed = spawnSync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: root, encoding: "utf8", timeout: 900_000 });
-    if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
-  }
-  return { root, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install`, commit: sha };
+  return { pass, switches: pass !== "wrap", model, ...checkoutFor(commit, "closure") };
 }
 
 // ---------------------------------------------------------------------------
