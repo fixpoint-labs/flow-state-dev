@@ -7,7 +7,7 @@
  * page.
  */
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { declaredIndexes, type FlowInstance } from "@flow-state-dev/core/types";
@@ -106,9 +106,13 @@ function boot() {
     const res = await post(["desk", sessionId, "actions", "file"], { input: { key, status } });
     expect(res.status, res.body).toBe(202);
     const { request } = JSON.parse(res.body) as { request: { id: string } };
-    for (let i = 0; i < 200 && (await stores.request.get(request.id))?.status !== "completed"; i += 1) {
+    let ended: string | undefined;
+    for (let i = 0; i < 200; i += 1) {
+      ended = (await stores.request.get(request.id))?.status;
+      if (ended !== undefined && ended !== "in_progress") break;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
+    return ended;
   };
   const view = async () => {
     const res = await post(["desk", "views", "open"], { input: {} });
@@ -202,5 +206,44 @@ describe("a read across sessions filtered by a declared index", () => {
     sent.length = 0;
     expect(await env.view()).toEqual(expected);
     expect(builds(), "a built store builds nothing").toBe(0);
+  });
+
+  it("never fails a committed write because the index build after it failed: the index stays unbuilt and a later read is right", async () => {
+    const env = boot();
+    const indexes = env.stores.resourceState.indexes!;
+    const completeBuild = indexes.completeBuild;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    indexes.completeBuild = async () => {
+      throw new Error("the database went away for a moment");
+    };
+    try {
+      expect(await env.fileIn("fresh", "a", "open")).toBe("completed");
+    } finally {
+      indexes.completeBuild = completeBuild;
+    }
+    // The write landed; its index did not build, and a warning says why.
+    expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "fresh", "notes/"))).toEqual(["notes/a"]);
+    expect(await indexes.state("session", "fresh", notes.pattern, STATUS)).not.toBe("built");
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("index"))).toBe(true);
+    warn.mockRestore();
+    expect(await env.view()).toEqual(["fresh notes/a"]);
+    expect(await indexes.state("session", "fresh", notes.pattern, STATUS)).toBe("built");
+  });
+
+  it("answers a filtered read whose own build failed, by the re-check", async () => {
+    const env = boot();
+    await env.fileIn("old", "a", "open");
+    await env.fileIn("old", "b", "done");
+    const indexes = env.stores.resourceState.indexes!;
+    await indexes.beginBuild("session", "old", notes.pattern, STATUS);
+    const completeBuild = indexes.completeBuild;
+    indexes.completeBuild = async () => {
+      throw new Error("the database went away for a moment");
+    };
+    try {
+      expect(await env.view()).toEqual(["old notes/a"]);
+    } finally {
+      indexes.completeBuild = completeBuild;
+    }
   });
 });

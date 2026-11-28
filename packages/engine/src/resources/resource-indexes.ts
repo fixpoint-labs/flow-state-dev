@@ -375,7 +375,16 @@ export function withResourceIndexWriter<T extends StoreRegistry>(
       ...rest,
       indexEntries: [...computed, ...passed],
     });
-    if (result.ok) await completeSessionBuilds(store, builtHere, known, scopeId, builds);
+    // The write has committed: a build that fails after it leaves the index
+    // unbuilt for a later lookup or read to build, never fails the write.
+    if (result.ok) {
+      await completeSessionBuilds(store, builtHere, known, scopeId, builds).catch((error: unknown) => {
+        console.warn("[flow-state] a session's index build after a committed write failed; the index stays unbuilt and a later read builds it.", {
+          scopeId,
+          error
+        });
+      });
+    }
     return result;
   };
   // A method assigned on the wrapper (a test's instrumented `get`) lands on

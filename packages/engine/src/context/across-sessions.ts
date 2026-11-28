@@ -282,11 +282,12 @@ async function listPage(
     }
     builds.count += unbuilt.size;
     for (const sessionKey of unbuilt) {
+      // A build that fails leaves the session on the re-check, which answered this page right.
       await findIndexedKeys(
         { store: inputs.store, indexes, scopeType: "session", scopeId: sessionKey, collection: config.pattern, keyPrefix },
         filter.declared,
         filter.value!
-      );
+      ).catch(() => undefined);
     }
   }
   // `next` marks the last row the store returned, never the last one shown,
