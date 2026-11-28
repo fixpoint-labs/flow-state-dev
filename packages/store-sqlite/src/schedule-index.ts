@@ -51,6 +51,12 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
        next_fire_at = excluded.next_fire_at`
   );
 
+  const ensureStmt = db.prepare(
+    `INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
+     VALUES (@cell, @key, @userId, @orgId, @cron, @timezone, @nextFireAt)
+     ON CONFLICT (cell, key) DO NOTHING`
+  );
+
   const removeStmt = db.prepare(
     "DELETE FROM schedule_index WHERE cell = ? AND key = ?"
   );
@@ -111,6 +117,18 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   return {
     async upsert(row: ScheduleIndexEntry): Promise<void> {
       upsertStmt.run({
+        cell: row.cell,
+        userId: row.userId,
+        key: row.key,
+        orgId: row.orgId ?? null,
+        cron: row.cron,
+        timezone: row.timezone ?? null,
+        nextFireAt: row.nextFireAt
+      });
+    },
+
+    async ensure(row: ScheduleIndexEntry): Promise<void> {
+      ensureStmt.run({
         cell: row.cell,
         userId: row.userId,
         key: row.key,

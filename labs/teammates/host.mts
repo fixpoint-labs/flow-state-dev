@@ -14,12 +14,12 @@ import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/
 import { system } from "@flow-state-dev/memory";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { fetch, search } from "@flow-state-dev/tools";
-import { githubTrustedReviewers, operatorGitHub, projectSourceTools } from "@flow-state-dev/workforce";
+import { githubTrustedReviewers, operatorGitHub, projectSourceTools, type OperatorGitHubTokenRead } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
-import { appContextFlow } from "./flows/lab-context.mts";
+import { appContextFlow, gitHubProblem } from "./flows/lab-context.mts";
 
 /** What {@link openTeammates} builds the host from; the README's "The host" says what each sets. */
 export interface TeammatesOptions {
@@ -37,7 +37,7 @@ export interface TeammatesOptions {
   scriptedHarnessStepMs?: number;
   staleThresholdMs?: number;
   modelResolver?: ModelResolver;
-  githubToken?: string;
+  github?: OperatorGitHubTokenRead;
   githubApiUrl?: string;
 }
 
@@ -81,7 +81,8 @@ export async function openTeammates(options: TeammatesOptions) {
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
   const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, , c]) => Object.hasOwn((c ?? {}) as object, "githubReviewers")).map(([id]) => id) });
-  const github = operatorGitHub({ operator: options.userId, token: options.githubToken, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
+  const githubProblem = gitHubProblem(options.github, options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl });
+  const github = operatorGitHub({ operator: options.userId, token: options.github?.token, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [
       workforce({
@@ -108,7 +109,7 @@ export async function openTeammates(options: TeammatesOptions) {
           ? [claudeCodeHarness(), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
           : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, githubProblem: await githubProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

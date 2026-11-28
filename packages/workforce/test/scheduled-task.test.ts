@@ -280,6 +280,7 @@ describe("the user's clock routines, listed", () => {
     const removed: string[] = [];
     const index: ScheduleIndex = {
       upsert: async (row) => void upserts.push(row),
+      ensure: async () => undefined,
       remove: async (id) => void removed.push(id.key),
       claimDue: async () => []
     };
@@ -293,7 +294,7 @@ describe("the user's clock routines, listed", () => {
   // FIX-2674: serve() ticks only flows whose registered `schedules` name an index,
   // so a roster flow that mirrors entries into the index but does not name it never fires.
   it("names the host's index on the roster flow, so the host's tick claims its clock routines", async () => {
-    const index: ScheduleIndex = { upsert: async () => undefined, remove: async () => undefined, claimDue: async () => [] };
+    const index: ScheduleIndex = { upsert: async () => undefined, ensure: async () => undefined, remove: async () => undefined, claimDue: async () => [] };
     const h = boot({ hire: { routines: { index } } });
     const runtime = await h.state.getRuntime();
     const ticked = runtime.registry

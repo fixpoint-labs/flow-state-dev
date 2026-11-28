@@ -56,7 +56,7 @@ function readableBy(userId: string, thread: string): boolean {
  * What a polled provider has: the events it would return, by their own time,
  * and every poll it answered (who asked, for which thread, from when).
  */
-export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }>; incomplete?: boolean; overlapMs?: number } = {
+export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }>; incomplete?: boolean; overlapMs?: number; failWith?: string } = {
   events: [],
   calls: []
 };
@@ -78,6 +78,7 @@ export const github: SubscriptionProvider = {
   async poll(thread, cursor, ctx) {
     const userId = (ctx.session.identity as { userId: string }).userId;
     pollTimeline.calls.push({ userId, thread, ...(cursor.since === undefined ? {} : { since: cursor.since }), etags: cursor.etags !== undefined });
+    if (pollTimeline.failWith !== undefined) throw new Error(pollTimeline.failWith);
     const now = Date.now();
     // A provider whose times are coarser than the mark reads back past it by `overlapMs`: repeats the fire must absorb.
     const from = cursor.since === undefined ? undefined : cursor.since - (pollTimeline.overlapMs ?? 0);
@@ -97,6 +98,9 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
     entries,
     async upsert(entry) {
       entries.set(id(entry), { ...entry });
+    },
+    async ensure(entry) {
+      if (!entries.has(id(entry))) entries.set(id(entry), { ...entry });
     },
     async remove(entry) {
       entries.delete(id(entry));

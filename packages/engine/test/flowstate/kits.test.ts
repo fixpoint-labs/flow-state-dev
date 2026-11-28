@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineKit, slot, type KitFolder } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, type FlowState } from "../../src";
+import { resolveSharedUserCellKey } from "../../src/host";
 
 const states: FlowState[] = [];
 const dirs: string[] = [];
@@ -401,5 +402,65 @@ describe("a kit's folder", () => {
     expect(() =>
       createFlowState({ kits: [notes({ directory: join(app, "shared") }), other()], root: app, stores }),
     ).toThrow(/kits "notes" and "other" both read the folder/);
+  });
+});
+
+// A kit's start-up work (re-deriving what its stores mirror, say) has to run once the app serves, and
+// never in a process that only resolves the runtime, where nothing it heals would ever fire.
+describe("a kit's onStarted", () => {
+  it("lets start-up work finish before disposing its stores", async () => {
+    const order: string[] = [];
+    let finish!: () => void;
+    const work = new Promise<void>((resolve) => (finish = resolve));
+    const k = defineKit({
+      name: "starts",
+      install: () => ({
+        flows: [flowOf("starts-flow")],
+        onStarted: async () => {
+          await work;
+          order.push("kit finished");
+        },
+      }),
+    });
+    const state = track(createFlowState({
+      kits: [k()],
+      stores: { dev: { primary: { ...inMemoryStores(), dispose: async () => { order.push("stores closed"); } } } },
+    }));
+    await state.ready();
+    const disposing = state.dispose();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    finish();
+    await disposing;
+    expect(order).toEqual(["kit finished", "stores closed"]);
+  });
+
+  it("runs once when the app first serves, not on getRuntime alone, and reads every user cell", async () => {
+    const seen: Array<{ cells: unknown; read: unknown }> = [];
+    let done!: () => void;
+    const ran = new Promise<void>((resolve) => (done = resolve));
+    const k = defineKit({
+      name: "starts",
+      install: () => ({
+        flows: [flowOf("starts-flow")],
+        onStarted: async (host) => {
+          const cells = await host.userCells();
+          seen.push({ cells, read: await host.readUserResources(cells[0]!.cell, "things/") });
+          done();
+        },
+      }),
+    });
+    const state = track(createFlowState({ kits: [k()], stores: { dev: { primary: inMemoryStores() } } }));
+    const { stores: registry } = await state.getRuntime();
+    const cell = resolveSharedUserCellKey("u1", "org-a", "test");
+    const at = Date.now();
+    await registry.org.set("org-a", { id: "org-a", orgId: "org-a", state: {}, version: 0, createdAt: at, updatedAt: at }, 0);
+    await registry.user.set(cell, { id: cell, userId: "u1", state: {}, version: 0, createdAt: at, updatedAt: at }, 0);
+    await registry.resourceState.set("user", cell, "things/one", { n: 1 }, "any");
+    expect(seen).toEqual([]);
+
+    await state.ready();
+    await state.getRouter();
+    await ran;
+    expect(seen).toEqual([{ cells: [{ userId: "u1", orgId: "org-a", cell }], read: { "things/one": expect.objectContaining({ state: { n: 1 } }) } }]);
   });
 });

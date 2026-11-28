@@ -20,7 +20,9 @@ export {
 
 export {
   defineScheduleCollection,
+  reassertSchedules,
   type DefineScheduleCollectionOptions,
+  type ReassertSchedulesOptions,
   type ScheduleCollectionState
 } from "./defineScheduleCollection";
 

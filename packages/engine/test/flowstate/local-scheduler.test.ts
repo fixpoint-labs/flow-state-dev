@@ -20,6 +20,7 @@ import type { SchedulesConfig } from "@flow-state-dev/core/types";
 import { createBearerSecretPrincipalResolver, createFlowState, filesystemStores, inMemoryStores, type StoreAdapter } from "../../src";
 import { createInMemoryStores, type JobQueueAdapter, type LeaseStore } from "../../src/host";
 import type { FlowRunner } from "../../src/transports/runner";
+import { createLocalScheduler } from "../../src/execution/local-scheduler";
 import type { StoreRegistry } from "../../src/stores/types";
 
 const MINUTE = 60_000;
@@ -291,6 +292,19 @@ describe("the schedule-tick lease", () => {
     await p.app.ready();
     await vi.advanceTimersByTimeAsync(3 * MINUTE);
     expect(p.ticks.count).toBe(0);
+  });
+
+  // A lease store that keeps failing idles the cron for good: unless it says so, nothing fires and nobody knows why.
+  it("says why it idles when acquiring the lease throws", async () => {
+    fakeClock();
+    const warn = vi.fn();
+    const ticks = { count: 0 };
+    const scheduler = createLocalScheduler({ tick: async () => void (ticks.count += 1), logger: { warn } });
+    apps.push({ dispose: () => scheduler.stop() });
+    scheduler.arm(withAcquire(createInMemoryStores().leases, async () => Promise.reject(new Error("SQLITE_BUSY"))));
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    expect(ticks.count).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("lease renewal failed"), { error: "SQLITE_BUSY" });
   });
 });
 

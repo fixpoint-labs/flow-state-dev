@@ -13,6 +13,7 @@
  */
 import { execFileSync } from "node:child_process";
 import type { BlockContext, EvaluationModel } from "@flow-state-dev/core/types";
+import { redact } from "../../error-reporter/redact";
 import { githubSubscriptionProvider, type GitHubSubscriptionProvider } from "./provider";
 import { GITHUB_REVIEWERS_SCREEN, githubTrustedReviewersScreen, type GitHubTrustedReviewers } from "./trusted-reviewers";
 
@@ -25,13 +26,67 @@ const GH_TIMEOUT_MS = 10_000;
  * neither has one.
  */
 export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return readOperatorGitHubToken(env).token;
+}
+
+/** Runs `gh` with `args` and answers its stdout; throws as `execFileSync` does (`code`, `signal`, `status`). */
+export type GhRunner = (args: readonly string[], timeoutMs: number) => string;
+
+const runGh: GhRunner = (args, timeoutMs) => execFileSync("gh", [...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs });
+
+/** Where {@link readOperatorGitHubToken} found the token, and why it found none. Never the token in words. */
+export interface OperatorGitHubTokenRead {
+  readonly token: string | undefined;
+  /** `"GITHUB_TOKEN"` (the environment, which wins over `gh`), `"gh auth token"`, or `undefined` with none. */
+  readonly source: "GITHUB_TOKEN" | "gh auth token" | undefined;
+  /** With no token: why `gh auth token` gave none (not on this process's PATH, timed out, signed out). */
+  readonly problem?: string;
+}
+
+/**
+ * {@link operatorGitHubToken}, saying where the token came from, so a host can
+ * log it: a stale `GITHUB_TOKEN` in the server's environment wins over a working
+ * `gh` sign-in, and `gh` runs under the server's own PATH and keychain, not a
+ * terminal's. `run` stands in for `gh` in a test.
+ */
+export function readOperatorGitHubToken(env: NodeJS.ProcessEnv = process.env, run: GhRunner = runGh): OperatorGitHubTokenRead {
   const named = env.GITHUB_TOKEN?.trim();
-  if (named !== undefined && named !== "") return named;
+  if (named !== undefined && named !== "") return { token: named, source: "GITHUB_TOKEN" };
   try {
-    const signedIn = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: GH_TIMEOUT_MS }).trim();
-    return signedIn === "" ? undefined : signedIn;
-  } catch {
-    return undefined;
+    const signedIn = run(["auth", "token"], GH_TIMEOUT_MS).trim();
+    return signedIn === "" ? { token: undefined, source: undefined, problem: "`gh auth token` answered nothing" } : { token: signedIn, source: "gh auth token" };
+  } catch (error) {
+    const failed = error as { code?: string; signal?: string; status?: number };
+    const problem =
+      failed.code === "ENOENT"
+        ? "`gh` is not on this server's PATH"
+        : failed.signal === "SIGTERM" || failed.code === "ETIMEDOUT"
+          ? `\`gh auth token\` took longer than ${GH_TIMEOUT_MS / 1_000}s`
+          : `\`gh auth token\` failed${failed.status === undefined ? "" : ` (exit ${failed.status})`}: is \`gh\` signed in for this server's user?`;
+    return { token: undefined, source: undefined, problem };
+  }
+}
+
+/**
+ * One cheap authenticated call (`GET /user`) with `token`: who GitHub says it
+ * is, or why it refused. For a host's start-up line: a token GitHub refuses
+ * fails every poll. Never throws.
+ */
+export async function checkGitHubToken(
+  token: string,
+  options: { apiUrl?: string; fetch?: typeof fetch; timeoutMs?: number } = {}
+): Promise<{ ok: true; login: string } | { ok: false; reason: string }> {
+  const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
+  try {
+    const res = await (options.fetch ?? fetch)(`${api}/user`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+      signal: AbortSignal.timeout(options.timeoutMs ?? GH_TIMEOUT_MS)
+    });
+    if (!res.ok) return { ok: false, reason: `GitHub answered ${res.status}${res.status === 401 ? " (the token is invalid or expired)" : ""}` };
+    const login = ((await res.json()) as { login?: unknown }).login;
+    return typeof login === "string" ? { ok: true, login } : { ok: false, reason: "GitHub named no login" };
+  } catch (error) {
+    return { ok: false, reason: redact(`couldn't reach GitHub: ${error instanceof Error ? error.message : String(error)}`, [token]) };
   }
 }
 

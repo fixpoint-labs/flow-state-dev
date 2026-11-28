@@ -59,6 +59,9 @@ export function routinePollIndexOf(installation: object): ScheduleIndex {
     upsert: async (entry: ScheduleIndexEntry) => {
       await index()?.upsert(entry);
     },
+    ensure: async (entry: ScheduleIndexEntry) => {
+      await index()?.ensure(entry);
+    },
     remove: async (id) => {
       await index()?.remove(id);
     },
@@ -86,6 +89,9 @@ export function routineIndexOf(installation: object): ScheduleIndex {
   return {
     upsert: async (entry: ScheduleIndexEntry) => {
       await index()?.upsert(entry);
+    },
+    ensure: async (entry: ScheduleIndexEntry) => {
+      await index()?.ensure(entry);
     },
     remove: async (id) => {
       await index()?.remove(id);

@@ -182,6 +182,47 @@ export function defineScheduleCollection(
   });
 }
 
+/** What {@link reassertSchedules} rebuilds the index from: one cell's stored schedules. */
+export interface ReassertSchedulesOptions {
+  /** The index to put the rows back into. */
+  index: ScheduleIndex;
+  /** The collection's pattern, as given to {@link defineScheduleCollection}. */
+  pattern: string;
+  /** The storage cell the schedules are kept in. */
+  cell: string;
+  /** Who they run as. */
+  userId: string;
+  /** The organization the cell belongs to: a row naming another is left out, as on a write. */
+  orgId: string;
+  /** The cell's stored schedules, by full storage key (`resourceState.getByPrefix`'s answer). */
+  schedules: Record<string, { state: unknown }>;
+}
+
+/**
+ * Put every enabled schedule of one cell back into the index, for an index
+ * that lost rows the collection still holds (a deleted or reset index file):
+ * the collection is the source of truth and the index is mirrored only on
+ * write. A row the index still has is left alone (`ensure`), so its next fire,
+ * a missed one included, doesn't move; one row per `(cell, key)`, so nothing
+ * duplicates. Rows are read, never written. Resolves to how many it asserted.
+ */
+export async function reassertSchedules(options: ReassertSchedulesOptions): Promise<number> {
+  const { index } = options;
+  let asserted = 0;
+  for (const [storageKey, { state }] of Object.entries(options.schedules)) {
+    const parsed = SCHEDULE_RESOURCE_SCHEMA.safeParse(state);
+    if (!parsed.success || parsed.data.enabled === false) continue;
+    const key = stripPrefix(storageKey, options.pattern);
+    const orgId = indexOrgFor(parsed.data, options.orgId, options.userId, key);
+    if (orgId === null) continue;
+    const entry = rowFromState(options.cell, options.userId, orgId, key, parsed.data);
+    if (entry === null) continue;
+    await index.ensure(entry);
+    asserted += 1;
+  }
+  return asserted;
+}
+
 /**
  * Strip the collection's literal prefix (everything before `*`) from a
  * full storage key, yielding the collection-relative key the

@@ -75,6 +75,14 @@ export interface ScheduleIndex {
   upsert(row: ScheduleIndexEntry): Promise<void>;
 
   /**
+   * Insert the entry only when `(cell, key)` holds none; an existing row,
+   * its `nextFireAt` included, is left as it is. What a rebuild of the index
+   * from the schedule collection (`reassertSchedules`) writes, so a row that is
+   * still there keeps a missed fire due, where `upsert` would move it.
+   */
+  ensure(entry: ScheduleIndexEntry): Promise<void>;
+
+  /**
    * Atomically claim all rows whose `nextFireAt <= now` AND advance
    * them to the next fire time (using `cron-parser`) in a single
    * transaction. Returns the rows that were claimed, carrying the

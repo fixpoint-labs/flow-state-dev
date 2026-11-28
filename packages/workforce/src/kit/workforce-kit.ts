@@ -49,6 +49,7 @@ import { internalServiceFlow, type InternalServiceFlow, type InternalServiceFlow
 import type { HireChecks } from "../workers/hire-blocks";
 import { hireWorkersCapability } from "../workers/roster-tools";
 import { createWorkerInstallation, type WorkerInstallation } from "../workers/installation";
+import { reassertRoutineIndexes } from "../routines/reassert-indexes";
 import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
 
@@ -192,7 +193,14 @@ export const workforce = defineKit({
     flows: slot.keyed(flowsBuilderSchema),
   },
   directory: { path: "workforce", read: (folder) => readWorkforceFolder(folder) },
-  install: ({ config, folder, slots }) => ({ flows: installWorkforce(config, folder as WorkforceFolder, slots) }),
+  install: ({ config, folder, slots }) => ({
+    flows: installWorkforce(config, folder as WorkforceFolder, slots),
+    // A schedule index is mirrored only on write: one lost or reset while the app was down is put back once it serves.
+    onStarted: async (host) => {
+      const healed = await reassertRoutineIndexes(host, { index: config.routines?.index, pollIndex: config.routines?.poll?.index });
+      if (healed.clock + healed.poll > 0) console.warn(`[workforce] schedule indexes checked at start: ${healed.clock} clock routines, ${healed.poll} polls`);
+    },
+  }),
 });
 
 /** Build the installation over the folder's workers and hire it. */

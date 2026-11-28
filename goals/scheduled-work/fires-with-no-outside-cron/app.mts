@@ -100,6 +100,7 @@ export function goalApp(options: GoalAppOptions): { app: FlowState; seed(): Prom
   // Every tick claims this flow's index once: record which process did, then claim.
   const index: ScheduleIndex = {
     upsert: (entry) => realIndex().upsert(entry),
+    ensure: (entry) => realIndex().ensure(entry),
     remove: (entry) => realIndex().remove(entry),
     claimDue: (now, limit) => {
       insertClaim.run(options.process, Date.now());

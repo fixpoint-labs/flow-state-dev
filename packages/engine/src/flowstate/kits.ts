@@ -19,7 +19,9 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FlowInstance, KitInstance, SlotDeclaration } from "@flow-state-dev/core";
+import type { FlowInstance, KitInstallation, KitInstance, KitStartedHost, KitUserCell, SlotDeclaration } from "@flow-state-dev/core";
+import { resolveSharedUserCellKey } from "../stores/scope-keys";
+import type { StoreRegistry } from "../stores/types";
 import { FlowStateConfigError } from "../errors/flow-error";
 import { openKitFolder } from "../folder/claim";
 
@@ -265,7 +267,7 @@ export function planKits(
  * `FlowStateConfigError` naming every refused entry, across every kit, before
  * any install runs.
  */
-export async function installKits(plan: KitPlan): Promise<FlowInstance<any, any>[]> {
+export async function installKits(plan: KitPlan): Promise<InstalledKits> {
   const read = new Map<string, unknown>();
   const problems: string[] = [];
   for (const kit of plan.order) {
@@ -290,12 +292,49 @@ export async function installKits(plan: KitPlan): Promise<FlowInstance<any, any>
   }
 
   const flows: FlowInstance<any, any>[] = [];
+  const started: InstalledKits["started"][number][] = [];
   for (const kit of plan.order) {
     const own = Object.fromEntries(
       Object.keys(kit.definition.slots ?? {}).map((name) => [name, plan.slots.get(`${kit.kitName}.${name}`)]),
     );
     const installed = await kit.definition.install({ config: kit.config, folder: read.get(kit.kitName), slots: own as never });
     flows.push(...installed.flows);
+    if (installed.onStarted !== undefined) started.push({ kitName: kit.kitName, onStarted: installed.onStarted });
   }
-  return flows;
+  return { flows, started };
+}
+
+/** What {@link installKits} hands back: the kits' flows, and each kit's start-up hook, in install order. */
+export interface InstalledKits {
+  readonly flows: FlowInstance<any, any>[];
+  readonly started: ReadonlyArray<{ readonly kitName: string; readonly onStarted: NonNullable<KitInstallation["onStarted"]> }>;
+}
+
+/**
+ * What a kit's `onStarted` reads the store through. A user cell is a user
+ * record (its id is the cell key), paired with the organization it is kept
+ * in: each user named by a record, in each organization, wherever the
+ * derived cell key is a record's. Keys are compared, never parsed.
+ */
+export function kitStartedHost(stores: Pick<StoreRegistry, "user" | "org" | "resourceState">): KitStartedHost {
+  return {
+    async userCells() {
+      const [users, orgs] = await Promise.all([stores.user.list(), stores.org.list()]);
+      const recorded = new Set(users.map((user) => user.id));
+      const cells: KitUserCell[] = [];
+      for (const userId of new Set(users.map((user) => user.userId))) {
+        for (const orgId of new Set(orgs.map((org) => org.orgId))) {
+          let cell: string;
+          try {
+            cell = resolveSharedUserCellKey(userId, orgId, "kit-start");
+          } catch {
+            continue; // An organization id no cell can be derived from holds no user's state.
+          }
+          if (recorded.has(cell)) cells.push({ userId, orgId, cell });
+        }
+      }
+      return cells;
+    },
+    readUserResources: (cell, keyPrefix) => stores.resourceState.getByPrefix("user", cell, keyPrefix),
+  };
 }

@@ -18,6 +18,7 @@ import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/schedule
 
 let impl: ScheduleIndex = {
   async upsert() {},
+  async ensure() {},
   async claimDue() { return []; },
   async remove() {},
 };
@@ -33,6 +34,7 @@ export function setScheduleIndexImpl(next: ScheduleIndex): void {
  */
 export const scheduleIndex: ScheduleIndex = {
   upsert: (row: ScheduleIndexEntry) => impl.upsert(row),
+  ensure: (entry: ScheduleIndexEntry) => impl.ensure(entry),
   claimDue: (now: number, limit?: number) => impl.claimDue(now, limit),
   remove: (id: { cell: string; key: string }) => impl.remove(id),
 };

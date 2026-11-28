@@ -92,9 +92,33 @@ type FactoryInput<C> = C extends z.ZodTypeAny ? z.input<C> & { readonly director
 /** The config a kit's own functions receive: its schema's output, or `{}`. */
 type ConfigOutput<C> = C extends z.ZodTypeAny ? z.output<C> : Record<string, never>;
 
-/** What an `install` returns: the flows the kit serves. */
+/** What an `install` returns: the flows the kit serves, and what it does once the app serves them. */
 export interface KitInstallation {
   readonly flows: readonly FlowInstance<any, any>[];
+  /**
+   * Runs once per process, once the app serves: its router is built, or a
+   * job-queue worker starts processing. Never in a process that only resolves
+   * the runtime (`fsdev run`, chat). Not awaited by start-up: a rejection is
+   * logged with the kit's name, and the next start runs it again.
+   * Disposal gives outstanding start-up work up to five seconds before closing stores.
+   */
+  readonly onStarted?: (host: KitStartedHost) => Promise<void> | void;
+}
+
+/** One user's cell in one organization, shared across flows: where a user-scoped collection with `flowIsolation: false` keeps its rows. */
+export interface KitUserCell {
+  readonly userId: string;
+  readonly orgId: string;
+  /** The storage cell. Opaque: pass it back, never parse it. */
+  readonly cell: string;
+}
+
+/** What a kit's {@link KitInstallation.onStarted} reads the app's store through. */
+export interface KitStartedHost {
+  /** Every user cell the app's store holds, each user in each organization they have state in. */
+  userCells(): Promise<readonly KitUserCell[]>;
+  /** One user cell's stored resources whose key starts with `keyPrefix`, by full storage key. */
+  readUserResources(cell: string, keyPrefix: string): Promise<Readonly<Record<string, { readonly state: unknown }>>>;
 }
 
 /** What a kit's `install` is handed. */
