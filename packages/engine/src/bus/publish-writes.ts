@@ -373,6 +373,15 @@ class Identities {
     return record === undefined ? undefined : this.rememberSession(storageKey, record);
   }
 
+  /** The session as stored now, read past the cache: a delete's notices name its current owner. */
+  async currentSession(storageKey: string): Promise<SessionIdentity | undefined> {
+    const record = await this.sessions.get(storageKey).catch((error: unknown) => {
+      debugUnassembled(error, { store: "session", id: storageKey });
+      return undefined;
+    });
+    return record === undefined ? undefined : this.rememberSession(storageKey, record);
+  }
+
   rememberRequest(id: string, record: RequestRecord): RequestIdentity {
     const identity: RequestIdentity = {
       requestId: id,
@@ -558,7 +567,10 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
       return result;
     },
     delete: (original) => async (id: string) => {
-      const identity = await identities.session(id);
+      // The session as stored now, read past the cache: another handle may
+      // have deleted it and made it again for someone else since this one
+      // remembered it, and the notices belong to whoever owns it now.
+      const identity = await identities.currentSession(id);
       await original(id);
       identities.forgetSession(id);
       if (identity !== undefined) {
