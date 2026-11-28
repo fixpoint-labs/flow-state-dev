@@ -115,9 +115,11 @@ export {
   PULL_REQUEST_EVENT,
   pullRequestWait,
   readSessionPullRequests,
+  refreshSessionPullRequests,
   type PullRequestRecordResourceState,
   type PullRequestWait,
   type PullRequestWaitInput,
+  type RefreshPullRequestsClient,
   type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";

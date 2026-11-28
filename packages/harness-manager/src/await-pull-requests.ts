@@ -14,6 +14,9 @@
  * - {@link readPullRequestStates}: each read from GitHub through the host's
  *   `gh` (`readPullRequest`), inside one deadline, its live state written
  *   back to the record; unreadable when any one can't be read.
+ * - {@link refreshRecordedPullRequests}: every row of the record not yet
+ *   ended, read again from GitHub and written back, for a screen that lists
+ *   them after their task's wait (or the task) is gone.
  * - {@link pullRequestsVerdict}: hold, complete, or cancel.
  */
 import {
@@ -141,6 +144,45 @@ export async function readPullRequestStates(
     await writePullRequests(record, refs, { source: "branch", requestId: null }).catch(() => undefined);
   }
   return { read };
+}
+
+/** What {@link refreshRecordedPullRequests} came to: the rows it read, and the ones GitHub couldn't be asked about. */
+export interface RecordedPullRequestsRefresh {
+  readonly read: readonly PullRequestRead[];
+  /** Each row that couldn't be read, by key, with why; its record keeps the state it had. */
+  readonly unreadable: ReadonlyArray<{ readonly key: string; readonly reason: string }>;
+}
+
+/**
+ * Read again from GitHub every pull request the session's record still holds
+ * as not ended (`open`, a draft, or no state named), and write each one's
+ * state back. The record is otherwise written only when a run sees a pull
+ * request or a task's wait on it wakes, so a pull request merged after its
+ * task ended would read `open` for good. Rows already `merged` or `closed`
+ * are never asked about again: neither comes back. Each is read on its own
+ * (one that can't be read leaves the others' reads standing), inside one
+ * deadline of `timeoutMs`.
+ */
+export async function refreshRecordedPullRequests(
+  ctx: Pick<BlockContext, "resources">,
+  options: { readonly cwd: string; readonly timeoutMs: number },
+): Promise<RecordedPullRequestsRefresh> {
+  const record = recordOf(ctx);
+  if (record === undefined) return { read: [], unreadable: [] };
+  const live = (await record.list())
+    .map((ref) => ref.state)
+    .filter((state) => state.state !== "merged" && state.state !== "closed")
+    .map(pullRequestOf)
+    .filter((pr): pr is TaskPullRequest => pr !== undefined);
+  const deadline = Date.now() + options.timeoutMs;
+  const read: PullRequestRead[] = [];
+  const unreadable: Array<{ key: string; reason: string }> = [];
+  for (const pr of live) {
+    const one = await readPullRequestStates(ctx, [pr], { cwd: options.cwd, timeoutMs: Math.max(1, deadline - Date.now()) });
+    if ("unreadable" in one) unreadable.push({ key: pr.key, reason: one.unreadable });
+    else read.push(...one.read);
+  }
+  return { read, unreadable };
 }
 
 // FIX-2578.

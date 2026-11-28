@@ -16,6 +16,8 @@
  */
 import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/harness";
 import { isExternalHold } from "@flow-state-dev/orchestration/tasks";
+import type { Client } from "@flow-state-dev/client";
+import { REFRESH_PULL_REQUESTS } from "./coder-flow-name";
 import type { RecordedWorkClient } from "./recorded-work";
 
 /** The event an external wait on a pull request names on each releaser. */
@@ -93,6 +95,35 @@ export async function readSessionPullRequests(client: RecordedWorkClient, runSes
     if (typeof data.number !== "number" || !Number.isInteger(data.number) || url === null) return [];
     return [{ host: text(data.host), repository: text(data.repository), number: data.number, url, title: text(data.title), state: text(data.state) }];
   });
+}
+
+/** The client {@link refreshSessionPullRequests} sends through, and reads the record with. */
+export type RefreshPullRequestsClient = RecordedWorkClient & Pick<Client, "flow"> & { sessions: Pick<Client["sessions"], "get"> };
+
+/** How long {@link refreshSessionPullRequests} waits for GitHub's answers: the server's own bound on them, and a margin. */
+const REFRESH_WAIT_MS = 75_000;
+
+/**
+ * {@link readSessionPullRequests}, after the run session's coding flow has
+ * read each pull request its record holds as not ended again from GitHub and
+ * written its state back (`refreshPullRequests`). So a pull request merged or
+ * closed after its task ended, or while nothing woke its wait, reads as it is
+ * now. A refresh that fails, or a pull request GitHub can't be asked about,
+ * leaves the record as it was: the rows read then are its last sightings.
+ *
+ * ```ts
+ * const rows = await refreshSessionPullRequests(client, task.run.sessionId);
+ * ```
+ */
+export async function refreshSessionPullRequests(client: RefreshPullRequestsClient, runSessionId: string): Promise<SessionPullRequest[]> {
+  try {
+    const detail = await client.sessions.get(runSessionId);
+    const sent = await client.flow(detail.flowId ?? detail.flowKind).send(REFRESH_PULL_REQUESTS, {}, { sessionId: runSessionId });
+    await sent.wait({ timeoutMs: REFRESH_WAIT_MS });
+  } catch (error) {
+    console.warn(`harness-manager: the pull requests of run session ${runSessionId} couldn't be read again from GitHub`, error);
+  }
+  return readSessionPullRequests(client, runSessionId);
 }
 
 /** One pull request a task waits on. */
