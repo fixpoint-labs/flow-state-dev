@@ -64,7 +64,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { readPendingSuspensions } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
   RUN_STAMP,
   runPatchedGoal,
@@ -498,10 +498,13 @@ async function runOf(run: Run, id: string) {
   return { row, sessionId, requestId: row?.run?.requestId, flowId: session?.flowId ?? session?.flowKind ?? "doer" };
 }
 const clients = () => connect({ baseUrl: "http://goal", userId: USER });
-/** The Inbox's pending read of a task session: Shift Manager's own, filtered as its Inbox filters it. */
-async function pendingIn(sessionId: string | undefined) {
+/** The Inbox's pending stops in a task session: Shift Manager's own read, the inbox view's suspension holds. */
+async function pendingIn(sessionId: string | undefined): Promise<Array<{ item: { requestId: string; suspensionId: string } }>> {
   if (sessionId === undefined) return [];
-  return (await readPendingSuspensions(clients(), sessionId)).filter((view) => isUserSuspension(view.item));
+  const { items } = (await clients().view(inboxViewRef, {})).value;
+  return items
+    .flatMap((item) => item.holds)
+    .flatMap((hold) => (hold.source.kind === "suspension" && hold.source.sessionId === sessionId ? [{ item: { requestId: hold.source.requestId, suspensionId: hold.source.suspensionId } }] : []));
 }
 /** Answer a task's pending stop as a screen does, as `as` (the user by default). What the route said. */
 /** The stop each task was last answered at, so a second answer names the same one. */

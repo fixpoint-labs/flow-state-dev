@@ -64,7 +64,9 @@ import { AppProvider as TmAppProvider, ConversationFollower as TmConversationFol
 import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
-import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { useGate } from "../../../packages/shift-manager/src/lib/gate.ts";
+import { DirectoryProvider, useSessions } from "../../../packages/shift-manager/src/lib/directory.tsx";
 import { useProjectWorkstreams } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
 import { PageReadsProvider, useReadPageAgain } from "../../../packages/shift-manager/src/lib/page-reads.tsx";
@@ -78,7 +80,7 @@ const IDLE_MS = 10_000;
 const ORG = "acme";
 // The views that read on a notice are the client's live read (`client.live`):
 // the labs' watches and Shift Manager's message log, project entries and task run
-// link (and its snapshot, whose Lab reads read the log and the entries again). Shift Manager's conversation follows the
+// link. Shift Manager's conversation follows the
 // session stream instead. A patch to the live read reaches every one of them.
 const LIVE_READ = "packages/client/src/live/live-read.ts";
 /** The Talk panel's worker, and the shared project whose entries the Shift Manager view reads. */
@@ -369,10 +371,9 @@ function mountViews(on: Host, sessionId: string) {
   const smMessages = record<string[]>();
   let labRead: () => void = () => {};
   function ProjectProbe() {
-    const { snapshot } = useLab();
     // FIX-2775: R reads again what the page holds, each screen's own reads included.
     labRead = useReadPageAgain();
-    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
+    const inside = useGate().gate.state === "in";
     // FIX-2775: the entries are read on their own, by the project's prefix, from the moment the view draws them.
     const { value } = useProjectWorkstreams({ visibility: "shared", id: PROJECT });
     const entries = value === undefined ? undefined : value.entries.map((e) => e.id);
@@ -382,7 +383,7 @@ function mountViews(on: Host, sessionId: string) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
     // The Messages view reads the log once the Lab has let Shift Manager in.
-    return loaded === undefined ? null : createElement(MessagesProbe);
+    return inside ? createElement(MessagesProbe) : null;
   }
   function MessagesProbe() {
     const { rows } = useMessages();
@@ -490,13 +491,13 @@ async function taskScreen(on: Host, writer: Client) {
     return null;
   }
   function Screen() {
-    const { snapshot } = useLab();
-    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    if (loaded === undefined || !loaded.sessions.some((session) => session.id === conversation.id)) return null;
+    // The task screen opens once the page's session list holds the conversation, as a link to it does.
+    const sessions = useSessions().list;
+    if (sessions === undefined || !sessions.some((session) => session.id === conversation.id)) return null;
     return createElement(TaskProvider, { boardRef: conversationBoardRef(conversation.id), taskId, children: createElement(Shown) });
   }
   const root: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  root.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: token, baseUrl: on.base }, children: createElement(Screen) }));
+  root.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: token, baseUrl: on.base }, children: createElement(DirectoryProvider, { children: createElement(Screen) }) }));
   const giveUpAt = Date.now() + 15_000;
   while (shown.length === 0) {
     if (Date.now() > giveUpAt) throw new Error("setup: the task screen never opened");
@@ -509,7 +510,7 @@ async function taskScreen(on: Host, writer: Client) {
   }
   return {
     shown,
-    // One read of the conversation's board: the task screen's view of it (a POST), or the snapshot's (which reads only on a notice).
+    // One read of the conversation's board: the task screen's view of it (a POST), or a collection read of it.
     boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`) || r.url.includes("/views/listTasks_tasks")),
     all: reads,
     async dispatch(): Promise<number> {

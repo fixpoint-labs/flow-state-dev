@@ -298,8 +298,7 @@ export type PendingAsk = {
 };
 
 /**
- * The person's pending asks, read from the seats' sessions as Shift Manager
- * reads them (`packages/shift-manager/src/lib/reads.ts`): a session on a
+ * The person's pending asks, read from the seats' sessions: a session on a
  * seat's kind that names that seat as its worker, or names no worker at all,
  * whose asks are then the seat-less ones. An ask is a suspension asking a
  * person that holds no resume.

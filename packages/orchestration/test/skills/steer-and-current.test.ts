@@ -159,7 +159,7 @@ describe("updateTask's message (FIX-2086)", () => {
     for (let i = 0; i < MAX_STEERS - 1; i += 1) await b.ref.steer!("t", { message: `note ${i}`, from: "filer" });
     const wait = { prompt: "Waiting on pull request #7 to merge or close.", events: [{ event: "pull-request", key: "github.com/acme/app/7" }] };
     // Opened over untaken lines it would be answered at once, so they are taken first, as the turn did.
-    await b.ref.takeSteers!("t", { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition), takenIn: "turn-1" });
+    await b.ref.takeSteers!("t", { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition), takenIn: "turn-1", requestId: "req_1" });
     const opened = await b.ref.awaitExternal!("t", wait, { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition) });
 
     expect(await b.call("updateTask", { id: "t", message: "fix the lint" })).toEqual({ ok: true });

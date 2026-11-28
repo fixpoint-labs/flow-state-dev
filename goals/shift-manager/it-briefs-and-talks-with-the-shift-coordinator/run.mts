@@ -39,9 +39,9 @@
  *                     `controls/optimistic-reply.ts`: the line and a canned
  *                     reply are drawn without calling the door. Must fail at
  *                     "talk".
- *   static-brief      built with `src/lib/derive.ts` swapped for
- *                     `controls/static-brief.ts`: the summary's asks are
- *                     written in at the first read. Must fail at "inline".
+ *   static-brief      built with `src/lib/tasks.ts` swapped for
+ *                     `controls/static-brief.ts`: the summary's count of what
+ *                     needs you is written in at the first read. Must fail at "inline".
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-shift-coordinator/run.mts
  * Control:  GOAL_CONTROL=optimistic-reply … (same command)
@@ -61,7 +61,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SWAPS = {
   // The conversation hook, and the send path its composer calls: both, so the reply is drawn and nothing is sent.
   "optimistic-reply": { modules: [join("src", "lib", "conversation.ts"), join("src", "lib", "deliver.ts")], with: "optimistic-reply.ts" },
-  "static-brief": { modules: [join("src", "lib", "derive.ts")], with: "static-brief.ts" },
+  "static-brief": { modules: [join("src", "lib", "tasks.ts")], with: "static-brief.ts" },
 } as const;
 type Control = keyof typeof SWAPS;
 if (CONTROL === "list") {

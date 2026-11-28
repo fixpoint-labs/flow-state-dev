@@ -140,7 +140,7 @@ function swapFor(control: string): { targets: string[]; with: string } | undefin
     return { targets: [lib("deliver.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
-    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
+    return { targets: [lib("inbox.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
   }
   if (control === "queued-shown") {
     return { targets: [lib("tasks.ts")], with: join(HERE, "controls", "queued-shown.ts") };

@@ -59,7 +59,7 @@
  *   board-flow            the run is opened through the board's flow, the
  *                         lead's. Must fail at "items equal the run session's"
  *                         on every row, since no run is on the lead's flow.
- *   wrong-board           (`src/lib/reads.ts`) the action row is built against
+ *   wrong-board           (`src/lib/inbox.ts`) the action row is built against
  *                         board id "plan", not "tasks". Must fail at release,
  *                         cancel and retry, the rows unchanged.
  *   no-error-body         (the `error` registry copy) `ErrorBody` draws
@@ -149,7 +149,7 @@ type Board = { conversation: string };
 
 /** The module each control swaps out: the run's reads (`task-items.ts`), unless it says otherwise. */
 const SWAPPED: Record<string, string[]> = {
-  "wrong-board": ["src", "lib", "reads.ts"],
+  "wrong-board": ["src", "lib", "inbox.ts"],
   // The stop goes through workforce's client (FIX-2776 D3); the Session's items through the page's feed.
   "optimistic-interrupt": ["src", "lib", "workforce.ts"],
   "worker-session": ["src", "lib", "session-feeds.tsx"],

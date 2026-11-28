@@ -1113,6 +1113,7 @@ class InternalFlowState<TSettings extends object>
       waitDeadlines: this.#options.waitDeadlines,
       userDeadlineMs: this.#options.userDeadlineMs,
       noticeIds: this.#options.noticeIds,
+      ...(this.#options.sealingSecret !== undefined ? { sealingSecret: this.#options.sealingSecret } : {}),
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,

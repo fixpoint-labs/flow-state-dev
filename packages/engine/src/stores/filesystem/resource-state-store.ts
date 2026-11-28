@@ -41,6 +41,8 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
   StorageScopeType,
   ExpectedVersion,
   ResourceStateStore,
@@ -55,6 +57,17 @@ import {
 } from "../resource-state-predicate";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
 import { createFilesystemResourceStore } from "./filesystem-resource-store";
+import { listAcrossSessions, missingSessionStore, type AcrossSessionsSessionReads } from "../across-sessions";
+
+/** Options for {@link createFilesystemResourceStateStore}. */
+export type FilesystemResourceStateStoreOptions = {
+  /**
+   * The session store a read across an owner's sessions is joined to: the
+   * owner's session folders, walked in key order. Without it,
+   * `listAcrossSessions` refuses.
+   */
+  sessions?: AcrossSessionsSessionReads;
+};
 
 /** Tag in slot 0 of a versioned leaf. Bumped only if the encoding changes. */
 const ENVELOPE_TAG = "fsdev.resource-state/1";
@@ -88,7 +101,10 @@ function deserializeLeaf(raw: string): ResourceStateLeaf {
  * Create a filesystem-backed {@link ResourceStateStore} rooted at
  * `rootDir/state`.
  */
-export function createFilesystemResourceStateStore(rootDir: string): ResourceStateStore {
+export function createFilesystemResourceStateStore(
+  rootDir: string,
+  options: FilesystemResourceStateStoreOptions = {}
+): ResourceStateStore {
   const leaves = createFilesystemResourceStore<ResourceStateLeaf>({
     rootDir,
     subdir: "state",
@@ -209,6 +225,16 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       keyPrefix
     ): Promise<Record<string, VersionedResourceState>> {
       return liveOnly(await leaves.getByPrefix(scopeType, scopeId, keyPrefix));
+    },
+
+    async listAcrossSessions(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]> {
+      const sessions = options.sessions;
+      if (sessions === undefined) throw missingSessionStore("createFilesystemResourceStateStore");
+      return listAcrossSessions(
+        sessions,
+        async (sessionKey, keyPrefix) => liveOnly(await leaves.getByPrefix("session", sessionKey, keyPrefix)),
+        query
+      );
     },
 
     async deleteAll(scopeType, scopeId): Promise<void> {

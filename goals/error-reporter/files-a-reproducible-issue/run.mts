@@ -27,11 +27,16 @@ import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/a
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { createLabReader, type Ask } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { groupedByWorker, itemAtRoute } from "../../../packages/shift-manager/src/lib/inbox-list.ts";
 import type { InboxSuspensionDetail as InboxAsk } from "@flow-state-dev/workforce/browser";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
-import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+
+/**
+ * A report's ask, as Inbox shows it: the inbox view's hold, and the suspension
+ * item the card's detail reads from the ask's own session (its draft).
+ */
+type ReportAsk = { sessionId: string; hold: InboxHold<InboxAsk>; unanswerable: string | null; item: { data?: unknown } | undefined };
 import { parseRoute } from "../../../packages/shift-manager/src/lib/routes.ts";
 import { plantedAgentModel, plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
 import { startRecordingTracker, type TrackerCall } from "./recording-tracker.mts";
@@ -284,9 +289,9 @@ interface Opened {
   /** Every report row. */
   rows(): Promise<ReportResourceState[]>;
   /** Inbox's asks, as Shift Manager reads them, on report sessions. */
-  reportAsks(): Promise<Ask[]>;
+  reportAsks(): Promise<ReportAsk[]>;
   /** Answer an ask the way Inbox's card does. */
-  answer(ask: Ask, data: Record<string, unknown>): Promise<void>;
+  answer(ask: ReportAsk, data: Record<string, unknown>): Promise<void>;
   /** Inbox's items, as Shift Manager reads them: workforce's inbox view. */
   inbox(): Promise<InboxItem<InboxAsk>[]>;
   /** Send a message to the Shift Coordinator; the request id and whether it failed. */
@@ -345,7 +350,7 @@ async function open(options: {
   const baseUrl = `http://127.0.0.1:${handle.port}`;
   const devtool = lab.state.meta.devtool!;
   const client = connect({ baseUrl, userId: devtool.userId ?? LAB_USER_ID, bearerToken: devtool.bearerToken! });
-  const reader = createLabReader(client);
+  const inboxClient = createInboxClient(client);
   const runtime = await lab.state.getRuntime();
   const intake = runtime.registry.get(ERROR_REPORTER_INTAKE_FLOW) as FlowInstance;
   const coordinator = runtime.registry.get("coordinator") as FlowInstance;
@@ -397,13 +402,22 @@ async function open(options: {
       return (result.output?.rows ?? []) as ReportResourceState[];
     },
     reportAsks: async () => {
-      const snapshot = await reader.read();
-      if (snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok) {
-        throw new Error(`Inbox did not load: ${JSON.stringify(snapshot.refused ?? snapshot.unreachable ?? (snapshot.asks as { failure?: unknown }).failure)}`);
+      // Inbox's asks: the inbox view's suspension holds, on report sessions.
+      const { items } = (await client.view(inboxViewRef, {})).value;
+      const holds = items.flatMap((item) => item.holds as InboxHold<InboxAsk>[]);
+      const asks: ReportAsk[] = [];
+      for (const hold of holds) {
+        if (hold.source.kind !== "suspension") continue;
+        const { sessionId, suspensionId } = hold.source;
+        if (sessionId === null || !sessionId.startsWith("error-report~")) continue;
+        // The card's detail reads the ask's own session, where its draft is.
+        const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["suspension"] });
+        const item = (state.items ?? []).find((i) => (i as { suspensionId?: string }).suspensionId === suspensionId) as { data?: unknown } | undefined;
+        asks.push({ sessionId, hold, unanswerable: hold.unanswerable, item });
       }
-      return snapshot.asks.value.filter((ask) => ask.sessionId.startsWith("error-report~"));
+      return asks;
     },
-    answer: (ask, data) => reader.resume(ask, { action: "submit", data }),
+    answer: (ask, data) => inboxClient.answerOne(ask.hold, { value: data }),
     inbox: async () => (await client.view(inboxViewRef, {})).value.items as InboxItem<InboxAsk>[],
     tellShiftCoordinator: async (message) => told(await act(coordinator, shiftCoordinatorSession, "respond", { message })),
     tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "respond", { message })),

@@ -1109,6 +1109,12 @@ function validateFlowResources(
         `Pick another accessor key.`
       );
     }
+    if (accessor === "acrossSessions") {
+      throw new Error(
+        `Resource accessor "acrossSessions" in flow "${flowKind}" is reserved: \`ctx.resources.acrossSessions()\` reads ` +
+        `across the owner's sessions. Pick another accessor key.`
+      );
+    }
 
     if (entry.scope === undefined) {
       throw new Error(

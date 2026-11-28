@@ -10,7 +10,7 @@
  * the real tools: a model's `holdTaskForUser` and `suspendForUser` (the worker's
  * `questions` capability), and the filer's `updateTask` (its task tools). A
  * block's review is `ctx.suspendForUser({ kind: "review" })`. The Inbox is Shift
- * Manager's own snapshot (`createLabReader().read()`), every Inbox answer goes
+ * Manager's own read, workforce's inbox view (`useInbox`), every Inbox answer goes
  * through orchestration's Inbox client, a line typed in a task's session goes
  * to the run session's door, as Shift Manager's composer sends it, and a task is read through
  * the board's `getTask` action. Nothing is read off the suspension store or
@@ -73,7 +73,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
   RUN_STAMP,
   actingAs,
@@ -478,12 +478,9 @@ async function getTask(run: Run, id: string): Promise<Record<string, any> | unde
   const read = await run.h.http.act("desk", run.conversation, "getTask_tasks", { id });
   return read?.ok === true ? read.task : undefined;
 }
-/** The Inbox as Shift Manager reads it: its own snapshot's `inbox` section. */
+/** The Inbox as Shift Manager reads it: the inbox view's items (`useInbox`). */
 async function inbox(run: Run): Promise<InboxItem<unknown>[]> {
-  const snapshot = await createLabReader(run.h.http.client).read();
-  if (!("inbox" in snapshot) || snapshot.inbox === undefined) throw new Error(`Shift Manager's read came back ${show(snapshot)}`);
-  if (!snapshot.inbox.ok) throw new Error(`Shift Manager's Inbox didn't load: ${snapshot.inbox.failure.message}`);
-  return snapshot.inbox.value;
+  return (await run.h.http.client.view(inboxViewRef, {})).value.items;
 }
 const itemOf = async (run: Run, id: string) => (await inbox(run)).find((item) => item.task?.taskId === id);
 /** Answer one hold as the Inbox does. What it said: `ok`, or the refusal's words. */

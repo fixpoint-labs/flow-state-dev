@@ -38,8 +38,6 @@
  *                 worker whose only wait is an ask.
  *   count-queued  queued rows count as slots. Must fail at "slots" on the
  *                 worker with a queued row.
- *   status-from-snapshot  status counts the snapshot's walked asks, while the
- *                 Inbox lists the view's. Must fail at "one answer".
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=<pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  * Control:  GOAL_CONTROL=ignore-asks pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
@@ -54,7 +52,7 @@ import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["ignore-asks", "count-queued", "status-from-snapshot"] as const;
+const CONTROLS = ["ignore-asks", "count-queued"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);

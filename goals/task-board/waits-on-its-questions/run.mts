@@ -10,8 +10,8 @@
  * Workforce session board on two flows (`desk`, the conversation that files,
  * and `doer`, whose task sessions work), deterministic scripted turns that
  * call the real verbs (`askMidway`, `reportProgress`, `suspendForUser`), driven
- * as a verified caller. The Inbox is Shift Manager's own snapshot
- * (`createLabReader().read()`), every answer goes through orchestration's
+ * as a verified caller. The Inbox is Shift Manager's own read, workforce's
+ * inbox view (`useInbox`), every answer goes through orchestration's
  * Inbox client (`createInboxClient`), the way the Inbox answers, and the task
  * is read through the board's `getTask` and `listTasks` actions. Each leg ends
  * with `reconcileInbox` against reads made apart from the list (the board's
@@ -64,7 +64,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import {
   RUN_STAMP,
   actingAs,
@@ -460,12 +460,9 @@ const touch = async (run: Run) => {
   await run.h.http.act("desk", run.conversation, "listTasks_tasks", {});
   await run.h.idle();
 };
-/** The Inbox as Shift Manager reads it: its own snapshot's `inbox` section. */
+/** The Inbox as Shift Manager reads it: the inbox view's items (`useInbox`). */
 async function inbox(run: Run): Promise<InboxItem<unknown>[]> {
-  const snapshot = await createLabReader(run.h.http.client).read();
-  if (!("inbox" in snapshot) || snapshot.inbox === undefined) throw new Error(`Shift Manager's read came back ${show(snapshot)}`);
-  if (!snapshot.inbox.ok) throw new Error(`Shift Manager's Inbox didn't load: ${snapshot.inbox.failure.message}`);
-  return snapshot.inbox.value;
+  return (await run.h.http.client.view(inboxViewRef, {})).value.items;
 }
 const itemOf = async (run: Run, id: string) => (await inbox(run)).find((item) => item.task?.taskId === id);
 /** Answer `hold` on `id`'s item as the Inbox does. What it said: `ok`, or the refusal's words. */

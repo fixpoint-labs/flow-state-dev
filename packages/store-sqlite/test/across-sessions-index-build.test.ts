@@ -1,0 +1,249 @@
+/**
+ * A read across sessions filtered by a declared index, on SQLite, through a
+ * real router: the filter is answered by the index in the store's query only
+ * in a session whose index is built. So a session's first write builds its
+ * declared indexes, and a session written before that (its index unbuilt) is
+ * built once, by the first read across sessions that meets it, never on every
+ * page.
+ */
+import Database from "better-sqlite3";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { defineFlow, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
+import { declaredIndexes, type FlowInstance } from "@flow-state-dev/core/types";
+import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "@flow-state-dev/engine";
+import { createSQLiteStores } from "../src/host";
+
+const notes = defineResourceCollection({
+  pattern: "notes/*",
+  scope: "session",
+  stateSchema: z.object({ text: z.string(), status: z.string().default("done") }),
+  indexes: { byStatus: (_key: string, state: { status: string }) => state.status }
+});
+const STATUS = declaredIndexes(notes as unknown as { indexes: Record<string, unknown> })[0]!.stored;
+
+const file = handler({
+  name: "file",
+  inputSchema: z.object({ key: z.string(), status: z.string() }),
+  outputSchema: z.object({}),
+  execute: async ({ key, status }, ctx) => {
+    await (ctx.resources as any).notes.create(key, { text: key, status });
+    return {};
+  }
+});
+const open = handler({
+  name: "open",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ entries: z.array(z.string()) }),
+  execute: async (_input, ctx) => {
+    const seen: string[] = [];
+    let after: string | undefined;
+    for (;;) {
+      const page = await (ctx.resources as any).acrossSessions().notes.list({ where: { index: "byStatus", value: "open" }, ...(after ? { after } : {}) });
+      for (const entry of page.entries) seen.push(`${entry.session} ${entry.key}`);
+      if (page.next === undefined) return { entries: seen };
+      after = page.next;
+    }
+  }
+});
+/** One read: the first page of the filtered listing, as one screen's first call makes it. */
+const firstPage = handler({
+  name: "first-page",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ entries: z.array(z.string()), more: z.boolean() }),
+  execute: async (_input, ctx) => {
+    const page = await (ctx.resources as any).acrossSessions().notes.list({ where: { index: "byStatus", value: "open" } });
+    return { entries: page.entries.map((entry: { session: string; key: string }) => `${entry.session} ${entry.key}`), more: page.next !== undefined };
+  }
+});
+const desk = defineFlow({
+  kind: "desk",
+  actions: { file },
+  resources: { notes },
+  views: { open: defineView({ scope: "user", block: open }), first: defineView({ scope: "user", block: firstPage }) }
+})() as unknown as FlowInstance;
+
+/** Every statement better-sqlite3 runs in this file, taken off its statements. */
+const sent: string[] = [];
+{
+  const probe = new Database(":memory:");
+  const proto = Object.getPrototypeOf(probe.prepare("SELECT 1")) as Record<string, (...args: unknown[]) => unknown>;
+  probe.close();
+  for (const method of ["all", "get", "run", "iterate"]) {
+    const original = proto[method]!;
+    proto[method] = function (this: { source: string }, ...args: unknown[]) {
+      sent.push(this.source);
+      return original.apply(this, args);
+    };
+  }
+}
+
+type Router = ReturnType<typeof createFlowApiRouter>;
+const routers: Router[] = [];
+afterEach(async () => {
+  await Promise.all(routers.splice(0).map((router) => disposeFlowApiRouter(router)));
+});
+
+function boot() {
+  const registry = createFlowRegistry();
+  registry.register(desk);
+  const stores = createSQLiteStores({ filename: ":memory:" });
+  const router = createFlowApiRouter({
+    registry,
+    stores,
+    staleSweepIntervalMs: 0,
+    resolvePrincipal: (context) => ({ userId: "alice", orgId: context.request?.headers.get("x-org") ?? "acme" })
+  });
+  routers.push(router);
+  const post = async (path: string[], body: unknown) => {
+    const response = await router.POST(
+      new Request(`http://test/api/flows/${path.join("/")}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      { params: { path } }
+    );
+    return { status: response.status, body: await response.text() };
+  };
+  const fileIn = async (sessionId: string, key: string, status: string) => {
+    const res = await post(["desk", sessionId, "actions", "file"], { input: { key, status } });
+    expect(res.status, res.body).toBe(202);
+    const { request } = JSON.parse(res.body) as { request: { id: string } };
+    let ended: string | undefined;
+    for (let i = 0; i < 200; i += 1) {
+      ended = (await stores.request.get(request.id))?.status;
+      if (ended !== undefined && ended !== "in_progress") break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return ended;
+  };
+  const view = async () => {
+    const res = await post(["desk", "views", "open"], { input: {} });
+    expect(res.status, res.body).toBe(200);
+    return (JSON.parse(res.body) as { output: { entries: string[] } }).output.entries;
+  };
+  const first = async () => {
+    const res = await post(["desk", "views", "first"], { input: {} });
+    expect(res.status, res.body).toBe(200);
+    return (JSON.parse(res.body) as { output: { entries: string[]; more: boolean } }).output;
+  };
+  return { stores, fileIn, view, first };
+}
+
+const builds = () => sent.filter((sql) => /INSERT INTO resource_index_built/i.test(sql)).length;
+
+describe("a read across sessions filtered by a declared index", () => {
+  it("is answered by the index in a session written through the engine, whose first write built it", async () => {
+    const env = boot();
+    await env.fileIn("s1", "a", "open");
+    await env.fileIn("s1", "b", "done");
+    await env.fileIn("s2", "c", "done");
+    expect(await env.stores.resourceState.indexes!.state("session", "s1", notes.pattern, STATUS)).toBe("built");
+    expect(await env.stores.resourceState.indexes!.state("session", "s2", notes.pattern, STATUS)).toBe("built");
+    sent.length = 0;
+    expect(await env.view()).toEqual(["s1 notes/a"]);
+    expect(builds()).toBe(0);
+  });
+
+  it("builds a session written before its index was kept, once, at the first read that meets it", async () => {
+    const env = boot();
+    await env.fileIn("old", "seed", "done");
+    // As a session written before the writer built indexes holds it: its rows, no build marker.
+    for (const [key, status] of [["a", "open"], ["b", "done"], ["c", "open"]] as const) {
+      await env.stores.resourceState.set("session", "old", `notes/${key}`, { text: key, status }, "any", {
+        indexEntries: [{ collection: notes.pattern, index: STATUS, values: [JSON.stringify(status)] }]
+      });
+    }
+    // Leave its index unbuilt, as a session from before the writer built one is.
+    await env.stores.resourceState.indexes!.beginBuild("session", "old", notes.pattern, STATUS);
+    expect(await env.stores.resourceState.indexes!.state("session", "old", notes.pattern, STATUS)).not.toBe("built");
+
+    sent.length = 0;
+    expect(await env.view()).toEqual(["old notes/a", "old notes/c"]);
+    expect(builds(), "the first read builds the unbuilt session").toBe(1);
+    expect(await env.stores.resourceState.indexes!.state("session", "old", notes.pattern, STATUS)).toBe("built");
+
+    sent.length = 0;
+    expect(await env.view()).toEqual(["old notes/a", "old notes/c"]);
+    expect(builds(), "a later read builds nothing").toBe(0);
+  });
+
+  it("builds at most a fixed budget of unbuilt sessions in one request, answers as a built store does, and converges over requests", async () => {
+    const env = boot();
+    // Twenty sessions from before the writer built indexes: three entries each, one open, no build marker.
+    const sessions = Array.from({ length: 20 }, (_, i) => `old-${String(i).padStart(2, "0")}`);
+    for (const id of sessions) {
+      await env.fileIn(id, "seed", "done");
+      for (const [key, status] of [["a", "open"], ["b", "done"], ["c", "done"]] as const) {
+        await env.stores.resourceState.set("session", id, `notes/${key}`, { text: key, status }, "any", {
+          indexEntries: [{ collection: notes.pattern, index: STATUS, values: [JSON.stringify(status)] }]
+        });
+      }
+      await env.stores.resourceState.indexes!.beginBuild("session", id, notes.pattern, STATUS);
+    }
+    const expected = sessions.map((id) => `${id} notes/a`);
+    const unbuilt = async () => {
+      let count = 0;
+      for (const id of sessions) if ((await env.stores.resourceState.indexes!.state("session", id, notes.pattern, STATUS)) !== "built") count += 1;
+      return count;
+    };
+
+    // One read meets more unbuilt sessions than its budget, and builds no more than the budget.
+    sent.length = 0;
+    const page = await env.first();
+    const firstBuilds = builds();
+    expect(firstBuilds).toBeGreaterThan(0);
+    expect(firstBuilds).toBeLessThanOrEqual(8);
+    expect(await unbuilt()).toBe(20 - firstBuilds);
+    // What it answered is a built store's answer: every entry it holds is open, in order.
+    expect(page.entries).toEqual(expected.slice(0, page.entries.length));
+
+    // Every whole listing answers every open entry, built or not, and builds
+    // no more than the budget however many pages it reads; requests converge to all built.
+    for (let reads = 0; reads < 10 && (await unbuilt()) > 0; reads += 1) {
+      sent.length = 0;
+      expect(await env.view()).toEqual(expected);
+      expect(builds()).toBeLessThanOrEqual(8);
+    }
+    expect(await unbuilt()).toBe(0);
+    sent.length = 0;
+    expect(await env.view()).toEqual(expected);
+    expect(builds(), "a built store builds nothing").toBe(0);
+  });
+
+  it("never fails a committed write because the index build after it failed: the index stays unbuilt and a later read is right", async () => {
+    const env = boot();
+    const indexes = env.stores.resourceState.indexes!;
+    const completeBuild = indexes.completeBuild;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    indexes.completeBuild = async () => {
+      throw new Error("the database went away for a moment");
+    };
+    try {
+      expect(await env.fileIn("fresh", "a", "open")).toBe("completed");
+    } finally {
+      indexes.completeBuild = completeBuild;
+    }
+    // The write landed; its index did not build, and a warning says why.
+    expect(Object.keys(await env.stores.resourceState.getByPrefix("session", "fresh", "notes/"))).toEqual(["notes/a"]);
+    expect(await indexes.state("session", "fresh", notes.pattern, STATUS)).not.toBe("built");
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("index"))).toBe(true);
+    warn.mockRestore();
+    expect(await env.view()).toEqual(["fresh notes/a"]);
+    expect(await indexes.state("session", "fresh", notes.pattern, STATUS)).toBe("built");
+  });
+
+  it("answers a filtered read whose own build failed, by the re-check", async () => {
+    const env = boot();
+    await env.fileIn("old", "a", "open");
+    await env.fileIn("old", "b", "done");
+    const indexes = env.stores.resourceState.indexes!;
+    await indexes.beginBuild("session", "old", notes.pattern, STATUS);
+    const completeBuild = indexes.completeBuild;
+    indexes.completeBuild = async () => {
+      throw new Error("the database went away for a moment");
+    };
+    try {
+      expect(await env.view()).toEqual(["old notes/a"]);
+    } finally {
+      indexes.completeBuild = completeBuild;
+    }
+  });
+});

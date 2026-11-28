@@ -31,7 +31,6 @@ import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
 import { workstreamReportView } from "@flow-state-dev/workforce/browser";
-import { createLabReader } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -194,7 +193,8 @@ describe("the EM files from the workstream it leads", () => {
 
     served = await serveLab(lab.state);
     const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
-    await createLabReader(client).read();
+    // The read the app makes first: the gate's organization read.
+    await createWorkforceClient(client).organization();
     // The session on the projects flow the workstream is opened through, made on its first send.
     const opener = `projects-${ALICE.userId}`;
 
