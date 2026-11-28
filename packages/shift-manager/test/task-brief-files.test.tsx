@@ -13,7 +13,7 @@ import { toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 import { shiftManagerRenderers } from "../src/components/lines";
-import { toBoardTaskView } from "../src/lib/reads";
+import { boardTaskOf } from "@flow-state-dev/workforce/browser";
 
 /** A message as Shift Manager's conversation draws it. */
 const MessageOrBrief = shiftManagerRenderers.message as ComponentType<{ item: MessageItem }>;
@@ -59,12 +59,12 @@ describe("a task's brief line", () => {
 
 describe("a task's brief files, as the board publishes them", () => {
   it("read as the references the board published, and nothing that isn't one", () => {
-    const task = toBoardTaskView("s_conv.tasks", "s_conv", "t1", {
+    const task = boardTaskOf("s_conv.tasks", "s_conv", "t1", {
       id: "t1",
       goal: "look",
       attachments: [shot, { type: "file", mediaType: "image/png", data: "aGk=" }, { type: "text", text: "no" }],
     });
     expect(task.attachments).toEqual([shot]);
-    expect(toBoardTaskView("s_conv.tasks", "s_conv", "t2", { id: "t2", goal: "look" }).attachments).toEqual([]);
+    expect(boardTaskOf("s_conv.tasks", "s_conv", "t2", { id: "t2", goal: "look" }).attachments).toEqual([]);
   });
 });

@@ -1,28 +1,31 @@
 /**
  * Control `unanswerable-asks`: Shift Manager marks every ask unanswerable.
  *
- * Built into the control page in place of `src/lib/reads.ts`. Everything is
- * the real module except `createLabReader`, whose snapshot marks each pending
- * ask as one Shift Manager can't answer, so no card offers Approve. The goal must
- * fail at "an answer from Inbox lands in the store" on a Lab holding an ask.
+ * Built into the control page in place of `src/lib/inbox.ts`. Everything is
+ * the real module except `useInbox`, whose answer marks each hold as one
+ * Shift Manager can't answer, so no card offers Approve. The goal must fail
+ * at "an answer lands in the store" on a Lab holding an ask.
  */
-import { createLabReader as readerAsWritten, type LabReader } from "../../../../packages/shift-manager/src/lib/reads.ts";
+import { useMemo } from "react";
+import { useInbox as asWritten } from "../../../../packages/shift-manager/src/lib/inbox.ts";
 
-export * from "../../../../packages/shift-manager/src/lib/reads.ts";
+export * from "../../../../packages/shift-manager/src/lib/inbox.ts";
 
-/** What each card says under the control: there is no reason in the real reader any more (FIX-2129). */
+/** What each card says under the control. */
 const UNANSWERABLE = "Marked unanswerable by the control.";
 
-/** The real reader, with every ask marked unanswerable. */
-export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]): LabReader {
-  const reader = readerAsWritten(clients);
-  return {
-    ...reader,
-    read: async () => {
-      const snapshot = await reader.read();
-      if (snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok) return snapshot;
-      const asks = snapshot.asks.value.map((ask) => ({ ...ask, unanswerable: UNANSWERABLE }));
-      return { ...snapshot, asks: { ok: true, value: asks } };
-    },
-  };
+/** The real inbox view, with every hold marked unanswerable. */
+export function useInbox(...args: Parameters<typeof asWritten>): ReturnType<typeof asWritten> {
+  const read = asWritten(...args);
+  const section = useMemo(() => {
+    if (read.section === undefined || !read.section.ok) return read.section;
+    const items = read.section.value.items.map((item) => ({
+      ...item,
+      answerable: false,
+      unanswerable: UNANSWERABLE,
+      holds: item.holds.map((hold) => ({ ...hold, answerable: false, unanswerable: UNANSWERABLE })),
+    }));
+    return { ok: true as const, value: { ...read.section.value, items } };
+  }, [read.section]);
+  return { ...read, section };
 }

@@ -47,7 +47,8 @@ page follows the system's light or dark setting. Yellow marks only the user need
   over it: the other worker's session, live. A task's popup also has the task's buttons (below). It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
-  note, else "Working...", with how long it has been running.
+  note, else "Working...", with how long it has been running. Above the feed, a collapsible
+  checklist shows the harness's own to-do list for the run, and keeps it after the task ends.
 - **Right:** the open teammate's panel, in tabs, each with its count: *Tasks* (its open tasks,
   the ones *Running* and *Idle* list), *Pull Requests* (its open ones) and *Routines*. *Tasks* shows once the teammate has a task and *Pull Requests* once it has a
   pull request; *Routines* always shows, so a new teammate's panel is one *Routines* tab. The tab

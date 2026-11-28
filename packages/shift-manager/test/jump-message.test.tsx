@@ -10,14 +10,14 @@ import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/deliver";
-import type { LoadedSnapshot } from "../src/lib/derive";
+import type { DirectoryFixture } from "./helpers/directory";
 import { clearHandedLine, handToShiftCoordinator, useHandedLine } from "../src/lib/outbox";
 import { GAPS as gaps } from "../src/gaps";
 import { JumpTo } from "../src/surfaces/JumpTo";
 import { DirectoryProvider } from "../src/lib/directory";
 
-// FIX-2775: Jump to finds its workers and projects in the page's directory: here, the case's snapshot.
-let drawn: LoadedSnapshot | undefined;
+// FIX-2775: Jump to finds its workers and projects in the page's directory: here, the case's fixture.
+let drawn: DirectoryFixture | undefined;
 vi.mock("../src/lib/lab-data", () => {
   const lab = { client: {} };
   return { useLab: () => lab };
@@ -30,14 +30,11 @@ const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 
 const withWorkers = (workers: unknown[]) =>
   ({
-    orgId: "org",
     sessions: [],
-    boards: {},
-    resources: { ok: true, value: [] },
-    projects: { ok: true, value: { rows: [] } },
-    inventory: { ok: true, value: { workstreams: [], workers } },
-  }) as unknown as LoadedSnapshot;
-const snapshot = withWorkers([{ id: "shift-coordinator", displayName: "shift-coordinator", team: "general", teamName: "General", kind: "agent", door: "talk" }]);
+    projects: { ok: true, value: [] },
+    inventory: { ok: true, value: { workers } },
+  }) as unknown as DirectoryFixture;
+const lab = withWorkers([{ id: "shift-coordinator", displayName: "shift-coordinator", team: "general", teamName: "General", kind: "agent", door: "talk" }]);
 
 afterEach(() => {
   cleanup();
@@ -55,7 +52,7 @@ function Composer({ send, blocked = null }: { send: (message: string) => Promise
 
 describe("`> ` in Jump to messages the Shift Coordinator", () => {
   it("opens already in message mode when seeded with the prefix (Shift+⌘K)", () => {
-    drawn = snapshot;
+    drawn = lab;
     render(<JumpTo gaps={gaps} initialQuery="> " onClose={vi.fn()} />);
     expect(screen.getByTestId("jump-message")).toBeTruthy();
     expect(screen.queryAllByTestId("jump-result")).toHaveLength(0);
@@ -63,7 +60,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
 
   it("switches off the results, then hands the text after the prefix over and closes", () => {
     const onClose = vi.fn();
-    drawn = snapshot;
+    drawn = lab;
     render(<JumpTo gaps={gaps} onClose={onClose} />);
     type("> ship the release");
     expect(screen.getByTestId("jump-message")).toBeTruthy();
@@ -90,7 +87,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
   });
 
   it("a plain query still searches, and a bare `>` hands nothing over", () => {
-    drawn = snapshot;
+    drawn = lab;
     render(<JumpTo gaps={gaps} onClose={() => undefined} />);
     type("chief");
     expect(screen.queryByTestId("jump-message")).toBeNull();

@@ -1,0 +1,107 @@
+<svg viewBox="0 0 940 434" role="img" aria-label="D3, whether the coder&#x27;s shell keeps the operator&#x27;s GitHub login. Chosen: it keeps it, and the gh reply recipe goes from the coder&#x27;s instructions. Instead of: cutting the run&#x27;s gh login now. It comes down to what still works: today&#x27;s push and reading keep working, while cutting the login breaks a chat ask&#x27;s reading and still leaves the token in git&#x27;s credential helper. Both leave a run that disobeys able to reach GitHub as the operator. Locks in: the check binds the path a coder is told to use; containing the credential is a follow-up. Flips if: a run can push without the operator&#x27;s login."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .done   { fill:var(--code-soft); stroke:var(--code); }
+    .gate   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .arrow  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .arrow-gone { stroke:var(--gone); stroke-width:1.6; fill:none; stroke-dasharray:5 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="434"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does the coder&#x27;s shell keep the operator&#x27;s GitHub login?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">It keeps it; the gh recipe goes</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Cut the run&#x27;s gh login now</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT STILL</text>
+    <text class="t-lbl" x="32" y="169">WORKS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Push and read, as today</text>
+    <text class="t-s" x="248" y="179">a wake&#x27;s push and a chat ask&#x27;s reading</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">A chat ask can&#x27;t read its PR</text>
+    <text class="t-s" x="612" y="179">and git&#x27;s push still holds the token</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">A RUN THAT</text>
+    <text class="t-lbl" x="32" y="235">DISOBEYS</text>
+    <text class="mark minus" x="228" y="228">−</text>
+    <text class="t-b" x="248" y="227">Can still post with gh</text>
+    <text class="t-s" x="248" y="245">as the operator, unchecked: the follow-up</text>
+    <text class="mark minus" x="592" y="228">−</text>
+    <text class="t-b" x="612" y="227">Can still reach the token</text>
+    <text class="t-s" x="612" y="245">through git&#x27;s credential helper</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="288">SIZE</text>
+    <text class="mark plus" x="228" y="294">+</text>
+    <text class="t-b" x="248" y="293">This issue&#x27;s</text>
+    <text class="t-s" x="248" y="311">WORKER.md and the brief change</text>
+    <text class="mark minus" x="592" y="294">−</text>
+    <text class="t-b" x="612" y="293">Every coding run&#x27;s push</text>
+    <text class="t-s" x="612" y="311">the run stops holding a credential</text>
+    <line class="row" x1="16" y1="326" x2="924" y2="326"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="344" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="365">LOCKS IN</text>
+    <text class="t-b" x="32" y="385">The check binds the path a coder is told to use</text>
+    <text class="t-s" x="32" y="403">containing the credential is the follow-up&#x27;s</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="344" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="365">FLIPS IF</text>
+    <text class="t-b" x="494" y="385">A run can push without the operator&#x27;s login</text>
+    <text class="t-s" x="494" y="403">then cut gh&#x27;s login in the same change</text>
+  </g>
+</svg>
