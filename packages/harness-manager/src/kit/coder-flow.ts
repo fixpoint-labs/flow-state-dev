@@ -42,7 +42,7 @@
  * door), and a delivered message wakes it the same way.
  */
 import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
-import type { PullRequestFollower } from "@flow-state-dev/core/harness";
+import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection, type PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
@@ -81,7 +81,8 @@ import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode,
 import { codingTaskInput, modeProblem, noteRunSettings, taskLockProblem, trustedCodingInput, workerLockSchema } from "./coding-task-input";
 import { isTrackerIssue } from "../issue-spec";
 
-import { CODER_FLOW } from "../coder-flow-name";
+import { CODER_FLOW, REFRESH_PULL_REQUESTS } from "../coder-flow-name";
+import { refreshRecordedPullRequests } from "../await-pull-requests";
 import { RECORDED_WORK_VIEW, RUN_CHANGES_VIEW } from "../coding-board-ref";
 import { harnessRunChangesView } from "../run-changes";
 import { recordedWorkView } from "../recorded-work-view";
@@ -501,7 +502,7 @@ export function coderWorkerFlow(
       // The app's documents meet the installation's by the flow-build rule: a shared accessor must be the same resource.
       const flowResources = mergeDeclaredResources(options.worker?.resources, { ...installation.resources, ...workerMessagesResources });
       const appActions = options.worker?.actions?.(installation) ?? {};
-      const taken = Object.keys(appActions).filter((name) => name === "respond" || name === "harness");
+      const taken = Object.keys(appActions).filter((name) => name === "respond" || name === "harness" || name === REFRESH_PULL_REQUESTS);
       if (taken.length > 0) {
         throw new Error(`${CODER_FLOW}: the app's \`worker.actions\` declares ${taken.map((name) => `"${name}"`).join(", ")}, which the flow already serves.`);
       }
@@ -527,6 +528,25 @@ export function coderWorkerFlow(
               outputSchema: z.object({ harness: z.string() }),
               resources: installation.resources,
               execute: async (_input, ctx) => ({ harness: (await harnessOf(ctx)).id }),
+            }),
+          },
+          // A screen listing a run's pull requests reads their states again from GitHub through this: the
+          // record is otherwise written only by the run and by its task's wait, so one merged after the task
+          // ended would read `open` for good. Beside a running turn, never its resume target.
+          [REFRESH_PULL_REQUESTS]: {
+            inputSchema: z.object({}),
+            concurrency: "allow",
+            autoResume: false,
+            block: handler({
+              name: `${CODER_FLOW}-refresh-pull-requests`,
+              inputSchema: z.object({}),
+              outputSchema: z.object({ read: z.number(), unreadable: z.number() }),
+              resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
+              execute: async (_input, ctx) => {
+                // Every row names its repository, so `gh` needs no checkout of it.
+                const done = await refreshRecordedPullRequests(ctx, { cwd: process.cwd(), timeoutMs: NETWORK_CALL_TIMEOUT_MS });
+                return { read: done.read.length, unreadable: done.unreadable.length };
+              },
             }),
           },
         },
