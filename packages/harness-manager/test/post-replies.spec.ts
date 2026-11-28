@@ -128,6 +128,22 @@ describe("a run's replies when its turn ends", () => {
     expect(asked).toHaveLength(1);
   });
 
+  // `existingPullRequest` falls back to whatever branch the checkout is on when the run's own is gone,
+  // and `gh pr list --head` matches by name: a run that checks out an unrelated open pull request's
+  // branch would otherwise make that pull request "its own".
+  it("hands the poster no pull request open from a branch other than the run's own", async () => {
+    const { calls, replies } = poster();
+    const host = claimHost({
+      mode: "claim",
+      manager: { replies },
+      workspace: (it) => ({ ...it, existingPullRequest: async () => ({ url: "https://github.com/acme/app/pull/8", number: 8, branch: "someone-elses-feature" }) }),
+      script: [{ replies: { "a.md": `${LINK}\nFixed.\n` } }],
+    });
+    await host.seed({ ledgerId: CONVERSATIONS, partition: "c1", id: "t1", goal: "address the review", input: {} });
+    await host.runAttempt(CONVERSATIONS, "t1", "c1");
+    expect((calls[0]!.scope as { pullRequests: unknown[] }).pullRequests).toEqual([]);
+  });
+
   it("hands the poster no pull request on another host: the poster's links are github.com's", async () => {
     const { calls, replies } = poster();
     const host = claimHost({

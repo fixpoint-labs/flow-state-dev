@@ -4877,7 +4877,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * removed so a replay never posts one twice, and handed to the poster with
    * the task's pull requests and the task itself. Those are the ones its
    * landings opened or pushed to, and the one GitHub says is open from the
-   * run's branch on the pinned remote (`existingPullRequest`), on github.com;
+   * run's own branch (not a fallback one) on the pinned remote (`existingPullRequest`), on github.com;
    * never one the recorder took from the run's own output. At most once, deliberately: a draft
    * GitHub then fails to take is gone from the checkout, and its session line
    * says why it wasn't posted. Each ends as a line in the session. A
@@ -4916,7 +4916,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         if (host.existingPullRequest !== undefined && state.branch != null) {
           try {
             const found = await host.existingPullRequest({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef, baseCommit: state.baseCommit });
-            const ref = found === null ? null : pullRequestRefFromUrl(found.url);
+            // Only from the run's own branch: with it gone, the lookup falls back to whatever branch the
+            // checkout is on, and `gh pr list --head` matches by name, so an unrelated pull request's
+            // branch checked out here would otherwise count as this task's.
+            const ref = found === null || found.branch !== state.branch ? null : pullRequestRefFromUrl(found.url);
             if (ref !== null) open = { host: ref.host, repository: `${ref.owner}/${ref.name}`, number: ref.number };
           } catch (error) {
             say(`Couldn't tell whether a pull request is open from ${state.branch}, so replies go only to one this task landed on: ${error instanceof Error ? error.message : String(error)}`);
