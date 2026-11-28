@@ -31,14 +31,14 @@ export function operatorLinksStamp(ctx: BlockContext): Record<string, string[]> 
   return links.length === 0 ? {} : { [OPERATOR_LINKS]: links };
 }
 
-/** The kinds of comment a link can name, by its anchor. */
-type CommentKind = "inline" | "conversation" | "review";
+/** Where on a pull request the comment a link names sits, by its anchor. */
+type CommentSurface = "inline" | "conversation" | "review";
 
 /** A comment link, parsed. */
 export interface CommentLink {
   readonly repository: string;
   readonly number: number;
-  readonly kind: CommentKind;
+  readonly surface: CommentSurface;
   readonly id: number;
 }
 
@@ -46,8 +46,8 @@ export interface CommentLink {
 export function parseCommentLink(link: string): CommentLink | undefined {
   const m = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)(?:\/files)?#(discussion_r|issuecomment-|pullrequestreview-)(\d+)$/.exec(link.trim());
   if (m === null) return undefined;
-  const kind: CommentKind = m[3] === "discussion_r" ? "inline" : m[3] === "issuecomment-" ? "conversation" : "review";
-  return { repository: m[1]!.toLowerCase(), number: Number(m[2]), kind, id: Number(m[4]) };
+  const surface: CommentSurface = m[3] === "discussion_r" ? "inline" : m[3] === "issuecomment-" ? "conversation" : "review";
+  return { repository: m[1]!.toLowerCase(), number: Number(m[2]), surface, id: Number(m[4]) };
 }
 
 /** `owner/name#n`, lower-cased: how pull requests are compared. */
@@ -56,7 +56,7 @@ export const prKey = (repository: string, number: number) => `${repository.toLow
 /**
  * The pull requests and comments the operator linked to a task: its filing's
  * stamp, and steers the session's user sent. Keys are `owner/name#n` (and
- * `…:kind:id` for a comment), lower-cased.
+ * `…:surface:id` for a comment), lower-cased.
  */
 export function operatorLinked(
   task: { readonly metadata?: Readonly<Record<string, unknown>> | null; readonly steers?: readonly { readonly from: string; readonly by?: string; readonly message: string }[] | null } | undefined,
@@ -73,7 +73,7 @@ export function operatorLinked(
     const pr = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(link);
     if (pr !== null) prs.add(prKey(pr[1]!, Number(pr[2])));
     const comment = parseCommentLink(link);
-    if (comment !== undefined) comments.add(`${prKey(comment.repository, comment.number)}:${comment.kind}:${comment.id}`);
+    if (comment !== undefined) comments.add(`${prKey(comment.repository, comment.number)}:${comment.surface}:${comment.id}`);
   }
   return { prs, comments };
 }

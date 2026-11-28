@@ -8,6 +8,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { OBSERVED_PULL_REQUESTS, writePullRequests, type PullRequestCollection } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { ALICE, CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
 import { REPLY_MAX_BYTES, type ReviewReplyPoster } from "../src/replies";
 
@@ -92,6 +94,48 @@ describe("a run's replies when its turn ends", () => {
     expect(lines.some((l) => l.startsWith("Reply token.md was not posted") && /link/.test(l))).toBe(true);
     expect(lines.some((l) => l.startsWith("Reply big.md was not posted") && /longer than/.test(l))).toBe(true);
     expect(lines.join("\n")).not.toContain("gho_SECRET");
+  });
+
+  // The recorder stamps a run's request on any pull-request link a `gh pr create` prints, and the
+  // run holds `gh`: a create against another repository (`--repo victim/repo`) would be "its own".
+  it("hands the poster only the pull request GitHub says is open from the run's branch on the pinned remote, never one the recorder took from the run's own output", async () => {
+    const { calls, replies } = poster();
+    const recordsAnotherRepository = async (ctx: BlockContext) => {
+      const record = (ctx.resources as Record<string, unknown>)[OBSERVED_PULL_REQUESTS] as PullRequestCollection;
+      await writePullRequests(
+        record,
+        [{ host: "github.com", owner: "victim", name: "repo", number: 9, url: "https://github.com/victim/repo/pull/9", branch: "main", state: "open" }],
+        { source: "tool", requestId: ctx.request.identity.id },
+      );
+    };
+    const asked: string[] = [];
+    const host = claimHost({
+      mode: "claim",
+      manager: { replies },
+      existingPullRequest: async (target) => {
+        asked.push(target.branch);
+        return { url: "https://github.com/acme/app/pull/7", number: 7, branch: target.branch };
+      },
+      script: [{ during: recordsAnotherRepository, replies: { "a.md": `${LINK}\nFixed.\n` } }],
+    });
+    await host.seed({ ledgerId: CONVERSATIONS, partition: "c1", id: "t1", goal: "address the review", input: {} });
+    await host.runAttempt(CONVERSATIONS, "t1", "c1");
+    expect(calls).toHaveLength(1);
+    expect((calls[0]!.scope as { pullRequests: unknown[] }).pullRequests).toEqual([{ repository: "acme/app", number: 7 }]);
+    expect(asked).toHaveLength(1);
+  });
+
+  it("hands the poster no pull request on another host: the poster's links are github.com's", async () => {
+    const { calls, replies } = poster();
+    const host = claimHost({
+      mode: "claim",
+      manager: { replies },
+      existingPullRequest: async (target) => ({ url: "https://ghe.example.com/acme/app/pull/7", number: 7, branch: target.branch }),
+      script: [{ replies: { "a.md": `${LINK}\nFixed.\n` } }],
+    });
+    await host.seed({ ledgerId: CONVERSATIONS, partition: "c1", id: "t1", goal: "address the review", input: {} });
+    await host.runAttempt(CONVERSATIONS, "t1", "c1");
+    expect((calls[0]!.scope as { pullRequests: unknown[] }).pullRequests).toEqual([]);
   });
 
   it("names no folder and reads nothing when the host hands no poster", async () => {

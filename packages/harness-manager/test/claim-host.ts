@@ -44,7 +44,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
-import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
+import { WORKTREES, worktreesCollection, type WorkspaceHost, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
 const ORG_ID = "org_claim_host";
@@ -185,6 +185,8 @@ export interface HostOptions {
   upstream?: boolean;
   /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
   baseTip?: () => Promise<string | undefined>;
+  /** Stand in for the workspace host's `existingPullRequest`: the pull request GitHub says is open from the run's branch. */
+  existingPullRequest?: WorkspaceHost["existingPullRequest"];
   /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
   gateLedger?: (ref: TaskCollectionRef) => TaskCollectionRef;
 }
@@ -261,7 +263,14 @@ export function claimHost(options: HostOptions) {
         },
       },
     },
-    workspace: options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
+    workspace:
+      options.baseTip === undefined && options.existingPullRequest === undefined
+        ? host
+        : {
+            ...host,
+            ...(options.baseTip === undefined ? {} : { baseTip: options.baseTip }),
+            ...(options.existingPullRequest === undefined ? {} : { existingPullRequest: options.existingPullRequest }),
+          },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),

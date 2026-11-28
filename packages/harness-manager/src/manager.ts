@@ -4851,8 +4851,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * (`replies`). The drafts this run wrote are read from its checkout
    * (`readReplyDrafts`: a link out, or an oversized file, is refused unread),
    * removed so a replay never posts one twice, and handed to the poster with
-   * the pull requests recorded for the task's run (its requests' and the ones
-   * it landed on) and the task itself. At most once, deliberately: a draft
+   * the task's pull requests and the task itself. Those are the ones its
+   * landings opened or pushed to, and the one GitHub says is open from the
+   * run's branch on the pinned remote (`existingPullRequest`), on github.com;
+   * never one the recorder took from the run's own output. At most once, deliberately: a draft
    * GitHub then fails to take is gone from the checkout, and its session line
    * says why it wasn't posted. Each ends as a line in the session. A
    * turn that only answers on a merged or closed pull request (`wakeNews`)
@@ -4880,14 +4882,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           for (const draft of read.drafts) say(`Reply to ${draft.link} was not posted: this turn only answers on a pull request that merged or closed, so it can't change GitHub.`);
           return;
         }
+        // Never the pull requests the recorder took from the run's own output: the run holds `gh`, so a
+        // create against another repository would read as its own. Only the ones a landing opened or pushed
+        // to (`landedPullRequests`), and the one GitHub, asked with the pinned remote's `--repo`, says is
+        // open from the run's branch. On github.com only: the poster answers github.com's links, keyed without a host.
         const recorded = await readRunRecord(ctx, state.topic!);
-        const prs = [
-          ...(await taskPullRequests(ctx, recorded?.requestIds ?? [ctx.request.identity.id])),
-          ...(await waitedPullRequests(ctx, recorded?.landedPullRequests ?? [])),
-        ];
+        const landed = await waitedPullRequests(ctx, recorded?.landedPullRequests ?? []);
+        let open: { host: string; repository: string; number: number } | null = null;
+        if (host.existingPullRequest !== undefined && state.branch != null) {
+          try {
+            const found = await host.existingPullRequest({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef, baseCommit: state.baseCommit });
+            const ref = found === null ? null : pullRequestRefFromUrl(found.url);
+            if (ref !== null) open = { host: ref.host, repository: `${ref.owner}/${ref.name}`, number: ref.number };
+          } catch (error) {
+            say(`Couldn't tell whether a pull request is open from ${state.branch}, so replies go only to one this task landed on: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        const prs = [...landed, ...(open === null ? [] : [open])].filter((pr) => pr.host.toLowerCase() === "github.com");
         const task = await committedRow(ctx);
         const outcomes = await replies.post(ctx, read.drafts, {
-          pullRequests: prs.map((pr) => ({ repository: pr.repository, number: pr.number })),
+          pullRequests: [...new Map(prs.map((pr) => [`${pr.repository.toLowerCase()}#${pr.number}`, { repository: pr.repository, number: pr.number }])).values()],
           ...(task === undefined ? {} : { task: { metadata: task.metadata ?? null, steers: task.steers ?? null } }),
         });
         for (const outcome of outcomes) {
