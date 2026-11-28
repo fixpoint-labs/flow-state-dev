@@ -439,3 +439,49 @@ describe("a follow-up continuing its root's record", () => {
     expect((await runs.getOptional(TOPIC))!.state).toMatchObject({ taskId: FOLLOW_UP, attempt: 1, sessionId: "follow-up" });
   });
 });
+
+describe("a stale attempt's write that lands after a follow-up took the record over", () => {
+  // The board read and the record write are two steps. A root attempt can read its task live, pause, and
+  // write only after a replacement settled the root and a follow-up opened the shared record. The record
+  // then names the follow-up, so the attempt and turn fences (one task's counters) say nothing; without a
+  // rule across tasks, the stale root write lands on the follow-up's live run.
+  const ROOT = "task_root";
+  const FOLLOW_UP = "task_root-f1";
+  const as = (taskId: string, attempt: number): AttemptIdentity => ({ ...identity(attempt), taskId });
+
+  it("refuses a root write that read its task live, once a follow-up has opened the record", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(ROOT, { id: ROOT, status: "in_progress", attempts: 1, leaseUntil: Date.now() + 60_000 });
+    expect(await openRunRecord(ctx, as(ROOT, 1), OPENED)).toBe("applied");
+
+    // The stale attempt's board read answers live; by the time it writes, the root settled and the follow-up opened.
+    const liveRoot = { id: ROOT, status: "in_progress", attempts: 1, leaseUntil: Date.now() + 60_000 };
+    const stale: AttemptIdentity = {
+      ...as(ROOT, 1),
+      readBoardRow: async () => {
+        await board.upsert(ROOT, { status: "completed" });
+        await board.upsert(FOLLOW_UP, { id: FOLLOW_UP, status: "in_progress", attempts: 1 });
+        expect(await openRunRecord(ctx, as(FOLLOW_UP, 1), { ...OPENED, childSessionId: "sess_follow_up" })).toBe("applied");
+        return liveRoot;
+      },
+    };
+    expect(await writeRunRecord(ctx, stale, { sessionId: "zombie", outcome: "failed" })).toBe("refused");
+    expect((await runs.getOptional(TOPIC))!.state).toMatchObject({ taskId: FOLLOW_UP, outcome: "running", sessionId: null });
+  });
+
+  it("still lets a follow-up's opening write take its root's record over", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(ROOT, { id: ROOT, status: "completed", attempts: 1 });
+    await runs.upsert(TOPIC, { taskId: ROOT, attempt: 1, outcome: "succeeded" });
+    await board.upsert(FOLLOW_UP, { id: FOLLOW_UP, status: "in_progress", attempts: 1 });
+    // Only an open takes a record over: the follow-up's other writes wait for its open.
+    expect(await writeRunRecord(ctx, as(FOLLOW_UP, 1), { sessionId: "early" })).toBe("refused");
+    expect(await openRunRecord(ctx, as(FOLLOW_UP, 1), OPENED)).toBe("applied");
+    expect(await writeRunRecord(ctx, as(FOLLOW_UP, 1), { sessionId: "follow-up" })).toBe("applied");
+    expect((await runs.getOptional(TOPIC))!.state).toMatchObject({ taskId: FOLLOW_UP, sessionId: "follow-up" });
+  });
+});

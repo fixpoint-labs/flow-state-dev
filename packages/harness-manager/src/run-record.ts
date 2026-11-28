@@ -588,11 +588,15 @@ function leaseHasLapsed(claim: ClaimView, now: number): boolean {
  * attempt's, corrected when the live attempt opens the row.
  *
  * Both are named here so neither is mistaken for a bug or for a task.
+ *
+ * @param opens Whether this is an attempt's open ({@link openRunRecord}), the
+ *   one write that may take over a record another task wrote (a follow-up's).
  */
 export async function writeRunRecord(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   update: Partial<RunRecordState>,
+  opens = false,
 ): Promise<RunRecordWrite> {
   const runs = collectionRef(ctx, RUNS);
   const row =
@@ -627,6 +631,14 @@ export async function writeRunRecord(
   // own task: its claim moved on, its lease lapsed, or it settled. A record that names no task
   // (written before records named theirs) is compared with no task's either (BP-030): under
   // a follow-up's root key it is the root's, and the fence above holds for a task's own.
+  // **Across tasks, only an open takes a record over.** A follow-up's opening write
+  // continues its root's record; every other write is to a record its own open made.
+  // So a write that finds the record naming another task is refused: the board read
+  // above and this write are two steps, and a stale root attempt that read its task
+  // live can land here after a follow-up opened the record, where its attempt fences
+  // (one task's counters) say nothing. A stale open in that window is the read-then-
+  // write limit described above.
+  if (!opens && existing?.taskId != null && existing.taskId !== identity.taskId) return "refused";
   const sameTask =
     existing?.taskId === identity.taskId &&
     (existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId);
@@ -695,16 +707,21 @@ export async function openRunRecord(
     landedPullRequests?: string[];
   },
 ): Promise<RunRecordWrite> {
-  return writeRunRecord(ctx, identity, {
-    ...ATTEMPT_SCOPED_CLEAR,
-    workspacePath: opened.workspacePath,
-    branch: opened.branch,
-    childSessionId: opened.childSessionId,
-    ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
-    ...(opened.requestIds !== undefined ? { requestIds: opened.requestIds } : {}),
-    ...(opened.landedPullRequests !== undefined ? { landedPullRequests: opened.landedPullRequests } : {}),
-    outcome: "running",
-  });
+  return writeRunRecord(
+    ctx,
+    identity,
+    {
+      ...ATTEMPT_SCOPED_CLEAR,
+      workspacePath: opened.workspacePath,
+      branch: opened.branch,
+      childSessionId: opened.childSessionId,
+      ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
+      ...(opened.requestIds !== undefined ? { requestIds: opened.requestIds } : {}),
+      ...(opened.landedPullRequests !== undefined ? { landedPullRequests: opened.landedPullRequests } : {}),
+      outcome: "running",
+    },
+    true,
+  );
 }
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */

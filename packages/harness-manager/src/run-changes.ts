@@ -19,9 +19,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { effectiveCut, readRunChanges, runChangesSchema } from "./commits";
-import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
-import { sessionTask, type SessionDoorBoard } from "./session-door";
-import { runBoardSegment } from "./workspace";
+import { RUNS, runRecordCollection } from "./run-record";
+import { readSessionRunRecord, sessionTask, type SessionDoorBoard } from "./session-door";
 
 /** What the changes view takes: optionally which of the session's tasks, and optionally one file. */
 export const harnessRunChangesInputSchema = z.object({
@@ -83,11 +82,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? sessionTask(board.tasks, sessionId)
           : tasksInSession(board.tasks, sessionId).find((task) => task.id === input.taskId);
       if (row === undefined) throw new HarnessRunChangesRefused(input.taskId === undefined ? "not-started" : "not-this-session");
-      const identity = board.runOf(row);
-      const record =
-        identity === undefined
-          ? undefined
-          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
+      const record = await readSessionRunRecord(ctx, board, row);
       const at = input.path === undefined ? {} : { path: input.path };
       if (record?.filesOnly === true || record?.workspacePath == null) {
         // A files-only run has no Git changes. A missing checkout leaves the changes unknown.
