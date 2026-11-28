@@ -172,12 +172,12 @@ describe("a teammate's panel tabs", () => {
     });
     fireEvent.click(top("Pull Requests"));
     const open = await screen.findByRole("list", { name: "Open pull requests" }, POPUP_READ);
-    const row = (n: number) => open.querySelector(`[data-pull-request="${n}"]`) as HTMLElement;
-    await waitFor(() => expect(row(13)).not.toBeNull(), POPUP_READ);
-    expect(within(row(13)).getByRole("link", { name: /#13 Odd link/ }).getAttribute("href")).toBe("https://github.com/o/r/pull/13");
+    const card = (n: number) => open.querySelector(`[data-pull-request="${n}"]`) as HTMLElement;
+    await waitFor(() => expect(card(13)).not.toBeNull(), POPUP_READ);
+    expect(within(card(13)).getByRole("link", { name: /#13 Odd link/ }).getAttribute("href")).toBe("https://github.com/o/r/pull/13");
     for (const n of [11, 12]) {
-      expect(within(row(n)).queryByRole("link")).toBeNull();
-      expect(row(n).textContent).toMatch(new RegExp(`#${n} Odd link`));
+      expect(within(card(n)).queryByRole("link")).toBeNull();
+      expect(card(n).textContent).toMatch(new RegExp(`#${n} Odd link`));
     }
   });
 

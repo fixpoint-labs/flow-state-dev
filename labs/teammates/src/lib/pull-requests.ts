@@ -50,14 +50,14 @@ const ENDED = new Set(["merged", "closed"]);
 export const isOpenPullRequest = (pr: Pick<TeammatePullRequest, "state">): boolean => !ENDED.has(pr.state);
 
 /**
- * The rows for `tasks` (newest first) from what each run session recorded:
+ * The pull requests for `tasks` (newest first) from what each run session recorded:
  * one per pull request, kept with the newest task whose run recorded it: open
  * ones first (those whose task waits on you leading), then merged or closed
  * ones, each group in its tasks' order.
  */
-export function pullRequestRows(tasks: readonly CodingBoardTask[], recorded: ReadonlyMap<string, readonly SessionPullRequest[]>): TeammatePullRequest[] {
+export function teammatePullRequests(tasks: readonly CodingBoardTask[], recorded: ReadonlyMap<string, readonly SessionPullRequest[]>): TeammatePullRequest[] {
   const seen = new Set<string>();
-  const rows: TeammatePullRequest[] = [];
+  const found: TeammatePullRequest[] = [];
   for (const task of tasks) {
     const session = task.run?.sessionId;
     if (session === undefined) continue;
@@ -65,15 +65,15 @@ export function pullRequestRows(tasks: readonly CodingBoardTask[], recorded: Rea
       const key = `${pr.repository ?? ""}#${pr.number}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      rows.push({ number: pr.number, url: safePullRequestUrl(pr.url), title: pr.title, repository: pr.repository, state: pr.state ?? "open", task, attention: holdOf(task) !== undefined });
+      found.push({ number: pr.number, url: safePullRequestUrl(pr.url), title: pr.title, repository: pr.repository, state: pr.state ?? "open", task, attention: holdOf(task) !== undefined });
     }
   }
-  const open = rows.filter(isOpenPullRequest);
-  return [...open.filter((r) => r.attention), ...open.filter((r) => !r.attention), ...rows.filter((r) => !isOpenPullRequest(r))];
+  const open = found.filter(isOpenPullRequest);
+  return [...open.filter((r) => r.attention), ...open.filter((r) => !r.attention), ...found.filter((r) => !isOpenPullRequest(r))];
 }
 
 /**
- * {@link pullRequestRows} for `tasks`, read again when a task's run or
+ * {@link teammatePullRequests} for `tasks`, read again when a task's run or
  * status changes. `undefined` until the first reads settle. A run session that
  * can't be read counts as recording none.
  */
@@ -89,7 +89,7 @@ export function useTeammatePullRequests(tasks: readonly CodingBoardTask[]): Team
     void Promise.all(
       ids.map((id) =>
         readSessionPullRequests(client, id).then(
-          (rows): [string, readonly SessionPullRequest[]] => [id, rows],
+          (opened): [string, readonly SessionPullRequest[]] => [id, opened],
           (error): [string, readonly SessionPullRequest[]] => {
             console.warn(`teammates: the pull requests of run session ${id} couldn't be read`, error);
             return [id, []];
@@ -101,5 +101,5 @@ export function useTeammatePullRequests(tasks: readonly CodingBoardTask[]): Team
       current = false;
     };
   }, [client, key]);
-  return useMemo(() => (recorded === undefined ? undefined : pullRequestRows(tasks, recorded)), [tasks, recorded]);
+  return useMemo(() => (recorded === undefined ? undefined : teammatePullRequests(tasks, recorded)), [tasks, recorded]);
 }
