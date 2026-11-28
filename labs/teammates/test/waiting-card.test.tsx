@@ -13,7 +13,8 @@
  * card itself, which keeps one line saying what you answered.
  *
  * The bot that waits on you sits still, with a waiting dot: nothing on it
- * hops, flashes or blinks, in any state.
+ * hops, flashes or raises its arms. In every other state it moves (running
+ * most of all), unless the viewer asks for reduced motion.
  *
  * Red states produced before this was trusted: on `main` the header carries
  * "Waiting on you: …" and the conversation has no card, so every case fails at its
@@ -181,15 +182,57 @@ describe("a task waiting on you for more than one thing", () => {
 });
 
 describe("the bot that waits on you", () => {
-  it("sits still with a waiting dot: no hop, flash or blink in any state", async () => {
+  it("sits still with a waiting dot: no hop, flash or raised arms", async () => {
     leadWith("question");
     await card();
     const bot = conversation().querySelector<HTMLElement>("[data-bot-figure]")!;
     await waitFor(() => expect(bot.dataset.state).toBe("needs"));
     expect(bot.querySelector("[data-waiting-dot]")).toBeTruthy();
     expect(bot.querySelector(".hb-flash")).toBeNull();
-    // happy-dom runs no CSS animation, so the stylesheet is where a moving bot would be: it animates nothing on the bot.
-    const css = readFileSync(join(__dirname, "../src/styles.css"), "utf8");
-    expect(css).not.toMatch(/\[data-bot-figure\][^{]*\{[^}]*animation/);
+    expect(bot.querySelector(".hb-arms")).toBeNull();
+    // happy-dom runs no CSS animation, so the stylesheet is where a moving bot would be: no animated rule names needs-you.
+    const animated = animatedBotSelectors();
+    expect(animated.length).toBeGreaterThan(0);
+    expect(animated.filter((s) => s.includes('data-state="needs"'))).toEqual([]);
+  });
+
+  it("moves while it works, and only for a viewer who allows motion", () => {
+    // The owner wants to see the bot working, beside the loading dots: the running bot's antenna, eyes and chest are animated.
+    const animated = animatedBotSelectors();
+    const running = animated.filter((s) => s.includes('data-state="running"'));
+    expect(running.some((s) => s.includes(".hb-antenna"))).toBe(true);
+    expect(running.some((s) => s.includes(".hb-type"))).toBe(true);
+    // Every animated bot rule sits inside the no-preference block, so reduced motion keeps the bot still.
+    expect(animatedBotSelectors({ insideMotionOk: true })).toEqual(animated);
   });
 });
+
+/**
+ * The selectors of `styles.css` rules that animate the header bot. With
+ * `insideMotionOk`, only those inside `@media (prefers-reduced-motion: no-preference)`.
+ */
+function animatedBotSelectors({ insideMotionOk = false } = {}): string[] {
+  let css = readFileSync(join(__dirname, "../src/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  if (insideMotionOk) {
+    const blocks: string[] = [];
+    const marker = "@media (prefers-reduced-motion: no-preference)";
+    for (let at = css.indexOf(marker); at !== -1; at = css.indexOf(marker, at + 1)) {
+      // Take the balanced block that opens after the media query.
+      const open = css.indexOf("{", at);
+      let depth = 0;
+      let end = open;
+      for (; end < css.length; end++) {
+        if (css[end] === "{") depth++;
+        else if (css[end] === "}" && --depth === 0) break;
+      }
+      blocks.push(css.slice(open + 1, end));
+    }
+    css = blocks.join("\n");
+  }
+  const out: string[] = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/(^|;|\s)animation\s*:/.test(m[2]!)) continue;
+    for (const sel of m[1]!.split(",")) if (sel.includes("[data-bot-figure]")) out.push(sel.trim());
+  }
+  return out;
+}

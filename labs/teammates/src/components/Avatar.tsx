@@ -7,12 +7,13 @@
  *   the eyes blue, needs-you puts it on the highlighter, queued draws it as a
  *   dashed outline, idle dims its eyes, done keeps them ink.
  * - {@link BotFigure}: the header's bot, full size with no frame, its head
- *   filled with the teammate's dark tint and marked by its state. It never
- *   moves: a bot that waits on you sits still beside a waiting dot.
+ *   filled with the teammate's dark tint and animated by its state (the
+ *   `hb-*` keyframes in `styles.css`). Every state moves except needs-you,
+ *   which sits still beside a waiting dot; nothing moves under reduced motion.
  *
  * The eleven faces (Pip, Tally, Bolt, Dot, Hex, Sprocket, Visor, Dome, Pod,
  * Telly, Chip) share one layout: an antenna at the top, the head, then the
- * shoulders, so each state's mark sits in the same place on every face.
+ * shoulders, so the animations move the same parts on every face.
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { BotFace, BotStatus, Look } from "../lib/looks";
@@ -23,7 +24,7 @@ interface FaceParts {
   head: ReactNode;
   /** The open eyes, each a filled shape. */
   eyes: ReactNode;
-  /** The antenna, from the head's top. */
+  /** The antenna, from the head's top: it sways while the bot runs. */
   antenna: ReactNode;
   /** Where the eyes sit, for the shut eyes of a queued bot. */
   eyeY: number;
@@ -235,7 +236,7 @@ function BotSvg({ face, state, figure = false, size }: { face: BotFace; state: B
   );
 }
 
-/** What only the header's bot draws: its arms, and its state's mark (typing dots, a tick, z's, a waiting dot). None of it moves. */
+/** What only the header's bot draws: its arms, and its state's mark (typing dots, a tick, z's, a waiting dot). The waiting dot never moves. */
 function FigureExtras({ state }: { state: BotStatus }) {
   return (
     <>
@@ -299,9 +300,11 @@ export function Avatar({ look, size = "md", state = "done" }: { look: Look; size
 
 /**
  * The header's bot: 64px with no frame, its head filled with the
- * teammate's dark tint, marked by its state and never moving. Running has
- * blue eyes and typing dots on the chest; done a smile and a tick; queued
- * its eyes shut under z's; needs-you a waiting dot beside its head.
+ * teammate's dark tint, animated by its state. Running sways and pulses the
+ * antenna, scans the eyes and types on the chest; done bobs and blinks with a
+ * smile and a tick; idle blinks; queued breathes with its eyes shut under
+ * drifting z's. Needs-you sits still beside a waiting dot: the bot that
+ * waits on you is the one that doesn't move.
  */
 export function BotFigure({ look, state }: { look: Look; state: BotStatus }) {
   return (
