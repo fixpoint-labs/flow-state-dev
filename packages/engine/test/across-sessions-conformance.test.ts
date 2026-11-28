@@ -70,8 +70,8 @@ describe("a session deleted and made again, for someone else, while a page is re
         get: (key) => sessions.get(key)
       }
     });
-    const rows = await store.listAcrossSessions!({ owner: { userId: "alice", tenantId: undefined, orgId: "acme" }, keyPrefix: "notes/", limit: 10 });
-    expect(rows).toEqual([]);
+    const answered = await store.listAcrossSessions!({ owner: { userId: "alice", tenantId: undefined, orgId: "acme" }, keyPrefix: "notes/", limit: 10 });
+    expect(answered).toEqual([]);
   });
 });
 

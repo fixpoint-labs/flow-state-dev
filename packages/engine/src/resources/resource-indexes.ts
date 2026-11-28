@@ -330,10 +330,10 @@ async function completeSessionBuilds(
       ?.indexes.find((declared) => declared.stored === build.index);
     if (index === undefined) continue;
     const rawPrefix = getPatternPrefix(build.collection);
-    const rows = await store.getByPrefix("session", scopeId, rawPrefix === "" ? "" : `${rawPrefix}/`);
+    const stored = await store.getByPrefix("session", scopeId, rawPrefix === "" ? "" : `${rawPrefix}/`);
     const entries: ResourceIndexBuildEntry[] = [];
-    for (const [key, row] of Object.entries(rows)) {
-      if (matchesPattern(build.collection, key)) entries.push({ key, values: canonicalIndexValues(index.value(key, row.state as never)) });
+    for (const [key, entry] of Object.entries(stored)) {
+      if (matchesPattern(build.collection, key)) entries.push({ key, values: canonicalIndexValues(index.value(key, entry.state as never)) });
     }
     if (await indexes.completeBuild("session", scopeId, build.collection, build.index, build.token, entries)) {
       remember(builtHere, scopeId, build);
