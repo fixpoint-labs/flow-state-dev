@@ -3486,7 +3486,7 @@ describe("claudeCodeAgent — onActivity", () => {
 
   // Partial messages are on by default, and then the translator hands text on only as deltas.
   for (const includePartialMessages of [true, false]) {
-    it(`reports each completed message and started tool call, once each, with partial messages ${includePartialMessages ? "on" : "off"}`, async () => {
+    it(`reports each thinking block, completed message and started tool call, once each, with partial messages ${includePartialMessages ? "on" : "off"}`, async () => {
       const seen: unknown[] = [];
       const block = claudeCodeAgent({
         resolveClaudeAgent: scriptedQuery(messages),
@@ -3497,6 +3497,8 @@ describe("claudeCodeAgent — onActivity", () => {
 
       expect(error).toBeNull();
       expect(seen).toEqual([
+        // Thinking, never its text: what the model reasoned stays private.
+        { kind: "thinking" },
         { kind: "message", text: "Tests pass; writing the changeset." },
         { kind: "tool", name: "Bash", arguments: JSON.stringify({ command: "pnpm test" }) },
         { kind: "tool", name: "Task", arguments: JSON.stringify({ description: "review" }) },

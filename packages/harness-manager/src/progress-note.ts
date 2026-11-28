@@ -19,29 +19,73 @@ const DETAIL_KEYS = ["file_path", "path", "command", "pattern", "query", "url"] 
 
 /**
  * The note an activity reads as, or `null` when it says nothing: a message's
- * first non-empty line, or a tool call as `<name>: <what it touches>` (the
- * name alone when no argument says). Whitespace collapsed, cut to
+ * first non-empty line, *Thinking…* for reasoning, or a tool call as what the
+ * run is doing to what (*Running pnpm test*, *Editing src/a.ts*, *Reading …*,
+ * *Searching "…"*, *Fetching …*, *Updating the plan*), else *Using <name>*
+ * and what it touches. Whitespace collapsed, so it is one line, and cut to
  * `STATUS_NOTE_LIMIT`.
  */
 export function progressNoteOf(activity: HarnessActivity): string | null {
   const raw =
     activity.kind === "message"
       ? (activity.text.split("\n").find((line) => line.trim() !== "") ?? "")
-      : toolNote(activity.name, activity.arguments);
+      : activity.kind === "thinking"
+        ? "Thinking…"
+        : toolNote(activity.name, activity.arguments);
   const note = raw.replace(/\s+/g, " ").trim();
   if (note === "") return null;
   return note.length > STATUS_NOTE_LIMIT ? `${note.slice(0, STATUS_NOTE_LIMIT - 1)}…` : note;
 }
 
+/**
+ * What a tool does, read off its name, which every harness spells its own way
+ * (`Edit`, `edit_file`, `file_change`): the verb its note leads with. An MCP
+ * tool's server prefix is dropped first. `undefined` when the name says nothing.
+ */
+const TOOL_VERBS: readonly { verb: "plan" | "edit" | "read" | "search" | "fetch" | "run"; match: RegExp }[] = [
+  { verb: "plan", match: /todo|plan/ },
+  { verb: "run", match: /bash|shell|terminal|command|exec/ },
+  { verb: "edit", match: /edit|write|patch|replace|create|delete|change|apply/ },
+  { verb: "read", match: /read|view|open|cat/ },
+  { verb: "search", match: /grep|glob|search|find|list|^ls$/ },
+  { verb: "fetch", match: /fetch|browse/ },
+];
+
 function toolNote(name: string, args: string): string {
+  // `mcp:server/tool` or `mcp__server__tool`: the tool's own name.
+  const base = name.split("/").pop()!.split("__").pop()!;
+  const verb = TOOL_VERBS.find((entry) => entry.match.test(base.toLowerCase()))?.verb;
   let parsed: unknown;
   try {
     parsed = JSON.parse(args);
   } catch {
-    return name;
+    parsed = undefined;
   }
+  if (verb === "plan") return "Updating the plan";
   const detail = toolCallDetail(parsed);
-  return detail === null ? name : `${name}: ${detail.value}`;
+  // A command is one wherever it appears; the tool's name never matters for it.
+  if (detail?.key === "command") return `Running ${detail.value}`;
+  if (verb === "run") return "Running a command";
+  const files = changedFiles(parsed);
+  const target = detail?.value ?? (files.length === 0 ? undefined : files.length === 1 ? files[0] : `${files[0]} and ${files.length - 1} more`);
+  if (target !== undefined) {
+    if (verb === "edit") return `Editing ${target}`;
+    if (verb === "read") return `Reading ${target}`;
+    if (verb === "search") return `Searching "${target}"`;
+    if (verb === "fetch") return `Fetching ${target}`;
+    return `Using ${base}: ${target}`;
+  }
+  return `Using ${base}`;
+}
+
+/** The paths a change list names (Codex's `file_change`: `{ changes: [{ path }] }`), in order. */
+function changedFiles(args: unknown): string[] {
+  const changes = (args as { changes?: unknown } | null | undefined)?.changes;
+  if (!Array.isArray(changes)) return [];
+  return changes.flatMap((change) => {
+    const path = (change as { path?: unknown } | null)?.path;
+    return typeof path === "string" && path.trim() !== "" ? [path] : [];
+  });
 }
 
 /**

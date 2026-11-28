@@ -893,7 +893,7 @@ async function mirrorRun(
           // Awaited on purpose: a write left in flight could land after the next list's.
           await writePlan?.(event.items);
         }
-        if (event.kind === "tool_call") reportHarnessActivity(onActivity, event, ctx);
+        if (event.kind === "tool_call" || event.kind === "reasoning") reportHarnessActivity(onActivity, event, ctx);
         await emitTranslatedEvent(event, ctx, emitState, blockName);
       }
     }

@@ -641,12 +641,15 @@ export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallback
 // FIX-2290.
 /**
  * One thing a run did, as a {@link HarnessActivityHook} is handed it:
- * a completed assistant message, or a tool call it started, in the
- * shapes a harness's translator already produces. Reasoning is never one.
+ * a completed assistant message, a tool call it started, or a whole block of
+ * reasoning (`thinking`), in the shapes a harness's translator already
+ * produces. Thinking carries no text: a host says only that the run is
+ * thinking, never what the model reasoned.
  */
 export type HarnessActivity =
   | { kind: "message"; text: string }
-  | { kind: "tool"; name: string; /** The call's arguments, as the JSON text the vendor sent. */ arguments: string };
+  | { kind: "tool"; name: string; /** The call's arguments, as the JSON text the vendor sent. */ arguments: string }
+  | { kind: "thinking" };
 
 /**
  * Called by a harness with each {@link HarnessActivity} of its run, so the host

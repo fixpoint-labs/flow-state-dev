@@ -8,10 +8,16 @@ describe("a harness run's activity", () => {
     expect(harnessActivityOf({ kind: "tool_call", name: "Edit", arguments: "{}" })).toEqual({ kind: "tool", name: "Edit", arguments: "{}" });
   });
 
-  it("is never a delta, a result or reasoning: those aren't what the run did", () => {
-    for (const kind of ["message_delta", "reasoning", "reasoning_complete", "tool_result", "status"]) {
+  it("is never a delta, a result or a status: those aren't what the run is doing", () => {
+    for (const kind of ["message_delta", "reasoning_delta", "tool_result", "status"]) {
       expect(harnessActivityOf({ kind })).toBeNull();
     }
+  });
+
+  it("is thinking for a whole reasoning block, in every harness's event names, without its text", () => {
+    // Codex and Cursor name it `reasoning`, Claude Code `reasoning_complete`; a host shows only that the run is thinking.
+    expect(harnessActivityOf({ kind: "reasoning", text: "Maybe the cache." })).toEqual({ kind: "thinking" });
+    expect(harnessActivityOf({ kind: "reasoning_complete", text: "Maybe the cache." })).toEqual({ kind: "thinking" });
   });
 
   it("never fails the run when the host's hook throws", () => {

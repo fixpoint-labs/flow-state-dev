@@ -57,7 +57,11 @@ page follows the system's light or dark setting. Yellow marks only the user need
   *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
   to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
   holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
-  its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
+  its tile as it ends. A running card says in one line under its title what its run is doing now,
+  the same for every harness: the command it runs, the file it edits or reads, *Thinking…*, or its
+  phase (*Preparing worktree…*, *Checking the work…*, *Judge reviewing…*), else what it waits on
+  (*Waiting on your answer: …*, *Waiting on PR #5661*), and *Starting…* until its run says. Each
+  card opens the task in a popup, and a task's line in the conversation
   uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`

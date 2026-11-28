@@ -5,7 +5,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
+import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, nowLine, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -87,7 +87,7 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
  * holds completed and cancelled tasks too, a cancelled one marked so on its
  * card. A card opens its task in the sheet beside the panel, or closes it when it is the open one, and carries its time: an
- * active one's clock on this attempt, with a thin bar while its run answers,
+ * active one's clock on this attempt, with a line saying what it is doing now,
  * and *Long-running* once it has been open a day; an idle one's time since it
  * last moved; an ended one's age. Then
  * what this conversation's coding tasks spent, and at the foot its routines.
@@ -156,6 +156,7 @@ export function TeammatePanel({
     const tokens = tokenTotal(t.spend);
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
+    const doing = active ? nowLine(t) : undefined;
     return (
       <li key={t.id}>
         <button
@@ -185,9 +186,10 @@ export function TeammatePanel({
               </span>
             )}
           </span>
-          {active && signal?.kind === "working" && !long ? (
-            <span aria-hidden className="block h-0.5 overflow-hidden rounded-full bg-border" data-progress>
-              <span className="block h-full w-1/3 animate-pulse rounded-full bg-brand" />
+          {/* What it is doing now, on one fixed-height line, so the list never jumps as the line changes. */}
+          {active ? (
+            <span className="-mt-1 block h-4 truncate text-xs leading-4 text-text-3" data-now title={doing}>
+              {doing}
             </span>
           ) : null}
           <span className="flex min-w-0 items-center gap-2 text-xs text-text-3">
@@ -348,7 +350,7 @@ function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number
  * What a card says of how its task stands, beside its meta, when that adds to
  * its time: *waiting on you* (the user must act), what an idle one waits
  * on (*PR open*), how long a run has been quiet, a failed or cancelled task's reason. A running task whose run
- * answers says nothing more: its clock and bar say it.
+ * answers says nothing more: its clock and its now line say it.
  */
 function cardWords(task: CodingBoardTask, quiet: string | undefined): { text: string; pill: string } | undefined {
   const status = taskStatus(task);

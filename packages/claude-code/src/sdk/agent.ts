@@ -1438,6 +1438,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                     reportHarnessActivity(onActivity, { kind: "message", text: block.text }, ctx);
                   } else if (block.type === "tool_use") {
                     reportHarnessActivity(onActivity, { kind: "tool_call", name: block.name, arguments: JSON.stringify(block.input ?? {}) }, ctx);
+                  } else if (block.type === "thinking") {
+                    reportHarnessActivity(onActivity, { kind: "reasoning_complete", text: block.thinking }, ctx);
                   }
                 }
               }

@@ -16,16 +16,39 @@ describe("a run's activity as a note", () => {
     );
   });
 
-  it("reads a tool call as what it touches, so a coordinator can say what the run is doing", () => {
-    expect(progressNoteOf({ kind: "tool", name: "Edit", arguments: JSON.stringify({ file_path: "src/a.ts", old_string: "x" }) })).toBe(
-      "Edit: src/a.ts",
-    );
-    expect(progressNoteOf({ kind: "tool", name: "command_execution", arguments: JSON.stringify({ command: "pnpm test" }) })).toBe(
-      "command_execution: pnpm test",
-    );
-    // Nothing in the arguments says what it touches, or they aren't JSON: the name alone.
-    expect(progressNoteOf({ kind: "tool", name: "TodoWrite", arguments: JSON.stringify({ todos: [] }) })).toBe("TodoWrite");
-    expect(progressNoteOf({ kind: "tool", name: "Bash", arguments: "not json" })).toBe("Bash");
+  it("reads a tool call as what the run is doing to what, in every harness's tool names", () => {
+    const call = (name: string, args: unknown) => progressNoteOf({ kind: "tool", name, arguments: JSON.stringify(args) });
+    // A command, whatever the tool that runs it is called.
+    expect(call("Bash", { command: "pnpm test" })).toBe("Running pnpm test");
+    expect(call("command_execution", { command: "pnpm test" })).toBe("Running pnpm test");
+    expect(call("run_terminal_cmd", { command: "git status" })).toBe("Running git status");
+    // An edit, a read and a search name the file or the pattern.
+    expect(call("Edit", { file_path: "src/a.ts", old_string: "x" })).toBe("Editing src/a.ts");
+    expect(call("Write", { file_path: "src/b.ts" })).toBe("Editing src/b.ts");
+    expect(call("edit_file", { path: "src/c.ts" })).toBe("Editing src/c.ts");
+    expect(call("Read", { file_path: "src/a.ts" })).toBe("Reading src/a.ts");
+    expect(call("read_file", { path: "README.md" })).toBe("Reading README.md");
+    expect(call("Grep", { pattern: "codename" })).toBe('Searching "codename"');
+    expect(call("web_search", { query: "vitest fake timers" })).toBe('Searching "vitest fake timers"');
+    expect(call("WebFetch", { url: "https://example.com/a" })).toBe("Fetching https://example.com/a");
+    // Codex's file change names its files in a list.
+    expect(call("file_change", { changes: [{ path: "src/a.ts", kind: "update" }, { path: "src/b.ts", kind: "add" }] })).toBe("Editing src/a.ts and 1 more");
+    // The plan, by either name.
+    expect(call("TodoWrite", { todos: [] })).toBe("Updating the plan");
+    expect(call("todo_list", { items: [] })).toBe("Updating the plan");
+    // A tool it can't place says its name, and what it touches when an argument says.
+    expect(call("mcp:linear/get_issue", { query: "FIX-1" })).toBe("Using get_issue: FIX-1");
+    expect(call("Task", { description: "look around" })).toBe("Using Task");
+    expect(progressNoteOf({ kind: "tool", name: "Bash", arguments: "not json" })).toBe("Running a command");
+    expect(progressNoteOf({ kind: "tool", name: "Frobnicate", arguments: "not json" })).toBe("Using Frobnicate");
+  });
+
+  it("reads reasoning as thinking: its text is the model's, not what the run is doing", () => {
+    expect(progressNoteOf({ kind: "thinking" })).toBe("Thinking…");
+  });
+
+  it("puts a command on one line, whatever it carries", () => {
+    expect(progressNoteOf({ kind: "tool", name: "Bash", arguments: JSON.stringify({ command: "cd x &&\n  pnpm test\t--run" }) })).toBe("Running cd x && pnpm test --run");
   });
 
   it("says nothing for an empty message, and never runs past the row's note limit", () => {
