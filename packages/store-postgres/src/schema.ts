@@ -355,9 +355,10 @@ ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
  * Re-key a `wakes` table created before wakes were kept per resolver
  * identity, from (tenant, session, entry) to (tenant, session, entry,
  * resolver identity). Every kept wake names none (`''`), so they keep
- * coalescing with each other as before. Idempotent: a table already keyed on
- * `resolved_by` is left alone, and a fresh database, where the table is
- * created with the key, skips it.
+ * coalescing with each other as before. Only a table with no `resolved_by`
+ * column is re-keyed. Idempotent: a table that has `resolved_by` is left
+ * alone, and a fresh database, where the table is created with the key, skips
+ * it.
  */
 const WAKES_RESOLVER_KEY_MIGRATION = `
 DO $$
@@ -366,14 +367,10 @@ DECLARE
 BEGIN
   IF to_regclass('wakes') IS NOT NULL THEN
     IF NOT EXISTS (
-      SELECT 1 FROM pg_index i
-        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-       WHERE i.indrelid = to_regclass('wakes') AND i.indisprimary AND a.attname = 'resolved_by'
+      SELECT 1 FROM pg_attribute
+       WHERE attrelid = to_regclass('wakes') AND attname = 'resolved_by' AND NOT attisdropped
     ) THEN
-      ALTER TABLE wakes ADD COLUMN IF NOT EXISTS resolved_by TEXT;
-      UPDATE wakes SET resolved_by = '' WHERE resolved_by IS NULL;
-      ALTER TABLE wakes ALTER COLUMN resolved_by SET DEFAULT '';
-      ALTER TABLE wakes ALTER COLUMN resolved_by SET NOT NULL;
+      ALTER TABLE wakes ADD COLUMN resolved_by TEXT NOT NULL DEFAULT '';
       SELECT conname INTO pk FROM pg_constraint WHERE conrelid = to_regclass('wakes') AND contype = 'p';
       IF pk IS NOT NULL THEN
         EXECUTE format('ALTER TABLE wakes DROP CONSTRAINT %I', pk);

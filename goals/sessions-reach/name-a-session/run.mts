@@ -47,7 +47,7 @@ stripIntentOverrides();
 
 const PRINCIPAL = "packages/engine/src/context/principal.ts";
 const WAKES = "packages/engine/src/stores/memory/wake-store.ts";
-const CONTEXT = "packages/engine/src/context/createExecutionContext.ts";
+const NAMED_COPY = "packages/engine/src/context/named-session-copy.ts";
 
 /** Each control swaps one rule for the wrong one, and must fail the assertion goal.md names. */
 const CONTROLS: Record<string, ModulePatch[]> = {
@@ -67,7 +67,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   // The fence reads the webhook source only, not the origin a delivery's owner runs carry.
   "webhook-source-only": [
     {
-      module: CONTEXT,
+      module: NAMED_COPY,
       from: String.raw`const namedFence = \{ origin: readDeliveryOrigin\(options\.source, options\.metadata\), sessionId \};`,
       to: 'const namedFence = { origin: options.source === "webhook" ? "webhook" : undefined, sessionId };'
     }
