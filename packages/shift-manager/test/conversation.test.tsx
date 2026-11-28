@@ -20,11 +20,7 @@ const read = vi.fn();
 const sendTurn = vi.fn();
 const ensureWorkerSession = vi.fn();
 // One object, as the provider hands one: a fresh `client` each render would re-read forever.
-const lab = {
-  client: { userId: "u_1" },
-  refresh: vi.fn(),
-  snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
-};
+const lab = { client: { userId: "u_1" } };
 const upload = vi.fn();
 const retryTurn = vi.fn();
 const workforce = { organization: async () => "org_1", ensureWorkerSession, upload, retryTurn };
@@ -119,7 +115,6 @@ beforeEach(() => {
   sendTurn.mockReset();
   ensureWorkerSession.mockReset();
   ensureWorkerSession.mockResolvedValue({ id: s1 });
-  lab.refresh.mockReset();
   read.mockResolvedValue({ items: [], truncated: false });
   retryTurn.mockReset();
   retryTurn.mockResolvedValue(undefined);
@@ -501,8 +496,11 @@ describe("sending", () => {
   it("shows the reason when the door refuses, keeping the line, and reads nothing of the Lab after it", async () => {
     sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
     drawn([session(s1)]);
+    // The conversation's own first read has landed once its composer opens.
+    await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).disabled).toBe(false));
+    const readsBefore = read.mock.calls.length;
     await send("nope");
-    expect(lab.refresh).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(readsBefore);
     expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
     expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
   });

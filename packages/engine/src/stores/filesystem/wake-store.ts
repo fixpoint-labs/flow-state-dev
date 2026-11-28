@@ -1,7 +1,8 @@
 // FIX-2078 D1.
 /**
  * Filesystem-backed WakeStore: one JSON file per wake, at
- * rootDir/{encodeURIComponent(key)}.json.
+ * rootDir/{encodeURIComponent(key)}.json, keyed by (tenant, session, entry,
+ * resolver identity) as the memory store is (`wakeStorageKey`).
  *
  * The filesystem store is development-only and single-process, so every
  * operation runs on one in-process chain: a read-modify-write never
