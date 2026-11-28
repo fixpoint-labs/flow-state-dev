@@ -62,7 +62,7 @@ describe("the fsd profile's coder (default claude-code)", () => {
   it.each([undefined, "", "  "])("BR-6: %j is Claude Code, and the start says so", async (value) => {
     const started = await start("claude-code", value, [READY]);
     expect(started.harness?.name).toBe("claude-code");
-    expect(started.lines[0]).toBe(`Coder: Claude Code; each run may take 20 minutes (${RUN_MINUTES_ENV}).`);
+    expect(started.lines[0]).toBe(`Coder: Claude Code; no Lab cap on run time (${RUN_MINUTES_ENV} sets one).`);
   });
 
   it("BR-7: with no credential it still starts, and hands the Lab Claude Code with its check, which says what to run", async () => {
@@ -131,16 +131,18 @@ describe("Codex and Cursor as the coder", () => {
   ] as const)("%s starts without asking for a sign-in, and the start line names it", async (value, label) => {
     const started = await start("claude-code", value, [NONE]);
     expect(started.harness?.name).toBe(value);
-    expect(started.lines[0]).toBe(`Coder: ${label}; each run may take 20 minutes (${RUN_MINUTES_ENV}).`);
+    expect(started.lines[0]).toBe(`Coder: ${label}; no Lab cap on run time (${RUN_MINUTES_ENV} sets one).`);
     expect(started.harness!.value).toMatchObject({ id: value, label });
     expect(started.checked()).toBe(0);
   });
 });
 
 describe("one run's budget", () => {
-  it("is 20 minutes on every harness at start, the scripted default too, since a worker may name a real one", async () => {
-    expect((await start("claude-code", undefined, [READY])).harness?.runTimeoutMs).toBe(20 * 60_000);
-    expect((await start("stub", undefined, [READY])).harness?.runTimeoutMs).toBe(20 * 60_000);
+  // A Lab cap would stop a busy run at a wall clock; with none, harness-manager's idle window and default cap govern.
+  it("is no Lab cap on every harness at start, the scripted default too, since a worker may name a real one", async () => {
+    expect((await start("claude-code", undefined, [READY])).harness?.runTimeoutMs).toBeUndefined();
+    expect((await start("stub", undefined, [READY])).harness?.runTimeoutMs).toBeUndefined();
+    expect(selectHarness("cursor", "0", "stub", undefined).runTimeoutMs).toBeUndefined();
   });
 
   it("is the stub's own minute when a check selects the scripted run by itself", () => {

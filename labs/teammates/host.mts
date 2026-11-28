@@ -68,7 +68,8 @@ export async function openTeammates(options: TeammatesOptions) {
   const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d)).map(([id, d]) => [id, d])) as Record<string, "all" | string[]>;
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
   const workspace = localRepoWorkspaceHost({ root: options.runsRoot, repo: workdir, ...(options.setup === undefined ? {} : { setup: options.setup }) });
-  const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
+  // Unset: no lab cap, so the harness-manager's idle window and default cap govern a run.
+  const runTimeoutMs = options.runTimeoutMs;
   const checks = { commands: options.checks ?? [], timeoutMs: 10 * 60_000 };
   const harness = options.harness ?? "cursor";
   const models = [...new Set([options.model, ...(options.models ?? [])])];
@@ -100,7 +101,7 @@ export async function openTeammates(options: TeammatesOptions) {
         hire: { models },
         github: { provider: github, poll: true },
       }),
-      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
+      harnesses({ workspace, defaultHarness: harness, review: true, checks, ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }), branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
     ],
     fill: {
       [harnesses.slots.harnesses]:
@@ -111,7 +112,7 @@ export async function openTeammates(options: TeammatesOptions) {
     flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
-    dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),
+    dispatchDrainTimeoutMs: codingDrainBudgetMs({ ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }), checks }),
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
     resolvePrincipal: (context) => ({ userId: options.user?.(context) ?? options.userId, orgId: "teammates-lab" }),
     devtool: { userId: options.userId },

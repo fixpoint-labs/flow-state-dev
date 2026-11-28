@@ -371,7 +371,7 @@ export interface OpenLabOptions {
    * be made to go red.
    */
   coderWorkerId: string;
-  /** Wall-clock budget for one harness run. Default 60s. */
+  /** Wall-clock cap for one harness run. Absent: none from the Lab, so harness-manager's idle window and default cap govern. */
   runTimeoutMs?: number;
   /**
    * The coding agent the default harness runs, by the name a user calls it
@@ -932,7 +932,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
   // Read on each turn, off the installation the kit hired by then.
   const coderWorkerOf: ReturnType<typeof workerOf> = (ctx) => workerOf(installation, CODER_FLOW)(ctx);
-  const runTimeoutMs = options.runTimeoutMs ?? 60_000;
   // Every harness a coder runs on is handed the Lab's MCP tools, and what a
   // files run starts on, kept so its done-condition asks for a change.
   const labSlot =
@@ -969,7 +968,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const coderConfig = {
     workspace: coderHost,
     defaultHarness,
-    runTimeoutMs,
+    ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
     branchPrefix: CODER_BRANCH_PREFIX,
     review: options.reviewChanges === true,
     ...(options.withoutJudge === true ? { judge: false } : {}),

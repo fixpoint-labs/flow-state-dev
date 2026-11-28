@@ -91,7 +91,7 @@ describe("the checkout's script", () => {
     const s = stores();
     const started = await run(["--assets", assets], s);
     expect(started.outcome, started.output).toBe("listening");
-    expect(started.output).toContain("Coder: Claude Code; each run may take 20 minutes (DEVFORCE_LAB_RUN_MINUTES).");
+    expect(started.output).toContain("Coder: Claude Code; no Lab cap on run time (DEVFORCE_LAB_RUN_MINUTES sets one).");
     // The harness kit logs the readiness table once its check answers, which can be after the Lab listens.
     const rowOf = () => started.now().split("\n").find((line) => line.includes("✗ Claude Code"));
     for (const until = Date.now() + 60_000; rowOf() === undefined && Date.now() < until; ) await new Promise((resolve) => setTimeout(resolve, 200));
