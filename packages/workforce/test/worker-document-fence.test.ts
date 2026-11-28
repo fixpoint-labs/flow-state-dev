@@ -188,7 +188,7 @@ describe("a worker document's fence", () => {
 
     const bob = await contextFor(BOB);
 
-    // The fence. Bob asks for the same document and gets his OWN empty copy —
+    // The fence. Bob asks for the same document and gets his OWN document, empty —
     // not an error, and not Alice's row. Isolation is not a refusal.
     expect((bob.resources[REF.diary]!.state as { text?: string }).text ?? "").toBe("");
 

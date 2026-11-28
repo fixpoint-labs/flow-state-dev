@@ -140,7 +140,7 @@ const bob = { user: "bob", org: ORG_A };
 const carol = { user: "carol", org: ORG_B };
 
 describe("a direct read by scope and key", () => {
-  it("answers the caller's own copy, at its schema default and version 0 before any write, and makes no session or request", async () => {
+  it("answers the caller's own resource, at its schema default and version 0 before any write, and makes no session or request", async () => {
     const { router, stores } = build([threadsFlow({ authenticated: true })]);
     const before = await sessionAndRequests(stores);
     expect(await read(router, "user", "pins", alice)).toEqual({ scope: "user", key: "pins", value: { pinned: [] }, version: 0 });
@@ -247,7 +247,7 @@ describe("a write through runBy", () => {
     expect(done.userId).toBe("alice");
     expect(done.orgId).toBe(ORG_A);
     expect(await read(router, "user", "pins", alice)).toMatchObject({ value: { pinned: ["t1"] }, version: 1 });
-    // Bob, in the same org, and Carol, in another, still read their own empty copies.
+    // Bob, in the same org, and Carol, in another, still read their own, empty.
     expect((await read(router, "user", "pins", bob)).value).toEqual({ pinned: [] });
     expect((await read(router, "user", "pins", carol)).value).toEqual({ pinned: [] });
     const sessions = await stores.session.list({});
