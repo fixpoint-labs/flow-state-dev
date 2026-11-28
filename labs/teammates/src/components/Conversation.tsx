@@ -176,7 +176,7 @@ export function Conversation({
       ...names,
       sentStatusOf: (messageId) => (answered.includes(messageId) ? answerIn(talk, messageId) : undefined),
       openMessage: (sent) => onOpen({ kind: "message", from: worker.id, ...sent }),
-      openTask: (taskId) => onOpen({ kind: "task", sessionId, taskId }),
+      openTask: (taskId) => onOpen({ kind: "task", sessionId, taskId, opener: "conversation" }),
       // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
       ...(running ? {} : { retry: (requestId: string) => calls.retry(sessionId, requestId) }),
       stillRunning: (lineId) => (lineId === runningLine ? backgroundRunning : undefined),
@@ -206,7 +206,7 @@ export function Conversation({
       who={isCoding(workerOf(w.task)) ? "The coding task" : nameOf(workerOf(w.task))}
       answered={answers[w.key]?.line}
       onAnswered={(line) => setGiven((was) => ({ session: sessionId, all: { ...(was.session === sessionId ? was.all : {}), [w.key]: { line, openedAt: w.openedAt, task: w.task } } }))}
-      onOpen={() => onOpen({ kind: "task", sessionId, taskId: w.task.id })}
+      onOpen={() => onOpen({ kind: "task", sessionId, taskId: w.task.id, opener: "conversation" })}
     />
   );
   // The first drawn line of each day, and its day's label.

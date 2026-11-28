@@ -185,74 +185,68 @@ function ReportLine({ item }: { item: DataItem }) {
 }
 
 /**
- * A filed task's ending (`workforce:result`), as the lab's card: the worker's
- * name and how it ended in the header, its text collapsed when long.
+ * A filed task's ending (`workforce:result`), as the lab's card: one line
+ * with the worker, how it ended and when. Its title opens the task's popup;
+ * its chevron unfolds the worker's reply under it, and folds it again. The
+ * reply is read for that task only once unfolded. The item's own text is the
+ * board's ending message ("Task "…" (task_…) completed"), which is for the
+ * model and repeats the title, so the line never draws it.
  */
 function ResultReportLine({ item }: { item: DataItem }) {
   const { nameOf = (id: string) => id, avatarOf, openTask } = useLineContext();
+  const { sessionId } = useFlowContext();
+  const { client, pollIntervalMs } = useAppClient();
   const value = item.value as Partial<TaskResultValue>;
   const from = value.from ?? "";
   const failed = value.ending === "errored";
   const cancelled = value.ending === "cancelled";
   const said = `${from === "" ? "The task" : nameOf(from)} ${failed ? "couldn't finish" : cancelled ? "was cancelled" : "finished"}: ${value.title ?? ""}`;
   const taskId = value.taskId;
-  const text = workerReplyTextOf(value.text);
   const at = clockTime(item.ts);
-  const collapsed = !fitsWorkerReplyPreview(text);
   const opens = taskId !== undefined && openTask !== undefined ? () => openTask(taskId) : undefined;
   const [open, setOpen] = useState(false);
-  const workerName = from === "" ? "task" : nameOf(from);
-
-  const header = (
-    <div className={cn("flex items-center gap-2 px-4 py-2.5 text-sm", collapsed ? "border-b border-border group-data-[state=closed]/result:border-b-0" : "border-b border-border")} data-part="label">
-      {from === "" ? null : avatarOf?.(from) ?? null}
-      {opens === undefined ? (
-        <span className={cn("min-w-0 truncate font-semibold", failed && "text-destructive")}>{said}</span>
-      ) : (
-        <button type="button" aria-label={said} onClick={opens} className={cn("min-w-0 truncate text-left font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-ring", failed && "text-destructive")}>
-          {said}
-        </button>
-      )}
-      <span className="flex-1" />
-      {at === undefined ? null : (
-        <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
-          {at}
-        </time>
-      )}
-      {collapsed ? (
-        <WorkerReplyExpandTrigger
-          open={open}
-          expandLabel={`Show full result from ${workerName}`}
-          collapseLabel={`Collapse result from ${workerName}`}
-          group="result"
-        />
-      ) : null}
-    </div>
-  );
-
-  const sectionProps = {
-    "aria-label": `Task result from ${workerName}`,
-    "data-line": "result",
-    "data-task-id": taskId ?? "",
-    "data-status": failed ? "failed" : cancelled ? "cancelled" : "done",
-    "data-collapsed-default": String(collapsed),
-    className: "group/result relative w-full overflow-hidden rounded-lg border border-dashed border-success/60 bg-success/5 shadow-(--shadow-card)",
-  };
-
-  if (!collapsed) {
-    return (
-      <section {...sectionProps}>
-        {header}
-        {text === "" ? null : <WorkerReplyStaticBody text={text} />}
-      </section>
-    );
-  }
+  const workerName = from === "" ? "the task" : nameOf(from);
+  const whose = from === "" ? "the task's" : `${workerName}'s`;
+  // The popup's read of this one task (`useTaskDetail`'s view and input), made only while unfolded.
+  const read = useView(codingBoardViewRef(), { sessionId: sessionId ?? "", taskId: taskId ?? "" }, { client, pollIntervalMs, enabled: open && sessionId !== undefined && taskId !== undefined });
+  const task = read.value?.find((t) => t.id === taskId);
+  const reply = task?.detail?.answer ?? task?.error ?? undefined;
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} defaultOpen={false} asChild>
-      <section {...sectionProps}>
-        {header}
-        {text === "" ? null : <WorkerReplyCollapsibleBody text={text} open={open} fadeFromClass={WORKER_REPLY_PREVIEW_FADE.result} />}
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <section
+        aria-label={`Task result from ${workerName}`}
+        data-line="result"
+        data-task-id={taskId ?? ""}
+        data-status={failed ? "failed" : cancelled ? "cancelled" : "done"}
+        className="group/result relative w-full overflow-hidden rounded-lg border border-dashed border-success/60 bg-success/5 shadow-(--shadow-card)"
+      >
+        <div className="flex items-center gap-2 px-4 py-2.5 text-sm group-data-[state=open]/result:border-b group-data-[state=open]/result:border-border" data-part="label">
+          {from === "" ? null : avatarOf?.(from) ?? null}
+          {opens === undefined ? (
+            <span className={cn("min-w-0 truncate font-semibold", failed && "text-destructive")}>{said}</span>
+          ) : (
+            <button type="button" aria-label={said} onClick={opens} className={cn("min-w-0 truncate text-left font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-ring", failed && "text-destructive")}>
+              {said}
+            </button>
+          )}
+          <span className="flex-1" />
+          {at === undefined ? null : (
+            <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
+              {at}
+            </time>
+          )}
+          <WorkerReplyExpandTrigger open={open} expandLabel={`Show ${whose} result`} collapseLabel={`Hide ${whose} result`} group="result" />
+        </div>
+        {open ? (
+          <div data-part="body" className="px-4 py-3">
+            {reply !== undefined ? (
+              <MarkdownText className="text-sm leading-[1.6]" text={reply} />
+            ) : (
+              <p className="text-sm text-text-3">{read.value === undefined ? (read.stale ? "This result couldn't be loaded." : "Loading…") : "No result was written."}</p>
+            )}
+          </div>
+        ) : null}
       </section>
     </Collapsible>
   );

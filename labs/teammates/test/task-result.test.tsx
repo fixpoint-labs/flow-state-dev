@@ -92,3 +92,37 @@ describe("a task's popup before its own read answers", () => {
     expect(popup.textContent).not.toContain("Not started yet.");
   });
 });
+
+describe("a finished task's popup shows its result once", () => {
+  // The run's last message is the answer the board stored: the Result box shows it, so the feed doesn't again.
+  const PLAN = "## Plan: keeping PR state from going stale\n\nPoll the pull requests every minute.";
+  const ran = (finalText: string) => [
+    { id: "m1", type: "message", role: "assistant", status: "completed", requestId: "q_run", content: [{ type: "output_text", text: "Looking at the PR tab first." }] },
+    { id: "m2", type: "message", role: "assistant", status: "completed", requestId: "q_run", content: [{ type: "output_text", text: finalText }] },
+  ];
+  const openRun = (finalText: string) => {
+    const task = doneRow(PLAN, { run: { sessionId: "run_r", requestId: "q_run", attempt: 1, startedAt: 1 } });
+    const server = stubServer({ board: { wks_cos: [task] }, items: { run_r: ran(finalText) } });
+    render(
+      <TestProvider client={server.client}>
+        <PopupView popup={{ kind: "task", sessionId: "wks_cos", taskId: "task_r" }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} />
+      </TestProvider>,
+    );
+    return screen.getByRole("dialog");
+  };
+  const count = (popup: HTMLElement, text: string) => popup.textContent!.split(text).length - 1;
+
+  it("drops the run's final message when it says what the Result box says, whitespace aside", async () => {
+    const popup = openRun(`\n${PLAN.replace("\n\n", "\n\n\n")}  `);
+    await within(popup).findByText("Looking at the PR tab first.");
+    await within(popup).findByRole("region", { name: "Result" });
+    expect(count(popup, "Poll the pull requests every minute.")).toBe(1);
+  });
+
+  it("control: keeps a final message that says something else", async () => {
+    const popup = openRun("Done. One more thing: the tab also needs a refresh button.");
+    await within(popup).findByText("Done. One more thing: the tab also needs a refresh button.");
+    await within(popup).findByRole("region", { name: "Result" });
+    expect(count(popup, "Poll the pull requests every minute.")).toBe(1);
+  });
+});
