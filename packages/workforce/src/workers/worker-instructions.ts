@@ -29,7 +29,7 @@ export const textOrNull = (value: string | null | undefined): string | null =>
 
 // BP-030.
 /**
- * The instructions of worker `row` (the user's stored row, or `undefined`
+ * The instructions of `worker` (the user's stored worker, or `undefined`
  * when they have none), with `file` when the id is a standard worker's.
  *
  * A copy of a standard worker stored before additional instructions existed
@@ -38,15 +38,15 @@ export const textOrNull = (value: string | null | undefined): string | null =>
  * until an edit saves the additional instructions. A copy whose stored
  * instructions match the file's carries none.
  */
-export function instructionsOf(row: WorkerResourceState | undefined, file: WorkerManifest | undefined): WorkerInstructions {
+export function instructionsOf(worker: WorkerResourceState | undefined, file: WorkerManifest | undefined): WorkerInstructions {
   if (file === undefined) {
-    return { instructions: textOrNull(row?.instructions), additionalInstructions: textOrNull(row?.additionalInstructions), fixed: false };
+    return { instructions: textOrNull(worker?.instructions), additionalInstructions: textOrNull(worker?.additionalInstructions), fixed: false };
   }
   const core = textOrNull(file.body);
-  const stored = textOrNull(row?.additionalInstructions);
-  const legacy = textOrNull(row?.instructions);
-  const carried = stored === null && legacy !== null && legacy.trim() !== (core ?? "").trim() ? legacy : null;
-  return { instructions: core, additionalInstructions: stored ?? carried, fixed: true };
+  const saved = textOrNull(worker?.additionalInstructions);
+  const legacy = textOrNull(worker?.instructions);
+  const carried = saved === null && legacy !== null && legacy.trim() !== (core ?? "").trim() ? legacy : null;
+  return { instructions: core, additionalInstructions: saved ?? carried, fixed: true };
 }
 
 /** The instructions a turn reads: the core ones, then the additional ones under their heading. */
