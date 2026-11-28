@@ -237,13 +237,13 @@ describe("DevToolPanel — the rail leaves a block's detail to the Trace tab", (
 
     // A completed request that was never active renders collapsed.
     if (screen.queryByText("steer-next") === null) fireEvent.click(screen.getByText("run"));
-    const row = screen.getByText("steer-next").closest("[aria-expanded]") as HTMLElement;
-    fireEvent.click(row);
+    const toggle = screen.getByText("steer-next").closest("[aria-expanded]") as HTMLElement;
+    fireEvent.click(toggle);
 
-    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     // One copy button: the inline detail's. The rail renders none.
     const copies = screen.getAllByTitle("Copy block detail");
     expect(copies).toHaveLength(1);
-    expect(document.getElementById(row.getAttribute("aria-controls")!)).toContainElement(copies[0]);
+    expect(document.getElementById(toggle.getAttribute("aria-controls")!)).toContainElement(copies[0]);
   });
 });

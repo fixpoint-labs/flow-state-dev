@@ -18,7 +18,7 @@ import { DebugProvider } from "../src/react/context/debug-context";
 import { SelectionProvider, useSelection } from "../src/react/context/selection-context";
 import { buildTraceTree, type TraceNode } from "../src/react/lib/trace-tree";
 
-function traceRow(name: string, overrides: Partial<BlockTraceItem> = {}): BlockTraceItem {
+function blockTrace(name: string, overrides: Partial<BlockTraceItem> = {}): BlockTraceItem {
   return {
     id: `trace-${name}`,
     type: "block_trace",
@@ -39,7 +39,7 @@ function group(items: BlockTraceItem[]): RequestGroup {
   return { requestId: "req-1", action: "respond", status: "completed", startedAt: 1, items } as RequestGroup;
 }
 
-const groups = [group([traceRow("steer-next"), traceRow("decide", { itemIndex: 1 })])];
+const groups = [group([blockTrace("steer-next"), blockTrace("decide", { itemIndex: 1 })])];
 
 /** The Trace tab as the panel lays it out: the tree, and the rail beside it. */
 function renderTraceTab() {
@@ -60,79 +60,79 @@ function openRequest() {
   fireEvent.click(screen.getByText("respond"));
 }
 
-function rowFor(name: string): HTMLElement {
+function toggleFor(name: string): HTMLElement {
   // The name also shows in an open detail's header; the row is the toggle.
-  const row = screen
+  const toggle = screen
     .getAllByText(name)
     .map((el) => el.closest("[aria-expanded]"))
     .find((el): el is HTMLElement => el instanceof HTMLElement);
-  if (!row) throw new Error(`no toggle row for ${name}`);
-  return row;
+  if (!toggle) throw new Error(`no toggle for ${name}`);
+  return toggle;
 }
 
 /** The detail a row controls, or null while it is closed. */
-function detailOf(row: HTMLElement): HTMLElement | null {
-  return document.getElementById(row.getAttribute("aria-controls") ?? "");
+function detailOf(toggle: HTMLElement): HTMLElement | null {
+  return document.getElementById(toggle.getAttribute("aria-controls") ?? "");
 }
 
 describe("Trace tab — block detail expands under its row", () => {
   it("clicking a row opens its detail directly beneath that row, and clicking again closes it", () => {
     renderTraceTab();
     openRequest();
-    const row = rowFor("steer-next");
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(detailOf(row)).toBeNull();
+    const toggle = toggleFor("steer-next");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(detailOf(toggle)).toBeNull();
 
-    fireEvent.click(row);
+    fireEvent.click(toggle);
 
-    expect(row).toHaveAttribute("aria-expanded", "true");
-    const detail = detailOf(row);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const detail = detailOf(toggle);
     expect(detail).not.toBeNull();
     // Directly beneath the row, and above the next block's row.
-    expect(row.nextElementSibling).toBe(detail);
-    expect(detail!.compareDocumentPosition(rowFor("decide")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle.nextElementSibling).toBe(detail);
+    expect(detail!.compareDocumentPosition(toggleFor("decide")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // It carries the block's detail: status, the output value, the copy button.
     expect(within(detail!).getByText("completed")).toBeInTheDocument();
     expect(within(detail!).getByText(/steer-next-verdict/)).toBeInTheDocument();
     expect(within(detail!).getByTitle("Copy block detail")).toBeInTheDocument();
 
-    fireEvent.click(row);
+    fireEvent.click(toggle);
 
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(detailOf(row)).toBeNull();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(detailOf(toggle)).toBeNull();
   });
 
   it("keeps one detail open at a time: opening another row closes the first", () => {
     renderTraceTab();
     openRequest();
-    fireEvent.click(rowFor("steer-next"));
-    fireEvent.click(rowFor("decide"));
+    fireEvent.click(toggleFor("steer-next"));
+    fireEvent.click(toggleFor("decide"));
 
-    expect(rowFor("steer-next")).toHaveAttribute("aria-expanded", "false");
-    expect(detailOf(rowFor("steer-next"))).toBeNull();
-    expect(rowFor("decide")).toHaveAttribute("aria-expanded", "true");
-    expect(within(detailOf(rowFor("decide"))!).getByText(/decide-verdict/)).toBeInTheDocument();
+    expect(toggleFor("steer-next")).toHaveAttribute("aria-expanded", "false");
+    expect(detailOf(toggleFor("steer-next"))).toBeNull();
+    expect(toggleFor("decide")).toHaveAttribute("aria-expanded", "true");
+    expect(within(detailOf(toggleFor("decide"))!).getByText(/decide-verdict/)).toBeInTheDocument();
   });
 
   it("toggles from the keyboard with Enter and Space", () => {
     renderTraceTab();
     openRequest();
-    const row = rowFor("steer-next");
-    expect(row).toHaveAttribute("tabindex", "0");
+    const toggle = toggleFor("steer-next");
+    expect(toggle).toHaveAttribute("tabindex", "0");
 
-    fireEvent.keyDown(row, { key: "Enter" });
-    expect(row).toHaveAttribute("aria-expanded", "true");
-    expect(detailOf(row)).not.toBeNull();
+    fireEvent.keyDown(toggle, { key: "Enter" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(detailOf(toggle)).not.toBeNull();
 
-    fireEvent.keyDown(row, { key: " " });
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(detailOf(row)).toBeNull();
+    fireEvent.keyDown(toggle, { key: " " });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(detailOf(toggle)).toBeNull();
   });
 
   it("does not render the block panel in the rail on the Trace tab", () => {
     renderTraceTab();
     openRequest();
-    fireEvent.click(rowFor("steer-next"));
+    fireEvent.click(toggleFor("steer-next"));
 
     const rail = screen.getByTestId("rail");
     expect(within(rail).queryByTitle("Copy block detail")).toBeNull();
