@@ -26,9 +26,9 @@
  * nothing. Nothing in a draft but its link and its body is believed.
  *
  * An inline review comment gets its reply right under it, as GitHub's reply
- * to that comment's thread: GitHub takes a reply only to a thread's first
- * comment, so a link to a reply inside a thread posts to the first comment
- * its `in_reply_to_id` names, still checked as the linked comment. A conversation comment or a review's summary can't take a
+ * to that comment. GitHub takes a reply only to a top-level review comment,
+ * so a link to a comment that is itself a reply posts to the top-level
+ * comment its `in_reply_to_id` names, still checked as the linked comment. A conversation comment or a review's summary can't take a
  * reply of its own on GitHub, so it gets one
  * comment on the same pull request that links the one it answers.
  */
@@ -96,11 +96,11 @@ export interface ReviewRepliesOptions {
 const MAX_PAGES = 20;
 const PER_PAGE = 100;
 
-/** A comment as read from GitHub: its author, and the thread's first comment when it is a reply. */
+/** A comment as read from GitHub: its author, and the top-level comment it replies to, if any. */
 interface ReadComment {
   readonly login: string;
   readonly bot: boolean;
-  readonly thread?: number;
+  readonly root?: number;
 }
 
 /** One pull request's comments on one surface, and whether the read stopped at {@link MAX_PAGES}. */
@@ -149,7 +149,7 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
               const batch = (await ask(`${path}?per_page=${PER_PAGE}&page=${page}`)) as { id?: unknown; in_reply_to_id?: unknown; user?: { login?: unknown; type?: unknown } | null }[];
               for (const entry of batch) {
                 if (typeof entry.id === "number" && typeof entry.user?.login === "string") {
-                  found.set(entry.id, { login: entry.user.login, bot: entry.user.type === "Bot", ...(typeof entry.in_reply_to_id === "number" ? { thread: entry.in_reply_to_id } : {}) });
+                  found.set(entry.id, { login: entry.user.login, bot: entry.user.type === "Bot", ...(typeof entry.in_reply_to_id === "number" ? { root: entry.in_reply_to_id } : {}) });
                 }
               }
               if (batch.length < PER_PAGE) return { found, capped: false };
@@ -214,12 +214,12 @@ export function reviewReplies(options: ReviewRepliesOptions): ReviewReplies {
             done({ refused: why ?? "unreadable link" });
             continue;
           }
-          // A reply inside a thread is answered on the thread's first comment: GitHub takes a reply to no other.
-          const thread = link.surface === "inline" ? ((await comments(link)).found.get(link.id)?.thread ?? link.id) : link.id;
+          // A comment that is itself a reply is answered on its top-level comment: GitHub takes a reply to no other.
+          const root = link.surface === "inline" ? ((await comments(link)).found.get(link.id)?.root ?? link.id) : link.id;
           // The body is a JSON field, as written: nothing in it reaches a shell.
           const posted =
             link.surface === "inline"
-              ? await ask(`/repos/${link.repository}/pulls/${link.number}/comments/${thread}/replies`, { method: "POST", body: JSON.stringify({ body: draft.body }) })
+              ? await ask(`/repos/${link.repository}/pulls/${link.number}/comments/${root}/replies`, { method: "POST", body: JSON.stringify({ body: draft.body }) })
               : await ask(`/repos/${link.repository}/issues/${link.number}/comments`, { method: "POST", body: JSON.stringify({ body: `In reply to ${draft.link}:\n\n${draft.body}` }) });
           const url = (posted as { html_url?: unknown }).html_url;
           done({ posted: typeof url === "string" ? url : draft.link });

@@ -23,7 +23,7 @@ interface Comment {
   id: number;
   login: string;
   bot?: boolean;
-  /** The thread's first comment, when this one is a reply in it (GitHub's `in_reply_to_id`). */
+  /** The top-level comment this one replies to, if any (GitHub's `in_reply_to_id`). */
   inReplyTo?: number;
 }
 
@@ -117,7 +117,7 @@ describe("a reply the poster posts", () => {
     expect(outcomes[0]?.refused).toBeUndefined();
   });
 
-  it("answers a reply inside a thread on the thread's first comment, which is the only id GitHub takes a reply to", async () => {
+  it("answers a comment that is itself a reply on the top-level comment it replies to, the only id GitHub takes a reply to", async () => {
     // 105 is alice's reply to 101: GitHub answers 422 to a reply posted to 105 itself.
     const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r105"))]);
     expect(writes.map((w) => w.path)).toEqual(["/repos/acme/app/pulls/7/comments/101/replies"]);
@@ -153,7 +153,7 @@ describe("a reply the poster refuses, with nothing written", () => {
     expect(outcomes[0]?.refused).toMatch(/mallory.*isn't a trusted reviewer/);
   });
 
-  it("an outsider's reply in a trusted reviewer's thread: the linked comment's author is checked, not the thread's first", async () => {
+  it("an outsider's reply to a trusted reviewer's comment: the linked comment's author is checked, not the top-level one's", async () => {
     const { outcomes, writes } = await post([draft(LINK("acme/app", 7, "discussion_r106"))]);
     expect(writes).toEqual([]);
     expect(outcomes[0]?.refused).toMatch(/mallory.*isn't a trusted reviewer/);
