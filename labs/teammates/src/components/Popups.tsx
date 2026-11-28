@@ -33,14 +33,18 @@ import { Steps } from "./Steps";
 import { Fold, ReviewBody, ReviewFooter, RunAnswer, RunMeta, SteerCompose } from "./TaskReview";
 import { runsOn, taskLine } from "./TaskCard";
 import { PlanChecklist } from "./PlanChecklist";
-import { teammatesRenderers } from "./lines";
+import { teammatesRenderers, textOf } from "./lines";
 import { stepOf } from "./flow-state/conversation-lines";
 import { durationText, tokenTotal } from "./flow-state/spend";
 import { knownToolVerbs } from "./flow-state/tool-grouping";
 
-/** What a popup shows: a task one conversation filed, or one message a worker sent. */
+/**
+ * What a popup shows: a task one conversation filed, or one message a worker sent.
+ * A task opened from the conversation (`opener: "conversation"`) floats centred over it;
+ * otherwise (the panel's cards, an address) it docks beside the panel.
+ */
 export type Popup =
-  | { kind: "task"; sessionId: string; taskId: string }
+  | { kind: "task"; sessionId: string; taskId: string; opener?: "conversation" }
   | { kind: "message"; from: string; to: string; messageId: string; text: string };
 
 /** A failed or cancelled task's reason, its first line only; the popup has the whole. */
@@ -63,6 +67,24 @@ function rerunTargets(task: Pick<CodingBoardTask, "assignee">, coders: readonly 
     const harness = settingOf(w, "harness");
     return takesTasks(w) && harness !== undefined && harness !== ownHarness ? [{ id: w.id, harness }] : [];
   });
+}
+
+/** Text compared for sameness: trimmed, every run of whitespace one space. */
+const normalised = (text: string) => text.trim().replace(/\s+/g, " ");
+
+/**
+ * A run's lines without its last message when that message says what `answer`
+ * says (whitespace aside): the popup's Result box shows the answer, labelled,
+ * with its cut notice and Copy, so the feed doesn't draw it a second time. A
+ * last message that says anything else stays, as does every line with no
+ * answer to show.
+ */
+function withoutEchoedAnswer(lines: readonly ItemLine[], answer: string | undefined): readonly ItemLine[] {
+  if (answer === undefined || answer.trim() === "") return lines;
+  const at = lines.map((line) => line.kind).lastIndexOf("assistant");
+  const last = lines[at];
+  if (last?.kind !== "assistant" || last.streaming === true) return lines;
+  return normalised(textOf(last.item)) === normalised(answer) ? lines.filter((_, i) => i !== at) : lines;
 }
 
 /** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
@@ -194,7 +216,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     if (missing) onMissing?.();
   }, [missing, onMissing]);
   const work = useTaskWork(task);
-  const steps = work.lines;
+  // The run's last message is usually the answer itself: the Result box below shows it, so the feed doesn't twice.
+  const steps = useMemo(() => withoutEchoedAnswer(work.lines, task?.detail?.answer ?? undefined), [work.lines, task?.detail?.answer]);
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
   const line = task ? taskLine({ title: task.title, to }, coding, nameOf) : "Task";
@@ -364,7 +387,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   return (
     <SessionOverlay
       variant="sheet"
-      docked
+      docked={popup.opener !== "conversation"}
       label={line}
       title={title}
       icon={coding ? <SquareTerminalIcon className="size-[18px]" /> : undefined}

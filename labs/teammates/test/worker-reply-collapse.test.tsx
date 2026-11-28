@@ -3,9 +3,13 @@
  * Worker-originated conversation lines collapse by default when long; the
  * assistant's own messages stay fully visible.
  */
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { FlowProvider } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { LineContext } from "../src/components/flow-state/conversation-lines";
+import { Line, teammatesRenderers } from "../src/components/lines";
 import { drawLines, linesOf, message, received, result } from "./lines";
+import { codingTask, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -52,12 +56,54 @@ describe("another worker's reply", () => {
   });
 });
 
-describe("a task result from another worker", () => {
-  it("collapses long result text by default", async () => {
-    drawLines(linesOf([result("r", "q1", { taskId: "task_y", from: WRITER, title: "Draft", text: LONG, ending: "completed" })]), { nameOf: () => "writer" });
-    const line = await waitFor(() => screen.getByRole("region", { name: "Task result from writer" }));
-    expect(line.getAttribute("data-collapsed-default")).toBe("true");
-    expect(screen.getByRole("button", { name: "Show full result from writer" })).toBeTruthy();
+describe("a finished task's line", () => {
+  // What the board said of the ending: the line's `text`, never the worker's reply.
+  const ENDING = 'Task "Plan the PR tab" (task_a77ed7ba463f48a38320) completed.';
+  const REPLY = "## Plan\n\nPoll the pull requests every minute, and mark a stale row.";
+  const draw = () => {
+    const server = stubServer({ board: { wks_cos: [codingTask({ id: "task_y", title: "Plan the PR tab", assignee: WRITER, status: "completed", detail: { answer: REPLY, answerCut: false } })] } });
+    const opened: string[] = [];
+    render(
+      <TestProvider client={server.client}>
+        <FlowProvider sessionId="wks_cos" renderers={teammatesRenderers}>
+          <LineContext.Provider value={{ nameOf: () => "Writer", openTask: (id) => void opened.push(id) }}>
+            {linesOf([result("r", "q1", { taskId: "task_y", from: WRITER, title: "Plan the PR tab", text: ENDING, ending: "completed" })]).map((line) => (
+              <Line key={line.id} line={line} />
+            ))}
+          </LineContext.Provider>
+        </FlowProvider>
+      </TestProvider>,
+    );
+    return { line: screen.getByRole("region", { name: "Task result from Writer" }), opened };
+  };
+
+  it("is one clean line while collapsed: no second line, no board text, no task id", () => {
+    const { line } = draw();
+    expect(line.getAttribute("data-state")).toBe("closed");
+    expect(line.querySelector('[data-part="preview"]')).toBeNull();
+    expect(line.querySelector('[data-part="body"]')).toBeNull();
+    expect(line.textContent).not.toContain("task_a77ed7ba463f48a38320");
+    expect(line.textContent).not.toContain('Task "Plan the PR tab"');
+  });
+
+  it("expands to the worker's reply, read for its task, and collapses again", async () => {
+    const { line } = draw();
+    const toggle = screen.getByRole("button", { name: "Show Writer's result" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(line.getAttribute("data-state")).toBe("open"));
+    await waitFor(() => expect(line.querySelector('[data-part="body"]')?.textContent).toContain("mark a stale row"));
+    expect(line.textContent).not.toContain("task_a77ed7ba463f48a38320");
+    fireEvent.click(screen.getByRole("button", { name: "Hide Writer's result" }));
+    await waitFor(() => expect(line.getAttribute("data-state")).toBe("closed"));
+    expect(line.querySelector('[data-part="body"]')).toBeNull();
+  });
+
+  it("opens the task from its title, apart from the expand toggle", () => {
+    const { opened } = draw();
+    fireEvent.click(screen.getByRole("button", { name: "Writer finished: Plan the PR tab" }));
+    expect(opened).toEqual(["task_y"]);
+    expect(screen.getByRole("region", { name: "Task result from Writer" }).getAttribute("data-state")).toBe("closed");
   });
 });
 

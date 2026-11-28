@@ -2,7 +2,9 @@
 
 /**
  * Worker-originated text in the conversation: two-line preview when long,
- * collapsed by default; short text is fully visible with no control.
+ * collapsed by default; short text is fully visible with no control. A
+ * finished task's line uses only the expand trigger: its fold holds the
+ * task's reply, not a preview.
  */
 import { ChevronRightIcon } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -26,7 +28,6 @@ function workerReplyPreviewClasses(fadeFromClass: string) {
 /** Bottom fade colours that match each worker-reply card shell. */
 export const WORKER_REPLY_PREVIEW_FADE = {
   received: "after:from-card",
-  result: "after:from-success/5",
 } as const;
 
 /** Plain-text body for a worker reply; tolerates legacy non-string values. */
