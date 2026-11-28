@@ -188,8 +188,8 @@ const gate = handler({
   }
 });
 
-/** The whole filtered listing, once: what a first screen over a store of unbuilt indexes pays. */
-const drained: { ms: number; pages: number; entries: number } = { ms: 0, pages: 0, entries: 0 };
+/** One request over a store of unbuilt indexes: its first page alone, then the whole filtered listing. */
+const drained: { firstMs: number; ms: number; pages: number; entries: number } = { firstMs: 0, ms: 0, pages: 0, entries: 0 };
 const drain = handler({
   name: "across-drain",
   inputSchema: z.object({}),
@@ -202,6 +202,7 @@ const drain = handler({
     drained.entries = 0;
     for (;;) {
       const page = await across.list({ where: { index: "byStatus", value: "open" }, ...(after !== undefined ? { after } : {}) });
+      if (drained.pages === 0) drained.firstMs = performance.now() - t;
       drained.pages += 1;
       drained.entries += page.entries.length;
       if (page.next === undefined) break;
@@ -372,8 +373,11 @@ type GateResult = {
   filteredP95: number;
   wholeP95: number;
   filteredRows: number;
-  /** With the indexes unbuilt: the one listing that built them, and the builds it began. */
-  firstListing?: { ms: number; pages: number; entries: number; builds: number };
+  /**
+   * With the indexes unbuilt: the first request, which reads the first page,
+   * then the whole listing in the same run, and the builds that run began.
+   */
+  firstListing?: { firstMs: number; ms: number; pages: number; entries: number; builds: number };
 };
 
 /**
@@ -605,16 +609,18 @@ await runGoal(async (failures, tell) => {
         evidence.push(
           `gate ${leg}: ${sessions} sessions, ${rows} rows, ${matching} matching; ` +
             (first !== undefined
-              ? `first whole listing (builds every session) ${first.ms.toFixed(0)} ms, ${first.pages} pages, ${first.entries} entries, ${first.builds} builds; then `
+              ? `first request: first page ${first.firstMs.toFixed(1)} ms, whole listing ${first.ms.toFixed(0)} ms (${first.pages} pages, ${first.entries} entries, ${first.builds} builds); then `
               : "") +
             `first page of ${page}: filtered p95 ${measured.filteredP95.toFixed(2)} ms (${measured.filteredRows} rows), whole p95 ${measured.wholeP95.toFixed(2)} ms; budget ${budgetMs} ms`
         );
-        if (measured.filteredRows !== page) failures.push(`gate:${leg} · the filtered first page held ${measured.filteredRows} rows, not ${page}`);
+        // With most sessions still unbuilt, a first page holds the candidates it re-checked away: graded on time only.
+        if (built && measured.filteredRows !== page) failures.push(`gate:${leg} · the filtered first page held ${measured.filteredRows} rows, not ${page}`);
         if (measured.filteredP95 >= budgetMs) failures.push(`gate:${leg} · filtered first page p95 ${measured.filteredP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
         if (measured.wholeP95 >= budgetMs) failures.push(`gate:${leg} · whole first page p95 ${measured.wholeP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
         if (first !== undefined) {
           if (first.entries !== matching) failures.push(`gate:${leg} · the first listing found ${first.entries} of ${matching} matching entries`);
-          if (first.builds !== sessions) failures.push(`gate:${leg} · the first listing began ${first.builds} builds for ${sessions} unbuilt sessions: each is built once`);
+          if (first.builds === 0 || first.builds > 8) failures.push(`gate:${leg} · one request began ${first.builds} builds: it builds some unbuilt sessions, never more than its budget of 8`);
+          if (first.firstMs >= budgetMs) failures.push(`gate:${leg} · the first page of the first request took ${first.firstMs.toFixed(1)} ms ≥ ${budgetMs} ms`);
         }
       }
     }

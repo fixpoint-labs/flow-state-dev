@@ -46,11 +46,21 @@ const open = handler({
     }
   }
 });
+/** One read: the first page of the filtered listing, as one screen's first call makes it. */
+const firstPage = handler({
+  name: "first-page",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ entries: z.array(z.string()), more: z.boolean() }),
+  execute: async (_input, ctx) => {
+    const page = await (ctx.resources as any).acrossSessions().notes.list({ where: { index: "byStatus", value: "open" } });
+    return { entries: page.entries.map((entry: { session: string; key: string }) => `${entry.session} ${entry.key}`), more: page.next !== undefined };
+  }
+});
 const desk = defineFlow({
   kind: "desk",
   actions: { file },
   resources: { notes },
-  views: { open: defineView({ scope: "user", block: open }) }
+  views: { open: defineView({ scope: "user", block: open }), first: defineView({ scope: "user", block: firstPage }) }
 })() as unknown as FlowInstance;
 
 /** Every statement better-sqlite3 runs in this file, taken off its statements. */
@@ -105,7 +115,12 @@ function boot() {
     expect(res.status, res.body).toBe(200);
     return (JSON.parse(res.body) as { output: { entries: string[] } }).output.entries;
   };
-  return { stores, fileIn, view };
+  const first = async () => {
+    const res = await post(["desk", "views", "first"], { input: {} });
+    expect(res.status, res.body).toBe(200);
+    return (JSON.parse(res.body) as { output: { entries: string[]; more: boolean } }).output;
+  };
+  return { stores, fileIn, view, first };
 }
 
 const builds = () => sent.filter((sql) => /INSERT INTO resource_index_built/i.test(sql)).length;
@@ -144,5 +159,48 @@ describe("a read across sessions filtered by a declared index", () => {
     sent.length = 0;
     expect(await env.view()).toEqual(["old notes/a", "old notes/c"]);
     expect(builds(), "a later read builds nothing").toBe(0);
+  });
+
+  it("builds at most a fixed budget of unbuilt sessions in one request, answers as a built store does, and converges over requests", async () => {
+    const env = boot();
+    // Twenty sessions from before the writer built indexes: three entries each, one open, no build marker.
+    const sessions = Array.from({ length: 20 }, (_, i) => `old-${String(i).padStart(2, "0")}`);
+    for (const id of sessions) {
+      await env.fileIn(id, "seed", "done");
+      for (const [key, status] of [["a", "open"], ["b", "done"], ["c", "done"]] as const) {
+        await env.stores.resourceState.set("session", id, `notes/${key}`, { text: key, status }, "any", {
+          indexEntries: [{ collection: notes.pattern, index: STATUS, values: [JSON.stringify(status)] }]
+        });
+      }
+      await env.stores.resourceState.indexes!.beginBuild("session", id, notes.pattern, STATUS);
+    }
+    const expected = sessions.map((id) => `${id} notes/a`);
+    const unbuilt = async () => {
+      let count = 0;
+      for (const id of sessions) if ((await env.stores.resourceState.indexes!.state("session", id, notes.pattern, STATUS)) !== "built") count += 1;
+      return count;
+    };
+
+    // One read meets more unbuilt sessions than its budget, and builds no more than the budget.
+    sent.length = 0;
+    const page = await env.first();
+    const firstBuilds = builds();
+    expect(firstBuilds).toBeGreaterThan(0);
+    expect(firstBuilds).toBeLessThanOrEqual(8);
+    expect(await unbuilt()).toBe(20 - firstBuilds);
+    // What it answered is a built store's answer: every entry it holds is open, in order.
+    expect(page.entries).toEqual(expected.slice(0, page.entries.length));
+
+    // Every whole listing answers every open entry, built or not, and builds
+    // no more than the budget however many pages it reads; requests converge to all built.
+    for (let reads = 0; reads < 10 && (await unbuilt()) > 0; reads += 1) {
+      sent.length = 0;
+      expect(await env.view()).toEqual(expected);
+      expect(builds()).toBeLessThanOrEqual(8);
+    }
+    expect(await unbuilt()).toBe(0);
+    sent.length = 0;
+    expect(await env.view()).toEqual(expected);
+    expect(builds(), "a built store builds nothing").toBe(0);
   });
 });

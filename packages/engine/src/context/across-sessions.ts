@@ -53,6 +53,9 @@ import { namedRecordAdmission, UntrustedReachError, type NamedSessionAdmission }
 /** The most rows a page answers. */
 const ACROSS_SESSIONS_PAGE = 50;
 
+/** The most unbuilt sessions one run's reads build the filtered index of: a fixed cost per request, whatever the store holds. */
+const UNBUILT_BUILDS_PER_RUN = 8;
+
 /** What one run's read across sessions is built from: every field from the run, never a payload. */
 export type AcrossSessionsInputs = {
   /** The run's session-scoped stored collections, by accessor. */
@@ -193,9 +196,11 @@ function filterOf(config: ResourceCollectionConfig, where: AcrossSessionsListQue
 /** The reads one run makes across its owner's sessions, by accessor. */
 export function createAcrossSessions(inputs: AcrossSessionsInputs): Record<string, AcrossSessionsCollection> {
   const admit = namedRecordAdmission(inputs.admission);
+  // Shared by every page this run reads: the builds it has begun.
+  const builds = { count: 0 };
   const handles: Record<string, AcrossSessionsCollection> = Object.create(null);
   for (const [accessor, config] of Object.entries(inputs.configs)) {
-    handles[accessor] = { list: (query) => listPage(inputs, admit, config, query) };
+    handles[accessor] = { list: (query) => listPage(inputs, admit, builds, config, query) };
   }
   return handles;
 }
@@ -203,6 +208,7 @@ export function createAcrossSessions(inputs: AcrossSessionsInputs): Record<strin
 async function listPage(
   inputs: AcrossSessionsInputs,
   admit: ReturnType<typeof namedRecordAdmission>,
+  builds: { count: number },
   config: ResourceCollectionConfig,
   query: AcrossSessionsListQuery | undefined
 ): Promise<AcrossSessionsPage<JsonObject>> {
@@ -261,13 +267,20 @@ async function listPage(
     );
   }
   // A session whose index isn't built answered every entry as a candidate:
-  // build it now, once, as a lookup would, so later pages and reads are
-  // answered by the index. A build that a racing write cleared is built again
-  // by the next read that meets it.
+  // build it now, as a lookup would, so later pages and reads are answered by
+  // the index. At most UNBUILT_BUILDS_PER_RUN in one run, however many pages it
+  // reads, so a store of many
+  // sessions written before indexes were built (an upgrade) never costs one
+  // request more than that; the rest keep the re-check, which answers right,
+  // and later reads build them. A build that a racing write cleared is built
+  // again by the next read that meets it.
   const indexes = inputs.store.indexes;
   if (filter.kind === "index" && indexes !== undefined) {
     const unbuilt = new Set<string>();
-    for (const met of page) if (met.indexBuilt === false) unbuilt.add(met.sessionKey);
+    for (const met of page) {
+      if (met.indexBuilt === false && builds.count + unbuilt.size < UNBUILT_BUILDS_PER_RUN) unbuilt.add(met.sessionKey);
+    }
+    builds.count += unbuilt.size;
     for (const sessionKey of unbuilt) {
       await findIndexedKeys(
         { store: inputs.store, indexes, scopeType: "session", scopeId: sessionKey, collection: config.pattern, keyPrefix },
