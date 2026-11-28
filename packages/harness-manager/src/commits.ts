@@ -175,7 +175,12 @@ export async function commitsNotIn(cwd: string, commit: string, branch: string):
   try {
     const count = Number.parseInt((await git(cwd, ["rev-list", "--count", `refs/heads/${branch}`, "--not", commit])).trim(), 10);
     return Number.isNaN(count) ? null : count;
-  } catch {
+  } catch (error) {
+    // Common when the pull request's head isn't in this checkout (a force-push, a head fetched elsewhere): said, so a missing count can be traced.
+    console.warn(
+      `[harness-manager] could not count ${branch}'s commits past ${commit} in ${cwd} ` +
+        `(${error instanceof Error ? error.message : String(error)}); reporting it unknown.`,
+    );
     return null;
   }
 }
