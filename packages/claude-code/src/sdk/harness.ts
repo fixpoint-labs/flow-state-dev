@@ -4,9 +4,9 @@
  *
  * Each run gets only Claude Code's environment (`harnessEnv` over
  * `CLAUDE_CODE_PASS`), records its work, may read, write, edit and run
- * commands, and reads the working folder's own settings with every hook off:
- * hosts can widen the default tool list via `extraAllowedTools`. Loading
- * a turn could write a hook into `.claude/settings.json` that would run by
+ * commands by default (hosts can widen the list via `extraAllowedTools`), and
+ * reads the working folder's own settings with every hook and inline skill
+ * shell command off: a turn could write a hook into `.claude/settings.json` that would run by
  * itself on the next one. `acceptEdits` is its permission mode; with
  * `plan: true` the value is `claude-code-plan`, in `plan` mode, for workers
  * that only plan.
@@ -46,8 +46,8 @@ export interface ClaudeCodeHarnessOptions {
   extraAllowedTools?: string[];
   /**
    * Which settings layers the run loads (`CLAUDE.md`, skills, plugins). Replaces
-   * the kit default (`project`) when set. Only hooks are forced off via the
-   * harness's fixed `settings.disableAllHooks`; other keys in a loaded settings
+   * the kit default (`project`) when set. Hooks and inline skill shell execution
+   * stay off via the harness's fixed `settings`; other keys in a loaded settings
    * file still apply.
    */
   settingSources?: ClaudeCodeSettingSource[];
@@ -79,7 +79,7 @@ export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harne
         allowedTools,
         permissionMode: plan ? "plan" : "acceptEdits",
         settingSources,
-        settings: { disableAllHooks: true },
+        settings: { disableAllHooks: true, disableSkillShellExecution: true },
       }),
     readiness: (check) => checkClaudeCodeReadiness({ env: env(), ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CLAUDE_CODE_PASS,
