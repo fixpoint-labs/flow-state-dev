@@ -23,6 +23,7 @@ afterEach(() => {
 });
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
+const LEASED = Date.UTC(2100, 0, 1);
 
 /** The run's items so far: it has done things, and a command is still running. */
 const item = (id: string, status: string, body: Record<string, unknown>) => ({ id, requestId: "req-1", status, provenance: { blockName: "claude-code-agent" }, ...body });
@@ -37,6 +38,8 @@ const RUNNING: CodingBoardTask = codingTask({
   harness: "claude-code",
   runFlow: CODER_FLOW,
   run: { sessionId: "run-1", requestId: "req-1", attempt: 1, startedAt: STARTED },
+  // A run holds it for the whole test, on the real clock and the faked one alike: only a held task draws the live line.
+  leaseUntil: LEASED,
 });
 
 /** The popup on a running task, over a stand-in server a test changes as the board and the run would. */
@@ -97,6 +100,15 @@ describe("a running task's feed ends in a live working line", () => {
     // Its run's own feed still reads; the coding flow's plan view never does.
     await new Promise((settle) => setTimeout(settle, 300));
     expect(server.planReads).toEqual([]);
+  });
+
+  it("draws no live line for a running task no run holds: parked, or its lease lapsed", async () => {
+    for (const leaseUntil of [undefined, Date.now() - 60_000]) {
+      const { popup } = open({ ...RUNNING, leaseUntil });
+      await waitFor(() => expect(within(popup).getByText("Looking at the log.")).toBeTruthy());
+      expect(line(popup)).toBeNull();
+      cleanup();
+    }
   });
 
   it("follows a re-run in the same session: the new request is the run it reads", async () => {

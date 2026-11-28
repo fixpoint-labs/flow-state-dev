@@ -14,8 +14,8 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
-import { useNow } from "../lib/use-watch";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, activeElapsedMs, clockRuns, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { useNow, useStale } from "../lib/use-watch";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -245,10 +245,12 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const review = task && waiting === "review" ? work.review : undefined;
   const total = tokenTotal(task?.spend);
   const spent = total === undefined ? undefined : `${total} tokens`;
-  // The current attempt's time, including waits; the live line counts only its reply.
-  const now = useNow(undefined, status === "running");
-  const started = task === undefined ? undefined : attemptStartedAt(task);
-  const totalMs = status === "running" && started !== undefined ? now - started : undefined;
+  // The attempt clock counts only while a live run holds the task, and holds where it was while the feed is stale;
+  // a hold shows the time it froze at, a parked or PR-waiting task none.
+  const stale = useStale(popup.sessionId);
+  const live = task !== undefined && clockRuns(task, Date.now(), stale);
+  const now = useNow(1_000, !stale && live);
+  const totalMs = task === undefined ? undefined : activeElapsedMs(task, now, stale);
   // The header's status, read once: its words, and the pill's tone and mark.
   const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
     // What waits on you is the highlighter's pill (`styles.css` reads `data-needs-you`); everything else keeps the overlay's tones.
@@ -355,8 +357,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
           {coding ? "The coding task" : nameOf(to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
-      {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task && status === "running" && holdOf(task) === undefined && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
+      {/* The live line ends the feed while a run holds the task: until its first step, the line above says it is starting; a task waiting on you, parked or on its PR isn't working. */}
+      {task && live && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
         <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={work.replyStartedAt} />
       ) : null}
     </>

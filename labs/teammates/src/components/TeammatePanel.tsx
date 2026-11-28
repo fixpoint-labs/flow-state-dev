@@ -5,7 +5,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
+import { cardElapsedText, clockRuns, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -87,9 +87,9 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
  * holds completed and cancelled tasks too, a cancelled one marked so on its
  * card. A card opens its task in the sheet beside the panel, or closes it when it is the open one, and carries its time: an
- * active one's clock on this attempt, with a thin bar while its run answers,
- * and *Long-running* once it has been open a day; an idle one's time since it
- * last moved; an ended one's age. Then
+ * active one's clock on this attempt while a run holds it, frozen at the hold
+ * that stopped it, with a thin bar while its run answers, and *Long-running*
+ * once it has been open a day; an idle one no time; an ended one's age. Then
  * what this conversation's coding tasks spent, and at the foot its routines.
  * The teammate's own description and *Edit* live in the conversation's header.
  */
@@ -120,8 +120,6 @@ export function TeammatePanel({
   const [cleared, clearFailed] = useCleared(sessionId);
   // The clock below re-renders the panel each second; the grouping only changes with the board or what was cleared.
   const groups = useMemo(() => groupTasks(tasks, cleared), [tasks, cleared]);
-  // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
-  const now = useNow(1_000, !stale);
   const [filter, setFilter] = useState<Filter>("running");
   // *Failed* and *Done* show their newest few until *Show all*, and fold back with *Show fewer*.
   const [expanded, setExpanded] = useState<Filter>();
@@ -130,6 +128,10 @@ export function TeammatePanel({
   const name = displayName(worker);
 
   const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
+  // Each second while a listed row's clock runs (read again each render, so a lease that lapses stops it at the next
+  // tick); otherwise each half minute, for the minute-coarse ages (*12m ago*, *quiet for 7m*). Held while the feed is stale.
+  const clockLive = tasks.some((t) => clockRuns(t, Date.now()));
+  const now = useNow(clockLive ? 1_000 : 30_000, !stale);
 
   // Arrow keys move between the tabs, as a tab list's do; the selection follows focus.
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -151,8 +153,7 @@ export function TeammatePanel({
     const { view, run } = timeSignalOf(t);
     const signal = taskSignal(view, run, now, { stale });
     const long = isLongRunning(t, now);
-    const start = attemptStartedAt(t);
-    const elapsed = elapsedOf(t, start, now, signal);
+    const elapsed = cardElapsedText(t, now, signal, stale);
     const tokens = tokenTotal(t.spend);
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
@@ -333,15 +334,6 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
       ) : null}
     </>
   );
-}
-
-/** A card's time: an active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it. */
-function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number, signal: ReturnType<typeof taskSignal>): string | undefined {
-  if (isIdle(task)) return task.updatedAt == null ? undefined : elapsedText(now - task.updatedAt);
-  // A running task no run holds (parked, owing a turn) shows how long it has been idle, never a running clock.
-  if (isActive(task) && signal?.kind === "idle") return signal.text;
-  if (isActive(task)) return start === undefined ? undefined : elapsedText(now - start);
-  return signal?.kind === "ended" ? signal.text : undefined;
 }
 
 /**

@@ -98,11 +98,12 @@ describe("a teammate's tasks and their time", () => {
     expect(shown.querySelector("[data-elapsed]")?.textContent).toMatch(/^45m/);
   });
 
-  it("never says working for a running task no lease holds (parked, or waiting on its pull request): it says how long it has been idle", async () => {
+  it("never says working for a running task no lease holds (parked, or waiting on its pull request): no clock counts up", async () => {
     const now = Date.now();
     const shown = await panel([listed("p", "in_progress", { updatedAt: now - 3 * 24 * 60 * MIN, startedAt: now - 72 * 60 * MIN })]);
     expect(within(shown).queryByText(/working/)).toBeNull();
-    expect(within(shown).getByText("idle · 3d")).toBeTruthy();
+    expect(within(shown).queryByText(/idle ·/)).toBeNull();
+    expect(within(shown).getByRole("button", { name: "Asked researcher to task p" }).querySelector("[data-elapsed]")).toBeNull();
   });
 
   it("says how long ago an ended task ended", async () => {
