@@ -44,6 +44,11 @@ export {
   type PendingUserSuspensionsUnderTest
 } from "./stores/testing/pending-user-suspensions-conformance";
 export {
+  createAcrossSessionsConformanceTests,
+  type AcrossSessionsUnderTest,
+  type CreateAcrossSessionsConformanceTestsOptions
+} from "./stores/testing/across-sessions-conformance";
+export {
   createWakeStoreConformanceTests,
   type CreateWakeStoreConformanceTestsOptions
 } from "./stores/testing/wake-store-conformance";

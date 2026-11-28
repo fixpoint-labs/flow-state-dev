@@ -16,12 +16,12 @@ import {
   readRecordedWork,
   readSessionPullRequests,
   CODER_FLOW,
-  recordedWorkViewRef,
   reviewDetail,
   type CodingBoardTask,
   type RecordedWork,
 } from "@flow-state-dev/harness-manager/browser";
 import { teammatesRenderers } from "../components/lines";
+import { useTaskPlan } from "../lib/task-plan";
 import { toolInFlight, type PlanRowNow } from "../components/flow-state/working-status";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
 import { inboxAnswerOf, rerunOverrides, taskStatus } from "../lib/task";
@@ -63,8 +63,7 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const running = task !== undefined && taskStatus(task) === "running" && requestId !== null;
   const feed = useSessionFeed(runSession, { client });
   const flowKind = task?.runFlow ?? undefined;
-  // The plan view is the coding flow's: a run on any other flow is refused, so only a coder run reads it.
-  const plan = useView(recordedWorkViewRef(), { requestId: requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: running && flowKind === CODER_FLOW }).value?.plan;
+  const plan = useTaskPlan(task);
   const stream = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined });
   return useMemo(() => {
     const fed = (feed?.items ?? []) as readonly OutputItem[];
@@ -77,8 +76,9 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
       reviewStop: stop?.suspensionId,
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
+      plan: flowKind === CODER_FLOW ? plan : undefined,
     };
-  }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan]);
+  }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan, flowKind]);
 }
 
 /**

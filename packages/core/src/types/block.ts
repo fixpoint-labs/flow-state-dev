@@ -9,6 +9,7 @@ import type { AnyResourceRef, DefinedResource, ResourceRef } from "./resource";
 import type { DefinedResourceCollection, ResourceCollectionRef } from "./resource-collection";
 import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { ScopeStateOps } from "./state";
+import type { ScopeType } from "./scope";
 import type { ModelResolver } from "./model";
 import type { TokenCounter } from "./tokens";
 import type { RequestHost } from "./request-host";
@@ -1472,7 +1473,7 @@ export type InferResourcesFromSchemas<T> =
 // The projected branch must come first because it is also a defined collection.
 type ResourceRefFromDefinition<T> =
   [T] extends [DefinedResourceCollection<infer S> & { projected: true }] ? ProjectedResourceCollectionRef<S>
-    : [T] extends [DefinedResourceCollection<infer S>] ? ResourceCollectionRef<S>
+    : [T] extends [DefinedResourceCollection<infer S> & { scope: infer TScope extends ScopeType }] ? ResourceCollectionRef<S, TScope>
     : [T] extends [DefinedResource<infer S>] ? ResourceRef<S>
     : ResourceRef<JsonObject>;
 

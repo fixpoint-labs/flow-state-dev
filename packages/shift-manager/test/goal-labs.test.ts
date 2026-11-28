@@ -13,13 +13,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
-import type { Client } from "@flow-state-dev/client";
+import type { Client, SessionSummary } from "@flow-state-dev/client";
+import { createInboxClient, type InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { inboxViewRef, workerInventoryResource, type InboxBoardTask, type InboxSuspensionDetail } from "@flow-state-dev/workforce/browser";
 import { connect } from "../src/lib/connection";
-import { createLabReader, type Ask } from "../src/lib/reads";
-import type { BoardTaskView } from "../src/lib/boards";
 import { collectionOfBoard } from "../src/lib/boards";
-import { GENERAL_TEAM } from "../src/lib/workers";
-import { type LoadedSnapshot } from "../src/lib/derive";
+import { documentsOf } from "../src/lib/documents";
+import { GENERAL_TEAM, toWorker, type Worker } from "../src/lib/workers";
 import { teamsOf } from "../src/lib/shift";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, readRunFlow } from "./helpers/session-reads";
@@ -29,7 +29,16 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-type Opened = { lab: ServedLab; roster: WorkforceFolder; snapshot: LoadedSnapshot; client: Client };
+type Opened = { lab: ServedLab; roster: WorkforceFolder; workers: Worker[]; client: Client };
+
+/** The user's sessions, dispatch runs included, as the directory lists them (`useSessionList`). */
+const sessionsOf = (client: Client): Promise<SessionSummary[]> => client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
+
+/** The inbox view's answer, finished tasks too: what Tasks, Inbox and a task's screen draw from. */
+const inboxOf = async (client: Client) => (await client.view(inboxViewRef, { done: true })).value;
+
+/** Every hold the Inbox lists that waits on the user. */
+const holdsOf = async (client: Client): Promise<InboxHold<InboxSuspensionDetail>[]> => (await inboxOf(client)).items.flatMap((item) => item.holds);
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
   // DevTeam and fsd keep a store across restarts; each open here gets its own.
@@ -52,10 +61,9 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
     userId: devtool?.userId ?? "devuser",
     ...(devtool?.bearerToken === undefined ? {} : { bearerToken: devtool.bearerToken }),
   });
-  const snapshot = await createLabReader(client).read();
-  if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
-  if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
-  return { lab, roster: await readWorkforceFolder({ path: `${repo}/${treePath}`, claim: () => undefined }), snapshot, client };
+  // The worker inventory, read whole by org scope, as the directory reads it.
+  const workers = (await client.resource(workerInventoryResource).listAll()).flatMap((row) => toWorker(row.value) ?? []);
+  return { lab, roster: await readWorkforceFolder({ path: `${repo}/${treePath}`, claim: () => undefined }), workers, client };
 }
 
 /** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under General. */
@@ -80,13 +88,10 @@ describe.each([
   afterAll(async () => opened?.lab.handle.close());
 
   it("TEAMS is exactly the workers the Lab registered, per team, each with its worker flow", () => {
-    const { snapshot, roster } = opened;
-    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    const read = Object.fromEntries(
-      teamsOf(snapshot.inventory.value.workers).map(({ team, workers }) => [team, workers.map((s) => s.id).sort()]),
-    );
+    const { workers: registered, roster } = opened;
+    const read = Object.fromEntries(teamsOf(registered).map(({ team, workers }) => [team, workers.map((s) => s.id).sort()]));
     expect(read).toEqual(declaredTeams(roster));
-    for (const worker of snapshot.inventory.value.workers) {
+    for (const worker of registered) {
       expect(worker.kind).toBe(roster.workers.find((w) => w.id === worker.id)!.declared.flow);
     }
   });
@@ -103,7 +108,7 @@ describe.each([
     const conversation = (
       await client.flow(flowKind).createSession({ state: { workerId: filer.id } })
     ).id;
-    const sent = await client.flow(flowKind).send("createTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const sent = await client.flow(flowKind).send("createTask_tasks", { goal: "a row the inbox view must hold", assignee }, { sessionId: conversation });
     const taskId = await eventually(async () => {
       const listed = (await client.sessions.requests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
         id: string;
@@ -112,23 +117,20 @@ describe.each([
       return listed.find((r) => r.id === sent.id)?.result?.output?.taskId;
     }, "the filing's answer");
 
-    const snapshot = await createLabReader(client).read();
-    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
-    const boards = snapshot.boards[conversation];
-    if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
-    expect(boards.value.refs).toEqual([`${conversation}.tasks`]);
-    expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
+    const tasks = (await inboxOf(client)).tasks.filter((t) => t.ownerSessionId === conversation);
+    expect(tasks.map((t) => [t.id, t.assignee, t.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
   }, 60_000);
 
   // Jump to finds a document through the flow of a session the user has. fsd
   // opens no session at start (no ask, no workstream), so a fresh fsd open has
   // none to find yet; the claim is checked on the Labs that open one.
   it.runIf(name !== "fsd")("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
-    const { snapshot, roster, client } = opened;
-    if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
+    const { roster, client } = opened;
+    // Jump to's documents (`documents.ts`): each listed flow's manifest, through the first listed session of it.
+    const documents = await documentsOf(client, await sessionsOf(client));
     const readable = roster.documents.filter(declaredBrowserReadable);
-    expect(snapshot.resources.value.map((r) => r.ref).sort()).toEqual(readable.map((doc) => doc.ref).sort());
-    for (const found of snapshot.resources.value) {
+    expect(documents.map((r) => r.ref).sort()).toEqual(readable.map((doc) => doc.ref).sort());
+    for (const found of documents) {
       const read = await client.resources.getResourceContent(found.sessionId, found.ref);
       expect(String(read.content).trim()).toBe(readable.find((doc) => doc.ref === found.ref)!.body.trim());
     }
@@ -136,10 +138,9 @@ describe.each([
 
   // The Lab the epic pins for the closure's leg a: Jump to reaches a declared
   // document on it, so the resources destination is never empty there.
-  it.runIf(name === "devteam")("serves at least one declared document to Jump to", () => {
-    const { snapshot } = opened;
-    if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
-    expect(snapshot.resources.value.length).toBeGreaterThan(0);
+  it.runIf(name === "devteam")("serves at least one declared document to Jump to", async () => {
+    const { client } = opened;
+    expect((await documentsOf(client, await sessionsOf(client))).length).toBeGreaterThan(0);
   });
 });
 
@@ -176,22 +177,19 @@ describe("devteam: an approved task's run", () => {
   });
 
   it("streams its steps, stamped with the task, waits for its review, and settles the row the Tasks list and the task screen both read", async () => {
-    const { snapshot, client } = opened;
-    const reader = createLabReader(client);
-    if (!snapshot.asks.ok) throw new Error(snapshot.asks.failure.message);
-    const ask = snapshot.asks.value.find((a) => a.kind === "approval");
+    const { client } = opened;
+    // Inbox's one answer path (`useInboxAnswer`).
+    const inbox = createInboxClient(client);
+    const ask = (await holdsOf(client)).find((hold) => hold.ask.kind === "approval");
     if (ask === undefined) throw new Error("the Lab raised no approval to answer");
 
-    await reader.resume(ask, { action: "approve" });
+    await inbox.answerOne(ask, { approved: true });
 
     // Live: the run's request stream (what the Session tab follows) delivers
     // its steps, stamped with this task, before anything is stored.
-    const running = await eventually<BoardTaskView>(async () => {
-      const next = await reader.read();
-      if (next.refused !== undefined) throw new Error(next.refused.message);
-      if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
-      const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
-      return row?.status === "in_progress" && row.run !== null ? row : undefined;
+    const running = await eventually<InboxBoardTask>(async () => {
+      const task = (await inboxOf(client)).tasks[0];
+      return task?.status === "in_progress" && task.run !== null ? task : undefined;
     }, "the approved row to start", 30_000);
     const flowId = await readRunFlow(client, running.run!.sessionId);
     const streamed: OutputItem[] = [];
@@ -205,17 +203,14 @@ describe("devteam: an approved task's run", () => {
 
     // The profile holds a run that committed for the user's review: Inbox
     // shows it, and accepting it is what lets the row complete.
-    const review = await eventually<Ask>(async () => {
-      const next = await reader.read();
-      if (next.refused !== undefined) throw new Error(next.refused.message);
-      if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
-      return next.asks.ok ? next.asks.value.find((a) => a.kind === "review" && a.sessionId === running.run!.sessionId) : undefined;
+    const review = await eventually(async () => {
+      return (await holdsOf(client)).find((hold) => hold.ask.kind === "review" && hold.source.kind === "suspension" && hold.source.sessionId === running.run!.sessionId);
     }, "the run's review to wait in Inbox", 45_000);
-    await reader.resume(review, { action: "submit", data: { verdict: "accepted" } });
+    await inbox.answerOne(review, { value: { verdict: "accepted" } });
 
-    let last: BoardTaskView | undefined;
-    const settled = await eventually<BoardTaskView>(async () => {
-      last = (await reader.readBoard(running.ownerSessionId)).find((r) => r.id === running.id);
+    let last: InboxBoardTask | undefined;
+    const settled = await eventually<InboxBoardTask>(async () => {
+      last = (await inboxOf(client)).tasks.find((r) => r.ownerSessionId === running.ownerSessionId && r.id === running.id);
       return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
     }, "the approved row to settle", 45_000).catch((error: Error) => {
       throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);

@@ -553,6 +553,30 @@ describe("detectInterruptedRequests", () => {
       expect(await dueOf("s_other", "onTaskSettled")).toBe(LATER);
     });
 
+    // A wake is kept per resolver identity: a pass the request held ran under
+    // the request's own resolver, or under none.
+    it("brings forward the wakes kept under the request's own resolver identity and under none", async () => {
+      await stores.activeRequests.register({
+        orgId: DEFAULT_ORG_ID,
+        requestId: "req_vault",
+        flowKind: "chat",
+        actionName: "run",
+        source: "http",
+        userId: "user_1",
+        sessionId: "s_vault",
+        startedAt: Date.now() - 60_000,
+        lastHeartbeatAt: Date.now() - 60_000
+      });
+      await stores.request.set("req_vault", makeRequestRecord("req_vault", { sessionId: "s_vault", resolvedBy: "flow:vault" }), "any");
+      await stores.wakes!.owe({ ...wake("s_vault", "onTaskSettled"), resolvedBy: "flow:vault" });
+      await stores.wakes!.owe(wake("s_vault", "onTaskSettled"));
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: () => ["onTaskSettled"] });
+
+      expect((await stores.wakes!.get({ sessionId: "s_vault", entry: "onTaskSettled", resolvedBy: "flow:vault" }))?.dueAt).toBeLessThanOrEqual(Date.now());
+      expect(await dueOf("s_vault", "onTaskSettled")).toBeLessThanOrEqual(Date.now());
+    });
+
     it("bumps the wake's version, so a pass that read it before settles stale and leaves it due now", async () => {
       await crashed("req_racing", "s_racing");
       await stores.wakes!.owe(wake("s_racing", "onTaskSettled"));
