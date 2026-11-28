@@ -93,7 +93,7 @@ function boot() {
     }
   };
   /** The board's raw answer to `input`, status and body. */
-  const ask = (input: unknown) => post(router, ["desk", "views", "board"], "alice", "acme", { input });
+  const callBoard = (input: unknown) => post(router, ["desk", "views", "board"], "alice", "acme", { input });
   const view = async (user = "alice", org = "acme") => {
     const res = await post(router, ["desk", "views", "board"], user, org, { input: {} });
     expect(res.status, res.body).toBe(200);
@@ -105,7 +105,7 @@ function boot() {
     stores.bus!.subscribe(ownerTopic({ userId, orgId, tenantId: undefined }, "desk"), (notice) => heard.push(notice));
     return heard;
   };
-  return { stores, file, view, hear, ask };
+  return { stores, file, view, hear, callBoard };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -157,7 +157,7 @@ describe("a user view reading across sessions", () => {
     const env = boot();
     await env.file("s1", "1", "first");
     for (const after of ["not-a-cursor", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]) {
-      const res = await env.ask({ after });
+      const res = await env.callBoard({ after });
       expect(res.status, res.body).toBe(400);
       expect(JSON.parse(res.body)).toMatchObject({ error: "invalid_cursor" });
     }
