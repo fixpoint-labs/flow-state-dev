@@ -67,7 +67,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "topic-off": [
     {
       module: SCOPE_CHANGES,
-      from: String.raw`if \(bus !== undefined && change\.hostHasViews && !change\.lineageShared && change\.changeTopics !== undefined\) \{`,
+      from: String.raw`if \(bus !== undefined && change\.hostHasViews && !change\.lineageShared && change\.storageKey !== undefined\) \{`,
       to: "if (false) {"
     }
   ],
@@ -188,9 +188,33 @@ const gate = handler({
   }
 });
 
+/** The whole filtered listing, once: what a first screen over a store of unbuilt indexes pays. */
+const drained: { ms: number; pages: number; entries: number } = { ms: 0, pages: 0, entries: 0 };
+const drain = handler({
+  name: "across-drain",
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  execute: async (_input, ctx) => {
+    const across = (ctx.resources as any).acrossSessions().notes;
+    const t = performance.now();
+    let after: string | undefined;
+    drained.pages = 0;
+    drained.entries = 0;
+    for (;;) {
+      const page = await across.list({ where: { index: "byStatus", value: "open" }, ...(after !== undefined ? { after } : {}) });
+      drained.pages += 1;
+      drained.entries += page.entries.length;
+      if (page.next === undefined) break;
+      after = page.next;
+    }
+    drained.ms = performance.now() - t;
+    return {};
+  }
+});
+
 const desk = defineFlow({
   kind: "desk",
-  actions: { file, gate },
+  actions: { file, gate, drain },
   resources: { notes },
   views: { board: defineView({ scope: "user", block: board }) }
 })() as unknown as FlowInstance;
@@ -344,7 +368,20 @@ function p95(values: number[]): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)]!;
 }
 
-async function gateOn(name: "sqlite" | "postgres"): Promise<{ filteredP95: number; wholeP95: number; filteredRows: number }> {
+type GateResult = {
+  filteredP95: number;
+  wholeP95: number;
+  filteredRows: number;
+  /** With the indexes unbuilt: the one listing that built them, and the builds it began. */
+  firstListing?: { ms: number; pages: number; entries: number; builds: number };
+};
+
+/**
+ * D1's gate on one SQL store. `built: false` seeds every session's index
+ * unbuilt, as a store written before the writer built them holds it: one whole
+ * filtered listing builds each session once, then the first page is timed.
+ */
+async function gateOn(name: "sqlite" | "postgres", built: boolean): Promise<GateResult> {
   const leg = await openStores(name, "gate");
   try {
     const { sessions, rows, matching } = fixture.gate;
@@ -368,7 +405,7 @@ async function gateOn(name: "sqlite" | "postgres"): Promise<{ filteredP95: numbe
       db.transaction(() => {
         for (let s = 0; s < sessions; s += 1) {
           insertSession.run(id(s), PERSON, ORG, now, now, record(id(s)));
-          insertBuilt.run(id(s), notes.pattern, STATUS_INDEX);
+          if (built) insertBuilt.run(id(s), notes.pattern, STATUS_INDEX);
           for (let r = 0; r < perSession; r += 1) {
             const isOpen = (s * perSession + r) % every === 0;
             insertRow.run(id(s), key(r), JSON.stringify({ text: `${id(s)}/${r}`, status: isOpen ? "open" : "done" }));
@@ -400,12 +437,33 @@ async function gateOn(name: "sqlite" | "postgres"): Promise<{ filteredP95: numbe
          FROM generate_series(0, $3 - 1) AS s, generate_series(0, $1 - 1) AS r`,
         [perSession, every, sessions, notes.pattern, STATUS_INDEX, open, done]
       );
-      await q(
+      if (built) await q(
         `INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, build_id)
          SELECT 'session', 'g' || lpad(s::text, 5, '0'), $2, $3, 'built', 'seed' FROM generate_series(0, $1 - 1) AS s`,
         [sessions, notes.pattern, STATUS_INDEX]
       );
       await q("ANALYZE");
+    }
+    const runAs = (actionName: string, input: unknown) =>
+      runAction({
+        flow: desk,
+        actionName,
+        input,
+        sessionId: "gate-runner",
+        stores: leg.stores,
+        userId: PERSON,
+        orgId: ORG,
+        principalKind: "person",
+        source: "http",
+        runtimeConfig: { requestHost: { flows: registry() }, hostResolver, logger: silentLogger }
+      } as never);
+    let firstListing: GateResult["firstListing"];
+    if (!built) {
+      sent.length = 0;
+      const drainedRun = await runAs("drain", {});
+      if ((drainedRun as { error?: unknown }).error !== undefined) throw new Error(`gate: the first listing failed: ${String((drainedRun as { error: unknown }).error)}`);
+      const builds = sent.filter((sql) => /INSERT INTO resource_index_built/i.test(sql)).length;
+      firstListing = { ...drained, builds };
     }
     gateTimes.filtered.length = 0;
     gateTimes.whole.length = 0;
@@ -424,7 +482,12 @@ async function gateOn(name: "sqlite" | "postgres"): Promise<{ filteredP95: numbe
     if ((result as { error?: unknown }).error !== undefined) throw new Error(`gate: the timing run failed: ${String((result as { error: unknown }).error)}`);
     // The first runs warm the statement caches and the planner: graded on the rest, as a warm server answers.
     const warm = Math.min(10, Math.floor(fixture.gate.runs / 4));
-    return { filteredP95: p95(gateTimes.filtered.slice(warm)), wholeP95: p95(gateTimes.whole.slice(warm)), filteredRows: gateTimes.filteredRows };
+    return {
+      filteredP95: p95(gateTimes.filtered.slice(warm)),
+      wholeP95: p95(gateTimes.whole.slice(warm)),
+      filteredRows: gateTimes.filteredRows,
+      ...(firstListing !== undefined ? { firstListing } : {})
+    };
   } finally {
     await leg.close();
   }
@@ -534,14 +597,26 @@ await runGoal(async (failures, tell) => {
 
     // D1's gate, on each SQL store.
     for (const name of STORES.filter((s): s is "sqlite" | "postgres" => s !== "filesystem")) {
-      const measured = await gateOn(name);
-      const { sessions, rows, matching, page, budgetMs } = fixture.gate;
-      evidence.push(
-        `gate ${name}: ${sessions} sessions, ${rows} rows, ${matching} matching; first page of ${page}: filtered p95 ${measured.filteredP95.toFixed(2)} ms (${measured.filteredRows} rows), whole p95 ${measured.wholeP95.toFixed(2)} ms; budget ${budgetMs} ms`
-      );
-      if (measured.filteredRows !== page) failures.push(`gate:${name} · the filtered first page held ${measured.filteredRows} rows, not ${page}`);
-      if (measured.filteredP95 >= budgetMs) failures.push(`gate:${name} · filtered first page p95 ${measured.filteredP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
-      if (measured.wholeP95 >= budgetMs) failures.push(`gate:${name} · whole first page p95 ${measured.wholeP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
+      for (const built of [true, false]) {
+        const measured = await gateOn(name, built);
+        const { sessions, rows, matching, page, budgetMs } = fixture.gate;
+        const leg = `${name}${built ? "" : "-unbuilt"}`;
+        const first = measured.firstListing;
+        evidence.push(
+          `gate ${leg}: ${sessions} sessions, ${rows} rows, ${matching} matching; ` +
+            (first !== undefined
+              ? `first whole listing (builds every session) ${first.ms.toFixed(0)} ms, ${first.pages} pages, ${first.entries} entries, ${first.builds} builds; then `
+              : "") +
+            `first page of ${page}: filtered p95 ${measured.filteredP95.toFixed(2)} ms (${measured.filteredRows} rows), whole p95 ${measured.wholeP95.toFixed(2)} ms; budget ${budgetMs} ms`
+        );
+        if (measured.filteredRows !== page) failures.push(`gate:${leg} · the filtered first page held ${measured.filteredRows} rows, not ${page}`);
+        if (measured.filteredP95 >= budgetMs) failures.push(`gate:${leg} · filtered first page p95 ${measured.filteredP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
+        if (measured.wholeP95 >= budgetMs) failures.push(`gate:${leg} · whole first page p95 ${measured.wholeP95.toFixed(2)} ms ≥ ${budgetMs} ms`);
+        if (first !== undefined) {
+          if (first.entries !== matching) failures.push(`gate:${leg} · the first listing found ${first.entries} of ${matching} matching entries`);
+          if (first.builds !== sessions) failures.push(`gate:${leg} · the first listing began ${first.builds} builds for ${sessions} unbuilt sessions: each is built once`);
+        }
+      }
     }
     return { failures, evidence: evidence.join("\n") };
   } finally {

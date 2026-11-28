@@ -797,7 +797,7 @@ describe("enablePushDelivery", () => {
 describe("the socket session · an owner's change topic", () => {
   // The topic a read across the owner's sessions is heard on: the user topic
   // narrowed to `/sessions/<root>` on the wire, the owner's own on the bus.
-  const changeTopic = topic.user({ resource: "/sessions/notes" });
+  const changeTopic = topic.user({ resource: "/sessions/notes/*" });
   async function ticketFor(router: FlowApiRouter, headers = ALICE) {
     const { answer } = await mint(router, [changeTopic, topic.user()], headers);
     if (answer.transport !== "websocket") throw new Error("expected a websocket answer");
@@ -805,8 +805,9 @@ describe("the socket session · an owner's change topic", () => {
   }
   /** A change-topic notice for `notes`, as a session write publishes it. */
   const ownerNotice = (userId: string, orgId: string, tenantId?: string) => ({
-    topic: ownerTopic({ userId, orgId, tenantId }, "notes"),
-    kind: "resource" as const
+    topic: ownerTopic({ userId, orgId, tenantId }),
+    kind: "resource" as const,
+    ids: ["notes/1"]
   });
 
   it("hears its own organization's change, naming the session only as a keyed digest, and no ids", async () => {

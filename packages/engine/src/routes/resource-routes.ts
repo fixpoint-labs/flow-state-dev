@@ -109,7 +109,7 @@ function publishSessionResource(
     lineageShared: sessionKeySharesLineage(flowResources, storageKey),
     hostHasViews: registryHasViews(ctx.registry),
     ownerOrgId: session.orgId,
-    changeTopics: [getPatternPrefix((collection as { pattern: string }).pattern)]
+    storageKey
   });
 }
 

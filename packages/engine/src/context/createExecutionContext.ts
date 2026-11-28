@@ -2994,12 +2994,9 @@ export async function createExecutionContext<
     const publishChange = (resourcePath: string): void => {
       // The session notice, or none, by the scope's published resources.
       let notice: { resource?: string; ids?: string[] } | undefined;
-      // The collections the row is in, by static prefix: the owner's change topics it publishes on.
-      let changeTopics: string[] | undefined;
       if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
-        changeTopics = holders.map((cfg) => getPatternPrefix(cfg.pattern));
         if (holders.length > 0) {
           // An entry names its key beside its path, when the path may be named (FIX-2625).
           // On the user topic each holder names its root: the deepest is under
@@ -3027,7 +3024,7 @@ export async function createExecutionContext<
         lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
         hostHasViews,
         ownerOrgId: named !== undefined ? named.ownerOrgId : sessionRef.current.orgId,
-        ...(changeTopics !== undefined ? { changeTopics } : {}),
+        storageKey: resourcePath,
         requestId: requestRef.current.id
       });
     };
@@ -3916,7 +3913,7 @@ export async function createExecutionContext<
       origin: namedFence.origin,
       sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
       ...(viewDependencies !== undefined
-        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(getPatternPrefix(config.pattern)) }
+        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(config.pattern) }
         : {})
     });
     return acrossSessionsHandles;

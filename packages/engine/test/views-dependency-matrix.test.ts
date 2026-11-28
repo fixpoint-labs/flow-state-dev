@@ -22,7 +22,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
 import { createInMemoryBus, createInMemoryStores, withChangeBus, type BusTopic, type ChangeNotice } from "../src/host";
-import { isChangeTopicResource, ownerTopicFor } from "../src/bus/owner-topic";
+import { changeTopicHears, isChangeTopicResource, ownerTopic } from "../src/bus/owner-topic";
 import { runView, type ViewAnswer } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -299,10 +299,7 @@ registry.register(flow);
  * rule (`hearsNotice`).
  */
 function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNotice[] {
-  // An owner's change topic reaches a client as the user topic narrowed to its resource, as the socket names it.
-  const onWire = (notice: ChangeNotice) =>
-    notice.topic.scope === "owner" ? { ...notice, topic: { scope: "user" as const, resource: notice.topic.resource } } : notice;
-  return heard.filter((notice) => hearsNotice(answer.hears, onWire(notice) as WireNotice));
+  return heard.filter((notice) => hearsNotice(answer.hears, notice as WireNotice));
 }
 
 async function cell(viewName: string, actionName: string, writer: string, writeFirst = true, recreate = false) {
@@ -342,12 +339,16 @@ async function cell(viewName: string, actionName: string, writer: string, writeF
   const before = await runView({ flow, viewName, input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores, ...caller });
   const heard: ChangeNotice[] = [];
   for (const t of before.topics) {
+    // A change topic hears the owner topic's notices its pattern covers, as the socket matches them, on its own wire topic.
+    if (t.scope === "user" && isChangeTopicResource(t.resource)) {
+      const resource = t.resource;
+      bus.subscribe(ownerTopic({ userId: "u_1", orgId: DEFAULT_ORG_ID, tenantId: undefined }), (notice) => {
+        if (changeTopicHears(resource, notice)) heard.push({ ...notice, topic: { scope: "user", id: "u_1", tenantId: "", resource } });
+      });
+      continue;
+    }
     const busTopic: BusTopic =
-      t.scope === "session"
-        ? { scope: "session", id: t.id, tenantId: "" }
-        : t.scope === "user" && isChangeTopicResource(t.resource)
-          ? ownerTopicFor({ userId: "u_1", orgId: DEFAULT_ORG_ID, tenantId: undefined }, t.resource)
-          : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
     bus.subscribe(busTopic, (notice) => heard.push(notice));
   }
   await write("2");

@@ -169,6 +169,10 @@ handler({
     void theirs.portfolio.get;
     // @ts-expect-error `get` names only what `at` reaches.
     theirs.get("notes");
+    // @ts-expect-error a named copy has no read across sessions: its owner is the caller's either way.
+    void theirs.acrossSessions;
+    // The run's own registry reads across its owner's sessions, by the collections `at` reaches.
+    expectTypeOf(ctx.resources.acrossSessions().skills.list).returns.resolves.toHaveProperty("entries");
     return input;
   },
 });

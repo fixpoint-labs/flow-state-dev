@@ -568,7 +568,7 @@ export type ResourceRegistry<
    * For what isn't a resource (another session's flow, its readable state,
    * its history), use `ctx.sessions`.
    */
-  at: ((target: SessionReachTarget) => ResourceRegistry<SessionReachable<TResources>>) & ResourceRef<any>;
+  at: ((target: SessionReachTarget) => Omit<ResourceRegistry<SessionReachable<TResources>>, "acrossSessions">) & ResourceRef<any>;
   /**
    * This run's session-scoped collections read across every session the
    * run's owner has: `ctx.resources.acrossSessions().notes.list()`. One store

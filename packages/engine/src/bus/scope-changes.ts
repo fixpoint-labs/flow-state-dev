@@ -23,7 +23,7 @@ import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";
-import { ownerTopic } from "./owner-topic";
+import { ownerNotice } from "./owner-topic";
 
 /** Which scope changed, under which tenant, and which request changed it. */
 export type ScopeChange = {
@@ -104,12 +104,12 @@ export function entryNotice(collection: object, storageKey: string, scope?: Topi
  *   dispatch seed and `evaluateAdoption`).
  * - `ownerUserId`: the owner of the session record the writer holds, never a
  *   caller-supplied or cached value.
- * - `changeTopics`: the static prefixes of the session collections the row
- *   belongs to. When the host has a view and the row is the session's own
- *   (not lineage-shared), the write also publishes on the owner's change topic
- *   for each (`owner-topic.ts`), the topic a read across the owner's sessions
- *   is heard on, under the session record's organization (`ownerOrgId`). It
- *   names the session only as its partition, and no ids.
+ * - `storageKey` and `ownerOrgId`: when the host has a view and the row is
+ *   the session's own (not lineage-shared), the write also publishes one owner
+ *   notice (`owner-topic.ts`), under the session record's organization,
+ *   carrying the written key. Every read across the owner's sessions whose
+ *   collection pattern covers the key hears it, matched where it is
+ *   delivered, so a writer need not know which patterns a reader declares.
  */
 export function publishSessionResourceChange(
   bus: ChangeBus | undefined,
@@ -121,22 +121,14 @@ export function publishSessionResourceChange(
     lineageShared: boolean;
     hostHasViews: boolean;
     ownerOrgId?: string;
-    changeTopics?: readonly string[];
+    storageKey?: string;
     requestId?: string;
   }
 ): void {
   const origin = change.requestId !== undefined ? { requestId: change.requestId } : {};
-  if (bus !== undefined && change.hostHasViews && !change.lineageShared && change.changeTopics !== undefined) {
+  if (bus !== undefined && change.hostHasViews && !change.lineageShared && change.storageKey !== undefined) {
     const owner = { userId: change.ownerUserId, orgId: change.ownerOrgId, tenantId: change.tenantId };
-    publishNotices(
-      bus,
-      [...new Set(change.changeTopics)].map((root) => ({
-        topic: ownerTopic(owner, root),
-        kind: "resource" as const,
-        partition: change.sessionId,
-        ...(change.requestId !== undefined ? { origin: { requestId: change.requestId } } : {})
-      }))
-    );
+    publishNotices(bus, [ownerNotice(owner, change.sessionId, change.storageKey, change.requestId)]);
   }
   if (change.lineageShared && change.hostHasViews) {
     publishScopeChange(bus, { scope: "user", id: change.ownerUserId, tenantId: change.tenantId, kind: "resource", ...origin });

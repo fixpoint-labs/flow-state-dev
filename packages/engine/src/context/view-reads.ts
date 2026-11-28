@@ -48,8 +48,8 @@ type ResourceRead = { resource: string; root: string };
 type BoardReadRecord = { board: string; covers?: string; partition?: string };
 
 /**
- * A collection read across the owner's sessions, by its static prefix: heard
- * on the owner's change topic for it (`bus/owner-topic.ts`).
+ * A collection read across the owner's sessions, by its declared pattern:
+ * heard on the owner's change topic for it (`bus/owner-topic.ts`).
  */
 type AcrossSessionsReadRecord = { across: string };
 
@@ -250,11 +250,12 @@ export type ViewDependencies = {
   /** The caller's pending suspensions read: heard on their user topic's `suspension` only. */
   userSuspensions(): void;
   /**
-   * A collection read across the caller's sessions, by its static prefix:
-   * heard on the owner's change topic for it, which every write to any
-   * session's copy publishes on, so a session made later is heard too.
+   * A collection read across the caller's sessions, by its declared pattern:
+   * heard on the owner's change topic for it, which hears every write to any
+   * session's copy at a key the pattern covers, so a session made later is
+   * heard too.
    */
-  acrossSessions(root: string): void;
+  acrossSessions(pattern: string): void;
   // FIX-2625.
   /**
    * A task board read through its task collection, whose ledger is at
@@ -325,8 +326,8 @@ export function createViewDependencies(
     userSuspensions() {
       record({ scope: "user", what: "suspensions" });
     },
-    acrossSessions(root) {
-      record({ scope: "user", what: { across: root } });
+    acrossSessions(pattern) {
+      record({ scope: "user", what: { across: pattern } });
     },
     board(board, scope, sessionIds, covers, reach, partition) {
       const at = partition !== undefined ? { partition } : {};

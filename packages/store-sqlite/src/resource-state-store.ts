@@ -515,7 +515,6 @@ export function createSQLiteResourceStateStore(
         resource_key: string;
         state: string;
         version: number;
-        indexBuilt?: number;
       }>;
       const result: Record<string, VersionedResourceState> = {};
       for (const row of rows) {
@@ -578,6 +577,7 @@ export function createSQLiteResourceStateStore(
         key: string;
         state: string;
         version: number;
+        indexBuilt?: number;
       }>;
       return rows.map((row) => ({
         sessionKey: row.sessionKey,

@@ -50,6 +50,31 @@ describe("a resource-state store built without the session store it joins to", (
   });
 });
 
+describe("a session deleted and made again, for someone else, while a page is read (memory)", () => {
+  it("never answers the new session's rows under the old one's owner", async () => {
+    const { session: sessions } = createInMemoryStores();
+    const record = (userId: string, createdAt: number) =>
+      ({ id: "s", flowKind: "f", flowId: "f", userId, orgId: "acme", state: {}, version: 0, createdAt, updatedAt: createdAt, journal: [] }) as never;
+    await sessions.set("s", record("alice", 1), "absent");
+    const store = createInMemoryResourceStateStore({
+      sessions: {
+        // The listing answers alice's session; before its rows are read, it is
+        // deleted and made again for bob, who writes his own.
+        list: async (options) => {
+          const listed = await sessions.list(options);
+          await sessions.delete("s");
+          await sessions.set("s", record("bob", 2), "absent");
+          await store.set("session", "s", "notes/bobs", { text: "bob's" }, "any");
+          return listed;
+        },
+        get: (key) => sessions.get(key)
+      }
+    });
+    const rows = await store.listAcrossSessions!({ owner: { userId: "alice", tenantId: undefined, orgId: "acme" }, keyPrefix: "notes/", limit: 10 });
+    expect(rows).toEqual([]);
+  });
+});
+
 afterAll(async () => {
   for (const dir of tempDirs.splice(0)) {
     await rm(dir, { recursive: true, force: true });

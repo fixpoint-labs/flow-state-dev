@@ -73,8 +73,8 @@ export type AcrossSessionsInputs = {
 
 /** A cursor that this read did not hand back, or that this process can't open. */
 export class AcrossSessionsCursorError extends Error {
-  constructor() {
-    super("This `after` is not a cursor this read handed back here. Start the listing again without it.");
+  constructor(options?: { cause?: unknown }) {
+    super("This `after` is not a cursor this read handed back here. Start the listing again without it.", options);
     this.name = "AcrossSessionsCursorError";
   }
 }
@@ -118,8 +118,10 @@ function openCursor(cursor: unknown, binding: string): CursorPosition {
     const [sessionKey, key] = JSON.parse(plain) as [unknown, unknown];
     if (typeof sessionKey !== "string" || typeof key !== "string") throw new AcrossSessionsCursorError();
     return { sessionKey, key };
-  } catch {
-    throw new AcrossSessionsCursorError();
+  } catch (error) {
+    if (error instanceof AcrossSessionsCursorError) throw error;
+    // Why it didn't open (a bad tag, bad base64, bad JSON) stays as the cause.
+    throw new AcrossSessionsCursorError({ cause: error });
   }
 }
 

@@ -417,12 +417,14 @@ A view that reads a collection across the caller's sessions
 (`ctx.resources.acrossSessions()`) is heard on that owner's change topic for
 the collection (`bus/owner-topic.ts`, `state-and-scopes.md` → "Looking across
 sessions"). A client names it as the user topic narrowed to
-`/sessions/<root>`, which no storage path can be; the mint grants it from the
-verified principal's user *and* organization, and on the bus it has a scope of
-its own (`owner`), so a socket in another of the user's organizations, or one
-holding the bare user topic, never hears it. Every write to any session's copy
-publishes a `resource` notice there whose `partition` is the session written,
-keyed at the socket like a board's, and which names no ids.
+`/sessions/<pattern>`, which no storage path can be; the mint grants it from
+the verified principal's user *and* organization, and on the bus it has a scope
+of its own (`owner`), so a socket in another of the user's organizations, or
+one holding the bare user topic, never hears it. Every write to any session's
+copy publishes one owner notice carrying the written key, on the bus only; the
+socket matches the key against each change topic's pattern and sends a match
+on that topic with no ids, its `partition` (the session written) keyed like a
+board's.
 
 Three points every notice passes, so each rule lives once:
 

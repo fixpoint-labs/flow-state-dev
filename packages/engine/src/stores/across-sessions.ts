@@ -9,6 +9,7 @@
  * compare in, so the four stores answer one order.
  */
 import { FlowStateConfigError } from "../errors/flow-error";
+import { isSameSession } from "./scope-keys";
 import type {
   AcrossSessionsQuery,
   AcrossSessionsStoredRow,
@@ -18,7 +19,7 @@ import type {
 } from "./types";
 
 /** What a JS resource-state store reads the owner's sessions through. */
-export type AcrossSessionsSessionReads = Pick<SessionStore, "list">;
+export type AcrossSessionsSessionReads = Pick<SessionStore, "list" | "get">;
 
 /** `a` against `b` by code point: UTF-8 byte order, as SQLite `BINARY` and Postgres `COLLATE "C"` compare. */
 function compareByCodePoint(a: string, b: string): number {
@@ -44,6 +45,12 @@ function sessionIdentity(record: SessionRecord): AcrossSessionsStoredRow["sessio
     ...(record.orgId != null ? { orgId: record.orgId } : {}),
     ...(record.tenantId != null ? { tenantId: record.tenantId } : {})
   };
+}
+
+/** Whether `now`, read again by its key, is still the session `listed` was: by its birth token when both carry one. */
+function sameIncarnation(listed: SessionRecord, now: SessionRecord): boolean {
+  if (listed.incarnationToken != null && now.incarnationToken != null && listed.incarnationToken !== now.incarnationToken) return false;
+  return isSameSession(listed, now);
 }
 
 /** The refusal a resource-state store built without its session store gives the read. */
@@ -80,6 +87,12 @@ export async function listAcrossSessions(
     const sessionKey = record.id;
     const session = sessionIdentity(record);
     const stored = await rowsOf(sessionKey, query.keyPrefix);
+    // The listing and the rows are two reads, not one statement: a session
+    // deleted and made again between them (by anyone, for anyone) holds rows
+    // that aren't the listed session's. Read it again after its rows; another
+    // incarnation, or none, answers none of them.
+    const now = await sessions.get(sessionKey);
+    if (now === undefined || !sameIncarnation(record, now)) continue;
     const inSession = Object.keys(stored)
       .filter((key) => key.startsWith(query.keyPrefix))
       .filter((key) => query.key === undefined || key === query.key)

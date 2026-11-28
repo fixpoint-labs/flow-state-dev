@@ -29,6 +29,7 @@ import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-stat
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
 import { boardPartitionKey } from "./partition-key";
+import { changeTopicHears, isChangeTopicResource } from "../bus/owner-topic";
 import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
@@ -158,6 +159,24 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     return boardPartitionKey(secret, tenantId, partition);
   };
 
+  /**
+   * An owner's change topic (`bus/owner-topic.ts`): the bare owner topic on
+   * the bus, each notice matched against the topic's collection pattern by the
+   * key it wrote, and sent on the topic's wire form with no ids, so neither
+   * the key nor the session reaches the browser.
+   */
+  const subscribeChangeTopic = (topic: BusTopic, resource: string, wire: WireTopic): (() => void) =>
+    bus.subscribe({ scope: topic.scope, id: topic.id, tenantId: topic.tenantId }, (notice) => {
+      if (notice.kind !== "resync" && !changeTopicHears(resource, notice)) return;
+      send({
+        type: "notice",
+        topic: wire,
+        kind: notice.kind,
+        ...(notice.origin !== undefined ? { origin: notice.origin } : {}),
+        ...(notice.partition !== undefined ? { partition: partitionKey(notice.topic.tenantId, notice.partition) } : {})
+      });
+    });
+
   const subscribe = (ticket: unknown): void => {
     const secret = options.secret();
     const checked = verifyPushTicket(ticket, secret, userId);
@@ -172,10 +191,13 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     for (const granted of checked.claims.topics) {
       const key = busKey(granted.bus);
       if (subscriptions.has(key)) continue;
+      const wire = toWire(granted.bus);
       subscriptions.set(key, {
-        wire: toWire(granted.bus),
-        wireKey: wireTopicKey(toWire(granted.bus)),
-        off: bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
+        wire,
+        wireKey: wireTopicKey(wire),
+        off: isChangeTopicResource(granted.bus.resource) && granted.bus.scope === "owner"
+          ? subscribeChangeTopic(granted.bus, granted.bus.resource, wire)
+          : bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
       });
     }
     // Its topics are heard from here on: a read the client makes once it
