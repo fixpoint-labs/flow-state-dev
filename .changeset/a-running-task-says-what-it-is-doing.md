@@ -5,7 +5,7 @@
 "@flow-state-dev/cursor": patch
 ---
 
-A running coding task's note says what its run is doing now, in words a person reads, the same for every harness.
+A running coding task's note says what its run is doing now, in words a person reads, the same for every harness (FIX-2984).
 
 - **`HarnessActivity` gains `{ kind: "thinking" }`.** A harness reports a whole block of reasoning as thinking, with no text: a host can say the run is thinking, never what the model reasoned. `harnessActivityOf` maps Codex's and Cursor's `reasoning` event and Claude Code's `reasoning_complete` to it; reasoning deltas are still not activity. Claude Code reports each thinking block, and Cursor its reasoning, beside the tool calls they already reported. A host that switches over `activity.kind` handles a third kind.
 - **The task's `statusNote` reads as a sentence.** harness-manager writes a tool call as what the run is doing to what: `Running pnpm test`, `Editing src/a.ts`, `Reading README.md`, `Searching "codename"`, `Fetching https://…`, `Updating the plan`, else `Using <tool>` and what it touches. Thinking reads `Thinking…`; a message still reads as its first line. It was `<tool>: <what it touches>` (`Edit: src/a.ts`).
