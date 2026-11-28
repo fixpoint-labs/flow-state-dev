@@ -1,5 +1,74 @@
 # @flow-state-dev/store-postgres
 
+## 0.5.1
+
+### Patch Changes
+
+- 7ac7f90: A scope is how many copies exist; the owner decides who may look; name a session to reach its copy (FIX-2942).
+
+  - **`ctx.resources.at({ session }).<name>`.** A block reads, lists and writes another session's copy of a session-scoped collection, with its own flow's definition at that session's address: `ctx.resources.at({ session: launchChatId }).notes.list()`. Every verb acts on that one copy. Writes are versioned like a local write; two sessions writing one copy conflict the way two local writers do, with no cross-session lock.
+  - **Only the owner's sessions.** The session is reached only when the HTTP routes would admit the run's principal to it. A session of another user, org or tenant, one with no org, one an own-resolver flow refuses, and an id no one holds all answer every verb the same way: rejected with `SessionNotFoundError`. A schedule's or a webhook's machine principal reaches no other session.
+  - **The session written hears it.** A write publishes on that session's change-bus topics, as its own write would, never on the caller's. It starts a turn there only when the collection declares `wakeEntry: "<internal entry>"`: the write owes a wake on that session and entry before it is written, and writes under one resolver that land before it runs fold into one turn. That entry reads what changed and settles its wake like any wake entry. If the wake can't be owed, nothing is written and the write rejects; a write that fails after its wake was owed leaves one turn that finds nothing new. A turn that runs before the writing request's lease is up and finds nothing new holds its wake to the lease, so expect one more, empty turn then. A write into a session whose flow doesn't declare the entry is refused, naming the entry. The session's `reactTo` blocks don't run inside the writer's turn.
+  - **Webhook turns are fenced.** A turn a webhook delivery started, or a run it fired, can name no session but its own: every verb is refused with `UntrustedReachError`. Both errors are exported from `@flow-state-dev/engine`, so a block can catch them by type.
+  - **Single resources and projected collections** can't be reached this way yet; naming one throws, and with declared resources it doesn't compile: `at()` is typed to the session-scoped collections (a collection ref now carries its declared scope, `ResourceCollectionRef<State, "session">`).
+  - **Flow construction checks.** `at` is a reserved resource accessor, and two session collections whose patterns overlap can't name different `wakeEntry`s.
+  - **Use `ctx.sessions`** for what isn't a resource: another session's flow, readable state, history and turns.
+  - **Wakes are kept per resolver.** A wake's key is now (tenant, session, entry, `resolvedBy`), with no resolver a key value of its own: `WakeKey` carries an optional `resolvedBy`, and `get`, `move` and `clear` act on that one wake. A woken run carries its wake's `resolvedBy` for the whole turn and reaches the own-resolver sessions that resolver admits; it reads and settles only its own resolver's wake. The cost: a burst of writes from principals of different resolvers starts one turn per resolver, not one in total. A burst under one resolver is still one turn. A `WakeStore` adapter outside this repo must key its wakes the same way.
+  - **Schema migration for `wakes`.** SQLite and Postgres re-key `wakes` on start, adding `resolved_by` (`''` for none) to the primary key; SQLite rebuilds the table in one transaction. A wake stored before names no resolver, keeps coalescing with the other such wakes, and reaches no own-resolver session.
+  - **Sessions record a per-birth `incarnationToken`.** It tells a session id deleted and taken again apart from the session it replaced, even within one millisecond. Every session store's `set` writes it once and keeps it, like `principalKind` (the SQL stores through `writeOnceJsonKeys`). A store adapter outside this repo must do the same. A session from before the field has none and is compared by its birth time and lineage.
+
+  - **The two errors, for `packages/engine/README.md`.** `SessionNotFoundError`: a named session this run may not reach, or that no one holds, with one message for both. `UntrustedReachError`: a turn a webhook delivery started named a session other than its own.
+
+  Docs: packages/engine/README.md (`SessionNotFoundError`, `UntrustedReachError`), apps/docs resource guides (a "Another session's copy" section beside `ctx.sessions`, with `wakeEntry` and the webhook fence), and the store adapters' schema notes for the `wakes` key, which now includes `resolved_by`.
+
+- 2f1597b: A run carries one principal, set at the door (FIX-2942). `host.resolvePrincipal` now returns a `Principal` (exported from `@flow-state-dev/engine/host`): the user and organization as before, plus `kind` (`"person"` or `"machine"`) and `resolvedBy`, the identity of the resolver that answered with the settings the host applied. Dispatch, sub-flows, owner runs, wakes, schedules and webhooks carry it unchanged. A schedule that names a real person runs as that person; one that runs as the gateway or the system user, a webhook delivery, an owner run and a service's routing run as a machine. A direct `host.dispatch` or `runAction` can pass `principal.kind` / `principalKind`; one that passes none runs as its session's kind, and a session it creates is a machine's.
+
+  A session records its creator's kind (`SessionRecord.principalKind`), and a child the dispatch seam creates records its parent's incarnation (`parentIncarnation`). Every session store's `set` writes `principalKind` once: a record stored without one takes the first kind written, and from then on keeps it whatever a later write carries. A store adapter outside this repo must do the same: the memory and filesystem stores use `withWriteOnceSessionFields`, the SQL stores keep it inside the write statement. A session from before the field is classified from the request that created it (its own owner, organization, tenant and flow, within the host's `queuedGraceMs` of its birth), and that answer is written onto the record, so existing conversations keep working and later pruning can't change it. When an id was deleted and taken again within that window and the requests that could be its birth disagree, the session reads as a machine's. A retried request runs under the original's kind and `resolvedBy`.
+
+  The owner check that request-control routes, request listings and a view's session reads apply is now exact on user, organization and tenant. A request record from before organizations is read with its session's organization first, so it stays its owner's on those routes and listings, and retrying its id as its owner still reuses it; nobody else gains it. That read applies only to a record written in the session's current incarnation (not before the session was born), and only to visibility: retry, continue and resume of such a record still answer its owner `409 migration-required` until it is migrated.
+
+  `testFlow` and `createTestContext` give their sessions the kind an HTTP caller's session gets.
+
+  Docs: the authentication reference (the principal's `kind` and `resolvedBy`, and who is a machine), and the store adapter guide (a session store keeps `principalKind` on `set`).
+
+- 136e348: Collection reads by key prefix now walk an index range on the key instead of scanning the scope; on Postgres, the first start after upgrading builds `idx_resource_state_key` and `idx_resource_content_key` concurrently and drops `idx_resource_state_scope` and `idx_resource_content_scope`, and `@flow-state-dev/core/helpers` exports `keyPrefixSuccessor` for store adapters (FIX-2944).
+- 16e6852: One read of a collection across every session its owner has, in one query a page, heard on one change topic (FIX-2945).
+
+  - **`ctx.resources.acrossSessions().<name>.list({ after, where })`.** A block, a user-scope view's included, reads one session-scoped collection across all of the run's owner's sessions: `const page = await ctx.resources.acrossSessions().notes.list()`. Each entry in `page.entries` is `{ session, key, value }`: the session it belongs to (as `ctx.resources.at({ session })` takes it), its storage path there, and its state. Read-only.
+  - **Paging.** A page holds up to 50 entries. Pass `page.next` as `after` for the next one, and stop only when `next` is absent: a page can be short, even empty, while `next` is set. `next` is opaque and names no entry. Any other `after` is refused with `AcrossSessionsCursorError`, which a view call answers as `400 invalid_cursor`: start the listing again.
+  - **`sealingSecret` (default `FSD_SEALING_SECRET`).** A new option on `createFlowState` and `createFlowApiRouter`: the host's secret for sealing a read's cursor, from which the cursor key is derived. Every process with the same secret opens a cursor another handed out. Without one, each process uses a key of its own, which is right for one process. **A host that runs more than one process behind one address (a serverless deployment, a cluster) must set the same secret on every process**, or a client's next page fails on another process with `invalid_cursor`.
+  - **Filters.** `where: { key }` reads the entry at that path in each session; `where: { index, value }` reads a collection's declared index. A field with no declared index is refused, naming it: declare the index in the collection's `indexes` to filter on it. A session's declared indexes are now built at its first write that carries them; a session written before this release is built by the filtered reads that meet it, a few sessions per request, so the first reads after an upgrade stay quick and stay correct while the rest are built.
+  - **Only the owner's sessions.** A session is answered only when `ctx.resources.at` would reach it: the same user, organization and tenant, and the same admission (an own-resolver flow's sessions, a machine's run). Any other session is left out as though it held nothing. A turn a webhook delivery started is refused with `UntrustedReachError`. A collection whose entries are lineage-shared can't be read this way.
+  - **Notices.** In a view, the read is heard on one change topic per collection pattern and owner. Every write to any session's resources at a key the pattern covers wakes it, whatever the writing flow declares, so the view wakes for an entry filed in a session made after it ran. A deleted session's entries leave the view too. A client sees it as the user topic narrowed to `/sessions/<view flow>/<collection pattern>`; the same user in another organization never hears it, a write in a session the read would leave out (a flow whose own sign-in didn't sign the caller in for this view, or a pin they fail) wakes nothing, and a notice on it names no session id, no entry key and no request.
+  - **Reserved accessor.** `acrossSessions`, like `at`, is a reserved resource accessor: a flow that declares a resource under that key is refused at definition. The registry `ctx.resources.at({ session })` returns has no `acrossSessions`.
+  - **For store and bus adapters.** `ResourceStateStore` gains an optional `listAcrossSessions(query)`, one page joined to the session store on the full owner; without it the read is refused. `createInMemoryResourceStateStore` and `createFilesystemResourceStateStore` take `{ sessions }` for it (the registry factories pass it). A change-bus topic's `scope` can now be `"owner"`, the bus's own scope for these change topics; an adapter that treats the scope as an opaque string needs nothing.
+  - **Schema.** SQLite adds `idx_sessions_owner`; Postgres adds `idx_sessions_owner` and `idx_sessions_tenant_owner`, built concurrently on start.
+
+  - **The error, for `packages/engine/README.md`.** `AcrossSessionsCursorError`: an `after` that isn't a cursor this read handed back, under this host's sealing secret.
+
+  Docs: packages/engine/README.md (`AcrossSessionsCursorError`, the `sealingSecret` option and `FSD_SEALING_SECRET`), the deployment guides (`FSD_SEALING_SECRET` beside `FSD_PUSH_SECRET`, required on any host with more than one process), apps/docs resource guides (a "Looking across sessions" section beside the one on reaching another session's resources: the call, paging with `next` and restarting on `invalid_cursor`, the two filters, the reserved accessor, and that a view using it hears sessions made later).
+
+- Updated dependencies [0514f84]
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [c9e90c3]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [409cd9f]
+- Updated dependencies [2f1597b]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [e6236d8]
+  - @flow-state-dev/engine@0.7.0
+  - @flow-state-dev/core@0.7.0
+  - @flow-state-dev/scheduled@0.4.1
+
 ## 0.5.0
 
 ### Minor Changes

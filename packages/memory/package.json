@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/memory",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Cross-turn memory system for flow-state-dev.",
   "keywords": [
     "ai",

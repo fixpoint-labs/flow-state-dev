@@ -1,5 +1,29 @@
 # @flow-state-dev/mcp
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [0514f84]
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [c9e90c3]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [409cd9f]
+- Updated dependencies [2f1597b]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [e6236d8]
+  - @flow-state-dev/engine@0.7.0
+  - @flow-state-dev/core@0.7.0
+
 ## 0.1.7
 
 ### Patch Changes

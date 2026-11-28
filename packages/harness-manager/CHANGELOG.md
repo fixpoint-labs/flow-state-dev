@@ -1,5 +1,144 @@
 # @flow-state-dev/harness-manager
 
+## 0.7.0
+
+### Minor Changes
+
+- f2d4221: A coding run's phase is now its mode (FIX-2877). The public word is mode; the old names are gone, with no alias.
+
+  - **Breaking: the renames.** `PhaseSpec` is `ModeSpec`, `PhaseDoneVerdict` is `ModeDoneVerdict`, `PhaseRunContext` is `ModeRunContext`, and the kit's `codingPhase` is `codingMode`. `harnessManager`'s `phase` option is `mode`, and a run context's `phase` field is `mode`.
+  - **Breaking: the shape.** A mode is `{ name, instructions, doneWhen }`. `name` was `phase`. `instructions` was `buildPrompt`. `doneWhen` holds what was three fields: `check` (was `isDone`), `timeoutMs` (was `doneTimeoutMs`) and `validate`. `commandCheck(mode, options)` takes and returns a mode. A session door's `runOf(row)` answers `{ issue, mode: { name, formerName? } }`.
+  - **The kit's mode is `default`.** A run of the harness kit's `coder` flow is now keyed `<epic>/<issue>/default`, and its branch and checkout end in `default`. Its runs were keyed `code` before. A run stored under `code` is still found there and finishes there, on its branch, checkout and coding session; nothing is moved or copied. A run that starts after the upgrade is keyed `default`.
+  - **`formerName` and `readModeRunRecord`.** A mode can name the segment its runs had before it was renamed (`formerName`), and `readModeRunRecord(ctx, epic, issue, mode)` finds a run under the mode's name first, then under that one.
+
+  Docs: packages/harness-manager/README.md and apps/docs/docs/orchestration/harness-manager.md (every `PhaseSpec`, `phase:` option, `buildPrompt` and `isDone` example becomes the mode shape)
+
+- fd82133: A coding task names the mode it runs in, and the server writes its run settings at filing (FIX-2878).
+
+  - **Breaking: `mode` and `issue` replace the feature marker.** A task for the harness kit's `coder` flow names the work it is as `input.mode`, one of the modes the app registered, and the tracker issue it works on as `input.issue`: `{ mode: "implement", issue: "FIX-2165" }` where `harnessFeature: { issue }` was. A task that names no mode gets the app's `defaultMode` written in at filing. The filing is refused by name, and nothing is filed, when the mode isn't registered (`mode_unknown`, naming the modes there are; an inherited name such as `constructor` is no mode), when the mode's `requires` names a field the task lacks (`mode_needs_input`), and when `issue` isn't a tracker key (`issue_malformed`).
+  - **Breaking: `harnessFeature` is refused on any write.** A filing or an update that sends it is refused with `legacy_marker`, never translated. A row stored before this change still runs: its marker reads as the registered mode whose old phase it names (`implement` stays `implement`; the kit's `code` is `default`), on its issue. A stored marker with a phase no mode keeps, with no valid issue, or beside a `mode` is refused at claim by name. On any other row stored before this change, a `mode` or `issue` was whatever a model wrote, so it is ignored: the row runs the app's default mode on no issue, as it did before.
+  - **Breaking: the marker's names are gone, with no alias.** `HARNESS_FEATURE_KEY`, `harnessFeatureSchema`, `namesHarnessFeature` and `harnessFeatureOf` are no longer exported. `harnessManager` takes `trackerIssueOf(input)` for a board read from the claim: the issue a task names, which its run works on. With none given it reads the old key, for rows stored before.
+  - **The run settings are the server's.** A coding task's `harness`, `model` and `plan` are written only by the server: a filer's are dropped, as are a `doneWhen` and a `workspace`, which are a mode's. A task filed from inside a coding run carries that run's harness; any other carries the kit's `defaultHarness`, on whatever worker the filer chose. Decided once per call, so a replayed call stores what its first attempt filled. Runs still start on their worker's `harness:` line until the settings are read at claim, in a later change.
+  - **A worker's `lock:`.** A coding worker's file can fix the `harness` and `mode` its tasks run with: `lock: { mode: answer }`. A filing or a move that differs is refused (`mode_locked`, `harness_locked`), naming the worker, its value and the one asked for, and is never swapped to fit. A task filed before the lock was set is refused at its claim, and nothing runs.
+  - **`isCheckedCodingTask(task)`**, from `@flow-state-dev/harness-manager/kit`: whether the coder flow's filing check wrote a stored task's input. A reader of stored coding tasks outside the flow asks it before it trusts the task's `mode` or `issue`.
+  - **Shift Manager's EM** files feature work as `{ mode: "implement", issue }`.
+
+  Docs: packages/harness-manager/README.md and apps/docs/docs/orchestration/harness-manager.md (replace the `harnessFeature` paragraph with the coding task's input: `mode`, `issue`, the server-written run settings and `lock:`); the harness kit's docs gain where a coding task's harness comes from, and `isCheckedCodingTask` for apps that read stored coding tasks.
+
+- 019b156: A harness is a core value, and the harness packages no longer depend on the harness manager (FIX-2928).
+
+  - **`@flow-state-dev/core/harness` exports `Harness`, `harnessSchema` and `HarnessFeeds`**, beside `HarnessBlock`, plus the tool-approval feed's types (`HarnessToolApprovalHook`, `HarnessToolApprovalRequest`, `HarnessToolApprovalDecision`). A harness package, or a harness of your own, imports these from core.
+  - **One feed type.** A task run and a session turn both hand a harness `HarnessFeeds`. Required: `cwd`, `resume`, `onSession`, `onUsage` and `worktree` (the run's directory, for a fence that names it; a task run now hands it too). Optional: `model` (a session turn's pick), `onSteerable`, `onActivity`, `onEvent`, `onToolApproval`.
+  - **Breaking:** `@flow-state-dev/harness-manager` no longer exports `Harness`, `HarnessFeeds`, `HarnessSessionFeeds` or the tool-approval feed types. Import them from `@flow-state-dev/core/harness`; `HarnessSessionFeeds` is `HarnessFeeds`. No alias.
+  - **Breaking: `claudeCode()` is gone; fill `claudeCodeHarness()` instead,** the way you fill `codexHarness()` and `cursorHarness()`: `fill: { [harnesses.slots.harnesses]: [claudeCodeHarness(), claudeCodeHarness({ plan: true })] }`. `plan: true` gives the `claude-code-plan` value. A run's work collections (`observed-file-ops`, `observed-gaps`, the plan record) are served by the flow that runs it, so there is no `claude-code` flow.
+  - `@flow-state-dev/codex` and `@flow-state-dev/cursor` drop their dependency on `@flow-state-dev/harness-manager`.
+
+  Docs: packages/claude-code/README.md · packages/harness-manager/README.md · apps/docs/docs/reference/kits.md, apps/docs/docs/reference/harness-runs.md and apps/docs/docs/build/webhooks/github-reviews.md (every `claudeCode()` becomes `claudeCodeHarness()` in the `harnesses` fill; the `claude-code` flow is gone)
+
+- e74debe: The harness kit names its default coder in the coordinator's context, and workforce can retire a worker setting (FIX-2877).
+
+  - **The default coder in context.** When the kit has a `defaultHarness`, the readiness rows it puts in a coordinator's context are followed by a line naming the default coder, by its label. The coordinator starts coding work on the coding worker that runs on it unless the user names another. `harnessReadinessCapability(readiness, defaultHarness?)` takes the default as a second argument. With no default, there is no line.
+  - **Workforce: `retiredSettings`.** A worker flow registration (`workerFlow(build, { retiredSettings })` or the `{ flow, retiredSettings }` entry) and the kit's `agent` config can retire a setting. A worker stored with that setting is read without it and keeps running. A hire or an edit that names it is refused by name, and nothing is written. An edit of such a worker drops the setting from what is stored.
+
+  Docs: packages/harness-manager/README.md (the readiness capability's second argument) and packages/workforce/README.md (`retiredSettings`)
+
+- 7c6f8ae: A coding run's review opens a changed file's diff in place, with no pull request needed (FIX-2796).
+
+  - **harness-manager:** the harness kit's `coder` flow serves the `changes` session view (`harnessRunChangesView`) on each run's session. `runChangesViewRef()` from `@flow-state-dev/harness-manager/browser` addresses it: `client.view(runChangesViewRef(), { path }, { sessionId })` answers one file's patch.
+  - **shift-manager:** the review card in Inbox, the Shift Coordinator summary and a task's session opens each changed file into its patch, read when the file is opened. A review raised by a flow other than `coder` lists its files without opening them, as before.
+
+  Docs: packages/harness-manager/README.md (the coder flow's views, and `runChangesViewRef` in the browser entry)
+
+- d9e9b78: Shift Manager's coder is the harness kit's `coder` flow (FIX-2877). It no longer runs a coding flow of its own.
+
+  - **Breaking: `openLab`'s harness options.** `openLab` takes `harnesses` (harness values, the one list) and `defaultHarness`. `harness`, `harnessName`, the named-harness record, `harnessValues` and `stopsOnAbort` are gone, with no alias: pass the slot as a harness value (`readyHarness(slot, id)` for a scripted one), and declare stop-on-steer on the harness block (`stopsOnAbort`). `selectHarness(...)` returns the coder as `value`, a harness value, in place of `slot`; `startHarness(...)` returns every harness as `harnesses`.
+  - **One list of coders.** The DevTeam and `fsd` profiles hand the kit all four harnesses: the scripted coder, Claude Code, Codex and Cursor. The readiness view now lists all four, not only Claude Code, and the scripted coder always reads ready. `DEVFORCE_LAB_HARNESS` still picks the coder a worker naming none runs on; a `coder` worker with `harness: cursor` (or `codex`, `claude-code`) still runs on that one.
+  - **A task on a harness this machine can't run is refused at once**, saying why, before any run starts. Before, a Codex or Cursor run with no sign-in failed inside the run.
+  - **A hire naming a harness Shift Manager doesn't run** is refused by the kit's setting check, listing exactly the harnesses the coder runs, in place of Shift Manager's own wording.
+  - **One run budget.** Every run may take `DEVFORCE_LAB_RUN_MINUTES` minutes, 20 by default, whichever harness runs it; the scripted coder's one-minute budget at start is gone.
+  - **Same tasks, same keys.** A task carrying the feature marker still implements it (the `implement` mode, needing a commit) and any other is answered (the `answer` mode). Runs keep the keys, branches and checkouts they were stored under, so a run in flight across the upgrade is found where it was. Block names in a run's trace now name the shared flow (`coder-<harness>-implement`, `coder-<harness>-answer`).
+  - **harness-manager: a mode can work in its task's project on its own.** A mode registered on the harness kit takes `project` (`modes: { answer: { project: true } }`): its runs hold the project collections their workspace reads and run the project's checks, whatever the kit's `project` is. Whether a filing needs a project stays the kit's. Shift Manager's `answer` mode sets it, so a Lab on one fixed repository still answers in a task's project.
+  - **harness-manager: the kit's `review` is a floor.** A worker's `review:` line can turn review on when the kit's is off, and can no longer turn it off when the kit's is on: a worker hired with `review: false` on an app with `review: true` still waits for a user's review before a run with commits completes.
+  - **harness-manager:** the coder flow refuses at start a harness that keeps session state beneath its task entry, naming the entry; and `hostForConfig`, the workspace host a fixed repository runs through, is exported from `@flow-state-dev/harness-manager/checkout`.
+
+  Docs: packages/shift-manager/README.md, where it describes running from a checkout and `DEVFORCE_LAB_HARNESS` (`DEVFORCE_LAB_HARNESS`: readiness lists every coder; a task on one not set up here is refused at once; one run budget); packages/harness-manager/README.md (the kit's `modes`: a mode's own `project`)
+
+- ea5582c: The harness kit's `coder` flow takes an app's modes, tool approval, and the app's own worker settings, documents and actions (FIX-2877). An app that sets none of them runs as before: the same one mode, the same manager names, the same run keys.
+
+  - **`modes`.** A map from a name to `{ instructions, doneWhen, workspace?, requires? }`: how a run is told what to do, when it counts as done, where it works (a workspace host, as the kit's `workspace` is; absent: the kit's), and the task-input fields a task in that mode needs (`"issue"`, `"project"`). `doneWhen` takes the full `{ check, timeoutMs?, validate? }` or a bare check function. Absent, the kit has its one mode, `default`. A `default` entry is completed from the kit's own, so `modes: { default: { instructions } }` keeps the kit's done check and workspace; any other entry needs `instructions` and `doneWhen`. The kit's `checks` wrap every mode. A mode other than `default` names its managers `coder-<harness>-<mode>`.
+  - **`defaultMode`.** The mode a task that names none runs. Default `default`. Until a task names its mode itself, a task carrying the `harnessFeature` marker runs the `implement` mode when the app registers one, and the default mode otherwise.
+  - **Refused at start, naming the mode:** a `defaultMode` that isn't registered (with the modes there are), a mode name that can't key a run, a mode other than `default` with no `instructions` or `doneWhen`, a mode workspace that isn't a workspace host, and a `requires` field a task doesn't carry.
+  - **`approveTools`.** Forwarded to every run's manager: a run asks the user before its tool calls.
+  - **`worker: { settings?, resources?, actions? }`.** The app's own part of the flow, which the flow carries and never reads: settings a worker's file may set beside `harness` and `review` (a schema shape by key), documents installed at flow level, and actions built on the installation (`(installation) => ({ … })`). A setting or action the flow already declares (`harness`, `review`, `respond`) is refused, and so is a document under an accessor the flow already declares for a different resource.
+  - `codingDrainBudgetMs` takes `modes` and waits for the longest done check of any mode.
+
+  Docs: packages/harness-manager/README.md (the kit's options)
+
+- a8c9519: One way to hand the harness manager a workspace (FIX-2933).
+
+  - **New: `localRepoWorkspaceHost({ root, repo, baseRef?, setup?, pullRequestRepo?, provisionTimeoutMs? })`** in `@flow-state-dev/workspace` returns a workspace host whose every run is a worktree of one repository on this machine, its branch kept in that repository. A relative `repo` is resolved. A host whose source changes per run, or that cuts from several repositories, still calls `localWorkspaceHost`.
+  - **Breaking:** `harnessManager({ workspace })` takes a `WorkspaceHost` only. The `{ root, sourceRepo, baseRef }` object form is gone: pass `localRepoWorkspaceHost({ root, repo: sourceRepo, baseRef })`. `WorkspaceConfig` and `hostForConfig` are removed, with no alias. A mode's `doneWhen.validate` receives the host.
+  - **Breaking:** in `@flow-state-dev/harness-manager/checkout`, `checkoutPathFor(root, location)` takes the host's root, and `provisionCheckout(host, answer, location)` takes the host and the run source's answer.
+
+  Docs: packages/workspace/README.md (the new helper) · packages/harness-manager/README.md (its `workspace: { root, sourceRepo, baseRef }` example becomes `localRepoWorkspaceHost({ root, repo, baseRef })`)
+
+### Patch Changes
+
+- a739475: A follow-up of a coding task (`followUpOf`) now continues its root task's run (FIX-2274): the same checkout and branch, with the root's commits in place, and the root's coding session. A follow-up of a follow-up continues the same root. The mode stays part of the run: a follow-up run in another mode than its root's has a run of its own. One task of a chain runs at a time: on a board with no one-open-task start test, a follow-up claimed while another task of its chain is still running fails that attempt, naming the running task, and the board's retry tries it again later. A task with no `followUpOf` keeps its run where it was. A host's own session door keys a task's run the same way with the new `runIssueSegment(task, lookup)`. `readModeRunRecord` takes, in place of the reading task's id, a test of whether a recorded task id is this run's, so a follow-up finds its root's run under a former key too.
+
+  Docs: packages/harness-manager/README.md (a host's own session door keys `runOf` with `runIssueSegment(task, lookup)`, not `taskIssueSegment(task.id)`, so a follow-up reads its root's run)
+
+- 51b4b3e: A message sent to a coding task that waits on its pull request is always answered, even when the pull request has already merged or closed (FIX-2884).
+
+  - **harness-manager:** with `awaitPullRequests`, a user's message (a line in the task's session, or a steer) that wakes a task whose pull requests have merged or closed now runs the harness on the same session. The brief tells the run what became of each pull request, in place of the lead for one still open, and asks it to answer rather than push. The settle after that run completes or cancels the task as before. Before, the message was taken with no run and never answered. A wake carrying only the pull request's own news (a delivery from GitHub, a deadline) still settles with no run.
+  - **harness-manager:** that turn only answers: it asks for no review of the run's changes, and a judge's reading doesn't stop the settle. A message sent while the wake reads GitHub is answered the same way.
+  - **harness-manager:** when a task settles on its pull request, the output's `landed` pull request records `state: "merged" | "closed"` (matched by the pull request's address). `landedOf` reads it, so the coding board's `landed` carries it too.
+  - **shift-manager:** a finished task's landed pull request says "It has merged." or "It was closed without merging." in place of "Next: review and merge it."
+
+  Docs: packages/harness-manager/README.md (`awaitPullRequests`: a user's message on a merged or closed pull request runs the harness)
+
+- a8ba338: A coding run's review no longer offers to open a pull request when one is already open from its branch (FIX-2920).
+
+  - **harness-manager:** with `reviewChanges` on, a review asked about a run whose branch has a pull request open that no accept on this task landed on yet (for example, one the coding session opened itself) now names it. Its data carries `openPullRequest: { number, url }`, read by `reviewDetail` (`null` when none is open, or on data from before the field), the pull request is listed in `pullRequests`, and the prompt says "Pull request #N is already open from <branch>: <url>. An accept that lands as a pull request puts the work on it; no second pull request is opened." The ways to land are unchanged. A user's `pull-request` accept goes only onto that pull request: if it closed since, nothing is pushed or opened, and the review is asked again with the error and without it.
+  - **shift-manager:** the review card's accept onto that pull request reads "Accept: Push to PR #N" instead of "Accept: Open a PR".
+
+  Docs: packages/harness-manager/README.md (the `reviewChanges` section: a review on a branch with a pull request already open names it as `openPullRequest`, and an accept lands there)
+
+- aec3d83: A worker flow says what its tasks take on its `work` entry: `workerTaskEntry({ name, block, inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })` (FIX-2894). Every write that files a task for one of its workers is checked against it before anything is written: `createTask`, a batch (refused whole), a routed task, a step filed `session: "new"`, `updateTask` (its input, and a move to another worker), and the raw ledger handles `filingConversationBoard()` and `conversationLedgers()` hand a task session. A misfit is refused `input_refused`, naming the delegate, its flow, the field and what was expected; nothing is filed. A field named in `serverOwned` is dropped from what a filer sends and written by the flow's `fill`; `updateTask` keeps its stored value; a `check` that changes one is refused as a bug in the flow. A value that would not survive being stored as JSON is refused by name, and a schema that can break the round trip (`.transform`, `.preprocess`, `.pipe`, `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map`, `z.set`) is refused when the flow is built. Assigning an unassigned task, or moving one onto a worker on another declared flow, is a filing for that flow, its filler included. The claim parses the stored row again (through the flow's `stored` read, for a row in an old shape), fills the server-owned fields again when the row was filled under another declaration or flow (`fill` is called with `at: "claim"`), and hands the worker block the parsed input; a row that no longer fits fails its attempt, `Nothing ran.` A flow that declares nothing takes any object, as before. `listDelegates` gains `inputSchema` on each delegate: `{ jsonSchema, project }`, the fields a filer may write as JSON Schema draft-07 with every reference inlined, or `null`. A rule only `check` or `refuse` enforces belongs in the field's `.describe()` text, so a model reads it before it is refused.
+
+  **Breaking (pre-1.0):** the `needsProject` hire option is removed from `workerFlows` entries and `workerFlow(build, options)`, with no alias; passing it throws, naming the replacement. Declare `taskInputSchema(schema, { project: "required" })` on the flow's `work` entry instead (an open flow: `taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" })`). The harness kit's `project: true` now does this for the `coder` flow. Code that wrote a misfit through a raw ledger handle is now refused.
+
+  Orchestration: `TaskSettingsPatch.ifRevision` writes an edit only while the row is still at that revision, else it is declined `revision-moved`; `TaskWriteRefusedError` is exported from `@flow-state-dev/orchestration/tasks`, for a flow's task-input hooks to throw.
+
+  Docs: apps/docs/docs/workforce/delegating-work.md (new section "What a delegate takes": the declaration, the refusal, `listDelegates`'s `inputSchema`, and the rule that a `check`-only rule goes in the field's description), apps/docs/docs/workforce/projects.md (where it registers the coding flow with `needsProject: true`: declare `project: "required"` on the work entry), packages/workforce/README.md (the `workerTaskEntry`, `workerFlow` and `listDelegates` rows; `taskInputSchema` added), packages/orchestration/README.md (`ifRevision` on `patchSettings`).
+
+- Updated dependencies [990ebc5]
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [8111572]
+- Updated dependencies [ce105b1]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [5c9acb4]
+- Updated dependencies [8828dd9]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [e74debe]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [45650b1]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/client@0.6.1
+  - @flow-state-dev/core@0.7.0
+  - @flow-state-dev/workforce@1.1.0
+  - @flow-state-dev/orchestration@0.8.0
+
 ## 0.6.0
 
 ### Minor Changes

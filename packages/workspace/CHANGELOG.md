@@ -1,5 +1,49 @@
 # @flow-state-dev/workspace
 
+## 0.6.0
+
+### Minor Changes
+
+- 990ebc5: Where a bash scope keeps its files, and how a projection is opened and flushed, are each written once, in `@flow-state-dev/workspace` (FIX-2935).
+
+  - **New in `@flow-state-dev/workspace`:** `scopeFolder(root, scope, principal)`, the folder one scope instance keeps its files in (`root/.fsdev/workspaces/<scope>/…`). The bash tools use it, and every existing bash folder resolves to the same path as before.
+  - **New:** `projectionSession({ place, mounts })` opens a projection, hydrates it, and flushes it back. A place that could not be read settles as `{ readable: false, error }`; a store failure rejects. Bash and the Claude Code workspace use it.
+  - **New:** `encodeSegment` and `tenantSegment` (the harness checkout encoder, unchanged), `readableSegment`, and `segmentDigest` (the 12-hex digest in a bash folder and MOAT run name) are exported from `@flow-state-dev/workspace`. `@flow-state-dev/harness-manager/checkout` still exports the first two.
+  - **Breaking:** `FileEntryState` is removed from `@flow-state-dev/tools` and `@flow-state-dev/tools/bash`. Use `ProjectedEntryState` from `@flow-state-dev/workspace`; it is the same shape. No alias.
+
+  Docs: packages/workspace/README.md (`scopeFolder`, `projectionSession`) · packages/tools/README.md and apps/docs/docs/tools/bash.md (`FileEntryState` becomes `ProjectedEntryState` from workspace)
+
+- 9930b5e: The package has one entry point (FIX-2934). `refreshLock` and `privateTempRoot` are on the root export, and the `@flow-state-dev/workspace/internal` subpath is gone, with no alias.
+
+  - **`refreshLock(lease)`** marks a held lock live now, beside `acquireLock` and `releaseLock`. For a holder that refreshes as its work goes rather than on a timer.
+  - **`privateTempRoot(name, purpose)`** returns a temp folder private to this OS user, for files a harness hands its agent outside any checkout.
+  - **Breaking:** import both from `@flow-state-dev/workspace`.
+
+  Docs: apps/docs/docs/tools/workspace.md (the two functions, in its API list) and packages/workspace/README.md
+
+- a8c9519: One way to hand the harness manager a workspace (FIX-2933).
+
+  - **New: `localRepoWorkspaceHost({ root, repo, baseRef?, setup?, pullRequestRepo?, provisionTimeoutMs? })`** in `@flow-state-dev/workspace` returns a workspace host whose every run is a worktree of one repository on this machine, its branch kept in that repository. A relative `repo` is resolved. A host whose source changes per run, or that cuts from several repositories, still calls `localWorkspaceHost`.
+  - **Breaking:** `harnessManager({ workspace })` takes a `WorkspaceHost` only. The `{ root, sourceRepo, baseRef }` object form is gone: pass `localRepoWorkspaceHost({ root, repo: sourceRepo, baseRef })`. `WorkspaceConfig` and `hostForConfig` are removed, with no alias. A mode's `doneWhen.validate` receives the host.
+  - **Breaking:** in `@flow-state-dev/harness-manager/checkout`, `checkoutPathFor(root, location)` takes the host's root, and `provisionCheckout(host, answer, location)` takes the host and the run source's answer.
+
+  Docs: packages/workspace/README.md (the new helper) · packages/harness-manager/README.md (its `workspace: { root, sourceRepo, baseRef }` example becomes `localRepoWorkspaceHost({ root, repo, baseRef })`)
+
+### Patch Changes
+
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+  - @flow-state-dev/core@0.7.0
+
 ## 0.5.0
 
 ### Minor Changes

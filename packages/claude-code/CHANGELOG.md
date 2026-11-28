@@ -1,5 +1,49 @@
 # @flow-state-dev/claude-code
 
+## 0.5.0
+
+### Minor Changes
+
+- 2b53ca2: `claudeCodeAgent()` now starts a run with a filtered environment and every hook off when the host doesn't say otherwise (FIX-2820). These were the harness kit's settings already; a direct `claudeCodeAgent()` now gets the same.
+
+  - **`env` defaults to Claude Code's pass list**, `harnessEnv({ pass: CLAUDE_CODE_PASS })`, read when each run starts. It used to be the server's whole `process.env`. A host that needs more variables passes its own list; passing `process.env` restores the old behaviour. The list covers signing in with `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; a host that signs in another way must add those names, for example `harnessEnv({ pass: [...CLAUDE_CODE_PASS, "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"] })` for a gateway, `CLAUDE_CODE_USE_BEDROCK` with its `AWS_*` variables, `CLAUDE_CODE_USE_VERTEX` with its `GOOGLE_*` and `CLOUD_ML_REGION` variables, or `CLAUDE_CONFIG_DIR`.
+  - **Hooks are off by default.** The run's settings start from `{ disableAllHooks: true }` and the host's `settings` are laid over it, so a repository's hooks don't run unless the host passes `settings: { disableAllHooks: false }`.
+
+  Docs: packages/claude-code/README.md and apps/docs/docs/catalog/harnesses/claude-code.md (the `env` and `settings` defaults; any example that leaves `env` unset to inherit the server's environment)
+
+- 019b156: A harness is a core value, and the harness packages no longer depend on the harness manager (FIX-2928).
+
+  - **`@flow-state-dev/core/harness` exports `Harness`, `harnessSchema` and `HarnessFeeds`**, beside `HarnessBlock`, plus the tool-approval feed's types (`HarnessToolApprovalHook`, `HarnessToolApprovalRequest`, `HarnessToolApprovalDecision`). A harness package, or a harness of your own, imports these from core.
+  - **One feed type.** A task run and a session turn both hand a harness `HarnessFeeds`. Required: `cwd`, `resume`, `onSession`, `onUsage` and `worktree` (the run's directory, for a fence that names it; a task run now hands it too). Optional: `model` (a session turn's pick), `onSteerable`, `onActivity`, `onEvent`, `onToolApproval`.
+  - **Breaking:** `@flow-state-dev/harness-manager` no longer exports `Harness`, `HarnessFeeds`, `HarnessSessionFeeds` or the tool-approval feed types. Import them from `@flow-state-dev/core/harness`; `HarnessSessionFeeds` is `HarnessFeeds`. No alias.
+  - **Breaking: `claudeCode()` is gone; fill `claudeCodeHarness()` instead,** the way you fill `codexHarness()` and `cursorHarness()`: `fill: { [harnesses.slots.harnesses]: [claudeCodeHarness(), claudeCodeHarness({ plan: true })] }`. `plan: true` gives the `claude-code-plan` value. A run's work collections (`observed-file-ops`, `observed-gaps`, the plan record) are served by the flow that runs it, so there is no `claude-code` flow.
+  - `@flow-state-dev/codex` and `@flow-state-dev/cursor` drop their dependency on `@flow-state-dev/harness-manager`.
+
+  Docs: packages/claude-code/README.md · packages/harness-manager/README.md · apps/docs/docs/reference/kits.md, apps/docs/docs/reference/harness-runs.md and apps/docs/docs/build/webhooks/github-reviews.md (every `claudeCode()` becomes `claudeCodeHarness()` in the `harnesses` fill; the `claude-code` flow is gone)
+
+### Patch Changes
+
+- c502c54: A Claude Code run's `usage.inputTokens` now counts cached input (FIX-1178). It was only the uncached part of the prompt, so a run that read from the prompt cache under-reported its tokens while `cost` charged for all of them. Cache reads and cache writes are both counted as input, matching what the run's spend report already did.
+
+  Docs: packages/claude-code/README.md (wherever the handle's `usage` is described)
+
+- Updated dependencies [990ebc5]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/core@0.7.0
+
 ## 0.4.0
 
 ### Minor Changes

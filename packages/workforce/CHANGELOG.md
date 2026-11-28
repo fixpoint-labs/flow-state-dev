@@ -1,5 +1,85 @@
 # @flow-state-dev/workforce
 
+## 1.1.0
+
+### Minor Changes
+
+- 81387f7: FIX-2840.
+
+  - **workforce:** `hireWorkersCapability(installation, checks?)`, capability `hireWorkers`, gives a worker `hire` and `fire`: the roster's own hire and fire, the same writes `WorkforceClient.hire` and `fire` make, taking the same input (`id`, `flow`, `settings`, …). Both run only on a turn the user's own message started. A hire lands at once; a fire waits for the user's approval. Anything the write would refuse is refused first, with the reason. The workforce kit adds it to the flows it builds; a worker gets it by picking `capabilities: { hireWorkers: [tools] }` or by naming `hire`/`fire` in its `tools:` line.
+  - **workforce:** the roster's hire and edit now refuse a value shaped like an API key, and the kit's new `hire: { models }` config refuses a `settings.model` outside that list or with no key or gateway in the server's environment, on the Hire form and from a conversation alike. Omitted, any model the flow takes.
+  - **core:** `containsSecret(text)` says whether text carries a credential, by the same shapes core redacts from error messages, which now include NVIDIA's `nvapi-` keys.
+  - **shift-manager:** the Shift Coordinator's `hire` and `fire` are workforce's `hireWorkersCapability`; `shiftCoordinatorRosterTools` is gone, with no alias. A hire still lands at once and a fire still waits for the user's Approve in Inbox; both now run only on a turn the user's own message started.
+
+  Docs: packages/workforce/README.md (the kit's capabilities and its `hire` config) and packages/core/README.md (`containsSecret`).
+
+- e74debe: The harness kit names its default coder in the coordinator's context, and workforce can retire a worker setting (FIX-2877).
+
+  - **The default coder in context.** When the kit has a `defaultHarness`, the readiness rows it puts in a coordinator's context are followed by a line naming the default coder, by its label. The coordinator starts coding work on the coding worker that runs on it unless the user names another. `harnessReadinessCapability(readiness, defaultHarness?)` takes the default as a second argument. With no default, there is no line.
+  - **Workforce: `retiredSettings`.** A worker flow registration (`workerFlow(build, { retiredSettings })` or the `{ flow, retiredSettings }` entry) and the kit's `agent` config can retire a setting. A worker stored with that setting is read without it and keeps running. A hire or an edit that names it is refused by name, and nothing is written. An edit of such a worker drops the setting from what is stored.
+
+  Docs: packages/harness-manager/README.md (the readiness capability's second argument) and packages/workforce/README.md (`retiredSettings`)
+
+- 6968618: A worker session is born with the names a reader calls it by (FIX-2881).
+
+  - **A create check can fill in fields.** `session.createCheck` may answer `{ ok: true, state }`: the fields it derived from what it read, written over the session's initial state as it is created, on every path that creates a session. A check that returns them should refuse a create that seeds them.
+  - **Worker sessions carry `workerName` and `taskTitle`.** The workforce installation's create check writes the worker's display name (a hired worker's roster name, or a standard worker's file `name:`) into readonly `workerName`. A task's session also carries `taskTitle`, the task's title (else its goal), written when the board hands the task over. A create that sets either is refused.
+  - **The session label uses them**, so the developer tool's flow tree shows "Tess · Audit licenses" for a hired worker's task session instead of its ids. A session created before this falls back as before.
+
+  Docs: none beyond the API reference for `session.createCheck` (its result may carry `state`).
+
+- aec3d83: A worker flow says what its tasks take on its `work` entry: `workerTaskEntry({ name, block, inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })` (FIX-2894). Every write that files a task for one of its workers is checked against it before anything is written: `createTask`, a batch (refused whole), a routed task, a step filed `session: "new"`, `updateTask` (its input, and a move to another worker), and the raw ledger handles `filingConversationBoard()` and `conversationLedgers()` hand a task session. A misfit is refused `input_refused`, naming the delegate, its flow, the field and what was expected; nothing is filed. A field named in `serverOwned` is dropped from what a filer sends and written by the flow's `fill`; `updateTask` keeps its stored value; a `check` that changes one is refused as a bug in the flow. A value that would not survive being stored as JSON is refused by name, and a schema that can break the round trip (`.transform`, `.preprocess`, `.pipe`, `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map`, `z.set`) is refused when the flow is built. Assigning an unassigned task, or moving one onto a worker on another declared flow, is a filing for that flow, its filler included. The claim parses the stored row again (through the flow's `stored` read, for a row in an old shape), fills the server-owned fields again when the row was filled under another declaration or flow (`fill` is called with `at: "claim"`), and hands the worker block the parsed input; a row that no longer fits fails its attempt, `Nothing ran.` A flow that declares nothing takes any object, as before. `listDelegates` gains `inputSchema` on each delegate: `{ jsonSchema, project }`, the fields a filer may write as JSON Schema draft-07 with every reference inlined, or `null`. A rule only `check` or `refuse` enforces belongs in the field's `.describe()` text, so a model reads it before it is refused.
+
+  **Breaking (pre-1.0):** the `needsProject` hire option is removed from `workerFlows` entries and `workerFlow(build, options)`, with no alias; passing it throws, naming the replacement. Declare `taskInputSchema(schema, { project: "required" })` on the flow's `work` entry instead (an open flow: `taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" })`). The harness kit's `project: true` now does this for the `coder` flow. Code that wrote a misfit through a raw ledger handle is now refused.
+
+  Orchestration: `TaskSettingsPatch.ifRevision` writes an edit only while the row is still at that revision, else it is declined `revision-moved`; `TaskWriteRefusedError` is exported from `@flow-state-dev/orchestration/tasks`, for a flow's task-input hooks to throw.
+
+  Docs: apps/docs/docs/workforce/delegating-work.md (new section "What a delegate takes": the declaration, the refusal, `listDelegates`'s `inputSchema`, and the rule that a `check`-only rule goes in the field's description), apps/docs/docs/workforce/projects.md (where it registers the coding flow with `needsProject: true`: declare `project: "required"` on the work entry), packages/workforce/README.md (the `workerTaskEntry`, `workerFlow` and `listDelegates` rows; `taskInputSchema` added), packages/orchestration/README.md (`ifRevision` on `patchSettings`).
+
+### Patch Changes
+
+- 8111572: The error history shows a reopened report's earlier days as that earlier report (FIX-2838). When a failure comes back after its issue closed, the Error Reporter starts a new report under the same id. A day of the earlier report now reads as its own record, under its own path, with its own title, status, count and issue, instead of the new report's. History written before this release is told apart by its status entries.
+- ce105b1: `fsdev gen` now registers `.mts` code files in a workforce folder (worker flows, blocks and resource modules, wherever it registers `.ts` and `.tsx`), and a `.cts` code file stops the app starting, named (FIX-2914). Both used to start the app while being left out of `workforce.gen.ts`, with nothing said. The generated file imports a `.mts` module as `.mjs`, the specifier TypeScript and bundlers resolve back to the source. A `.cts` module is refused rather than registered because the generated file default-imports every module, and a CommonJS `export default` arrives there wrapped as `{ default }`. Rename it to `.ts` or `.mts`.
+
+  Docs: apps/docs/docs/reference/workforce-folder.md ("The kit accepts `.mts` and `.cts` in the same places. `fsdev gen` registers only `.ts` and `.tsx` …" becomes: `.mts` is registered like `.ts`; a `.cts` code file is refused at start-up) and apps/docs/docs/catalog/workforce/the-workforce-folder.md ("`fsdev gen` registers every `.ts` and `.tsx` file …" adds `.mts`).
+
+- Updated dependencies [28e37c7]
+- Updated dependencies [990ebc5]
+- Updated dependencies [302364e]
+- Updated dependencies [0514f84]
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [c9e90c3]
+- Updated dependencies [dc01275]
+- Updated dependencies [df074bb]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [5c9acb4]
+- Updated dependencies [8828dd9]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [409cd9f]
+- Updated dependencies [2f1597b]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [45650b1]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [e6236d8]
+- Updated dependencies [4380b06]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/tools@0.4.0
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/engine@0.7.0
+  - @flow-state-dev/client@0.6.1
+  - @flow-state-dev/react@0.6.1
+  - @flow-state-dev/core@0.7.0
+  - @flow-state-dev/orchestration@0.8.0
+  - @flow-state-dev/scheduled@0.4.1
+
 ## 1.0.0
 
 ### Minor Changes

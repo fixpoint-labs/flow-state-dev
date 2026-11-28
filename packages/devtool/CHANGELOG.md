@@ -1,5 +1,30 @@
 # @flow-state-dev/devtool
 
+## 0.4.1
+
+### Patch Changes
+
+- a5be901: In the dark theme, the dim layer behind a DevTools dialog is now a dark, see-through layer instead of a light tan one (FIX-2922). Every DevTools dialog paints its dim layer from one theme token, `--fs-scrim`; the light and draft themes look as before.
+
+  Docs: none (a visual fix; no API change)
+
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [4380b06]
+  - @flow-state-dev/client@0.6.1
+  - @flow-state-dev/react@0.6.1
+  - @flow-state-dev/core@0.7.0
+
 ## 0.4.0
 
 ### Minor Changes

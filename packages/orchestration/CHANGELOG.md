@@ -1,5 +1,52 @@
 # @flow-state-dev/orchestration
 
+## 0.8.0
+
+### Minor Changes
+
+- 45650b1: A stopped request now gives back every steer it took, whatever its read was named: `takeSteers` records the request that took each steer, so the board no longer has to find the request id inside the `takenIn` label (FIX-2899).
+
+  - **Breaking: `takeSteers(id, { claim, takenIn, requestId })` needs `requestId`**, the id of the request taking the steers. `takeRunningSteers(running, takenIn, requestId, show?)` takes it too, before `show`.
+  - A taken steer carries the new `takenFor` field. A steer taken before this release has none, and is still matched on its `takenIn` label, so a task that was mid-attempt during an upgrade keeps working.
+
+  Docs: apps/docs reference for task collections (the `takeSteers` options and the steer record's `takenFor` field).
+
+### Patch Changes
+
+- 5c9acb4: The Inbox keys a stop by its request and its suspension (FIX-2850). A suspension id is unique only within its request, so two requests that both stop on `suspend({ suspensionId: "approve-deploy" })` are now two Inbox items, each answered in its own request. Before, one of the two was dropped.
+
+  - **Breaking: a suspension hold's id.** `InboxHold.id` for a stop, and the item id of a stop no task holds, is `suspensionHoldId(requestId, suspensionId)`, newly exported from `@flow-state-dev/orchestration/inbox`. It was the bare suspension id. Read `hold.source.suspensionId` for the suspension itself. The Inbox check's `TaskTruth.suspensionHolds` and `closed` take the same hold ids.
+  - **Shift Manager's Inbox links.** `/inbox/<id>` opens an item by its id or by one of its holds' ids. A link naming a bare suspension id opens nothing.
+
+  Docs: none; no page names a suspension hold's id.
+
+- 8828dd9: The Inbox client now rejects a refused answer or board action with the server's own words (the response body's `error`), not the transport's `Request failed (409)`. A round already answered, for example, reads as the server describes it. A 5xx still rejects as it came (FIX-2835).
+
+  Docs: none.
+
+- aec3d83: A worker flow says what its tasks take on its `work` entry: `workerTaskEntry({ name, block, inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })` (FIX-2894). Every write that files a task for one of its workers is checked against it before anything is written: `createTask`, a batch (refused whole), a routed task, a step filed `session: "new"`, `updateTask` (its input, and a move to another worker), and the raw ledger handles `filingConversationBoard()` and `conversationLedgers()` hand a task session. A misfit is refused `input_refused`, naming the delegate, its flow, the field and what was expected; nothing is filed. A field named in `serverOwned` is dropped from what a filer sends and written by the flow's `fill`; `updateTask` keeps its stored value; a `check` that changes one is refused as a bug in the flow. A value that would not survive being stored as JSON is refused by name, and a schema that can break the round trip (`.transform`, `.preprocess`, `.pipe`, `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map`, `z.set`) is refused when the flow is built. Assigning an unassigned task, or moving one onto a worker on another declared flow, is a filing for that flow, its filler included. The claim parses the stored row again (through the flow's `stored` read, for a row in an old shape), fills the server-owned fields again when the row was filled under another declaration or flow (`fill` is called with `at: "claim"`), and hands the worker block the parsed input; a row that no longer fits fails its attempt, `Nothing ran.` A flow that declares nothing takes any object, as before. `listDelegates` gains `inputSchema` on each delegate: `{ jsonSchema, project }`, the fields a filer may write as JSON Schema draft-07 with every reference inlined, or `null`. A rule only `check` or `refuse` enforces belongs in the field's `.describe()` text, so a model reads it before it is refused.
+
+  **Breaking (pre-1.0):** the `needsProject` hire option is removed from `workerFlows` entries and `workerFlow(build, options)`, with no alias; passing it throws, naming the replacement. Declare `taskInputSchema(schema, { project: "required" })` on the flow's `work` entry instead (an open flow: `taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" })`). The harness kit's `project: true` now does this for the `coder` flow. Code that wrote a misfit through a raw ledger handle is now refused.
+
+  Orchestration: `TaskSettingsPatch.ifRevision` writes an edit only while the row is still at that revision, else it is declined `revision-moved`; `TaskWriteRefusedError` is exported from `@flow-state-dev/orchestration/tasks`, for a flow's task-input hooks to throw.
+
+  Docs: apps/docs/docs/workforce/delegating-work.md (new section "What a delegate takes": the declaration, the refusal, `listDelegates`'s `inputSchema`, and the rule that a `check`-only rule goes in the field's description), apps/docs/docs/workforce/projects.md (where it registers the coding flow with `needsProject: true`: declare `project: "required"` on the work entry), packages/workforce/README.md (the `workerTaskEntry`, `workerFlow` and `listDelegates` rows; `taskInputSchema` added), packages/orchestration/README.md (`ifRevision` on `patchSettings`).
+
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+  - @flow-state-dev/client@0.6.1
+  - @flow-state-dev/core@0.7.0
+
 ## 0.7.0
 
 ### Minor Changes

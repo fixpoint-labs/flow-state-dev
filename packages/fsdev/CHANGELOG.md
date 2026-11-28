@@ -1,5 +1,39 @@
 # @flow-state-dev/fsdev
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [990ebc5]
+- Updated dependencies [0514f84]
+- Updated dependencies [73aa85a]
+- Updated dependencies [3a21218]
+- Updated dependencies [a5be901]
+- Updated dependencies [c9e90c3]
+- Updated dependencies [019b156]
+- Updated dependencies [81387f7]
+- Updated dependencies [fad96df]
+- Updated dependencies [9b18dd4]
+- Updated dependencies [7ac7f90]
+- Updated dependencies [409cd9f]
+- Updated dependencies [2f1597b]
+- Updated dependencies [136e348]
+- Updated dependencies [16e6852]
+- Updated dependencies [6968618]
+- Updated dependencies [aec3d83]
+- Updated dependencies [c51d3e6]
+- Updated dependencies [93781d9]
+- Updated dependencies [e6236d8]
+- Updated dependencies [9930b5e]
+- Updated dependencies [a8c9519]
+  - @flow-state-dev/workspace@0.6.0
+  - @flow-state-dev/engine@0.7.0
+  - @flow-state-dev/core@0.7.0
+  - @flow-state-dev/devtool@0.4.1
+  - @flow-state-dev/store-sqlite@0.5.1
+  - @flow-state-dev/testing@0.4.1
+  - @flow-state-dev/node@0.4.1
+
 ## 1.0.0
 
 ### Patch Changes
