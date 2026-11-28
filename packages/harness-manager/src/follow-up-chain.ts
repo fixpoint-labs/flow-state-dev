@@ -12,22 +12,19 @@
  *   must wait is never claimed and never charged an attempt.
  */
 import { leaseLapsed, type ClaimOrder, type Task } from "@flow-state-dev/orchestration/tasks";
-import { HARNESS_FEATURE_KEY } from "./manager";
 import { canonicalSegment, followUpRootId } from "./workspace";
 
 type ChainTask = Pick<Task, "id" | "followUpOf" | "status" | "input">;
 
 /**
  * The mode a task's run is keyed by, as the task names it: a fixed board's
- * `phase`, a legacy `harnessFeature.phase`, or the coding kit's checked
- * `mode`, canonical. `undefined` when it names none, so it runs as the
+ * `phase`, or the coding kit's checked `mode`, canonical. `undefined` when it
+ * names neither (a legacy `harnessFeature` row included), so it runs as the
  * manager's own mode, which may be any task's.
  */
 function namedRunMode(task: Pick<Task, "input">): string | undefined {
   const input = typeof task.input === "object" && task.input !== null ? (task.input as Record<string, unknown>) : {};
-  const feature = input[HARNESS_FEATURE_KEY];
-  const featurePhase = typeof feature === "object" && feature !== null ? (feature as Record<string, unknown>).phase : undefined;
-  const named = [input.phase, featurePhase, input.mode].find((value) => typeof value === "string");
+  const named = [input.phase, input.mode].find((value) => typeof value === "string");
   return named === undefined ? undefined : canonicalSegment(named as string);
 }
 
