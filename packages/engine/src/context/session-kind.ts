@@ -72,7 +72,7 @@ import {
   toBareSessionId
 } from "../stores/scope-keys";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
-import { terminalAtMs } from "../stores/request-ended-at";
+import { requestLastWrittenAtMs } from "../stores/request-ended-at";
 import { DEFAULT_QUEUED_GRACE_MS } from "../runtime-config";
 import { firstRequestKind, type PrincipalKind } from "./principal";
 
@@ -89,11 +89,6 @@ function isBirthCandidate(session: SessionRecord, request: RequestRecord, window
   if (request.flowKind !== session.flowKind) return false;
   if ((request.flowId ?? request.flowKind) !== (session.flowId ?? session.flowKind)) return false;
   return Math.abs(request.createdAt - session.createdAt) <= windowMs;
-}
-
-/** When `request`'s record was last written: its `updatedAt`, or its terminal stamp when later. */
-function lastWrittenAt(request: RequestRecord): number {
-  return Math.max(request.updatedAt, terminalAtMs(request) ?? request.updatedAt);
 }
 
 /**
@@ -117,7 +112,7 @@ async function birthRequestKind(
     orderBy: "none"
   });
   const candidates = records.filter(
-    (record) => isBirthCandidate(session, record, windowMs) && lastWrittenAt(record) >= session.createdAt
+    (record) => isBirthCandidate(session, record, windowMs) && requestLastWrittenAtMs(record) >= session.createdAt
   );
   const possible = candidates.filter((record) => record.createdAt <= session.createdAt);
   if (possible.length === 0) {

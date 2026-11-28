@@ -192,6 +192,7 @@ async function plantRequest(
   sessionId: string,
   fields: { source?: string; userId?: string; orgId?: string | null; at?: number; endedAt?: number } = {}
 ) {
+  const at = fields.at ?? Date.now();
   const record = createInitialRequestRecord(
     {
       requestId: id,
@@ -203,10 +204,11 @@ async function plantRequest(
       ...(fields.orgId === null ? {} : { orgId: fields.orgId ?? ORG }),
       ...(fields.source !== undefined ? { source: fields.source } : {})
     },
-    fields.at ?? Date.now()
+    at
   );
-  const ended = fields.endedAt !== undefined ? { completedAtMs: fields.endedAt, updatedAt: fields.endedAt } : {};
-  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now(), ...ended }, "absent");
+  // `endedAt`: when its run wrote it last (its final status); by default never written again.
+  const endedAt = fields.endedAt ?? at;
+  await stores.request.set(id, { ...record, status: "completed", finalizedAtMs: Date.now(), completedAtMs: endedAt, updatedAt: endedAt }, "absent");
 }
 
 /** A person's run in `sessionId`: what an HTTP turn in a session from before kinds carries. */
