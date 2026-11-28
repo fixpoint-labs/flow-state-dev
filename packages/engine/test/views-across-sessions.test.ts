@@ -668,4 +668,44 @@ describe("a session deleted after a view read its entries", () => {
     expect((await read()).output.entries).toEqual(["s1 s1"]);
     socket.closed();
   });
+
+  it("wakes the view once the session's resources are gone, even when removing the session record then fails", async () => {
+    const registry = createFlowRegistry();
+    registry.register(desk());
+    const stores: StoreRegistry = withChangeBus(createInMemoryStores());
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: verified.resolvePrincipal });
+    routers.push(router);
+    const delivery = enablePushDelivery(router, { secret: "test-secret" });
+    const call = (path: string[], body: unknown) => post(router, path, "alice", "acme", body);
+    for (const sessionId of ["s1", "s2"]) {
+      const res = await call(["desk", sessionId, "actions", "file"], { input: { key: "1", text: sessionId } });
+      expect(res.status, res.body).toBe(202);
+      const { request } = JSON.parse(res.body) as { request: { id: string } };
+      for (let i = 0; i < 200 && (await stores.request.get(request.id))?.status !== "completed"; i += 1) await settle();
+    }
+    const read = async () => JSON.parse((await call(["desk", "views", "board"], { input: {} })).body) as { output: { entries: string[] }; topics: unknown[] };
+    const before = await read();
+    expect(before.output.entries).toEqual(["s1 s1", "s2 s2"]);
+    const minted = await call(["users", "alice", "stream"], { topics: before.topics });
+    const frames: Array<Record<string, unknown>> = [];
+    const socket = delivery.openSocket("alice", { send: (frame) => frames.push(frame as never), close: () => {} });
+    socket.receive(JSON.stringify({ type: "subscribe", ticket: (JSON.parse(minted.body) as { ticket: string }).ticket }));
+
+    // The rows go; the session record's own delete then fails.
+    stores.session.delete = async () => {
+      throw new Error("session store unavailable");
+    };
+    const deleted = await router
+      .DELETE(
+        new Request("http://test/api/flows/sessions/s2", { method: "DELETE", headers: { "x-verified-user": "alice", "x-verified-org": "acme" } }),
+        { params: { path: ["sessions", "s2"] } }
+      )
+      .catch((error: unknown) => error);
+    expect(deleted instanceof Response ? deleted.status : 500).not.toBe(204);
+    for (let i = 0; i < 50 && frames.every((frame) => frame.type !== "notice"); i += 1) await settle();
+    const notices = frames.filter((frame) => frame.type === "notice");
+    expect(notices.length).toBeGreaterThan(0);
+    for (const notice of notices) expect(notice.ids).toBeUndefined();
+    socket.closed();
+  });
 });

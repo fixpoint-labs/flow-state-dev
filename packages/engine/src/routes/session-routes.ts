@@ -51,6 +51,7 @@ import {
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
 import { sessionBlobOwner } from "../blobs/attachments";
+import { publishSessionResourcesGone } from "../bus/publish-writes";
 import { latestRequestStatus } from "./session-request-status";
 import { isRequestPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -550,6 +551,17 @@ export async function handleDeleteSession(
     // Its attachments go with it (FIX-824).
     ctx.stores.blobs?.deleteOwner(sessionBlobOwner(sessionKey))
   ]);
+  // Its entries are gone from every read across its owner's sessions now,
+  // whether or not the record's delete below succeeds.
+  if (ctx.stores.bus !== undefined) {
+    publishSessionResourcesGone(ctx.stores.bus, {
+      id: route.sessionId,
+      userId: existing.userId ?? undefined,
+      orgId: existing.orgId ?? undefined,
+      tenantId: existing.tenantId ?? undefined,
+      flowId: existing.flowId ?? existing.flowKind
+    });
+  }
   await ctx.stores.session.delete(sessionKey);
   return emptyResponse(204);
 }

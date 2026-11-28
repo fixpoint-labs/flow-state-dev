@@ -275,6 +275,22 @@ function ownerHears(sessionId: string, userId: string | undefined): userId is st
   return userId !== undefined && !isWriteSessionId(sessionId);
 }
 
+/**
+ * Publishes that every entry of session `session.id` left every read across
+ * its owner's sessions: one owner notice for the whole session, naming no
+ * key, which every change topic of its flow instance hears
+ * (`owner-topic.ts`). A session's delete publishes it once its resources are
+ * gone and again with the record, so a record delete that fails still leaves
+ * the views told; an extra notice costs only a refetch.
+ */
+export function publishSessionResourcesGone(
+  bus: ChangeBus,
+  session: { id: string; userId: string | undefined; orgId: string | undefined; tenantId: string | undefined; flowId: string }
+): void {
+  if (!ownerHears(session.id, session.userId)) return;
+  publishNotices(bus, [ownerSessionNotice({ userId: session.userId, orgId: session.orgId, tenantId: session.tenantId }, session.flowId, session.id)]);
+}
+
 // FIX-2754.
 /**
  * Publishes on a session's owner's user topic the `run` a whole-record write
@@ -579,14 +595,8 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
         publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
         // And the session's pending suspensions out of its owner's pending read (FIX-2770).
         if (identity.userId !== undefined) publishNotices(bus, [notice(userTopic(identity.userId, identity.tenantId), "suspension")]);
-        // And every entry it held out of every read across its owner's
-        // sessions: one notice for the whole session, which every change
-        // topic of its flow instance hears (`owner-topic.ts`).
-        if (ownerHears(identity.id, identity.userId)) {
-          publishNotices(bus, [
-            ownerSessionNotice({ userId: identity.userId, orgId: identity.orgId, tenantId: identity.tenantId }, identity.flowId, identity.id)
-          ]);
-        }
+        // And every entry it held out of every read across its owner's sessions.
+        publishSessionResourcesGone(bus, identity);
       }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
