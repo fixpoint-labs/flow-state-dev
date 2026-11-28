@@ -68,8 +68,8 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "webhook-source-only": [
     {
       module: NAMED_SESSION_RESOURCES,
-      from: String.raw`const namedFence = \{ origin: readDeliveryOrigin\(options\.source, options\.metadata\), sessionId \};`,
-      to: 'const namedFence = { origin: options.source === "webhook" ? "webhook" : undefined, sessionId };'
+      from: String.raw`fence: \{ origin: readDeliveryOrigin\(options\.source, options\.metadata\), sessionId \}`,
+      to: 'fence: { origin: options.source === "webhook" ? "webhook" : undefined, sessionId }'
     }
   ]
 };

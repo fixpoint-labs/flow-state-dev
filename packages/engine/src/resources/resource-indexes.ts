@@ -278,6 +278,74 @@ async function cellOwnerOf(
   return (await sessions.get(scopeId))?.flowId ?? undefined;
 }
 
+/** The most (session, collection, index) builds a writer remembers before it forgets the oldest. */
+const BUILT_MEMORY = 10_000;
+
+/** One build a session write began: its collection, stored index, and the token `completeBuild` checks. */
+type SessionBuild = { collection: string; index: string; token: string };
+
+/**
+ * Before a session write that carries a declared index's entries: begin a
+ * build of each such index the session doesn't have built yet, so the write
+ * that follows, and the scan after it, keep the index whole from the
+ * session's first write on. Begun before the write, as `findIndexedKeys`
+ * begins its build before its scan: a writer that doesn't know the index
+ * clears the marker, and the build then completes nothing. An index this
+ * writer built is remembered and not asked about again; one a later write
+ * cleared is built by the next lookup, or the next read across sessions.
+ */
+async function beginSessionBuilds(
+  store: ResourceStateStore,
+  builtHere: Set<string>,
+  scopeId: string,
+  entries: readonly ResourceIndexEntry[]
+): Promise<SessionBuild[]> {
+  const indexes = store.indexes;
+  if (indexes === undefined) return [];
+  const builds: SessionBuild[] = [];
+  for (const entry of entries) {
+    if (builtHere.has(`${scopeId}\n${entry.collection}\n${entry.index}`)) continue;
+    if ((await indexes.state("session", scopeId, entry.collection, entry.index)) === "built") {
+      remember(builtHere, scopeId, entry);
+      continue;
+    }
+    builds.push({ ...entry, token: await indexes.beginBuild("session", scopeId, entry.collection, entry.index) });
+  }
+  return builds;
+}
+
+/** After the write landed: scan each begun build's collection and complete it, as a lookup's build does. */
+async function completeSessionBuilds(
+  store: ResourceStateStore,
+  builtHere: Set<string>,
+  collections: readonly IndexedCollection[],
+  scopeId: string,
+  builds: readonly SessionBuild[]
+): Promise<void> {
+  const indexes = store.indexes;
+  if (indexes === undefined) return;
+  for (const build of builds) {
+    const index = collections
+      .find((collection) => collection.scope === "session" && collection.pattern === build.collection)
+      ?.indexes.find((declared) => declared.stored === build.index);
+    if (index === undefined) continue;
+    const rawPrefix = getPatternPrefix(build.collection);
+    const stored = await store.getByPrefix("session", scopeId, rawPrefix === "" ? "" : `${rawPrefix}/`);
+    const entries: ResourceIndexBuildEntry[] = [];
+    for (const [key, entry] of Object.entries(stored)) {
+      if (matchesPattern(build.collection, key)) entries.push({ key, values: canonicalIndexValues(index.value(key, entry.state as never)) });
+    }
+    if (await indexes.completeBuild("session", scopeId, build.collection, build.index, build.token, entries)) {
+      remember(builtHere, scopeId, build);
+    }
+  }
+}
+
+function remember(builtHere: Set<string>, scopeId: string, entry: { collection: string; index: string }): void {
+  builtHere.add(`${scopeId}\n${entry.collection}\n${entry.index}`);
+  if (builtHere.size > BUILT_MEMORY) builtHere.delete(builtHere.values().next().value as string);
+}
+
 /** Every resource-state store this module has wrapped, so a registry is wrapped once. */
 const WRITERS = new WeakSet<object>();
 
@@ -294,16 +362,30 @@ export function withResourceIndexWriter<T extends StoreRegistry>(
 ): T {
   if (WRITERS.has(stores.resourceState)) return stores;
   const store = stores.resourceState;
+  const builtHere = new Set<string>();
   const set: ResourceStateStore["set"] = async (scopeType, scopeId, key, state, expectedVersion, options) => {
     const { [CELL_OWNER]: _stamp, ...rest } = (options ?? {}) as OwnedSetOptions;
     const owner = await cellOwnerOf(stores.session, scopeType, scopeId, options);
-    const computed = indexEntriesFor(collections(), scopeType, scopeId, key, state, owner);
+    const known = collections();
+    const computed = indexEntriesFor(known, scopeType, scopeId, key, state, owner);
     const ids = new Set(computed.map((entry) => `${entry.collection}\n${entry.index}`));
     const passed = (rest.indexEntries ?? []).filter((entry) => !ids.has(`${entry.collection}\n${entry.index}`));
-    return store.set(scopeType, scopeId, key, state, expectedVersion, {
+    const builds = scopeType === "session" ? await beginSessionBuilds(store, builtHere, scopeId, computed) : [];
+    const result = await store.set(scopeType, scopeId, key, state, expectedVersion, {
       ...rest,
       indexEntries: [...computed, ...passed],
     });
+    // The write has committed: a build that fails after it leaves the index
+    // unbuilt for a later lookup or read to build, never fails the write.
+    if (result.ok) {
+      await completeSessionBuilds(store, builtHere, known, scopeId, builds).catch((error: unknown) => {
+        console.warn("[flow-state] a session's index build after a committed write failed; the index stays unbuilt and a later read builds it.", {
+          scopeId,
+          error
+        });
+      });
+    }
+    return result;
   };
   // A method assigned on the wrapper (a test's instrumented `get`) lands on
   // the store, except `set`, which would bypass the writer.

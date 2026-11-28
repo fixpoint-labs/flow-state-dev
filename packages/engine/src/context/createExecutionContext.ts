@@ -81,6 +81,7 @@ import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import {
   ConcurrentModificationError,
+  FlowStateConfigError,
   ResourceAlreadyExistsError
 } from "../errors/flow-error";
 import type { TraceStore, VersionedResourceState } from "../stores/types";
@@ -101,7 +102,9 @@ import { principalOwns, withRequestOrg, type Principal } from "./principal";
 import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
-import { createNamedSessionAt, type NamedSessionTarget, type ResourceCell } from "./named-session-resources";
+import { createNamedSessionAt, isNamedReachable, namedReach, type NamedSessionTarget, type ResourceCell } from "./named-session-resources";
+import { createAcrossSessions } from "./across-sessions";
+import { changeTopicResource } from "../bus/owner-topic";
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -730,6 +733,14 @@ export async function createExecutionContext<
     else if (scope === "org") orgResourceConfigs[accessor] = def;
     else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
     accessorScope[accessor] = scope;
+  }
+
+  // The session-scoped stored collections, read across the owner's sessions
+  // (`ctx.resources.acrossSessions()`): kept before a view with no session
+  // drops its session declarations below, since a user view reads them there.
+  const acrossSessionConfigs: Record<string, ResourceCollectionConfig> = Object.create(null);
+  for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
+    if (isNamedReachable(config)) acrossSessionConfigs[accessor] = config;
   }
 
   // FIX-2623: a user or org view has no session, so it installs none of the
@@ -2943,6 +2954,9 @@ export async function createExecutionContext<
         notice,
         lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
         hostHasViews,
+        ownerOrgId: named !== undefined ? named.ownerOrgId : sessionRef.current.orgId,
+        ownerFlowId: named !== undefined ? named.ownerFlowId : (sessionRef.current.flowId ?? flow.id),
+        storageKey: resourcePath,
         requestId: requestRef.current.id
       });
     };
@@ -3608,6 +3622,37 @@ export async function createExecutionContext<
     buildProjectedResourceContext
   });
   (flatResourcesRegistry as { at: unknown }).at = atSession;
+
+  /**
+   * `ctx.resources.acrossSessions()`: this flow's session-scoped collections
+   * read across every session the run's owner has (`across-sessions.ts`).
+   * Each row is admitted as `ctx.resources.at` admits its session; a view's
+   * read is heard on the owner's change topic for each collection it lists.
+   */
+  let acrossSessionsHandles: ReturnType<typeof createAcrossSessions> | undefined;
+  const acrossSessions = (): ReturnType<typeof createAcrossSessions> => {
+    if (acrossSessionsHandles !== undefined) return acrossSessionsHandles;
+    const flows = options.requestHost?.flows;
+    if (flows === undefined) {
+      throw new FlowStateConfigError("`ctx.resources.acrossSessions()` needs the host's flow registry, to admit each session as the routes do.");
+    }
+    const reach = namedReach({ options, userId, resolvedOrgId, sessionId, runKind, runResolvedBy });
+    acrossSessionsHandles = createAcrossSessions({
+      configs: acrossSessionConfigs,
+      store: stores.resourceState,
+      admission: { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: reach.principal, sessionId },
+      owner: { userId, orgId: resolvedOrgId, tenantId: options.tenantId },
+      actorUserId: userId,
+      origin: reach.fence.origin,
+      ...(options.effectiveRuntimeConfig?.sealingSecret !== undefined ? { sealingSecret: options.effectiveRuntimeConfig.sealingSecret } : {}),
+      sharesLineage: (prefix) => sharesLineageRef.current({ prefix }),
+      ...(viewDependencies !== undefined
+        ? { record: (config: ResourceCollectionConfig) => viewDependencies.acrossSessions(changeTopicResource(flow.id, config.pattern)) }
+        : {})
+    });
+    return acrossSessionsHandles;
+  };
+  (flatResourcesRegistry as { acrossSessions: unknown }).acrossSessions = acrossSessions;
 
   // FIX-2625: a task board's ledger is named by the accessor whose handle its
   // task collection read through, and lives at that accessor's scope.

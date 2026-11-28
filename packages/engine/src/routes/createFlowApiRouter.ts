@@ -296,6 +296,9 @@ export type CreateFlowApiRouterOptions = {
    */
   noticeIds?: NoticeIdScopes;
 
+  /** The host's sealing secret (`RuntimeConfig.sealingSecret`). Default: `process.env.FSD_SEALING_SECRET`. */
+  sealingSecret?: string;
+
   /**
    * @internal — set by `createFlowState`, which has already resolved its
    * resolvers and instance settings. Direct callers pass the flat options
