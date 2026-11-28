@@ -6,7 +6,7 @@
 "@flow-state-dev/devtool": minor
 ---
 
-The DevTool header shows how much space the store takes ("DB 42.3 MB"), with the store kind and what was measured in its tooltip.
+The DevTool header shows how much space the store takes ("DB 42.3 MB"), with the store kind and what was measured in its tooltip (FIX-2975).
 
 - **`StoreRegistry.storageSize()`**, optional: a store answers its own size as `{ kind, bytes, location? }` (`StorageSize`, from `@flow-state-dev/engine/host`). An adapter that leaves it out keeps compiling, and the readout stays hidden for it.
 - **SQLite** counts the database file plus its `-wal` and `-shm` files; `location` is the file's path. A `:memory:` database offers no reading.
