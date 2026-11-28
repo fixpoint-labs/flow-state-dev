@@ -139,9 +139,9 @@ export type MintContext = RouteAuthContext & {
 async function admittedFlows(ctx: MintContext, owner: { userId: string; orgId: string; tenantId: string | undefined }): Promise<string[]> {
   const admitted: string[] = [];
   for (const flow of ctx.registry.list()) {
-    const row = { flowKind: flow.kind, flowId: flow.id, userId: owner.userId, orgId: owner.orgId, ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}) };
-    if (isWriteRecord(row)) continue;
-    const verdict = await ownResolverVerdict(ctx.registry, ctx.callerFor, row);
+    const record = { flowKind: flow.kind, flowId: flow.id, userId: owner.userId, orgId: owner.orgId, ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}) };
+    if (isWriteRecord(record)) continue;
+    const verdict = await ownResolverVerdict(ctx.registry, ctx.callerFor, record);
     if (verdict ?? !pinRejectsCaller(flow.ownerPin, { userId: owner.userId, orgId: owner.orgId })) admitted.push(flow.id);
   }
   return admitted;
