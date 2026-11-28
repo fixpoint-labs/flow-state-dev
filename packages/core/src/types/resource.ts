@@ -580,7 +580,7 @@ export type ResourceRegistry<
    * webhook delivery started can't call it.
    *
    * In a view, the read is heard on the owner's change topic for each
-   * collection it lists, which every write to any session's copy publishes
+   * collection it lists, which every write to any session's resources publishes
    * on, so a session made after the view ran is heard too.
    */
   acrossSessions: (() => AcrossSessions<SessionReachable<TResources>>) & ResourceRef<any>;

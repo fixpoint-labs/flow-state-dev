@@ -162,7 +162,7 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
     } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions" || read.what === "suspensions") {
       for (const kind of PEER_KINDS[read.what]) at(scopeTopic).kinds.add(kind);
     } else if ("across" in read.what) {
-      // The owner's change topic: every write to any session's copy publishes
+      // The owner's change topic: every write to any session's resources publishes
       // a `resource` notice narrowed to it, whatever row it wrote.
       const resource = changeTopicResource(read.what.across);
       const hearing = at({ scope: "user", resource });
@@ -252,7 +252,7 @@ export type ViewDependencies = {
   /**
    * A collection read across the caller's sessions, by its declared pattern:
    * heard on the owner's change topic for it, which hears every write to any
-   * session's copy at a key the pattern covers, so a session made later is
+   * session's resources at a key the pattern covers, so a session made later is
    * heard too.
    */
   acrossSessions(pattern: string): void;

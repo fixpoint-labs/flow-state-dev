@@ -5,7 +5,7 @@
  * Why it matters: a board of every task in a user's sessions must hear a task
  * filed in a session made after it opened, so its read is heard on one change
  * topic for the collection and the owner, which every write to any session's
- * copy publishes on. That topic is the owner's: the same user in another org
+ * resources publishes on. That topic is the owner's: the same user in another org
  * never hears it, and no notice on it names the session that changed.
  */
 import { afterEach, describe, expect, it } from "vitest";

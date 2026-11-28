@@ -1,7 +1,7 @@
 /**
  * The change topics a read across an owner's sessions is heard on: one per
  * collection pattern per owner (user, organization and tenant). Every write to
- * any session's copy of a session resource publishes one owner notice, and
+ * any session's resources publishes one owner notice, and
  * every subscription whose collection pattern covers the written key hears
  * it, so a view hears a row filed in a session made after it ran, whatever
  * the writer's flow declares.
