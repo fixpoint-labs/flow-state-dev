@@ -106,7 +106,7 @@ export async function openTeammates(options: TeammatesOptions) {
     fill: {
       [harnesses.slots.harnesses]:
         scripted === undefined
-          ? [claudeCodeHarness({ allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill"] }), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
+          ? [claudeCodeHarness({ extraAllowedTools: ["Grep", "Glob", "Skill"] }), codexHarness({ recordPlan: true }), cursorHarness({ model: "composer-2.5", recordPlan: true })]
           : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
     flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],

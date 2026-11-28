@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("the host's Claude Code harness", () => {
-  it.each(["alice", "bob"])("hands %s's coding runs skills and search, with only project settings and no automatic shell", async (userId) => {
+  it.each(["alice", "bob"])("hands %s's coding runs skills and search with only project settings and hooks off", async (userId) => {
     const dir = mkdtempSync(join(tmpdir(), "teammates-harness-"));
     dirs.push(dir);
     const repo = join(dir, "repo");
@@ -52,7 +52,7 @@ describe("the host's Claude Code harness", () => {
     expect(seen.agent?.allowedTools).toEqual(expect.arrayContaining(["Skill", "Grep", "Glob"]));
     expect(seen.agent?.permissionMode).toBe("acceptEdits");
     expect(seen.agent?.settingSources).toEqual(["project"]);
-    expect(seen.agent?.settings).toEqual({ disableAllHooks: true, disableSkillShellExecution: true });
+    expect(seen.agent?.settings).toEqual({ disableAllHooks: true });
     expect(seen.agent?.env).not.toHaveProperty("LAB_SERVER_ONLY_SECRET");
   });
 });
