@@ -14,10 +14,33 @@ import { OPERATOR_LINKS } from "./board-entries";
 /** The most links one stamp keeps. */
 const MAX_LINKS = 50;
 
+/**
+ * GitHub's link to a pull request, with an optional comment anchor: the one
+ * grammar every link here is found and parsed with.
+ */
+const PULL_REQUEST_LINK = String.raw`https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)(?:/files)?(?:#(discussion_r|issuecomment-|pullrequestreview-)(\d+))?`;
+
 /** Every link to a GitHub pull request, or to a comment on one, in `text`, each once, in order. */
 function githubPullRequestLinks(text: string): string[] {
-  const found = text.match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+[\w/#-]*/g) ?? [];
+  const found = text.match(new RegExp(PULL_REQUEST_LINK, "g")) ?? [];
   return [...new Set(found)].slice(0, MAX_LINKS);
+}
+
+/** A pull request link, parsed: `repository` lower-cased, and the comment its anchor names, if any. */
+interface GitHubLink {
+  readonly repository: string;
+  readonly number: number;
+  readonly comment?: { readonly surface: CommentSurface; readonly id: number };
+}
+
+/** The pull request (and comment) a whole link names, or `undefined`. Only GitHub's own `github.com` links parse. */
+function parseGitHubLink(link: string): GitHubLink | undefined {
+  const m = new RegExp(`^${PULL_REQUEST_LINK}$`).exec(link.trim());
+  if (m === null) return undefined;
+  const pr = { repository: m[1]!.toLowerCase(), number: Number(m[2]) };
+  if (m[3] === undefined) return pr;
+  const surface: CommentSurface = m[3] === "discussion_r" ? "inline" : m[3] === "issuecomment-" ? "conversation" : "review";
+  return { ...pr, comment: { surface, id: Number(m[4]) } };
 }
 
 /**
@@ -42,12 +65,10 @@ export interface CommentLink {
   readonly id: number;
 }
 
-/** The comment a link names, or `undefined` for anything else. Only GitHub's own `github.com` links parse. */
+/** The comment a link names, or `undefined` for anything else (a pull request's own link included). */
 export function parseCommentLink(link: string): CommentLink | undefined {
-  const m = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)(?:\/files)?#(discussion_r|issuecomment-|pullrequestreview-)(\d+)$/.exec(link.trim());
-  if (m === null) return undefined;
-  const surface: CommentSurface = m[3] === "discussion_r" ? "inline" : m[3] === "issuecomment-" ? "conversation" : "review";
-  return { repository: m[1]!.toLowerCase(), number: Number(m[2]), surface, id: Number(m[4]) };
+  const parsed = parseGitHubLink(link);
+  return parsed?.comment === undefined ? undefined : { repository: parsed.repository, number: parsed.number, ...parsed.comment };
 }
 
 /** `owner/name#n`, lower-cased: how pull requests are compared. */
@@ -63,17 +84,17 @@ export function operatorLinked(
   user: string
 ): { prs: Set<string>; comments: Set<string> } {
   const stamped = task?.metadata?.[OPERATOR_LINKS];
-  const links = [
+  const texts = [
     ...(Array.isArray(stamped) ? stamped.filter((link): link is string => typeof link === "string") : []),
-    ...(task?.steers ?? []).filter((steer) => steer.from === "user" && steer.by === user).flatMap((steer) => githubPullRequestLinks(steer.message))
+    ...(task?.steers ?? []).filter((steer) => steer.from === "user" && steer.by === user).map((steer) => steer.message)
   ];
   const prs = new Set<string>();
   const comments = new Set<string>();
-  for (const link of links) {
-    const pr = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(link);
-    if (pr !== null) prs.add(prKey(pr[1]!, Number(pr[2])));
-    const comment = parseCommentLink(link);
-    if (comment !== undefined) comments.add(`${prKey(comment.repository, comment.number)}:${comment.surface}:${comment.id}`);
+  for (const link of texts.flatMap(githubPullRequestLinks)) {
+    const parsed = parseGitHubLink(link);
+    if (parsed === undefined) continue;
+    prs.add(prKey(parsed.repository, parsed.number));
+    if (parsed.comment !== undefined) comments.add(`${prKey(parsed.repository, parsed.number)}:${parsed.comment.surface}:${parsed.comment.id}`);
   }
   return { prs, comments };
 }

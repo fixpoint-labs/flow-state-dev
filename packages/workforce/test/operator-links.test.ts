@@ -12,7 +12,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf } from "./conversation-board-harness";
 import { OPERATOR_LINKS } from "../src/conversation-board/board-entries";
-import { operatorLinksStamp } from "../src/conversation-board/operator-links";
+import { operatorLinked, operatorLinksStamp, parseCommentLink } from "../src/conversation-board/operator-links";
 import { USER_TURN_STATE } from "../src/standing-rules/user-turn-read";
 
 const OUTSIDER = "https://github.com/acme/app/pull/7#discussion_r102";
@@ -56,5 +56,17 @@ describe("the operator's links, stamped at filing", () => {
     expect(operatorLinksStamp(ctx(false))).toEqual({});
     // The same words, typed: the mark is the only difference.
     expect(operatorLinksStamp(ctx(true))).toEqual({ [OPERATOR_LINKS]: [PLANTED] });
+  });
+});
+
+describe("one grammar for every link: the stamp, a steer, and the poster's reading agree", () => {
+  it("a link typed with capitals, or through the files view, names the same pull request and comment the poster reads", () => {
+    const typed = "https://github.com/Acme/App/pull/7/files#discussion_r102";
+    const linked = operatorLinked({ metadata: { [OPERATOR_LINKS]: [typed] }, steers: [{ from: "user", by: "u_op", message: `and https://github.com/ACME/app/pull/8.` }] }, "u_op");
+    expect([...linked.prs]).toEqual(["acme/app#7", "acme/app#8"]);
+    expect([...linked.comments]).toEqual(["acme/app#7:inline:102"]);
+    expect(parseCommentLink(typed)).toEqual({ repository: "acme/app", number: 7, surface: "inline", id: 102 });
+    // A pull request's own link is no comment.
+    expect(parseCommentLink("https://github.com/acme/app/pull/8")).toBeUndefined();
   });
 });
