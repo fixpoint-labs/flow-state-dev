@@ -7,7 +7,7 @@
 "@flow-state-dev/workforce": minor
 ---
 
-Coding agents can act on GitHub as an account of their own instead of as the user whose machine runs them. Nothing changes for a host that sets none of these.
+Coding agents can act on GitHub as an account of their own instead of as the user whose machine runs them (FIX-2979). Nothing changes for a host that sets none of these.
 
 - **`gitHubAccountEnv({ token, name, email })`** (`@flow-state-dev/core/harness`) builds the variables that make a run's git and `gh` act on github.com as that account: `GH_TOKEN` and `GITHUB_TOKEN`, the commit author and committer, github.com's credential helpers replaced by one that answers with the token, and `git@github.com:` / `ssh://git@github.com/` remotes reached over https so the user's ssh key isn't used. `GH_TOKEN_CREDENTIAL_HELPER` is that helper. `gitHubAccountFrom(settings, names)` reads an account from three named settings, all or none, and throws naming the missing ones when only some are set.
 - **`extraEnv`** on `claudeCodeHarness`, `cursorHarness` and `codexHarness`: variables set on every run over the harness's pass-list, such as `gitHubAccountEnv(account)`.
