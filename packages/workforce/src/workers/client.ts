@@ -46,6 +46,8 @@ import { RESPOND_ACTION } from "../worker-door";
 import { TURN_ACTIONS } from "./turn-actions";
 import { watchView } from "@flow-state-dev/client/internal";
 import { rosterView } from "./roster-view-ref";
+import { workerInstructionsView } from "./worker-instructions-view-ref";
+import type { WorkerInstructions } from "./worker-instructions";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import { ADD_DELEGATE, REMOVE_DELEGATE } from "../delegates/delegate-keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
@@ -117,7 +119,10 @@ export type EditWorkerInput = {
   name?: string | null;
   flow?: string;
   description?: string | null;
+  /** Replaces the core instructions of one of the user's own workers. Refused on a standard worker, whose core instructions are its file's. */
   instructions?: string | null;
+  /** What the user adds after the core instructions, read under their own heading; `null` or blank clears it. */
+  additionalInstructions?: string | null;
   skills?: string[];
   /** Replaces the stored settings whole. */
   settings?: Record<string, unknown>;
@@ -312,6 +317,14 @@ export interface WorkforceClient {
    * isn't standard, or one the user hasn't edited.
    */
   reset(id: string): Promise<{ id: string }>;
+  /**
+   * A worker's instructions, for a form that edits them: its core
+   * instructions, the user's additional instructions, and whether the core
+   * ones are a standard worker's (`fixed`), which an edit can't replace.
+   * Read through the roster flow's `workerInstructions` view, with no
+   * session. Rejects for a worker that isn't on the user's roster.
+   */
+  instructions(id: string): Promise<WorkerInstructions>;
   /**
    * Fire one of the user's own workers, through the roster flow's `fire`. It
    * leaves the roster; its conversations stay readable, and a new turn there
@@ -672,7 +685,8 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     fork: (from, id) => rosterWrite<{ id: string; flow: string }>("fork", { from, id }),
     edit: (input) => rosterWrite<{ id: string; flow: string }>("edit", input),
     fire: (id) => rosterWrite<{ id: string }>("fire", { id }),
-    reset: (id) => rosterWrite<{ id: string }>("reset", { id })
+    reset: (id) => rosterWrite<{ id: string }>("reset", { id }),
+    instructions: async (id) => (await fsd.view(workerInstructionsView, { id })).value
   };
   return client;
 }

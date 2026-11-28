@@ -174,10 +174,11 @@ name another one.
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
 does, its instructions, and optionally its model. It joins the list at once, you can talk to it, and Lead can
-hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
-instructions, or change its model (what its replies run on, from the next reply). A teammate has no coding
-harness of its own: coding work starts on the lab's default. A teammate from the files can be edited too, and *Reset to default*
-puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
+hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, rewrite
+its instructions, or change its model (what its replies run on, from the next reply). A teammate has no coding
+harness of its own: coding work starts on the lab's default. A teammate from the files can be edited too,
+but its core instructions can't be replaced: the dialog shows them read-only, and you add *Additional
+instructions*, which it reads after the core ones. *Reset to default* puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
 

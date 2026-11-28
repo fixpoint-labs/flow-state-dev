@@ -38,8 +38,20 @@ export const workerResourceStateSchema = z.object({
   name: z.string().nullable().default(null),
   /** One line saying what the worker is for. */
   description: z.string().nullable().default(null),
-  /** The worker's own instructions. `null` for a worker with none. */
+  /**
+   * The worker's own instructions. `null` for a worker with none, and on the
+   * user's copy of a standard worker, whose core instructions are its file's.
+   * A copy stored before additional instructions existed may carry text here,
+   * read as additional instructions (`instructionsOf`).
+   */
   instructions: z.string().nullable().default(null),
+  /**
+   * What the user added after the core instructions, read under their own
+   * heading after them on each turn. `null` for none. Absent on rows stored
+   * before it existed, which read as `null`.
+   */
+  // BP-030: tolerate rows stored before this field.
+  additionalInstructions: z.string().nullable().default(null),
   /**
    * The shared instructions a fork copied from the standard worker it came
    * from (its team's). `null` on a worker that wasn't forked from one that

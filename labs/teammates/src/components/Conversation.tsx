@@ -1,7 +1,7 @@
 import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
 import { EllipsisIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
+import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue, type WorkerInstructions } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
 import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
@@ -143,6 +143,20 @@ export function Conversation({
   useEffect(() => {
     if (panel === "fire") keep.current?.focus();
   }, [panel]);
+  // The edit form's instructions, read from the server each time it opens: a file's teammate's core ones and your additions.
+  const [instructions, setInstructions] = useState<{ value?: WorkerInstructions; problem?: string }>({});
+  useEffect(() => {
+    if (panel !== "edit") return;
+    let live = true;
+    setInstructions({});
+    workforce.instructions(worker.id).then(
+      (value) => live && setInstructions({ value }),
+      (error: unknown) => live && setInstructions({ problem: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [panel, workforce, worker.id]);
 
   // What is on screen: a line the lab draws as nothing neither ends an answer nor fills the conversation.
   const drawn = useMemo(() => lines.filter(drawsLine), [lines]);
@@ -300,6 +314,8 @@ export function Conversation({
         description={`${displayName(worker)}'s name, instructions, look and model. Changes apply from its next turn.`}
       >
         <EditForm
+          instructions={instructions.value}
+          instructionsProblem={instructions.problem}
           name={displayName(worker)}
           choices={{ models: context?.models }}
           current={{ model, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}

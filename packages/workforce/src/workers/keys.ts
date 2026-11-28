@@ -199,6 +199,9 @@ export const WORKSTREAM_REPORT_VIEW = "workstreamReport";
 /** The inbox view's name on the roster flow (`defineInboxView`). */
 export const INBOX_VIEW = "inbox";
 
+/** The worker instructions view's name on the roster flow (`defineWorkerInstructionsView`). */
+export const WORKER_INSTRUCTIONS_VIEW = "workerInstructions";
+
 // FIX-1802.
 /**
  * The session-state field that names the flow a task session's filer runs

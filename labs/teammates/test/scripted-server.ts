@@ -40,7 +40,23 @@ import { AppProvider } from "../src/app";
 import type { AppConnection } from "../src/lib/files";
 
 /** A worker as the stand-in keeps it: what its roster entry says, flattened. */
-type ScriptedTeammate = { id: string; name: string; role: string; takesTasks?: boolean; own?: boolean; edited?: boolean; harness?: string; icon?: string; color?: string };
+type ScriptedTeammate = {
+  id: string;
+  name: string;
+  role: string;
+  takesTasks?: boolean;
+  own?: boolean;
+  edited?: boolean;
+  harness?: string;
+  icon?: string;
+  color?: string;
+  /** A hired teammate's own instructions; a file's teammate's are its file's (`coreInstructions`). */
+  instructions?: string | null;
+  additionalInstructions?: string | null;
+};
+
+/** A file's teammate's core instructions, as the stand-in's files hold them. */
+export const coreInstructions = (teammate: { name: string }) => `You are ${teammate.name}. Keep the launch on track.`;
 
 /** A message in the stand-in's log: what the worker messages view reads of a log entry. */
 type Message = { id: string; from: string; to: string; text: string; inReplyTo?: string; replyRequested?: boolean; at: number };
@@ -462,16 +478,32 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
       edited: teammate.edited === true,
       settings: { ...(teammate.harness === undefined ? {} : { harness: teammate.harness }), ...(teammate.icon === undefined ? {} : { icon: teammate.icon }), ...(teammate.color === undefined ? {} : { color: teammate.color }) },
     }));
-  const hire = ({ id, description }: { id: string; description?: string }) => {
+  const hire = ({ id, description, instructions }: { id: string; description?: string; instructions?: string }) => {
     if (workers.has(id) && !fired.has(id)) throw new Error(`"${id}" is already on your roster`);
-    workers.set(id, { teammate: { id, name: id, role: description ?? "", own: true }, sessionId: `conversation:${id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] });
+    workers.set(id, { teammate: { id, name: id, role: description ?? "", own: true, instructions: instructions?.trim() ? instructions : null }, sessionId: `conversation:${id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] });
     fired.delete(id);
     notify();
     return { id, flow: "agent" };
   };
   // As the workforce's edit: a file's teammate becomes the user's copy, under the same id; a null name clears it.
-  const edit = ({ id, name, settingsPatch }: { id: string; name?: string | null; settingsPatch?: { icon?: string; color?: string; harness?: string } }) => {
+  // A file's teammate's core instructions can't be replaced: only its additional ones are the user's.
+  const edit = ({
+    id,
+    name,
+    settingsPatch,
+    instructions,
+    additionalInstructions,
+  }: {
+    id: string;
+    name?: string | null;
+    settingsPatch?: { icon?: string; color?: string; harness?: string };
+    instructions?: string | null;
+    additionalInstructions?: string | null;
+  }) => {
     const w = worker(id);
+    if (instructions !== undefined && !w.teammate.own) throw new Error(`"${id}" is a standard worker: its core instructions can't be replaced. Nothing was written.`);
+    if (instructions !== undefined) w.teammate = { ...w.teammate, instructions };
+    if (additionalInstructions !== undefined) w.teammate = { ...w.teammate, additionalInstructions };
     if (name !== undefined) w.teammate = { ...w.teammate, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
     // The look and default harness the form changed, as the roster's settings patch merges them.
     if (settingsPatch !== undefined) w.teammate = { ...w.teammate, ...settingsPatch };
@@ -561,6 +593,16 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     workerMessages,
     // The stand-in files no tasks: each conversation's coding board is empty (a test serves rows from `stub-server.ts`).
     codingBoard: () => [],
+    // A file's teammate's core instructions are its file's; a hired one's are its own.
+    workerInstructions: ({ id }) => {
+      const { teammate } = worker(String(id));
+      const file = ROSTER.find((t) => t.id === teammate.id);
+      return {
+        instructions: teammate.own ? (teammate.instructions ?? null) : coreInstructions(file ?? teammate),
+        additionalInstructions: teammate.additionalInstructions ?? null,
+        fixed: teammate.own !== true,
+      };
+    },
   };
 
   const sessionSummary = (w: ScriptedWorker) => ({ id: w.sessionId, flowKind: "agent", userId: "you", updatedAt: w.lastActiveAt, createdAt: 1, state: {} });
