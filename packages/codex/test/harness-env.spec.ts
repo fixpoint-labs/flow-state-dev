@@ -44,4 +44,9 @@ describe("a Codex run from codexHarness()", () => {
     codexHarness().agent(feeds as never);
     expect(seen.options[0]!.onEvent).toBe(feeds.onEvent);
   });
+
+  it("sets the host's extraEnv over the pass list, so a run can act as an account of its own", () => {
+    codexHarness({ extraEnv: { GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" } }).agent(feeds as never);
+    expect(seen.options[0]!.client.env).toEqual({ ...harnessEnv({ pass: CODEX_PASS }), GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" });
+  });
 });

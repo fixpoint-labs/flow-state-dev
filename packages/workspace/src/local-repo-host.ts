@@ -14,7 +14,7 @@ import { localWorkspaceHost, type LocalWorkspaceHostOptions, type WorkspaceHost 
 
 /** Options for {@link localRepoWorkspaceHost}. */
 export interface LocalRepoWorkspaceHostOptions
-  extends Pick<LocalWorkspaceHostOptions, "root" | "setup" | "pullRequestRepo" | "provisionTimeoutMs" | "now"> {
+  extends Pick<LocalWorkspaceHostOptions, "root" | "setup" | "pullRequestRepo" | "pullRequestsAs" | "provisionTimeoutMs" | "now"> {
   /**
    * The repository every run is cut from. Resolved to an absolute path here,
    * because the host reads only an absolute path as a repository on this

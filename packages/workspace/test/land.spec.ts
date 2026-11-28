@@ -196,6 +196,103 @@ describe("accepting a run by opening a pull request", () => {
   });
 });
 
+/**
+ * `pullRequestsAs`: a host whose coding agents have a GitHub account of their
+ * own pushes a run's branch and opens its pull request as that account, so
+ * the person's comments on it aren't taken for the agents' own. The push goes
+ * to GitHub over https whatever the pinned remote's scheme (an ssh remote
+ * would use the person's key), so `git` here is a shim that logs the push and,
+ * with the push's own config and environment, asks git for github.com's
+ * credential the way the push would; every other git call is the real one.
+ */
+// Every git call goes through a node shim here, which is slow to start.
+describe("opening a pull request as the agents' own GitHub account", { timeout: 60_000 }, () => {
+  const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  let pushLog: string;
+
+  beforeEach(() => {
+    const bin = tempDir("land-git-shim");
+    pushLog = join(bin, "push.log");
+    writeFileSync(
+      join(bin, "git"),
+      `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const { appendFileSync } = require("node:fs");
+const args = process.argv.slice(2);
+const at = args.indexOf("push");
+if (at < 0) process.exit(spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" }).status ?? 1);
+const filled = spawnSync(${JSON.stringify(realGit)}, [...args.slice(0, at), "credential", "fill"], { input: "protocol=https\\nhost=github.com\\n\\n", encoding: "utf8" });
+appendFileSync(${JSON.stringify(pushLog)}, JSON.stringify({ to: args[args.length - 2], credential: filled.stdout }) + "\\n");
+`,
+    );
+    chmodSync(join(bin, "git"), 0o755);
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    vi.stubEnv("GH_TOKEN", "gh_person");
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$GH_TOKEN" >> '${ghLog}.token'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`);
+  });
+
+  const asAgents = () =>
+    localWorkspaceHost({
+      root,
+      remotes: { allow: [] },
+      localRepositories: [repo],
+      source: () => ({ kind: "repo", repo }),
+      pullRequestRepo: () => GITHUB_REPO,
+      pullRequestsAs: { token: "ghp_agents" },
+    });
+
+  it("pushes to the pull request's repository over https with the account's token, and gh opens it with that token", async () => {
+    const h = asAgents();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(landed).toMatchObject({ kind: "pull-request", url: PR_URL });
+    const [pushed] = readFileSync(pushLog, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { to: string; credential: string });
+    expect(pushed!.to).toBe("https://github.com/acme/widgets.git");
+    expect(pushed!.credential).toContain("password=ghp_agents");
+    const tokens = readFileSync(`${ghLog}.token`, "utf8").trim().split("\n");
+    expect(tokens.length).toBeGreaterThan(0);
+    for (const token of tokens) expect(token).toBe("ghp_agents");
+  });
+
+  it("refuses a pull request on any host but github.com, handing the token to nothing", async () => {
+    const h = localWorkspaceHost({
+      root,
+      remotes: { allow: [] },
+      localRepositories: [repo],
+      source: () => ({ kind: "repo", repo }),
+      pullRequestRepo: () => "git.evil.example/acme/widgets",
+      pullRequestsAs: { token: "ghp_agents" },
+    });
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    await expect(landing).rejects.toMatchObject({ reason: "pull-request-host", message: expect.stringContaining("git.evil.example") });
+    await expect(h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).rejects.toMatchObject({ reason: "pull-request-host" });
+    // Nothing pushed, and gh never started.
+    expect(existsSync(pushLog)).toBe(false);
+    expect(existsSync(`${ghLog}.token`)).toBe(false);
+  });
+
+  it("without it, pushes to the pinned remote and hands gh the host's own token, as before", async () => {
+    const { h, place } = await runWithCommit();
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    const [pushed] = readFileSync(pushLog, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { to: string });
+    expect(pushed!.to).toBe(upstream.url);
+    for (const token of readFileSync(`${ghLog}.token`, "utf8").trim().split("\n")) expect(token).toBe("gh_person");
+  });
+});
+
 describe("the ways a run can land, asked before its review", () => {
   it("offers both for a worktree of a listed repository whose remote names a GitHub repository", async () => {
     const { h, place } = await runWithCommit();

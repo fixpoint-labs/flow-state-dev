@@ -28,6 +28,12 @@ export interface ClaudeCodeHarnessOptions {
    * workers of each kind.
    */
   plan?: boolean;
+  /**
+   * Variables set on every run over the pass-list, as given: values, not
+   * names to pass. For what the host means a run to have, such as the GitHub
+   * account it acts as (`gitHubAccountEnv` from `@flow-state-dev/core/harness`).
+   */
+  extraEnv?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -41,7 +47,7 @@ export interface ClaudeCodeHarnessOptions {
  */
 export function claudeCodeHarness(options: ClaudeCodeHarnessOptions = {}): Harness {
   const plan = options.plan === true;
-  const env = () => harnessEnv({ pass: CLAUDE_CODE_PASS });
+  const env = () => ({ ...harnessEnv({ pass: CLAUDE_CODE_PASS }), ...options.extraEnv });
   return {
     id: plan ? "claude-code-plan" : "claude-code",
     label: plan ? "Claude Code (plan)" : "Claude Code",

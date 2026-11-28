@@ -43,4 +43,9 @@ describe("a Claude Code run from claudeCodeHarness()", () => {
     expect(built!.settings).toEqual({ disableAllHooks: true });
     expect(built!.recordWork).toBe(true);
   });
+
+  it("sets the host's extraEnv over the pass list, so a run can act as an account of its own", () => {
+    claudeCodeHarness({ extraEnv: { GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" } }).agent(feeds as never);
+    expect(seen.options[0]!.env).toEqual({ ...harnessEnv({ pass: CLAUDE_CODE_PASS }), GH_TOKEN: "ghp_agent", GIT_AUTHOR_NAME: "FSD Agent" });
+  });
 });

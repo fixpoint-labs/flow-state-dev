@@ -220,6 +220,32 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
 | `GITHUB_REVIEWERS` | the GitHub accounts, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`; a person is heard only while they can also push to the repository. It is the default of the trusted-reviewers list until that list is first saved: after that the saved list wins, an empty one included, and Lead changes it on your own word, with your Approve in Inbox. The repository is public and a run acts on what it hears, so no one else is heard. Renamed from `TEAMMATES_GITHUB_REVIEWERS`, which is no longer read | none: nobody is heard until the list is saved |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
+| `TEAMMATES_AGENT_GITHUB_TOKEN`, `TEAMMATES_AGENT_GIT_NAME`, `TEAMMATES_AGENT_GIT_EMAIL` | the coding agents' own GitHub account: a token of it, and the name and email their commits carry. Set all three or none; some of them stops the lab at start. See "The agents' own GitHub account" | none: the agents commit, push and comment as you |
+
+### The agents' own GitHub account
+
+Without one, a coding run commits, pushes and comments with your git and `gh` sign-in, so on
+GitHub its pull request and its replies are yours. The pull-request follow drops the
+subscriber's own comments, and the subscriber is you, so your own review comments never reach
+the run. With the three `TEAMMATES_AGENT_*` settings, every run commits as that account, pushes
+and runs `gh` with its token (an ssh remote is reached over https, so your key isn't used), the
+lab opens each run's pull request with it, and the follow's own account is the agents'. Their
+comments are dropped as their own; yours are heard, once you are on the trusted-reviewers list.
+
+1. Create a GitHub account for the agents and give it write access to the repository (a
+   collaborator with *Write*, or a member of a team that has it).
+2. Signed in as that account, create a fine-grained token (*Settings → Developer settings →
+   Fine-grained tokens*) with the repository's owner as resource owner and only that repository,
+   with *Contents: Read and write*, *Pull requests: Read and write*, *Issues: Read and write*
+   (pull request conversation comments) and *Metadata: Read*. An organization that requires
+   approval for fine-grained tokens has to approve it first.
+3. In this folder's `.env.local`, set `TEAMMATES_AGENT_GITHUB_TOKEN` to the token,
+   `TEAMMATES_AGENT_GIT_NAME` to the account's name, and `TEAMMATES_AGENT_GIT_EMAIL` to its
+   email or its `<id>+<login>@users.noreply.github.com` address, so commits link to it.
+4. Add your own login to the trusted reviewers: in `GITHUB_REVIEWERS` while the list was never
+   saved, otherwise ask Lead to add you and approve it in Inbox.
+5. Restart the lab. A pull request followed before the restart keeps the account it was
+   followed as; one opened after it is followed as the agents'.
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
