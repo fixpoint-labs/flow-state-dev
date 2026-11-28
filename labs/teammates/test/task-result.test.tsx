@@ -101,8 +101,8 @@ describe("a finished task's popup shows its result once", () => {
     { id: "m2", type: "message", role: "assistant", status: "completed", requestId: "q_run", content: [{ type: "output_text", text: finalText }] },
   ];
   const openRun = (finalText: string) => {
-    const row = doneRow(PLAN, { run: { sessionId: "run_r", requestId: "q_run", attempt: 1, startedAt: 1 } });
-    const server = stubServer({ board: { wks_cos: [row] }, items: { run_r: ran(finalText) } });
+    const task = doneRow(PLAN, { run: { sessionId: "run_r", requestId: "q_run", attempt: 1, startedAt: 1 } });
+    const server = stubServer({ board: { wks_cos: [task] }, items: { run_r: ran(finalText) } });
     render(
       <TestProvider client={server.client}>
         <PopupView popup={{ kind: "task", sessionId: "wks_cos", taskId: "task_r" }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} />
