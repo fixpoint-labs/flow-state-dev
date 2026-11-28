@@ -87,9 +87,9 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
  * holds completed and cancelled tasks too, a cancelled one marked so on its
  * card. A card opens its task in the sheet beside the panel, or closes it when it is the open one, and carries its time: an
- * active one's clock on this attempt, with a thin bar while its run answers,
- * and *Long-running* once it has been open a day; an idle one's time since it
- * last moved; an ended one's age. Then
+ * active one's clock on this attempt while a run holds it, frozen at the hold
+ * that stopped it, with a thin bar while its run answers, and *Long-running*
+ * once it has been open a day; an idle one no time; an ended one's age. Then
  * what this conversation's coding tasks spent, and at the foot its routines.
  * The teammate's own description and *Edit* live in the conversation's header.
  */
@@ -128,12 +128,10 @@ export function TeammatePanel({
   const name = displayName(worker);
 
   const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
-  // A running clock ticks each second only while a listed row actually runs; it holds while the feed is stale.
-  const shouldTick = useMemo(() => {
-    const at = Date.now();
-    return !stale && tasks.some((t) => clockRuns(t, at));
-  }, [tasks, stale]);
-  const now = useNow(1_000, !stale && shouldTick);
+  // Each second while a listed row's clock runs (read again each render, so a lease that lapses stops it at the next
+  // tick); otherwise each half minute, for the minute-coarse ages (*12m ago*, *quiet for 7m*). Held while the feed is stale.
+  const clockLive = tasks.some((t) => clockRuns(t, Date.now()));
+  const now = useNow(clockLive ? 1_000 : 30_000, !stale);
 
   // Arrow keys move between the tabs, as a tab list's do; the selection follows focus.
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -155,7 +153,7 @@ export function TeammatePanel({
     const { view, run } = timeSignalOf(t);
     const signal = taskSignal(view, run, now, { stale });
     const long = isLongRunning(t, now);
-    const elapsed = cardElapsedText(t, now, signal, { stale });
+    const elapsed = cardElapsedText(t, now, signal, stale);
     const tokens = tokenTotal(t.spend);
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);

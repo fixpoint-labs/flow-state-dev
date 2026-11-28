@@ -71,66 +71,41 @@ export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, no
   !leaseLapsed({ status: "in_progress", leaseUntil: task.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
 
 /**
- * Whether a task's UI should advance a live clock: a non-lapsed lease on an
- * in-progress row and no open hold on the user. A held task has no request in
- * flight, so nothing to count.
+ * Whether its live clock runs at `now`: a run holds it ({@link runsNow}) and
+ * nothing waits on you. The one rule the panel, the card and the popup tick
+ * by. On a `stale` feed a lapsed lease says nothing about the run (as
+ * `taskSignal` reads it), so any lease counts; the screen stops its `now`
+ * then, so the clock holds where it was instead of counting.
  */
-export function clockRuns(
-  task: Pick<CodingBoardTask, "status" | "leaseUntil" | "asks">,
-  now: number,
-  _signal?: { kind: TaskSignalKind } | null,
-  options: { stale?: boolean } = {},
-): boolean {
-  if (options.stale === true) return false;
-  if (holdOf(task) !== undefined) return false;
-  return runsNow(task, now);
-}
+export const clockRuns = (task: Pick<CodingBoardTask, "status" | "leaseUntil" | "asks">, now: number, stale = false): boolean =>
+  holdOf(task) === undefined && (stale ? taskStatus(task) === "running" && task.leaseUntil != null : runsNow(task, now));
 
 /**
- * Active time frozen at the hold that stopped the run: from this attempt's
- * start to the hold's `openedAt`. Nothing while a run is on the task, or when
- * no hold time is known.
- */
-function frozenActiveMs(
-  task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt" | "leaseUntil">,
-  now: number,
-  options: { stale?: boolean } = {},
-): number | undefined {
-  if (clockRuns(task, now, undefined, options)) return undefined;
-  if (taskStatus(task) !== "running") return undefined;
-  const start = attemptStartedAt(task);
-  const opened = holdOf(task)?.openedAt;
-  if (start === undefined || opened == null) return undefined;
-  return Math.max(0, opened - start);
-}
-
-/**
- * How long this attempt has been active on the card: a live span while a run
- * holds it, otherwise {@link frozenActiveMs}.
+ * This attempt's active time at `now`: counting while its clock runs; frozen
+ * at the hold that stopped it (its start to the hold's `openedAt`); otherwise
+ * none, since a parked or PR-waiting task has no active time to show.
  */
 export function activeElapsedMs(
-  task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt" | "leaseUntil">,
+  task: Pick<CodingBoardTask, "status" | "asks" | "run" | "startedAt" | "leaseUntil">,
   now: number,
-  signal?: { kind: TaskSignalKind } | null,
-  options: { stale?: boolean } = {},
+  stale = false,
 ): number | undefined {
   const start = attemptStartedAt(task);
-  if (start === undefined) return undefined;
-  if (clockRuns(task, now, signal, options)) return now - start;
-  // A stale feed freezes `now`; keep showing where the clock was, without counting up.
-  if (options.stale === true && taskStatus(task) === "running") return frozenActiveMs(task, now, options) ?? now - start;
-  return frozenActiveMs(task, now, options);
+  if (start === undefined || taskStatus(task) !== "running") return undefined;
+  if (clockRuns(task, now, stale)) return Math.max(0, now - start);
+  const opened = holdOf(task)?.openedAt;
+  return opened == null ? undefined : Math.max(0, opened - start);
 }
 
-/** A panel card's elapsed column: a live clock, a frozen active span, or an ended task's ago. */
+/** A panel card's elapsed column: this attempt's active time, or an ended task's ago. */
 export function cardElapsedText(
-  task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt" | "leaseUntil" | "completedAt" | "updatedAt">,
+  task: Pick<CodingBoardTask, "status" | "asks" | "run" | "startedAt" | "leaseUntil">,
   now: number,
-  signal?: { kind: TaskSignalKind; text: string } | null,
-  options: { stale?: boolean } = {},
+  signal: { kind: TaskSignalKind; text: string } | null,
+  stale = false,
 ): string | undefined {
   if (taskStatus(task) !== "running") return signal?.kind === "ended" ? signal.text : undefined;
-  const ms = activeElapsedMs(task, now, signal, options);
+  const ms = activeElapsedMs(task, now, stale);
   return ms === undefined ? undefined : elapsedText(ms);
 }
 

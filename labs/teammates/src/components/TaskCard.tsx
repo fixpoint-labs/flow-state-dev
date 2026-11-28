@@ -1,8 +1,7 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { activeElapsedMs, clockRuns, harnessOf, isActive, modelOf, taskStatus, timeSignalOf, workerOf } from "../lib/task";
+import { activeElapsedMs, clockRuns, harnessOf, isActive, modelOf, taskStatus, workerOf } from "../lib/task";
 import { useNow } from "../lib/now";
-import { taskSignal } from "./flow-state/task-signals";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -56,6 +55,7 @@ export const TaskCard = memo(function TaskCard({
   nameOf,
   avatar,
   coding = false,
+  stale = false,
   onOpen,
 }: {
   /** The board's row, or a filed task's stand-in before its row is read. */
@@ -65,6 +65,8 @@ export const TaskCard = memo(function TaskCard({
   avatar?: ReactNode;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
+  /** Its conversation's feed has lost the server: the clock holds where it was. */
+  stale?: boolean;
   onOpen: (taskId: string) => void;
 }) {
   const line = taskLine({ title: task.title, to: workerOf(task) }, coding, nameOf);
@@ -73,11 +75,9 @@ export const TaskCard = memo(function TaskCard({
   const state = taskPresentation(task);
   const status = taskStatus(task);
   const active = isActive(task);
-  const { view, run } = timeSignalOf(task);
-  const tick = clockRuns(task, Date.now());
-  const now = useNow(1_000, tick);
-  const signal = taskSignal(view, run, now);
-  const elapsed = active ? activeElapsedMs(task, now, signal) : undefined;
+  // Only a live run's clock counts up; a hold shows the time it froze at, and a parked or PR-waiting task none.
+  const now = useNow(1_000, !stale && clockRuns(task, Date.now()));
+  const elapsed = active ? activeElapsedMs(task, now, stale) : undefined;
   const since = elapsed === undefined ? undefined : sinceShort(elapsed);
   // A coding task leads with its title (the tile says it is code); a teammate's says what was asked of whom.
   const title = coding ? task.title : line;

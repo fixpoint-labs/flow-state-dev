@@ -29,6 +29,7 @@ import {
 import { useAppClient } from "../app/provider";
 import type { Look } from "../lib/looks";
 import { settingOf, takesTasks } from "../lib/roster";
+import { useStale } from "../lib/now";
 import { workerOf } from "../lib/task";
 import { Avatar } from "./Avatar";
 import { ApprovalLine, CompactSteps, conversationLineRenderers, useLineContext, type LineContextValue } from "./flow-state/conversation-lines";
@@ -303,6 +304,7 @@ function placeholderOf(item: DataItem, value: Partial<FiledTaskValue>, harness: 
 function TaskLine({ item }: { item: DataItem }) {
   const { nameOf = (id: string) => id, avatarOf, openTask } = useLineContext();
   const { sessionId } = useFlowContext();
+  const stale = useStale(sessionId);
   const { client, pollIntervalMs } = useAppClient();
   // `useTasks`' read, made here: the same view and input, so one watch serves both.
   const tasks = useView(codingBoardViewRef(), { sessionId: sessionId ?? "" }, { client, pollIntervalMs, enabled: sessionId !== undefined }).value ?? NO_TASKS;
@@ -313,7 +315,7 @@ function TaskLine({ item }: { item: DataItem }) {
   const harness = filedFor === undefined ? undefined : settingOf(filedFor, "harness");
   const task = tasks.find((t) => t.id === value.taskId) ?? placeholderOf(item, value, harness);
   const worker = workerOf(task);
-  return <TaskCard task={task} nameOf={nameOf} avatar={avatarOf?.(worker)} coding={coderOf(worker) !== undefined} onOpen={openTask ?? (() => undefined)} />;
+  return <TaskCard task={task} nameOf={nameOf} avatar={avatarOf?.(worker)} coding={coderOf(worker) !== undefined} stale={stale} onOpen={openTask ?? (() => undefined)} />;
 }
 
 /**

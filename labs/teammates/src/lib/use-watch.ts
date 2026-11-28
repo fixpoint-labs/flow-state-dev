@@ -1,10 +1,2 @@
-import { useConversation } from "../app";
-import { isFeedStale } from "../components/flow-state/connection-banner";
-
-export { age, useNow } from "./now";
-
-/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
-export function useStale(sessionId: string | undefined): boolean {
-  const connection = useConversation(sessionId)?.connection;
-  return connection !== undefined && isFeedStale(connection);
-}
+/** The screen's clocks and feed-staleness, kept in `./now` so a card the app's renderers draw imports them without a cycle. */
+export { age, useNow, useStale } from "./now";

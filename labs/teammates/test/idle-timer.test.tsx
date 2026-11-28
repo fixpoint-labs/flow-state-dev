@@ -56,9 +56,10 @@ describe("idle tasks don't tick", () => {
     );
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
     const card = await within(panel).findByRole("button", { name: /Ship the change/ });
-    const before = card.querySelector("[data-elapsed]")?.textContent ?? null;
+    // Frozen at the hold: its attempt started ten minutes ago, the hold opened five minutes in.
+    expect(card.querySelector("[data-elapsed]")?.textContent).toBe("5m 0s");
     act(() => vi.advanceTimersByTime(10_000));
-    expect(card.querySelector("[data-elapsed]")?.textContent ?? null).toBe(before);
+    expect(card.querySelector("[data-elapsed]")?.textContent).toBe("5m 0s");
   });
 
   it("the panel holds useNow and shows no counting elapsed time on an open hold", async () => {
@@ -71,15 +72,15 @@ describe("idle tasks don't tick", () => {
         <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => true} onOpen={() => {}} />
       </TestProvider>,
     );
-  const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
     const card = await within(panel).findByRole("button", { name: /Ship the change/ });
-    const elapsed = () => card.querySelector("[data-elapsed]");
+    const elapsed = () => card.querySelector("[data-elapsed]")?.textContent;
     expect(within(card).getByText("waiting on you")).toBeTruthy();
-    const before = elapsed()?.textContent ?? null;
+    expect(elapsed()).toBe("5m 0s");
     act(() => vi.advanceTimersByTime(5_000));
-    expect(elapsed()?.textContent ?? null).toBe(before);
+    expect(elapsed()).toBe("5m 0s");
     act(() => vi.advanceTimersByTime(60_000));
-    expect(elapsed()?.textContent ?? null).toBe(before);
+    expect(elapsed()).toBe("5m 0s");
     const { result } = renderHook(() => useNow(1_000, false));
     const frozen = result.current;
     act(() => vi.advanceTimersByTime(60_000));
@@ -168,5 +169,53 @@ describe("idle tasks don't tick", () => {
     act(() => vi.advanceTimersByTime(60_000));
     rerender(<TaskCard task={task} coding nameOf={(id) => id} onOpen={() => {}} />);
     await waitFor(() => expect(since()).toBe("· 2m"));
+  });
+
+  it("the panel stops its one-second clock once the last lease lapses, with no board update", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const task = base({ leaseUntil: Date.now() + 3_000 });
+    const { client } = stubServer({ board: { s1: [task] } });
+    render(
+      <TestProvider client={client}>
+        <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => true} onOpen={() => {}} />
+      </TestProvider>,
+    );
+    const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const card = await within(panel).findByRole("button", { name: /Ship the change/ });
+    expect(card.querySelector("[data-elapsed]")?.textContent).toMatch(/^10m/);
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    // The lease lapses on its own: the board says nothing new, so only the clock can notice.
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(intervals.mock.calls.some(([, ms]) => ms === 30_000)).toBe(true);
+    // No run holds it and no hold froze it: it shows no time rather than a clock stuck where the lease ran out.
+    expect(card.querySelector("[data-elapsed]")).toBeNull();
+  });
+
+  it("a resumed clock reads the time at once, not where it stopped", () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const { result, rerender } = renderHook(({ running }) => useNow(1_000, running), { initialProps: { running: false } });
+    const stopped = result.current;
+    act(() => vi.advanceTimersByTime(10 * MIN));
+    expect(result.current).toBe(stopped);
+    rerender({ running: true });
+    expect(result.current).toBe(stopped + 10 * MIN);
+  });
+
+  it("the conversation card holds its clock while its feed is stale, though a run held the task", () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const task = live({ leaseUntil: Date.now() + 30_000 });
+    const { container, rerender } = render(<TaskCard task={task} coding stale nameOf={(id) => id} onOpen={() => {}} />);
+    const since = () => container.querySelector("[data-task-since]")?.textContent ?? null;
+    expect(since()).toBe("· 10m");
+    // Past the lease, on a stale feed: the lapse says nothing of the run, so the time stays where it was.
+    act(() => vi.advanceTimersByTime(3 * MIN));
+    rerender(<TaskCard task={task} coding stale nameOf={(id) => id} onOpen={() => {}} />);
+    expect(since()).toBe("· 10m");
+  });
+
+  it("the conversation card shows no time for a running task no lease holds", () => {
+    const task = base({ leaseUntil: undefined });
+    const { container } = render(<TaskCard task={task} coding nameOf={(id) => id} onOpen={() => {}} />);
+    expect(container.querySelector("[data-task-since]")).toBeNull();
   });
 });

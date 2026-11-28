@@ -23,6 +23,7 @@ afterEach(() => {
 });
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
+const LEASED = Date.UTC(2100, 0, 1);
 
 /** The run's items so far: it has done things, and a command is still running. */
 const item = (id: string, status: string, body: Record<string, unknown>) => ({ id, requestId: "req-1", status, provenance: { blockName: "claude-code-agent" }, ...body });
@@ -37,7 +38,8 @@ const RUNNING: CodingBoardTask = codingTask({
   harness: "claude-code",
   runFlow: CODER_FLOW,
   run: { sessionId: "run-1", requestId: "req-1", attempt: 1, startedAt: STARTED },
-  leaseUntil: STARTED + 86_400_000,
+  // A run holds it for the whole test, on the real clock and the faked one alike: only a held task draws the live line.
+  leaseUntil: LEASED,
 });
 
 /** The popup on a running task, over a stand-in server a test changes as the board and the run would. */
@@ -100,6 +102,15 @@ describe("a running task's feed ends in a live working line", () => {
     expect(server.planReads).toEqual([]);
   });
 
+  it("draws no live line for a running task no run holds: parked, or its lease lapsed", async () => {
+    for (const leaseUntil of [undefined, Date.now() - 60_000]) {
+      const { popup } = open({ ...RUNNING, leaseUntil });
+      await waitFor(() => expect(within(popup).getByText("Looking at the log.")).toBeTruthy());
+      expect(line(popup)).toBeNull();
+      cleanup();
+    }
+  });
+
   it("follows a re-run in the same session: the new request is the run it reads", async () => {
     const { popup, server, setTask } = open();
     await waitFor(() => expect(line(popup)).not.toBeNull());
@@ -123,7 +134,7 @@ describe("a running task's feed ends in a live working line", () => {
     vi.setSystemTime(WOKEN + 90_000);
     const earlier = { ...said, ts: STARTED + 60_000 };
     const reply = (id: string, ts: number, status: string) => ({ ...test(status), id, requestId: "req-2", ts });
-    const task = { ...RUNNING, run: { ...RUNNING.run!, requestId: "req-2" }, leaseUntil: WOKEN + 86_400_000 };
+    const task = { ...RUNNING, run: { ...RUNNING.run!, requestId: "req-2" } };
     const { popup } = open(task, { items: { "run-1": [earlier, reply("t2", WOKEN, "completed"), reply("t3", WOKEN + 30_000, "in_progress")] }, requestStarts: { "req-2": WOKEN } });
     await waitFor(() => expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 30s)"));
     // Never the attempt's age on the live line: that reads as a reply stuck for days.
