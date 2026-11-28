@@ -95,7 +95,7 @@ function bearerOnly(secret: string, orgId: string): PrincipalResolver {
 }
 
 /** The coordinators whose conversations the Lab opens for its user at boot, each under the worker's own id. */
-export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
+const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
 
 /**
  * The model best fit's one evaluator call would run on. Both coordinators

@@ -413,6 +413,22 @@ matched by hashing guessed ids. The push secret is the one every process
 behind an address already shares for tickets; a host with no push names no
 partition in its answers.
 
+A view that reads a collection across the caller's sessions
+(`ctx.resources.acrossSessions()`) is heard on that owner's change topic for
+the collection (`bus/owner-topic.ts`, `state-and-scopes.md` → "Looking across
+sessions"). A client names it as the user topic narrowed to
+`/sessions/<view flow>/<pattern>`, which no storage path can be; the mint grants it from
+the verified principal's user *and* organization, and on the bus it has a scope
+of its own (`owner`), so a socket in another of the user's organizations, or
+one holding the bare user topic, never hears it. Every write to any session's
+resources publishes one owner notice, narrowed to the session's flow instance and
+carrying the written key, on the bus only. The mint resolves the caller at the
+view's flow and grants a change topic only for the flow instances the read's
+own admission admits for that principal (`namedRecordAdmission`); a session's
+delete publishes one owner notice for the whole session; the socket matches the key against each
+change topic's pattern and sends a match on that topic with no ids and no
+origin, its `partition` (the session written) keyed like a board's.
+
 Three points every notice passes, so each rule lives once:
 
 - **The publish queue** (`publishNotices`, `bus/publish-writes.ts`) folds one

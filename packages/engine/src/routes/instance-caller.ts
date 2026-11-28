@@ -118,13 +118,16 @@ export async function ownResolverVerdict(
   return !pinRejectsCaller(owner.flow.ownerPin, caller);
 }
 
+/** What {@link admitSession} reads of a session: its key, its owner and its flow. */
+export type AdmittedSession = Pick<SessionRecord, "id" | "flowKind" | "flowId" | "userId" | "orgId" | "tenantId">;
+
 /** What {@link admitSession} judges a session against: who asks, in which tenant, and the rule for a row no own resolver owns. */
-export type SessionAdmissionContext = {
+export type SessionAdmissionContext<TSession extends AdmittedSession = SessionRecord> = {
   registry: Pick<FlowRegistry, "get" | "list">;
   callerFor: InstanceCallerResolver;
   tenantId: string | undefined;
   /** The owner rule for a row whose instance has no resolver of its own. Only asked of an attributed row. */
-  hostRule: (session: SessionRecord) => boolean | Promise<boolean>;
+  hostRule: (session: TSession) => boolean | Promise<boolean>;
 };
 
 // FIX-2725 D1; FIX-2942.
@@ -140,7 +143,10 @@ export type SessionAdmissionContext = {
  * judged on that resolver's word ({@link ownResolverVerdict}); any other row by
  * the caller's `hostRule`.
  */
-export async function admitSession(ctx: SessionAdmissionContext, session: SessionRecord): Promise<boolean> {
+export async function admitSession<TSession extends AdmittedSession>(
+  ctx: SessionAdmissionContext<TSession>,
+  session: TSession
+): Promise<boolean> {
   if (!tenantMatches(session.tenantId, ctx.tenantId)) return false;
   if (isWriteSessionId(session.id)) return false;
   if (!isOrgAttributed(session)) return false;

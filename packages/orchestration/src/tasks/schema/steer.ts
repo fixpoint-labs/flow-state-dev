@@ -45,6 +45,14 @@ export const taskSteerSchema = z.object({
    * claim took it, as part of the brief.
    */
   takenIn: z.string().optional(),
+  // FIX-2899; BP-030.
+  /**
+   * The request whose read took it in that attempt: what a stopped request
+   * matches to give its steers back. **Absent** when the claim took it, and on
+   * a steer taken before this field was written, whose request is read off
+   * `takenIn` instead.
+   */
+  takenFor: z.string().optional(),
 });
 
 /** One steer on a task. */

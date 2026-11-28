@@ -10,6 +10,7 @@ import type {
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ResourceCollectionRef, DefinedResourceCollection } from "./resource-collection";
+import type { ResourceIndexValue } from "./resource-index";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import { validateClientProjection } from "../helpers/client-projection";
 import type { ProjectedClient } from "../helpers/client-projection";
@@ -545,14 +546,114 @@ export type AnyResourceRef =
  * would then compile wherever a ref is accepted. Without one, an undeclared
  * name is a missing-property error. Optional entries can be absent by
  * property access. `get` throws for an absent name and `list` returns only
- * the handles that exist.
+ * the handles that exist. `at` is typed the same way, for the same reason.
  */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
   get: (<TKey extends keyof TResources>(name: TKey) => NonNullable<TResources[TKey]>) & ResourceRef<any>;
   list: (() => Array<NonNullable<TResources[keyof TResources]>>) & ResourceRef<any>;
+  /**
+   * Another session's copy of this run's session-scoped collections, by the
+   * calling flow's definitions: `ctx.resources.at({ session }).notes`. Reads,
+   * lists and writes act on that one copy, as its own session's would, and
+   * the session written hears each write as it hears its own.
+   *
+   * The session is reached only when it is the run's owner's, by the same
+   * admission the HTTP routes apply. Any other session (another user's,
+   * another org's or tenant's, one an own-resolver flow refuses, or one no
+   * one holds) answers every verb alike: rejected with `SessionNotFoundError`.
+   * A turn a webhook delivery started reaches no session but its own.
+   *
+   * For what isn't a resource (another session's flow, its readable state,
+   * its history), use `ctx.sessions`.
+   */
+  at: ((target: SessionReachTarget) => Omit<ResourceRegistry<SessionReachable<TResources>>, "acrossSessions">) & ResourceRef<any>;
+  /**
+   * This run's session-scoped collections read across every session the
+   * run's owner has: `ctx.resources.acrossSessions().notes.list()`. One store
+   * query a page, each entry with the session it belongs to. Read-only.
+   *
+   * A session is answered only when `ctx.resources.at` would reach it: the
+   * same owner (user, organization and tenant) and the same admission. Any
+   * other session's entries are left out, as though it held none. A turn a
+   * webhook delivery started can't call it.
+   *
+   * In a view, the read is heard on the owner's change topic for each
+   * collection it lists, which every write to any session's resources publishes
+   * on, so a session made after the view ran is heard too.
+   */
+  acrossSessions: (() => AcrossSessions<SessionReachable<TResources>>) & ResourceRef<any>;
 };
+
+/** The collections `ctx.resources.acrossSessions()` reads, by the registry's accessors. */
+export type AcrossSessions<TResources extends Record<string, AnyResourceRef>> = {
+  [K in keyof TResources as NonNullable<TResources[K]> extends ResourceCollectionRef<any, any> ? K : never]: NonNullable<
+    TResources[K]
+  > extends ResourceCollectionRef<infer TState, any>
+    ? AcrossSessionsCollection<TState>
+    : never;
+};
+
+/** One collection read across the owner's sessions. */
+export interface AcrossSessionsCollection<TState extends JsonObject = JsonObject> {
+  /**
+   * One page of the collection's entries, ordered by session, then by path. Pass
+   * the previous page's `next` as `after` for the next one; the listing ends
+   * only when `next` is absent. A page can be short, even empty, while `next`
+   * is set: entries of a session the caller isn't answered are read and dropped.
+   *
+   * @throws When `where.index` names an index the collection doesn't declare.
+   */
+  list(query?: AcrossSessionsListQuery): Promise<AcrossSessionsPage<TState>>;
+}
+
+/**
+ * What `list` reads: after a page's cursor, and filtered by the entry's key
+ * (its path, one row a session) or by a declared index's value. No other filter: a
+ * field filters only through an index the collection declares.
+ */
+export type AcrossSessionsListQuery = {
+  /** The `next` of the previous page, as it was handed back. */
+  after?: string;
+  where?: { key: string } | { index: string; value: ResourceIndexValue };
+};
+
+/** One entry read across sessions: the session it belongs to, its path there, and its state. */
+export type AcrossSessionsEntry<TState extends JsonObject = JsonObject> = {
+  /** The session's id, as `ctx.resources.at({ session })` takes it. */
+  readonly session: string;
+  /** The entry's storage path in that session, as `ResourceRef.path` names it. */
+  readonly key: string;
+  readonly value: Readonly<TState>;
+};
+
+/** One page of {@link AcrossSessionsCollection.list}. */
+export type AcrossSessionsPage<TState extends JsonObject = JsonObject> = {
+  readonly entries: readonly AcrossSessionsEntry<TState>[];
+  /** An opaque cursor, while more entries may remain. It names no entry. */
+  readonly next?: string;
+};
+
+/**
+ * The handles `ctx.resources.at` reaches in another session: the stored
+ * collections whose scope may be `session`. A single resource, a projected
+ * collection and a collection declared at user or org scope drop out, since
+ * each throws there at runtime. A collection whose declaration doesn't name
+ * its scope literally stays, as the open registry stays whole.
+ */
+export type SessionReachable<TResources extends Record<string, AnyResourceRef>> = string extends keyof TResources
+  ? TResources
+  : {
+      [K in keyof TResources as NonNullable<TResources[K]> extends ResourceCollectionRef<any, infer TScope>
+        ? "session" extends TScope
+          ? K
+          : never
+        : never]: TResources[K];
+    };
+
+/** The session `ctx.resources.at` names: its id, as the session routes take it. */
+export type SessionReachTarget = { readonly session: string };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
   ? S["_output"]

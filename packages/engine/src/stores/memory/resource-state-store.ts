@@ -38,6 +38,8 @@
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
+  AcrossSessionsQuery,
+  AcrossSessionsStoredRow,
   ContentScopeType,
   ExpectedVersion,
   ResourceStateStore,
@@ -51,8 +53,17 @@ import {
   toStoredState,
   type ResourceStateRow
 } from "../resource-state-predicate";
+import { listAcrossSessions, missingSessionStore, type AcrossSessionsSessionReads } from "../across-sessions";
+
+/** Options for {@link createInMemoryResourceStateStore}. */
+export type InMemoryResourceStateStoreOptions = {
+  /** The session store a read across an owner's sessions is joined to. Without it, `listAcrossSessions` refuses. */
+  sessions?: AcrossSessionsSessionReads;
+};
 
 export class InMemoryResourceStateStore implements ResourceStateStore {
+  constructor(private readonly options: InMemoryResourceStateStoreOptions = {}) {}
+
   /** `scopeType → scopeId → resourceKey → row`. Exact bucket identity. */
   private readonly data = new Map<
     ContentScopeType,
@@ -179,6 +190,12 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     return result;
   }
 
+  async listAcrossSessions(query: AcrossSessionsQuery): Promise<AcrossSessionsStoredRow[]> {
+    const sessions = this.options.sessions;
+    if (sessions === undefined) throw missingSessionStore("createInMemoryResourceStateStore");
+    return listAcrossSessions(sessions, (sessionKey, keyPrefix) => this.getByPrefix("session", sessionKey, keyPrefix), query);
+  }
+
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
     const bucket = this.bucket(scopeType, scopeId);
     if (bucket === undefined) return;
@@ -204,6 +221,6 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
   }
 }
 
-export function createInMemoryResourceStateStore(): ResourceStateStore {
-  return new InMemoryResourceStateStore();
+export function createInMemoryResourceStateStore(options: InMemoryResourceStateStoreOptions = {}): ResourceStateStore {
+  return new InMemoryResourceStateStore(options);
 }
