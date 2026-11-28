@@ -3,7 +3,7 @@
 "@flow-state-dev/shift-manager": patch
 ---
 
-A coding run's changes can be read while it works, uncommitted ones included.
+A coding run's changes can be read while it works, uncommitted ones included (FIX-2983).
 
 - **`uncommitted` on the run changes view.** `{ uncommitted: true }` reads the run's working tree too: tracked files edited since the last commit and new files git doesn't ignore, each marked `uncommitted: true` in the diff's `files`. A patch read with it opens those files too, and still refuses any path outside that list. Lines are counted in up to `MAX_COUNTED_FILES` (200) changed files and files up to 4 MB; past either, a file is listed with no lines. A new symlink reads as the name it points at, never the file. `readRunDiff` and `readRunFilePatch` take the same option. Without it, nothing changes: a review still reads only what was committed.
 - **Commits beside the diff.** The view's answer without `path` now carries `commits` (`count`, newest-first `subjects`, `verified`), read live from the checkout; `null` beside a patch.
