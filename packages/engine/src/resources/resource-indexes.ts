@@ -130,9 +130,9 @@ function cellRouterOf(flow: IndexedFlow, scope: IndexedCollection["scope"]): (ke
 }
 
 /**
- * The cell a collection is declared into. A session copy has no isolation, so
- * every flow declaring a session pattern declares into the one copy reach
- * writes; at user and org scope the resolved isolation decides.
+ * The cell a collection is declared into. A session-scoped collection has no
+ * isolation, so every flow declaring a session pattern declares into the one
+ * cell reach writes; at user and org scope the resolved isolation decides.
  */
 function declaredCellOf(
   flow: IndexedFlow,

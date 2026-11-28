@@ -4,8 +4,8 @@
  * `createExecutionContext` → the block).
  *
  * Why these matter: a worker that settles its task on the conversation that
- * filed it needs that conversation's copy, read and written as the copy's own
- * session would. The reach must answer a session that isn't the caller's
+ * filed it needs that conversation's resources, read and written as that
+ * session's own run would. The reach must answer a session that isn't the caller's
  * owner's exactly as an id nobody holds, on every verb, or a caller learns
  * which ids exist; and a write must be heard by the session written, never
  * leak onto a topic the caller hears.
@@ -206,7 +206,7 @@ afterEach(() => {
 const texts = (entries: Array<{ state: { text: string } }>) => entries.map((entry) => entry.state.text).sort();
 
 describe("ctx.resources.at({ session })", () => {
-  it("reads, lists and writes the named session's copy, with the calling flow's definition", async () => {
+  it("reads, lists and writes the named session's notes, with the calling flow's definition", async () => {
     const env = await boot();
     await env.seedIn(flowA, "a", "mine");
     await env.seedIn(flowB, "b", "theirs");
@@ -218,7 +218,7 @@ describe("ctx.resources.at({ session })", () => {
       await ctx.resources.at({ session: "b" }).notes.create("n2", { text: "written from a" });
       return null;
     });
-    // B's own run sees the write; A's own copy is untouched.
+    // B's own run sees the write; A's own notes are untouched.
     const own = await env.reachFrom(async (ctx) => texts(await ctx.resources.notes.list()));
     expect(own).toEqual({ ok: ["mine"] });
     const theirs = await env.reachFrom(async (ctx) => {
@@ -324,7 +324,7 @@ describe("ctx.resources.at({ session })", () => {
     expect(woken[0]?.settled).toBe("moved");
   });
 
-  it("naming the run's own session is its own copy: one cache, its reactTo, no wake", async () => {
+  it("naming the run's own session reaches its own resources: one cache, its reactTo, no wake", async () => {
     reacted.length = 0;
     const env = await boot();
     await env.seedIn(flowA, "a", "mine");
@@ -476,7 +476,7 @@ describe("ctx.resources.at({ session })", () => {
 
   // A session id deleted and taken again is another session: the admission
   // the first one earned must not carry over to it.
-  it("a session deleted and recreated under another owner mid-run is refused through the cached copy, and nothing is written", async () => {
+  it("a session deleted and recreated under another owner mid-run is refused through the cached admission, and nothing is written", async () => {
     const env = await boot();
     await env.seedIn(flowA, "a", "mine");
     await env.seedIn(flowB, "b", "theirs");
@@ -501,7 +501,7 @@ describe("ctx.resources.at({ session })", () => {
   // derived, so a session deleted and born again in the same millisecond can
   // match the old record on everything but its per-birth token. That rebirth
   // is still another session, and must be admitted again from scratch.
-  it("a session deleted and born again in the same millisecond, with the same lineage and owner, is refused through the cached copy, and nothing is written", async () => {
+  it("a session deleted and born again in the same millisecond, with the same lineage and owner, is refused through the cached admission, and nothing is written", async () => {
     const env = await boot();
     await env.seedIn(flowA, "a", "mine");
     await env.seedIn(flowB, "b", "theirs");
@@ -607,7 +607,7 @@ describe("ctx.resources.at({ session })", () => {
 
     // Another resolver's owe while the turn waits on a named session's
     // admission can't change the turn's resolver: it owes a row of its own.
-    it("another resolver's owe during a named-copy admission leaves the turn's own-resolver reach as it was, and makes its own row", async () => {
+    it("another resolver's owe during a named-session admission leaves the turn's own-resolver reach as it was, and makes its own row", async () => {
       const env = await wokenUnderVault(undefined, (env) => async (ctx) => {
         const get = env.stores.session.get.bind(env.stores.session);
         let owed = false;

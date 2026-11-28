@@ -410,7 +410,7 @@ describe("startup check on index declarations", () => {
     ).not.toThrow();
   });
 
-  // A session copy has no isolation: reach makes it one cell any declaring flow writes.
+  // A session-scoped collection has no isolation: reach makes it one cell any declaring flow writes.
   it("refuses one index name at two versions on overlapping session-scoped patterns", () => {
     expect(() => start({ a: declare("work/**", "session", 1, "a"), b: declare("work/**", "session", 2, "b") })).toThrow(
       /byTaskId.*version/

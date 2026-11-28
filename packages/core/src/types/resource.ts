@@ -241,7 +241,7 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * the same resource through the ordinary resource API.
    *
    * Default `false`: a session-scoped resource resolves against the running
-   * session, so a child session hydrates its own empty copy. Set `true` and it
+   * session, so each child session has its own, starting empty. Set `true` and it
    * resolves against the **lineage root** instead — the top-most session in the
    * chain — which every session in that lineage agrees on.
    *
@@ -554,9 +554,10 @@ export type ResourceRegistry<
   get: (<TKey extends keyof TResources>(name: TKey) => NonNullable<TResources[TKey]>) & ResourceRef<any>;
   list: (() => Array<NonNullable<TResources[keyof TResources]>>) & ResourceRef<any>;
   /**
-   * Another session's copy of this run's session-scoped collections, by the
-   * calling flow's definitions: `ctx.resources.at({ session }).notes`. Reads,
-   * lists and writes act on that one copy, as its own session's would, and
+   * Another session's resources: this run's session-scoped collections in
+   * that session, by the calling flow's definitions:
+   * `ctx.resources.at({ session }).notes`. Reads, lists and writes act on
+   * that one session's entries, as its own session's would, and
    * the session written hears each write as it hears its own.
    *
    * The session is reached only when it is the run's owner's, by the same

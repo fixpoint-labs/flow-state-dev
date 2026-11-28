@@ -116,7 +116,7 @@ describe("defineResourceCollection", () => {
   });
 
   it("takes wakeEntry only on a session-scoped collection, naming an entry", () => {
-    // A user or org copy is no one session's, so there is no session for a write
+    // A user or org collection is no one session's, so there is no session for a write
     // from another session to wake.
     expect(() =>
       defineResourceCollection({ pattern: "files/*", scope: "user", wakeEntry: "filesChanged", stateSchema: z.object({}) })

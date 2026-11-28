@@ -1,6 +1,6 @@
 /**
  * Goal check — name a session: a block in one session reads, lists and writes
- * another of its owner's sessions' copy by naming it,
+ * another of its owner's sessions' resources by naming it,
  * `ctx.resources.at({ session }).<name>` (FIX-2942). The rows, the assertions
  * and what each control fails are in goal.md.
  *
@@ -47,7 +47,7 @@ stripIntentOverrides();
 
 const PRINCIPAL = "packages/engine/src/context/principal.ts";
 const WAKES = "packages/engine/src/stores/memory/wake-store.ts";
-const NAMED_COPY = "packages/engine/src/context/named-session-copy.ts";
+const NAMED_SESSION_RESOURCES = "packages/engine/src/context/named-session-resources.ts";
 
 /** Each control swaps one rule for the wrong one, and must fail the assertion goal.md names. */
 const CONTROLS: Record<string, ModulePatch[]> = {
@@ -67,9 +67,9 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   // The fence reads the webhook source only, not the origin a delivery's owner runs carry.
   "webhook-source-only": [
     {
-      module: NAMED_COPY,
-      from: String.raw`const namedFence = \{ origin: readDeliveryOrigin\(options\.source, options\.metadata\), sessionId \};`,
-      to: 'const namedFence = { origin: options.source === "webhook" ? "webhook" : undefined, sessionId };'
+      module: NAMED_SESSION_RESOURCES,
+      from: String.raw`fence: \{ origin: readDeliveryOrigin\(options\.source, options\.metadata\), sessionId \}`,
+      to: 'fence: { origin: options.source === "webhook" ? "webhook" : undefined, sessionId }'
     }
   ]
 };
@@ -103,7 +103,7 @@ const BURST = 20;
 // ── flows ───────────────────────────────────────────────────────────────────
 
 const row = z.object({ text: z.string() });
-/** The one definition both flows declare: each session has its own copy. */
+/** The one definition both flows declare: each session has its own entries. */
 const notes = defineResourceCollection({ pattern: "notes/*", scope: "session", stateSchema: row, client: {} });
 /** An inbox whose writes from another session start a turn of `inboxChanged` there. */
 const inbox = defineResourceCollection({ pattern: "inbox/*", scope: "session", stateSchema: row, wakeEntry: "inboxChanged" });
@@ -119,13 +119,13 @@ const probe = handler({
   inputSchema: z.object({ target: z.string(), verb: z.enum(["read", "list", "write", "burst"]), text: z.string().optional() }),
   outputSchema: z.object({}),
   execute: async ({ target, verb, text }, ctx) => {
-    const copy = (ctx.resources as any).at({ session: target });
+    const named = (ctx.resources as any).at({ session: target });
     const act: Record<Verb, () => Promise<unknown>> = {
-      read: async () => (await copy.notes.getOptional("n1"))?.state.text ?? null,
-      list: async () => (await copy.notes.list()).map((r: { state: { text: string } }) => r.state.text).sort(),
-      write: async () => (await copy.notes.create(`from-${ctx.request.identity.id}`, { text: text ?? "written" })).state.text,
+      read: async () => (await named.notes.getOptional("n1"))?.state.text ?? null,
+      list: async () => (await named.notes.list()).map((r: { state: { text: string } }) => r.state.text).sort(),
+      write: async () => (await named.notes.create(`from-${ctx.request.identity.id}`, { text: text ?? "written" })).state.text,
       burst: async () => {
-        for (let i = 0; i < BURST; i += 1) await copy.inbox.create(`m${i}`, { text: `ending ${i}` });
+        for (let i = 0; i < BURST; i += 1) await named.inbox.create(`m${i}`, { text: `ending ${i}` });
         return BURST;
       }
     };
@@ -288,7 +288,7 @@ async function boot() {
     );
     await stores.resourceState.set("session", key, "notes/n1", { text: `planted ${id}` } as never, "any");
   };
-  /** The stored rows of `sessionId`'s notes copy. */
+  /** The stored rows of `sessionId`'s notes. */
   const storedNotes = async (sessionId: string) =>
     Object.values(await stores.resourceState.getByPrefix("session", sessionId, "notes/")).map((r) => (r.state as { text: string }).text).sort();
   return { runAt, reach, reachFromDelivery, reachAsMachine, hear, plant, storedNotes, dispose: () => state.dispose() };
@@ -311,7 +311,7 @@ await runGoal(async (failures, tell) => {
     await env.plant("other-tenant", { tenantId: fixture.tenant });
     await env.plant("no-org", { orgId: null });
 
-    // same-owner · B's copy read, listed and written, by alpha's definition at beta's session.
+    // same-owner · B's notes read, listed and written, by alpha's definition at beta's session.
     {
       const read = await env.reach("b", "read");
       if (read !== ok("theirs")) failures.push(`same-owner:read · read ${read}`);

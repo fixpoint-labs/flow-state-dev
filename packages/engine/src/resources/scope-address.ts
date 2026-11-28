@@ -335,12 +335,12 @@ export async function admitAddress(options: {
   return { address, caller: callers.get(address.flow.id)! };
 }
 
-/** The storage cell of the caller's copy: their user cell in their org, or their org. */
+/** The storage cell of the caller's resources: their user cell in their org, or their org. */
 export function addressCellId(address: ResolvedAddress, caller: AddressCaller): string {
   return resolveResourceScopeId(caller, address.flow, address.scope, false);
 }
 
-/** The stored state of the caller's copy of a single resource, the schema's default when none, and its version (0: none). */
+/** The stored state of a single resource as the caller holds it, the schema's default when none, and its version (0: none). */
 export async function readAddressed(
   stores: Pick<StoreRegistry, "resourceState">,
   address: ResolvedAddress & { collection: false },

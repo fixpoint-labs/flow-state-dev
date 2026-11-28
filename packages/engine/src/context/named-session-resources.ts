@@ -1,14 +1,14 @@
 /**
- * A run's reach into another session's copy, `ctx.resources.at({ session })`:
+ * A run's reach into another session's resources, `ctx.resources.at({ session })`:
  * the admission of each named session, re-checked on every later verb, and
- * the registry over its copy that reads and writes it by this flow's
- * definitions, owing the wake a write starts before the write.
+ * the registry over that session's resources that reads and writes them by
+ * this flow's definitions, owing the wake a write starts before the write.
  *
  * Built once per run by `createExecutionContext`, which hands it the run's
  * identity and principal, its session-scoped declarations, and the code that
- * serves the run's own copies (the lazy loaders, the per-key persisters and
- * the change handler), so a named copy is loaded and written as the run's own
- * is. The admission itself is `./named-session`.
+ * serves the run's own resources (the lazy loaders, the per-key persisters and
+ * the change handler), so a named session's resources are loaded and written
+ * as the run's own are. The admission itself is `./named-session`.
  */
 import type { JsonObject, ProjectedResourceContext, ResourceCollectionConfig, ResourceCollectionRef, ResourceConfig, ResourceRegistry, AnyResourceRef } from "@flow-state-dev/core/types";
 import { isProjectedResourceCollection, matchesPattern } from "@flow-state-dev/core/types";
@@ -39,8 +39,8 @@ export function isNamedReachable(config: ResourceConfig | ResourceCollectionConf
   return isCollectionConfig(config) && !isProjectedResourceCollection(config);
 }
 
-/** The session whose copy a change handler serves, when it isn't the run's own. */
-export type NamedCopyTarget = {
+/** The session whose resources a change handler serves, when it isn't the run's own. */
+export type NamedSessionTarget = {
   /** The session written, by its id. */
   readonly sessionId: string;
   /** Its owner, for a lineage-shared key's user-topic notice and its owner's change topic. */
@@ -72,15 +72,15 @@ function isSameSessionRecord(now: SessionRecord, admitted: SessionRecord): boole
 }
 
 /**
- * One copy's cache and address: what the lazy loaders and the per-key
- * writers in `createExecutionContext` read and write. A run holds its own
- * session's, user's and org's (`ownCell` there), and one per session a block
- * names (`ctx.resources.at`), so a named session's copy is loaded and written
- * by the same code as the run's own.
+ * One scope's resources, as a cache and an address: what the lazy loaders and
+ * the per-key writers in `createExecutionContext` read and write. A run holds
+ * its own session's, user's and org's (`ownCell` there), and one per session a
+ * block names (`ctx.resources.at`), so a named session's resources are loaded
+ * and written by the same code as the run's own.
  */
-export type CopyCell = {
+export type ResourceCell = {
   readonly scope: ContentScopeType;
-  /** Namespaces the single-flight tokens, so two copies' loads never share one. */
+  /** Namespaces the single-flight tokens, so two cells' loads never share one. */
   readonly token: string;
   readonly stateRef: { current: Record<string, JsonObject> };
   readonly contentRef: { current: Record<string, string> };
@@ -95,7 +95,7 @@ export type CopyCell = {
   storageScopeOf(scopeId: string): StorageScopeType;
 };
 
-/** The options `createScopeResourceRegistry` takes, which a named copy's registry is built with. */
+/** The options `createScopeResourceRegistry` takes, which a named session's registry is built with. */
 type ScopeRegistryOptions = Parameters<typeof createScopeResourceRegistry>[0];
 
 /** What a run's named reach is built from: every field from the run itself, never a payload. */
@@ -120,12 +120,12 @@ export type NamedSessionAtInputs = {
   readonly inView: boolean;
   /** The run's own `ctx.resources`, which naming its own session answers with. */
   readonly flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>>;
-  /** The code that serves the run's own copies, handed a named copy's cell. */
+  /** The code that serves the run's own resources, handed a named session's cell. */
   readonly makeKeyPersisters: (
-    cell: CopyCell
+    cell: ResourceCell
   ) => Pick<ScopeRegistryOptions, "mutateResourceKey" | "deleteResourceKey" | "persistResourceContentKey" | "deleteResourceContentKey">;
-  readonly makeLazyLoad: (cell: CopyCell) => ScopeLazyLoad | undefined;
-  readonly makeResourceChangeHandler: (scope: "session", named: NamedCopyTarget) => ScopeRegistryOptions["onResourceChanged"];
+  readonly makeLazyLoad: (cell: ResourceCell) => ScopeLazyLoad | undefined;
+  readonly makeResourceChangeHandler: (scope: "session", named: NamedSessionTarget) => ScopeRegistryOptions["onResourceChanged"];
   readonly recordResourceLoad: NonNullable<ScopeRegistryOptions["recordResourceLoad"]>;
   readonly templateResolverRef: NonNullable<ScopeRegistryOptions["templateResolverRef"]>;
   readonly buildProjectedResourceContext: (scope: "session", scopeId: string) => ProjectedResourceContext;
@@ -154,8 +154,8 @@ export function namedReach(
 }
 
 /**
- * `ctx.resources.at({ session })`: another session's copy of this flow's
- * session-scoped collections, by this flow's definitions. Each verb waits
+ * `ctx.resources.at({ session })`: another session's resources, this flow's
+ * session-scoped collections there, by this flow's definitions. Each verb waits
  * on one admission per named session per run: the fence (`fenceNamedReach`),
  * then the routes' own admission fed this run's principal
  * (`admitNamedSession`). A refusal and an id no one holds answer every verb
@@ -164,9 +164,10 @@ export function namedReach(
  * or another owner) is admitted again from scratch, never written under the
  * admission the first one earned.
  *
- * The admitted copy is loaded and written by the code that serves the run's
- * own (`CopyCell`): its own cache, lazily filled, and versioned writes, so
- * two sessions writing one copy conflict as two local writers do. A write
+ * The admitted session's resources are loaded and written by the code that
+ * serves the run's own (`ResourceCell`): their own cache, lazily filled, and
+ * versioned writes, so two sessions writing one entry conflict as two local
+ * writers do. A write
  * publishes on the named session's topics and, for a collection with a
  * `wakeEntry`, owes a wake on that session's entry before it is written.
  */
@@ -194,41 +195,41 @@ export function createNamedSessionAt(
     buildProjectedResourceContext
   } = inputs;
   const { principal: namedPrincipal, fence: namedFence } = namedReach({ options, userId, resolvedOrgId, sessionId, runKind, runResolvedBy });
-  type NamedCopy = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
-  const namedCopies = new Map<string, Promise<NamedCopy | undefined>>();
+  type NamedReach = { readonly record: SessionRecord; readonly registry: ResourceRegistry<Record<string, AnyResourceRef>> };
+  const namedReaches = new Map<string, Promise<NamedReach | undefined>>();
   /** Admit `target` from scratch, and keep the answer for this run's later verbs. */
-  const admitCopy = (target: string): Promise<NamedCopy | undefined> => {
-    const copy = (async (): Promise<NamedCopy | undefined> => {
+  const admitReach = (target: string): Promise<NamedReach | undefined> => {
+    const reach = (async (): Promise<NamedReach | undefined> => {
       const flows = options.requestHost?.flows;
       if (flows === undefined || noSession) return undefined;
       const record = await admitNamedSession(
         { stores, registry: flows, hostResolver: options.effectiveRuntimeConfig?.hostResolver, principal: namedPrincipal, sessionId },
         target
       );
-      return record === undefined ? undefined : { record, registry: buildNamedCopy(target, record, flows) };
+      return record === undefined ? undefined : { record, registry: buildNamedRegistry(target, record, flows) };
     })();
-    namedCopies.set(target, copy);
-    return copy;
+    namedReaches.set(target, reach);
+    return reach;
   };
-  const namedCopy = async (target: string): Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined> => {
-    const kept = namedCopies.get(target);
-    if (kept === undefined) return (await admitCopy(target))?.registry;
+  const reachNamed = async (target: string): Promise<ResourceRegistry<Record<string, AnyResourceRef>> | undefined> => {
+    const kept = namedReaches.get(target);
+    if (kept === undefined) return (await admitReach(target))?.registry;
     const admitted = await kept;
     if (admitted === undefined) return undefined;
     // The record as it stands now: still the one admitted, or admitted again.
     const now = await stores.session.get(resolveSessionStorageKey(target, options.tenantId));
     if (now !== undefined && isSameSessionRecord(now, admitted.record)) return admitted.registry;
-    return (await admitCopy(target))?.registry;
+    return (await admitReach(target))?.registry;
   };
-  /** The registry over `target`'s copy, admitted as `record`, whose owning flow `flows` resolves. */
-  const buildNamedCopy = (
+  /** The registry over `target`'s resources, admitted as `record`, whose owning flow `flows` resolves. */
+  const buildNamedRegistry = (
     target: string,
     record: SessionRecord,
     flows: Pick<FlowRegistry, "get" | "list">
   ): ResourceRegistry<Record<string, AnyResourceRef>> => {
     const key = resolveSessionStorageKey(target, options.tenantId);
     const lineage = resolveLineageId({ id: key, lineageId: record.lineageId });
-    const cell: CopyCell = {
+    const cell: ResourceCell = {
       scope: "session",
       token: `session@${key}`,
       stateRef: { current: ownKeyRecord<JsonObject>() },
@@ -241,8 +242,8 @@ export function createNamedSessionAt(
       scopeIdOf: (storageKey) => (resolveOwnershipFlag(scopeBuckets.session, storageKey) === true ? lineage : key),
       storageScopeOf: (scopeId) => (scopeId === lineage ? "lineage" : "session")
     };
-    // Every collection reads through the lazy loaders: nothing of this copy
-    // was loaded when the run started.
+    // Every collection reads through the lazy loaders: nothing of this
+    // session's resources was loaded when the run started.
     const configs = ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
     for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
       if (isNamedReachable(config)) configs[accessor] = { ...config, prefetchMode: "lazy" };
@@ -339,16 +340,16 @@ export function createNamedSessionAt(
   const atSession = (target: { readonly session: string }): ResourceRegistry<Record<string, AnyResourceRef>> => {
     const named = target?.session;
     if (inputs.inView) {
-      throw new Error("A view reads its own copies: `ctx.resources.at` is not available in a view.");
+      throw new Error("A view reads its own resources: `ctx.resources.at` is not available in a view.");
     }
-    // The run's own session is its own copy, through the one cache it already holds.
+    // Naming the run's own session answers with its own resources, through the one cache it already holds.
     if (named === sessionId) return flatResourcesRegistry;
-    /** The named copy, or the refusal every verb shares. */
+    /** The named session's resources, or the refusal every verb shares. */
     const open = async (): Promise<ResourceRegistry<Record<string, AnyResourceRef>>> => {
       fenceNamedReach(namedFence, named);
-      const copy = typeof named === "string" ? await namedCopy(named) : undefined;
-      if (copy === undefined) throw new SessionNotFoundError();
-      return copy;
+      const reached = typeof named === "string" ? await reachNamed(named) : undefined;
+      if (reached === undefined) throw new SessionNotFoundError();
+      return reached;
     };
     const handles: Record<string, AnyResourceRef> = Object.create(null);
     for (const [accessor, config] of Object.entries(sessionResourceConfigs)) {
@@ -378,7 +379,7 @@ export function createNamedSessionAt(
         `Resource "${name}" can't be reached in another session: \`ctx.resources.at\` reaches the session-scoped, stored collections`
       );
     };
-    const copy = {
+    const registry = {
       ...handles,
       get: (name: string) => resolve(String(name)),
       list: () => Object.values(handles),
@@ -386,10 +387,10 @@ export function createNamedSessionAt(
     };
     // Any other accessor this flow declares refuses by property, as it does by name.
     for (const accessor of Object.keys(accessorScope)) {
-      if (accessor in copy) continue;
-      Object.defineProperty(copy, accessor, { enumerable: false, get: () => resolve(accessor) });
+      if (accessor in registry) continue;
+      Object.defineProperty(registry, accessor, { enumerable: false, get: () => resolve(accessor) });
     }
-    return copy as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
+    return registry as unknown as ResourceRegistry<Record<string, AnyResourceRef>>;
   };
   return atSession;
 }

@@ -163,7 +163,7 @@ handler({
     expectTypeOf(theirs.skills.list).returns.resolves.items.toHaveProperty("state");
     // @ts-expect-error a single resource can't be reached in another session.
     void theirs.notes.state;
-    // @ts-expect-error a user-scoped collection is no one session's copy.
+    // @ts-expect-error a user-scoped collection belongs to no one session.
     void theirs.prefs.list;
     // @ts-expect-error a projected collection can't be reached in another session.
     void theirs.portfolio.get;

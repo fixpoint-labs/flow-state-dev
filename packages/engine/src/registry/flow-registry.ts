@@ -28,8 +28,8 @@
  * resource schemas, are validated against every other already-registered
  * flow's declarations. Resources are compared by name: two declarations meet
  * when one's storage key or pattern can reach the other's. Session scope is
- * checked because a flow reaches another flow's session copy of any
- * definition it declares, so one name must mean one shape.
+ * checked because a flow reaches any definition it declares in another
+ * flow's session, so one name must mean one shape.
  * The state schemas compared are the flow's merged ones (`scopeStateSchema`),
  * so a field a block declares counts, and they are held to the same rule
  * `defineFlow` holds one flow's declarations to: a field two flows type or
@@ -384,7 +384,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
    * reach its own (`patternsReach`), so a collection at `files/*` meets a single
    * resource at `files/a` and a collection at `files/[id]`, since
    * `resolveCollectionKey` resolves both onto the same `ResourceStateStore`
-   * cells. A session copy has no isolation, so every session declaration
+   * cells. A session-scoped resource has no isolation, so every session declaration
    * reaches here.
    *
    * **The overlap it deliberately does NOT catch: same-kind instances with
@@ -594,7 +594,7 @@ function collectScopeDeclaration(
   scope: ConflictScope
 ): ScopeDeclaration | undefined {
   // A session's state record belongs to the session's own flow, so only its
-  // resources are compared there; and a session copy has no isolation.
+  // resources are compared there; and a session-scoped resource has no isolation.
   const flowIsolatesScope =
     scope === "session" || (scope === "user" ? flow.isolateUserState : flow.isolateOrgState);
 

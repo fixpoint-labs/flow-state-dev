@@ -138,7 +138,7 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
-    // A session copy has no flow-level isolation flag to point at.
+    // A session-scoped resource has no flow-level isolation flag to point at.
     const flag =
       details.scope === "user" ? "isolateUserState" : details.scope === "org" ? "isolateOrgState" : undefined;
     const isResource = details.field.startsWith("resources.");
@@ -152,11 +152,11 @@ export class CrossFlowSchemaConflictError extends Error {
 
     let message: string;
     if (isResource && details.scope === "session" && !sameFlow) {
-      // A session copy has no flow isolation: any flow declaring the name
-      // reaches the one copy, so a distinct name is the only way apart.
+      // A session-scoped resource has no flow isolation: any flow declaring
+      // the name reaches the same entries, so a distinct name is the only way apart.
       message =
         `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas ` +
-        `(${details.reason}: ${details.detail}). Both reach one session copy under that name, so ${identityRemedy}, ` +
+        `(${details.reason}: ${details.detail}). Both reach the same session-scoped entries under that name, so ${identityRemedy}, ` +
         `or reconcile the schemas.`;
     } else if (isResource && sameFlow) {
       const ref = details.field.slice("resources.".length);

@@ -1134,9 +1134,9 @@ describe("cross-flow resource schema validation", () => {
 
   /**
    * Reach (`ctx.resources.at({ session })`) lets a flow read and write another
-   * flow's session copy of a definition both declare, so two shapes under one
-   * session-scoped name would read each other's rows wrong. A session copy has
-   * no flow isolation to opt out with: the remedy is a distinct name.
+   * flow's session's resources by a definition both declare, so two shapes under
+   * one session-scoped name would read each other's rows wrong. A session-scoped
+   * resource has no flow isolation to opt out with: the remedy is a distinct name.
    */
   describe("session scope", () => {
     const work = (body: z.ZodTypeAny): ResourceSpec => ({ scope: "session", schema: z.object({ body }) });

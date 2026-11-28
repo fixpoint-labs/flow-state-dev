@@ -238,7 +238,7 @@ A resource's row lives at (scope type, **scope id**, **resource key**). The reso
 
 ### 5.4 `sharedToLineage`
 
-- Default `false`: a session-scoped resource resolves against the running session, so a background child session hydrates its own empty copy.
+- Default `false`: a session-scoped resource resolves against the running session, so each background child session has its own, starting empty.
 - `true`: resolves against the lineage root, so a conversation and every session it dispatches (children nest) read and write the same rows through `ctx.resources`.
 - Session scope only; user and org already span sessions.
 - Does not share session state, does not serialize writes (ordinary contention, fenced by the store's version check), does not reach sideways to a different conversation's lineage.

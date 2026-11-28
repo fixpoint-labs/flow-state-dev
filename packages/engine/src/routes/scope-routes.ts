@@ -62,7 +62,7 @@ function refusedResponse(refused: { status: number; code: string; message: strin
 
 /**
  * GET /resources/:scope/:key
- * The caller's copy of a user or org resource, as the client sees it, and its
+ * The caller's user or org resource, as the client sees it, and its
  * version (0: nothing stored yet, the value is the schema's default).
  */
 export async function handleReadScopeResource(
