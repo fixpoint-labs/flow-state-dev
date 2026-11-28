@@ -59,9 +59,18 @@ export interface ReviewDetail {
   /**
    * The pull request already open from the run's branch, which a
    * `pull-request` accept puts the work on rather than opening a second one.
-   * `null` when none is open, or GitHub couldn't say. Optional, as `lands` is.
+   * `null` when none is open, or GitHub couldn't say. This is the landing target;
+   * `pullRequest` describes its state, while `lands` says whether a push is available.
+   * Optional, as `lands` is.
    */
   openPullRequest?: ReviewPullRequest | null;
+  /**
+   * The pull request the run's work is already on, as GitHub had it when the
+   * review was asked: the one open from the branch, else a recorded one verified
+   * against the checkout's repository and run branch. `null` when none is verified.
+   * Optional, as `lands` is.
+   */
+  pullRequest?: ReviewWorkPullRequest | null;
   /**
    * This round's commits, when the branch had commits before it: how many
    * and their subjects, newest first. `null` when the round is the whole
@@ -82,6 +91,14 @@ export interface ReviewDetail {
 export interface ReviewPullRequest {
   number: number;
   url: string;
+}
+
+/** The pull request a run's work is already on, and what it lacks. */
+export interface ReviewWorkPullRequest extends ReviewPullRequest {
+  /** `open`, `merged` or `closed`; `null` when GitHub couldn't be asked. */
+  state: "open" | "merged" | "closed" | null;
+  /** How many of the branch's commits it lacks; `null` when that couldn't be told. */
+  unpushed: number | null;
 }
 
 /** One file the run changed. `added`/`removed` are `null` for a binary file. */
@@ -150,6 +167,14 @@ function pullRequestOf(value: unknown): ReviewPullRequest | null {
     : null;
 }
 
+/** The pull request the work is on, or `null` when the value isn't one. */
+function workPullRequestOf(value: unknown): ReviewWorkPullRequest | null {
+  const pr = pullRequestOf(value);
+  if (pr === null || !isRecord(value)) return null;
+  const state = value.state === "open" || value.state === "merged" || value.state === "closed" ? value.state : null;
+  return { ...pr, state, unpushed: isCount(value.unpushed) ? value.unpushed : null };
+}
+
 /** This round's commits, or `null` when they aren't readable. */
 function roundOf(value: unknown): ReviewDetail["round"] {
   if (!isRecord(value) || !isCount(value.commits)) return null;
@@ -188,6 +213,7 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
       ? data.pullRequests.map(pullRequestOf).filter((pr): pr is ReviewPullRequest => pr !== null)
       : [],
     openPullRequest: pullRequestOf(data.openPullRequest),
+    pullRequest: workPullRequestOf(data.pullRequest),
     round: roundOf(data.round),
     files: Array.isArray(data.files) ? data.files.map(fileOf).filter((file): file is ReviewFile => file !== null) : null,
     fileCount: isCount(data.fileCount) ? data.fileCount : null,

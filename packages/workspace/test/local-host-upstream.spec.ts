@@ -116,13 +116,14 @@ describe("a person who hasn't pulled: the run starts from upstream", () => {
     expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(third);
   });
 
-  it("follows HEAD's branch when no base is named, and records HEAD as the base", async () => {
+  it("follows HEAD's branch when no base is named, and records HEAD as the base, beside the branch it was on", async () => {
     const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");
 
     const place = await provision(undefined);
 
     expect(contains("refs/heads/fsd/run-1", pushed)).toBe(true);
-    expect(place.repo).toMatchObject({ baseRef: "HEAD", baseCommit: pushed });
+    // The branch is what a review later asks the base's tip of: `HEAD` then may not be `HEAD` now.
+    expect(place.repo).toMatchObject({ baseRef: "HEAD", baseCommit: pushed, baseBranch: "main" });
   });
 
   it("moves only the upstream's tracking ref: every other ref, HEAD and the status are as they were", async () => {

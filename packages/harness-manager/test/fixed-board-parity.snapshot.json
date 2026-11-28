@@ -3,6 +3,7 @@
   "checkout": "checkouts/fix-1-implement-fba6a9",
   "record": {
     "attempt": 1,
+    "baseBranch": "main",
     "baseCommit": "string",
     "baseRef": "main",
     "branch": "fsd/fix-1-implement-fba6a9",

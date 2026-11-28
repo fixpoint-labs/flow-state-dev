@@ -116,7 +116,7 @@ export interface WorktreeRequest {
   /** Called once a checkout is to be made (not on a hand-back), before anything touches `repo`. */
   prepare?: (left: () => number) => Promise<void>;
   /** What a NEW branch is cut from. Called only when the branch does not exist yet. */
-  base: (left: () => number) => Promise<{ ref: string; commitish: string; commit?: string }>;
+  base: (left: () => number) => Promise<{ ref: string; commitish: string; commit?: string; branch?: string }>;
   ignored?: IgnoredDirectory;
 }
 
@@ -128,6 +128,8 @@ export interface Worktree {
   baseRef?: string;
   /** The commit it was cut at, when the caller's `base` knew it. */
   baseCommit?: string;
+  /** The branch `baseRef` named when the new branch was cut, when the caller's `base` knew it. */
+  baseBranch?: string;
   /**
    * Present when the checkout was handed back off the run's branch and moved
    * back onto it. Tell the run: what it left checked out is no longer what is
@@ -345,7 +347,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
   await git(repo, ["worktree", "prune"], left());
 
   const branchPreexisted = await branchExists();
-  let base: { ref: string; commitish: string; commit?: string } | undefined;
+  let base: { ref: string; commitish: string; commit?: string; branch?: string } | undefined;
   if (!branchPreexisted) base = await request.base(left);
   const args = base === undefined ? ["worktree", "add", "--quiet", checkout, branch] : ["worktree", "add", "--quiet", "-b", branch, checkout, base.commitish];
 
@@ -381,7 +383,12 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
 
   return base === undefined
     ? { created: true }
-    : { created: true, baseRef: base.ref, ...(base.commit !== undefined ? { baseCommit: base.commit } : {}) };
+    : {
+        created: true,
+        baseRef: base.ref,
+        ...(base.commit !== undefined ? { baseCommit: base.commit } : {}),
+        ...(base.branch !== undefined ? { baseBranch: base.branch } : {}),
+      };
 
   /** The checkout the last attempt left, checked and returned as it is. */
   async function handBack(): Promise<Worktree> {

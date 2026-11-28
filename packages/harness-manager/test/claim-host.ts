@@ -45,7 +45,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
-import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
+import { WORKTREES, localWorkspaceHost, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
 export const ORG_ID = "org_claim_host";
@@ -177,6 +177,8 @@ export interface HostOptions {
   upstream?: boolean;
   /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
   baseTip?: () => Promise<string | undefined>;
+  /** Name no base, so each run is cut from whichever branch the repository has checked out (`HEAD`), as a host over a person's own checkout does. */
+  checkedOutBase?: boolean;
   /** Wrap the workspace host the manager is given, to stand in for one of its methods (a landing, say). */
   workspace?: (host: WorkspaceHost) => WorkspaceHost;
   /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
@@ -255,7 +257,9 @@ export function claimHost(options: HostOptions) {
       },
     },
     workspace: (options.workspace ?? ((it: WorkspaceHost) => it))(
-      options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
+      options.checkedOutBase === true
+        ? localWorkspaceHost({ root: join(dir, "checkouts"), remotes: { allow: [] }, localRepositories: [sourceRepo], source: () => ({ kind: "repo", repo: sourceRepo }), provisionTimeoutMs: 10_000 })
+        : options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
     ),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },

@@ -165,6 +165,26 @@ export async function readRunCommits(
   }
 }
 
+/**
+ * How many commits on `branch` `commit` lacks: what a push to a pull
+ * request at `commit` would add. `null` when git can't tell, as when `commit`
+ * isn't in the checkout.
+ */
+export async function commitsNotIn(cwd: string, commit: string, branch: string): Promise<number | null> {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit)) return null;
+  try {
+    const count = Number.parseInt((await git(cwd, ["rev-list", "--count", `refs/heads/${branch}`, "--not", commit])).trim(), 10);
+    return Number.isNaN(count) ? null : count;
+  } catch (error) {
+    // Common when the pull request's head isn't in this checkout (a force-push, a head fetched elsewhere): said, so a missing count can be traced.
+    console.warn(
+      `[harness-manager] could not count ${branch}'s commits past ${commit} in ${cwd} ` +
+        `(${error instanceof Error ? error.message : String(error)}); reporting it unknown.`,
+    );
+    return null;
+  }
+}
+
 /** The most files one diff read lists. The totals still count every file. */
 export const MAX_DIFF_FILES = 200;
 

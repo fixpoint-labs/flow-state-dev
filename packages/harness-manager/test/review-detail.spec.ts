@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { reviewDetail } from "../src/browser";
 
 /** The fields a review stop's data had none of before the card showed what a person decides on (FIX-2782). */
-const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
+const NONE_OF_THE_DECISION = { goal: null, answer: null, pullRequests: [], openPullRequest: null, pullRequest: null, round: null, files: null, fileCount: null, added: null, removed: null };
 
 describe("reviewDetail", () => {
   it("reads a full review's data", () => {
@@ -150,5 +150,14 @@ describe("reviewDetail: what the review card needs to decide on", () => {
     expect(reviewDetail({ branch: "b", openPullRequest: { number: 5661, url: "javascript:alert(1)" } })?.openPullRequest).toBeNull();
     // Data from before the field: none open.
     expect(reviewDetail({ branch: "b" })?.openPullRequest).toBeNull();
+  });
+
+  it("reads the pull request the work is already on, with its state and what it lacks, and anything it can't read as unknown", () => {
+    const pr = { number: 5659, url: "https://github.com/acme/widgets/pull/5659" };
+    expect(reviewDetail({ branch: "b", pullRequest: { ...pr, state: "merged", unpushed: 0 } })?.pullRequest).toEqual({ ...pr, state: "merged", unpushed: 0 });
+    expect(reviewDetail({ branch: "b", pullRequest: { ...pr, state: "draft", unpushed: -1 } })?.pullRequest).toEqual({ ...pr, state: null, unpushed: null });
+    expect(reviewDetail({ branch: "b", pullRequest: { number: 5659, url: "javascript:alert(1)", state: "open" } })?.pullRequest).toBeNull();
+    // Data from before the field: none.
+    expect(reviewDetail({ branch: "b" })?.pullRequest).toBeNull();
   });
 });

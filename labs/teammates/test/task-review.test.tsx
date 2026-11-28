@@ -160,7 +160,46 @@ describe("the review's foot", () => {
     expect(answer).toHaveBeenLastCalledWith({ verdict: "accepted", land: "pull-request" });
   });
 
+  // The work was already on #5659, from the branch the checkout moved to, yet the footer still led with
+  // "Open pull request". With the pull request the work is on, it names it and its state, and never offers a second.
+  it("names the pull request the work is already on, with its state, and never offers to open another", () => {
+    const pr = { number: 5659, url: "https://github.com/acme/widgets/pull/5659" };
+    for (const state of ["open", "merged", "closed"] as const) {
+      const { unmount } = render(<Footer detail={review({ lands: ["merge"], pullRequests: [pr], openPullRequest: null, pullRequest: { ...pr, state, unpushed: 0 } })} answer={async () => {}} />);
+      const foot = screen.getByRole("region", { name: "Your review" });
+      expect(within(foot).queryByRole("button", { name: /pull request|Push/ })).toBeNull();
+      expect(within(foot).getByRole("link", { name: `PR #5659 · ${state}` }).getAttribute("href")).toBe(pr.url);
+      expect(foot.querySelector("[data-land-hint]")?.textContent).not.toContain("Opens a PR");
+      unmount();
+    }
+  });
+
+  it("offers Push update only while the branch has commits the open pull request lacks, and lands onto it", async () => {
+    const answer = vi.fn(async () => {});
+    const pr = { number: 5661, url: "https://github.com/acme/widgets/pull/5661" };
+    const behind = render(<Footer detail={review({ pullRequests: [pr], openPullRequest: pr, pullRequest: { ...pr, state: "open", unpushed: 2 } })} answer={answer} />);
+    let foot = screen.getByRole("region", { name: "Your review" });
+    expect(foot.querySelector("[data-land-hint]")?.textContent).toContain("Pushes the 2 commits PR #5661 lacks");
+    fireEvent.click(within(foot).getByRole("button", { name: "Push update" }));
+    await screen.findByRole("status");
+    expect(answer).toHaveBeenLastCalledWith({ verdict: "accepted", land: "pull-request" });
+    behind.unmount();
+    // GitHub couldn't be asked: the push stays, since nothing says there is nothing to push.
+    const unread = render(<Footer detail={review({ pullRequests: [pr], openPullRequest: pr, pullRequest: { ...pr, state: null, unpushed: null } })} answer={answer} />);
+    expect(within(screen.getByRole("region", { name: "Your review" })).getByRole("button", { name: "Push update" })).toBeTruthy();
+    unread.unmount();
+    // Nothing the pull request lacks: nothing to push.
+    render(<Footer detail={review({ lands: ["merge"], pullRequests: [pr], openPullRequest: pr, pullRequest: { ...pr, state: "open", unpushed: 0 } })} answer={answer} />);
+    foot = screen.getByRole("region", { name: "Your review" });
+    expect(within(foot).queryByRole("button", { name: /Push|Open pull request/ })).toBeNull();
+  });
+
   it("says what the primary button does, and what is still open", () => {
+    expect(landHint("pull-request", {
+      branch: "a/b",
+      openPullRequest: { number: 41, url: "https://github.com/acme/widgets/pull/41" },
+      pullRequest: { number: 42, url: "https://github.com/acme/widgets/pull/42", state: "open", unpushed: 2 },
+    }, 0)).toBe("Pushes …/b to PR #41, already open from it; no second PR is opened.");
     expect(landHint("pull-request", { branch: "a/b" }, 1)).toBe("Opens a PR from …/b, with the goal, commits, checks and the judge's verdict as its description. 1 check is still open.");
     expect(landHint(null, { branch: null }, 0)).toBe("Completes the task; the branch stays as it is.");
   });

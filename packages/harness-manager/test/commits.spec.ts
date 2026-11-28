@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { effectiveCut, readRunCommits } from "../src/commits";
+import { commitsNotIn, effectiveCut, readRunCommits } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -49,6 +49,23 @@ function repo(ahead: "local" | "remote"): string {
   }
   return dir;
 }
+
+describe("commitsNotIn", () => {
+  it("counts the branch landing pushes when the checkout is on an older commit", async () => {
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run");
+    const pushed = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the unpublished change");
+    git(dir, "checkout", "-q", "--detach", pushed);
+    expect(await commitsNotIn(dir, pushed, "run")).toBe(1);
+  });
+
+  it("keeps an unreadable or non-object-id head unknown instead of treating a revision expression as a commit", async () => {
+    const dir = repo("local");
+    expect(await commitsNotIn(dir, "HEAD", "main")).toBeNull();
+    expect(await commitsNotIn(dir, "0".repeat(40), "main")).toBeNull();
+  });
+});
 
 describe("readRunCommits", () => {
   it("counts none of a local base's own commits when the branch was cut from it, ahead of a stale origin", async () => {

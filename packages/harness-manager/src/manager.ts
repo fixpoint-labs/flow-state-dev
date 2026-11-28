@@ -101,6 +101,7 @@ import {
   GIT_TIMEOUT_MS,
   HeldWorkMismatchError,
   WorkspaceRefusedError,
+  readPullRequest,
   recordBranchPullRequests,
   WORKTREES,
   worktreeKey,
@@ -156,9 +157,9 @@ import {
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
 import { withSettledState } from "./landed-work";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
+import { commitsNotIn, effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
-import type { ReviewDetail, ReviewPullRequest } from "./review-detail";
+import type { ReviewDetail, ReviewPullRequest, ReviewWorkPullRequest } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -1205,6 +1206,9 @@ const managerStateSchema = z.object({
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
   baseCommit: z.string().nullable().default(null),
+  // BP-030.
+  /** The branch `baseRef` named when the run's branch was cut, off its record: what the base's tip is read from. */
+  baseBranch: z.string().nullable().default(null),
   // FIX-2782; BP-030.
   /**
    * The commit the checkout was on when this attempt provisioned it: where
@@ -2737,6 +2741,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
         baseCommit: recorded?.baseCommit ?? null,
+        baseBranch: recorded?.baseBranch ?? null,
         filesOnly: recorded?.filesOnly ?? null,
       };
       await ctx.sequencer!.patchState({
@@ -3057,6 +3062,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                 remote: place.repo.remote,
                 baseRef: place.repo.baseRef ?? null,
                 baseCommit: place.repo.baseCommit ?? null,
+                baseBranch: place.repo.baseBranch ?? null,
               }
             : { filesOnly: true };
         await fenced(
@@ -3210,7 +3216,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           state.filesOnly === true || host.baseTip === undefined
             ? Promise.resolve(state.baseCommit ?? null)
             : Promise.resolve()
-                .then(() => host.baseTip!({ cwd: state.workspacePath, baseRef: state.baseRef }))
+                // The branch the base named at the cut: a base named only as `HEAD` has no tip of its own.
+                .then(() => host.baseTip!({ cwd: state.workspacePath, baseRef: state.baseBranch ?? state.baseRef }))
                 .then(
                   (tip) => effectiveCut(state.workspacePath, state.baseCommit ?? null, tip ?? null),
                   () => state.baseCommit ?? null,
@@ -4138,6 +4145,31 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       };
       const pullRequests =
         ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);
+      // A branch-open target is host-verified. A recorded URL is tool output: it cannot choose where
+      // authenticated gh runs, and must match the checkout's PR and branch before it can affect landing.
+      const readWorkPullRequest = async (): Promise<ReviewWorkPullRequest | null> => {
+        const target = onPullRequest ?? named;
+        const on = target ?? pullRequests.at(-1) ?? null;
+        const ref = on === null ? null : pullRequestRefFromUrl(on.url);
+        const branch = target?.branch ?? state.branch;
+        if (ref === null || state.workspacePath == null || branch == null) return null;
+        try {
+          const now = await readPullRequest({
+            cwd: state.workspacePath,
+            number: ref.number,
+            // Only a target the workspace host resolved from its pinned remote may name a repository.
+            ...(target === null ? {} : { repository: `${ref.owner}/${ref.name}`, host: ref.host }),
+            timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+          });
+          if (pullRequestRefFromUrl(now.url ?? "")?.url !== ref.url || (target === null && now.branch !== branch)) return null;
+          const unpushed = now.commit === null ? null : await commitsNotIn(state.workspacePath, now.commit, branch);
+          return { number: ref.number, url: ref.url, state: now.merged ? "merged" : now.state, unpushed };
+        } catch {
+          return target === null ? null : { number: ref.number, url: ref.url, state: null, unpushed: null };
+        }
+      };
+      let workPullRequest =
+        ctx.runOnce === undefined ? await readWorkPullRequest() : await ctx.runOnce(`review:work-pull-request:${state.steerSteps ?? 0}`, readWorkPullRequest);
       // This round's commits, read by `decide`; `null` when the round is the whole branch, or added
       // nothing, so the card falls back to the branch's commits rather than an empty list.
       const thisRound = decision.round?.verified === true && decision.round.count > 0 ? { commits: decision.round.count, subjects: decision.round.subjects } : null;
@@ -4192,7 +4224,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               removed: decision.diff?.verified === true ? decision.diff.removed : null,
               judge: read,
               checks: decision.checks ?? null,
-              lands,
+              // Unknown reads keep a push available. Only a verified branch-open target can be pushed to.
+              lands: lands.filter((land) => land !== "pull-request" || workPullRequest === null || (
+                (onPullRequest ?? named)?.url === workPullRequest.url &&
+                workPullRequest.state !== "merged" && workPullRequest.state !== "closed" && workPullRequest.unpushed !== 0
+              )),
               landFailed: failed,
               // Every try of the last landing, oldest first (FIX-2658).
               landAttempts: attempts,
@@ -4202,6 +4238,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               pullRequests,
               // The pull request a `pull-request` accept puts the work on, rather than opening one (FIX-2920).
               openPullRequest: openPullRequestOf(onPullRequest ?? named),
+              pullRequest: workPullRequest,
               round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
@@ -4232,6 +4269,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // Once per round, so a resume that runs this again doesn't push or merge twice.
           const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, unasked || onNamed);
           if ("error" in outcome) {
+            if ((unasked || onNamed) && outcome.reason === "pull-request-gone") workPullRequest = null;
             // The pull request the review named closed since: asked again without it, so an accept may open one.
             if (onNamed && outcome.reason === "pull-request-gone") named = null;
             // Closed or merged since it was found: the person is offered every way, as without one.
