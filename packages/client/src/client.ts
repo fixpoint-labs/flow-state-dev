@@ -38,6 +38,7 @@ import type {
   CollectionListPage,
   DebugCollectionResourcesResponse,
   DebugResourcesResponse,
+  DebugStorageResponse,
   DebugSuspensionsResponse,
   ExecuteActionRequestBody,
   ExecuteActionResponse,
@@ -562,6 +563,14 @@ export interface Client {
   sessions: SessionsApi;
   resources: ResourcesApi;
   /**
+   * Privileged host-wide reads for the DevTool. The server must opt in
+   * (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`); otherwise 403.
+   */
+  debug: {
+    /** How much space the host's store takes, or `storage: null` when it can't measure itself. */
+    storage(): Promise<DebugStorageResponse>;
+  };
+  /**
    * One user or org resource or collection, by its definition: read by scope
    * and key with no session, and written through the flow its `runBy` names. A
    * collection's handle reads and writes its entries one at a time. Its key is
@@ -775,6 +784,9 @@ export function createClient(options: CreateClientOptions): Client {
     flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address, sendLimit),
     sessions,
     resources,
+    debug: {
+      storage: () => t.json<DebugStorageResponse>("/api/flows/debug/storage")
+    },
     resource: (def, resourceOptions) =>
       scopeResourceHandle(
         t,

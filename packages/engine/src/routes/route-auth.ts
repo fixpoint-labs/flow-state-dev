@@ -266,6 +266,9 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_sessions":
     case "active_requests":
     case "transcribe":
+    // The store's size: no rows to scope, so authentication only, behind the
+    // debug gate its handler checks first.
+    case "debug_storage":
       return { kind: "host" };
 
     // An upload has no owner yet: it is held for the caller who sent it, so

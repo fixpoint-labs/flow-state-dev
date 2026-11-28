@@ -47,6 +47,7 @@ export type ParsedFlowRoute =
   | { kind: "resume_suspension"; flowKind: string; requestId: string }
   | { kind: "answer_suspension"; flowKind: string; requestId: string }
   | { kind: "request_status"; flowKind: string; requestId: string }
+  | { kind: "debug_storage" }
   | { kind: "debug_list_resources"; sessionId: string }
   | { kind: "debug_list_suspensions"; sessionId: string }
   | { kind: "debug_list_collection_items"; sessionId: string; ref: string }

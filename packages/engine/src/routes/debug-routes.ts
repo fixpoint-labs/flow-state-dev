@@ -150,6 +150,22 @@ function matchesAllowlist(origin: string, allowlist: string[]): boolean {
   return false;
 }
 
+/**
+ * How much space the host's store takes: `200 { storage }`, where `storage` is
+ * the registry's own reading (`StoreRegistry.storageSize`), or `null` when the
+ * store can't measure itself (in memory, or an adapter without the method).
+ * The DevTool header shows it, and hides the readout on `null`.
+ */
+export async function handleDebugStorage(
+  request: Request,
+  ctx: Pick<DebugRouteContext, "stores" | "debug">
+): Promise<Response> {
+  const denied = assertDebugAllowed(request, ctx.debug);
+  if (denied !== null) return denied;
+  const storage = (await ctx.stores.storageSize?.()) ?? null;
+  return jsonResponse(200, { storage });
+}
+
 export async function handleDebugListResources(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "debug_list_resources" }>,

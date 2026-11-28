@@ -21,6 +21,7 @@ import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-st
 import { createSQLiteSuspensionStore } from "./suspension-store";
 import { createSQLiteLeaseStore } from "./lease-store";
 import { createSQLiteWakeStore } from "./wake-store";
+import { isOnDisk, sqliteStorageSize } from "./storage-size";
 
 // Inlined to avoid a value import from `@flow-state-dev/engine` — the
 // store-sqlite package boundary forbids value imports from server, and the
@@ -81,6 +82,9 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     suspensions: createSQLiteSuspensionStore(db),
     leases: createSQLiteLeaseStore(db),
     wakes: createSQLiteWakeStore(db),
+    ...(isOnDisk(options.filename)
+      ? { storageSize: () => Promise.resolve(sqliteStorageSize(options.filename)) }
+      : {}),
     close() {
       db.close();
     }

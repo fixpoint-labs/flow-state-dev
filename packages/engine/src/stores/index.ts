@@ -15,6 +15,7 @@ export type { FilesystemTraceStoreOptions } from "./filesystem/trace-store";
 import { createFilesystemSuspensionStore } from "./filesystem/suspension-store";
 import { createFilesystemLeaseStore } from "./filesystem/lease-store";
 import { createFilesystemWakeStore } from "./filesystem/wake-store";
+import { filesystemStorageSize } from "./filesystem/storage-size";
 import { createFilesystemUserStore } from "./filesystem/user-store";
 import { createInMemoryActiveRequestRegistry } from "./memory/active-request-registry";
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
@@ -49,6 +50,7 @@ export type {
   ConditionalWriteResult,
   ContentScopeType,
   StorageScopeType,
+  StorageSize,
   ContentStore,
   LeaseStore,
   WakeInput,
@@ -266,7 +268,8 @@ export function createFilesystemStores(
     }),
     suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions"), { requests: request }),
     leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases")),
-    wakes: createFilesystemWakeStore(path.join(options.rootDir, "wakes"))
+    wakes: createFilesystemWakeStore(path.join(options.rootDir, "wakes")),
+    storageSize: () => filesystemStorageSize(options.rootDir)
   };
 }
 

@@ -2060,6 +2060,28 @@ export type StoreRegistry = {
    * and read routes answer `attachments_not_configured`.
    */
   blobs?: BlobStore;
+  /**
+   * How much space this registry's storage takes, measured now. Optional: a
+   * store that keeps nothing on disk (the in-memory one) or cannot measure
+   * leaves it out (so does an SQLite `:memory:` database), and so does any
+   * registry built before it existed. Read by the DevTool through the debug
+   * route `GET /api/flows/debug/storage`.
+   */
+  storageSize?: () => Promise<StorageSize>;
+};
+
+/**
+ * One reading of a store's size, as {@link StoreRegistry.storageSize} gives it.
+ * `kind` names the backend (`"sqlite"`, `"filesystem"`, `"postgres"`, or a
+ * third-party adapter's own name). `location` says what was measured, for a
+ * person to read: a file or folder path, or a database name. Never a
+ * credential.
+ */
+export type StorageSize = {
+  kind: string;
+  /** Bytes the store's files or tables take. */
+  bytes: number;
+  location?: string;
 };
 
 // FIX-406 6B.

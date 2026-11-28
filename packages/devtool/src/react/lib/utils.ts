@@ -16,6 +16,21 @@ export function shortSessionId(id: string): string {
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+/**
+ * A byte count for a person to read, in binary units to one decimal place
+ * (`812 B`, `4.0 KB`, `42.3 MB`), as `du -h` counts them.
+ */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
 export function safeParseJson(raw: string): unknown {
   try {
     return JSON.parse(raw);

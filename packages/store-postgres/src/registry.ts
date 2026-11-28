@@ -22,6 +22,7 @@ import { createPostgresSuspensionStore } from "./suspension-store";
 import { createPostgresLeaseStore } from "./lease-store";
 import { createPostgresWakeStore } from "./wake-store";
 import { createPgPoolTx } from "./tx";
+import { postgresStorageSize } from "./storage-size";
 import { createPostgresBus, type PostgresBus } from "./bus";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
@@ -237,6 +238,7 @@ export async function createPostgresStores(
     suspensions: createPostgresSuspensionStore(executor),
     leases: createPostgresLeaseStore(executor),
     wakes: createPostgresWakeStore(executor),
+    storageSize: () => postgresStorageSize(executor),
     bus,
     async close() {
       // The listener goes back to the tail pool before the pools end.
