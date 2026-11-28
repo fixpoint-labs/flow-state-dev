@@ -16,7 +16,7 @@ import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from ".
 import { createInMemoryStores } from "../src/host";
 import { withChangeBus } from "../src/bus/publish-writes";
 import { enablePushDelivery } from "../src/host";
-import { handleCreateCollectionResource } from "../src/routes/resource-routes";
+import { handleCreateCollectionResource, handleDeleteCollectionResource } from "../src/routes/resource-routes";
 import { ownerTopic } from "../src/bus/owner-topic";
 import type { ChangeNotice } from "../src/bus/types";
 import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
@@ -246,7 +246,7 @@ describe("a writer whose collection covers more than the view reads", () => {
   // The writer's flow declares `notes/**`; the view's flow reads `notes/shared/*`
   // across sessions. Neither sees the other's declarations, so the server
   // matches the written key against each subscription's pattern.
-  const grant = { content: { read: true, create: true }, state: { read: true } } as never;
+  const grant = { content: { read: true, create: true, delete: true }, state: { read: true } } as never;
   const all = defineResourceCollection({ pattern: "notes/**", scope: "session", stateSchema: z.object({ text: z.string().default("") }), client: grant });
   const shared = defineResourceCollection({ pattern: "notes/shared/*", scope: "session", stateSchema: z.object({ text: z.string() }) });
 
@@ -360,6 +360,24 @@ describe("a writer whose collection covers more than the view reads", () => {
     for (let i = 0; i < 50 && screen.notices().length === 0; i += 1) await settle();
     expect(screen.notices().length).toBeGreaterThan(0);
     for (const notice of screen.notices()) expect(notice.ids).toBeUndefined();
+    screen.close();
+  });
+
+  it("hears a browser's delete of notes/shared/x through the resource route, and its next answer drops the entry", async () => {
+    const env = bootOverlap();
+    await env.put("w1", "shared/x");
+    const screen = await env.watch();
+    expect(screen.answer.output.entries).toEqual(["w1 notes/shared/x"]);
+    const deleted = await handleDeleteCollectionResource(
+      new Request("http://x/sessions/w1/resources/all/notes%2Fshared%2Fx", { method: "DELETE" }),
+      { kind: "delete_collection_item", sessionId: "w1", ref: "all", topic: "notes/shared/x" },
+      { registry: env.registry, stores: env.stores, checkedSession: (await env.stores.session.get("w1"))! }
+    );
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    for (let i = 0; i < 50 && screen.notices().length === 0; i += 1) await settle();
+    expect(screen.notices().length).toBeGreaterThan(0);
+    for (const notice of screen.notices()) expect(notice.ids).toBeUndefined();
+    expect((await env.watch()).answer.output.entries).toEqual([]);
     screen.close();
   });
 });
