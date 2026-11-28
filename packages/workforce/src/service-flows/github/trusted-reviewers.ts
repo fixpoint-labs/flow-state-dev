@@ -9,7 +9,11 @@
  *   an emptied list included, so emptying it trusts nobody. The
  *   only writer is the coordinator's tool (`./reviewers-tool`); no HTTP action
  *   writes it.
- * - **The screen** passes an event only when its sender is on the list, read
+ * - **The screen** passes a `check` that failed, whoever ran it: CI is the app's report on a
+ *   commit, not a reviewer steering the run, and a check carries only its name, outcome, head
+ *   commit and link, never text the workflow wrote (see `./normalize`). A check that passed, was
+ *   skipped or was cancelled is refused, so only red CI wakes the run. Any other event passes
+ *   only when its sender is on the list, read
  *   for each event so an edit applies to the next comment with no restart. A
  *   listed bot passes as it is. A listed user must also be able to write to
  *   the repository, asked of GitHub when the event arrives
@@ -35,6 +39,7 @@ import type { CustomScreen } from "../../subscriptions/screens";
 import type { SubscriptionProvider } from "../../subscriptions/subscribe";
 import type { WorkerInstallation } from "../../workers/installation";
 import { followPullRequest } from "./follow-pull-request";
+import { githubCheckFailed } from "./normalize";
 import { githubRepositoryOf } from "./provider";
 import { GITHUB_REVIEWERS_DOC, GITHUB_REVIEWERS_SCREEN, githubLoginsListed, githubReviewersDocument, isListedBot, reviewersDocumentOf, reviewersRender } from "./reviewers-document";
 import { githubReviewersTool } from "./reviewers-tool";
@@ -76,9 +81,11 @@ function settingLogins(value: string | undefined): string[] {
 export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersScreenOptions): CustomScreen {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
   return {
-    describe: "the sender is a listed bot, or a listed user who can write to the repository",
+    describe: "a failed check, or the sender is a listed bot, or a listed user who can write to the repository",
     ...(options.resources === undefined ? {} : { resources: options.resources }),
     async screen(event, entry, ctx) {
+      // CI by type, whoever ran it: a check carries only its name, outcome, commit and link (normalize). A red one passes.
+      if (event.kind === "check") return githubCheckFailed(event) ? undefined : "a check that didn't fail";
       // As GitHub sends a sender's id: lower-cased, a bot keeping its `[bot]` here to tell it apart.
       const listed = (await options.reviewers(ctx)).map((login) => login.toLowerCase());
       // A bot is matched only against listed bots, and anyone else only against listed people.

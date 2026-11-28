@@ -41,6 +41,23 @@
  * logins, a bot's without `[bot]`. A check run is sent by the app that ran
  * it (`check_run.app.slug`, a `bot`), not by whoever pushed.
  *
+ * **A check carries only what GitHub sets.** Its title is `Check <name>: <conclusion>` (the name
+ * the workflow's job name, kept only when it matches `[A-Za-z0-9 ._()/:-]{1,64}`, else
+ * `a CI check`), its
+ * text the lines `status: completed`, `conclusion: <conclusion>` and `head: <sha>`, each value
+ * checked against GitHub's form, and its url the run's page on the event's own repository
+ * (`https://github.com/<owner>/<repo>/runs/<id>`, or `/actions/runs/<id>[/job/<id>]`), else empty. Never the run's `output` (title,
+ * summary, text, annotations) or logs: the workflow writes those, and a pull request can change
+ * the workflow, so no subscriber of any kind hears them. A check run is on a pull request only when
+ * its entry in `pull_requests` is headed on this repository at the branch of the run's suite
+ * (`check_suite.head_branch`), and, when the suite names a `head_repository`, that is this
+ * repository too; otherwise it is on the repository's thread alone. GitHub sends a suite
+ * headed on a fork with `head_branch: null` and an empty `pull_requests` ("When the check
+ * suite's `head_branch` is in a forked repository it will be `null` and the `pull_requests`
+ * array will be empty": the `check_run` webhook payload's `check_suite.pull_requests`,
+ * https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_run), so a fork's run
+ * lands on no pull request by either rule.
+ *
  * **`addressed`.** `true` when the event mentions one of the app's agent
  * handles (outside quoted lines and code), assigns one, or requests its review.
  * A mention of anyone else never asks the agent.
@@ -49,6 +66,54 @@ import { MAX_SUBSCRIPTION_EVENT_TEXT, type SubscriptionEvent } from "@flow-state
 
 /** The provider key GitHub's events and thread keys carry. */
 export const GITHUB_PROVIDER = "github";
+
+/** The conclusions GitHub gives a completed check run. A check's text carries one of these, or none. */
+const CHECK_CONCLUSIONS = new Set(["success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale", "startup_failure"]);
+
+/**
+ * A check name an event carries: an ordinary job name. The name is the workflow's job name, which a
+ * pull request can change, so any other is left out and the check is called {@link UNNAMED_CHECK}.
+ */
+const CHECK_NAME = /^[A-Za-z0-9 ._()/:-]{1,64}$/;
+
+/** What a check whose name is left out is called. */
+const UNNAMED_CHECK = "a CI check";
+
+/** The path of a check run's page on its repository: `runs/<id>`, or an Actions run, or one job of it. */
+const CHECK_RUN_PATH = /^\/(?:runs\/\d+|actions\/runs\/\d+(?:\/job\/\d+)?)$/;
+
+/**
+ * Whether a pull-request entry GitHub lists on a check run or suite is headed on `repository`: its
+ * head repository's id is the repository's, or its API url is `fullName`'s. GitHub's entry names no
+ * `full_name`.
+ */
+export function githubHeadedOn(entry: Record<string, unknown> | undefined, fullName: string, repositoryId?: unknown): boolean {
+  const repo = obj(obj(entry?.head)?.repo);
+  if (repo === undefined) return false;
+  if (typeof repositoryId === "number" && repo.id === repositoryId) return true;
+  return typeof repo.url === "string" && repo.url.toLowerCase() === `https://api.github.com/repos/${fullName.toLowerCase()}`;
+}
+
+/** A check run's `html_url` when it is a run page on `fullName` (`owner/repo`, any case), else `""`. */
+function checkRunUrl(value: string | undefined, fullName: string): string {
+  if (value === undefined) return "";
+  const prefix = `https://github.com/${fullName.toLowerCase()}`;
+  if (!value.toLowerCase().startsWith(prefix)) return "";
+  return CHECK_RUN_PATH.test(value.slice(prefix.length)) ? value : "";
+}
+
+/** The conclusions that mean the check went red: what a run has to act on. */
+const FAILED_CHECK_CONCLUSIONS = new Set(["failure", "timed_out", "action_required", "startup_failure"]);
+
+/**
+ * Whether a normalized GitHub `check` event reports a failed check. It reads the `conclusion:` line
+ * {@link normalizeGitHubEvent} writes into a check's text, which holds only GitHub's own values.
+ */
+export function githubCheckFailed(event: SubscriptionEvent): boolean {
+  if (event.provider !== GITHUB_PROVIDER || event.kind !== "check") return false;
+  const conclusion = /^conclusion: (\S+)$/m.exec(event.text)?.[1];
+  return conclusion !== undefined && FAILED_CHECK_CONCLUSIONS.has(conclusion);
+}
 
 /** One GitHub event, as the webhook route or a poll hands it to {@link normalizeGitHubEvent}. **Pinned.** */
 export interface GitHubEventInput {
@@ -309,27 +374,44 @@ export function normalizeGitHubEvent(input: GitHubEventInput, options: GitHubNor
       const run = obj(payload.check_run);
       const runId = num(run?.id);
       if (action !== "completed" || run === undefined || runId === undefined) return [];
-      const output = obj(run.output);
       // A check run is the app's: it reports as the app that ran it (`github-actions`), a bot the service lists or not.
       const app = obj(run.app);
       const appSlug = str(app?.slug);
       const from = appSlug === undefined ? undefined : { id: githubLoginId(appSlug), name: str(app?.name) ?? appSlug, role: "bot" as const };
+      // GitHub's own values, each checked against its form, so nothing else rides along in the text.
+      const conclusion = CHECK_CONCLUSIONS.has(str(run.conclusion) ?? "") ? str(run.conclusion) : undefined;
+      const head = /^[0-9a-f]{40}$/.test(str(run.head_sha) ?? "") ? str(run.head_sha) : undefined;
+      // The job name and the link are the workflow's and the payload's: kept only in their ordinary form.
+      const name = CHECK_NAME.test(str(run.name) ?? "") ? str(run.name)! : UNNAMED_CHECK;
       const base = {
         ...(from === undefined ? {} : { from }),
         kind: "check",
         id: `check_run:${runId}`,
         version: msOf(run.completed_at),
         association: undefined,
-        title: `Check ${str(run.name) ?? ""}: ${str(run.conclusion) ?? "completed"}`,
-        text: [str(output?.title), str(output?.summary)].filter((part) => part !== undefined).join("\n"),
+        title: `Check ${name}: ${conclusion ?? "completed"}`,
+        // Only what GitHub sets: never the run's `output` (title, summary, text, annotations), which the workflow writes.
+        text: [`status: completed`, ...(conclusion === undefined ? [] : [`conclusion: ${conclusion}`]), ...(head === undefined ? [] : [`head: ${head}`])].join("\n"),
         labels: [],
-        url: str(run.html_url) ?? ""
+        url: checkRunUrl(str(run.html_url), fullName)
       };
+      // A pull request the run is on only when its entry is headed on this repository at the branch the
+      // run's suite ran for: a fork's pull request at the same commit stays off it, the run the repository's alone.
+      const suite = obj(run.check_suite);
+      // Undocumented on this payload, so read only when sent: a suite headed on another repository puts the run on no pull request.
+      const suiteHead = obj(suite?.head_repository);
+      const suiteHere =
+        suiteHead === undefined ||
+        (typeof repository?.id === "number" && suiteHead.id === repository.id) ||
+        (typeof suiteHead.full_name === "string" && suiteHead.full_name.toLowerCase() === fullName.toLowerCase());
+      const suiteBranch = suiteHere ? str(suite?.head_branch) : undefined;
       const numbers = [
         ...new Set(
           (Array.isArray(run.pull_requests) ? run.pull_requests : []).flatMap((pr) => {
-            const n = num(obj(pr)?.number);
-            return n === undefined ? [] : [n];
+            const entry = obj(pr);
+            const n = num(entry?.number);
+            const ours = suiteBranch !== undefined && str(obj(entry?.head)?.ref) === suiteBranch && githubHeadedOn(entry, fullName, repository?.id);
+            return n === undefined || !ours ? [] : [n];
           })
         )
       ];

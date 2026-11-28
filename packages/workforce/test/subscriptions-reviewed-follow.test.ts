@@ -28,7 +28,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { followPullRequest, GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers, operatorGitHub, type GitHubTrustedReviewers } from "../src";
+import { followPullRequest, GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers, normalizeGitHubEvent, operatorGitHub, type GitHubTrustedReviewers } from "../src";
 import { bootSubscriptionsHost, event, github } from "./subscriptions-harness";
 import { ORG } from "./conversation-board-harness";
 import { SUBSCRIPTION_INDEX_PATTERN, SUBSCRIPTIONS_PATTERN } from "../src/subscriptions";
@@ -173,6 +173,82 @@ describe("one stored list, on Teammates' wiring", () => {
     }
   });
 });
+
+let runs = 0;
+/** A completed check run on #412, as GitHub sends it, normalized: run by `app`, its output written by the workflow. */
+function checkRun(conclusion: string, app = "github-actions") {
+  runs += 1;
+  const name = `ci-${runs}`;
+  const [normalized] = normalizeGitHubEvent({
+    eventType: "check_run",
+    payload: {
+      action: "completed",
+      repository: { id: 1, full_name: "acme/api", private: false },
+      sender: { login: `${app}[bot]`, type: "Bot" },
+      check_run: {
+        id: 900 + runs,
+        name,
+        status: "completed",
+        conclusion,
+        head_sha: "0123456789abcdef0123456789abcdef01234567",
+        html_url: `https://github.com/acme/api/runs/${900 + runs}`,
+        completed_at: "2026-11-05T10:00:00Z",
+        app: { slug: app, name: app },
+        output: { title: "WORKFLOW TITLE", summary: "WORKFLOW SUMMARY: push to main", text: "WORKFLOW TEXT" },
+        check_suite: { id: 3, head_branch: "rename" },
+        pull_requests: [{ number: 412, head: { ref: "rename", repo: { id: 1, url: "https://api.github.com/repos/acme/api", name: "api" } } }]
+      }
+    },
+    received: 1_000
+  });
+  return { name, event: normalized! };
+}
+
+// CI reaches a run by type: a check is the app's report on a commit, not a reviewer steering the run, and
+// the run hears only its name, outcome, commit and link. github-actions[bot] is never a reviewer: its
+// comments stay unheard.
+describe("CI on the run's pull request", () => {
+  it("delivers a failed check from any app with only its identity and outcome; drops passing checks", async () => {
+    const host = teammatesHost(reviewersOf(SETTING));
+    try {
+      const run = await host.follower("alice");
+      await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      const said = async (e: { event: Parameters<Host["route"]>[0] }) => {
+        await host.route(e.event);
+        return (await host.heard(run)).join("\n");
+      };
+
+      const red = checkRun("failure");
+      const heard = await said(red);
+      expect(heard, "a failed github-actions check reaches the run").toContain(`Check ${red.name}: failure`);
+      expect(heard).toContain("conclusion: failure");
+      expect(heard).toContain("head: 0123456789abcdef0123456789abcdef01234567");
+      expect(heard).toContain(`https://github.com/acme/api/runs/`);
+      expect(heard, "nothing the workflow wrote").not.toMatch(/WORKFLOW/);
+
+      const vercel = checkRun("timed_out", "vercel");
+      expect(await said(vercel), "a failed check from another unlisted app reaches the run").toContain(`Check ${vercel.name}: timed_out`);
+
+      const green = checkRun("success");
+      expect(await said(green), "a passing check isn't delivered").not.toContain(`Check ${green.name}`);
+
+      asked.length = 0;
+      expect(await hears(host, run, comment("github-actions", "bot")), "a github-actions comment is dropped").toBe(false);
+      expect(await hears(host, run, comment("someapp", "bot")), "an unlisted bot's comment is dropped").toBe(false);
+      const review = event({ kind: "review", text: "review by unlisted bot", sender: { id: "someapp", name: "someapp", role: "bot" } });
+      await host.route(review);
+      expect((await host.heard(run)).some((m) => m.includes("review by unlisted bot")), "an unlisted bot's review is dropped").toBe(false);
+      expect(asked, "no permission call for a check or a bot").toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
+const hears = async (host: Host, session: string, said: ReturnType<typeof comment>) => {
+  await host.route(said.event);
+  return (await host.heard(session)).some((m) => m.includes(said.text));
+};
 
 describe("controls: each planted regression breaks its signal", () => {
   /** A run following #412 and an ordinary subscription on #413, on the wiring with `plant`. */

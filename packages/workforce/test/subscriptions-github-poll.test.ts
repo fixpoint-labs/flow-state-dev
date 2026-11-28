@@ -9,7 +9,7 @@
  * was asked. And a quiet thread must cost conditional requests that come back
  * `304`, not a full re-read of the PR every five minutes.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
 
@@ -20,10 +20,12 @@ const at = (minutes: number) => new Date(SINCE + minutes * 60_000).toISOString()
 const ctx = { session: { identity: { id: "s", userId: "alice", orgId: "acme" } } } as unknown as BlockContext;
 
 const user = (login: string) => ({ login, type: "User" });
+/** PR 412 as a check suite lists it: headed on this repository. */
+const OUR_PR = { number: 412, head: { ref: "rename", repo: { url: "https://api.github.com/repos/acme/api" } }, base: { repo: { url: "https://api.github.com/repos/acme/api" } } };
 const API: Record<string, unknown> = {
   "/repos/acme/api": { full_name: "acme/api", private: false },
   "/repos/acme/api/issues/412": { number: 412, title: "Rename the handler", pull_request: {}, user: user("alice"), created_at: at(-60), updated_at: at(3), labels: [] },
-  "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc" }, html_url: "https://github.com/acme/api/pull/412" },
+  "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc", ref: "rename", repo: { full_name: "Acme/API" } }, html_url: "https://github.com/acme/api/pull/412" },
   "/repos/acme/api/issues/412/timeline": [
     { event: "review_requested", created_at: at(1), actor: user("alice"), requested_reviewer: user("bob") },
     { event: "labeled", created_at: at(1), actor: user("alice") }
@@ -36,10 +38,14 @@ const API: Record<string, unknown> = {
   "/repos/acme/api/pulls/412/comments": [],
   "/repos/acme/api/commits/abc/check-runs": {
     check_runs: [
-      { id: 5, name: "ci", status: "completed", conclusion: "success", completed_at: at(4), app: { slug: "github-actions", name: "GitHub Actions" } },
-      { id: 6, name: "lint", status: "in_progress", app: { slug: "github-actions" } }
+      { id: 5, name: "ci", status: "completed", conclusion: "success", completed_at: at(4), check_suite: { id: 1 }, app: { slug: "github-actions", name: "GitHub Actions" } },
+      { id: 6, name: "lint", status: "in_progress", check_suite: { id: 1 }, app: { slug: "github-actions" } }
     ]
-  }
+  },
+  // The suites on the head commit, each with the pull requests GitHub matched it to: what a check run's own object doesn't carry.
+  "/repos/acme/api/commits/abc/check-suites": { check_suites: [{ id: 1, head_branch: "rename", pull_requests: [OUR_PR] }, { id: 2, head_branch: "elsewhere", pull_requests: [] }] },
+  // The Actions workflow runs on the head commit, each naming its suite and the repository its head came from.
+  "/repos/acme/api/actions/runs": { workflow_runs: [{ check_suite_id: 1, head_repository: { full_name: "Acme/API" } }] }
 };
 
 /** The repository's lists a repo-wide poll reads: PR 412 moved after the mark, and it has no new issue comments. */
@@ -87,6 +93,125 @@ describe("GitHub's poll", () => {
     );
     // Every event is this thread's, as its own user read it.
     expect(result.events.every((e) => e.threads.includes(PR))).toBe(true);
+  });
+
+  // Anyone can open a pull request from a fork whose head is the same commit, and that fork's workflow
+  // reports check runs on the commit in this repository. A run hears only checks from its own pull
+  // request's branch on this repository, so a stranger can't turn a run's CI red.
+  describe("whose check runs reach the pull request", () => {
+    const failed = (id: number, suite: number) => ({ id, name: `job-${id}`, status: "completed", conclusion: "failure", completed_at: at(5), check_suite: { id: suite }, app: { slug: "github-actions", name: "GitHub Actions" } });
+    const checksOf = async (extra: Record<string, unknown>) => {
+      const { provider, asked } = fakeGitHub(extra);
+      const result = await provider.poll!(PR, { since: SINCE }, ctx);
+      if ("unchanged" in result) throw new Error("expected events");
+      return { checks: result.events.filter((e) => e.kind === "check").map((e) => e.object.id), asked: asked.map((a) => a.path) };
+    };
+
+    it("delivers a same-repository pull request's failed check", async () => {
+      const { checks } = await checksOf({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] } });
+      expect(checks).toEqual(["check_run:7"]);
+    });
+
+    it("drops a run at the same commit from a suite on another branch", async () => {
+      const { checks } = await checksOf({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1), failed(8, 2), failed(9, 3)] } });
+      expect(checks, "suite 2 ran for another branch; suite 3 isn't listed").toEqual(["check_run:7"]);
+    });
+
+    it("delivers no check runs to a pull request whose head is a fork, even at a matching commit", async () => {
+      const { checks, asked } = await checksOf({
+        "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc", ref: "rename", repo: { full_name: "mallory/api" } } },
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }
+      });
+      expect(checks).toEqual([]);
+      expect(asked, "a fork's head isn't asked for its checks").not.toContain("/repos/acme/api/commits/abc/check-runs");
+    });
+
+    // A cursor kept before the head's branch was kept with it: the pull request answers 304, so it is read in full once.
+    it("reads an unchanged pull request in full once when the cursor doesn't know whose head it is", async () => {
+      const { provider, asked } = fakeGitHub({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] } });
+      const first = await provider.poll!(PR, { since: SINCE }, ctx);
+      if ("unchanged" in first) throw new Error("expected events");
+      // No branch kept, and the check runs moved since (their validator dropped): a run finished.
+      const legacy = Object.fromEntries(Object.entries(first.etags!).filter(([key]) => key !== "#head-ref" && !key.includes("check-runs")));
+      asked.length = 0;
+      const second = await provider.poll!(PR, { since: SINCE, etags: legacy }, ctx);
+      if ("unchanged" in second) throw new Error("expected the check");
+      expect(second.events.filter((e) => e.kind === "check").map((e) => e.object.id)).toEqual(["check_run:7"]);
+      expect(asked.filter((a) => a.path === "/repos/acme/api/pulls/412").map((a) => a.ifNoneMatch)).toEqual([expect.any(String), null]);
+      expect(second.etags!["#head-ref"]).toBe("rename");
+    });
+
+    // A fork can name its branch like ours. An Actions run counts only when its workflow run's head is this
+    // repository; any other app's only when its suite lists this pull request headed here. Unknown: dropped.
+    it("drops a github-actions run whose workflow run is headed on a fork, at a matching branch and commit", async () => {
+      const { checks } = await checksOf({
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] },
+        "/repos/acme/api/actions/runs": { workflow_runs: [{ check_suite_id: 1, head_repository: { full_name: "mallory/api" } }] }
+      });
+      expect(checks).toEqual([]);
+    });
+
+    it("drops a github-actions run when its workflow runs can't be read", async () => {
+      const { checks } = await checksOf({ "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }, "/repos/acme/api/actions/runs": FORBIDDEN });
+      expect(checks).toEqual([]);
+    });
+
+    // Out of requests is not an answer: the Actions run waits for the next poll rather than being lost.
+    it("retries a github-actions run on the next poll when its workflow runs were rate limited", async () => {
+      const runs = { "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] } };
+      const limited = fakeGitHub({ ...runs, "/repos/acme/api/actions/runs": RATE_LIMITED });
+      const first = await limited.provider.poll!(PR, { since: SINCE }, ctx);
+      if ("unchanged" in first) throw new Error("expected a read");
+      expect(first.events.filter((e) => e.kind === "check"), "fails closed this poll").toEqual([]);
+      expect(first.through, "the mark stays at the run").toBeLessThanOrEqual(Date.parse(at(5)));
+      const second = await fakeGitHub(runs).provider.poll!(PR, { since: first.through, etags: first.etags! }, ctx);
+      if ("unchanged" in second) throw new Error("the rate-limited run was never asked again");
+      expect(second.events.filter((e) => e.kind === "check").map((e) => e.object.id)).toEqual(["check_run:7"]);
+    });
+
+    it("says once that a token can't read Actions, and moves on", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const runs = { "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }, "/repos/acme/api/actions/runs": FORBIDDEN };
+        const first = await fakeGitHub(runs).provider.poll!(PR, { since: SINCE }, ctx);
+        if ("unchanged" in first) throw new Error("expected a read");
+        expect(first.events.filter((e) => e.kind === "check")).toEqual([]);
+        expect(first.through, "a permanent refusal advances the mark").toBeGreaterThan(Date.parse(at(5)));
+        const said = () => warn.mock.calls.filter((c) => String(c[0]).includes("can't read GitHub Actions")).length;
+        expect(said()).toBe(1);
+        const next = { ...runs, "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(8, 1)] } };
+        await fakeGitHub(next).provider.poll!(PR, { since: SINCE, etags: Object.fromEntries(Object.entries(first.etags!).filter(([k]) => !k.includes("check-runs"))) }, ctx);
+        expect(said(), "once per subscription").toBe(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("binds another app's suite to this pull request, not to a branch name", async () => {
+      const vercel = (id: number, suite: number) => ({ ...failed(id, suite), app: { slug: "vercel", name: "Vercel" } });
+      const { checks, asked } = await checksOf({
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [vercel(7, 1), vercel(8, 4), vercel(9, 5)] },
+        "/repos/acme/api/commits/abc/check-suites": {
+          check_suites: [
+            { id: 1, head_branch: "rename", pull_requests: [OUR_PR] },
+            // On our branch name, with no entry for this pull request.
+            { id: 4, head_branch: "rename", pull_requests: [] },
+            // An entry for #412 headed elsewhere.
+            { id: 5, head_branch: "rename", pull_requests: [{ ...OUR_PR, head: { ref: "rename", repo: { url: "https://api.github.com/repos/mallory/api" } } }] }
+          ]
+        }
+      });
+      expect(checks).toEqual(["check_run:7"]);
+      expect(asked, "no workflow runs asked without an Actions run").not.toContain("/repos/acme/api/actions/runs");
+    });
+
+    it("delivers none when the head's repository is gone (a deleted fork)", async () => {
+      const { checks } = await checksOf({
+        "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc", ref: "rename", repo: null } },
+        "/repos/acme/api/commits/abc/check-runs": { check_runs: [failed(7, 1)] }
+      });
+      expect(checks).toEqual([]);
+    });
   });
 
   it("answers unchanged when every conditional request comes back 304", async () => {
