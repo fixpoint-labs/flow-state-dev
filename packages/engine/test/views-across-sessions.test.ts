@@ -102,7 +102,7 @@ function boot() {
   /** Every notice on `owner`'s change topic for `notes`, as the bus delivers it. */
   const hear = (userId: string, orgId: string) => {
     const heard: ChangeNotice[] = [];
-    stores.bus!.subscribe(ownerTopic({ userId, orgId, tenantId: undefined }), (notice) => heard.push(notice));
+    stores.bus!.subscribe(ownerTopic({ userId, orgId, tenantId: undefined }, "desk"), (notice) => heard.push(notice));
     return heard;
   };
   return { stores, file, view, hear, ask };
@@ -205,7 +205,7 @@ describe("the owner's change topic, by organization", () => {
   it("hears a write in an app with no sign-in on the default organization's topic, where its view listens", async () => {
     const env = bootOpen();
     const heard: ChangeNotice[] = [];
-    env.stores.bus!.subscribe(ownerTopic({ userId: "alice", orgId: DEFAULT_ORG_ID, tenantId: undefined }), (notice) => heard.push(notice));
+    env.stores.bus!.subscribe(ownerTopic({ userId: "alice", orgId: DEFAULT_ORG_ID, tenantId: undefined }, "desk"), (notice) => heard.push(notice));
     const res = await env.file("s1");
     expect(res.status, res.body).toBe(202);
     for (let i = 0; i < 100 && heard.length === 0; i += 1) await settle();
@@ -222,7 +222,7 @@ describe("the owner's change topic, by organization", () => {
     );
     const heard: ChangeNotice[] = [];
     for (const orgId of [DEFAULT_ORG_ID, undefined]) {
-      env.stores.bus!.subscribe(ownerTopic({ userId: "alice", orgId, tenantId: undefined }), (notice) => heard.push(notice));
+      env.stores.bus!.subscribe(ownerTopic({ userId: "alice", orgId, tenantId: undefined }, "desk"), (notice) => heard.push(notice));
     }
     const res = await env.file("no-org");
     // Accepted at the door, refused by the run before it writes anything.
@@ -332,6 +332,8 @@ describe("a writer whose collection covers more than the view reads", () => {
     expect(heard.length).toBeGreaterThan(0);
     for (const notice of heard) {
       expect(notice.ids).toBeUndefined();
+      // No request id: fetching it would tell a session that exists from one that doesn't.
+      expect(notice.origin).toBeUndefined();
       expect(hearsNotice(screen.answer.hears, notice as never)).toBe(true);
     }
     screen.close();
@@ -358,6 +360,93 @@ describe("a writer whose collection covers more than the view reads", () => {
     for (let i = 0; i < 50 && screen.notices().length === 0; i += 1) await settle();
     expect(screen.notices().length).toBeGreaterThan(0);
     for (const notice of screen.notices()) expect(notice.ids).toBeUndefined();
+    screen.close();
+  });
+});
+
+describe("an owner's change topic, as the caller's credentials admit each flow", () => {
+  // `desk` and `vault` both declare `notes`; `vault` resolves its callers
+  // itself, from a header the screen's request doesn't carry. A session of
+  // vault's reads as empty to the screen, so its writes must not wake it, and
+  // no notice may carry what could find it (the writing request's id).
+  const vaultAuth = {
+    resolvePrincipal: (context: { request?: Request }) => {
+      const userId = context.request?.headers.get("x-vault-user");
+      return userId ? { userId, orgId: "acme" } : null;
+    }
+  };
+  function bootTwo() {
+    const put = handler({
+      name: "put-two",
+      inputSchema: z.object({ key: z.string() }),
+      outputSchema: z.object({}),
+      execute: async ({ key }, ctx) => {
+        await (ctx.resources as any).notes.create(key, { text: key });
+        return {};
+      }
+    });
+    const board = handler({
+      name: "board-two",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ entries: z.array(z.string()) }),
+      execute: async (_input, ctx) => ({
+        entries: (await (ctx.resources as any).acrossSessions().notes.list()).entries.map((e: { session: string }) => e.session)
+      })
+    });
+    const deskFlow = defineFlow({ kind: "desk", authentication: verified, actions: { put }, resources: { notes }, views: { board: defineView({ scope: "user", block: board }) } })() as unknown as FlowInstance;
+    const vaultFlow = defineFlow({ kind: "vault", authentication: vaultAuth, actions: { put }, resources: { notes } })() as unknown as FlowInstance;
+    const registry = createFlowRegistry();
+    registry.register(deskFlow);
+    registry.register(vaultFlow);
+    const stores: StoreRegistry = withChangeBus(createInMemoryStores());
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: verified.resolvePrincipal });
+    routers.push(router);
+    const delivery = enablePushDelivery(router, { secret: "test-secret" });
+    const call = async (path: string[], body: unknown, extra: Record<string, string> = {}) => {
+      const response = await router.POST(
+        new Request(`http://test/api/flows/${path.join("/")}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-verified-user": "alice", "x-verified-org": "acme", ...extra },
+          body: JSON.stringify(body)
+        }),
+        { params: { path } }
+      );
+      return { status: response.status, body: await response.text() };
+    };
+    const put2 = async (flow: "desk" | "vault", sessionId: string, key: string) => {
+      const res = await call([flow, sessionId, "actions", "put"], { input: { key } }, flow === "vault" ? { "x-vault-user": "alice" } : {});
+      expect(res.status, res.body).toBe(202);
+      const { request } = JSON.parse(res.body) as { request: { id: string } };
+      for (let i = 0; i < 200 && (await stores.request.get(request.id))?.status !== "completed"; i += 1) await settle();
+    };
+    const watch = async () => {
+      const res = await call(["desk", "views", "board"], { input: {} });
+      expect(res.status, res.body).toBe(200);
+      const answer = JSON.parse(res.body) as { output: { entries: string[] }; topics: unknown[] };
+      const minted = await call(["users", "alice", "stream"], { topics: answer.topics });
+      expect(minted.status, minted.body).toBe(200);
+      const frames: Array<Record<string, unknown>> = [];
+      const socket = delivery.openSocket("alice", { send: (frame) => frames.push(frame as never), close: () => {} });
+      socket.receive(JSON.stringify({ type: "subscribe", ticket: (JSON.parse(minted.body) as { ticket: string }).ticket }));
+      return { answer, notices: () => frames.filter((frame) => frame.type === "notice"), close: () => socket.closed() };
+    };
+    return { put2, watch };
+  }
+
+  it("never wakes for a write in a flow whose own resolver refuses the caller, and carries no request id", async () => {
+    const env = bootTwo();
+    await env.put2("desk", "d1", "seed");
+    await env.put2("vault", "v1", "seed");
+    const screen = await env.watch();
+    expect(screen.answer.output.entries).toEqual(["d1"]);
+    await env.put2("vault", "v1", "secret");
+    await settle();
+    await settle();
+    expect(screen.notices()).toEqual([]);
+    await env.put2("desk", "d2", "late");
+    for (let i = 0; i < 50 && screen.notices().length === 0; i += 1) await settle();
+    expect(screen.notices().length).toBeGreaterThan(0);
+    for (const notice of screen.notices()) expect(notice.origin).toBeUndefined();
     screen.close();
   });
 });

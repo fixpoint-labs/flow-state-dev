@@ -67,7 +67,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "topic-off": [
     {
       module: SCOPE_CHANGES,
-      from: String.raw`if \(bus !== undefined && change\.hostHasViews && !change\.lineageShared && change\.storageKey !== undefined\) \{`,
+      from: String.raw`if \(bus !== undefined && change\.hostHasViews && !change\.lineageShared && change\.storageKey !== undefined && change\.ownerFlowId !== undefined\) \{`,
       to: "if (false) {"
     }
   ],

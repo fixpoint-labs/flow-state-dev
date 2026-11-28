@@ -20,10 +20,18 @@
  *   writer's `notes/**` and a reader's `notes/shared/*` are different
  *   declarations), so the match is made where the notice is delivered
  *   ({@link changeTopicHears}), never by the writer.
- * - **A notice names no session and no key to a client.** The socket sends
- *   it on the subscription's own wire topic with no ids; its `partition`, the
- *   session written, goes out only as a keyed digest (`push/partition-key.ts`).
- *   A view hearing it reads again; it never learns which session or row changed.
+ * - **Per flow instance, as the caller is admitted.** An owner notice is
+ *   narrowed to the flow instance of the session written. The mint grants a
+ *   change topic only for the instances this request's credentials pass, by
+ *   the session listing's own rule (`ownResolverVerdict`, then the instance
+ *   pin), so a session a read across sessions would leave out, as though
+ *   empty, never wakes the screen either.
+ * - **A notice names no session, no key and no request to a client.** The
+ *   socket sends it on the subscription's own wire topic with no ids and no
+ *   origin (a request id could be fetched to tell a session that exists from
+ *   one that doesn't); its `partition`, the session written, goes out only as
+ *   a keyed digest (`push/partition-key.ts`). A view hearing it reads again;
+ *   it never learns which session or entry changed.
  */
 import { matchesPattern } from "@flow-state-dev/core/types";
 import type { BusTopic, ChangeNotice } from "./types";
@@ -48,33 +56,40 @@ function ownerTopicId(userId: string, orgId: string | undefined): string {
 
 type Owner = { userId: string; orgId: string | undefined; tenantId: string | undefined };
 
-/** The bus topic every owner notice of `owner` is published on, and every subscription of theirs listens to. */
-export function ownerTopic(owner: Owner): BusTopic {
-  return { scope: "owner", id: ownerTopicId(owner.userId, owner.orgId), tenantId: owner.tenantId ?? "" };
+/** The bus topic `owner`'s notices of writes in sessions of flow instance `flowId` are published on. */
+export function ownerTopic(owner: Owner, flowId: string): BusTopic {
+  return { scope: "owner", id: ownerTopicId(owner.userId, owner.orgId), tenantId: owner.tenantId ?? "", resource: flowId };
 }
 
 /**
- * A change topic of `owner`'s as a ticket grants it: the owner topic, narrowed
- * to the wire resource the client asked for. The socket subscribes the bare
- * owner topic and matches each notice against the resource's pattern
- * ({@link changeTopicHears}).
+ * A change topic of `owner`'s as a ticket grants it, for one flow instance the
+ * mint admitted: the owner topic of that instance, with the wire resource the
+ * client asked for. The socket subscribes {@link ownerTopic} for the instance
+ * and matches each notice against the resource's pattern ({@link changeTopicHears}).
  */
-export function ownerSubscription(owner: Owner, resource: string): BusTopic {
-  return { ...ownerTopic(owner), resource };
+export function ownerSubscription(owner: Owner, flowId: string, resource: string): BusTopic {
+  return { ...ownerTopic(owner, flowId), resource: JSON.stringify([flowId, resource]) };
+}
+
+/** What a granted {@link ownerSubscription} subscribes on the bus, and the wire resource it answers on. */
+export function openOwnerSubscription(topic: BusTopic): { bus: BusTopic; resource: string } | undefined {
+  if (topic.scope !== "owner" || topic.resource === undefined) return undefined;
+  try {
+    const [flowId, resource] = JSON.parse(topic.resource) as [unknown, unknown];
+    if (typeof flowId !== "string" || !isChangeTopicResource(typeof resource === "string" ? resource : undefined)) return undefined;
+    return { bus: { scope: "owner", id: topic.id, tenantId: topic.tenantId, resource: flowId }, resource: resource as string };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * The owner notice a write to `storageKey` in session `sessionId` publishes:
- * the key as its one id, the session as its partition.
+ * The owner notice a write to `storageKey` in session `sessionId`, of flow
+ * instance `flowId`, publishes: the key as its one id, the session as its
+ * partition, and no origin.
  */
-export function ownerNotice(owner: Owner, sessionId: string, storageKey: string, requestId?: string): ChangeNotice {
-  return {
-    topic: ownerTopic(owner),
-    kind: "resource",
-    ids: [storageKey],
-    partition: sessionId,
-    ...(requestId !== undefined ? { origin: { requestId } } : {})
-  };
+export function ownerNotice(owner: Owner, flowId: string, sessionId: string, storageKey: string): ChangeNotice {
+  return { topic: ownerTopic(owner, flowId), kind: "resource", ids: [storageKey], partition: sessionId };
 }
 
 /**

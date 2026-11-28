@@ -342,7 +342,7 @@ async function cell(viewName: string, actionName: string, writer: string, writeF
     // A change topic hears the owner topic's notices its pattern covers, as the socket matches them, on its own wire topic.
     if (t.scope === "user" && isChangeTopicResource(t.resource)) {
       const resource = t.resource;
-      bus.subscribe(ownerTopic({ userId: "u_1", orgId: DEFAULT_ORG_ID, tenantId: undefined }), (notice) => {
+      bus.subscribe(ownerTopic({ userId: "u_1", orgId: DEFAULT_ORG_ID, tenantId: undefined }, flow.id), (notice) => {
         if (changeTopicHears(resource, notice)) heard.push({ ...notice, topic: { scope: "user", id: "u_1", tenantId: "", resource } });
       });
       continue;

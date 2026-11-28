@@ -421,10 +421,12 @@ sessions"). A client names it as the user topic narrowed to
 the verified principal's user *and* organization, and on the bus it has a scope
 of its own (`owner`), so a socket in another of the user's organizations, or
 one holding the bare user topic, never hears it. Every write to any session's
-copy publishes one owner notice carrying the written key, on the bus only; the
-socket matches the key against each change topic's pattern and sends a match
-on that topic with no ids, its `partition` (the session written) keyed like a
-board's.
+copy publishes one owner notice, narrowed to the session's flow instance and
+carrying the written key, on the bus only. The mint grants a change topic only
+for the flow instances whose sessions the request's credentials would be shown
+(`ownResolverVerdict`, then the pin); the socket matches the key against each
+change topic's pattern and sends a match on that topic with no ids and no
+origin, its `partition` (the session written) keyed like a board's.
 
 Three points every notice passes, so each rule lives once:
 

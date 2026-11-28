@@ -805,7 +805,7 @@ describe("the socket session · an owner's change topic", () => {
   }
   /** A change-topic notice for `notes`, as a session write publishes it. */
   const ownerNotice = (userId: string, orgId: string, tenantId?: string) => ({
-    topic: ownerTopic({ userId, orgId, tenantId }),
+    topic: ownerTopic({ userId, orgId, tenantId }, "demo"),
     kind: "resource" as const,
     ids: ["notes/1"]
   });

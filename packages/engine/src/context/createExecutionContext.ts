@@ -129,6 +129,8 @@ type NamedCopyTarget = {
   readonly ownerUserId: string;
   /** Its owner's organization, for its owner's change topic. */
   readonly ownerOrgId: string | undefined;
+  /** Its flow instance, for its owner's change topic. */
+  readonly ownerFlowId: string;
 };
 
 /**
@@ -3024,6 +3026,7 @@ export async function createExecutionContext<
         lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
         hostHasViews,
         ownerOrgId: named !== undefined ? named.ownerOrgId : sessionRef.current.orgId,
+        ownerFlowId: named !== undefined ? named.ownerFlowId : (sessionRef.current.flowId ?? flow.id),
         storageKey: resourcePath,
         requestId: requestRef.current.id
       });
@@ -3826,7 +3829,7 @@ export async function createExecutionContext<
         if (!contentDeletesOwed.delete(storageKey)) await oweTurnBeforeWrite(storageKey);
         return persisters.deleteResourceContentKey(storageKey);
       },
-      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId, ownerOrgId: record.orgId }),
+      onResourceChanged: makeResourceChangeHandler("session", { sessionId: target, ownerUserId: record.userId, ownerOrgId: record.orgId, ownerFlowId: record.flowId ?? record.flowKind }),
       lazyLoad: makeLazyLoad(cell),
       recordResourceLoad,
       templateResolverRef,
