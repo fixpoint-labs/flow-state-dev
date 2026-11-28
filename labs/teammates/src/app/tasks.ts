@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { conversationLines, useRequestStream, useSessionFeed, useView } from "@flow-state-dev/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, suspensionHoldId } from "@flow-state-dev/orchestration/inbox";
 import {
   codingBoardViewRef,
   readRecordedWork,
@@ -52,7 +52,7 @@ export function useTaskDetail(sessionId: string, taskId: string): { value: Codin
 
 /**
  * A task's run, read only: its lines from its session's items, its latest
- * review stop (harness-manager's `reviewDetail`, and the stop's id as `reviewStop`), and, while it runs, the call
+ * review stop (harness-manager's `reviewDetail`, and as `reviewStop` the id the board's hold for it has, `suspensionHoldId`), and, while it runs, the call
  * in flight (the run request's own stream, which sends a call as it starts,
  * beside the feed, whose finished copy wins) and the plan its harness recorded.
  */
@@ -67,14 +67,14 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const stream = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined });
   return useMemo(() => {
     const fed = (feed?.items ?? []) as readonly OutputItem[];
-    const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown; suspensionId?: string } | undefined;
+    const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown; suspensionId?: string; requestId?: string } | undefined;
     const inFlight = running ? inFlightOf(stream.items as unknown as readonly OutputItem[], fed, requestId) : undefined;
     const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
       lines: runSession === null ? [] : conversationLines(fed, [], { renderers: teammatesRenderers }),
       replyStartedAt: running ? stream.startedAt : undefined,
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
-      reviewStop: stop?.suspensionId,
+      reviewStop: stop?.suspensionId === undefined || stop.requestId === undefined ? undefined : suspensionHoldId(stop.requestId, stop.suspensionId),
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
       plan: flowKind === CODER_FLOW ? plan : undefined,
     };

@@ -14,7 +14,7 @@
 import { createElement, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { taskView, type InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { suspensionHoldId, taskView, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { AppProvider, useAppClient } from "../src/app";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import type { ConversationView, WindowMark } from "../src/lib/conversation";
@@ -96,9 +96,13 @@ export class Refused extends Error {
   }
 }
 
+/**
+ * A hold as the board's read hands it over. A review is the run's stop, and its id is the Inbox's for a
+ * suspension (`suspensionHoldId`, request `q1`): `id` names the stop, as the run's suspension item does.
+ */
 export const hold = (kind: "question" | "review", prompt: string, { id = `hold-${kind}`, taskId = "t1", unanswerable = null as string | null } = {}): InboxHold =>
   ({
-    id,
+    id: kind === "question" ? id : suspensionHoldId("q1", id),
     source:
       kind === "question"
         ? { kind: "task", flowId: "agent", sessionId: "conversation:teammates.chief-of-staff", action: "updateTask_tasks", taskId }

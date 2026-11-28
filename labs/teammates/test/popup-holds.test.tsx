@@ -15,6 +15,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
@@ -33,6 +34,9 @@ const BOARD = `conversation:${LEAD}`;
 const TASK = "Coding task: Fix the typo in the README's first line";
 const QUESTION = "Should I fix only line 1, or every typo?";
 const BRANCH = "teammates/t1--change";
+
+/** The run's stop a hold names, as the engine's answer route reads it. */
+const stopOf = (held: InboxHold | undefined) => (held?.source.kind === "suspension" ? held.source.suspensionId : held?.id);
 
 /** The review answer a POST carries, when it is one: the object in its body with a `verdict`. */
 function verdictOf(posted: Posted): Record<string, any> | undefined {
@@ -84,7 +88,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
       const verdict = verdictOf(posted);
       // As the engine's answer route: a stop that isn't the one the run waits on now was resolved, and is refused.
       const answered = (posted.body as { suspensionId?: string }).suspensionId;
-      if (posted.path === "/api/flows/coder/requests/q1/answer" && answered !== current().asks[0]?.id) {
+      if (posted.path === "/api/flows/coder/requests/q1/answer" && answered !== stopOf(current().asks[0])) {
         throw new Refused(409, `Suspension "${answered}" has already been resolved (status: "resolved")`, "already-resolved");
       }
       if (posted.path === "/api/flows/coder/requests/q1/answer" && verdict !== undefined) {
@@ -163,7 +167,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     const answers = server.posts.filter((posted) => posted.path === "/api/flows/coder/requests/q1/answer");
     expect(answers.map((posted) => (posted.body as { suspensionId?: string }).suspensionId)).toEqual(["stop-1"]);
     // Nothing landed: the newer round still waits on you, and the task isn't done.
-    expect(server.board[BOARD]![0]!.asks.map((h) => h.id)).toEqual(["stop-2"]);
+    expect(server.board[BOARD]![0]!.asks.map(stopOf)).toEqual(["stop-2"]);
     expect(within(popup).queryByRole("region", { name: "Result" })).toBeNull();
   });
 
@@ -181,7 +185,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     fireEvent.click(within(review).getByRole("button", { name: "Accept" }));
     expect((await within(review).findByRole("alert", {}, { timeout: 2000 })).textContent).toMatch(/newer review than the one shown/);
     expect(server.posts.filter((posted) => posted.path === "/api/flows/coder/requests/q1/answer")).toEqual([]);
-    expect(server.board[BOARD]![0]!.asks.map((h) => h.id)).toEqual(["stop-2"]);
+    expect(server.board[BOARD]![0]!.asks.map(stopOf)).toEqual(["stop-2"]);
   });
 
   // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:
