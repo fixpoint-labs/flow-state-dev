@@ -15,7 +15,7 @@
  * records what it was fed.
  */
 import type { HarnessFeeds } from "@flow-state-dev/core/harness";
-import { localRepoWorkspaceHost } from "@flow-state-dev/workspace";
+import { localRepoWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,7 +44,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
-import { WORKTREES, worktreesCollection, type WorkspaceHost, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
+import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
 const ORG_ID = "org_claim_host";
@@ -185,8 +185,8 @@ export interface HostOptions {
   upstream?: boolean;
   /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
   baseTip?: () => Promise<string | undefined>;
-  /** Stand in for the workspace host's `existingPullRequest`: the pull request GitHub says is open from the run's branch. */
-  existingPullRequest?: WorkspaceHost["existingPullRequest"];
+  /** Wrap the workspace host the manager is given, to stand in for one of its methods (a landing, say). */
+  workspace?: (host: WorkspaceHost) => WorkspaceHost;
   /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
   gateLedger?: (ref: TaskCollectionRef) => TaskCollectionRef;
 }
@@ -263,14 +263,9 @@ export function claimHost(options: HostOptions) {
         },
       },
     },
-    workspace:
-      options.baseTip === undefined && options.existingPullRequest === undefined
-        ? host
-        : {
-            ...host,
-            ...(options.baseTip === undefined ? {} : { baseTip: options.baseTip }),
-            ...(options.existingPullRequest === undefined ? {} : { existingPullRequest: options.existingPullRequest }),
-          },
+    workspace: (options.workspace ?? ((it: WorkspaceHost) => it))(
+      options.baseTip === undefined ? host : { ...host, baseTip: options.baseTip },
+    ),
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
@@ -295,6 +290,7 @@ export function claimHost(options: HostOptions) {
       maxAttempts: z.number().optional(),
       deps: z.array(z.string()).optional(),
       attachments: z.array(z.unknown()).optional(),
+      followUpOf: z.string().optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
@@ -309,6 +305,7 @@ export function claimHost(options: HostOptions) {
           ...(input.input !== undefined ? { input: input.input } : {}),
           ...(input.deps !== undefined ? { deps: input.deps } : {}),
           ...(input.attachments !== undefined ? { attachments: input.attachments as never } : {}),
+          ...(input.followUpOf !== undefined ? { followUpOf: input.followUpOf } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }

@@ -112,10 +112,13 @@ describe("a run's replies when its turn ends", () => {
     const host = claimHost({
       mode: "claim",
       manager: { replies },
-      existingPullRequest: async (target) => {
-        asked.push(target.branch);
-        return { url: "https://github.com/acme/app/pull/7", number: 7, branch: target.branch };
-      },
+      workspace: (it) => ({
+        ...it,
+        existingPullRequest: async (target) => {
+          asked.push(target.branch);
+          return { url: "https://github.com/acme/app/pull/7", number: 7, branch: target.branch };
+        },
+      }),
       script: [{ during: recordsAnotherRepository, replies: { "a.md": `${LINK}\nFixed.\n` } }],
     });
     await host.seed({ ledgerId: CONVERSATIONS, partition: "c1", id: "t1", goal: "address the review", input: {} });
@@ -130,7 +133,7 @@ describe("a run's replies when its turn ends", () => {
     const host = claimHost({
       mode: "claim",
       manager: { replies },
-      existingPullRequest: async (target) => ({ url: "https://ghe.example.com/acme/app/pull/7", number: 7, branch: target.branch }),
+      workspace: (it) => ({ ...it, existingPullRequest: async (target) => ({ url: "https://ghe.example.com/acme/app/pull/7", number: 7, branch: target.branch }) }),
       script: [{ replies: { "a.md": `${LINK}\nFixed.\n` } }],
     });
     await host.seed({ ledgerId: CONVERSATIONS, partition: "c1", id: "t1", goal: "address the review", input: {} });
