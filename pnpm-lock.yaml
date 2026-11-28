@@ -1512,9 +1512,15 @@ importers:
 
   packages/core:
     dependencies:
+      '@ai-sdk/gateway':
+        specifier: ^4.0.108
+        version: 4.0.111(zod@3.25.76)
       '@flow-state-dev/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@openrouter/ai-sdk-provider':
+        specifier: ^3.1.0
+        version: 3.1.0(ai@7.0.138(zod@3.25.76))(zod@3.25.76)
       ai:
         specifier: ^7.0.133
         version: 7.0.138(zod@3.25.76)

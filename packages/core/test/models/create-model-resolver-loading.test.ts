@@ -110,6 +110,36 @@ describe("createModelResolver — provider package loading", () => {
     expect(text).toMatch(/abort/i);
   });
 
+  // An app turns a gateway on with its key alone, so the gateway's package
+  // must load from wherever core is installed: core depends on both, and an
+  // app that never installs them still gets working replies.
+  for (const [envVar, gateway] of [
+    ["AI_GATEWAY_API_KEY", "vercel"],
+    ["OPENROUTER_API_KEY", "openrouter"],
+  ] as const) {
+    it(`a key alone turns on the ${gateway} gateway: its package loads with core`, async () => {
+      vi.stubEnv(envVar, "test-key-not-real");
+      try {
+        // No provider key: `openai/...` can only be served by the gateway.
+        const resolver = createModelResolver();
+        const model = resolver("openai/gpt-5.4-mini");
+
+        // Pre-aborted: the package loads and builds its model, then the call
+        // stops before any network I/O.
+        const controller = new AbortController();
+        controller.abort();
+        const caught = await model
+          .generate({ messages: [{ role: "user", content: "hi" }], signal: controller.signal })
+          .then(() => undefined, (err: unknown) => err as Error);
+        const text = `${caught?.name}: ${caught?.message}`;
+        expect(text).not.toMatch(/not installed|failed to load/i);
+        expect(text).toMatch(/abort/i);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  }
+
   it("a package-loaded model offers the single-step methods, so a generator owns its tool loop", async () => {
     // Without `generateStep`/`streamStep` a generator hands the tool loop to
     // the SDK, where a tool's `ctx.suspend()` comes back to the model as a

@@ -182,7 +182,9 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@ai-sdk/gateway": "^4.0.108",
     "@flow-state-dev/contracts": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
     "ai": "^7.0.133",
     "cron-parser": "^5.5.0",
     "gray-matter": "^4.0.3",
