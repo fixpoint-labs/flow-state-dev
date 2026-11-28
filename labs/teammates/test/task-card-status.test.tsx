@@ -51,9 +51,8 @@ async function panel(rows: CodingBoardTask[]) {
       <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => true} onOpen={() => {}} />
     </TestProvider>,
   );
-  const shown = screen.getByRole("complementary", { name: "Lead's panel" });
-  await within(shown).findByRole("heading", { name: /^Tasks/ });
-  return shown;
+  // Only the panel's own name: each test then waits on its card, by the card's accessible name, which every panel layout keeps.
+  return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
 const card = async (shown: HTMLElement, id: string) => within(shown).findByRole("button", { name: new RegExp(`^Coding task: Task ${id}(,|$)`) });
