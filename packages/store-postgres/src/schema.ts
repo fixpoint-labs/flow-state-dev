@@ -350,6 +350,9 @@ ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
  * column is re-keyed. Idempotent: a table that has `resolved_by` is left
  * alone, and a fresh database, where the table is created with the key, skips
  * it.
+ *
+ * A nullable `resolved_by` outside the primary key never shipped (only
+ * unreleased branch commits had it), so this handles main's no-column layout only.
  */
 const WAKES_RESOLVER_KEY_MIGRATION = `
 DO $$

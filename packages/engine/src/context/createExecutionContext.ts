@@ -101,7 +101,7 @@ import { principalOwns, withRequestOrg, type Principal } from "./principal";
 import { resolveSessionKindRecord } from "./session-kind";
 import { readDeliveryOrigin } from "../execution/delivery-origin";
 import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
-import { createNamedSessionAt, type CopyCell, type NamedCopyTarget } from "./named-session-copy";
+import { createNamedSessionAt, type NamedSessionTarget, type ResourceCell } from "./named-session-resources";
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -2033,7 +2033,7 @@ export async function createExecutionContext<
   // sibling declaration owns at a different address (FIX-1068). Recording the
   // bare prefix would claim coverage the scan never had, and the next lazy read
   // of such a key would answer "absent" for a row that exists.
-  const isMissAuthoritative = (cell: CopyCell, storageKey: string): boolean => {
+  const isMissAuthoritative = (cell: ResourceCell, storageKey: string): boolean => {
     const scopeId = cell.scopeIdOf(storageKey);
     if (scopeId === undefined) return false;
     for (const token of cell.loadedPrefixes) {
@@ -2089,7 +2089,7 @@ export async function createExecutionContext<
   const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
     scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
-  const ownCell = (scope: ContentScopeType): CopyCell => ({
+  const ownCell = (scope: ContentScopeType): ResourceCell => ({
     scope,
     token: scope,
     stateRef: scopeStateRef(scope),
@@ -2106,7 +2106,7 @@ export async function createExecutionContext<
   // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
   // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
   // as the eager waves, so a key fetched here and one fetched by a wave dedupe.
-  const makeLazyLoad = (cell: CopyCell): ScopeLazyLoad | undefined => {
+  const makeLazyLoad = (cell: ResourceCell): ScopeLazyLoad | undefined => {
     if (scopeIdentityId(cell.scope) === undefined) return undefined; // scope absent this request (org)
     const { stateRef, contentRef, versionRef } = cell;
     return {
@@ -2419,7 +2419,7 @@ export async function createExecutionContext<
   // `resolveResourceStorageScopeId(scope, key)` (each resource persists to its
   // own isolation bucket); the in-memory cache stays keyed by the resource key
   // regardless of which bucket backs it.
-  const makeKeyPersisters = (cell: CopyCell) => {
+  const makeKeyPersisters = (cell: ResourceCell) => {
     const { stateRef, versionRef, contentRef } = cell;
     return {
       // FIX-663; FIX-992 (D10).
@@ -2878,13 +2878,13 @@ export async function createExecutionContext<
   const hostHasViews = options.requestHost?.hostHasViews?.() === true;
 
   /**
-   * The change handler for one scope's copy: this run's own, or, with
-   * `named`, another session's copy this run reaches (`ctx.resources.at`).
-   * A named copy's write publishes on that session's topics only, never on
+   * The change handler for one scope's resources: this run's own, or, with
+   * `named`, another session's resources this run reaches (`ctx.resources.at`).
+   * A write to a named session's resources publishes on that session's topics only, never on
    * this run's stream, and starts a turn there only as the wake its write
    * owed before it landed, never by running its `reactTo` blocks inside this turn.
    */
-  function makeResourceChangeHandler(scope: "session" | "user" | "org", named?: NamedCopyTarget) {
+  function makeResourceChangeHandler(scope: "session" | "user" | "org", named?: NamedSessionTarget) {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
     const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
@@ -3585,7 +3585,7 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
-  // `ctx.resources.at({ session })`: another session's copy (`./named-session-copy`).
+  // `ctx.resources.at({ session })`: another session's resources (`./named-session-resources`).
   const atSession = createNamedSessionAt({
     options,
     stores,

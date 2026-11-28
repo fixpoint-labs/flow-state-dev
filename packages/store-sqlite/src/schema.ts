@@ -610,6 +610,9 @@ CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
  * one `IMMEDIATE` transaction, re-checked under the lock as
  * {@link migrateScheduleIndexCell} is. Idempotent: a table that has
  * `resolved_by` is left alone.
+ *
+ * A nullable `resolved_by` outside the primary key never shipped (only
+ * unreleased branch commits had it), so this handles main's no-column layout only.
  */
 function migrateWakesResolverKey(db: Database.Database): void {
   const needsKey = (): boolean => {

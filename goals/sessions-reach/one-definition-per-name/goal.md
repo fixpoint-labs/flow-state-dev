@@ -1,10 +1,10 @@
 # sessions-reach › it one definition per name
 
 **Issue:** FIX-2943 (epic FIX-2941)
-**Outcome:** A block in one flow reads and writes another flow's session copy of a definition both flows declare. A flow that declares the same session-scoped name with another shape is refused at start, and the error names both flows and the name. Two flows that declare one index name at two versions on collections isolated to their flows start.
+**Outcome:** A block in one flow reads and writes, in another flow's session, a definition both flows declare. A flow that declares the same session-scoped name with another shape is refused at start, and the error names both flows and the name. Two flows that declare one index name at two versions on collections isolated to their flows start.
 **Input:** `fixtures/default.json`: the em and coder flows on `work`, a clashing `reviewer`, and an isolated index `byOwner` on `tasks/**`. Held-out: `GOAL_FIXTURE=alternate.json` (other flow names, definition `ledger`, index `byStatus` on `entries/*`) must give the same verdict. Both reaching flows include one declaring block, so any pair of flows that share a declaring block is the case under test.
 **Signal:**
-- **reach:** the visitor flow, in its own session, writes the owner's session copy through `ctx.resources.at({ session })`, and the owner flow reads the write back from its own copy. Then the owner writes and the visitor reads it back. The visitor's own copy does not get the write.
+- **reach:** the visitor flow, in its own session, writes the definition in the owner's session through `ctx.resources.at({ session })`, and the owner flow reads the write back from its own session. Then the owner writes and the visitor reads it back. The visitor's own session does not get the write.
 - **clash:** start is refused, and the error names both flows and the definition.
 - **isolated:** both flows start, and each writes and reads back its own row.
 **Anti-game:** Every assertion reads a row back through a real flow's action, or reads the start-up error. Nothing reads the registry, the store or the index table. The refusal is matched on the flow names and the definition from the fixture, not on a fixed string.

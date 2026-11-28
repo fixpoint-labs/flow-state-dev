@@ -47,7 +47,7 @@ const notes = defineResource({
  * A private session-scoped resource under the SAME ref is not expressible — the
  * flow builder refuses two session declarations on one ref. So the collision
  * this test reproduces is the realistic one: the recreated session is the same
- * flow, and its own ordinary copy of `notes` sits at the bare session key that
+ * flow, and its own ordinary `notes` sits at the bare session key that
  * the surviving child's shared address also resolves to.
  */
 const flow = defineFlow({

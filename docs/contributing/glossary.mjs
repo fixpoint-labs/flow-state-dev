@@ -164,6 +164,23 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "A session's resources",
+    means:
+      "What one session holds of its session-scoped resources, the thing `ctx.resources.at({ session })` reaches. Said with the possessive and no noun: \"another session's resources\", \"session X's `notes`\", \"this session's `notes`\". A scope decides who shares a resource (each session has its own, each user, or the whole org), not how many copies exist: nothing is duplicated.",
+    decision: "Owner, 2026-11-28 (FIX-2942)",
+    // "Copy" in this sense only. A real duplicate (a cloned record, a cache's copy, a byte-equal
+    // installed file) and a registered copy of a flow definition are other meanings and stay, so
+    // the rule reads phrases that only this sense makes, never the bare word.
+    retires: [
+      {
+        id: "session-copy",
+        check: "guard",
+        re: /\bsession['’]s cop(?:y|ies)\b|\bsessions['’] cop(?:y|ies)\b|\bcop(?:y|ies) of (?:a|the|this|that|each) resource\b|\bhow many cop(?:y|ies) of\b|\bthe named cop(?:y|ies)\b|\bnamed-copy\b|\bnamed-session-copy\b|\bCopyCell\b|\bNamedCopy\w*/gi,
+        say: "the possessive, no noun: another session's resources, this session's notes",
+      },
+    ],
+  },
+  {
     term: "Item",
     means: "A stream item: what a run streams back (`OutputItem`, `getItems`). Not a resource in a collection.",
     decision: "Owner, 2026-11-06",

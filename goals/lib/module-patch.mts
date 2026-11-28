@@ -12,7 +12,7 @@
  * matching fails here, before the run, and again at load, so a control that
  * no longer applies can't pass by running unpatched. Here it is its own
  * verdict, `control patch target not found`, with its own exit code
- * ({@link PATCH_TARGET_MISSING_EXIT}), so it can't read as the control failing
+ * (`PATCH_TARGET_MISSING_EXIT`), so it can't read as the control failing
  * its row.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -39,7 +39,7 @@ const PATCH_TARGET_MISSING_EXIT = 4;
  * The environment that applies `patches` to a process serving the checkout at
  * `root`. When `mark` is set, each patched file is appended to it as it loads.
  *
- * Exits with {@link PATCH_TARGET_MISSING_EXIT} when a module at the checkout
+ * Exits with `PATCH_TARGET_MISSING_EXIT` when a module at the checkout
  * has nothing a patch's `from` matches.
  */
 export function modulePatchEnv(patches: readonly ModulePatch[], root: string, mark?: string): Record<string, string> {

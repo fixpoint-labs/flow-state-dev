@@ -1,6 +1,6 @@
 /**
  * Goal check — one definition per name: a block in one flow reads and writes
- * another flow's session copy of a definition both flows declare, two shapes
+ * a definition both flows declare in another flow's session, two shapes
  * under one session-scoped name refuse start, and index declarations isolated
  * to their flows never clash (FIX-2943).
  *
@@ -9,9 +9,9 @@
  * block that uses it, as an app does.
  *
  * Legs (each failure is tagged with its leg):
- *   reach   the visitor flow, in its own session, writes the owner flow's
- *           session copy of the definition through `ctx.resources.at({ session })`,
- *           and the owner flow reads the write back from its own copy; then the
+ *   reach   the visitor flow, in its own session, writes the definition in
+ *           the owner flow's session through `ctx.resources.at({ session })`,
+ *           and the owner flow reads the write back from its own session; then the
  *           owner writes and the visitor reads it back. Both flows include one
  *           declaring block. The rows are read through actions, never a store.
  *   clash   a flow declaring the same session-scoped name with another shape
@@ -81,14 +81,14 @@ const definition = defineResource({ scope: "session", ref: DEF, stateSchema: sha
 
 const entryInput = z.object({
   op: z.enum(["write", "read"]),
-  /** The session whose copy to reach; omitted, the block's own. */
+  /** The session to reach; omitted, the block's own. */
   session: z.string().optional(),
   note: z.string().optional()
 });
 
 type Accessors = Record<string, { state: { notes: string[] }; patchState(u: { notes: string[] }): Promise<void> }>;
 
-/** Reads or writes `DEF` in this session's copy, or in the named session's through reach. */
+/** Reads or writes this session's `DEF`, or the named session's through reach. */
 const entry = handler({
   name: `${DEF}-entry`,
   inputSchema: entryInput,
@@ -192,16 +192,16 @@ await runGoal(async (failures, tell) => {
       const act = host([owner, visitor]);
       await act(owner, "entry", { op: "read" }, OWNER_SESSION);
       await act(visitor, "entry", { op: "write", session: OWNER_SESSION, note: fixture.notes.fromVisitor }, VISITOR_SESSION);
-      const ownerSees = tell.over("reach · owner's copy after the visitor's write", (await act(owner, "entry", { op: "read" }, OWNER_SESSION)) as string[]);
-      if (!ownerSees.includes(fixture.notes.fromVisitor)) failures.push(`reach: the owner's copy lacks the visitor's write (${JSON.stringify(ownerSees)})`);
+      const ownerSees = tell.over("reach · owner's notes after the visitor's write", (await act(owner, "entry", { op: "read" }, OWNER_SESSION)) as string[]);
+      if (!ownerSees.includes(fixture.notes.fromVisitor)) failures.push(`reach: the owner's notes lack the visitor's write (${JSON.stringify(ownerSees)})`);
 
       await act(owner, "entry", { op: "write", note: fixture.notes.fromOwner }, OWNER_SESSION);
-      const visitorSees = tell.over("reach · owner's copy read by the visitor", (await act(visitor, "entry", { op: "read", session: OWNER_SESSION }, VISITOR_SESSION)) as string[]);
+      const visitorSees = tell.over("reach · owner's notes read by the visitor", (await act(visitor, "entry", { op: "read", session: OWNER_SESSION }, VISITOR_SESSION)) as string[]);
       if (!visitorSees.includes(fixture.notes.fromOwner)) failures.push(`reach: the visitor did not read the owner's write (${JSON.stringify(visitorSees)})`);
 
       const visitorOwn = (await act(visitor, "entry", { op: "read" }, VISITOR_SESSION)) as string[];
-      tell.over("reach · visitor's own copy stays apart", visitorOwn.filter((n) => n === fixture.notes.fromVisitor), { emptyIs: "the claim: the write went to the owner's copy" });
-      if (visitorOwn.includes(fixture.notes.fromVisitor)) failures.push("reach: the visitor's write landed in its own copy");
+      tell.over("reach · visitor's own notes stay apart", visitorOwn.filter((n) => n === fixture.notes.fromVisitor), { emptyIs: "the claim: the write went to the owner's notes" });
+      if (visitorOwn.includes(fixture.notes.fromVisitor)) failures.push("reach: the visitor's write landed in its own notes");
       evidence.push(`reach: both ways through "${DEF}"`);
     } catch (error) {
       failures.push(`reach: ${message(error)}`);
