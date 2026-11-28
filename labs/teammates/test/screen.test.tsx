@@ -885,7 +885,9 @@ describe("the teammates screen", () => {
     await screen.findByLabelText("Message tester");
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
     const edit = screen.getByRole("form", { name: "Edit tester" });
-    const box = within(edit).getByLabelText("New instructions for tester");
+    // A teammate you hired shows its own instructions, as saved, to rewrite.
+    const box = (await within(edit).findByLabelText("Instructions for tester")) as HTMLTextAreaElement;
+    expect(box.value).toBe("Run them all.");
     // Nothing changed yet: the shortcut saves nothing.
     await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
     expect(screen.getByRole("form", { name: "Edit tester" })).toBeTruthy();
@@ -917,6 +919,35 @@ describe("the teammates screen", () => {
     expect(resets()).toEqual(["teammates.researcher"]);
     // A reset closes the dialog: its fields still held "Ada", and Save would put the edited name back.
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("shows a file's teammate's core instructions read-only, and saves only additional instructions; clearing them removes them", async () => {
+    const lab = fast();
+    const edits = () => lab.rosterWrites.filter((w) => w.action === "edit").map((w) => w.input);
+    render(<TestProvider server={lab}><App /></TestProvider>);
+    await screen.findByLabelText("Message Lead");
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    const edit = screen.getByRole("form", { name: "Edit Lead" });
+    const core = await within(edit).findByRole("region", { name: "Core instructions for Lead" });
+    expect(core.textContent).toBe("You are Lead. Keep the launch on track.");
+    // No box replaces the core: the one box is for additions, and it starts empty.
+    expect(within(edit).queryByLabelText("Instructions for Lead")).toBeNull();
+    const added = within(edit).getByLabelText("Additional instructions for Lead") as HTMLTextAreaElement;
+    expect(added.value).toBe("");
+    fireEvent.change(added, { target: { value: "Reply in French." } });
+    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
+    expect(edits()).toEqual([{ id: "teammates.chief-of-staff", additionalInstructions: "Reply in French." }]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Opened again, the box holds what was saved; cleared, the save removes the additions.
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    const again = await screen.findByDisplayValue("Reply in French.");
+    fireEvent.change(again, { target: { value: "" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(edits()).toEqual([
+      { id: "teammates.chief-of-staff", additionalInstructions: "Reply in French." },
+      { id: "teammates.chief-of-staff", additionalInstructions: null },
+    ]);
   });
 
   // FIX-2526.
@@ -979,7 +1010,7 @@ describe("the teammates screen", () => {
     const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
     expect([name.value, name.readOnly]).toEqual(["tester", false]);
     fireEvent.change(name, { target: { value: "QA Bot" } });
-    fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
+    fireEvent.change(await within(edit).findByLabelText("Instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
     // The id stays: only the name the list and header show changes.
     expect(edits()).toEqual([{ id: "tester", name: "QA Bot", instructions: "Answer in one sentence." }]);

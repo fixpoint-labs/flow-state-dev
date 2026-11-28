@@ -315,11 +315,11 @@ describe("naming a worker, and editing a standard one", () => {
     const session = await app.ensureWorkerSession({ worker: "researcher" });
     expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully." });
 
-    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    await app.edit({ id: "researcher", name: "Ada", additionalInstructions: "Research twice." });
     // The file's other settings, skills and team text came with the copy.
     expect((await h.turn("alice", session.id)).output).toMatchObject({
       worker: "researcher",
-      instructions: "Research twice.",
+      instructions: "Research carefully.\n\n## Additional instructions\n\nResearch twice.",
       teamInstructions: "We cite sources.",
       tone: "formal",
       skills: ["cite"]
@@ -378,26 +378,28 @@ describe("naming a worker, and editing a standard one", () => {
   it("a fork of an edited standard worker starts from the user's copy, without its name", async () => {
     const h = host();
     const app = h.client("alice");
-    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    await app.edit({ id: "researcher", name: "Ada", additionalInstructions: "Research twice." });
     await app.fork("researcher", "researcher-2");
     const session = await app.ensureWorkerSession({ worker: "researcher-2" });
-    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research twice.", tone: "formal" });
+    // The fork is the user's own: it takes the file's core and the additions as they stand, and both are now editable.
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully.\n\n## Additional instructions\n\nResearch twice.", teamInstructions: "We cite sources.", tone: "formal" });
+    expect(await app.instructions("researcher-2")).toEqual({ instructions: "Research carefully.", additionalInstructions: "Research twice.", fixed: false });
     expect(await rowOf(h, "alice", "researcher-2")).toMatchObject([{ name: null, forkedFrom: "researcher", standard: false }]);
   });
 
-  it("a later edit of the copy takes any field, like any row of the user's own", async () => {
+  it("a later edit of the copy takes any field but the core instructions, and keeps the additions", async () => {
     const h = host();
     const app = h.client("alice");
-    await app.edit({ id: "researcher", instructions: "Research twice." });
+    await app.edit({ id: "researcher", additionalInstructions: "Research twice." });
     await app.edit({ id: "researcher", skills: [], settings: { tone: "plain" } });
     const session = await app.ensureWorkerSession({ worker: "researcher" });
-    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research twice.", tone: "plain", skills: [] });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully.\n\n## Additional instructions\n\nResearch twice.", tone: "plain", skills: [] });
   });
 
   it("reset deletes the copy, so the next turn reads the file again; it refuses when there is nothing to reset", async () => {
     const h = host();
     const app = h.client("alice");
-    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    await app.edit({ id: "researcher", name: "Ada", additionalInstructions: "Research twice." });
     await app.reset("researcher");
     const session = await app.ensureWorkerSession({ worker: "researcher" });
     expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully.", tone: "formal" });
@@ -410,7 +412,7 @@ describe("naming a worker, and editing a standard one", () => {
 
   it("a standard worker on a flow kept for standard workers can't be edited, and nothing is written", async () => {
     const h = host({ standardOnly: true });
-    const refused = await h.rosterAction("alice", "edit", { id: "researcher", instructions: "x" });
+    const refused = await h.rosterAction("alice", "edit", { id: "researcher", additionalInstructions: "x" });
     expect(messageOf(refused.error)).toContain("keeps for declared workers");
     // Naming another flow doesn't get around it: the file's worker is checked before the edit.
     const moved = await h.rosterAction("alice", "edit", { id: "researcher", flow: OTHER, name: "Changed" });
@@ -426,5 +428,92 @@ describe("naming a worker, and editing a standard one", () => {
     // Naming its own flow is no change, and the rest of the edit lands.
     await h.rosterAction("alice", "edit", { id: "researcher", flow: FIXTURE, name: "Changed" });
     expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: true, name: "Changed" }]);
+  });
+});
+
+describe("a standard worker's core instructions, and the user's additional instructions", () => {
+  const ADDED = (core: string, added: string) => `${core}\n\n## Additional instructions\n\n${added}`;
+  const legacyCopy = async (h: ReturnType<typeof host>, instructions: string) =>
+    h.stores.resourceState.set(
+      "user",
+      "alice:~org:acme",
+      "workforce/workers/researcher",
+      { flow: FIXTURE, name: null, description: "Finds things out.", instructions, teamInstructions: "We cite sources.", skills: ["cite"], settings: { tone: "formal" }, forkedFrom: "researcher" },
+      "any"
+    );
+
+  it("refuses to replace a standard worker's own instructions, through the client or the roster action, and writes nothing", async () => {
+    const h = host();
+    await expect(h.client("alice").edit({ id: "researcher", instructions: "Research twice." })).rejects.toThrow(/core instructions can't be replaced.*additionalInstructions/);
+    const refused = await h.rosterAction("alice", "edit", { id: "researcher", name: "Ada", instructions: "Research twice." });
+    expect(messageOf(refused.error)).toMatch(/Nothing was written\.$/);
+    expect((await h.client("alice").roster()).filter((entry) => entry.id === "researcher")).toMatchObject([{ edited: false, name: null }]);
+    const session = await h.client("alice").ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully." });
+  });
+
+  it("appends additional instructions after the core ones under their own heading, and the core still follows the file", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.edit({ id: "researcher", additionalInstructions: "Answer in French." });
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({
+      instructions: ADDED("Research carefully.", "Answer in French."),
+      teamInstructions: "We cite sources."
+    });
+    // A later change to the file's text reaches the user's copy: only the additions are theirs.
+    const edited = bootHost(h.stores, { standard: standardWorkers({ researcherBody: "Research quickly." }) });
+    expect((await edited.turn("alice", session.id)).output).toMatchObject({ instructions: ADDED("Research quickly.", "Answer in French.") });
+  });
+
+  it("clearing the additional instructions puts the core prompt back as it was", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.edit({ id: "researcher", additionalInstructions: "Answer in French." });
+    await app.edit({ id: "researcher", additionalInstructions: "   " });
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully." });
+    expect(await app.instructions("researcher")).toEqual({ instructions: "Research carefully.", additionalInstructions: null, fixed: true });
+  });
+
+  it("a worker the user hired keeps instructions they can replace, and takes additions too", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.hire({ id: "tester", flow: FIXTURE, instructions: "Test things." });
+    expect(await app.instructions("tester")).toEqual({ instructions: "Test things.", additionalInstructions: null, fixed: false });
+    await app.edit({ id: "tester", instructions: "Test everything.", additionalInstructions: "Be brief." });
+    const session = await app.ensureWorkerSession({ worker: "tester" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: ADDED("Test everything.", "Be brief.") });
+    expect(await app.instructions("tester")).toEqual({ instructions: "Test everything.", additionalInstructions: "Be brief.", fixed: false });
+  });
+
+  it("reads a standard worker's core and the user's additions, for that user only, and refuses a worker not on the roster", async () => {
+    const h = host();
+    const app = h.client("alice");
+    expect(await app.instructions("researcher")).toEqual({ instructions: "Research carefully.", additionalInstructions: null, fixed: true });
+    await app.edit({ id: "researcher", additionalInstructions: "Answer in French." });
+    expect(await app.instructions("researcher")).toEqual({ instructions: "Research carefully.", additionalInstructions: "Answer in French.", fixed: true });
+    expect(await h.client("bob").instructions("researcher")).toMatchObject({ additionalInstructions: null });
+    await expect(app.instructions("nobody")).rejects.toThrow();
+  });
+
+  // BP-030: the old dialog replaced a standard worker's instructions whole.
+  it("a copy saved with replaced instructions keeps that text, now as additional instructions after the core, and shows it", async () => {
+    const h = host();
+    await legacyCopy(h, "Research twice.");
+    const app = h.client("alice");
+    expect(await app.instructions("researcher")).toEqual({ instructions: "Research carefully.", additionalInstructions: "Research twice.", fixed: true });
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: ADDED("Research carefully.", "Research twice.") });
+    // A save of the additions takes over from the carried text: clearing them leaves the core alone.
+    await app.edit({ id: "researcher", additionalInstructions: null });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully." });
+    expect(await app.instructions("researcher")).toMatchObject({ additionalInstructions: null });
+  });
+
+  it("a copy saved by a name-only edit, its instructions the file's, carries no additions", async () => {
+    const h = host();
+    await legacyCopy(h, "Research carefully.");
+    expect(await h.client("alice").instructions("researcher")).toMatchObject({ additionalInstructions: null });
   });
 });

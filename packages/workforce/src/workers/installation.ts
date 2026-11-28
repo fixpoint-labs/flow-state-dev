@@ -78,6 +78,7 @@ import {
 } from "../projects/workstream-collections";
 import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref";
 import { defineStandardWorkerCollection, standardWorkerFlow, workerDisplayName } from "./standard-workers";
+import { composedInstructions, instructionsOf } from "./worker-instructions";
 import { defineWorkerCollection, parseWorkerResourceState, type WorkerResourceState } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
@@ -596,6 +597,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const file = row.forkedFrom === id ? standard.get(id) : undefined;
     const ownSkills = new Map((file?.skills ?? []).map((skill) => [skill.name, skill]));
     const skillOf = (name: string) => ownSkills.get(name) ?? skillCatalog.get(name);
+    const teamInstructions = file === undefined ? row.teamInstructions : (file.teamInstructions ?? null);
     const missing = row.skills.filter((name) => skillOf(name) === undefined);
     if (missing.length > 0) {
       const registered = [...skillCatalog.keys()].sort().map((name) => `"${name}"`);
@@ -614,9 +616,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       manifest: {
         id,
         declared: declaredOf(row, retiredOf(row.flow)),
-        body: row.instructions ?? "",
+        // A standard worker's copy runs on its file's core instructions and
+        // team text, with the user's additions after them.
+        body: composedInstructions(instructionsOf(row, file)) ?? "",
         skills: row.skills.map((name) => skillOf(name)!),
-        ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),
+        ...(teamInstructions !== null ? { teamInstructions } : {}),
         packages: [...(file?.packages ?? options.packages ?? [])]
       }
     };

@@ -1,5 +1,9 @@
 /**
  * The teammate forms: hire one, or edit one's name, instructions and model.
+ * A teammate from the lab's files keeps its core instructions: the edit form
+ * shows them, read-only, and takes additional instructions, which its turns
+ * read after the core ones. A teammate you hired keeps instructions you can
+ * replace.
  * Each opens in a dialog over the page rather than in it, so a half-filled
  * form never pushes the conversation around. Esc, Cancel or a save closes the
  * dialog and puts focus back on the button that opened it.
@@ -14,7 +18,7 @@
  */
 import { isSendKey, useSubmit } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import type { EditWorkerInput, HireWorkerInput } from "@flow-state-dev/workforce/browser";
+import type { EditWorkerInput, HireWorkerInput, WorkerInstructions } from "@flow-state-dev/workforce/browser";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { AppContext } from "../../flows/lab-context.mts";
 import { ownEscape, useFocusReturn } from "../lib/keys";
@@ -185,11 +189,15 @@ export function HireForm({ onHire, onCancel, choices = {}, defaults = {} }: { on
 }
 
 /**
- * Rename a teammate, replace its instructions, or change its model. A blank
- * name clears it, so the list shows its id. Its next
- * turn reads them; a turn already running keeps the ones it started with. The
- * page can't read the old instructions back, since they stay on the server, so
- * a blank box keeps them and a filled one replaces them whole.
+ * Rename a teammate, change its instructions, or change its model. A blank
+ * name clears it, so the list shows its id. Its next turn reads them; a turn
+ * already running keeps the ones it started with.
+ *
+ * The instructions are read from the server (`instructions`, `undefined`
+ * while they load). A teammate from the files (`fixed`) shows its core
+ * instructions read-only and a box for additional instructions, filled with
+ * what's saved: clearing it removes them. A teammate you hired shows its own
+ * instructions in a box you can rewrite. Only a box you changed is sent.
  */
 export function EditForm({
   name,
@@ -197,6 +205,8 @@ export function EditForm({
   onCancel,
   choices = {},
   current = {},
+  instructions,
+  instructionsProblem,
   children,
 }: {
   name: string;
@@ -205,38 +215,64 @@ export function EditForm({
   choices?: SettingsChoices;
   /** The teammate's model now (its own setting, else the lab's), and its look. */
   current?: Picked;
+  /** Its instructions as the server holds them, or `undefined` while they load. */
+  instructions?: WorkerInstructions;
+  /** Why its instructions couldn't be read, if they couldn't. */
+  instructionsProblem?: string;
   /** More under the buttons: the reset, for an edited teammate. */
   children?: ReactNode;
 }) {
   const [newName, setNewName] = useState(name);
-  const [instructions, setInstructions] = useState("");
+  const savedOwn = instructions?.instructions ?? "";
+  const savedAdded = instructions?.additionalInstructions ?? "";
+  // A box you haven't typed in shows what's saved, even when that lands after the form opened.
+  const [ownDraft, setOwn] = useState<string>();
+  const [addedDraft, setAdded] = useState<string>();
+  const own = ownDraft ?? savedOwn;
+  const added = addedDraft ?? savedAdded;
   const [picked, setPicked] = useState<Picked>(current);
   const renamed = newName.trim() !== name;
   const settingsPatch = changed(current, picked);
   const settingsChanged = Object.keys(settingsPatch).length > 0;
+  const ownChanged = instructions !== undefined && !instructions.fixed && own.trim() !== savedOwn.trim();
+  const addedChanged = instructions !== undefined && added.trim() !== savedAdded.trim();
   const { error, busy, submit } = useSubmit(() =>
     onSave({
       ...(renamed ? { name: newName.trim() === "" ? null : newName.trim() } : {}),
-      ...(instructions.trim() === "" ? {} : { instructions }),
+      ...(ownChanged ? { instructions: own.trim() === "" ? null : own } : {}),
+      ...(addedChanged ? { additionalInstructions: added.trim() === "" ? null : added } : {}),
       ...(settingsChanged ? { settingsPatch } : {}),
     }),
   );
+  // A teammate you hired shows the additions box only once it has some (a fork of an edited file's teammate).
+  const showAdded = instructions !== undefined && (instructions.fixed || savedAdded !== "");
   return (
     <Shell label={`Edit ${name}`} error={error} onSubmit={(e) => void submit(e)}>
       <Field label="Name">
         <input aria-label={`Name of ${name}`} value={newName} onChange={(e) => setNewName(e.target.value)} className={field} />
       </Field>
-      <Field label="Instructions" hint="They replace the old ones from its next turn. Leave blank to keep them.">
-        <textarea
-          aria-label={`New instructions for ${name}`}
-          placeholder={`${name}'s new instructions, in full.`}
-          rows={4}
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          onKeyDown={sendOnShortcut}
-          className={field}
-        />
-      </Field>
+      {instructions === undefined ? (
+        <p className="text-xs text-text-3">{instructionsProblem === undefined ? "Loading instructions…" : `Instructions can't be shown: ${instructionsProblem}`}</p>
+      ) : instructions.fixed ? (
+        <CoreInstructions name={name} text={instructions.instructions} />
+      ) : (
+        <Field label="Instructions">
+          <textarea aria-label={`Instructions for ${name}`} placeholder={`What ${name} does, and how.`} rows={4} value={own} onChange={(e) => setOwn(e.target.value)} onKeyDown={sendOnShortcut} className={field} />
+        </Field>
+      )}
+      {showAdded ? (
+        <Field label="Additional instructions" hint={`Added after ${instructions!.fixed ? "the core" : "its"} instructions, from its next turn. Clear the box to remove them.`}>
+          <textarea
+            aria-label={`Additional instructions for ${name}`}
+            placeholder={`Anything else ${name} should know or do.`}
+            rows={4}
+            value={added}
+            onChange={(e) => setAdded(e.target.value)}
+            onKeyDown={sendOnShortcut}
+            className={field}
+          />
+        </Field>
+      ) : null}
       {picked.icon === undefined || picked.color === undefined ? null : (
         <LookFields who={name} face={picked.icon} color={picked.color} onChange={(look) => setPicked({ ...picked, ...look })} />
       )}
@@ -246,10 +282,25 @@ export function EditForm({
         <button type="button" onClick={onCancel} className={plain}>
           Cancel
         </button>
-        <button type="submit" disabled={busy || (!renamed && instructions.trim() === "" && !settingsChanged)} className={primary}>
+        <button type="submit" disabled={busy || (!renamed && !ownChanged && !addedChanged && !settingsChanged)} className={primary}>
           Save
         </button>
       </div>
     </Shell>
+  );
+}
+
+/**
+ * A file's teammate's core instructions, read-only and folded: the rules its
+ * turns read first, which no edit replaces. Long text scrolls inside.
+ */
+function CoreInstructions({ name, text }: { name: string; text: string | null }) {
+  return (
+    <details className="rounded-sm border border-border">
+      <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-text-2">Core instructions · can't be changed</summary>
+      <div role="region" aria-label={`Core instructions for ${name}`} className="max-h-48 overflow-y-auto border-t border-border px-2 py-1.5 text-xs whitespace-pre-wrap text-text-2">
+        {text ?? `${name} has no core instructions.`}
+      </div>
+    </details>
   );
 }

@@ -33,7 +33,8 @@ import { defineWorkerMessagesView } from "../messages/worker-messages-view";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkstreamReportView } from "../projects/workstream-report-view";
-import { INBOX_VIEW, ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_MESSAGES_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { INBOX_VIEW, ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_INSTRUCTIONS_VIEW, WORKER_MESSAGES_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { defineWorkerInstructionsView } from "./worker-instructions-view";
 import { defineSessionTurnsView, defineWorkerSessionsView } from "./session-views";
 import { defineRosterView } from "./roster-view";
 import { defineInboxView } from "./inbox-view";
@@ -72,6 +73,8 @@ export function defineWorkerRosterFlow(
     views: {
       [ROSTER_VIEW]: defineRosterView(installation),
       [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // A worker's core and additional instructions, for the form that edits them.
+      [WORKER_INSTRUCTIONS_VIEW]: defineWorkerInstructionsView(installation),
       // FIX-2725: a user's sessions with a worker, and one session's turns.
       [WORKER_SESSIONS_VIEW]: defineWorkerSessionsView(installation),
       [SESSION_TURNS_VIEW]: defineSessionTurnsView(),

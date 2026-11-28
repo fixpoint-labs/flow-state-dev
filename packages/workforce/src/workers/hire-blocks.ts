@@ -11,7 +11,10 @@
  * A standard worker's file is never written. Hire, fork and fire refuse a
  * standard worker's id. Edit on one makes the caller's own copy of it under
  * the same id, the copy a fork makes, which the turn and the
- * roster then read before the file; reset deletes that copy.
+ * roster then read before the file; reset deletes that copy. The copy never
+ * replaces the file's core instructions: an edit naming `instructions` on a
+ * standard worker is refused, and the caller adds `additionalInstructions`,
+ * read after the core ones.
  *
  * A hire or an edit is also refused when anything it writes looks like an API
  * key (core's `containsSecret`), and, when the app lists the models a worker
@@ -27,6 +30,7 @@ import type { WorkerManifest } from "../manifest";
 import { problemsClause, type WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
+import { instructionsOf, textOrNull } from "./worker-instructions";
 import { parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
 
 const workerId = z.string().min(1).regex(/^[^/~][^/]*$/, "a worker id is one path segment and can't start with ~");
@@ -65,7 +69,10 @@ const editInput = z
     /** A new flow. A standard worker keeps its file's: naming another is refused. */
     flow: z.string().min(1).optional(),
     description: z.string().nullable().optional(),
+    /** Replaces the core instructions of a worker of the caller's own. A standard worker's are its file's: naming them is refused. */
     instructions: z.string().nullable().optional(),
+    /** What the caller adds after the core instructions; `null` or blank clears it. */
+    additionalInstructions: z.string().nullable().optional(),
     skills: z.array(z.string().min(1)).optional(),
     /** Replaces the stored settings whole. */
     settings: z.record(z.unknown()).optional(),
@@ -189,11 +196,6 @@ export function checkedHire(installation: WorkerInstallation, input: HireInput, 
   return worker;
 }
 
-/** Whitespace is not instructions. */
-function textOrNull(value: string | null | undefined): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
 /**
  * A standard worker's configuration as a row of the caller's own, copied (D3).
  * Its file's `name:` becomes the row's name only for the copy under the same
@@ -284,7 +286,13 @@ export function createWorkerHireBlocks(installation: WorkerInstallation, checks:
       const row =
         file !== undefined && own === undefined
           ? rowFromStandard(file)
-          : { ...(await readOwn(workers, input.from)), forkedFrom: input.from, name: null };
+          : await (async () => {
+              const stored = await readOwn(workers, input.from);
+              // An edited standard worker's copy holds only the additions: the fork takes the file's core and team text too.
+              const { instructions, additionalInstructions } = instructionsOf(stored, file);
+              const teamInstructions = file === undefined ? stored.teamInstructions : textOrNull(file.teamInstructions);
+              return { ...stored, instructions, additionalInstructions, teamInstructions, forkedFrom: input.from, name: null };
+            })();
       check(input.id, row);
       await write(workers, input.id, row);
       return { id: input.id, flow: row.flow };
@@ -302,6 +310,11 @@ export function createWorkerHireBlocks(installation: WorkerInstallation, checks:
       const file = installation.standardWorker(input.id);
       const stored = file === undefined ? undefined : await workers.getOptional(input.id);
       const copying = file !== undefined && stored === undefined;
+      if (file !== undefined && input.instructions !== undefined) {
+        throw new Error(
+          `"${input.id}" is a standard worker: its core instructions can't be replaced. Add to them with additionalInstructions instead. Nothing was written.`
+        );
+      }
       const current = copying ? { ...rowFromStandard(file, true), forkedFrom: input.id } : await readOwn(workers, input.id);
       // The file's worker as it stands, before the edit: a flow kept for standard
       // workers stays read-only even when the edit names another flow.
@@ -317,6 +330,18 @@ export function createWorkerHireBlocks(installation: WorkerInstallation, checks:
         ...(input.flow !== undefined ? { flow: input.flow } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.instructions !== undefined ? { instructions: textOrNull(input.instructions) } : {}),
+        ...(input.additionalInstructions !== undefined ? { additionalInstructions: textOrNull(input.additionalInstructions) } : {}),
+        // A standard worker's copy keeps only the additions: its core is read from the file on each turn,
+        // and a copy stored with replaced instructions moves that text to its additions (BP-030).
+        ...(file !== undefined
+          ? {
+              instructions: null,
+              additionalInstructions:
+                input.additionalInstructions !== undefined
+                  ? textOrNull(input.additionalInstructions)
+                  : instructionsOf(current, file).additionalInstructions
+            }
+          : {}),
         ...(input.skills !== undefined ? { skills: input.skills } : {}),
         ...(input.settings !== undefined ? { settings: input.settings } : {}),
         ...(input.settingsPatch !== undefined ? { settings: { ...current.settings, ...input.settingsPatch } } : {})
