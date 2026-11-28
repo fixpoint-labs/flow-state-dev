@@ -27,7 +27,6 @@ export default await openTeammates({
   runTimeoutMs: runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS),
   setup: setupCommand(process.env.TEAMMATES_SETUP),
   checks: checkCommands(process.env.TEAMMATES_CHECKS),
-  // Read once, at start: the host logs where it came from, never the token.
   github: readOperatorGitHubToken(),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),

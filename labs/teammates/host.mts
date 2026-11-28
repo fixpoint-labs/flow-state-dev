@@ -37,11 +37,8 @@ export interface TeammatesOptions {
   scriptedHarnessStepMs?: number;
   staleThresholdMs?: number;
   modelResolver?: ModelResolver;
-  /** The operator's GitHub token as `readOperatorGitHubToken` read it: the token, where it came from, or why there is none. */
   github?: OperatorGitHubTokenRead;
   githubApiUrl?: string;
-  /** The fetch the start-up token check calls GitHub with. Default the global one; a check passes a stub. */
-  githubFetch?: typeof globalThis.fetch;
 }
 
 /** The working folder: an existing git checkout, as an absolute path, never a fallback. @throws When unset, missing or not a checkout. */
@@ -84,9 +81,8 @@ export async function openTeammates(options: TeammatesOptions) {
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
   const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, , c]) => Object.hasOwn((c ?? {}) as object, "githubReviewers")).map(([id]) => id) });
-  const token = options.github?.token;
-  const githubProblem = gitHubProblem(options.github, { ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }), ...(options.githubFetch === undefined ? {} : { fetch: options.githubFetch }) });
-  const github = operatorGitHub({ operator: options.userId, token, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
+  const githubProblem = gitHubProblem(options.github, options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl });
+  const github = operatorGitHub({ operator: options.userId, token: options.github?.token, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [
       workforce({

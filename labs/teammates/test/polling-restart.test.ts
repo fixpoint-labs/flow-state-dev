@@ -24,6 +24,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** A data folder holding a git checkout the lab can work in. */
@@ -42,6 +43,8 @@ function dataFolder(): { data: string; repo: string } {
 
 /** The lab's host over the store in `data`, as a restart opens it. */
 async function openApp(data: string, repo: string, github?: { token: string; answers: number; login?: string }) {
+  // GitHub's `/user`, as the start-up check asks it: never the real one in a test.
+  if (github !== undefined) vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ login: github.login ?? "operator" }), { status: github.answers }));
   const flowState = await openTeammates({
     store: join(data, "teammates.sqlite"),
     model: "test/scripted",
@@ -54,8 +57,6 @@ async function openApp(data: string, repo: string, github?: { token: string; ans
       ? {}
       : {
           github: { token: github.token, source: "GITHUB_TOKEN" as const },
-          // GitHub's `/user`, as the start-up check asks it: never the real one in a test.
-          githubFetch: (async () => new Response(JSON.stringify({ login: github.login ?? "operator" }), { status: github.answers })) as unknown as typeof fetch,
         }),
   });
   cleanups.push(() => flowState.dispose());
