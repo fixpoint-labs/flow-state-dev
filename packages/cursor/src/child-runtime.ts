@@ -25,10 +25,14 @@
  * run's commands with the environment the host chose not to hand them.
  *
  * The protocol: the parent sends `{ id, op }` requests (`open`, `send`, `wait`,
- * `steer`, `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After
- * `send`, the child streams `{ event: "message" }` for each run message, then
- * `{ event: "end" }` or `{ event: "stream-error" }`. The parent closing the
- * channel tells the child to close the agent and exit.
+ * `steer`, `cancel`, `release`) and the child answers `{ id, value }` or
+ * `{ id, error }`. After `send`, the child streams `{ event: "message" }` for
+ * each run message, then `{ event: "end" }` or `{ event: "stream-error" }`.
+ * `release` cancels the runs the agent's local store still records as running
+ * (see `CursorAgentLike.releaseActiveRun`). The parent closing the channel
+ * tells the child to close the agent and exit; a run still going then is
+ * cancelled first, so a server that dies mid-run leaves no run recorded as
+ * running behind it.
  *
  * Off Windows the child leads its own process group, so the commands the
  * agent started are in it too. Closing a run that was cancelled (a stop) also
@@ -250,11 +254,14 @@ async function openInChild(
     async send(prompt: string | CursorUserMessage, sendOptions?: CursorSendOptions): Promise<CursorRunLike> {
       if (sent) throw new Error("This Cursor agent's runtime process serves one run.");
       sent = true;
-      const started = (await runtime.request("send", { prompt, options: sendOptions })) as {
-        runId: string;
-        supportsWait: boolean;
-        supportsSteer?: boolean;
-      };
+      let started: { runId: string; supportsWait: boolean; supportsSteer?: boolean };
+      try {
+        started = (await runtime.request("send", { prompt, options: sendOptions })) as typeof started;
+      } catch (err) {
+        // A send Cursor refused started no run, so the process can still serve one.
+        sent = false;
+        throw err;
+      }
       return {
         id: started.runId,
         stream: () => runtime.messages(),
@@ -270,6 +277,7 @@ async function openInChild(
       };
     },
     close: () => runtime.close(),
+    releaseActiveRun: () => runtime.request("release") as Promise<number>,
   };
 }
 

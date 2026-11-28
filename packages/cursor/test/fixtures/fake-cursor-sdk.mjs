@@ -17,6 +17,7 @@
  * - `steer` / `steer-refuse`: stream one message, then wait for a steer; it
  *   answers `complete_delivered` (or `revert_to_followup`), and the run ends
  *   with a message carrying the line it took.
+ * - resuming `agent_orphan`: see `orphan` below.
  * - `command-hang` / `command-finish`: start a long-lived command (a dev
  *   server, a watcher) that writes its pid to `$COMMAND_DIR/pid` and, when sent
  *   SIGTERM, writes `$COMMAND_DIR/sigterm` and stays up; then behave as `hang`,
@@ -26,6 +27,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 function makeRun(prompt) {
+  // The SDK's `run.status`: running until the run is waited out or cancelled.
+  let status = "running";
   let steered = () => {};
   const steeredLine = new Promise((resolve) => {
     steered = resolve;
@@ -77,7 +80,11 @@ function makeRun(prompt) {
       };
       yield { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "done" }] } };
     },
+    get status() {
+      return status;
+    },
     async wait() {
+      status = "finished";
       return { status: "finished", result: "done" };
     },
     async steer(text) {
@@ -85,6 +92,7 @@ function makeRun(prompt) {
       return prompt === "steer" ? "complete_delivered" : "revert_to_followup";
     },
     async cancel() {
+      status = "cancelled";
       if (prompt === "wedged") await new Promise(() => {});
       if (process.env.FIX1917_CANCEL_MARK) writeFileSync(process.env.FIX1917_CANCEL_MARK, "cancelled");
       release();
@@ -113,10 +121,21 @@ function startCommand(dir) {
   );
 }
 
+/**
+ * `agent_orphan`: an agent whose local store still records a run from a
+ * runtime that is gone, the way a server restart leaves one. Its `send` is
+ * refused as `@cursor/sdk` 1.0.40 refuses it until `Agent.cancelRun` cancels
+ * that run. One process's state, like the child that loads this.
+ */
+const orphan = { id: "run_orphan", status: "running" };
+
 function makeAgent(agentId) {
   return {
     agentId,
     async send(prompt) {
+      if (agentId === "agent_orphan" && orphan.status === "running") {
+        throw Object.assign(new Error(`Agent ${agentId} already has active run`), { name: "UnknownAgentError" });
+      }
       return makeRun(prompt);
     },
     close() {},
@@ -124,6 +143,14 @@ function makeAgent(agentId) {
 }
 
 export const Agent = {
+  async listRuns(agentId, options) {
+    if (options?.runtime !== "local") throw new Error("expected a local listing");
+    return { items: agentId === "agent_orphan" ? [{ ...orphan }] : [] };
+  },
+  async cancelRun(runId, options) {
+    if (options?.runtime !== "local") throw new Error("expected a local cancel");
+    if (runId === orphan.id) orphan.status = "cancelled";
+  },
   async create() {
     return makeAgent("agent_fake");
   },
