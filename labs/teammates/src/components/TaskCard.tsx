@@ -1,7 +1,7 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { activeElapsedMs, clockRuns, harnessOf, isActive, modelOf, taskStatus, timeSignalOf, workerOf } from "../lib/task";
-import { useNow } from "../lib/use-watch";
+import { useNow } from "../lib/now";
 import { taskSignal } from "./flow-state/task-signals";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
