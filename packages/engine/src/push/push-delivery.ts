@@ -14,7 +14,7 @@
 import { randomBytes } from "node:crypto";
 import { assertSecret } from "../transports/auth/assert-secret";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core/internal";
+import { PUSH_MINT_MAX_TOPICS, wireTopicKey, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core/internal";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
 import type { NoticeIdScopes } from "../runtime-config";
@@ -23,6 +23,10 @@ import { authorizeManagementRoute, type RouteAuthContext } from "../routes/route
 import { jsonResponse, loadCheckedSession } from "../routes/route-utils";
 import { isWireTopic, openPushSocket, type PushSocket, type PushSocketIO } from "./socket-session";
 import { PUSH_TICKET_TTL_MS, signPushTicket, type GrantedTopic } from "./ticket";
+import { isChangeTopicResource, ownerSubscription, readChangeTopicResource } from "../bus/owner-topic";
+import type { InstanceCallerResolver } from "../routes/instance-caller";
+import { namedRecordAdmission } from "../context/named-session";
+import type { BusTopic } from "../bus/types";
 
 /** Options for {@link enablePushDelivery}. */
 export type EnablePushDeliveryOptions = {
@@ -113,6 +117,8 @@ export function pushCapability(state: PushState): PushCapability | null {
 /** What the mint needs from the request's dispatch. */
 export type MintContext = RouteAuthContext & {
   state: PushState;
+  /** The caller as each flow instance's own doors resolve it: which instances' change topics to grant. */
+  callerFor: InstanceCallerResolver;
   /** The verified caller, when the app authenticates this route. */
   principal?: ResolvedPrincipal;
   /**
@@ -121,6 +127,32 @@ export type MintContext = RouteAuthContext & {
    */
   anonymous: boolean;
 };
+
+/**
+ * What the change topic at wire resource `resource` subscribes: one owner
+ * topic per flow instance the read across sessions admits. The caller is
+ * resolved at the view's flow, as the view route resolved the view's
+ * principal, and each instance is judged by the read's own admission
+ * (`namedRecordAdmission`, for a run with no session of its own), so the two
+ * can't disagree. A session of any instance it refuses reads as empty, so
+ * its writes wake nothing. A view flow the host doesn't hold, or a caller its
+ * door refuses or names as someone else, gets nothing.
+ */
+async function changeTopicGrants(ctx: MintContext, userId: string, resource: string): Promise<BusTopic[]> {
+  const named = readChangeTopicResource(resource);
+  const viewFlow = named === undefined ? undefined : ctx.registry.get(named.viewFlowId);
+  if (viewFlow === undefined) return [];
+  const principal = await ctx.callerFor(viewFlow);
+  if (principal === undefined || principal.userId !== userId) return [];
+  const admit = namedRecordAdmission({ stores: ctx.stores, registry: ctx.registry, hostResolver: ctx.hostResolver, principal, sessionId: "" });
+  const owner = { userId: principal.userId, orgId: principal.orgId, tenantId: principal.tenantId };
+  const grants: BusTopic[] = [];
+  for (const flow of ctx.registry.list()) {
+    const session = { id: "", flowKind: flow.kind, flowId: flow.id, userId: owner.userId, orgId: owner.orgId, ...(owner.tenantId !== undefined ? { tenantId: owner.tenantId } : {}) };
+    if (await admit("", session)) grants.push(ownerSubscription(owner, flow.id, resource));
+  }
+  return grants;
+}
 
 /**
  * `POST /users/:userId/stream`: check each topic and answer a ticket for the
@@ -162,6 +194,14 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
     // principal (BP-031). An anonymous caller in an app that authenticates
     // anything has none to claim.
     if (ctx.anonymous) continue;
+    // An owner's change topic: the caller's own user and organization, so the
+    // same user in another organization never hears it, and only the flow
+    // instances whose sessions this request's credentials would be shown
+    // (`bus/owner-topic.ts`).
+    if (wire.scope === "user" && isChangeTopicResource(wire.resource)) {
+      for (const bus of await changeTopicGrants(ctx, userId, wire.resource)) granted.push({ wire, bus });
+      continue;
+    }
     const id = wire.scope === "user" ? ctx.principal?.userId ?? userId : ctx.principal?.orgId ?? DEFAULT_ORG_ID;
     granted.push({ wire, bus: { scope: wire.scope, id, tenantId, ...resource } });
   }
@@ -170,7 +210,8 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
     transport: "websocket",
     ticket: signPushTicket({ sub: userId, exp: Date.now() + PUSH_TICKET_TTL_MS, topics: granted }, secret()),
     path: `/users/${encodeURIComponent(userId)}/stream`,
-    topics: granted.map((topic) => topic.wire)
+    // A change topic is granted once per flow instance it admits; the client names it once.
+    topics: [...new Map(granted.map((topic) => [wireTopicKey(topic.wire), topic.wire])).values()]
   };
   return jsonResponse(200, answer);
 }

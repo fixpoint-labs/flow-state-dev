@@ -8,9 +8,9 @@
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
-import { openTasks, type LoadedSnapshot } from "../src/lib/derive";
+import { boardTaskOf } from "@flow-state-dev/workforce/browser";
+import { openBoardTasks } from "../src/lib/inbox";
 import { workerFor } from "../src/lib/shift";
-import { toBoardTaskView } from "../src/lib/reads";
 import type { BoardTaskView } from "../src/lib/boards";
 import { toWorker } from "../src/lib/workers";
 
@@ -49,12 +49,12 @@ describe("BR-12: a row's column", () => {
 });
 
 const row = (status: string, assignee: string | null, id = status): BoardTaskView =>
-  toBoardTaskView("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
+  boardTaskOf("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
 
 describe("which worker holds a row, when a bare name is in more than one team", () => {
   const ops = toWorker({ id: "ops.builder", kind: "worker" })!;
   const eng = toWorker({ id: "eng.builder", kind: "worker" })!;
-  const rowFor = (assignee: string) => toBoardTaskView("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
+  const rowFor = (assignee: string) => boardTaskOf("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
 
   it("attributes the row to no worker, never to several", () => {
     const roster = [ops, eng];
@@ -74,10 +74,8 @@ describe("which worker holds a row, when a bare name is in more than one team", 
 
 describe("BR-15: Tasks leaves done rows out (BR-27)", () => {
   it("keeps every open row and drops done ones", () => {
-    const rows = taskStatusSchema.options.map((s) => row(s, "builder"));
-    const snapshot = {
-      boards: { s_1: { ok: true, value: { refs: ["s_1.tasks"], rows } } },
-    } as unknown as LoadedSnapshot;
-    expect(openTasks(snapshot).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "pending"]);
+    // The inbox view's tasks, as Tasks draws them (`openBoardTasks`).
+    const tasks = taskStatusSchema.options.map((s) => ({ ...row(s, "builder"), owner: "@builder" }));
+    expect(openBoardTasks({ items: [], tasks }).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "pending"]);
   });
 });

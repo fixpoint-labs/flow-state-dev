@@ -14,11 +14,10 @@ import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import type { Client } from "@flow-state-dev/client";
 import { harnessStub } from "@flow-state-dev/harness-manager";
-import { LIST_ROUTINES_ACTION, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, LIST_ROUTINES_ACTION, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { runAction } from "./helpers/run-action";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
-import { createLabReader } from "../src/lib/reads";
 import { toRoutines } from "../src/lib/routines";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
@@ -98,7 +97,8 @@ describe("the EM manages its routines", () => {
     });
     served = await serveLab(lab.state);
     const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
-    await createLabReader(client).read();
+    // The read the app makes first: the gate's organization read.
+    await createWorkforceClient(client).organization();
     // The session on the projects flow the workstream is opened through, made on its first send.
     const opener = `projects-${ALICE.userId}`;
     await runAction(client, "projects", opener, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });

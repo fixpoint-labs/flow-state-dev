@@ -107,7 +107,10 @@ function publishSessionResource(
     tenantId: ctx.tenantId,
     notice: entryNotice(collection, storageKey),
     lineageShared: sessionKeySharesLineage(flowResources, storageKey),
-    hostHasViews: registryHasViews(ctx.registry)
+    hostHasViews: registryHasViews(ctx.registry),
+    ownerOrgId: session.orgId,
+    ownerFlowId: session.flowId ?? session.flowKind,
+    storageKey
   });
 }
 

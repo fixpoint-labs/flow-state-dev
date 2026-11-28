@@ -85,6 +85,20 @@ export function runningSessions(rows: readonly BoardTaskView[]): number {
   return linked.size + running.filter((row) => row.run == null).length;
 }
 
+/**
+ * The Shift Coordinator's summary numbers, from the inbox view's one answer:
+ * what needs the user, as Inbox lists it (one item per task held on a
+ * question, a review or an approval, and per ask no task holds, each once),
+ * and the runs going with how many workstreams they run in.
+ */
+export function shiftSummary(view: InboxViewValue): { needsYou: number; running: { runs: number; workstreams: number } } {
+  const inFlight = openBoardTasks(view).filter((task) => task.status === "in_progress");
+  return {
+    needsYou: view.items.length,
+    running: { runs: inFlight.length, workstreams: new Set(inFlight.map((task) => task.ownerSessionId)).size },
+  };
+}
+
 /** What Inbox says when nothing waits on the user (v2:1354): the sessions still running. */
 export function nothingWaitingSentence(view: InboxViewValue): string {
   const running = runningSessions(openBoardTasks(view));

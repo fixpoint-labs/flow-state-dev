@@ -1,13 +1,10 @@
 // fallow-ignore-file duplicate-export -- each starter is its own app, and its host exposes the same checkCommands as the others on purpose.
 /** The lab's server, from package pieces: the README's "The host" says what each piece is for and what each option sets. */
-import { gitHubAccountEnv, type GitHubAccount, type Harness } from "@flow-state-dev/core/harness";
+import type { GitHubAccount, Harness } from "@flow-state-dev/core/harness";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeCodeHarness } from "@flow-state-dev/claude-code";
-import { codexHarness } from "@flow-state-dev/codex";
 import type { ModelResolver, PrincipalResolutionContext } from "@flow-state-dev/core/types";
-import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { ASK_MARKER_IGNORED, assertPositiveInt, GOAL_JUDGE_MODEL, scriptedHarness } from "@flow-state-dev/harness-manager";
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
@@ -20,6 +17,7 @@ import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localRepoWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { appContextFlow } from "./flows/lab-context.mts";
+import { codingAgents } from "./src/lib/coding-harnesses.ts";
 
 /** What {@link openTeammates} builds the host from; the README's "The host" says what each sets. */
 export interface TeammatesOptions {
@@ -68,9 +66,8 @@ export async function openTeammates(options: TeammatesOptions) {
   const declared = (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.map((w) => [w.id, w.declared.delegates, w.declared.capabilities] as const);
   const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d)).map(([id, d]) => [id, d])) as Record<string, "all" | string[]>;
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
-  const agentGitHub = options.agentGitHub;
-  const workspace = localRepoWorkspaceHost({ root: options.runsRoot, repo: workdir, ...(options.setup === undefined ? {} : { setup: options.setup }), ...(agentGitHub && { pullRequestsAs: { token: agentGitHub.token } }) });
-  const runAs = agentGitHub === undefined ? {} : { extraEnv: gitHubAccountEnv(agentGitHub) };
+  const agents = codingAgents(options.agentGitHub);
+  const workspace = localRepoWorkspaceHost({ root: options.runsRoot, repo: workdir, ...(options.setup === undefined ? {} : { setup: options.setup }), ...agents.workspace });
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
   const checks = { commands: options.checks ?? [], timeoutMs: 10 * 60_000 };
   const harness = options.harness ?? "cursor";
@@ -84,7 +81,7 @@ export async function openTeammates(options: TeammatesOptions) {
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
   const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, , c]) => Object.hasOwn((c ?? {}) as object, "githubReviewers")).map(([id]) => id) });
-  const github = operatorGitHub({ operator: options.userId, token: options.githubToken, reviewers, ...(agentGitHub && { agentToken: agentGitHub.token }), ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
+  const github = operatorGitHub({ operator: options.userId, token: options.githubToken, reviewers, ...agents.github, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [
       workforce({
@@ -105,7 +102,7 @@ export async function openTeammates(options: TeammatesOptions) {
       }),
       harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
     ],
-    fill: { [harnesses.slots.harnesses]: scripted === undefined ? [claudeCodeHarness(runAs), codexHarness(runAs), cursorHarness({ model: "composer-2.5", ...runAs })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
+    fill: { [harnesses.slots.harnesses]: scripted === undefined ? agents.harnesses() : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
     flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,

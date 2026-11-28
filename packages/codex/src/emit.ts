@@ -135,6 +135,7 @@ export async function emitTranslatedEvent(
     case "thread_started":
     case "turn_completed":
     case "turn_failed":
+    case "plan_list":
       return;
   }
 }

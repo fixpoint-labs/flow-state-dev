@@ -127,7 +127,8 @@ export async function runningTaskOf(
 
 /**
  * Take the steers no request of `running`'s attempt has taken, in the read
- * named `takenIn`, and answer every steer this attempt took in that read
+ * named `takenIn`, by request `requestId` (the one a stop of it gives them
+ * back for), and answer every steer this attempt took in that read
  * (a re-run of the read after a crash reads them again). The claim's steers
  * are already in the brief, and a late steer's turn carries its own. Empty
  * when the board takes no steers or its claim moved on. With `show`, the
@@ -136,6 +137,7 @@ export async function runningTaskOf(
 export async function takeRunningSteers(
   running: RunningTask,
   takenIn: string,
+  requestId: string,
   show?: Pick<BlockContext, "emit" | "_emitMessageAwaited">
 ): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;
@@ -145,7 +147,7 @@ export async function takeRunningSteers(
   // after it is taken before the next model call, or by the gate's check.
   const stored = (await readCommittedTask(ledger, row.id)) ?? row;
   if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map((steer) => shownSteer(stored, steer));
-  const outcome = await ledger.takeSteers(row.id, { claim, takenIn });
+  const outcome = await ledger.takeSteers(row.id, { claim, takenIn, requestId });
   if (outcome.outcome === "declined") return [];
   const now = ledger.get(row.id);
   if (now === undefined) return [];
@@ -175,7 +177,7 @@ export function createSteerContext(options: SteerContextOptions) {
     const running = await runningTaskOf(options.resolve, ctx);
     const requestId = ctx.request?.identity?.id;
     if (running === undefined || requestId === undefined) return null;
-    const steers = await takeRunningSteers(running, `step:${requestId}`, ctx);
+    const steers = await takeRunningSteers(running, `step:${requestId}`, requestId, ctx);
     return steers.length === 0 ? null : renderSteers(steers, STEERED_WHILE_RUNNING);
   };
 }
