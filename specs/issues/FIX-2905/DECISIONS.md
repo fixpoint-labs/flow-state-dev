@@ -75,11 +75,13 @@ It comes down to a second install and server: the primary needs neither, a clone
 |---|---|
 | **Instead of** | A branch goes in when its checks pass and it merges cleanly |
 | **Because** | The owner's Fork 1, option A. Two branches can each pass and each boot, and break the app together with no git conflict. The experiment builds one (P5): the checks and the boot pass on each alone, git merges them cleanly, and the merged tree does not boot |
-| **Locks in** | Each app declares a start command and a loaded check, beside its start steps in `apps/super-app/apps.mjs`, and the package imports nothing from an app. The boot runs in the primary, the only tree with an install: a running server sees the merged files while it boots, and again on a rollback, so the super app may rebuild pages twice. An app whose boot would write what its running server reads declares none, and the output says it was not boot-checked. A wrong boot leaves a good branch out, named. A lockfile change is skipped as "install owed" |
+| **Locks in** | Each app declares a start command and a loaded check, beside its start steps in `apps/super-app/apps.mjs`, and the package imports nothing from an app. The boot runs in the primary, the only tree with an install: a running server sees the merged files while it boots, and again on a rollback, so the super app may rebuild pages twice. An app whose boot would write what its running server reads declares none, and the output says it was not boot-checked. A wrong boot leaves a good branch out, named |
 
 ![What must hold before a branch goes into the preview: green at its tip and the merged app boots, chosen, beside per-branch checks only. Decides it: two green branches that break together. Price: a boot on every build](figures/d4-boot-on-combination.svg)
 
 It comes down to two green branches that break together: caught and named, against a broken app nobody can explain.
+
+**Who installs, when a branch changes the lockfile** (recommended; it extends the owner's answer, so it needs their nod). The tool never installs: replacing `node_modules` under a running server breaks it (`workspace.mjs:8`). A skipped branch is named with the exact command. That command alone does not bring the branch in, because an install in the primary reads the primary's lockfile, and the skipped branch's is not in it. So the branch comes in one of two ways: when its pull request merges and the next `pnpm dev` installs; or when the person opts it in by name, which says the app is stopped. The tool then merges it, skips gate 2 for that build as *not boot-checked until installed*, and prints the command; the person installs and restarts, and the next rebuild boots the combination. If wrong: a person runs one command by hand. The alternative, the tool installing, fails when an app is up.
 
 **What would change my mind:** the boot is too slow or flaky to trust, so false rollbacks hide good branches.
 
@@ -122,7 +124,7 @@ Read on 2026-11-27 in this branch merged with `origin/main`. "Run" means run, "r
 | 5 | `host.list` returns worktrees under the host's root, so a Claude worktree under `.claude/worktrees` needs that root. `host.baseTip`, `land`'s merge step, `runCheckoutCommands` and `acquireLock` exist as used | `local-host.ts:2176`, `:629`, `land.ts:361`, `checkout-commands.ts`, `lock.ts:118` | read |
 | 6 | `scripts/worktree.mjs` holds an ancestry-only proof for prune; FIX-2904's is the package's. A third is not added | `worktree.mjs:115` | read |
 | 7 | #5583 merged 2026-11-24 | `gh pr view 5583` | run |
-| 8 | Super app: rebuilds a page on a recorded input change, offers a restart on a changed server, installs only at start | `rebuild.mjs:51`, `lifecycle.mjs:189`, `workspace.mjs:20` | read |
+| 8 | Super app: rebuilds a page on a recorded input change, offers a restart on a changed server, installs only at start. Nothing pushes a reload to the labs' pages; only Next's HMR socket is piped for Kitchen Sink, and `location.reload` runs only after a Restart click | `rebuild.mjs:51`, `lifecycle.mjs:189`, `workspace.mjs:20`, `proxy.mjs:7`, `:359` | read |
 | 9 | FIX-2251 (Backlog): part 2 has the host own a process per worktree, with a port and a preview pane. Overlaps gate 2's free port and the follow-up screen; blocks neither | Linear GraphQL, read-only | run |
 
 ## Considered and dropped
@@ -141,7 +143,7 @@ Read on 2026-11-27 in this branch merged with `origin/main`. "Run" means run, "r
 - **P1, P7** CONFIRMED: uncommitted edits survive turning on and rebuilding; `reset --keep` stops when main changed a file they edit; a hand resolution replays; a hand commit blocks a rebuild. `reset --hard` would have taken the edit (found by the experiment).
 - **P3, P4, P6** CONFIRMED: a recorded result is read, a moved tip is rechecked once, red and lockfile branches are left out, and when nothing boots HEAD stays put.
 - **P8** CONFIRMED and measured: the shipped guard refuses `HEAD` elsewhere and the preview by name, and lets a feature push. **GAP:** `--no-verify`, and a commit on a branch cut from the preview, pass.
-- **Not run:** another git, Windows, a real app's boot, a second repository, the reader of a real run record.
+- **Not run:** another git, Windows, a real app's boot, a second repository, the reader of a real run record, the opt-in for a lockfile branch.
 
 ## How it got here
 
