@@ -12,53 +12,45 @@
  * is never skipped on a count nobody read.
  *
  * Only what the run committed is read: a change left uncommitted in the
- * checkout is not on its branch, so it is not what a review accepts.
+ * checkout is not on its branch, so it is not what a review accepts. A screen
+ * that follows a run while it works asks for the working tree too
+ * (`uncommitted`), and each file it adds is marked so.
  *
- * Git runs through the workspace package's bounded `run`, the one place a
- * child process is started for this package.
+ * Every git read runs through `safe-git.ts`, which runs none of the commands
+ * a run can name in its checkout; the working tree is read by
+ * `working-tree.ts`, never through git's filters.
  */
-import { devNull } from "node:os";
-import { run } from "@flow-state-dev/workspace";
 import { z } from "zod";
-
-/** How long one git read may take. */
-const GIT_READ_TIMEOUT_MS = 10_000;
+import { checkoutGit as git } from "./safe-git";
+import { countLines, workingChanges, workingPatch, type WorkingChange } from "./working-tree";
 
 /** The most commit subjects reported for one run. */
 export const MAX_COMMIT_SUBJECTS = 20;
+
+/** One commit of a run's log: what a timeline draws for it. */
+export interface RunCommitEntry {
+  /** The full commit sha. */
+  sha: string;
+  subject: string;
+  /** The author's name. */
+  author: string;
+  /** When it was authored, ISO 8601. */
+  at: string;
+  /** It has more than one parent: a merge, most often of the base into the branch. */
+  merge: boolean;
+}
+
+/** {@link RunCommitEntry}, as a schema: what a review's data and a changes read carry. */
+export const runCommitEntrySchema = z.object({ sha: z.string(), subject: z.string(), author: z.string(), at: z.string(), merge: z.boolean() });
 
 /** The commits a run made: the count, and up to {@link MAX_COMMIT_SUBJECTS} subjects, newest first. */
 export interface RunCommits {
   count: number;
   subjects: string[];
+  /** The same commits as {@link RunCommitEntry}s, newest first: only when the read asked for it (`log`). */
+  log?: RunCommitEntry[];
   /** Git read the count against a base. `false` when no base or no checkout could be read, and the count is a fallback zero. */
   verified: boolean;
-}
-
-/**
- * Git as the commit history really is, not as the checkout says it is. A run
- * shares its checkout's object store and refs, so it can plant a replace ref,
- * a graft or a commit-graph that gives the base its own work as history, or a
- * shallow file that cuts its own history short, and its work would count
- * none. Every read here ignores all four. `--shallow-file ""` is how git's own
- * fetch says "no shallow file"; in a checkout whose history really is cut
- * short, a read then fails on the missing parents and answers unverified.
- */
-const TRUE_HISTORY = {
-  env: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: devNull },
-  args: ["--shallow-file", "", "-c", "core.commitGraph=false"],
-};
-
-/** One git read in `cwd`, as {@link TRUE_HISTORY} reads it. With `onLine`, standard output is handed over line by line instead of returned. */
-async function git(cwd: string, args: string[], onLine?: (line: string) => void): Promise<string> {
-  return (
-    await run("git", [...TRUE_HISTORY.args, ...args], {
-      cwd,
-      timeoutMs: GIT_READ_TIMEOUT_MS,
-      env: TRUE_HISTORY.env,
-      ...(onLine === undefined ? {} : { onLine }),
-    })
-  ).stdout;
 }
 
 /** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
@@ -138,12 +130,15 @@ async function resolveBases(cwd: string, baseRef: string | null, baseCommit: str
  * round needs both exclusions, the base (so the base's commits it merged in
  * aren't its work) and its start (so an earlier round's aren't), and one base
  * argument carries only the first.
+ *
+ * With `log`, the answer carries each of those commits (sha, author, time,
+ * merge or not) as `log`, read in the same `git log`.
  */
 export async function readRunCommits(
   cwd: string,
   baseRef: string | null,
   baseCommit: string | null = null,
-  options: { since?: string | null } = {},
+  options: { since?: string | null; log?: boolean } = {},
 ): Promise<RunCommits> {
   const resolved = await resolveBases(cwd, baseRef, baseCommit);
   // `since` counts on its own too, as a round read always has: a record with no cut and no named copy still has its round.
@@ -151,11 +146,18 @@ export async function readRunCommits(
   if (bases.length === 0) return { count: 0, subjects: [], verified: false };
   try {
     const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", ...bases])).trim(), 10);
-    const subjects = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%s", "HEAD", "--not", ...bases]))
+    // One line a commit, its fields apart by the unit separator, which no subject or name holds.
+    const lines = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%H%x1f%an%x1f%aI%x1f%P%x1f%s", "HEAD", "--not", ...bases]))
       .split("\n")
       .filter((line) => line.length > 0);
-    if (Number.isNaN(count)) return { count: 0, subjects, verified: false };
-    return { count, subjects, verified: true };
+    const log = lines.map((line): RunCommitEntry => {
+      const [sha = "", author = "", at = "", parents = "", ...subject] = line.split("\x1f");
+      return { sha, author, at, merge: parents.trim().split(" ").length > 1, subject: subject.join("\x1f") };
+    });
+    const subjects = log.map((entry) => entry.subject).filter((subject) => subject.length > 0);
+    const logged = options.log === true ? { log } : {};
+    if (Number.isNaN(count)) return { count: 0, subjects, ...logged, verified: false };
+    return { count, subjects, ...logged, verified: true };
   } catch (error) {
     console.warn(
       `[harness-manager] could not read the run's commits against ${bases.join(" and ")} in ${cwd} ` +
@@ -168,6 +170,9 @@ export async function readRunCommits(
 /** The most files one diff read lists. The totals still count every file. */
 export const MAX_DIFF_FILES = 200;
 
+/** The most files a working-tree read counts lines in, copied for one diff. More still count as files, with no lines. */
+export const MAX_COUNTED_FILES = 200;
+
 /** The most characters of one file's patch a read hands back. */
 export const MAX_PATCH_CHARS = 64_000;
 
@@ -179,6 +184,8 @@ export interface RunDiffFile {
   added: number | null;
   /** Lines removed; `null` for a binary file. */
   removed: number | null;
+  /** Some of the file's change is only in the working tree, not committed: set by an `uncommitted` read alone. */
+  uncommitted?: true;
 }
 
 /** What a run's commits changed, file by file. */
@@ -202,8 +209,22 @@ export interface RunFilePatch {
   patch: string;
   /** The patch was longer than {@link MAX_PATCH_CHARS} and was cut. */
   truncated: boolean;
+  /** Lines in the whole patch, counted past the cut: what a screen says it isn't showing. */
+  lines: number;
   /** As {@link RunDiff.verified}. */
   verified: boolean;
+}
+
+/**
+ * A patch read named a path the run's commits didn't change: a file it never
+ * touched, a folder, a glob, or anything outside the checkout. Refused rather
+ * than read, so a changes read opens only the change's own files.
+ */
+export class RunFileNotChanged extends Error {
+  constructor(readonly path: string) {
+    super(`"${path}" isn't a file this run changed, so its patch isn't read.`);
+    this.name = "RunFileNotChanged";
+  }
 }
 
 /** Where a diff read ends. Default `"HEAD"`: the checkout's branch now. */
@@ -217,11 +238,17 @@ export interface RunDiffOptions {
    * meeting point back, and would read that earlier turn's work as its own.
    */
   exactBase?: boolean;
+  /**
+   * Read the working tree too: tracked files edited since the last commit and
+   * new files git doesn't ignore, each marked `uncommitted`. For a run still
+   * working; a review reads what was committed. Ignored with `head`.
+   */
+  uncommitted?: boolean;
 }
 
 /** {@link RunDiff}, as a schema: what a review's data and a changes read carry. */
 export const runDiffSchema = z.object({
-  files: z.array(z.object({ path: z.string(), added: z.number().nullable(), removed: z.number().nullable() })),
+  files: z.array(z.object({ path: z.string(), added: z.number().nullable(), removed: z.number().nullable(), uncommitted: z.literal(true).optional() })),
   fileCount: z.number().int().nonnegative(),
   added: z.number().int().nonnegative(),
   removed: z.number().int().nonnegative(),
@@ -233,6 +260,7 @@ export const runFilePatchSchema = z.object({
   path: z.string(),
   patch: z.string(),
   truncated: z.boolean(),
+  lines: z.number().int().nonnegative(),
   verified: z.boolean(),
 });
 
@@ -273,6 +301,26 @@ async function diffStart(cwd: string, head: string, bases: string[], exactBase =
   return (await git(cwd, ["merge-base", head, ...bases])).trim();
 }
 
+/** Paths from a `-z` listing. */
+const pathsOf = (out: string) => out.split("\0").filter((path) => path !== "");
+
+/** One numstat row's counts: a number, `null` for binary (`-`), `NaN` for anything git didn't write as a count. */
+const countOf = (field: string | undefined) => (field === "-" ? null : Number.parseInt(field ?? "", 10));
+
+/** The run's committed paths between `start` and `head`, as the diff read lists them. */
+async function committedPaths(cwd: string, start: string, head: string): Promise<string[]> {
+  return pathsOf(await git(cwd, ["diff", "--name-only", "--no-renames", "-z", start, head]));
+}
+
+/** The working tree's changes as a diff's files: lines counted for the first {@link MAX_COUNTED_FILES}. */
+async function workingFiles(cwd: string, changes: readonly WorkingChange[]): Promise<RunDiffFile[]> {
+  const counts = await countLines(cwd, changes.slice(0, MAX_COUNTED_FILES));
+  return changes.map((change, i): RunDiffFile => {
+    const { added, removed } = counts[i] ?? { added: 0, removed: 0 };
+    return { path: change.path, added, removed, ...(change.uncommitted ? { uncommitted: true as const } : {}) };
+  });
+}
+
 /**
  * What the run's commits changed: each file's added and removed lines, and
  * the totals. The base is found as {@link readRunCommits} finds it. No base,
@@ -285,21 +333,23 @@ export async function readRunDiff(
   options: RunDiffOptions = {},
 ): Promise<RunDiff> {
   const head = options.head ?? "HEAD";
+  const uncommitted = options.uncommitted === true && options.head === undefined;
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
-    // `-z` keeps every path exactly as it is, whatever characters it holds.
-    const out = await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, head]);
+    const all: RunDiffFile[] = [];
+    if (uncommitted) all.push(...(await workingFiles(cwd, await workingChanges(cwd, start))));
+    else {
+      // `-z` keeps every path exactly as it is, whatever characters it holds.
+      for (const record of (await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, head])).split("\0")) {
+        if (record === "") continue;
+        const [added, removed, ...path] = record.split("\t");
+        all.push({ path: path.join("\t"), added: countOf(added), removed: countOf(removed) });
+      }
+    }
     const diff: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0, verified: true };
-    for (const record of out.split("\0")) {
-      if (record === "") continue;
-      const [added, removed, ...path] = record.split("\t");
-      const file: RunDiffFile = {
-        path: path.join("\t"),
-        added: added === "-" ? null : Number.parseInt(added!, 10),
-        removed: removed === "-" ? null : Number.parseInt(removed!, 10),
-      };
+    for (const file of all) {
       // A row git didn't write as a count: say the diff couldn't be read rather than total a NaN.
       if (Number.isNaN(file.added) || Number.isNaN(file.removed)) return UNVERIFIED_DIFF;
       diff.fileCount += 1;
@@ -319,9 +369,11 @@ export async function readRunDiff(
 
 /**
  * One file's patch, as the run's commits changed it, cut at
- * {@link MAX_PATCH_CHARS}. The path is read literally (no glob), and only in
- * the run's own diff, so it can name nothing outside the repository. The base
- * is found as {@link readRunCommits} finds it.
+ * {@link MAX_PATCH_CHARS}. Only a file in the run's own diff is read: any
+ * other path (unchanged, a folder, a glob, ignored, outside the repository)
+ * throws {@link RunFileNotChanged}. The path is matched literally. The base is
+ * found as {@link readRunCommits} finds it. With `uncommitted`, the diff is
+ * the working tree's (see `working-tree.ts`), and a new file's is against nothing.
  */
 export async function readRunFilePatch(
   cwd: string,
@@ -330,24 +382,34 @@ export async function readRunFilePatch(
   path: string,
   options: RunDiffOptions = {},
 ): Promise<RunFilePatch> {
-  const unverified: RunFilePatch = { path, patch: "", truncated: false, verified: false };
+  const unverified: RunFilePatch = { path, patch: "", truncated: false, lines: 0, verified: false };
   const head = options.head ?? "HEAD";
+  const uncommitted = options.uncommitted === true && options.head === undefined;
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return unverified;
+  let changed: boolean;
+  let read: RunFilePatch;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
+    // The run's own file list, exactly as the diff read lists it: the path must be one of them.
+    const working = uncommitted ? (await workingChanges(cwd, start)).find((change) => change.path === path) : undefined;
+    changed = uncommitted ? working !== undefined : (await committedPaths(cwd, start, head)).includes(path);
     let patch = "";
     let truncated = false;
-    // Line by line, so a huge patch is never held whole: past the cut, lines are dropped.
-    await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], (line) => {
+    let lines = 0;
+    // Line by line, so a huge patch is never held whole: past the cut, lines are only counted.
+    const take = (line: string) => {
+      lines++;
       if (truncated) return;
       const next = patch === "" ? line : `${patch}\n${line}`;
       if (next.length > MAX_PATCH_CHARS) {
         truncated = true;
         patch = next.slice(0, MAX_PATCH_CHARS);
       } else patch = next;
-    });
-    return { path, patch, truncated, verified: true };
+    };
+    if (working !== undefined) await workingPatch(cwd, working, take);
+    else if (changed) await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], take);
+    read = { path, patch, truncated, lines, verified: true };
   } catch (error) {
     console.warn(
       `[harness-manager] could not read the run's patch of ${path} against ${bases.join(" and ")} in ${cwd} ` +
@@ -355,4 +417,6 @@ export async function readRunFilePatch(
     );
     return unverified;
   }
+  if (!changed) throw new RunFileNotChanged(path);
+  return read;
 }

@@ -22,6 +22,12 @@ export interface ReviewDetail {
   commits: number | null;
   /** Its commit subjects, newest first. */
   subjects: string[];
+  /**
+   * Its commits, newest first, as a timeline draws them: sha, author, time,
+   * merge or not. `null` on a review recorded before commits carried them;
+   * the subjects still name them. Optional so a review built by hand needn't.
+   */
+  log?: ReviewCommit[] | null;
   /** The judge's verdict on the run, or `null` when no judge read it. */
   judge: { verdict: string; confidence: number; reason: string } | null;
   /**
@@ -67,7 +73,7 @@ export interface ReviewDetail {
    * and their subjects, newest first. `null` when the round is the whole
    * branch, or they couldn't be read.
    */
-  round?: { commits: number; subjects: string[] } | null;
+  round?: { commits: number; subjects: string[]; log?: ReviewCommit[] | null } | null;
   /** Each file the run changed and its lines; `null` when they couldn't be read. */
   files?: ReviewFile[] | null;
   /** How many files changed, listed or not; `null` when unread. */
@@ -82,6 +88,17 @@ export interface ReviewDetail {
 export interface ReviewPullRequest {
   number: number;
   url: string;
+}
+
+/** One commit of a run's log, as a review carries it: harness-manager's `RunCommitEntry`. */
+export interface ReviewCommit {
+  sha: string;
+  subject: string;
+  author: string;
+  /** When it was authored, ISO 8601. */
+  at: string;
+  /** A merge (more than one parent). */
+  merge: boolean;
 }
 
 /** One file the run changed. `added`/`removed` are `null` for a binary file. */
@@ -150,10 +167,27 @@ function pullRequestOf(value: unknown): ReviewPullRequest | null {
     : null;
 }
 
+/** One commit of a log, or `null` when the entry isn't one. */
+function commitOf(value: unknown): ReviewCommit | null {
+  if (!isRecord(value)) return null;
+  const { sha, subject, author, at, merge } = value;
+  return typeof sha === "string" && typeof subject === "string" && typeof author === "string" && typeof at === "string" && typeof merge === "boolean"
+    ? { sha, subject, author, at, merge }
+    : null;
+}
+
+/** A commit log, or `null` when there is none (a review recorded before commits carried one). */
+const logOf = (value: unknown): ReviewCommit[] | null =>
+  Array.isArray(value) ? value.map(commitOf).filter((entry): entry is ReviewCommit => entry !== null) : null;
+
 /** This round's commits, or `null` when they aren't readable. */
 function roundOf(value: unknown): ReviewDetail["round"] {
   if (!isRecord(value) || !isCount(value.commits)) return null;
-  return { commits: value.commits, subjects: Array.isArray(value.subjects) ? value.subjects.filter((s): s is string => typeof s === "string") : [] };
+  return {
+    commits: value.commits,
+    subjects: Array.isArray(value.subjects) ? value.subjects.filter((s): s is string => typeof s === "string") : [],
+    log: logOf(value.log),
+  };
 }
 
 /** One changed file, or `null` when the entry isn't one. */
@@ -175,6 +209,7 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
     branch: typeof data.branch === "string" ? data.branch : null,
     commits: typeof data.commits === "number" && Number.isInteger(data.commits) && data.commits >= 0 ? data.commits : null,
     subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
+    log: logOf(data.log),
     judge: judgeOf(data.judge),
     lands: Array.isArray(data.lands) ? data.lands.filter(isLand) : [],
     landFailed: landAttemptOf(data.landFailed),

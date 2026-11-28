@@ -156,7 +156,7 @@ import {
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
 import { withSettledState } from "./landed-work";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
+import { effectiveCut, headCommit, readRunCommits, readRunDiff, runCommitEntrySchema, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import type { ReviewDetail, ReviewPullRequest } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
@@ -1127,7 +1127,7 @@ const managerStateSchema = z.object({
        * its one test of "made changes": skipped only on a verified zero.
        */
       changes: z
-        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
+        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), log: z.array(runCommitEntrySchema).optional(), verified: z.boolean() })
         .nullable()
         .default(null),
       // FIX-2384; BP-030.
@@ -1146,7 +1146,7 @@ const managerStateSchema = z.object({
        * kept before it was read.
        */
       round: z
-        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
+        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), log: z.array(runCommitEntrySchema).optional(), verified: z.boolean() })
         .nullable()
         .default(null),
       // FIX-2163.
@@ -3251,7 +3251,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
         const round: RunCommits | null =
           diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
-            ? await readRunCommits(state.workspacePath, state.baseRef, await settleCut(), { since: state.roundStart })
+            ? await readRunCommits(state.workspacePath, state.baseRef, await settleCut(), { since: state.roundStart, log: true })
             : null;
         // The cut this settle read against, on every settle, so a file's patch read later reads as the review's files and the judge's did.
         await fenced(writeRunRecord(ctx, identity, { effectiveCut: await settleCut() }), "the cut the run was read against was recorded");
@@ -3262,7 +3262,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [], verified: true })
-          : settleCut().then((cut) => readRunCommits(state.workspacePath, state.baseRef, cut));
+          : settleCut().then((cut) => readRunCommits(state.workspacePath, state.baseRef, cut, { log: true }));
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -4140,7 +4140,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);
       // This round's commits, read by `decide`; `null` when the round is the whole branch, or added
       // nothing, so the card falls back to the branch's commits rather than an empty list.
-      const thisRound = decision.round?.verified === true && decision.round.count > 0 ? { commits: decision.round.count, subjects: decision.round.subjects } : null;
+      const thisRound =
+        decision.round?.verified === true && decision.round.count > 0
+          ? { commits: decision.round.count, subjects: decision.round.subjects, ...(decision.round.log ? { log: decision.round.log } : {}) }
+          : null;
       // A landing the coding session was handed is tried again first, as the
       // person asked it the first time (FIX-2658).
       const pending = state.landing ?? null;
@@ -4185,6 +4188,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               branch: decision.output.branch,
               commits: changes?.verified === true ? changes.count : null,
               subjects: changes?.subjects ?? [],
+              // Each commit as a timeline draws it; `null` on a decision kept before commits carried one.
+              log: changes?.log ?? null,
               // Each changed file's lines, when they were read (FIX-2384); `null` when they couldn't be.
               files: decision.diff?.verified === true ? decision.diff.files : null,
               fileCount: decision.diff?.verified === true ? decision.diff.fileCount : null,

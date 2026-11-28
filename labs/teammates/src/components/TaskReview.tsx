@@ -22,7 +22,8 @@ import { ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIco
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
 import { LandFailure, landLabel, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
-import { RunChanges } from "./flow-state/run-changes";
+import { CommitTimeline } from "./CommitTimeline";
+import { RunChanges, type RunChangesPatch } from "./flow-state/run-changes";
 import { runCheckPassed } from "./flow-state/run-checks";
 
 /** How a check line ended, as the review draws it. `reported` is a run's line that didn't say. */
@@ -349,8 +350,23 @@ export function RunAnswer({ answer, report: asReport }: { answer: string; report
  * The review's body: verdict, What changed, Checks, Worth knowing, Files and
  * the original request. `onDraft` puts words in the compose box; `onFollowUp`
  * asks the task's filer to follow up on a note. Either absent: no button.
+ * `loadPatch` reads one changed file's diff, so a file in Files opens to it;
+ * absent, the files list their lines and don't open. `filesOpen` starts the
+ * Files list open (it was open while the run worked).
  */
-export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDetail; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
+export function ReviewBody({
+  review,
+  onDraft,
+  onFollowUp,
+  loadPatch,
+  filesOpen = false,
+}: {
+  review: ReviewDetail;
+  onDraft?: (text: string) => void;
+  onFollowUp?: (note: string) => void;
+  loadPatch?: (path: string) => Promise<RunChangesPatch>;
+  filesOpen?: boolean;
+}) {
   // Parsed once per answer, not on each keystroke in the compose box.
   const report = useMemo(() => wholeReport(review.answer), [review.answer]);
   const lines = checkLines(review, report);
@@ -358,6 +374,8 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
   const changed = report === null ? (review.answer ?? null) : report.changed;
   const round = review.round ?? null;
   const subjects = round?.subjects ?? review.subjects;
+  // The log when the review carried one; an older review's bare subjects otherwise.
+  const log = (round === null ? review.log : round.log) ?? subjects.map((subject) => ({ subject }));
   return (
     <div data-review-body className="flex flex-col gap-6 [overflow-wrap:anywhere]">
       <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex items-start gap-4 rounded-lg border border-border bg-card px-4 py-4 shadow-(--shadow-card)">
@@ -377,6 +395,8 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
               {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
               {...(review.added != null ? { added: review.added } : {})}
               {...(review.removed != null ? { removed: review.removed } : {})}
+              {...(loadPatch ? { loadPatch } : {})}
+              defaultOpen={filesOpen}
               className="rounded-lg border-border bg-card [&>button]:px-3.5 [&>button]:py-2.5"
             />
           </Section>
@@ -386,13 +406,7 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
             data-review-commits
             label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
           >
-            <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
-              {subjects.map((subject, i) => (
-                <li key={i}>
-                  <MarkdownText inline text={subject} className={WRAP} />
-                </li>
-              ))}
-            </ul>
+            <CommitTimeline commits={log} />
           </Fold>
         ) : null}
         {review.goal ? (

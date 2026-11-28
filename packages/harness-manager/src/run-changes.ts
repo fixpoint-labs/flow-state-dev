@@ -18,7 +18,7 @@ import { defineView, handler, type DefinedCapability } from "@flow-state-dev/cor
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
-import { effectiveCut, readRunChanges, runChangesSchema } from "./commits";
+import { effectiveCut, readRunChanges, readRunCommits, runChangesSchema, runCommitEntrySchema } from "./commits";
 import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
@@ -29,10 +29,21 @@ export const harnessRunChangesInputSchema = z.object({
   taskId: z.string().min(1).optional(),
   /** A file the run changed, by its path in the repository: answer its patch instead of the diff. */
   path: z.string().min(1).optional(),
+  /** Read the working tree too, each file only there marked `uncommitted`: for a run still working. Default: what it committed. */
+  uncommitted: z.boolean().optional(),
 });
 
-/** What the changes view answers: the task it read, and the diff or the one file's patch. */
-export const harnessRunChangesOutputSchema = runChangesSchema.extend({ taskId: z.string() });
+/**
+ * What the changes view answers: the task it read, and the diff or the one
+ * file's patch. Beside the diff, the run's commits (count, subjects and log, as
+ * `readRunCommits` reads them); `null` beside a patch.
+ */
+export const harnessRunChangesOutputSchema = runChangesSchema.extend({
+  taskId: z.string(),
+  commits: z
+    .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), log: z.array(runCommitEntrySchema).optional(), verified: z.boolean() })
+    .nullable(),
+});
 
 /** How a host builds the view. */
 export interface HarnessRunChangesViewOptions {
@@ -60,10 +71,13 @@ export class HarnessRunChangesRefused extends Error {
  * The `changes` session view a coding flow declares beside its door:
  * `views: { changes: harnessRunChangesView({ board }) }`.
  *
- * Input `{ taskId?, path? }`. Without `path` it answers `{ diff }`: each file
- * the run's commits changed and its lines, the totals, and `verified: false`
- * when git couldn't read them. With `path` it answers `{ patch }`: that file's
- * unified diff, cut at `MAX_PATCH_CHARS`. A run of kept files alone has no
+ * Input `{ taskId?, path?, uncommitted? }`. Without `path` it answers
+ * `{ diff, commits }`: each file the run's commits changed and its lines, the
+ * totals, the commits' count and subjects, and `verified: false` when git
+ * couldn't read them. `uncommitted` adds the working tree's changes, marked.
+ * With `path` it answers `{ patch }`: that file's
+ * unified diff, cut at `MAX_PATCH_CHARS`, with its whole length in `lines`;
+ * a path the run didn't change fails with `RunFileNotChanged`. A run of kept files alone has no
  * branch, and answers a verified empty diff.
  */
 export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
@@ -88,18 +102,19 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
         identity === undefined
           ? undefined
           : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
-      const at = input.path === undefined ? {} : { path: input.path };
+      const at = { ...(input.path === undefined ? {} : { path: input.path }), ...(input.uncommitted === true ? { uncommitted: true } : {}) };
       if (record?.filesOnly === true || record?.workspacePath == null) {
         // A files-only run has no Git changes. A missing checkout leaves the changes unknown.
         const verified = record?.filesOnly === true;
         return input.path === undefined
-          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified }, patch: null }
-          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified } };
+          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified }, patch: null, commits: { count: 0, subjects: [], verified } }
+          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, lines: 0, verified }, commits: null };
       }
       // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
       const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);
       const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, cut, at);
-      return { taskId: row.id, ...changes };
+      const commits = input.path === undefined ? await readRunCommits(record.workspacePath, record.baseRef ?? null, cut, { log: true }) : null;
+      return { taskId: row.id, ...changes, commits };
     },
   });
   return defineView({ scope: "session", block, description: "What this session's coding run changed: its files and lines, or one file's patch." });

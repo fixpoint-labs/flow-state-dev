@@ -8,11 +8,11 @@
  * one that missed a file would hide one that is about to land.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { MAX_DIFF_FILES, MAX_PATCH_CHARS, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
+import { MAX_DIFF_FILES, MAX_PATCH_CHARS, RunFileNotChanged, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -90,7 +90,7 @@ describe("readRunDiff", () => {
     const diff = await readRunDiff(dir, "main", base);
     expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
     expect(diff.verified).toBe(true);
-    expect((await readRunFilePatch(dir, "main", base, "z.txt")).patch).toBe("");
+    await expect(readRunFilePatch(dir, "main", base, "z.txt")).rejects.toBeInstanceOf(RunFileNotChanged);
   });
 
   it("ignores a tip that doesn't descend from the cut, and reads against the cut as before", async () => {
@@ -148,7 +148,18 @@ describe("readRunFilePatch", () => {
   it("reads the path literally, so a glob names no other file", async () => {
     const { dir, cut } = repo();
     commitFiles(dir, "change", { "a.txt": "changed\n", "b.txt": "new\n" });
-    expect((await readRunFilePatch(dir, "main", cut, "*.txt")).patch).toBe("");
+    await expect(readRunFilePatch(dir, "main", cut, "*.txt")).rejects.toBeInstanceOf(RunFileNotChanged);
+  });
+
+  it("refuses a path the run didn't change: a file it never touched, a folder, or one outside the checkout", async () => {
+    // Only the change's own files open: a reviewer's screen can't be turned into a reader of the repository.
+    const { dir, cut } = repo();
+    mkdirSync(join(dir, "src"));
+    commitFiles(dir, "change", { "src/a.txt": "changed\n" });
+    for (const path of ["a.txt", "src", "../outside.txt", "/etc/hosts"]) {
+      await expect(readRunFilePatch(dir, "main", cut, path), path).rejects.toBeInstanceOf(RunFileNotChanged);
+    }
+    expect((await readRunFilePatch(dir, "main", cut, "src/a.txt")).patch).toContain("+changed");
   });
 
   it("answers the run's own patch after it planted a replace ref that swaps its HEAD for a harmless one", async () => {
@@ -177,6 +188,8 @@ describe("readRunFilePatch", () => {
     const read = await readRunFilePatch(dir, "main", cut, "big.txt");
     expect(read.truncated).toBe(true);
     expect(read.patch.length).toBe(MAX_PATCH_CHARS);
+    // The whole patch's length, counted past the cut, so the screen can say how much it isn't showing.
+    expect(read.lines).toBe(1_006);
   });
 
   it("answers no patch for a base the checkout doesn't have, and says it couldn't tell", async () => {
@@ -185,7 +198,73 @@ describe("readRunFilePatch", () => {
       path: "a.txt",
       patch: "",
       truncated: false,
+      lines: 0,
       verified: false,
     });
+  });
+});
+
+describe("a running run's changes, uncommitted ones included", () => {
+  /** A run that committed b.txt, then edited a.txt and wrote new.txt without committing, beside an ignored file. */
+  function working() {
+    const { dir, cut } = repo();
+    commitFiles(dir, "the run's change", { "b.txt": "run\n", ".gitignore": "ignored.log\n" });
+    writeFileSync(join(dir, "a.txt"), "one\nTWO\nthree\n");
+    writeFileSync(join(dir, "new.txt"), "fresh\nlines\n");
+    writeFileSync(join(dir, "ignored.log"), "noise\n");
+    return { dir, cut };
+  }
+
+  it("lists the committed files and the ones still in the working tree, marking the uncommitted", async () => {
+    // A harness edits before it commits: committed-only would read a busy run as idle.
+    const { dir, cut } = working();
+    const diff = await readRunDiff(dir, "main", cut, { uncommitted: true });
+    expect(diff).toEqual({
+      files: [
+        { path: ".gitignore", added: 1, removed: 0 },
+        { path: "a.txt", added: 1, removed: 1, uncommitted: true },
+        { path: "b.txt", added: 1, removed: 0 },
+        { path: "new.txt", added: 2, removed: 0, uncommitted: true },
+      ],
+      fileCount: 4,
+      added: 5,
+      removed: 1,
+      verified: true,
+    });
+    // The review's read is unchanged: only what the run committed.
+    expect((await readRunDiff(dir, "main", cut)).files.map((file) => file.path)).toEqual([".gitignore", "b.txt"]);
+  });
+
+  it("opens an uncommitted file's patch, tracked or new, and refuses an ignored or untouched one", async () => {
+    const { dir, cut } = working();
+    expect((await readRunFilePatch(dir, "main", cut, "a.txt", { uncommitted: true })).patch).toContain("+TWO");
+    const fresh = await readRunFilePatch(dir, "main", cut, "new.txt", { uncommitted: true });
+    expect(fresh).toMatchObject({ truncated: false, verified: true });
+    expect(fresh.patch).toContain("+fresh");
+    for (const path of ["ignored.log", "nope.txt", "../outside.txt"]) {
+      await expect(readRunFilePatch(dir, "main", cut, path, { uncommitted: true }), path).rejects.toBeInstanceOf(RunFileNotChanged);
+    }
+    // Committed only, the uncommitted files aren't the change.
+    await expect(readRunFilePatch(dir, "main", cut, "new.txt")).rejects.toBeInstanceOf(RunFileNotChanged);
+  });
+
+  it("reads a new symlink as its target's name, never the file it points at", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "hm-outside-"));
+    dirs.push(outside);
+    writeFileSync(join(outside, "secret.txt"), "the secret\n");
+    const { dir, cut } = working();
+    symlinkSync(join(outside, "secret.txt"), join(dir, "link.txt"));
+    const read = await readRunFilePatch(dir, "main", cut, "link.txt", { uncommitted: true });
+    expect(read.patch).toContain(`+${join(outside, "secret.txt")}`);
+    expect(read.patch).not.toContain("the secret");
+  });
+
+  it("leaves the checkout's index alone, so a harness committing at the same moment never meets a lock", async () => {
+    const { dir, cut } = working();
+    const before = git(dir, "ls-files", "--stage");
+    await readRunDiff(dir, "main", cut, { uncommitted: true });
+    await readRunFilePatch(dir, "main", cut, "new.txt", { uncommitted: true });
+    expect(git(dir, "ls-files", "--stage")).toBe(before);
+    expect(git(dir, "status", "--porcelain")).toContain("?? new.txt");
   });
 });

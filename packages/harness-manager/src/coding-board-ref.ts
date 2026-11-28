@@ -27,6 +27,7 @@ export const recordedWorkViewRef = (flow: string = CODER_FLOW) => viewRef<Record
 
 /**
  * What a run changed, a session view on the coding worker flow (harness-manager's `harnessRunChangesView`):
- * `client.view(runChangesViewRef(), { path }, { sessionId })` answers one file's patch.
+ * `client.view(runChangesViewRef(), { path }, { sessionId })` answers one file's patch; without `path`,
+ * the files and commits (`uncommitted: true` adds the working tree's, for a run still working).
  */
 export const runChangesViewRef = (flow: string = CODER_FLOW) => viewRef<ReturnType<typeof harnessRunChangesView>>(flow, RUN_CHANGES_VIEW);

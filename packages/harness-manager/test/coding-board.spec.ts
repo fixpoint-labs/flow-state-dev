@@ -24,6 +24,7 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import type { Harness } from "@flow-state-dev/core/harness";
 import { scriptedHarness } from "../src/scripted-harness";
 import { harnesses } from "../src/kit";
+import { HarnessRunChangesRefused } from "../src/run-changes";
 
 const states: FlowState[] = [];
 const dirs: string[] = [];
@@ -105,6 +106,18 @@ describe("the recorded work view", () => {
     expect(answer.body.output.pullRequests).toEqual({ rows: [{ number: 999, url: "https://example.test/pr/999", title: "PR 999" }], truncated: false });
     // The run's rows are found by the run, not by listing every run's: the collection declares the index.
     expect(declaredIndexes(observedPullRequestsCollection as never).map((index) => index.name)).toEqual(["requestId"]);
+  });
+});
+
+describe("the run changes view", () => {
+  it("is served on the coding worker flow, in a run's own session, so a review can open a file's patch", async () => {
+    const { post } = await boot();
+    const created = await post(["coder", "sessions"], { userId: "alice", state: { workerId: "core.codex" } });
+    const session = created.body.session.id as string;
+    // A session that ran no task has no changes: refused by the view, not a missing route.
+    const answer = await post(["coder", session, "views", "changes"], { userId: "alice", input: { path: "a.ts" } });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(422);
+    expect(answer.body.message).toBe(new HarnessRunChangesRefused("not-started").message);
   });
 });
 
