@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 304" role="img" aria-label="Who owns what: six rules across FIX-2645 connectors, FIX-1986 Codex and Cursor runs, FIX-2012 one redaction rule, FIX-2646 the closure and the coordinator. Each rule has exactly one owner. ER-1 a connector is installed only at the host: owned by FIX-2645, used by FIX-1986. ER-2 one resolution and one client: owned by FIX-2645, used by FIX-1986. ER-3 a key goes into the connection only: owned by FIX-2645, used by FIX-1986 and FIX-2012. ER-4 one redaction rule: owned by FIX-2012, used by FIX-2645. ER-5 core, engine and harness packages learn no connector: owned by FIX-1986, used by FIX-2645. ER-6 FIX-2331 stays a separate epic: owned by the coordinator. The closure checks ER-1 to ER-5." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; } }
+    .bg   { fill:var(--surface); }
+    .line { stroke:var(--rule); stroke-width:1; }
+    .o    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u    { fill:var(--accent-soft); }
+    .c    { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="304"/>
+
+  <g id="columns">
+    <text class="t-col" x="392" y="36" text-anchor="middle">2645</text>
+    <text class="t-lbl" x="392" y="52" text-anchor="middle">connectors</text>
+    <text class="t-col" x="504" y="36" text-anchor="middle">1986</text>
+    <text class="t-lbl" x="504" y="52" text-anchor="middle">codex, cursor</text>
+    <text class="t-col" x="616" y="36" text-anchor="middle">2012</text>
+    <text class="t-lbl" x="616" y="52" text-anchor="middle">redaction</text>
+    <text class="t-col" x="728" y="36" text-anchor="middle">2646</text>
+    <text class="t-lbl" x="728" y="52" text-anchor="middle">closure</text>
+    <text class="t-col" x="840" y="36" text-anchor="middle">Coord.</text>
+    <text class="t-lbl" x="840" y="52" text-anchor="middle">the loop</text>
+    <line class="line" x1="16" y1="62" x2="924" y2="62"/>
+  </g>
+
+  <g id="er-1">
+    <text class="t-id" x="16" y="82">ER-1</text>
+    <text class="t-b" x="62" y="82">Installed only at the host</text>
+    <rect class="o" x="360" y="66" width="64" height="22" rx="3"/><text class="t-o" x="392" y="81" text-anchor="middle">owns</text>
+    <rect class="u" x="472" y="66" width="64" height="22" rx="3"/><text class="t-u" x="504" y="81" text-anchor="middle">uses</text>
+    <rect class="c" x="696" y="66" width="64" height="22" rx="3"/><text class="t-u" x="728" y="81" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="92" x2="924" y2="92"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="112">ER-2</text>
+    <text class="t-b" x="62" y="112">One resolution, one client</text>
+    <rect class="o" x="360" y="96" width="64" height="22" rx="3"/><text class="t-o" x="392" y="111" text-anchor="middle">owns</text>
+    <rect class="u" x="472" y="96" width="64" height="22" rx="3"/><text class="t-u" x="504" y="111" text-anchor="middle">uses</text>
+    <rect class="c" x="696" y="96" width="64" height="22" rx="3"/><text class="t-u" x="728" y="111" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="122" x2="924" y2="122"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="142">ER-3</text>
+    <text class="t-b" x="62" y="142">A key goes into the connection only</text>
+    <rect class="o" x="360" y="126" width="64" height="22" rx="3"/><text class="t-o" x="392" y="141" text-anchor="middle">owns</text>
+    <rect class="u" x="472" y="126" width="64" height="22" rx="3"/><text class="t-u" x="504" y="141" text-anchor="middle">uses</text>
+    <rect class="u" x="584" y="126" width="64" height="22" rx="3"/><text class="t-u" x="616" y="141" text-anchor="middle">uses</text>
+    <rect class="c" x="696" y="126" width="64" height="22" rx="3"/><text class="t-u" x="728" y="141" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="152" x2="924" y2="152"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="172">ER-4</text>
+    <text class="t-b" x="62" y="172">One redaction rule, any length</text>
+    <rect class="u" x="360" y="156" width="64" height="22" rx="3"/><text class="t-u" x="392" y="171" text-anchor="middle">uses</text>
+    <rect class="o" x="584" y="156" width="64" height="22" rx="3"/><text class="t-o" x="616" y="171" text-anchor="middle">owns</text>
+    <rect class="c" x="696" y="156" width="64" height="22" rx="3"/><text class="t-u" x="728" y="171" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="182" x2="924" y2="182"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="202">ER-5</text>
+    <text class="t-b" x="62" y="202">Core, engine, harnesses learn no connector</text>
+    <rect class="u" x="360" y="186" width="64" height="22" rx="3"/><text class="t-u" x="392" y="201" text-anchor="middle">uses</text>
+    <rect class="o" x="472" y="186" width="64" height="22" rx="3"/><text class="t-o" x="504" y="201" text-anchor="middle">owns</text>
+    <rect class="c" x="696" y="186" width="64" height="22" rx="3"/><text class="t-u" x="728" y="201" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="212" x2="924" y2="212"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="232">ER-6</text>
+    <text class="t-b" x="62" y="232">FIX-2331 stays a separate epic</text>
+    <rect class="o" x="808" y="216" width="64" height="22" rx="3"/><text class="t-o" x="840" y="231" text-anchor="middle">owns</text>
+    <line class="line" x1="16" y1="242" x2="924" y2="242"/>
+  </g>
+
+  <g id="legend">
+    <rect class="o" x="16" y="264" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="277">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="264" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="277">uses it · must not decide again</text>
+    <rect class="c" x="640" y="264" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="277">the closure checks it</text>
+  </g>
+</svg>
